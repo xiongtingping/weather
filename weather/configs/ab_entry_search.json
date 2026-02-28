@@ -1,0 +1,25 @@
+{
+  "ranges": {
+    "min_edge": [0.015, 0.02, 0.025, 0.03, 0.04],
+    "max_ask": [0.65, 0.7, 0.75, 0.8, 0.85],
+    "min_q": [0.1, 0.2, 0.3],
+    "max_q": [0.9, 0.95, 0.98],
+    "max_spread": [0.06, 0.08, 0.1, 0.12],
+    "min_models": [2, 3],
+    "top_n": [1, 2],
+    "stake": [10.0],
+    "exit_stop_loss_pct": [0.1, 0.15, 0.2],
+    "exit_trail_pct": [0.005, 0.01, 0.02],
+    "exit_lag_max": [0.6, 0.8, 1.0],
+    "exit_lag_consecutive": [1, 2],
+    "exit_edge_flip_min": [0.003, 0.005, 0.008],
+    "exit_trend_min_move": [0.004, 0.006, 0.008],
+    "exit_trend_consist": [0.6, 0.7]
+  },
+  "systems": ["equal", "auto", "scenario"],
+  "min_trades": 12,
+  "max_trials": 120,
+  "seed": 19,
+  "require_all_systems": true,
+  "force_predict": false
+}
