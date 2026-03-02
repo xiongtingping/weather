@@ -490,6 +490,19 @@
       align-items:center;
       gap:6px;
     }
+    .system-pause-state {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:2px 8px;
+      border-radius:999px;
+      background:rgba(255, 255, 255, 0.22);
+      color:#fff;
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:0.02em;
+      text-transform:none;
+    }
     .system-pause-button.is-active {
       border-color:rgba(255, 120, 120, 0.9);
       background:linear-gradient(135deg, rgba(255, 120, 120, 0.98), rgba(190, 0, 0, 0.98));
@@ -5433,6 +5446,26 @@
       color:var(--text);
       font-size:var(--font-xs);
     }
+    .scan-pill-bar {
+      width:48px;
+      height:4px;
+      border-radius:999px;
+      border:1px solid var(--border-soft);
+      background:var(--panel-3);
+      overflow:hidden;
+      flex:0 0 auto;
+    }
+    .scan-pill-bar-fill {
+      height:100%;
+      width:0%;
+      background:var(--accent);
+      transition:width .3s ease;
+    }
+    .scan-pill-bar-fill.market { background:var(--accent-2); }
+    .scan-pill-percent {
+      font-variant-numeric:tabular-nums;
+      color:var(--muted);
+    }
     .scan-pill.is-ok {
       border-color:var(--tone-ok-border);
       background:var(--tone-ok-bg);
@@ -9147,17 +9180,16 @@
               <a class="nav-link" href="#availabilitySection">站点/模型</a>
             </div>
             <div class="nav-row">
-              <a class="nav-link" href="#advantageSection">优势分</a>
               <a class="nav-link" href="#eventsSectionBlock">事件</a>
               <a class="nav-link" href="#ratingBiasSectionBlock">评分校正</a>
-              <a class="nav-link" href="/follow-london" target="_blank" rel="noopener">London临结价差模拟</a>
             </div>
           </nav>
           <div class="row-right">
             <div class="nav-controls">
-              <label class="system-pause-button" title="总开关：停止模型/盘口/自动交易/同步 + 清理后台进程">
+              <label class="system-pause-button" title="总开关：关闭=全停；开启=恢复策略与数据刷新">
                 <input id="systemPauseEnabled" type="checkbox" />
-                <span class="system-pause-label">总开关（全停）</span>
+                <span class="system-pause-label">总开关</span>
+                <span class="system-pause-state" id="systemPauseState">开启</span>
               </label>
               <input id="date" type="date" aria-hidden="true" tabindex="-1" />
             </div>
@@ -9423,7 +9455,7 @@
                   </div>
                   <div class="strategy-switch-note">说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。</div>
                   <div class="strategy-switch-note">上面的“一键按钮”会同时作用于全部策略开关（含 YES最高桶 / 临结价差 / 影子跟单）。</div>
-                  <div class="strategy-switch-note warn">总开关开启后：停止模型/盘口/自动交易/同步 + 清理后台进程；解除后按暂停前状态恢复。</div>
+                  <div class="strategy-switch-note warn">总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。</div>
                   <div class="trade-config-row">
                     <div class="config-group">
                       <span class="trade-config-note">主策略仓位系数</span>
@@ -9559,7 +9591,7 @@
                     <label class="config-toggle">
                       <input id="entryRequireEdgeRealizable" data-config-key="entry_require_edge_realizable" type="checkbox" />
                       可兑现口径门槛
-                      <span class="info-tip" title="edge_realizable = exec_edge_entry。exec_edge_entry = q_entry − 可成交价 − 执行成本。">i</span>
+                      <span class="info-tip" title="edge_realizable(v2)=exec_edge_entry×p_realize−持有成本；p_realize=入场成交×回归×退出成交。v1=exec_edge_entry（q_entry−可成交价−执行成本）。">i</span>
                     </label>
                     <div class="config-range">
                       <input id="entryEdgeRealizableMin" data-config-key="entry_edge_realizable_min" type="number" step="0.001" min="0" max="1" inputmode="decimal" />
@@ -10421,7 +10453,7 @@
         </div>
       </div>
     </section>
-    <section class="section-block" id="availabilitySection" data-anchor-key="section:availability" style="display:none;">
+    <section class="section-block" id="availabilitySection" data-anchor-key="section:availability">
       <div class="section-title">站点映射与模型更新</div>
       <div id="availabilityMount" class="container section-body" data-anchor-key="section:availabilityBody"></div>
       <div id="modelUpdateMount" class="container section-body" data-anchor-key="section:modelUpdateBody"></div>
@@ -14354,12 +14386,20 @@
       } = params || {};
       const historyFlag = includeHistory ? '&include_history=1' : '';
       const url = `/api/facts?date=${date}&mode=${mode}&weighting=${encodeURIComponent(weighting)}${historyFlag}&page=${page}&page_size=${pageSize}`;
-      const res = await fetchJSON(url, { timeoutMs });
+      const res = await fetchJSON(url, {
+        timeoutMs,
+        retryCount: 0,
+        retryOnAbort: false,
+      });
       return normalizeRunsPage(res, pageSize);
     }
     async function fetchRunsRange(date, days = 1) {
       const url = `/api/facts-range?days=${days}&date=${encodeURIComponent(date || '')}`;
-      const res = await fetchJSON(url, { timeoutMs: RUNS_RANGE_TIMEOUT_MS });
+      const res = await fetchJSON(url, {
+        timeoutMs: RUNS_RANGE_TIMEOUT_MS,
+        retryCount: 0,
+        retryOnAbort: false,
+      });
       return Array.isArray(res) ? res : [];
     }
     function normalizeRunDate(value) {
@@ -19668,6 +19708,41 @@
       if (lower.includes('pm_mirror_trading_enabled=0')) return '镜像交易已关闭（PM_MIRROR_TRADING_ENABLED=0）';
       if (lower.includes('mirror_only_mode')) return 'mirror_only 模式下镜像交易未开启';
       return raw;
+    }
+    function mapFillAttributionReasonText(reason) {
+      const key = String(reason || '').trim().toLowerCase();
+      if (!key) return '未知归因';
+      if (key === 'linked') return '已闭环';
+      if (key === 'no_order_id') return '缺少 order_id';
+      if (key === 'no_auto_order') return '未匹配 auto_order';
+      if (key === 'order_key_mismatch') return '订单键不匹配';
+      if (key === 'unknown_action') return '动作未知';
+      if (key === 'missing_decision') return '缺少决策记录';
+      if (key === 'missing_run_id') return '决策缺少 run_id';
+      if (key === 'unattributed') return '未写归因行';
+      return key;
+    }
+    function summarizeFillAttributionBlockers(raw) {
+      const data = raw && typeof raw === 'object' ? raw : {};
+      const fillsWithOrder = Number(data.fills_with_order || 0);
+      const linked = Number(data.linked || 0);
+      const unlinked = Number(data.unlinked || Math.max(fillsWithOrder - linked, 0));
+      const linkRatio = Number(data.link_ratio);
+      const windowHours = Number(data.window_hours || 0);
+      const topReasonsRaw = Array.isArray(data.top_reasons) ? data.top_reasons : [];
+      const topReasons = topReasonsRaw.map((item) => ({
+        reason: String(item && item.reason || '').trim(),
+        count: Number(item && item.count || 0),
+      })).filter((item) => item.reason && Number.isFinite(item.count) && item.count > 0);
+      return {
+        fillsWithOrder: Number.isFinite(fillsWithOrder) ? fillsWithOrder : 0,
+        linked: Number.isFinite(linked) ? linked : 0,
+        unlinked: Number.isFinite(unlinked) ? unlinked : 0,
+        linkRatio: Number.isFinite(linkRatio) ? linkRatio : NaN,
+        windowHours: Number.isFinite(windowHours) ? windowHours : 0,
+        topReasons,
+        tableMissing: Boolean(data.table_missing),
+      };
     }
     function buildTradeSyncFailureContent(status) {
       const base = status && status.lastError ? mapTradeSyncErrorText(status.lastError) : '';
@@ -28080,6 +28155,7 @@
     const TRADE_SYNC_BACKOFF_LIMIT = 6;
     let statusMeta = { count: 0, label: '', history: false, latestDate: '' };
     let syncState = 'idle';
+    let systemPauseEpoch = 0;
     let progressStartTs = 0;
     let logTimer = null;
     let logLinesCache = [];
@@ -28116,12 +28192,23 @@
       const detailEl = document.getElementById('syncDetail');
       if (labelEl) labelEl.textContent = label;
       if (detailEl) {
-        detailEl.textContent = detailText ? `· ${detailText}` : '';
+        const showDetail = Boolean(detailText) && state !== 'loading';
+        detailEl.textContent = showDetail ? `· ${detailText}` : '';
       }
       if (timeEl) {
         timeEl.textContent = timeText || '—';
         timeEl.title = '页面数据最后刷新/失败时间';
       }
+      if (state === 'loading') {
+        window.__syncLoadingStartedAt = Date.now();
+      } else {
+        window.__syncLoadingStartedAt = 0;
+      }
+    }
+    function setSyncIndicatorPaused(note = '已暂停') {
+      const ts = Date.now();
+      setSyncIndicator('stale', '总开关已关闭', formatTime(ts), note || '已暂停');
+      updateEventsProgress('已暂停');
     }
     function flashSyncIndicator() {
       const el = document.getElementById('syncIndicator');
@@ -28989,7 +29076,7 @@
             el.dataset.systemPauseTitle = el.title || '';
           }
           el.disabled = true;
-          el.title = el.title ? `${el.title} · 总开关已开启` : '总开关已开启';
+          el.title = el.title ? `${el.title} · 总开关已关闭` : '总开关已关闭';
         } else if (el.dataset.systemPauseLock) {
           const prev = el.dataset.systemPausePrev === '1';
           el.disabled = prev;
@@ -29004,12 +29091,21 @@
       const toggle = document.getElementById('systemPauseEnabled');
       if (!toggle) return;
       const wrap = toggle.closest('.system-pause-button');
+      const stateEl = document.getElementById('systemPauseState');
       systemPauseToggleLock = true;
-      toggle.checked = Boolean(paused);
+      toggle.checked = !Boolean(paused);
       if (opts.disabled !== undefined) toggle.disabled = Boolean(opts.disabled);
       window.__systemPaused = Boolean(paused);
+      if (paused) {
+        systemPauseEpoch = Date.now();
+        setSyncIndicatorPaused('全停');
+        resetAutoRetry();
+      }
       if (wrap) {
         wrap.classList.toggle('is-active', Boolean(paused));
+      }
+      if (stateEl) {
+        stateEl.textContent = paused ? '关闭' : '开启';
       }
       applySystemPauseUiLock(Boolean(paused));
       systemPauseToggleLock = false;
@@ -29300,8 +29396,12 @@
       const missingList = payload && Array.isArray(payload.missing) ? payload.missing : [];
       const hasError = payload && payload.ok === false;
       const blockers = payload && payload.blockers && typeof payload.blockers === 'object' ? payload.blockers : null;
-      const hasBlockers = Boolean(blockers && blockers.has_blocker);
-      const blockerCount = Number(blockers && blockers.total || 0);
+      const fillAttr = summarizeFillAttributionBlockers(blockers && blockers.fill_attribution);
+      const hasAttrBlockers = fillAttr.unlinked > 0;
+      const hasExecBlockers = Boolean(blockers && blockers.has_blocker);
+      const hasBlockers = Boolean(hasExecBlockers || hasAttrBlockers);
+      const blockerCountBase = Number(blockers && blockers.total || 0);
+      const blockerCount = Math.max(0, blockerCountBase + (hasAttrBlockers ? fillAttr.unlinked : 0));
       const blockerTopError = normalizeExecFailureText(
         String((blockers && (blockers.top_error || blockers.sync_error)) || '').trim()
       );
@@ -29368,12 +29468,34 @@
           const syncSwitchText = syncTradesEnabled
             ? `<div class="auto-trade-blocker-meta"><strong>同步开关：</strong>已开启（sync_trades=1）</div>`
             : `<div class="auto-trade-blocker-meta"><strong>同步开关：</strong>已关闭（sync_trades=0）</div>`;
+          const attrReasons = Array.isArray(fillAttr.topReasons) ? fillAttr.topReasons.slice(0, 8) : [];
+          const attrTagHtml = attrReasons.length
+            ? attrReasons.map((item) => {
+                const reasonLabel = mapFillAttributionReasonText(item.reason);
+                const reasonCount = Number(item.count || 0);
+                const reasonText = reasonCount > 0 ? `${reasonLabel} x${reasonCount}` : reasonLabel;
+                return `<span class="auto-trade-blocker-tag">${escapeHtml(reasonText)}</span>`;
+              }).join('')
+            : '<span class="auto-trade-blocker-tag">无未闭环归因</span>';
+          const attrWindowText = fillAttr.windowHours > 0 ? `近${fillAttr.windowHours}h` : '当前窗口';
+          const attrRatioText = Number.isFinite(fillAttr.linkRatio)
+            ? `${(fillAttr.linkRatio * 100).toFixed(1)}%`
+            : '—';
+          const attrMetaText = fillAttr.fillsWithOrder > 0
+            ? `${attrWindowText} with_order ${fillAttr.fillsWithOrder} · 已闭环 ${fillAttr.linked} · 缺口 ${fillAttr.unlinked} · 闭环率 ${attrRatioText}`
+            : `${attrWindowText} with_order 0`;
+          const attrMissingText = fillAttr.tableMissing
+            ? '<div class="auto-trade-blocker-meta"><strong>归因层：</strong>trade_fill_attributions 表缺失（需重启写库流程初始化）</div>'
+            : '';
           blockersBodyEl.innerHTML = `
             <div class="auto-trade-blocker-tags">${tagHtml}</div>
             <div class="auto-trade-blocker-meta"><strong>最近阻塞：</strong>${escapeHtml(latestText)}</div>
             <div class="auto-trade-blocker-meta"><strong>下单口径：</strong>${escapeHtml(ownerText)}</div>
             ${syncSwitchText}
             ${syncText}
+            <div class="auto-trade-blocker-meta"><strong>归因缺口：</strong>${escapeHtml(attrMetaText)}</div>
+            <div class="auto-trade-blocker-tags">${attrTagHtml}</div>
+            ${attrMissingText}
           `;
           }
         }
@@ -29434,7 +29556,7 @@
         tradeChip = { status: 'idle', text: '交易 已暂停' };
       } else if (!syncTradesEnabled) {
         tradeChip = { status: 'bad', text: '交易 同步关闭' };
-      } else if (hasBlockers) {
+      } else if (hasExecBlockers) {
         tradeChip = { status: 'ok', text: '交易 挂单中' };
       } else if (syncFailed) {
         tradeChip = { status: 'bad', text: '交易 同步失败' };
@@ -29503,7 +29625,17 @@
         : !hasBlockers && flowAlerts.some((item) => item.status === 'warn')
           ? { status: 'warn', text: '告警 注意' }
           : null;
+      let attrChip = null;
+      if (fillAttr.unlinked > 0) {
+        const ratio = Number.isFinite(fillAttr.linkRatio) ? fillAttr.linkRatio : NaN;
+        const severity = (fillAttr.fillsWithOrder >= 10 && Number.isFinite(ratio) && ratio < 0.5) ? 'bad' : 'warn';
+        attrChip = {
+          status: severity,
+          text: `归因缺口 ${fillAttr.unlinked}/${fillAttr.fillsWithOrder || '?'}`,
+        };
+      }
       const summaryInputs = [flow, modelChip, dataChip, linkChip, syncChip, tradeChip];
+      if (attrChip) summaryInputs.push(attrChip);
       if (flowAlertChip) summaryInputs.push(flowAlertChip);
       if (balanceChip) summaryInputs.push(balanceChip);
       const summaryLevel = summaryInputs.some((c) => c.status === 'bad')
@@ -29551,6 +29683,7 @@
         linkChip,
         syncChip,
         tradeChip,
+        attrChip,
         balanceChip,
       ].filter(Boolean).map((chip) => `<span class="monitor-chip ${chip.status}${chip.className ? ` ${chip.className}` : ''}">${escapeHtml(chip.text)}</span>`).join('');
       enforceAutoTradeActionState(actionBtn);
@@ -29611,6 +29744,8 @@
         const exitOnlyText = formatPair(lastExitOnly);
         lastTriggerEl.textContent = `最近成交：${fillText} · 最近卖出：${sellText} · 最近退出：${exitText} · 最近 exit_only：${exitOnlyText}`;
       }
+      window.__autoTradeStatusSnapshot = payload && typeof payload === 'object' ? payload : null;
+      updateStatusLine();
       applySystemPauseUiLock(Boolean(window.__systemPaused));
     }
     function enforceAutoTradeActionState(btn) {
@@ -30691,7 +30826,12 @@
       try {
         const res = await fetchJSON(
           `/api/auto-trade-trace?date=${encodeURIComponent(runDate)}&limit=0`,
-          { timeoutMs: 20000, retryCount: 1, retryDelayMs: 900 },
+          {
+            timeoutMs: 20000,
+            retryCount: 1,
+            retryDelayMs: 900,
+            retryOnAbort: false,
+          },
         );
         if (res && res.ok) {
           const signature = buildAutoTradeTraceSignature(res);
@@ -31134,7 +31274,14 @@
     function updateRefreshProgress(status) {
       const marketEl = document.getElementById('marketRefreshProgress');
       const modelEl = document.getElementById('modelScanProgress');
-      const renderPill = (el, parts, running, title) => {
+      const scanRunning = Boolean(status && status.running);
+      const renderProgressBar = (ratio, kind) => {
+        if (!Number.isFinite(ratio)) return '';
+        const clamped = Math.min(1, Math.max(0, ratio));
+        const percent = Math.round(clamped * 100);
+        return `<span class="scan-pill-bar"><span class="scan-pill-bar-fill ${kind}" style="width:${percent}%"></span></span><span class="scan-pill-percent">${percent}%</span>`;
+      };
+      const renderPill = (el, parts, running, title, ratio, kind) => {
         if (!el) return;
         if (!parts || parts.length <= 1) {
           el.textContent = '';
@@ -31144,78 +31291,133 @@
         }
         const text = parts.join(' · ');
         if (running) {
-          el.innerHTML = `<span class="spinner"></span>${escapeHtml(text)}`;
+          const bar = renderProgressBar(ratio, kind);
+          el.innerHTML = `<span class="spinner"></span>${escapeHtml(text)}${bar}`;
         } else {
           el.textContent = text;
         }
         el.style.display = 'inline-flex';
         el.title = title || '';
       };
+      const progressDetailParts = [];
+      const progressRatioParts = [];
+      let marketRunning = false;
+      let modelRunning = false;
       if (marketEl) {
         const meta = status && status.market_refresh && typeof status.market_refresh === 'object'
           ? status.market_refresh
           : null;
         if (!meta) {
-          renderPill(marketEl, [], false, '');
+          renderPill(marketEl, [], false, '', null, '');
         } else {
-          const parts = ['盘口刷新'];
           const running = Boolean(meta.running);
-          if (running) parts.push('进行中');
-          const stageText = String(meta.stage_text || '').trim();
-          if (running && stageText) parts.push(`阶段${stageText}`);
-          const planned = Number(meta.events_planned);
-          const seen = Number(meta.events_seen);
-          if (Number.isFinite(seen) && Number.isFinite(planned) && planned > 0) {
-            parts.push(`进度${seen}/${planned}`);
+          const exitCode = Number(meta.last_exit_code);
+          const hasExitCode = Number.isFinite(exitCode);
+          const hasIssue = Boolean(meta.last_timeout) || (hasExitCode && exitCode !== 0);
+          if (!running && !hasIssue) {
+            renderPill(marketEl, [], false, '', null, '');
           } else {
-            const fetched = Number(meta.events_fetched);
-            if (Number.isFinite(fetched) && fetched > 0) parts.push(`候选${fetched}`);
+            const parts = ['盘口刷新'];
+            if (running) parts.push('进行中');
+            const stageText = String(meta.stage_text || '').trim();
+            if (running && stageText) parts.push(`阶段${stageText}`);
+            const planned = Number(meta.events_planned);
+            const seen = Number(meta.events_seen);
+            let ratio = null;
+            if (running && Number.isFinite(planned) && planned > 0 && Number.isFinite(seen)) {
+              ratio = seen / planned;
+            }
+            if (Number.isFinite(seen) && Number.isFinite(planned) && planned > 0) {
+              parts.push(`进度${seen}/${planned}`);
+            } else {
+              const fetched = Number(meta.events_fetched);
+              if (Number.isFinite(fetched) && fetched > 0) parts.push(`候选${fetched}`);
+            }
+            if (!running && meta.last_timeout) parts.push('上轮超时');
+            else if (!running && hasExitCode && exitCode !== 0) {
+              parts.push(`上轮exit=${exitCode}`);
+            }
+            const base = String(meta.last_start || meta.log_mtime || '').trim();
+            const baseTs = parseLocalTime(base);
+            let title = '';
+            if (Number.isFinite(baseTs)) {
+              const ageSec = Math.max(0, (Date.now() - baseTs) / 1000);
+              title = `最近运行 ${formatAgeSeconds(ageSec)} 前`;
+            }
+            renderPill(marketEl, parts, running, title, ratio, 'market');
+            if (running) {
+              marketRunning = true;
+              const detailText = parts.slice(1).join(' · ');
+              if (detailText) progressDetailParts.push(`盘口 ${detailText}`);
+              if (Number.isFinite(ratio)) progressRatioParts.push(ratio);
+            }
           }
-          const base = String(meta.last_start || meta.log_mtime || '').trim();
+        }
+      }
+      if (modelEl) {
+        const running = Boolean(status && status.model_scan_running);
+        const tradeSyncFailed = Boolean(status && status.model_scan_trade_sync_failed);
+        if (!running && !tradeSyncFailed) {
+          renderPill(modelEl, [], false, '', null, '');
+        } else {
+          const parts = ['模型刷新'];
+          if (running) parts.push('进行中');
+          const stageText = String(status && status.model_scan_stage_text || '').trim();
+          if (running && stageText) parts.push(`阶段${stageText}`);
+          if (!running && tradeSyncFailed) parts.push('trade_sync失败');
+          const lastStart = String(status && status.model_scan_last_start || '').trim();
+          const logMtime = String(status && status.model_scan_log_mtime || '').trim();
+          const base = lastStart || logMtime;
           const baseTs = parseLocalTime(base);
-          if (!running && base) {
-            const stamp = Number.isFinite(baseTs) ? formatTime(baseTs) : base;
-            parts.push(`上次${stamp}`);
-          }
-          if (!running && meta.last_timeout) parts.push('上轮超时');
-          else if (!running && Number.isFinite(Number(meta.last_exit_code)) && Number(meta.last_exit_code) !== 0) {
-            parts.push(`上轮exit=${Number(meta.last_exit_code)}`);
-          }
           let title = '';
           if (Number.isFinite(baseTs)) {
             const ageSec = Math.max(0, (Date.now() - baseTs) / 1000);
             title = `最近运行 ${formatAgeSeconds(ageSec)} 前`;
           }
-          renderPill(marketEl, parts, running, title);
+          let ratio = null;
+          if (running) {
+            const stageVal = Number(status && status.model_scan_stage);
+            if (Number.isFinite(stageVal)) {
+              const stageMap = [0.18, 0.45, 0.72, 0.95];
+              const idx = Math.max(0, Math.min(stageMap.length - 1, stageVal));
+              ratio = stageMap[idx];
+            }
+          }
+          renderPill(modelEl, parts, running, title, ratio, 'model');
+          if (running) {
+            modelRunning = true;
+            const detailText = parts.slice(1).join(' · ');
+            if (detailText) progressDetailParts.push(`模型 ${detailText}`);
+            if (Number.isFinite(ratio)) progressRatioParts.push(ratio);
+          }
         }
       }
-      if (modelEl) {
-        const parts = ['模型刷新'];
-        const running = Boolean(status && status.model_scan_running);
-        if (running) parts.push('进行中');
-        const stageText = String(status && status.model_scan_stage_text || '').trim();
-        if (stageText) parts.push(`阶段${stageText}`);
-        const lastStart = String(status && status.model_scan_last_start || '').trim();
-        const logMtime = String(status && status.model_scan_log_mtime || '').trim();
-        const base = lastStart || logMtime;
-        const baseTs = parseLocalTime(base);
-        if (!running && base) {
-          const stamp = Number.isFinite(baseTs) ? formatTime(baseTs) : base;
-          parts.push(`上次${stamp}`);
-        }
-        if (status && status.model_scan_trade_sync_failed) parts.push('trade_sync失败');
-        let title = '';
-        if (Number.isFinite(baseTs)) {
-          const ageSec = Math.max(0, (Date.now() - baseTs) / 1000);
-          title = `最近运行 ${formatAgeSeconds(ageSec)} 前`;
-        }
-        renderPill(modelEl, parts, running, title);
+      const backgroundActive = Boolean(marketRunning || modelRunning);
+      const backgroundLabels = [];
+      if (modelRunning) backgroundLabels.push('模型');
+      if (marketRunning) backgroundLabels.push('盘口');
+      const progressRatio = progressRatioParts.length
+        ? (progressRatioParts.reduce((sum, val) => sum + val, 0) / progressRatioParts.length)
+        : null;
+      window.__backgroundRefreshActive = backgroundActive;
+      window.__backgroundRefreshDetail = progressDetailParts.join(' · ');
+      window.__backgroundRefreshLabel = backgroundLabels.join('+');
+      if (backgroundActive && Number.isFinite(progressRatio)) {
+        window.__backgroundRefreshRatio = Math.min(1, Math.max(0, Number(progressRatio)));
+      } else {
+        window.__backgroundRefreshRatio = 0;
       }
     }
     function updateSyncMeter() {
       const wrap = document.getElementById('syncMeter');
       const fill = document.getElementById('syncMeterFill');
       if (!wrap || !fill) return;
+      if (window.__backgroundRefreshActive) {
+        const ratio = Math.min(1, Math.max(0, Number(window.__backgroundRefreshRatio || 0)));
+        fill.style.width = `${Math.round(ratio * 100)}%`;
+        wrap.classList.remove('is-stale');
+        return;
+      }
       if (!window.__lastRefreshTs) {
         fill.style.width = '0%';
         wrap.classList.remove('is-stale');
@@ -31231,25 +31433,62 @@
       if (!el || !statusMeta.latestDate) return;
       const lastRefresh = window.__lastRefreshTs ? formatTime(window.__lastRefreshTs) : '—';
       const countText = `${statusMeta.count}个`;
-      el.innerHTML = `
-        <span class="status-item" title="当前页面展示的事件数量">
-          <span class="status-label">事件数</span>
-          <strong>${escapeHtml(countText)}</strong>
-        </span>
-        <span class="status-sep">·</span>
-        <span class="status-item" title="归档日期（事件日）">
-          <span class="status-label">归档</span>
-          <strong>${escapeHtml(statusMeta.latestDate)}</strong>
-        </span>
-        <span class="status-sep">·</span>
-        <span class="status-item" title="页面最后一次刷新时间">
-          <span class="status-label">页面刷新</span>
-          <strong>${escapeHtml(lastRefresh)}</strong>
-        </span>
-      `;
+      const items = [
+        {
+          label: '事件数',
+          value: countText,
+          title: '当前页面展示的事件数量',
+        },
+        {
+          label: '归档',
+          value: String(statusMeta.latestDate || '—'),
+          title: '归档日期（事件日）',
+        },
+        {
+          label: '页面刷新',
+          value: lastRefresh,
+          title: '页面最后一次刷新时间',
+        },
+      ];
+      const autoStatus = window.__autoTradeStatusSnapshot && typeof window.__autoTradeStatusSnapshot === 'object'
+        ? window.__autoTradeStatusSnapshot
+        : null;
+      const blockers = autoStatus && autoStatus.blockers && typeof autoStatus.blockers === 'object'
+        ? autoStatus.blockers
+        : null;
+      const fillAttr = summarizeFillAttributionBlockers(blockers && blockers.fill_attribution);
+      if (fillAttr.unlinked > 0) {
+        const ratioText = Number.isFinite(fillAttr.linkRatio)
+          ? `${(fillAttr.linkRatio * 100).toFixed(1)}%`
+          : '—';
+        const windowText = fillAttr.windowHours > 0 ? `近${fillAttr.windowHours}h` : '当前窗口';
+        items.push({
+          label: '归因缺口',
+          value: `${fillAttr.unlinked}/${fillAttr.fillsWithOrder || '?'}`,
+          title: `${windowText} 未闭环 fill，闭环率 ${ratioText}`,
+        });
+      }
+      el.innerHTML = items.map((item, idx) => {
+        const sep = idx > 0 ? '<span class="status-sep">·</span>' : '';
+        return `${sep}<span class="status-item" title="${escapeHtml(item.title || '')}"><span class="status-label">${escapeHtml(item.label || '')}</span><strong>${escapeHtml(item.value || '—')}</strong></span>`;
+      }).join('');
     }
     function refreshSyncState() {
-      if (syncState === 'loading') return;
+      if (syncState === 'loading') {
+        const loadAge = Date.now() - Number(window.__syncLoadingStartedAt || 0);
+        if (autoRefreshInFlight || (loadAge >= 0 && loadAge < 20000)) {
+          return;
+        }
+        syncState = 'idle';
+      }
+      if (window.__backgroundRefreshActive) {
+        const labelKey = String(window.__backgroundRefreshLabel || '').trim();
+        const label = labelKey ? `后台刷新（${labelKey}）` : '后台刷新';
+        const detailText = String(window.__backgroundRefreshDetail || '').trim();
+        setSyncIndicator('loading', label, formatTime(window.__lastRefreshTs || Date.now()), detailText);
+        updateSyncMeter();
+        return;
+      }
       if (window.__lastFailureTs && (!window.__lastRefreshTs || window.__lastFailureTs > window.__lastRefreshTs)) {
         setSyncIndicator('stale', '刷新失败', formatTime(window.__lastFailureTs));
         updateSyncMeter();
@@ -31348,7 +31587,11 @@
       window.__lastTradeSyncTs = now;
       const qs = date ? `?date=${encodeURIComponent(date)}` : '';
       try {
-        const res = await fetchJSON(`/api/trade-sync${qs}`, { timeoutMs: 30000 });
+        const res = await fetchJSON(`/api/trade-sync${qs}`, {
+          timeoutMs: 30000,
+          retryCount: 0,
+          retryOnAbort: false,
+        });
         if (res && res.sync_status) {
           status = ingestTradeSyncStatus(res.sync_status);
         }
@@ -31382,6 +31625,10 @@
       return false;
     }
     async function load(date, mode, opts = {}) {
+      if (window.__systemPaused) {
+        setSyncIndicatorPaused('全停');
+        return;
+      }
       const weighting = getWeightingValue();
       const showHistory = forceHideHistory();
       const silent = opts && opts.silent;
@@ -31393,6 +31640,7 @@
       let shouldAutoLoadRuns = true;
       let anchor = null;
       const startedAt = Date.now();
+      const pauseEpoch = systemPauseEpoch;
       const contentEl = document.getElementById('content');
       const hasExistingRuns = Array.isArray(window.__runsLoaded) && window.__runsLoaded.length > 0;
       if (contentEl && !incremental && !hasExistingRuns) {
@@ -31404,7 +31652,9 @@
       syncDetailParts.push('runs');
       syncDetailParts.push('stats');
       if (!skipTradeSync) syncDetailParts.push('trade-sync');
-      setSyncIndicator('loading', '刷新中', formatTime(startedAt), syncDetailParts.join('+'));
+      if (!incremental) {
+        setSyncIndicator('loading', '刷新中', formatTime(startedAt), syncDetailParts.join('+'));
+      }
       setPageProgress(true);
       if (!silent && !incremental && !hasExistingRuns) {
         setSkeleton(true);
@@ -31413,7 +31663,12 @@
       try {
         let latest = null;
         try {
-          latest = await fetchJSON('/api/latest', { timeoutMs: 8000, retryCount: 1, retryDelayMs: 500 });
+          latest = await fetchJSON('/api/latest', {
+            timeoutMs: 8000,
+            retryCount: 0,
+            retryDelayMs: 500,
+            retryOnAbort: false,
+          });
         } catch (latestErr) {
           latest = { date: window.__effectiveDate || window.__latestDate || date || '' };
         }
@@ -31566,7 +31821,11 @@
 	          updateEventsProgress();
 	        }
         const safeFetch = (url, fallback, timeoutMs = 9000) =>
-          fetchJSON(url, { timeoutMs }).catch(() => fallback);
+          fetchJSON(url, {
+            timeoutMs,
+            retryCount: 0,
+            retryOnAbort: false,
+          }).catch(() => fallback);
         const [
           stationGapStats,
           modelHitStats,
@@ -31594,20 +31853,20 @@
           safeFetch('/api/station-forecast-hit-stats?days=7', {}),
           safeFetch('/api/market-hit-stats?days=7', {}),
           safeFetch('/api/model-daily-stats?days=30', {}),
-          safeFetch('/api/scoreboard?days=30', { __error: true }, 45000),
+          safeFetch('/api/scoreboard?days=30', { __error: true }, 7000),
           safeFetch('/api/auto-trade-status', null, 7000),
           safeFetch(`/api/skips?date=${effectiveDate}&mode=${mode}`, []),
           safeFetch('/api/cities', { cities: [] }),
-          safeFetch('/api/city-latest?days=0&limit=0', { cities: [] }, 12000),
+          safeFetch('/api/city-latest?days=0&limit=0', { cities: [] }, 7000),
           safeFetch('/api/model-update-stats', { models: [] }),
-          safeFetch('/api/edge-bias?days=30', { ok: false }, 12000),
-          safeFetch('/api/model-bias?days=7', { ok: false }, 12000),
-          safeFetch('/api/place-bias?days=7', { ok: false }, 12000),
-          safeFetch('/api/optimizer-status?days=30', { ok: false }, 12000),
+          safeFetch('/api/edge-bias?days=30', { ok: false }, 7000),
+          safeFetch('/api/model-bias?days=7', { ok: false }, 7000),
+          safeFetch('/api/place-bias?days=7', { ok: false }, 7000),
+          safeFetch('/api/optimizer-status?days=30', { ok: false }, 7000),
           safeFetch('/api/q-calibration', { ok: false }),
-	          safeFetch('/api/model-spread?days=7', { ok: false }, 12000),
-	          safeFetch('/api/update-policy', updatePolicyFallback, 12000),
-	          safeFetch(`/api/facts-range?days=7&date=${effectiveDate}`, []),
+	          safeFetch('/api/model-spread?days=7', { ok: false }, 7000),
+	          safeFetch('/api/update-policy', updatePolicyFallback, 7000),
+	          safeFetch(`/api/facts-range?days=7&date=${effectiveDate}`, [], 7000),
             safeFetch('/api/london-follow-sim?days=153&page=1&limit=8&quick=1', null, 6500),
 	        ]);
         const stickyScoreStats = hasScoreboardAutoTradeData(window.__lastGoodScoreStats)
@@ -31685,10 +31944,19 @@
         }
         refreshServicesHealth({ force: false }).catch(() => {});
         if (!skipTradeSync) {
-          const synced = await autoSyncTrades(effectiveDate);
-          if (synced) {
-            await load(effectiveDate, getModeValue(), { preserveScroll: true, silent: true, skipTradeSync: true, incremental: true });
-          }
+          setTimeout(() => {
+            autoSyncTrades(effectiveDate)
+              .then((synced) => {
+                if (!synced) return null;
+                return load(effectiveDate, getModeValue(), {
+                  preserveScroll: true,
+                  silent: true,
+                  skipTradeSync: true,
+                  incremental: true,
+                });
+              })
+              .catch(() => {});
+          }, 0);
         }
         const label = '三权重对比';
         window.__lastRefreshTs = Date.now();
@@ -31697,6 +31965,10 @@
         statusMeta = { count: data.length, label, history: showHistory, latestDate };
         updateStatusLine();
         updateDataFreshnessBanner(data, scanStatusCache);
+        if (window.__systemPaused || pauseEpoch !== systemPauseEpoch) {
+          setSyncIndicatorPaused('全停');
+          return;
+        }
         setSyncIndicator('fresh', '已更新', formatTime(window.__lastRefreshTs));
         if (!silent) {
           flashSyncIndicator();
@@ -31737,7 +32009,11 @@
         }
         if (preserveScroll) restoreScrollAnchor(anchor);
       } catch (e) {
-        setSyncIndicator('stale', '刷新失败', formatTime(Date.now()));
+        if (window.__systemPaused || pauseEpoch !== systemPauseEpoch) {
+          setSyncIndicatorPaused('全停');
+        } else {
+          setSyncIndicator('stale', '刷新失败', formatTime(Date.now()));
+        }
         window.__lastFailureTs = Date.now();
         const cached = window.__lastPayload || loadDashboardCache();
         const cachedUsed = applyDashboardCache(cached, { silent });
@@ -31895,7 +32171,12 @@
       const cached = loadDashboardCache();
       let date = today;
       try {
-        const latest = await fetchJSON('/api/latest', { timeoutMs: 8000, retryCount: 2, retryDelayMs: 500 });
+        const latest = await fetchJSON('/api/latest', {
+          timeoutMs: 8000,
+          retryCount: 0,
+          retryDelayMs: 500,
+          retryOnAbort: false,
+        });
         date = (latest && latest.date) || date;
       } catch (e) {
         date = (cached && cached.date) || window.__effectiveDate || window.__latestDate || date;
@@ -32529,21 +32810,23 @@
     if (systemPauseEnabled) {
       systemPauseEnabled.addEventListener('change', async () => {
         if (systemPauseToggleLock) return;
-        const paused = Boolean(systemPauseEnabled.checked);
+        const prevPaused = Boolean(window.__systemPaused);
+        const enabled = Boolean(systemPauseEnabled.checked);
+        const paused = !enabled;
         systemPauseEnabled.disabled = true;
         try {
           const qs = new URLSearchParams({ set: '1', enabled: paused ? '1' : '0' });
           const res = await fetchJSON(`/api/system-pause?${qs.toString()}`, { timeoutMs: 20000 });
           if (res && res.ok) {
             setSystemPauseToggleState(Boolean(res.paused));
-            showToast('success', res.paused ? '总开关已开启' : '总开关已解除');
+            showToast('success', res.paused ? '总开关已关闭' : '总开关已开启');
           } else {
-            setSystemPauseToggleState(!paused);
+            setSystemPauseToggleState(prevPaused);
             const detail = res && res.error ? `：${res.error}` : '';
             showToast('error', `切换失败${detail}`, { ttl: 3600 });
           }
         } catch (e) {
-          setSystemPauseToggleState(!paused);
+          setSystemPauseToggleState(prevPaused);
           showToast('error', '切换失败（后端不可用）', { ttl: 3600 });
         } finally {
           systemPauseEnabled.disabled = false;

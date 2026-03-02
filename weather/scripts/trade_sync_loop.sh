@@ -70,6 +70,12 @@ elif [ "$PM_TRADE_SYNC_PREFETCH_MINUTES" != "0" ] && [ -f "$PREFETCH_STAMP" ]; t
   fi
 fi
 
+FACTS_LOCK_DIR="$ROOT/data/facts_materialize.lock"
+if [ -d "$FACTS_LOCK_DIR" ]; then
+  echo "[trade_sync_loop] prefetch skipped (facts materialize running)"
+  should_prefetch=0
+fi
+
 if [ "$should_prefetch" = "1" ]; then
   (
     echo "[trade_sync_loop] prefetching event detail before trade sync (background)"
@@ -92,6 +98,7 @@ if [ "$should_prefetch" = "1" ]; then
         PYTHONUNBUFFERED=1 \
         "$PY" "$ROOT/scan_weather_market.py" \
         --scan-weather-today \
+        --tz "America/New_York" \
         --days-ahead 0 \
         --market-refresh-only \
         --no-auto-trade \

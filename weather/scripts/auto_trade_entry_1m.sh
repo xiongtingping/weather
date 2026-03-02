@@ -44,7 +44,7 @@ fi
 echo "$$" > "$LOCK_PID_FILE"
 trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
 
-RUN_DATE="$(date '+%Y-%m-%d')"
+RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then
   PY="$(command -v python3 || true)"

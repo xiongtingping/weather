@@ -85,7 +85,7 @@ LOG_PATH="${LOG_DIR}/daily_scan.out.log"
 
 echo "=== Daily scan start: $(date -Iseconds) ==="
 run_with_timeout "${PM_DAILY_SCAN_TIMEOUT_SEC}" "$LOG_PATH" \
-  env PYTHONUNBUFFERED=1 "$PY" "${ROOT_DIR}/scan_weather_market.py" --scan-weather-today --days-ahead 0
+  env PYTHONUNBUFFERED=1 "$PY" "${ROOT_DIR}/scan_weather_market.py" --scan-weather-today --tz "America/New_York" --days-ahead 0
 scan_rc=$?
 if [ "${scan_rc}" -ne 0 ]; then
   echo "=== Daily scan failed rc=${scan_rc} at $(date -Iseconds) ==="

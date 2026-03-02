@@ -52,6 +52,9 @@ Commands:
   scan:model            Trigger model scan via /api/scan
   scan:market           Trigger market refresh via /api/scan
   facts                 Materialize facts for today (SSOT)
+  audit:edge            Run executable-edge audit script (supports extra args)
+  audit:tradeability    Run signal->path->tradeable-edge audit script
+  pipeline:tradeability Run full tradeability pipeline (calibrate+audits+dataset+strategy-gate)
   auto:run              Enqueue auto-trade job for today
   auto:smoke-test       Real BUY then SELL (auto-select liquid target)
   auto:restart-watcher  Kickstart auto-trade watcher LaunchAgent
@@ -137,6 +140,7 @@ if [ -z "$cmd" ]; then
   usage
   exit 0
 fi
+shift || true
 
 case "$cmd" in
   -h|--help|help)
@@ -282,7 +286,7 @@ case "$cmd" in
     echo ""
     ;;
   facts)
-    RUN_DATE="$(date '+%Y-%m-%d')"
+    RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
     PY="$ROOT/.venv/bin/python"
     if [ ! -x "$PY" ]; then
       die "missing venv python: $PY"
@@ -290,8 +294,47 @@ case "$cmd" in
     echo "---- $(_now) facts_materialize (run_date=${RUN_DATE}) ----"
     "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$RUN_DATE"
     ;;
+  audit:edge)
+    PY="$ROOT/.venv/bin/python"
+    if [ ! -x "$PY" ]; then
+      PY="$(command -v python3 || true)"
+    fi
+    if [ -z "${PY:-}" ] || [ ! -x "$PY" ]; then
+      die "missing python runtime"
+    fi
+    "$PY" "$ROOT/scripts/edge_executable_audit.py" \
+      --db "$ROOT/data/archive.db" \
+      --gate-min-link-ratio "${PM_EDGE_AUDIT_GATE_MIN_LINK_RATIO:-0.65}" \
+      --gate-min-proxy-days "${PM_EDGE_AUDIT_GATE_MIN_PROXY_DAYS:-1}" \
+      --gate-max-tick-age-p90-sec "${PM_EDGE_AUDIT_GATE_MAX_TICK_AGE_P90_SEC:-14400}" \
+      "$@"
+    ;;
+  audit:tradeability)
+    PY="$ROOT/.venv/bin/python"
+    if [ ! -x "$PY" ]; then
+      PY="$(command -v python3 || true)"
+    fi
+    if [ -z "${PY:-}" ] || [ ! -x "$PY" ]; then
+      die "missing python runtime"
+    fi
+    "$PY" "$ROOT/scripts/edge_tradeability_audit.py" \
+      --db "$ROOT/data/archive.db" \
+      "$@"
+    ;;
+  pipeline:tradeability)
+    PY="$ROOT/.venv/bin/python"
+    if [ ! -x "$PY" ]; then
+      PY="$(command -v python3 || true)"
+    fi
+    if [ -z "${PY:-}" ] || [ ! -x "$PY" ]; then
+      die "missing python runtime"
+    fi
+    "$PY" "$ROOT/scripts/edge_tradeability_pipeline.py" \
+      --db "$ROOT/data/archive.db" \
+      "$@"
+    ;;
   auto:run)
-    RUN_DATE="$(date '+%Y-%m-%d')"
+    RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
     PY="$ROOT/.venv/bin/python"
     if [ ! -x "$PY" ]; then
       PY="$(command -v python3 || true)"

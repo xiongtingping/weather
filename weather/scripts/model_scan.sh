@@ -227,19 +227,88 @@ _market_pid_running() {
   fi
   return 1
 }
+_market_tick_p90_age_sec() {
+  local db_path="$ROOT/data/archive.db"
+  if [ ! -f "$db_path" ]; then
+    return 1
+  fi
+  /usr/bin/python3 - "$db_path" <<'PY' 2>/dev/null || true
+import sqlite3
+import sys
+from datetime import datetime, timezone
+
+db_path = sys.argv[1]
+try:
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        WITH latest AS (
+          SELECT slug, event_date, MAX(created_at) AS ts
+          FROM event_market_ticks
+          WHERE event_date IS NOT NULL
+            AND event_date != ''
+            AND event_date >= date('now', '-3 day')
+            AND event_date <= date('now', '+4 day')
+          GROUP BY slug, event_date
+        )
+        SELECT ts FROM latest WHERE ts IS NOT NULL
+        """
+    ).fetchall()
+    conn.close()
+except Exception:
+    raise SystemExit(0)
+
+if not rows:
+    raise SystemExit(0)
+
+now = datetime.now(timezone.utc)
+ages = []
+for row in rows:
+    ts = row["ts"] if row is not None else None
+    if not ts:
+        continue
+    text = str(ts).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(text)
+    except Exception:
+        try:
+            dt = datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ages.append(int(max(0, (now - dt).total_seconds())))
+
+if not ages:
+    raise SystemExit(0)
+ages.sort()
+idx = int(round(0.90 * (len(ages) - 1)))
+idx = max(0, min(idx, len(ages) - 1))
+print(ages[idx])
+PY
+}
 market_pid=""
 if [ -f "$MARKET_PID_FILE" ]; then
   market_pid="$(cat "$MARKET_PID_FILE" 2>/dev/null || true)"
 fi
 if _market_pid_running "$market_pid" || pgrep -f "scan_weather_market.py .*--scan-weather-today.*--market-refresh-only" >/dev/null 2>&1; then
-  # Do not skip: market_refresh is frequent and can otherwise starve model updates.
-  # Rely on SQLite busy_timeout to serialize writers.
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] market_refresh running, continue (sqlite busy_timeout)" >> "$ROOT/data/model_scan.log"
+  : "${PM_MARKET_REFRESH_MODEL_SCAN_SKIP_MAX_TICK_AGE_SEC:=120}"
+  : "${PM_MODEL_SCAN_MARKET_REFRESH_SKIP_MAX_TICK_AGE_SEC:=${PM_MARKET_REFRESH_MODEL_SCAN_SKIP_MAX_TICK_AGE_SEC}}"
+  tick_age_p90_sec="$(_market_tick_p90_age_sec)"
+  if [[ "${tick_age_p90_sec:-}" =~ ^[0-9]+$ ]] && [[ "${PM_MODEL_SCAN_MARKET_REFRESH_SKIP_MAX_TICK_AGE_SEC}" =~ ^[0-9]+$ ]] && [ "${tick_age_p90_sec}" -lt "${PM_MODEL_SCAN_MARKET_REFRESH_SKIP_MAX_TICK_AGE_SEC}" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] market_refresh running, skip (policy tick_age_p90=${tick_age_p90_sec}s<th=${PM_MODEL_SCAN_MARKET_REFRESH_SKIP_MAX_TICK_AGE_SEC}s)" >> "$ROOT/data/model_scan.log"
+    exit 0
+  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] market_refresh running but ticks stale/unknown, bypass skip (tick_age_p90=${tick_age_p90_sec:-na}s th=${PM_MODEL_SCAN_MARKET_REFRESH_SKIP_MAX_TICK_AGE_SEC}s)" >> "$ROOT/data/model_scan.log"
 fi
 
 # Prevent overlapping scans; clear stale lock if no scan-weather process is running.
 LOCK_DIR="$ROOT/data/model_scan.lock"
 LOCK_PID_FILE="$LOCK_DIR/pid"
+DB_LOCK_DIR="$ROOT/data/db_writer.lock"
+DB_LOCK_PID_FILE="$DB_LOCK_DIR/pid"
+DB_LOCK_OWNER_FILE="$DB_LOCK_DIR/owner"
 _scan_pid_running() {
   local pid="${1:-}"
   if [ -z "$pid" ]; then
@@ -254,6 +323,14 @@ _scan_pid_running() {
     return 0
   fi
   return 1
+}
+
+_pid_running() {
+  local pid="${1:-}"
+  if ! [[ "${pid}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  kill -0 "${pid}" 2>/dev/null
 }
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   lock_pid=""
@@ -276,7 +353,47 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   }
 fi
 echo "$$" > "$LOCK_PID_FILE"
-trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
+: "${PM_DB_WRITER_LOCK_WAIT_SEC:=90}"
+: "${PM_DB_WRITER_LOCK_POLL_SEC:=1}"
+if ! [[ "${PM_DB_WRITER_LOCK_WAIT_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_WAIT_SEC}" -lt 0 ]; then
+  PM_DB_WRITER_LOCK_WAIT_SEC=90
+fi
+if ! [[ "${PM_DB_WRITER_LOCK_POLL_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_POLL_SEC}" -lt 1 ]; then
+  PM_DB_WRITER_LOCK_POLL_SEC=1
+fi
+db_waited=0
+db_wait_logged=0
+while ! mkdir "$DB_LOCK_DIR" 2>/dev/null; do
+  db_pid=""
+  db_owner=""
+  if [ -f "$DB_LOCK_PID_FILE" ]; then
+    db_pid="$(cat "$DB_LOCK_PID_FILE" 2>/dev/null || true)"
+  fi
+  if [ -f "$DB_LOCK_OWNER_FILE" ]; then
+    db_owner="$(cat "$DB_LOCK_OWNER_FILE" 2>/dev/null || true)"
+  fi
+  if _pid_running "$db_pid"; then
+    if [ "$db_wait_logged" -eq 0 ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer busy, wait (owner=${db_owner:-unknown} pid=$db_pid max=${PM_DB_WRITER_LOCK_WAIT_SEC}s)" >> "$ROOT/data/model_scan.log"
+      db_wait_logged=1
+    fi
+    if [ "$db_waited" -ge "$PM_DB_WRITER_LOCK_WAIT_SEC" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock timeout, skip (owner=${db_owner:-unknown} pid=$db_pid waited=${db_waited}s)" >> "$ROOT/data/model_scan.log"
+      rm -rf "$LOCK_DIR" 2>/dev/null || true
+      exit 0
+    fi
+    sleep "$PM_DB_WRITER_LOCK_POLL_SEC"
+    db_waited=$((db_waited + PM_DB_WRITER_LOCK_POLL_SEC))
+    continue
+  fi
+  rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
+done
+if [ "$db_waited" -gt 0 ]; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock acquired after ${db_waited}s wait" >> "$ROOT/data/model_scan.log"
+fi
+echo "$$" > "$DB_LOCK_PID_FILE"
+echo "model_scan" > "$DB_LOCK_OWNER_FILE" 2>/dev/null || true
+trap 'rm -rf "$LOCK_DIR" "$DB_LOCK_DIR" 2>/dev/null || true' EXIT
 
 # Low-latency mode: prioritize fast updates (30s target) over full-scope refresh.
 : "${PM_LOW_LATENCY_MODE:=0}"
@@ -343,11 +460,17 @@ else
   export PM_SCAN_FORCE_PROXY_HOSTS="${PM_SCAN_FORCE_PROXY_HOSTS},${FORCE_PROXY_HOSTS_DEFAULT}"
 fi
 export PM_SCAN_ALLOW_INSECURE_SSL=1
-: "${PM_SCAN_GAMMA_TIMEOUT:=30}"
-: "${PM_SCAN_GAMMA_RETRIES:=8}"
-: "${PM_SCAN_GAMMA_BACKOFF:=1.5}"
-: "${PM_SCAN_GAMMA_MAX_PAGES:=200}"
+: "${PM_SCAN_GAMMA_TIMEOUT:=12}"
+: "${PM_SCAN_GAMMA_RETRIES:=2}"
+: "${PM_SCAN_GAMMA_BACKOFF:=0.6}"
+: "${PM_SCAN_GAMMA_MAX_PAGES:=60}"
 export PM_SCAN_GAMMA_TIMEOUT PM_SCAN_GAMMA_RETRIES PM_SCAN_GAMMA_BACKOFF PM_SCAN_GAMMA_MAX_PAGES
+export PM_SCAN_FETCH_EVENT_DETAIL="${PM_SCAN_FETCH_EVENT_DETAIL:-0}"
+export PM_SCAN_OPEN_METEO_TIMEOUT_SEC="${PM_SCAN_OPEN_METEO_TIMEOUT_SEC:-10}"
+export PM_SCAN_OPEN_METEO_RETRIES="${PM_SCAN_OPEN_METEO_RETRIES:-2}"
+export PM_SCAN_OPEN_METEO_429_RETRIES="${PM_SCAN_OPEN_METEO_429_RETRIES:-2}"
+export PM_DB_CONNECT_TIMEOUT_SEC="${PM_DB_CONNECT_TIMEOUT_SEC:-5}"
+export PM_DB_BUSY_TIMEOUT_MS="${PM_DB_BUSY_TIMEOUT_MS:-5000}"
 export PM_SCAN_OPEN_METEO_TZ_FALLBACKS="${PM_SCAN_OPEN_METEO_TZ_FALLBACKS:-1}"
 : "${PM_SCAN_OPEN_METEO_SPACING_MIN:=1.5}"
 : "${PM_SCAN_OPEN_METEO_SPACING_MAX:=3.5}"
@@ -358,11 +481,15 @@ export PM_SCAN_OPEN_METEO_TZ_FALLBACKS="${PM_SCAN_OPEN_METEO_TZ_FALLBACKS:-1}"
 : "${PM_SCAN_OPEN_METEO_CITY_COOLDOWN_SEC:=3600}"
 : "${PM_SCAN_OPEN_METEO_GLOBAL_RATE_LIMIT:=1}"
 : "${PM_SCAN_OPEN_METEO_BATCH_MODELS:=1}"
+: "${PM_SCAN_PRIORITY_POSITION_LOOKBACK_DAYS:=2}"
+if ! [[ "${PM_SCAN_PRIORITY_POSITION_LOOKBACK_DAYS}" =~ ^-?[0-9]+$ ]] || [ "${PM_SCAN_PRIORITY_POSITION_LOOKBACK_DAYS}" -lt 0 ]; then
+  PM_SCAN_PRIORITY_POSITION_LOOKBACK_DAYS=2
+fi
 export PM_SCAN_OPEN_METEO_SPACING_MIN PM_SCAN_OPEN_METEO_SPACING_MAX
 export PM_SCAN_OPEN_METEO_429_RETRIES PM_SCAN_OPEN_METEO_429_MIN_SLEEP PM_SCAN_OPEN_METEO_429_MAX_SLEEP PM_SCAN_OPEN_METEO_429_JITTER
 export PM_SCAN_OPEN_METEO_CITY_COOLDOWN_SEC PM_SCAN_OPEN_METEO_GLOBAL_RATE_LIMIT PM_SCAN_OPEN_METEO_BATCH_MODELS PM_SCAN_OPEN_METEO_TZ_FALLBACKS
 export PM_WEATHER_EVENTS_CACHE_MINUTES PM_SCAN_MAX_EVENTS_PER_RUN PM_SCAN_MAX_MATCHED_PER_RUN PM_SCAN_FETCH_EVENT_DETAIL PM_SCAN_ROTATE_EVENTS
-export PM_SCAN_PRIORITY_ENABLED PM_SCAN_PRIORITY_TOPN PM_SCAN_PRIORITY_LOOKAHEAD_DAYS PM_SCAN_PRIORITY_CANDIDATES_PER_RUN PM_SCAN_PRIORITY_OTHERS_PER_RUN PM_SCAN_PRIORITY_MIN_EDGE_SCORE PM_SCAN_PRIORITY_INCLUDE_OPEN_ORDERS PM_SCAN_ENSEMBLE_MODELS
+export PM_SCAN_PRIORITY_ENABLED PM_SCAN_PRIORITY_TOPN PM_SCAN_PRIORITY_LOOKAHEAD_DAYS PM_SCAN_PRIORITY_CANDIDATES_PER_RUN PM_SCAN_PRIORITY_OTHERS_PER_RUN PM_SCAN_PRIORITY_MIN_EDGE_SCORE PM_SCAN_PRIORITY_INCLUDE_OPEN_ORDERS PM_SCAN_PRIORITY_POSITION_LOOKBACK_DAYS PM_SCAN_ENSEMBLE_MODELS
 : "${PM_DISABLE_OPEN_METEO_GEOCODE:=1}"
 export PM_DISABLE_OPEN_METEO_GEOCODE
 
@@ -400,8 +527,21 @@ fi
 MODEL_ONLY=1
 
 : "${PM_SCAN_FAST_DAYS_AHEAD:=2}"
-: "${PM_SCAN_FULL_DAYS_AHEAD:=-1}"
+: "${PM_SCAN_FULL_DAYS_AHEAD:=2}"
 : "${PM_SCAN_FULL_INTERVAL_MINUTES:=30}"
+if ! [[ "${PM_SCAN_FAST_DAYS_AHEAD}" =~ ^-?[0-9]+$ ]]; then
+  PM_SCAN_FAST_DAYS_AHEAD=2
+fi
+if ! [[ "${PM_SCAN_FULL_DAYS_AHEAD}" =~ ^-?[0-9]+$ ]]; then
+  PM_SCAN_FULL_DAYS_AHEAD="${PM_SCAN_FAST_DAYS_AHEAD}"
+fi
+: "${PM_MODEL_SCAN_ALLOW_NEGATIVE_DAYS_AHEAD:=0}"
+if [ "${PM_MODEL_SCAN_ALLOW_NEGATIVE_DAYS_AHEAD}" != "1" ] && [ "${PM_SCAN_FAST_DAYS_AHEAD}" -lt 0 ]; then
+  PM_SCAN_FAST_DAYS_AHEAD=2
+fi
+if [ "${PM_MODEL_SCAN_ALLOW_NEGATIVE_DAYS_AHEAD}" != "1" ] && [ "${PM_SCAN_FULL_DAYS_AHEAD}" -lt 0 ]; then
+  PM_SCAN_FULL_DAYS_AHEAD="${PM_SCAN_FAST_DAYS_AHEAD}"
+fi
 
 SCAN_MODE="fast"
 DAYS_ARG="--days-ahead ${PM_SCAN_FAST_DAYS_AHEAD}"
@@ -489,19 +629,6 @@ while true; do
     echo "MODE=$SCAN_MODE DAYS=$DAYS_ARG MODEL_REFRESH=$MODEL_REFRESH_MODE MODEL_ONLY=$MODEL_ONLY LOW_LATENCY=${PM_LOW_LATENCY_MODE:-0} MAX_EVENTS=${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-0} MAX_MATCHED=${PM_MODEL_SCAN_MAX_MATCHED_PER_RUN:-0} PRIORITY=${PM_SCAN_PRIORITY_ENABLED:-0} P_CAND=${PM_SCAN_PRIORITY_CANDIDATES_PER_RUN:-0} P_OTHERS=${PM_SCAN_PRIORITY_OTHERS_PER_RUN:-0} P_OPEN=${PM_SCAN_PRIORITY_INCLUDE_OPEN_ORDERS:-0} AUTO_DIAG=${PM_SCAN_AUTO_DIAG:-1} DEPTH=${PM_SCAN_DEPTH_LEVELS:-5} MODELS=${PM_SCAN_ENSEMBLE_MODELS} TTL_NWS=${PM_CACHE_TTL_NWS_SEC:-3600}s TTL_ENS=${PM_CACHE_TTL_ENSEMBLE_SEC:-21600}s BG_REFRESH=${PM_MODEL_BACKGROUND_REFRESH_MINUTES:-45}m WIN_REFRESH=${PM_MODEL_WINDOW_REFRESH_MINUTES:-3}m W_UPDATE_EVERY=${PM_SCAN_MODEL_REFRESH_INTERVAL_MINUTES:-60}m OM_GLOBAL=${PM_SCAN_OPEN_METEO_GLOBAL_RATE_LIMIT:-1} OM_BATCH=${PM_SCAN_OPEN_METEO_BATCH_MODELS:-1} OM_TZ_FB=${PM_SCAN_OPEN_METEO_TZ_FALLBACKS:-1} OM_SPACE=${PM_SCAN_OPEN_METEO_SPACING_MIN:-1.5}-${PM_SCAN_OPEN_METEO_SPACING_MAX:-3.5}s OM_429=${PM_SCAN_OPEN_METEO_429_MIN_SLEEP:-6}-${PM_SCAN_OPEN_METEO_429_MAX_SLEEP:-45}s x${PM_SCAN_OPEN_METEO_429_RETRIES:-2} OM_CD=${PM_SCAN_OPEN_METEO_CITY_COOLDOWN_SEC:-3600}s"
   } >> "$LOG"
   date '+%Y-%m-%d %H:%M:%S' > "$ROOT/data/model_scan.last_start"
-  if [ -f "$ROOT/data/scan_state.json" ]; then
-    python3 - <<'PY' || true
-import json
-from pathlib import Path
-p=Path("data/scan_state.json")
-try:
-    data=json.loads(p.read_text(encoding="utf-8"))
-except Exception:
-    data={}
-data["exit_code"]=None
-p.write_text(json.dumps(data, ensure_ascii=True), encoding="utf-8")
-PY
-  fi
   set +e
   # Keep yesterday in the scan window to cover settlement-lag events shown in UI freshness alerts.
   : "${PM_SCAN_INCLUDE_YESTERDAY:=1}"
@@ -514,6 +641,7 @@ PY
       PYTHONUNBUFFERED=1 \
       "$PY" "$ROOT/scan_weather_market.py" \
       --scan-weather-today \
+      --tz "America/New_York" \
       $DAYS_ARG \
       $UPDATE_MODELS_ARG \
       --model-refresh-only \
@@ -537,7 +665,7 @@ done
 
 : "${PM_FACTS_MATERIALIZE_AFTER_SCAN:=1}"
 if [ "${PM_FACTS_MATERIALIZE_AFTER_SCAN}" = "1" ]; then
-  RUN_DATE="$(date '+%Y-%m-%d')"
+  RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
   echo "---- $(date '+%Y-%m-%d %H:%M:%S') facts_materialize start (run_date=${RUN_DATE}) ----" >> "$LOG"
   "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$RUN_DATE" >> "$LOG" 2>&1 || true
 fi
@@ -548,7 +676,7 @@ fi
     echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] trade_sync loop running, skip after-scan trade_sync" >> "$LOG"
   else
     echo "---- $(date '+%Y-%m-%d %H:%M:%S') trade_sync start ----" >> "$LOG"
-    RUN_DATE="$(date '+%Y-%m-%d')"
+    RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
     PYTHONUNBUFFERED=1 "$PY" "$ROOT/scan_weather_market.py" \
       --trade-sync-only \
       --trade-sync-date "$RUN_DATE" \
