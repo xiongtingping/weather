@@ -2247,6 +2247,52 @@
       color:var(--text);
       font-weight:600;
     }
+    .auto-trade-blocker-table-wrap {
+      margin-top:8px;
+      overflow-x:auto;
+    }
+    .auto-trade-blocker-table {
+      width:100%;
+      border-collapse:collapse;
+      font-size:11px;
+    }
+    .auto-trade-blocker-table th,
+    .auto-trade-blocker-table td {
+      border-bottom:1px solid var(--border-soft);
+      padding:4px 6px;
+      vertical-align:top;
+      text-align:left;
+    }
+    .auto-trade-blocker-table th {
+      color:var(--muted);
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .auto-trade-blocker-table td.num {
+      text-align:right;
+      white-space:nowrap;
+    }
+    .auto-trade-blocker-code {
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color:var(--danger);
+      font-weight:600;
+      word-break:break-all;
+    }
+    .auto-trade-blocker-reason {
+      color:var(--muted);
+      margin-top:2px;
+      line-height:1.3;
+    }
+    .auto-trade-blocker-sample {
+      color:var(--text);
+      line-height:1.3;
+      word-break:break-word;
+    }
+    .auto-trade-blocker-summary {
+      margin-top:6px;
+      color:var(--muted);
+      font-size:11px;
+    }
     .auto-trade-monitor .monitor-row.health {
       margin-top:6px;
       width:100%;
@@ -6293,6 +6339,14 @@
       font-size:var(--font-xs);
       color:var(--muted);
     }
+    .today-event-warning {
+      font-size:var(--font-xs);
+      color:var(--accent-2);
+      background:var(--tone-warn-bg);
+      border:1px solid var(--tone-warn-border);
+      border-radius:var(--radius-2);
+      padding:6px 8px;
+    }
     .today-event-list {
       display:grid;
       gap:8px;
@@ -7009,6 +7063,41 @@
       border:1px solid rgba(240,179,95,.3);
       padding:1px 6px;
       border-radius:999px;
+    }
+    .trace-event-gates {
+      display:flex;
+      align-items:center;
+      gap:6px;
+      flex-wrap:wrap;
+      white-space:normal;
+    }
+    .trace-gate-chip {
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      border-radius:999px;
+      border:1px solid var(--border-soft);
+      background:var(--panel-3);
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.2;
+      font-weight:700;
+      padding:2px 8px;
+    }
+    .trace-gate-chip.ok {
+      color:var(--ok);
+      border-color:var(--tone-ok-border);
+      background:var(--tone-ok-bg);
+    }
+    .trace-gate-chip.fail {
+      color:var(--danger);
+      border-color:var(--tone-danger-border);
+      background:var(--tone-danger-bg);
+    }
+    .trace-gate-chip.warn {
+      color:var(--accent-2);
+      border-color:var(--tone-warn-border);
+      background:var(--tone-warn-bg);
     }
     .auto-trade-summary-block {
       margin-bottom:var(--space-2);
@@ -14440,6 +14529,7 @@
     const CACHE_TTL_MS = {
       settlement: 8 * 60 * 1000,
       history: 30 * 1000,
+      historyLive: 8 * 1000,
       stationTemp: 2 * 60 * 1000,
     };
     const STALE_FORCE_RETRY_MS = 10 * 60 * 1000;
@@ -15657,7 +15747,8 @@
       const now = Date.now();
       const live = opts && opts.live;
       const cached = mostLikelyHistoryCache.get(key);
-      if (!live && cached && (now - (cached.ts || 0)) < CACHE_TTL_MS.history) {
+      const historyTtlMs = live ? CACHE_TTL_MS.historyLive : CACHE_TTL_MS.history;
+      if (cached && (now - (cached.ts || 0)) < historyTtlMs) {
         return cached.data;
       }
       try {
@@ -19715,6 +19806,7 @@
       if (key === 'linked') return '已闭环';
       if (key === 'no_order_id') return '缺少 order_id';
       if (key === 'no_auto_order') return '未匹配 auto_order';
+      if (key === 'manual_or_external') return '人工/外部订单';
       if (key === 'order_key_mismatch') return '订单键不匹配';
       if (key === 'unknown_action') return '动作未知';
       if (key === 'missing_decision') return '缺少决策记录';
@@ -19842,14 +19934,14 @@
         }
         metaParts.push(pendingText);
       }
-      metaParts.push('口径：成交笔数=trade_id；订单数=order_id');
+      metaParts.push('口径：成交笔数=trade_id');
       if (statsScope === 'mirror_follow_strict') {
         metaParts.push('统计范围=严格影子跟单（仅 mirror 链路）');
       }
       metaParts.push('失败=亏损成交');
       metaParts.push('今日=自然日');
-      metaParts.push('持仓口径：当前=未结算；全部=含历史残余');
-      const meta = metaParts.length ? metaParts.join(' · ') : '—';
+      metaParts.push('持仓口径：当前=交易中；可赎回单列；全部=当前+可赎回');
+      let meta = metaParts.length ? metaParts.join(' · ') : '—';
       const hit = 0;
       const miss = 0;
       const unknown = 0;
@@ -19887,7 +19979,45 @@
         rateText = formatPercentValue(tradeOutcomeStats.hit / tradeOutcomeStats.settled, 1);
         winRateSub = `样本 ${tradeOutcomeStats.hit}/${tradeOutcomeStats.settled}`;
       }
-      const autoTradeStats = stats && stats.auto_trade_stats ? stats.auto_trade_stats : null;
+      let autoTradeStats = stats && stats.auto_trade_stats ? stats.auto_trade_stats : null;
+      const statusDailyStats = (
+        window.__autoTradeStatusSnapshot
+        && typeof window.__autoTradeStatusSnapshot === 'object'
+        && window.__autoTradeStatusSnapshot.daily_stats
+        && typeof window.__autoTradeStatusSnapshot.daily_stats === 'object'
+      )
+        ? window.__autoTradeStatusSnapshot.daily_stats
+        : null;
+      if (!hasScoreboardAutoTradeData({ auto_trade_stats: autoTradeStats }) && statusDailyStats) {
+        autoTradeStats = statusDailyStats;
+      }
+      const positionTruthSource = String(autoTradeStats && autoTradeStats.position_truth_source || '').trim();
+      const positionTruthError = normalizeExecFailureText(String(
+        (autoTradeStats && autoTradeStats.position_sync_error)
+        || (stats && stats.position_sync_error)
+        || ''
+      ).trim());
+      const positionTruthAt = String(
+        (autoTradeStats && autoTradeStats.position_sync_at)
+        || (stats && stats.position_sync_at)
+        || ''
+      ).trim();
+      const positionTruthLabel = (() => {
+        if (positionTruthSource === 'positions_api_funder') {
+          return `持仓真值=Funder Positions API${positionTruthAt ? `(${formatTime(positionTruthAt)})` : ''}`;
+        }
+        if (positionTruthSource === 'edge_trades_local_sync_disabled') return '持仓口径降级=本地（PM_POSITIONS_SYNC=0）';
+        if (positionTruthSource === 'edge_trades_local_missing_url') return '持仓口径降级=本地（缺少 Positions API URL）';
+        if (positionTruthSource === 'data_only_local') return '持仓口径降级=本地（data-only）';
+        if (positionTruthSource === 'edge_trades_local_sync_error') {
+          return `持仓口径降级=本地（同步失败${positionTruthError ? `: ${positionTruthError}` : ''}）`;
+        }
+        if (positionTruthError) return `持仓口径降级=本地（${positionTruthError}）`;
+        return '持仓口径=本地状态';
+      })();
+      if (positionTruthLabel) {
+        meta = meta && meta !== '—' ? `${meta} · ${positionTruthLabel}` : positionTruthLabel;
+      }
       const toCount = (value) => {
         const num = Number(value);
         return Number.isFinite(num) ? num : 0;
@@ -20164,7 +20294,8 @@
       const openPositionToday = toCountOrZero(autoTradeStats && autoTradeStats.open_position_count_today);
       const openPosition7d = toCountOrZero(autoTradeStats && autoTradeStats.open_position_count_7d);
       const openPositionActive = toCountOrZero(autoTradeStats && (autoTradeStats.open_position_count ?? autoTradeStats.active_positions));
-      const openPositionAll = toCountOrZero(autoTradeStats && (autoTradeStats.open_position_count_all ?? autoTradeStats.open_position_count ?? autoTradeStats.active_positions));
+      const openPositionRedeemable = toCountOrZero(autoTradeStats && autoTradeStats.open_position_redeemable_count);
+      const openPositionAll = toCountOrZero(autoTradeStats && (autoTradeStats.open_position_total_count ?? autoTradeStats.open_position_count_all ?? autoTradeStats.open_position_count ?? autoTradeStats.active_positions));
       const openPositionLegacy = toCountOrZero(autoTradeStats && autoTradeStats.open_position_legacy_count);
       const filledOrderToday = toCountOrZero(autoTradeStats && autoTradeStats.filled_order_count_today);
       const filledOrder7d = toCountOrZero(autoTradeStats && autoTradeStats.filled_order_count_7d);
@@ -20223,7 +20354,7 @@
             formatCountValue,
             { main: '当前', seven: '今日新增', total: '全部' },
           ),
-          sub: `持仓>0（自动）${openPositionLegacy > 0 ? ` · 历史残余 ${openPositionLegacy}` : ''}${openPosition7d > 0 ? ` · 7日新增 ${openPosition7d}` : ''}`,
+          sub: `交易中 ${openPositionActive} · 可赎回 ${openPositionRedeemable}${openPositionLegacy > 0 ? ` · 历史残余 ${openPositionLegacy}` : ''}${openPosition7d > 0 ? ` · 7日新增 ${openPosition7d}` : ''}`,
         },
         {
           label: '成交订单数',
@@ -20442,8 +20573,6 @@
         const entryToday = normalizeStrategyEntry(strategyStatsTodayRaw[key]);
         const roiText = entry.roi !== null && entry.roi !== undefined ? formatPercentValue(entry.roi, 1) : "—";
         const winRateText = entry.win_rate !== null && entry.win_rate !== undefined ? formatPercentValue(entry.win_rate, 1) : "—";
-        const roiSideText = `${(entry.roi_no !== null && entry.roi_no !== undefined) ? formatPercentValue(entry.roi_no, 1) : "—"} / ${(entry.roi_yes !== null && entry.roi_yes !== undefined) ? formatPercentValue(entry.roi_yes, 1) : "—"}`;
-        const pnlSideText = `${formatUsdCompact(entry.total_pnl_no)} / ${formatUsdCompact(entry.total_pnl_yes)}`;
         const winRateSideText = `${(entry.win_rate_no !== null && entry.win_rate_no !== undefined) ? formatPercentValue(entry.win_rate_no, 1) : "—"} / ${(entry.win_rate_yes !== null && entry.win_rate_yes !== undefined) ? formatPercentValue(entry.win_rate_yes, 1) : "—"}`;
         const roiTodayText = entryToday.roi !== null && entryToday.roi !== undefined ? formatPercentValue(entryToday.roi, 1) : "—";
         const winRateTodayText = entryToday.win_rate !== null && entryToday.win_rate !== undefined ? formatPercentValue(entryToday.win_rate, 1) : "—";
@@ -20451,11 +20580,6 @@
         const profitFactorNum = toFiniteNumberOrNaN(entry.profit_factor);
         const profitFactorText = Number.isFinite(profitFactorNum) ? profitFactorNum.toFixed(2) : "—";
         const grossText = `${formatUsdCompact(entry.gross_profit)} / ${formatUsdCompact(entry.gross_loss)}`;
-        const expEdgeNum = toFiniteNumberOrNaN(entry.entry_fact_avg_exec_edge_entry);
-        const expEdgeText = Number.isFinite(expEdgeNum) ? `${(expEdgeNum * 100).toFixed(1)}c` : "—";
-        const posExpText = entry.entry_fact_pos_exec_edge_ratio !== null && entry.entry_fact_pos_exec_edge_ratio !== undefined ? formatPercentValue(entry.entry_fact_pos_exec_edge_ratio, 1) : "—";
-        const modelSpreadNum = toFiniteNumberOrNaN(entry.entry_fact_avg_model_spread);
-        const modelSpreadText = Number.isFinite(modelSpreadNum) ? modelSpreadNum.toFixed(3) : "—";
         const todayDateLabel = strategyStatsTodayDate ? strategyStatsTodayDate : "—";
         return `
           <div class="manual-strategy-col">
@@ -20465,29 +20589,19 @@
                 <span class="manual-strategy-today-label">今日</span>
                 <span class="manual-strategy-today-date">${escapeHtml(todayDateLabel)}</span>
               </div>
-              ${renderStrategyRow("下单/成单", `${formatInt(entryToday.order_count)}/${formatInt(entryToday.filled_order_count)}`, null, { today: true })}
+              ${renderStrategyRow("成单", `${formatInt(entryToday.filled_order_count)}`, null, { today: true })}
               ${renderStrategyRow("盈亏", formatUsdCompact(entryToday.total_pnl), null, { today: true })}
               ${renderStrategyRow("ROI/胜率", `${roiTodayText} / ${winRateTodayText}`, null, { today: true })}
             </div>
-            ${renderStrategyRow("订单数", entry.order_count, formatInt)}
-            ${renderStrategyRow("成单数", entry.filled_order_count, formatInt)}
-            ${renderStrategyRow("进/出(下)", `${formatInt(entry.entry_order_count)}/${formatInt(entry.exit_order_count)}`)}
-            ${renderStrategyRow("进/出(成)", `${formatInt(entry.filled_entry_order_count)}/${formatInt(entry.filled_exit_order_count)}`)}
-            ${renderStrategyRow("平仓/未平", `${formatInt(entry.closed_trade_count)}/${formatInt(entry.open_trade_count)}`)}
-            ${renderStrategyRow("买/卖成交", `${formatInt(entry.buy_fill_count)}/${formatInt(entry.sell_fill_count)}`)}
+            ${renderStrategyRow("总订单(成交)", entry.filled_order_count, formatInt)}
             ${renderStrategyRow("胜/负/平", `${formatInt(entry.win_count)}/${formatInt(entry.loss_count)}/${formatInt(entry.break_even_count)}`)}
             ${renderStrategyRow("盈亏", formatUsdCompact(entry.total_pnl))}
-            ${renderStrategyRow("盈亏(NO/YES)", pnlSideText)}
             ${renderStrategyRow("ROI", roiText)}
-            ${renderStrategyRow("ROI(NO/YES)", roiSideText)}
             ${renderStrategyRow("胜率", winRateText)}
             ${renderStrategyRow("胜率(NO/YES)", winRateSideText)}
             ${renderStrategyRow("赔率(买入)", oddsText)}
             ${renderStrategyRow("盈利因子", profitFactorText)}
             ${renderStrategyRow("正/负收益", grossText)}
-            ${renderStrategyRow("期望edge均值", expEdgeText)}
-            ${renderStrategyRow("正期望占比", posExpText)}
-            ${renderStrategyRow("模型分歧", modelSpreadText)}
           </div>
         `;
       };
@@ -20862,12 +20976,7 @@
             </div>
             <div class="follow-copy-panel-note">这块是“临结价差策略”自己的实盘统计；不等于影子跟单。</div>
             <div class="follow-copy-panel-list">
-              ${renderStrategyRow("订单数", followStrategyStats.order_count, formatInt)}
-              ${renderStrategyRow("进/出单", `${formatInt(followStrategyStats.entry_order_count)}/${formatInt(followStrategyStats.exit_order_count)}`)}
-              ${renderStrategyRow("进场 NO/YES", `${formatInt(followStrategyStats.entry_order_no_count)}/${formatInt(followStrategyStats.entry_order_yes_count)}`)}
-              ${renderStrategyRow("出场 NO/YES", `${formatInt(followStrategyStats.exit_order_no_count)}/${formatInt(followStrategyStats.exit_order_yes_count)}`)}
               ${renderStrategyRow("成交数", followStrategyStats.trade_count, formatInt)}
-              ${renderStrategyRow("买/卖成交", `${formatInt(followStrategyStats.buy_fill_count)}/${formatInt(followStrategyStats.sell_fill_count)}`)}
               ${renderStrategyRow("买成交 NO/YES", `${formatInt(followStrategyStats.buy_fill_no_count)}/${formatInt(followStrategyStats.buy_fill_yes_count)}`)}
               ${renderStrategyRow("卖成交 NO/YES", `${formatInt(followStrategyStats.sell_fill_no_count)}/${formatInt(followStrategyStats.sell_fill_yes_count)}`)}
               ${renderStrategyRow("进场均价 NO/YES", formatPricePair(followStrategyStats.entry_order_no_avg_price, followStrategyStats.entry_order_yes_avg_price))}
@@ -20884,37 +20993,6 @@
             </div>
             <div class="follow-copy-panel-note">Top 阻断原因（/api/auto-trade-trace）</div>
             ${followReasonHtml}
-          </div>
-          <div class="follow-copy-panel">
-            <div class="follow-copy-panel-head">
-              <div class="follow-copy-panel-title">临结价差（Paper 对照层，不下真实单）</div>
-              <div class="follow-copy-panel-meta">${followSim && followSim.as_of ? `as_of ${escapeHtml(formatTime(followSim.as_of))}${followSim.cached ? ' · cache' : ''}` : 'as_of —'}</div>
-            </div>
-            ${followSimOk ? `
-              <div class="follow-copy-panel-list">
-                ${renderStrategyRow("模拟订单", followSimCounts.sim_orders, formatInt)}
-                ${renderStrategyRow("Filled / Skipped", `${formatInt(followSimCounts.filled)}/${formatInt(followSimCounts.skipped)}`)}
-                ${renderStrategyRow("Edge通过/拦截", `${formatInt(followSimCounts.edge_gate_passed)}/${formatInt(followSimCounts.edge_gate_failed)}`)}
-                ${renderStrategyRow("已实现PnL", formatUsdCompact(followSimResult.realized_pnl))}
-                ${renderStrategyRow("未实现PnL(估)", formatUsdCompact(followSimResult.unrealized_pnl_est))}
-                ${renderStrategyRow("总PnL(估)", formatUsdCompact(followSimResult.total_pnl_est))}
-                ${renderStrategyRow("每笔模拟名义", formatUsdCompact(followSimAccount.sim_notional_per_order))}
-                ${renderStrategyRow("对照源（来自）", followSimSourceModeLabel)}
-                ${renderStrategyRow("与影子一致/仅影子有", `${formatInt(followSimDiffCounts.aligned || 0)} / ${formatInt(followSimDiffCounts.mirror_only || 0)}`)}
-                ${renderStrategyRow("仅Paper有/两边都跳过", `${formatInt(followSimDiffCounts.paper_only || 0)} / ${formatInt(followSimDiffCounts.both_skipped || 0)}`)}
-                ${renderStrategyRow("显式不一致", formatInt((followSimDiff && followSimDiff.mismatch_count) || 0))}
-                ${renderStrategyRow("短线提示", followSimSignalText)}
-                ${renderStrategyRow("提示置信度", followSimSignalConfidence)}
-              </div>
-              <div class="follow-copy-panel-note">影子实盘 vs Paper 模拟：差异原因（显式）</div>
-              ${followSimDiffReasonHtml}
-              <div class="follow-copy-panel-note">最近不一致明细（影子实盘 / Paper模拟）</div>
-              ${followSimDiffRowsHtml}
-              <div class="follow-copy-panel-note">最近 Paper 模拟记录（仅模拟，不下真实单）</div>
-              ${followSimOrdersHtml}
-            ` : `
-              <div class="follow-copy-panel-note">临结价差 Paper 对照统计暂不可用${followSim && followSim.error ? `：${escapeHtml(followSim.error)}` : '。'}</div>
-            `}
           </div>
         </div>
       `;
@@ -21090,6 +21168,9 @@
       const todayEventRows = Array.isArray(autoTradeStats && autoTradeStats.today_filled_events)
         ? autoTradeStats.today_filled_events
         : [];
+      const redeemableEventRowsRaw = Array.isArray(autoTradeStats && autoTradeStats.open_position_redeemable_events)
+        ? autoTradeStats.open_position_redeemable_events
+        : [];
       const formatEventPrice = (value) => {
         const num = toFiniteNumberOrNaN(value);
         return Number.isFinite(num) ? num.toFixed(3) : '—';
@@ -21114,6 +21195,9 @@
       const todayEventActiveRows = todayEventRows.filter((row) => Boolean(row && row.position_active));
       const todayEventClosedRows = todayEventRows.filter((row) => !Boolean(row && row.position_active));
       const todayEventActiveCount = todayEventActiveRows.length;
+      const positionTruthWarnText = positionTruthSource === 'positions_api_funder'
+        ? ''
+        : (positionTruthLabel || '持仓口径已降级为本地状态');
       const renderTodayEventRow = (row) => {
         const eventUrl = String(row && row.event_url || '').trim();
         const title = String(row && (row.title || row.slug) || '').trim() || '—';
@@ -21163,27 +21247,46 @@
           </div>
         `;
       };
-      const todayEventsHtml = `
-        <div class="today-event-board">
-          <div class="today-event-header">
-            <div class="today-event-title">当前持仓温度事件（自动）</div>
-            <div class="today-event-meta">
-              条目 ${todayEventRows.length} · 持仓中 ${todayEventActiveCount} · 已结束 ${todayEventClosedRows.length}（已折叠）
+      const redeemableEventRows = redeemableEventRowsRaw
+        .slice()
+        .sort((a, b) => {
+          const ta = Date.parse(String(a && a.updated_at || '')) || 0;
+          const tb = Date.parse(String(b && b.updated_at || '')) || 0;
+          if (tb !== ta) return tb - ta;
+          const da = String(b && b.event_date || '');
+          const db = String(a && a.event_date || '');
+          return da.localeCompare(db);
+        });
+      const renderRedeemableEventRow = (row) => {
+        const eventUrl = String(row && row.event_url || '').trim();
+        const title = String(row && (row.title || row.slug) || '').trim() || '—';
+        const eventDate = String(row && row.event_date || '').trim();
+        const city = String(row && row.city || '').trim();
+        const summary = String(row && row.event_live_position_summary || '').trim();
+        const size = toFiniteNumberOrNaN(row && row.event_live_position_size);
+        const count = toCountOrZero(row && row.event_live_position_count);
+        const updatedAt = String(row && row.updated_at || '').trim();
+        const metaLine = [city, eventDate, updatedAt ? `更新 ${formatTime(updatedAt)}` : ''].filter(Boolean).join(' · ');
+        const nameHtml = eventUrl
+          ? `<a href="${escapeHtml(eventUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>`
+          : escapeHtml(title);
+        const summaryText = summary
+          || `${Number.isFinite(size) ? `总仓 ${size.toFixed(3)}` : ''}${count > 0 ? `${Number.isFinite(size) ? ' · ' : ''}${count} legs` : ''}`
+          || '—';
+        return `
+          <div class="today-event-item">
+            <div class="today-event-main">
+              <div class="today-event-name">${nameHtml}</div>
+              <div class="today-event-pills">
+                <span class="today-event-pill closed">可赎回</span>
+              </div>
             </div>
+            ${metaLine ? `<div class="today-event-meta">${escapeHtml(metaLine)}</div>` : ''}
+            <div class="reason-list">${escapeHtml(summaryText)}</div>
           </div>
-          <div class="today-event-list">
-            ${todayEventActiveRows.length
-              ? todayEventActiveRows.map((row) => renderTodayEventRow(row)).join('')
-              : '<div class="today-event-empty">当前暂无持仓中的自动事件。</div>'}
-            ${todayEventClosedRows.length
-              ? `<details class="today-event-closed-wrap">
-                  <summary>已结束 ${todayEventClosedRows.length}（点击展开）</summary>
-                  <div class="today-event-closed-list">${todayEventClosedRows.map((row) => renderTodayEventRow(row)).join('')}</div>
-                </details>`
-              : ''}
-          </div>
-        </div>
-      `;
+        `;
+      };
+      const todayEventsHtml = '';
       const tradeSyncStatus = ingestTradeSyncStatus(stats && stats.trade_sync_status);
       const tradeSyncFailureHtml = `<div class="auto-trade-head-right" id="tradeSyncFailureHead">${buildTradeSyncHeadContent(tradeSyncStatus)}</div>`;
       const incompleteCount = Number(autoTradeStats && autoTradeStats.fills_incomplete_count);
@@ -26681,6 +26784,11 @@
           const bidText = Number.isFinite(bidVal) ? bidVal.toFixed(4) : '—';
           const askText = Number.isFinite(askVal) ? askVal.toFixed(4) : '—';
           const tradeMeta = item.trade_info && typeof item.trade_info === 'object' ? item.trade_info : {};
+          const holdingSize = toFiniteNumberOrNaN(tradeMeta.position_size);
+          const hasLivePosition = Number.isFinite(holdingSize) && holdingSize > 1e-6;
+          const fillCount = toFiniteNumberOrNaN(tradeMeta.fills_count);
+          const hasFilledHistory = Number.isFinite(fillCount) && fillCount > 0;
+          const gateLegacyMode = hasLivePosition || hasFilledHistory;
           const lastAction = String(tradeMeta.last_action || '').toLowerCase();
           let exitPriceVal = toFiniteNumberOrNaN(item.recent_exit_price);
           let exitLabel = '';
@@ -26711,17 +26819,6 @@
           }
           if (Number.isFinite(edgeRealizableV2Val)) {
             const v2Inline = [`${edgeRealizableV2Val.toFixed(4)}`];
-            if (Number.isFinite(edgeRealizablePRealizeVal)) {
-              const pApprox = edgeRealizablePMissing || edgeRealizablePLowSample;
-              let pText = `${pApprox ? '兑现≈' : '兑现 '}${(edgeRealizablePRealizeVal * 100).toFixed(1)}%`;
-              const tags = [];
-              if (edgeRealizablePMissing) tags.push('缺桶');
-              if (edgeRealizablePLowSample) tags.push('样本不足');
-              if (edgeRealizablePMissing) tags.push('未校准');
-              if (Number.isFinite(edgeRealizablePSamplesMin)) tags.push(`n=${Math.round(edgeRealizablePSamplesMin)}`);
-              if (tags.length) pText += `(${tags.join('/')})`;
-              v2Inline.push(pText);
-            }
             if (Number.isFinite(edgeRealizableHoldCostVal) && edgeRealizableHoldCostVal > 0) {
               v2Inline.push(`持有 ${edgeRealizableHoldCostVal.toFixed(4)}`);
             }
@@ -26748,27 +26845,52 @@
           const marketMetaHtml = marketPartsHtml.length
             ? `<div class="trace-event-meta trace-event-market">${marketPartsHtml.join(' · ')}</div>`
             : '';
-          const v2Parts = [];
-          if (Number.isFinite(edgeRealizableV2Val)) {
-            v2Parts.push(`可兑现V2 ${edgeRealizableV2Val.toFixed(4)}`);
+          const gateRaw = item.tradeability_gate && typeof item.tradeability_gate === 'object'
+            ? item.tradeability_gate
+            : null;
+          const formatGateVal = (val, isPct = false) => {
+            const num = toFiniteNumberOrNaN(val);
+            if (!Number.isFinite(num)) return '—';
+            return isPct ? `${(num * 100).toFixed(1)}%` : num.toFixed(4);
+          };
+          const gateClass = (status, passed, isLegacyEntry) => {
+            const st = String(status || '').toLowerCase();
+            if (st === 'fail' || passed === false) return isLegacyEntry ? 'warn' : 'fail';
+            if (st === 'pass' || st === 'off' || passed === true) return 'ok';
+            return 'warn';
+          };
+          const gateMark = (status, passed, isLegacyEntry) => {
+            const st = String(status || '').toLowerCase();
+            if (st === 'bypass') return '≈';
+            if (st === 'missing') return '?';
+            if (st === 'fail' || passed === false) return isLegacyEntry ? '!' : '✕';
+            return '✓';
+          };
+          const buildGateChip = (label, gateObj, isPct = false, isLegacyEntry = false) => {
+            const gate = gateObj && typeof gateObj === 'object' ? gateObj : {};
+            const cls = gateClass(gate.status, gate.pass, isLegacyEntry);
+            const mark = gateMark(gate.status, gate.pass, isLegacyEntry);
+            const valueText = formatGateVal(gate.value, isPct);
+            const minText = formatGateVal(gate.min, isPct);
+            const body = `${label} ${mark} ${valueText}/≥${minText}`;
+            return `<span class="trace-gate-chip ${cls}">${escapeHtml(body)}</span>`;
+          };
+          const gateChips = [];
+          if (gateRaw) {
+            gateChips.push(buildGateChip('可交易下界', gateRaw.edge_lcb, false, gateLegacyMode));
+            gateChips.push(buildGateChip('兑现概率', gateRaw.p_realize, true, gateLegacyMode));
+            gateChips.push(buildGateChip('路径概率', gateRaw.p_converge, true, gateLegacyMode));
           }
-          if (Number.isFinite(edgeRealizablePRealizeVal)) {
-            const pApprox = edgeRealizablePMissing || edgeRealizablePLowSample;
-            let pText = `${pApprox ? '兑现概率≈' : '兑现概率 '}${(edgeRealizablePRealizeVal * 100).toFixed(1)}%`;
-            const tags = [];
-            if (edgeRealizablePMissing) tags.push('缺桶');
-            if (edgeRealizablePLowSample) tags.push('样本不足');
-            if (edgeRealizablePMissing) tags.push('未校准');
-            if (Number.isFinite(edgeRealizablePSamplesMin)) tags.push(`n=${Math.round(edgeRealizablePSamplesMin)}`);
-            if (tags.length) pText += `(${tags.join('/')})`;
-            v2Parts.push(pText);
-          }
-          if (Number.isFinite(edgeRealizableHoldCostVal) && edgeRealizableHoldCostVal > 0) {
-            v2Parts.push(`持有成本 ${edgeRealizableHoldCostVal.toFixed(4)}`);
-          }
-          const v2PartsHtml = v2Parts.map((part) => `<span>${escapeHtml(part)}</span>`);
-          const v2MetaHtml = v2PartsHtml.length
-            ? `<div class="trace-event-meta trace-event-v2">${v2PartsHtml.join(' · ')}</div>`
+          const gateMetaHtml = gateChips.length
+            ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
+            : '';
+          const gateContextHtml = (
+            gateLegacyMode
+            && gateRaw
+            && gateRaw.overall
+            && gateRaw.overall.pass === false
+          )
+            ? `<div class="trace-bottleneck">${hasLivePosition ? '门禁用于新开仓；当前为历史持仓，仅执行退出管理。' : '门禁用于新开仓；该事件为历史成交，仅用于复盘。'}</div>`
             : '';
           const trace = item.trace && typeof item.trace === 'object' ? item.trace : {};
           const decision = item.entry_decision && typeof item.entry_decision === 'object' ? item.entry_decision : null;
@@ -26889,6 +27011,7 @@
                 ${(sideMeta || strategyBadgeHtml) ? `<div class="trace-event-meta with-strategy">${sideMeta ? `<span>${escapeHtml(sideMeta)}</span>` : ''}${strategyBadgeHtml}</div>` : ''}
                 ${scoreMetaHtml ? `<div class="trace-event-meta">${scoreMetaHtml}</div>` : ''}
                 ${marketMetaHtml}
+                ${gateMetaHtml}
               </div>
               <div class="trace-flow">
                 <span class="trace-flow-pill ${flowStatus}">流程${flowLabel}</span>
@@ -26896,6 +27019,7 @@
               </div>
               <div class="trace-steps">${stepHtml ? `<div class="trace-flowchart">${stepHtml}</div>` : '<span class=\"meta\">—</span>'}</div>
               ${bottleneckHtml}
+              ${gateContextHtml}
               ${eventPositionHtml}
               ${detailHtml}
               ${tickGateHtml}
@@ -26930,21 +27054,129 @@
         const targetDate = runDate ? String(runDate) : '';
         const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.floor(options.maxItems)) : 12;
         const meta = options && typeof options === 'object' ? options.meta : null;
+        const titleLinkForItem = (item) => {
+          if (typeof makeJumpLink === 'function') {
+            try {
+              return makeJumpLink(item);
+            } catch (e) {
+              // fallback below
+            }
+          }
+          const title = escapeHtml(String((item && (item.title || item.slug)) || '—'));
+          const url = item && item.event_url ? String(item.event_url).trim() : '';
+          return url
+            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${title}</a>`
+            : `<span>${title}</span>`;
+        };
         const filtered = Array.isArray(items)
           ? items.filter((it) => it && typeof it === 'object' && (!targetDate || String(it.run_date || '') === targetDate))
           : [];
         if (!filtered.length) return '';
         const total = filtered.length;
+        const fmtInt = (value) => {
+          const num = Number(value);
+          return Number.isFinite(num) ? num.toFixed(0) : '0';
+        };
         const counts = meta && meta.not_ok_counts && typeof meta.not_ok_counts === 'object' ? meta.not_ok_counts : null;
         const totalCount = counts ? Number(counts.total || 0) : total;
         const top = meta && Array.isArray(meta.not_ok_reason_top) ? meta.not_ok_reason_top : [];
         const topHtml = top.length
           ? `<div class="follow-copy-reason-list">${top.slice(0, 8).map((it) => (
-            `<span class="follow-copy-reason-chip">${escapeHtml(String(it.reason || ''))} · ${formatInt(it.count || 0)}</span>`
+            `<span class="follow-copy-reason-chip">${escapeHtml(String(it.reason || ''))} · ${fmtInt(it.count || 0)}</span>`
           )).join('')}</div>`
           : '';
+        const blockerMeta = meta && meta.entry_blocker_meta && typeof meta.entry_blocker_meta === 'object'
+          ? meta.entry_blocker_meta
+          : null;
+        const blockerMetaBlocked = blockerMeta ? Number(blockerMeta.blocked_total || 0) : NaN;
+        const blockerTotalForShare = Number.isFinite(blockerMetaBlocked) && blockerMetaBlocked > 0 ? blockerMetaBlocked : total;
+        let blockerTable = meta && Array.isArray(meta.entry_blocker_table)
+          ? meta.entry_blocker_table.filter((row) => row && typeof row === 'object')
+          : [];
+        if (!blockerTable.length && top.length) {
+          blockerTable = top.slice(0, 8).map((row) => ({
+            reason_code: String(row.reason || '').trim() || 'unknown_blocker',
+            reason_text: String(row.reason || '').trim(),
+            count: Number(row.count || 0),
+            share: blockerTotalForShare > 0 ? Number(row.count || 0) / blockerTotalForShare : 0,
+            sample_slug: '',
+            sample_event_date: '',
+            sample_outcome: '',
+            sample_side: '',
+            sample_strategy: '',
+            sample_title: '',
+            sample_event_url: '',
+            sample_reason_text: String(row.reason || '').trim(),
+          }));
+        }
+        const blockerRowsHtml = blockerTable.slice(0, 10).map((row) => {
+          const countVal = Number(row.count || 0);
+          const ratioRaw = toFiniteNumberOrNaN(row.share);
+          const ratio = Number.isFinite(ratioRaw)
+            ? ratioRaw
+            : (blockerTotalForShare > 0 ? countVal / blockerTotalForShare : 0);
+          const shareText = Number.isFinite(ratio) ? `${(Math.max(0, ratio) * 100).toFixed(1)}%` : '—';
+          const reasonCode = String(row.reason_code || '').trim() || 'unknown_blocker';
+          const reasonText = String(row.reason_text || '').trim();
+          const sampleTitle = String(row.sample_title || row.sample_slug || '').trim() || '—';
+          const sampleUrl = String(row.sample_event_url || '').trim();
+          const sampleHead = sampleUrl
+            ? `<a href="${escapeHtml(sampleUrl)}" target="_blank" rel="noopener">${escapeHtml(sampleTitle)}</a>`
+            : escapeHtml(sampleTitle);
+          const sampleMeta = [
+            String(row.sample_event_date || '').trim(),
+            String(row.sample_side || '').trim(),
+            String(row.sample_outcome || '').trim(),
+            String(row.sample_strategy || '').trim(),
+          ].filter(Boolean).join(' · ');
+          const sampleReason = String(row.sample_reason_text || '').trim();
+          return `
+            <tr>
+              <td>
+                <div class="auto-trade-blocker-code">${escapeHtml(reasonCode)}</div>
+                ${reasonText ? `<div class="auto-trade-blocker-reason">${escapeHtml(reasonText)}</div>` : ''}
+              </td>
+              <td class="num">${fmtInt(countVal)}</td>
+              <td class="num">${escapeHtml(shareText)}</td>
+              <td>
+                <div class="auto-trade-blocker-sample">
+                  ${sampleHead}
+                  ${sampleMeta ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleMeta)}</div>` : ''}
+                  ${sampleReason ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleReason)}</div>` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        const blockerSummaryParts = [];
+        if (blockerMeta) {
+          const entryTotal = Number(blockerMeta.entry_total || 0);
+          const blockedTotal = Number(blockerMeta.blocked_total || 0);
+          const willOrderTotal = Number(blockerMeta.will_order_total || 0);
+          if (Number.isFinite(entryTotal) && entryTotal > 0) blockerSummaryParts.push(`候选${fmtInt(entryTotal)}`);
+          if (Number.isFinite(blockedTotal) && blockedTotal >= 0) blockerSummaryParts.push(`阻断${fmtInt(blockedTotal)}`);
+          if (Number.isFinite(willOrderTotal) && willOrderTotal >= 0) blockerSummaryParts.push(`可下单${fmtInt(willOrderTotal)}`);
+        }
+        const blockerTableHtml = blockerRowsHtml
+          ? `
+            <div class="auto-trade-blocker-table-wrap">
+              <table class="auto-trade-blocker-table">
+                <thead>
+                  <tr>
+                    <th>原因码</th>
+                    <th>次数</th>
+                    <th>占比</th>
+                    <th>示例事件</th>
+                  </tr>
+                </thead>
+                <tbody>${blockerRowsHtml}</tbody>
+              </table>
+            </div>
+            ${blockerSummaryParts.length ? `<div class="auto-trade-blocker-summary">${escapeHtml(blockerSummaryParts.join(' · '))}</div>` : ''}
+          `
+          : '';
         const rows = filtered.slice(0, maxItems).map((item) => {
-          const titleHtml = makeJumpLink(item);
+          const titleHtml = titleLinkForItem(item);
           const side = String(item.side || '').toUpperCase();
           const outcome = String(item.outcome || '');
           const strategy = String(item.strategy || '').toLowerCase();
@@ -26975,8 +27207,9 @@
         const limitNote = total > maxItems ? `<div class="meta">仅展示前 ${maxItems} 条，共 ${total} 条</div>` : '';
         return `
           <details class="auto-trade-blockers" open>
-            <summary>入场未达标 · 原因（SSOT）${Number.isFinite(totalCount) ? `（${formatInt(totalCount)}）` : ''}</summary>
+            <summary>入场未达标 · 原因（SSOT）${Number.isFinite(totalCount) ? `（${fmtInt(totalCount)}）` : ''}</summary>
             ${topHtml}
+            ${blockerTableHtml}
             <div class="reason-event-list">${rows}</div>
             ${limitNote}
           </details>
@@ -27975,15 +28208,24 @@
       const autoReasonsMount = document.getElementById('autoTradeReasonsMount');
       if (autoBoardMount) {
         autoBoardMount.innerHTML = '';
+        if (autoBoard) {
+          autoBoardMount.appendChild(autoBoard);
+        }
         if (noOrderReasonsCard) {
           if (autoReasonsMount) {
+            autoReasonsMount.innerHTML = '';
             autoReasonsMount.appendChild(noOrderReasonsCard);
           } else {
             autoBoardMount.appendChild(noOrderReasonsCard);
           }
         }
-      } else if (noOrderReasonsCard) {
-        advantageEl.insertBefore(noOrderReasonsCard, advantageEl.firstChild);
+      } else {
+        if (autoBoard) {
+          advantageEl.insertBefore(autoBoard, advantageEl.firstChild);
+        }
+        if (noOrderReasonsCard) {
+          advantageEl.insertBefore(noOrderReasonsCard, advantageEl.firstChild);
+        }
       }
       const pendingOverviewCard = window.__pendingAutoTradeOverviewCard;
       if (pendingOverviewCard) {
@@ -29812,7 +30054,26 @@
       }
       const eventsRaw = Array.isArray(payload.live_position_events) ? payload.live_position_events : [];
       const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.floor(options.maxItems)) : 12;
-      const events = eventsRaw.slice(0, maxItems);
+      const toTs = (value) => {
+        const text = String(value || '').trim();
+        if (!text) return 0;
+        const ts = Date.parse(text);
+        return Number.isFinite(ts) ? ts : 0;
+      };
+      const events = eventsRaw
+        .slice()
+        .sort((a, b) => {
+          const ta = toTs(a && a.updated_at);
+          const tb = toTs(b && b.updated_at);
+          if (tb !== ta) return tb - ta;
+          const da = String(a && a.event_date || '');
+          const db = String(b && b.event_date || '');
+          if (db !== da) return db.localeCompare(da);
+          const sa = String(a && a.slug || '');
+          const sb = String(b && b.slug || '');
+          return sa.localeCompare(sb);
+        })
+        .slice(0, maxItems);
       if (!events.length) {
         return '<div class="meta">暂无持仓事件</div>';
       }
@@ -30106,12 +30367,40 @@
         }
         return `<div class="meta">加载中…</div>`;
       }
+      const toTs = (value) => {
+        const text = String(value || '').trim();
+        if (!text) return 0;
+        const ts = Date.parse(text);
+        return Number.isFinite(ts) ? ts : 0;
+      };
+      const getItemFreshTs = (item) => {
+        if (!item || typeof item !== 'object') return 0;
+        const tradeMeta = item.trade_info && typeof item.trade_info === 'object' ? item.trade_info : {};
+        const traceMeta = item.trace && typeof item.trace === 'object' ? item.trace : {};
+        const decisionMeta = item.entry_decision && typeof item.entry_decision === 'object' ? item.entry_decision : {};
+        return Math.max(
+          toTs(tradeMeta.updated_at),
+          toTs(tradeMeta.exit_skip_at),
+          toTs(tradeMeta.last_fill_at),
+          toTs(tradeMeta.last_action_at),
+          toTs(traceMeta.updated_at),
+          toTs(decisionMeta.created_at),
+        );
+      };
+      const filteredItems = items
+        .filter((item) => item && typeof item === 'object' && (!targetDate || String(item.run_date || '') === targetDate))
+        .slice()
+        .sort((a, b) => {
+          const ta = getItemFreshTs(a);
+          const tb = getItemFreshTs(b);
+          if (tb !== ta) return tb - ta;
+          const da = String(b && b.event_date || '').localeCompare(String(a && a.event_date || ''));
+          if (da !== 0) return da;
+          return String(a && a.slug || '').localeCompare(String(b && b.slug || ''));
+        });
       const rows = [];
-      let total = 0;
-      for (const item of items) {
-        if (!item || typeof item !== 'object') continue;
-        if (targetDate && String(item.run_date || '') !== targetDate) continue;
-        total += 1;
+      const total = filteredItems.length;
+      for (const item of filteredItems) {
         if (rows.length >= maxItems) continue;
         const slug = String(item.slug || '').trim();
         const eventDate = String(item.event_date || '').trim();
@@ -30174,7 +30463,16 @@
           pushStrategy(strategy);
         }
         const hasFollowCopy = strategyGroupList.includes('follow_copy');
-        const sideMeta = [side, outcome].filter(Boolean).join(' · ');
+        const tradeMeta = item.trade_info && typeof item.trade_info === 'object' ? item.trade_info : {};
+        const freshAt = (
+          String(tradeMeta.updated_at || '').trim()
+          || String(tradeMeta.exit_skip_at || '').trim()
+          || String(tradeMeta.last_fill_at || '').trim()
+          || String(tradeMeta.last_action_at || '').trim()
+          || String(item.created_at || '').trim()
+        );
+        const freshMeta = freshAt ? `更新 ${formatTime(freshAt)}` : '';
+        const sideMeta = [side, outcome, freshMeta].filter(Boolean).join(' · ');
         const strategyBadgeHtml = strategyGroupList.map((name) => {
           const label = resolveStrategyLabel(name);
           if (!label) return '';
@@ -30209,7 +30507,11 @@
         const bidVal = (Number.isFinite(askVal) && Number.isFinite(spreadVal)) ? Math.max(0, askVal - spreadVal) : NaN;
         const bidText = Number.isFinite(bidVal) ? bidVal.toFixed(4) : '—';
         const askText = Number.isFinite(askVal) ? askVal.toFixed(4) : '—';
-        const tradeMeta = item.trade_info && typeof item.trade_info === 'object' ? item.trade_info : {};
+        const holdingSize = toFiniteNumberOrNaN(tradeMeta.position_size);
+        const hasLivePosition = Number.isFinite(holdingSize) && holdingSize > 1e-6;
+        const fillCount = toFiniteNumberOrNaN(tradeMeta.fills_count);
+        const hasFilledHistory = Number.isFinite(fillCount) && fillCount > 0;
+        const gateLegacyMode = hasLivePosition || hasFilledHistory;
         const lastAction = String(tradeMeta.last_action || '').toLowerCase();
         let exitPriceVal = toFiniteNumberOrNaN(item.recent_exit_price);
         let exitLabel = '';
@@ -30240,15 +30542,6 @@
         }
         if (Number.isFinite(edgeRealizableV2Val)) {
           const v2Inline = [`${edgeRealizableV2Val.toFixed(4)}`];
-          if (Number.isFinite(edgeRealizablePRealizeVal)) {
-            let pText = `兑现 ${(edgeRealizablePRealizeVal * 100).toFixed(1)}%`;
-            const tags = [];
-            if (edgeRealizablePMissing) tags.push('缺桶');
-            else if (edgeRealizablePLowSample) tags.push('样本不足');
-            if (Number.isFinite(edgeRealizablePSamplesMin)) tags.push(`n=${Math.round(edgeRealizablePSamplesMin)}`);
-            if (tags.length) pText += `(${tags.join('/')})`;
-            v2Inline.push(pText);
-          }
           if (Number.isFinite(edgeRealizableHoldCostVal) && edgeRealizableHoldCostVal > 0) {
             v2Inline.push(`持有 ${edgeRealizableHoldCostVal.toFixed(4)}`);
           }
@@ -30275,25 +30568,52 @@
         const marketMetaHtml = marketPartsHtml.length
           ? `<div class="trace-event-meta trace-event-market">${marketPartsHtml.join(' · ')}</div>`
           : '';
-        const v2Parts = [];
-        if (Number.isFinite(edgeRealizableV2Val)) {
-          v2Parts.push(`可兑现V2 ${edgeRealizableV2Val.toFixed(4)}`);
+        const gateRaw = item.tradeability_gate && typeof item.tradeability_gate === 'object'
+          ? item.tradeability_gate
+          : null;
+        const formatGateVal = (val, isPct = false) => {
+          const num = toFiniteNumberOrNaN(val);
+          if (!Number.isFinite(num)) return '—';
+          return isPct ? `${(num * 100).toFixed(1)}%` : num.toFixed(4);
+        };
+        const gateClass = (status, passed, isLegacyEntry) => {
+          const st = String(status || '').toLowerCase();
+          if (st === 'fail' || passed === false) return isLegacyEntry ? 'warn' : 'fail';
+          if (st === 'pass' || st === 'off' || passed === true) return 'ok';
+          return 'warn';
+        };
+        const gateMark = (status, passed, isLegacyEntry) => {
+          const st = String(status || '').toLowerCase();
+          if (st === 'bypass') return '≈';
+          if (st === 'missing') return '?';
+          if (st === 'fail' || passed === false) return isLegacyEntry ? '!' : '✕';
+          return '✓';
+        };
+        const buildGateChip = (label, gateObj, isPct = false, isLegacyEntry = false) => {
+          const gate = gateObj && typeof gateObj === 'object' ? gateObj : {};
+          const cls = gateClass(gate.status, gate.pass, isLegacyEntry);
+          const mark = gateMark(gate.status, gate.pass, isLegacyEntry);
+          const valueText = formatGateVal(gate.value, isPct);
+          const minText = formatGateVal(gate.min, isPct);
+          const body = `${label} ${mark} ${valueText}/≥${minText}`;
+          return `<span class="trace-gate-chip ${cls}">${escapeHtml(body)}</span>`;
+        };
+        const gateChips = [];
+        if (gateRaw) {
+          gateChips.push(buildGateChip('可交易下界', gateRaw.edge_lcb, false, gateLegacyMode));
+          gateChips.push(buildGateChip('兑现概率', gateRaw.p_realize, true, gateLegacyMode));
+          gateChips.push(buildGateChip('路径概率', gateRaw.p_converge, true, gateLegacyMode));
         }
-        if (Number.isFinite(edgeRealizablePRealizeVal)) {
-          let pText = `兑现概率 ${(edgeRealizablePRealizeVal * 100).toFixed(1)}%`;
-          const tags = [];
-          if (edgeRealizablePMissing) tags.push('缺桶');
-          else if (edgeRealizablePLowSample) tags.push('样本不足');
-          if (Number.isFinite(edgeRealizablePSamplesMin)) tags.push(`n=${Math.round(edgeRealizablePSamplesMin)}`);
-          if (tags.length) pText += `(${tags.join('/')})`;
-          v2Parts.push(pText);
-        }
-        if (Number.isFinite(edgeRealizableHoldCostVal) && edgeRealizableHoldCostVal > 0) {
-          v2Parts.push(`持有成本 ${edgeRealizableHoldCostVal.toFixed(4)}`);
-        }
-        const v2PartsHtml = v2Parts.map((part) => `<span>${escapeHtml(part)}</span>`);
-        const v2MetaHtml = v2PartsHtml.length
-          ? `<div class="trace-event-meta trace-event-v2">${v2PartsHtml.join(' · ')}</div>`
+        const gateMetaHtml = gateChips.length
+          ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
+          : '';
+        const gateContextHtml = (
+          gateLegacyMode
+          && gateRaw
+          && gateRaw.overall
+          && gateRaw.overall.pass === false
+        )
+          ? `<div class="trace-bottleneck">${hasLivePosition ? '门禁用于新开仓；当前为历史持仓，仅执行退出管理。' : '门禁用于新开仓；该事件为历史成交，仅用于复盘。'}</div>`
           : '';
         const trace = item.trace && typeof item.trace === 'object' ? item.trace : {};
         const decision = item.entry_decision && typeof item.entry_decision === 'object' ? item.entry_decision : null;
@@ -30413,7 +30733,7 @@
             ${(sideMeta || strategyBadgeHtml) ? `<div class="trace-event-meta with-strategy">${sideMeta ? `<span>${escapeHtml(sideMeta)}</span>` : ''}${strategyBadgeHtml}</div>` : ''}
             ${scoreMetaHtml ? `<div class="trace-event-meta">${scoreMetaHtml}</div>` : ''}
             ${marketMetaHtml}
-            ${v2MetaHtml}
+            ${gateMetaHtml}
           </div>
             <div class="trace-flow">
               <span class="trace-flow-pill ${flowStatus}">流程${flowLabel}</span>
@@ -30421,6 +30741,7 @@
             </div>
             <div class="trace-steps">${stepHtml ? `<div class="trace-flowchart">${stepHtml}</div>` : '<span class=\"meta\">—</span>'}</div>
             ${bottleneckHtml}
+            ${gateContextHtml}
             ${eventPositionHtml}
             ${detailHtml}
             ${tickGateHtml}
@@ -30472,21 +30793,129 @@
       const targetDate = runDate ? String(runDate) : '';
       const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.floor(options.maxItems)) : 12;
       const meta = options && typeof options === 'object' ? options.meta : null;
+      const titleLinkForItem = (item) => {
+        if (typeof makeJumpLink === 'function') {
+          try {
+            return makeJumpLink(item);
+          } catch (e) {
+            // fallback below
+          }
+        }
+        const title = escapeHtml(String((item && (item.title || item.slug)) || '—'));
+        const url = item && item.event_url ? String(item.event_url).trim() : '';
+        return url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${title}</a>`
+          : `<span>${title}</span>`;
+      };
       const filtered = Array.isArray(items)
         ? items.filter((it) => it && typeof it === 'object' && (!targetDate || String(it.run_date || '') === targetDate))
         : [];
       if (!filtered.length) return '';
       const total = filtered.length;
+      const fmtInt = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(0) : '0';
+      };
       const counts = meta && meta.not_ok_counts && typeof meta.not_ok_counts === 'object' ? meta.not_ok_counts : null;
       const totalCount = counts ? Number(counts.total || 0) : total;
       const top = meta && Array.isArray(meta.not_ok_reason_top) ? meta.not_ok_reason_top : [];
       const topHtml = top.length
         ? `<div class="follow-copy-reason-list">${top.slice(0, 8).map((it) => (
-          `<span class="follow-copy-reason-chip">${escapeHtml(String(it.reason || ''))} · ${formatInt(it.count || 0)}</span>`
+          `<span class="follow-copy-reason-chip">${escapeHtml(String(it.reason || ''))} · ${fmtInt(it.count || 0)}</span>`
         )).join('')}</div>`
         : '';
+      const blockerMeta = meta && meta.entry_blocker_meta && typeof meta.entry_blocker_meta === 'object'
+        ? meta.entry_blocker_meta
+        : null;
+      const blockerMetaBlocked = blockerMeta ? Number(blockerMeta.blocked_total || 0) : NaN;
+      const blockerTotalForShare = Number.isFinite(blockerMetaBlocked) && blockerMetaBlocked > 0 ? blockerMetaBlocked : total;
+      let blockerTable = meta && Array.isArray(meta.entry_blocker_table)
+        ? meta.entry_blocker_table.filter((row) => row && typeof row === 'object')
+        : [];
+      if (!blockerTable.length && top.length) {
+        blockerTable = top.slice(0, 8).map((row) => ({
+          reason_code: String(row.reason || '').trim() || 'unknown_blocker',
+          reason_text: String(row.reason || '').trim(),
+          count: Number(row.count || 0),
+          share: blockerTotalForShare > 0 ? Number(row.count || 0) / blockerTotalForShare : 0,
+          sample_slug: '',
+          sample_event_date: '',
+          sample_outcome: '',
+          sample_side: '',
+          sample_strategy: '',
+          sample_title: '',
+          sample_event_url: '',
+          sample_reason_text: String(row.reason || '').trim(),
+        }));
+      }
+      const blockerRowsHtml = blockerTable.slice(0, 10).map((row) => {
+        const countVal = Number(row.count || 0);
+        const ratioRaw = toFiniteNumberOrNaN(row.share);
+        const ratio = Number.isFinite(ratioRaw)
+          ? ratioRaw
+          : (blockerTotalForShare > 0 ? countVal / blockerTotalForShare : 0);
+        const shareText = Number.isFinite(ratio) ? `${(Math.max(0, ratio) * 100).toFixed(1)}%` : '—';
+        const reasonCode = String(row.reason_code || '').trim() || 'unknown_blocker';
+        const reasonText = String(row.reason_text || '').trim();
+        const sampleTitle = String(row.sample_title || row.sample_slug || '').trim() || '—';
+        const sampleUrl = String(row.sample_event_url || '').trim();
+        const sampleHead = sampleUrl
+          ? `<a href="${escapeHtml(sampleUrl)}" target="_blank" rel="noopener">${escapeHtml(sampleTitle)}</a>`
+          : escapeHtml(sampleTitle);
+        const sampleMeta = [
+          String(row.sample_event_date || '').trim(),
+          String(row.sample_side || '').trim(),
+          String(row.sample_outcome || '').trim(),
+          String(row.sample_strategy || '').trim(),
+        ].filter(Boolean).join(' · ');
+        const sampleReason = String(row.sample_reason_text || '').trim();
+        return `
+          <tr>
+            <td>
+              <div class="auto-trade-blocker-code">${escapeHtml(reasonCode)}</div>
+              ${reasonText ? `<div class="auto-trade-blocker-reason">${escapeHtml(reasonText)}</div>` : ''}
+            </td>
+            <td class="num">${fmtInt(countVal)}</td>
+            <td class="num">${escapeHtml(shareText)}</td>
+            <td>
+              <div class="auto-trade-blocker-sample">
+                ${sampleHead}
+                ${sampleMeta ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleMeta)}</div>` : ''}
+                ${sampleReason ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleReason)}</div>` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      const blockerSummaryParts = [];
+      if (blockerMeta) {
+        const entryTotal = Number(blockerMeta.entry_total || 0);
+        const blockedTotal = Number(blockerMeta.blocked_total || 0);
+        const willOrderTotal = Number(blockerMeta.will_order_total || 0);
+        if (Number.isFinite(entryTotal) && entryTotal > 0) blockerSummaryParts.push(`候选${fmtInt(entryTotal)}`);
+        if (Number.isFinite(blockedTotal) && blockedTotal >= 0) blockerSummaryParts.push(`阻断${fmtInt(blockedTotal)}`);
+        if (Number.isFinite(willOrderTotal) && willOrderTotal >= 0) blockerSummaryParts.push(`可下单${fmtInt(willOrderTotal)}`);
+      }
+      const blockerTableHtml = blockerRowsHtml
+        ? `
+          <div class="auto-trade-blocker-table-wrap">
+            <table class="auto-trade-blocker-table">
+              <thead>
+                <tr>
+                  <th>原因码</th>
+                  <th>次数</th>
+                  <th>占比</th>
+                  <th>示例事件</th>
+                </tr>
+              </thead>
+              <tbody>${blockerRowsHtml}</tbody>
+            </table>
+          </div>
+          ${blockerSummaryParts.length ? `<div class="auto-trade-blocker-summary">${escapeHtml(blockerSummaryParts.join(' · '))}</div>` : ''}
+        `
+        : '';
       const rows = filtered.slice(0, maxItems).map((item) => {
-        const titleHtml = makeJumpLink(item);
+        const titleHtml = titleLinkForItem(item);
         const side = String(item.side || '').toUpperCase();
         const outcome = String(item.outcome || '');
         const strategy = String(item.strategy || '').toLowerCase();
@@ -30517,8 +30946,9 @@
       const limitNote = total > maxItems ? `<div class="meta">仅展示前 ${maxItems} 条，共 ${total} 条</div>` : '';
       return `
         <details class="auto-trade-blockers" open>
-          <summary>入场未达标 · 原因（SSOT）${Number.isFinite(totalCount) ? `（${formatInt(totalCount)}）` : ''}</summary>
+          <summary>入场未达标 · 原因（SSOT）${Number.isFinite(totalCount) ? `（${fmtInt(totalCount)}）` : ''}</summary>
           ${topHtml}
+          ${blockerTableHtml}
           <div class="reason-event-list">${rows}</div>
           ${limitNote}
         </details>
@@ -31570,7 +32000,27 @@
       if (rows > 0) return true;
       const open = Number(stats.open_position_count || 0);
       const openAll = Number(stats.open_position_count_all || 0);
-      return (Number.isFinite(open) && open > 0) || (Number.isFinite(openAll) && openAll > 0);
+      if ((Number.isFinite(open) && open > 0) || (Number.isFinite(openAll) && openAll > 0)) return true;
+      const histCountKeys = [
+        'order_count',
+        'filled_order_count',
+        'fill_count',
+        'buy_count_total',
+        'sell_count_total',
+        'order_count_7d',
+        'filled_order_count_7d',
+        'fill_count_7d',
+      ];
+      for (const key of histCountKeys) {
+        const num = Number(stats[key] || 0);
+        if (Number.isFinite(num) && num > 0) return true;
+      }
+      const histPnlKeys = ['realized_pnl', 'unrealized_pnl', 'total_pnl'];
+      for (const key of histPnlKeys) {
+        const num = Number(stats[key]);
+        if (Number.isFinite(num) && Math.abs(num) > 1e-9) return true;
+      }
+      return false;
     }
     async function autoSyncTrades(date, opts = {}) {
       if (window.__tradeSyncInFlight) return false;
@@ -31833,6 +32283,7 @@
           marketHit7,
           modelDailyStats,
           scoreStats,
+          autoTradeDailySnapshot,
           autoTradeStatusSnapshot,
           skips,
           knownCities,
@@ -31853,8 +32304,9 @@
           safeFetch('/api/station-forecast-hit-stats?days=7', {}),
           safeFetch('/api/market-hit-stats?days=7', {}),
           safeFetch('/api/model-daily-stats?days=30', {}),
-          safeFetch('/api/scoreboard?days=30', { __error: true }, 7000),
-          safeFetch('/api/auto-trade-status', null, 7000),
+          safeFetch('/api/scoreboard?days=30', { __error: true }, 30000),
+          safeFetch('/api/auto-trade-daily-stats', null, 12000),
+          safeFetch('/api/auto-trade-status', null, 25000),
           safeFetch(`/api/skips?date=${effectiveDate}&mode=${mode}`, []),
           safeFetch('/api/cities', { cities: [] }),
           safeFetch('/api/city-latest?days=0&limit=0', { cities: [] }, 7000),
@@ -31875,19 +32327,56 @@
         let scoreStatsFinal = (scoreStats && !scoreStats.__error)
           ? scoreStats
           : (cachedSnapshot.scoreStats || scoreStats);
+        const statusDailyStats = (() => {
+          if (
+            autoTradeDailySnapshot
+            && typeof autoTradeDailySnapshot === 'object'
+            && autoTradeDailySnapshot.daily_stats
+            && typeof autoTradeDailySnapshot.daily_stats === 'object'
+          ) {
+            return autoTradeDailySnapshot.daily_stats;
+          }
+          if (
+            autoTradeStatusSnapshot
+            && typeof autoTradeStatusSnapshot === 'object'
+            && autoTradeStatusSnapshot.daily_stats
+            && typeof autoTradeStatusSnapshot.daily_stats === 'object'
+          ) {
+            return autoTradeStatusSnapshot.daily_stats;
+          }
+          return null;
+        })();
+        if (!hasScoreboardAutoTradeData(scoreStatsFinal) && statusDailyStats) {
+          const baseScore = (scoreStatsFinal && typeof scoreStatsFinal === 'object') ? scoreStatsFinal : {};
+          scoreStatsFinal = {
+            ...baseScore,
+            auto_trade_stats: statusDailyStats,
+          };
+        }
         if (!hasScoreboardAutoTradeData(scoreStatsFinal) && stickyScoreStats) {
           scoreStatsFinal = stickyScoreStats;
         }
         if (hasScoreboardAutoTradeData(scoreStatsFinal)) {
           window.__lastGoodScoreStats = scoreStatsFinal;
         }
-        if (autoTradeStatusSnapshot && typeof autoTradeStatusSnapshot === 'object') {
-          if (autoTradeStatusSnapshot.sync_status) {
-            scoreStatsFinal = {
-              ...(scoreStatsFinal || {}),
-              trade_sync_status: autoTradeStatusSnapshot.sync_status,
-            };
-          }
+        const tradeSyncStatusFromAuto = (
+          autoTradeStatusSnapshot
+          && typeof autoTradeStatusSnapshot === 'object'
+          && autoTradeStatusSnapshot.sync_status
+        )
+          ? autoTradeStatusSnapshot.sync_status
+          : (
+            autoTradeDailySnapshot
+            && typeof autoTradeDailySnapshot === 'object'
+            && autoTradeDailySnapshot.trade_sync_status
+          )
+            ? autoTradeDailySnapshot.trade_sync_status
+            : null;
+        if (tradeSyncStatusFromAuto) {
+          scoreStatsFinal = {
+            ...(scoreStatsFinal || {}),
+            trade_sync_status: tradeSyncStatusFromAuto,
+          };
         }
         const edgeBiasFinal = (edgeBiasStats && edgeBiasStats.ok)
           ? edgeBiasStats
@@ -32183,6 +32672,28 @@
       }
       document.getElementById('date').value = date;
       syncDateDisplay();
+      try {
+        const dailyPrime = await fetchJSON('/api/auto-trade-daily-stats', {
+          timeoutMs: 20000,
+          retryCount: 0,
+          retryOnAbort: false,
+        });
+        if (
+          dailyPrime
+          && typeof dailyPrime === 'object'
+          && dailyPrime.daily_stats
+          && typeof dailyPrime.daily_stats === 'object'
+        ) {
+          window.__autoTradeStatusSnapshot = {
+            ...(window.__autoTradeStatusSnapshot && typeof window.__autoTradeStatusSnapshot === 'object'
+              ? window.__autoTradeStatusSnapshot
+              : {}),
+            daily_stats: dailyPrime.daily_stats,
+          };
+        }
+      } catch (e) {
+        // ignore bootstrap daily-stats failures
+      }
       if (cached && Array.isArray(cached.data) && cached.data.length) {
         applyDashboardCache(cached, { silent: true });
       }

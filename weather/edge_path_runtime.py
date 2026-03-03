@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import json
 import math
 import os
@@ -80,6 +80,54 @@ def _wilson_bounds(p: float, n: int, z: float) -> Tuple[float, float]:
     return _clamp01(lo), _clamp01(hi)
 
 
+def _replace_segment(key: str, prefix: str, target: str) -> Optional[str]:
+    parts = [p for p in str(key or "").split("|") if p]
+    if not parts:
+        return None
+    changed = False
+    for idx, seg in enumerate(parts):
+        if seg.startswith(prefix):
+            if seg == target:
+                return None
+            parts[idx] = target
+            changed = True
+            break
+    if not changed:
+        return None
+    return "|".join(parts)
+
+
+def _candidate_bucket_keys(bucket_key: str) -> List[str]:
+    key = str(bucket_key or "").strip()
+    if not key:
+        return []
+    keys: List[str] = [key]
+
+    def _append_unique(text: Optional[str]) -> None:
+        if not text:
+            return
+        if text not in keys:
+            keys.append(text)
+
+    # Build a small closure of likely converge-bucket normalizations.
+    transforms = [
+        lambda x: _replace_segment(x, "r", "ru"),
+        lambda x: _replace_segment(x, "e", "eu"),
+        lambda x: _replace_segment(x, "x", "xu"),
+        lambda x: _replace_segment(x, "s0", "s1"),
+    ]
+    for fn in transforms:
+        base = list(keys)
+        for item in base:
+            _append_unique(fn(item))
+
+    # Order type fallback.
+    base = list(keys)
+    for item in base:
+        _append_unique(_replace_segment(item, "ot:", "ot:ANY"))
+    return keys
+
+
 def estimate_path_probability(
     *,
     signal_alpha: Any,
@@ -118,22 +166,32 @@ def estimate_path_probability(
     source = "heuristic"
     generated_at = str(cal.get("generated_at") or "").strip() or None
 
+    used_bucket_key = bucket_key
+    fallback_rank = None
     table = cal.get("p_converge_buckets")
     if isinstance(table, dict) and bucket_key:
-        entry = table.get(bucket_key)
-        if isinstance(entry, dict):
-            p = _to_float(entry.get("p"))
-            total = entry.get("total")
-            try:
-                n = int(total) if total is not None else None
-            except Exception:
-                n = None
-            if p is not None:
-                source = "calibration_p_converge"
-        elif entry is not None:
-            p = _to_float(entry)
-            if p is not None:
-                source = "calibration_p_converge"
+        candidates = _candidate_bucket_keys(bucket_key)
+        for rank, cand_key in enumerate(candidates):
+            entry = table.get(cand_key)
+            if isinstance(entry, dict):
+                p = _to_float(entry.get("p"))
+                total = entry.get("total")
+                try:
+                    n = int(total) if total is not None else None
+                except Exception:
+                    n = None
+                if p is not None:
+                    used_bucket_key = cand_key
+                    fallback_rank = rank
+                    source = "calibration_p_converge" if rank == 0 else "calibration_p_converge_fallback"
+                    break
+            elif entry is not None:
+                p = _to_float(entry)
+                if p is not None:
+                    used_bucket_key = cand_key
+                    fallback_rank = rank
+                    source = "calibration_p_converge" if rank == 0 else "calibration_p_converge_fallback"
+                    break
 
     if p is None:
         alpha = signal_alpha_f if signal_alpha_f is not None else 0.0
@@ -156,9 +214,10 @@ def estimate_path_probability(
         "p_reach_lcb": float(lo),
         "p_reach_ucb": float(hi),
         "path_bucket_key": bucket_key,
+        "path_bucket_key_used": used_bucket_key,
+        "path_fallback_rank": int(fallback_rank) if fallback_rank is not None else None,
         "path_sample_n": int(n) if n is not None and n >= 0 else None,
         "path_source": source,
         "path_calibration_path": cal_path or None,
         "path_calibration_generated_at": generated_at,
     }
-

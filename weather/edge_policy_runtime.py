@@ -34,9 +34,9 @@ def _stable_ratio(key: str) -> float:
 
 
 def load_edge_policy_from_env() -> Dict[str, Any]:
-    mode = str(os.environ.get("PM_EDGE_POLICY_MODE") or "shadow").strip().lower()
+    mode = str(os.environ.get("PM_EDGE_POLICY_MODE") or "enforced").strip().lower()
     if mode not in {"off", "shadow", "canary", "enforced"}:
-        mode = "shadow"
+        mode = "enforced"
     canary_ratio = _to_float(os.environ.get("PM_EDGE_POLICY_CANARY_RATIO"))
     if canary_ratio is None:
         canary_ratio = 0.20
@@ -142,4 +142,3 @@ def evaluate_tradeability(
         "path_lcb_min": float(path_lcb_min),
         "edge_lcb_min": float(edge_lcb_min),
     }
-

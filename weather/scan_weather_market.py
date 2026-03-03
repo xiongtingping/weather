@@ -1708,6 +1708,10 @@ def _refresh_auto_trade_config() -> None:
         "entry_edge_realizable_strategy_overrides",
         "PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_STRATEGY_OVERRIDES",
     )
+    _apply_json(
+        "strategy_realized_edge_strategy_overrides",
+        "PM_AUTO_TRADE_STRATEGY_REALIZED_EDGE_STRATEGY_OVERRIDES",
+    )
     _apply_float(
         "entry_edge_realizable_p_converge_min",
         "PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_P_CONVERGE_MIN",
@@ -4098,6 +4102,65 @@ def _env_int(key: str) -> Optional[int]:
         return int(raw)
     except (TypeError, ValueError):
         return None
+
+
+def _sqlite_locked_error(exc: Exception) -> bool:
+    text = str(exc or "").lower()
+    return "locked" in text or "busy" in text
+
+
+def _sqlite_execute_with_retry(
+    cur: sqlite3.Cursor,
+    sql: str,
+    params: Tuple[Any, ...] = (),
+    *,
+    attempts: int = 8,
+    sleep_base_sec: float = 0.25,
+    sleep_cap_sec: float = 2.0,
+) -> None:
+    max_attempts = max(1, int(attempts))
+    base_sleep = max(0.0, float(sleep_base_sec))
+    cap_sleep = max(0.0, float(sleep_cap_sec))
+    for attempt in range(max_attempts):
+        try:
+            cur.execute(sql, params)
+            return
+        except sqlite3.OperationalError as exc:
+            if (not _sqlite_locked_error(exc)) or attempt >= (max_attempts - 1):
+                raise
+            if base_sleep <= 0:
+                continue
+            sleep_for = base_sleep * float(attempt + 1)
+            if cap_sleep > 0:
+                sleep_for = min(sleep_for, cap_sleep)
+            time.sleep(sleep_for)
+
+
+def _sqlite_executemany_with_retry(
+    cur: sqlite3.Cursor,
+    sql: str,
+    seq_of_params: Iterable[Tuple[Any, ...]],
+    *,
+    attempts: int = 8,
+    sleep_base_sec: float = 0.25,
+    sleep_cap_sec: float = 2.0,
+) -> None:
+    max_attempts = max(1, int(attempts))
+    base_sleep = max(0.0, float(sleep_base_sec))
+    cap_sleep = max(0.0, float(sleep_cap_sec))
+    for attempt in range(max_attempts):
+        try:
+            cur.executemany(sql, seq_of_params)
+            return
+        except sqlite3.OperationalError as exc:
+            if (not _sqlite_locked_error(exc)) or attempt >= (max_attempts - 1):
+                raise
+            if base_sleep <= 0:
+                continue
+            sleep_for = base_sleep * float(attempt + 1)
+            if cap_sleep > 0:
+                sleep_for = min(sleep_for, cap_sleep)
+            time.sleep(sleep_for)
 
 
 def _facts_lock_wait_sec(default: float = 45.0) -> float:
@@ -6725,6 +6788,85 @@ def execute_auto_trades(
     rows = result.get("rows") or []
     if not rows:
         return
+    entry_orderbook_missing_cooldown_sec = _env_int(
+        "PM_AUTO_TRADE_ENTRY_ORDERBOOK_MISSING_COOLDOWN_SEC"
+    )
+    if (
+        entry_orderbook_missing_cooldown_sec is None
+        or entry_orderbook_missing_cooldown_sec < 0
+    ):
+        entry_orderbook_missing_cooldown_sec = 900
+    entry_orderbook_missing_cooldown_min_hits = _env_int(
+        "PM_AUTO_TRADE_ENTRY_ORDERBOOK_MISSING_COOLDOWN_MIN_HITS"
+    )
+    if (
+        entry_orderbook_missing_cooldown_min_hits is None
+        or entry_orderbook_missing_cooldown_min_hits <= 0
+    ):
+        entry_orderbook_missing_cooldown_min_hits = 2
+    recent_orderbook_missing_tokens: Set[str] = set()
+    recent_orderbook_missing_counts: Dict[str, int] = {}
+    if entry_orderbook_missing_cooldown_sec > 0:
+        window_sql = f"-{int(entry_orderbook_missing_cooldown_sec)} seconds"
+        try:
+            with open_db() as conn_recent_ob:
+                cur_recent_ob = conn_recent_ob.cursor()
+                cur_recent_ob.execute(
+                    """
+                    SELECT json_extract(d.details_json, '$.token_id') AS token_id,
+                           COUNT(*) AS hit_count
+                    FROM auto_trade_decisions d
+                    JOIN json_each(d.reason_codes_json) rc
+                    WHERE d.slug = ?
+                      AND d.event_date = ?
+                      AND d.action = 'entry'
+                      AND rc.value = 'orderbook_missing'
+                      AND datetime(substr(d.created_at, 1, 19)) >= datetime('now', ?)
+                    GROUP BY json_extract(d.details_json, '$.token_id')
+                    """,
+                    (slug, event_date, window_sql),
+                )
+                for row_recent_ob in cur_recent_ob.fetchall() or []:
+                    token_val = ""
+                    hit_count = 0
+                    if isinstance(row_recent_ob, sqlite3.Row):
+                        token_val = str(row_recent_ob["token_id"] or "").strip()
+                        try:
+                            hit_count = int(row_recent_ob["hit_count"] or 0)
+                        except Exception:
+                            hit_count = 0
+                    elif isinstance(row_recent_ob, tuple) and row_recent_ob:
+                        token_val = str(row_recent_ob[0] or "").strip()
+                        try:
+                            hit_count = int(row_recent_ob[1] or 0)
+                        except Exception:
+                            hit_count = 0
+                    if token_val:
+                        recent_orderbook_missing_counts[token_val] = max(0, int(hit_count))
+                        if int(hit_count) >= int(entry_orderbook_missing_cooldown_min_hits):
+                            recent_orderbook_missing_tokens.add(token_val)
+        except Exception:
+            recent_orderbook_missing_tokens = set()
+            recent_orderbook_missing_counts = {}
+
+    def _orderbook_missing_recent_hits(token_id: str) -> int:
+        token_key = str(token_id or "").strip()
+        if not token_key:
+            return 0
+        hit_count = int(recent_orderbook_missing_counts.get(token_key) or 0)
+        if token_key in recent_orderbook_missing_tokens and hit_count <= 0:
+            hit_count = 1
+        return hit_count
+
+    if recent_orderbook_missing_tokens:
+        hit_max = max(_orderbook_missing_recent_hits(tk) for tk in recent_orderbook_missing_tokens)
+        print(
+            "[auto-trade] orderbook-missing cooldown "
+            f"slug={slug} tokens={len(recent_orderbook_missing_tokens)} "
+            f"window={int(entry_orderbook_missing_cooldown_sec)}s "
+            f"min_hits={int(entry_orderbook_missing_cooldown_min_hits)} "
+            f"max_hits={int(hit_max)}"
+        )
 
     positions_priority_fast_loop, positions_priority_allow_slow = _auto_trade_positions_priority_fast_loop_state()
     slow_request_used = False
@@ -6734,6 +6876,12 @@ def execute_auto_trades(
         if positions_priority_fast_loop and not slow_request_used:
             slow_request_used = True
             _auto_trade_positions_priority_mark_slow_request()
+
+    def _fmt_price(value: Optional[float]) -> str:
+        price_val = to_float(value)
+        if price_val is None or not math.isfinite(price_val):
+            return "—"
+        return f"{float(price_val):.3f}"
 
     entry_drawdown_blocked, entry_drawdown_detail = _resolve_entry_drawdown_block()
 
@@ -6925,24 +7073,28 @@ def execute_auto_trades(
             strategy = str(item.get("strategy") or "").strip().lower()
             if not out or side not in {"YES", "NO"}:
                 continue
-            expected_entry_targets.append(
-                {
-                    "outcome": out,
-                    "side": side,
-                    "strategy": strategy,
-                    "entry_ok": bool(item.get("entry_ok")),
-                    "entry_reasons": list(item.get("entry_reasons") or [])
-                    if isinstance(item.get("entry_reasons"), list)
-                    else [],
-                    "edge_score": to_float(item.get("edge_score")),
-                    "edge_min": to_float(item.get("edge_min")),
-                    "ask": to_float(item.get("ask")),
-                    "q_min_bound": to_float(item.get("q_min_bound")),
-                    "spread": to_float(item.get("spread")),
-                    "lag": to_float(item.get("lag")),
-                    "token_id": str(item.get("token_id") or "").strip(),
-                }
-            )
+            expected_item: Dict[str, Any] = {
+                "outcome": out,
+                "side": side,
+                "strategy": strategy,
+                "entry_ok": bool(item.get("entry_ok")),
+                "entry_reasons": list(item.get("entry_reasons") or [])
+                if isinstance(item.get("entry_reasons"), list)
+                else [],
+                "edge_score": to_float(item.get("edge_score")),
+                "edge_min": to_float(item.get("edge_min")),
+                "ask": to_float(item.get("ask")),
+                "q_min_bound": to_float(item.get("q_min_bound")),
+                "spread": to_float(item.get("spread")),
+                "lag": to_float(item.get("lag")),
+                "token_id": str(item.get("token_id") or "").strip(),
+            }
+            for extra_key, extra_val in item.items():
+                if extra_key in expected_item:
+                    continue
+                if isinstance(extra_val, (str, int, float, bool)) or extra_val is None:
+                    expected_item[extra_key] = extra_val
+            expected_entry_targets.append(expected_item)
     expected_entry_targets_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
     expected_entry_targets_by_outcome: Dict[str, List[Dict[str, Any]]] = {}
     for item in expected_entry_targets:
@@ -7237,6 +7389,9 @@ def execute_auto_trades(
             "edge_tradeability_signal_lcb_min",
             "edge_tradeability_path_lcb_min",
             "edge_tradeability_edge_lcb_min",
+            "edge_realizable_hq_signal_lcb_min",
+            "edge_realizable_hq_path_lcb_min",
+            "edge_realizable_hq_edge_lcb_min",
             "strategy_realized_edge",
             "strategy_realized_edge_min",
             "strategy_realized_edge_sample_n",
@@ -7272,6 +7427,7 @@ def execute_auto_trades(
         _detail_put_str(out, "edge_tradeability_reasons", candidate.get("edge_tradeability_reasons"))
         _detail_put_str(out, "strategy_realized_edge_source_path", candidate.get("strategy_realized_edge_source_path"))
         _detail_put_str(out, "strategy_realized_edge_source_generated_at", candidate.get("strategy_realized_edge_source_generated_at"))
+        _detail_put_str(out, "strategy_realized_edge_gate_override_keys", candidate.get("strategy_realized_edge_gate_override_keys"))
         _detail_put_float(out, "order_price", candidate.get("price") or candidate.get("order_price"))
         _detail_put_float(out, "order_size", candidate.get("size"))
         _detail_put_float(out, "order_amount", candidate.get("order_amount"))
@@ -7286,12 +7442,36 @@ def execute_auto_trades(
         _detail_put_bool(out, "edge_realizable_report_low_sample", candidate.get("edge_realizable_report_low_sample"))
         _detail_put_bool(out, "edge_realizable_exec_audit_blocked", candidate.get("edge_realizable_exec_audit_blocked"))
         _detail_put_bool(out, "edge_realizable_exec_audit_gate_pass", candidate.get("edge_realizable_exec_audit_gate_pass"))
+        _detail_put_bool(out, "edge_lcb_single_judge_mode", candidate.get("edge_lcb_single_judge_mode"))
         _detail_put_bool(out, "edge_tradeability_policy_enforce", candidate.get("edge_tradeability_policy_enforce"))
         _detail_put_bool(out, "edge_tradeability_canary_sampled", candidate.get("edge_tradeability_canary_sampled"))
         _detail_put_bool(out, "edge_tradeability_pass", candidate.get("edge_tradeability_pass"))
         _detail_put_bool(out, "edge_tradeability_blocked", candidate.get("edge_tradeability_blocked"))
         _detail_put_bool(out, "edge_tradeability_shadow_block", candidate.get("edge_tradeability_shadow_block"))
+        _detail_put_bool(out, "edge_realizable_hq_pass", candidate.get("edge_realizable_hq_pass"))
+        _detail_put_bool(
+            out,
+            "edge_realizable_hq_bypass_p_realize_min",
+            candidate.get("edge_realizable_hq_bypass_p_realize_min"),
+        )
+        _detail_put_bool(
+            out,
+            "edge_realizable_hq_bypass_p_converge_min",
+            candidate.get("edge_realizable_hq_bypass_p_converge_min"),
+        )
+        _detail_put_bool(
+            out,
+            "edge_realizable_hq_bypassed_p_realize_min",
+            candidate.get("edge_realizable_hq_bypassed_p_realize_min"),
+        )
+        _detail_put_bool(
+            out,
+            "edge_realizable_hq_bypassed_p_converge_min",
+            candidate.get("edge_realizable_hq_bypassed_p_converge_min"),
+        )
         _detail_put_bool(out, "strategy_realized_edge_gate_enabled", candidate.get("strategy_realized_edge_gate_enabled"))
+        _detail_put_bool(out, "strategy_realized_edge_gate_override_applied", candidate.get("strategy_realized_edge_gate_override_applied"))
+        _detail_put_bool(out, "strategy_realized_edge_block_missing", candidate.get("strategy_realized_edge_block_missing"))
         _detail_put_bool(out, "strategy_realized_edge_low_sample", candidate.get("strategy_realized_edge_low_sample"))
         _detail_put_bool(out, "strategy_realized_edge_missing", candidate.get("strategy_realized_edge_missing"))
         _detail_put_bool(out, "strategy_realized_edge_blocked", candidate.get("strategy_realized_edge_blocked"))
@@ -7392,6 +7572,12 @@ def execute_auto_trades(
         if not decision_buffer:
             return
         # Best-effort: decisions are diagnostics/SSOT explanation. Never fail the trading loop.
+        retry_attempts = _env_int("PM_AUTO_TRADE_DECISION_WRITE_RETRY_ATTEMPTS")
+        if retry_attempts is None or retry_attempts <= 0:
+            retry_attempts = 10
+        retry_sleep = _env_float("PM_AUTO_TRADE_DECISION_WRITE_RETRY_SLEEP_SEC", 0.4)
+        if retry_sleep is None or not math.isfinite(retry_sleep) or retry_sleep < 0:
+            retry_sleep = 0.4
         sql = """
             INSERT INTO auto_trade_decisions(
                 run_id, run_date, slug, event_date, title,
@@ -7404,7 +7590,8 @@ def execute_auto_trades(
         """
         for payload in decision_buffer.values():
             try:
-                cur.execute(
+                _sqlite_execute_with_retry(
+                    cur,
                     sql,
                     (
                         payload.get("run_id"),
@@ -7422,6 +7609,8 @@ def execute_auto_trades(
                         payload.get("details_json"),
                         payload.get("created_at"),
                     ),
+                    attempts=int(retry_attempts),
+                    sleep_base_sec=float(retry_sleep),
                 )
             except Exception as exc:
                 print(f"[auto-trade] decision insert failed {slug} {event_date_key}: {exc}")
@@ -7475,6 +7664,8 @@ def execute_auto_trades(
             elif strategy == "follow_copy" and not follow_enabled:
                 reason_code = "strategy_disabled"
                 reason_text = "临结价差策略未启用，未进入执行决策"
+            if reason_code == "strategy_disabled":
+                continue
             details_payload: Dict[str, Any] = {
                 "strategy": strategy,
                 "source": "entry_expected_targets",
@@ -7490,6 +7681,71 @@ def execute_auto_trades(
             for field in ("edge_score", "edge_min", "ask", "q_min_bound", "spread", "lag", "token_id"):
                 if field in item and field not in details_payload:
                     details_payload[field] = item.get(field)
+            details_eval = _merge_decision_details(outcome, side, "entry", details_payload)
+            if reason_code in {
+                "yes_top_candidate_missing_snapshot",
+                "yes_top_candidate_missing",
+                "main_candidate_missing_snapshot",
+                "main_candidate_missing",
+            }:
+                exec_audit_gate_pass = details_eval.get("edge_realizable_exec_audit_gate_pass")
+                if exec_audit_gate_pass is False:
+                    reason_code = "edge_realizable_report_blocked"
+                    reason_text = "可兑现回归门禁未通过(exec_audit_gate_pass=false)"
+                else:
+                    edge_v2_val = to_float(
+                        details_eval.get("edge_realizable_v2")
+                        if details_eval.get("edge_realizable_v2") is not None
+                        else details_eval.get("edge_realizable")
+                    )
+                    edge_v2_min = to_float(details_eval.get("edge_realizable_gate_v2_min"))
+                    p_realize_val = to_float(details_eval.get("edge_realizable_p_realize"))
+                    p_realize_min = to_float(details_eval.get("edge_realizable_p_realize_min"))
+                    p_converge_val = to_float(details_eval.get("edge_realizable_p_converge"))
+                    p_converge_min = to_float(details_eval.get("edge_realizable_p_converge_min"))
+                    if (
+                        edge_v2_min is not None
+                        and math.isfinite(edge_v2_min)
+                        and edge_v2_min > TIME_EDGE_Q_EPS
+                        and (
+                            edge_v2_val is None
+                            or not math.isfinite(edge_v2_val)
+                            or edge_v2_val + TIME_EDGE_Q_EPS < edge_v2_min
+                        )
+                    ):
+                        reason_code = "edge_realizable_low"
+                        reason_text = f"可兑现V2不足(edge={edge_v2_val} < min={edge_v2_min})"
+                    elif (
+                        p_realize_min is not None
+                        and math.isfinite(p_realize_min)
+                        and p_realize_min > TIME_EDGE_Q_EPS
+                        and (
+                            p_realize_val is None
+                            or not math.isfinite(p_realize_val)
+                            or p_realize_val + TIME_EDGE_Q_EPS < p_realize_min
+                        )
+                    ):
+                        reason_code = "edge_realizable_p_realize_below_min"
+                        reason_text = (
+                            f"可兑现概率不足(p_realize={p_realize_val} < min={p_realize_min})"
+                        )
+                    elif (
+                        p_converge_min is not None
+                        and math.isfinite(p_converge_min)
+                        and p_converge_min > TIME_EDGE_Q_EPS
+                        and (
+                            p_converge_val is None
+                            or not math.isfinite(p_converge_val)
+                            or p_converge_val + TIME_EDGE_Q_EPS < p_converge_min
+                        )
+                    ):
+                        reason_code = "edge_realizable_p_converge_below_min"
+                        reason_text = (
+                            f"路径可达概率不足(p_converge={p_converge_val} < min={p_converge_min})"
+                        )
+                    elif details_eval.get("edge_tradeability_pass") is False:
+                        reason_code = "edge_tradeability_shadow_block"
+                        reason_text = "交易可达性阴影门禁未通过(edge_tradeability_pass=false)"
             _buffer_decision(
                 outcome,
                 side,
@@ -7498,7 +7754,7 @@ def execute_auto_trades(
                 will_order=False,
                 reason_codes=[reason_code],
                 reasons=[reason_text],
-                details=details_payload,
+                details=details_eval,
             )
 
     # NOTE: This helper must be defined before any nested functions that may be
@@ -7792,6 +8048,48 @@ def execute_auto_trades(
         entry_stale_cutoff = (
             datetime.now(timezone.utc) - timedelta(seconds=float(entry_stale_sec_for_block))
         ).isoformat(timespec="seconds")
+    location_block_max_event_age_days = _env_int(
+        "PM_AUTO_TRADE_LOCATION_BLOCK_MAX_EVENT_AGE_DAYS"
+    )
+    if (
+        location_block_max_event_age_days is None
+        or location_block_max_event_age_days < 0
+    ):
+        location_block_max_event_age_days = 0
+    location_block_event_cutoff = ""
+    location_block_today = _parse_date(today_date_str("America/New_York"))
+    if (
+        location_block_max_event_age_days > 0
+        and location_block_today is not None
+    ):
+        location_block_event_cutoff = (
+            location_block_today
+            - timedelta(days=int(location_block_max_event_age_days))
+        ).isoformat()
+    location_block_event_date_gap_days = _env_int(
+        "PM_AUTO_TRADE_LOCATION_BLOCK_MAX_EVENT_DATE_GAP_DAYS"
+    )
+    if location_block_event_date_gap_days is None or location_block_event_date_gap_days < 0:
+        location_block_event_date_gap_days = -1
+    location_block_event_gap_cutoff = ""
+    location_event_date = _parse_date(event_date_key)
+    if (
+        location_block_event_date_gap_days >= 0
+        and location_event_date is not None
+    ):
+        location_block_event_gap_cutoff = (
+            location_event_date
+            - timedelta(days=int(location_block_event_date_gap_days))
+        ).isoformat()
+    location_block_effective_cutoff = location_block_event_cutoff
+    if (
+        location_block_event_gap_cutoff
+        and (
+            not location_block_effective_cutoff
+            or location_block_event_gap_cutoff > location_block_effective_cutoff
+        )
+    ):
+        location_block_effective_cutoff = location_block_event_gap_cutoff
     try:
         if entry_stale_cutoff:
             cur.execute(
@@ -7905,7 +8203,11 @@ def execute_auto_trades(
             now_dt = datetime.now(timezone.utc)
             entry_open_age_sec = (now_dt - opened_at).total_seconds()
             entry_opened_at = opened_at
-        if entry_opened_at:
+        if (
+            entry_opened_at
+            and entry_open_age_sec is not None
+            and entry_open_age_sec < float(AUTO_TRADE_ENTRY_OPEN_DELAY_MAX_SEC)
+        ):
             try:
                 cur.execute(
                     """
@@ -7937,11 +8239,16 @@ def execute_auto_trades(
                     }
                 )
     if location_key:
+        location_block_event_clause = ""
+        location_block_event_params: Tuple[Any, ...] = tuple()
+        if location_block_effective_cutoff:
+            location_block_event_clause = "AND substr(t.event_date, 1, 10) >= ?"
+            location_block_event_params = (location_block_effective_cutoff,)
         try:
             if location_basis == "station":
                 if entry_stale_cutoff:
                     cur.execute(
-                        """
+                        f"""
                     SELECT t.slug, t.event_date, t.outcome, t.side, t.state, t.position_size, t.last_order_id, t.updated_at
                     FROM edge_trades t
                     WHERE (
@@ -7969,14 +8276,15 @@ def execute_auto_trades(
                         WHERE c.slug = t.slug AND c.event_date = t.event_date
                           AND COALESCE(c.market_closed, 0) = 1
                       )
+                      {location_block_event_clause}
                     ORDER BY t.updated_at DESC, t.id DESC
                     LIMIT 1
                     """,
-                        (entry_stale_cutoff, location_key),
+                        (entry_stale_cutoff, location_key) + location_block_event_params,
                     )
                 else:
                     cur.execute(
-                        """
+                        f"""
                     SELECT t.slug, t.event_date, t.outcome, t.side, t.state, t.position_size, t.last_order_id, t.updated_at
                     FROM edge_trades t
                     WHERE (t.state IN ('entry', 'entry_pending') OR (t.position_size IS NOT NULL AND t.position_size > 0))
@@ -7998,15 +8306,16 @@ def execute_auto_trades(
                         WHERE c.slug = t.slug AND c.event_date = t.event_date
                           AND COALESCE(c.market_closed, 0) = 1
                       )
+                      {location_block_event_clause}
                     ORDER BY t.updated_at DESC, t.id DESC
                     LIMIT 1
                     """,
-                        (location_key,),
+                        (location_key,) + location_block_event_params,
                     )
             else:
                 if entry_stale_cutoff:
                     cur.execute(
-                        """
+                        f"""
                     SELECT t.slug, t.event_date, t.outcome, t.side, t.state, t.position_size, t.last_order_id, t.updated_at
                     FROM edge_trades t
                     WHERE (
@@ -8034,14 +8343,15 @@ def execute_auto_trades(
                         WHERE c.slug = t.slug AND c.event_date = t.event_date
                           AND COALESCE(c.market_closed, 0) = 1
                       )
+                      {location_block_event_clause}
                     ORDER BY t.updated_at DESC, t.id DESC
                     LIMIT 1
                     """,
-                        (entry_stale_cutoff, location_key),
+                        (entry_stale_cutoff, location_key) + location_block_event_params,
                     )
                 else:
                     cur.execute(
-                        """
+                        f"""
                     SELECT t.slug, t.event_date, t.outcome, t.side, t.state, t.position_size, t.last_order_id, t.updated_at
                     FROM edge_trades t
                     WHERE (t.state IN ('entry', 'entry_pending') OR (t.position_size IS NOT NULL AND t.position_size > 0))
@@ -8063,10 +8373,11 @@ def execute_auto_trades(
                         WHERE c.slug = t.slug AND c.event_date = t.event_date
                           AND COALESCE(c.market_closed, 0) = 1
                       )
+                      {location_block_event_clause}
                     ORDER BY t.updated_at DESC, t.id DESC
                     LIMIT 1
                     """,
-                        (location_key,),
+                        (location_key,) + location_block_event_params,
                     )
             block_row = cur.fetchone()
             location_active_entry = block_row is not None
@@ -8476,6 +8787,10 @@ def execute_auto_trades(
     if edge_tradeability_slippage_buffer is not None and not math.isfinite(edge_tradeability_slippage_buffer):
         edge_tradeability_slippage_buffer = None
     edge_tradeability_policy = load_edge_policy_from_env()
+    # Single-judge mode: entry alpha decision is only LCB tradeability gate.
+    # Legacy gates (v2/report/exec-audit/strategy-realized-edge/exec-edge thresholds)
+    # stay as diagnostics, not hard blockers.
+    edge_lcb_single_judge_mode = _env_bool("PM_EDGE_LCB_SINGLE_JUDGE_MODE", True)
     entry_edge_realizable_min = _env_float("PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_MIN")
     if entry_edge_realizable_min is None or not math.isfinite(entry_edge_realizable_min):
         entry_edge_realizable_min = 0.0
@@ -8505,7 +8820,7 @@ def execute_auto_trades(
     if entry_edge_realizable_p_converge_min > 1:
         entry_edge_realizable_p_converge_min = 1.0
 
-    def _parse_entry_edge_realizable_strategy_overrides(raw_text: str) -> Dict[str, Dict[str, float]]:
+    def _parse_entry_edge_realizable_strategy_overrides(raw_text: str) -> Dict[str, Dict[str, Any]]:
         text = str(raw_text or "").strip()
         if not text:
             return {}
@@ -8528,13 +8843,25 @@ def execute_auto_trades(
                 return None
             return min(1.0, float(num))
 
-        out: Dict[str, Dict[str, float]] = {}
+        def _boolish(value: Any) -> Optional[bool]:
+            if isinstance(value, bool):
+                return bool(value)
+            if value is None:
+                return None
+            text_val = str(value).strip().lower()
+            if text_val in {"1", "true", "yes", "on"}:
+                return True
+            if text_val in {"0", "false", "no", "off"}:
+                return False
+            return None
+
+        out: Dict[str, Dict[str, Any]] = {}
         for raw_key, raw_entry in payload.items():
             key = str(raw_key or "").strip().lower()
             if not key:
                 continue
             entry_obj = raw_entry if isinstance(raw_entry, dict) else {"p_realize_min": raw_entry}
-            override: Dict[str, float] = {}
+            override: Dict[str, Any] = {}
             edge_min = _clamp_nonneg(
                 entry_obj.get("edge_realizable_min", entry_obj.get("entry_edge_realizable_min"))
             )
@@ -8570,6 +8897,46 @@ def execute_auto_trades(
             )
             if p_converge_min is not None:
                 override["p_converge_min"] = p_converge_min
+            hq_signal_lcb_min = _clamp_nonneg(
+                entry_obj.get(
+                    "high_quality_signal_lcb_min",
+                    entry_obj.get("edge_signal_lcb_min"),
+                )
+            )
+            if hq_signal_lcb_min is not None:
+                override["high_quality_signal_lcb_min"] = hq_signal_lcb_min
+            hq_path_lcb_min = _clamp_prob(
+                entry_obj.get(
+                    "high_quality_path_lcb_min",
+                    entry_obj.get("edge_path_p_reach_lcb_min"),
+                )
+            )
+            if hq_path_lcb_min is not None:
+                override["high_quality_path_lcb_min"] = hq_path_lcb_min
+            hq_edge_lcb_min = _clamp_nonneg(
+                entry_obj.get(
+                    "high_quality_edge_lcb_min",
+                    entry_obj.get("edge_tradeability_edge_lcb_min"),
+                )
+            )
+            if hq_edge_lcb_min is not None:
+                override["high_quality_edge_lcb_min"] = hq_edge_lcb_min
+            hq_bypass_p_realize = _boolish(
+                entry_obj.get(
+                    "high_quality_bypass_p_realize_min",
+                    entry_obj.get("high_quality_allow_p_realize_bypass"),
+                )
+            )
+            if hq_bypass_p_realize is not None:
+                override["high_quality_bypass_p_realize_min"] = bool(hq_bypass_p_realize)
+            hq_bypass_p_converge = _boolish(
+                entry_obj.get(
+                    "high_quality_bypass_p_converge_min",
+                    entry_obj.get("high_quality_allow_p_converge_bypass"),
+                )
+            )
+            if hq_bypass_p_converge is not None:
+                override["high_quality_bypass_p_converge_min"] = bool(hq_bypass_p_converge)
             if override:
                 out[key] = override
         return out
@@ -8607,6 +8974,21 @@ def execute_auto_trades(
             p_converge_min = float(entry_edge_realizable_p_converge_min)
         p_converge_min = max(0.0, min(1.0, float(p_converge_min)))
 
+        hq_signal_lcb_min = to_float(strategy_override.get("high_quality_signal_lcb_min"))
+        if hq_signal_lcb_min is not None and (not math.isfinite(hq_signal_lcb_min) or hq_signal_lcb_min < 0):
+            hq_signal_lcb_min = None
+        hq_path_lcb_min = to_float(strategy_override.get("high_quality_path_lcb_min"))
+        if hq_path_lcb_min is not None and (not math.isfinite(hq_path_lcb_min) or hq_path_lcb_min < 0):
+            hq_path_lcb_min = None
+        if hq_path_lcb_min is not None:
+            hq_path_lcb_min = min(1.0, float(hq_path_lcb_min))
+        hq_edge_lcb_min = to_float(strategy_override.get("high_quality_edge_lcb_min"))
+        if hq_edge_lcb_min is not None and (not math.isfinite(hq_edge_lcb_min) or hq_edge_lcb_min < 0):
+            hq_edge_lcb_min = None
+
+        hq_bypass_p_realize = bool(strategy_override.get("high_quality_bypass_p_realize_min"))
+        hq_bypass_p_converge = bool(strategy_override.get("high_quality_bypass_p_converge_min"))
+
         return {
             "strategy": key,
             "override_applied": bool(strategy_override),
@@ -8617,6 +8999,17 @@ def execute_auto_trades(
             ),
             "p_realize_min": float(p_realize_min),
             "p_converge_min": float(p_converge_min),
+            "high_quality_signal_lcb_min": (
+                float(hq_signal_lcb_min) if hq_signal_lcb_min is not None and math.isfinite(hq_signal_lcb_min) else None
+            ),
+            "high_quality_path_lcb_min": (
+                float(hq_path_lcb_min) if hq_path_lcb_min is not None and math.isfinite(hq_path_lcb_min) else None
+            ),
+            "high_quality_edge_lcb_min": (
+                float(hq_edge_lcb_min) if hq_edge_lcb_min is not None and math.isfinite(hq_edge_lcb_min) else None
+            ),
+            "high_quality_bypass_p_realize_min": bool(hq_bypass_p_realize),
+            "high_quality_bypass_p_converge_min": bool(hq_bypass_p_converge),
         }
 
     strategy_realized_edge_gate_enabled = _env_bool(
@@ -8641,6 +9034,126 @@ def execute_auto_trades(
         str(strategy_gate_report.get("generated_at") or "").strip() or None
     )
     strategy_gate_stats = _edge_strategy_gate_map(strategy_gate_report)
+
+    def _parse_strategy_realized_edge_strategy_overrides(
+        raw_text: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        text = str(raw_text or "").strip()
+        if not text:
+            return {}
+        try:
+            payload = json.loads(text)
+        except Exception:
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+
+        def _boolish(value: Any) -> Optional[bool]:
+            if isinstance(value, bool):
+                return bool(value)
+            if value is None:
+                return None
+            text_val = str(value).strip().lower()
+            if text_val in {"1", "true", "yes", "on"}:
+                return True
+            if text_val in {"0", "false", "no", "off"}:
+                return False
+            return None
+
+        out: Dict[str, Dict[str, Any]] = {}
+        for raw_key, raw_entry in payload.items():
+            key = str(raw_key or "").strip().lower()
+            if not key:
+                continue
+            entry_obj = raw_entry if isinstance(raw_entry, dict) else {"realized_edge_min": raw_entry}
+            override: Dict[str, Any] = {}
+
+            gate_enabled_val = _boolish(
+                entry_obj.get(
+                    "gate_enabled",
+                    entry_obj.get("strategy_realized_edge_gate_enabled"),
+                )
+            )
+            if gate_enabled_val is not None:
+                override["gate_enabled"] = bool(gate_enabled_val)
+
+            realized_edge_min_val = to_float(
+                entry_obj.get(
+                    "realized_edge_min",
+                    entry_obj.get("strategy_realized_edge_min"),
+                )
+            )
+            if realized_edge_min_val is not None and math.isfinite(realized_edge_min_val):
+                override["realized_edge_min"] = float(realized_edge_min_val)
+
+            min_samples_raw = entry_obj.get(
+                "min_samples",
+                entry_obj.get("strategy_realized_edge_min_samples"),
+            )
+            try:
+                min_samples_val = (
+                    int(float(min_samples_raw))
+                    if min_samples_raw is not None
+                    else None
+                )
+            except Exception:
+                min_samples_val = None
+            if min_samples_val is not None and min_samples_val >= 1:
+                override["min_samples"] = int(min_samples_val)
+
+            block_missing_val = _boolish(
+                entry_obj.get(
+                    "block_missing",
+                    entry_obj.get("strategy_realized_edge_block_missing"),
+                )
+            )
+            if block_missing_val is not None:
+                override["block_missing"] = bool(block_missing_val)
+
+            if override:
+                out[key] = override
+        return out
+
+    strategy_realized_edge_strategy_overrides = _parse_strategy_realized_edge_strategy_overrides(
+        os.environ.get("PM_AUTO_TRADE_STRATEGY_REALIZED_EDGE_STRATEGY_OVERRIDES", "")
+    )
+
+    def _strategy_realized_edge_gates_for_strategy(strategy_name: str) -> Dict[str, Any]:
+        key = str(strategy_name or "").strip().lower() or "main"
+        strategy_override = (
+            strategy_realized_edge_strategy_overrides.get(key)
+            or strategy_realized_edge_strategy_overrides.get("*")
+            or {}
+        )
+        gate_enabled = bool(strategy_realized_edge_gate_enabled)
+        if "gate_enabled" in strategy_override:
+            gate_enabled = bool(strategy_override.get("gate_enabled"))
+
+        realized_edge_min_val = to_float(strategy_override.get("realized_edge_min"))
+        if realized_edge_min_val is None or not math.isfinite(realized_edge_min_val):
+            realized_edge_min_val = float(strategy_realized_edge_min)
+
+        min_samples_val = strategy_override.get("min_samples")
+        try:
+            min_samples_i = int(min_samples_val) if min_samples_val is not None else None
+        except Exception:
+            min_samples_i = None
+        if min_samples_i is None or min_samples_i < 1:
+            min_samples_i = int(strategy_realized_edge_min_samples)
+
+        block_missing = bool(strategy_realized_edge_block_missing)
+        if "block_missing" in strategy_override:
+            block_missing = bool(strategy_override.get("block_missing"))
+
+        return {
+            "strategy": key,
+            "override_applied": bool(strategy_override),
+            "override_keys": ",".join(sorted(strategy_override.keys())) if strategy_override else "",
+            "gate_enabled": bool(gate_enabled),
+            "realized_edge_min": float(realized_edge_min_val),
+            "min_samples": int(min_samples_i),
+            "block_missing": bool(block_missing),
+        }
 
     def _strategy_gate_entry_for(strategy_name: str) -> Optional[Dict[str, Any]]:
         key = str(strategy_name or "").strip().lower()
@@ -8904,6 +9417,8 @@ def execute_auto_trades(
                 "edge_path_p_reach_ucb": path_meta.get("p_reach_ucb"),
                 "edge_path_sample_n": path_meta.get("path_sample_n"),
                 "edge_path_bucket_key": path_meta.get("path_bucket_key"),
+                "edge_path_bucket_key_used": path_meta.get("path_bucket_key_used"),
+                "edge_path_fallback_rank": path_meta.get("path_fallback_rank"),
                 "edge_path_source": path_meta.get("path_source"),
                 "edge_path_calibration_path": path_meta.get("path_calibration_path"),
                 "edge_path_calibration_generated_at": path_meta.get("path_calibration_generated_at"),
@@ -8925,8 +9440,9 @@ def execute_auto_trades(
             }
         )
         edge_lcb_val = to_float(edge_floor_meta.get("edge_lcb_tradeable"))
-        if edge_val is not None and math.isfinite(edge_val) and edge_lcb_val is not None and math.isfinite(edge_lcb_val):
-            edge_val = float(edge_lcb_val)
+        # Keep v2 (expected edge) as the primary value for downstream v2 gates.
+        # LCB is exposed via edge_tradeability_* fields and evaluated by policy/HQ gates.
+        # Overwriting v2 with LCB here can unintentionally double-tighten entry gating.
         if policy_meta.get("blocked"):
             return None, meta
         return edge_val, meta
@@ -9533,6 +10049,28 @@ def execute_auto_trades(
     entry_market_fallback_sec = _env_float("PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK_SEC")
     if entry_market_fallback_sec is None or not math.isfinite(entry_market_fallback_sec) or entry_market_fallback_sec <= 0:
         entry_market_fallback_sec = 30.0
+    entry_market_fallback_min_v2 = _env_float(
+        "PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK_MIN_V2"
+    )
+    if (
+        entry_market_fallback_min_v2 is None
+        or not math.isfinite(entry_market_fallback_min_v2)
+        or entry_market_fallback_min_v2 < 0
+    ):
+        entry_market_fallback_min_v2 = 0.0
+    entry_market_fallback_min_p_realize = _env_float(
+        "PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK_MIN_P_REALIZE"
+    )
+    if (
+        entry_market_fallback_min_p_realize is None
+        or not math.isfinite(entry_market_fallback_min_p_realize)
+        or entry_market_fallback_min_p_realize < 0
+    ):
+        entry_market_fallback_min_p_realize = 0.0
+    if entry_market_fallback_min_p_realize > 1.0:
+        entry_market_fallback_min_p_realize = entry_market_fallback_min_p_realize / 100.0
+    if entry_market_fallback_min_p_realize > 1.0:
+        entry_market_fallback_min_p_realize = 1.0
     entry_market_on_rising_ask = _env_bool("PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK", False)
     entry_market_on_rising_ask_eps = _env_float("PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK_EPS")
     if (
@@ -10028,8 +10566,10 @@ def execute_auto_trades(
         q_edge: Optional[float] = None,
         strategy: Optional[str] = None,
     ) -> None:
+        nonlocal event_active_entry, location_active_entry, location_blocking_trade
         if not order_id:
             return
+        now_iso = utc_now_iso()
         cur.execute(
             """
             INSERT OR IGNORE INTO auto_orders (
@@ -10051,9 +10591,25 @@ def execute_auto_trades(
                 q_calibrated,
                 q_edge,
                 strategy,
-                utc_now_iso(),
+                now_iso,
             ),
         )
+        action_u = str(action or "").strip().lower()
+        side_u = str(side or "").strip().upper()
+        if action_u == "entry" and side_u in {"YES", "NO"}:
+            event_active_entry = True
+            if location_key:
+                location_active_entry = True
+                location_blocking_trade = {
+                    "slug": slug,
+                    "event_date": event_date_key,
+                    "outcome": str(outcome or ""),
+                    "side": side_u,
+                    "state": "entry_pending",
+                    "position_size": to_float(size),
+                    "last_order_id": str(order_id or ""),
+                    "updated_at": now_iso,
+                }
 
     top_market_label = _top_market_bucket(rows)
     top_model_label, top_model_q, top_model_second_q = _top_model_bucket(rows)
@@ -10252,6 +10808,8 @@ def execute_auto_trades(
         if min_delay > 0 and entry_open_age_sec < min_delay:
             allow_at = entry_opened_at + timedelta(seconds=min_delay)
             return True, f"open_delay_min until={allow_at.isoformat(timespec='seconds')}"
+        if max_delay > 0 and entry_open_age_sec >= max_delay:
+            return False, ""
         required_drop = max(0.0, AUTO_TRADE_ENTRY_OPEN_DELAY_DROP_PCT)
         if spread_val is not None and math.isfinite(spread_val) and AUTO_TRADE_ENTRY_OPEN_DELAY_SPREAD_REF > 0:
             factor = spread_val / AUTO_TRADE_ENTRY_OPEN_DELAY_SPREAD_REF
@@ -10494,6 +11052,13 @@ def execute_auto_trades(
             return "ask_invalid", "候选缺少有效 ask", details
         if q_entry is None or not math.isfinite(q_entry):
             return "q_entry_invalid", "候选缺少有效 q_entry", details
+        if token_id and token_id in recent_orderbook_missing_tokens:
+            details["orderbook_missing_recent_hits"] = _orderbook_missing_recent_hits(token_id)
+            details["orderbook_missing_cooldown_sec"] = int(entry_orderbook_missing_cooldown_sec)
+            details["orderbook_missing_cooldown_min_hits"] = int(
+                entry_orderbook_missing_cooldown_min_hits
+            )
+            return "orderbook_missing_recent", "近期订单簿缺失，候选进入冷却", details
         if (
             entry_skip_top_label
             and side_u == "NO"
@@ -10657,6 +11222,13 @@ def execute_auto_trades(
             return "ask_invalid", "候选缺少有效 ask", details
         if q_entry is None or not math.isfinite(q_entry):
             return "q_entry_invalid", "候选缺少有效 q_entry", details
+        if token_id and token_id in recent_orderbook_missing_tokens:
+            details["orderbook_missing_recent_hits"] = _orderbook_missing_recent_hits(token_id)
+            details["orderbook_missing_cooldown_sec"] = int(entry_orderbook_missing_cooldown_sec)
+            details["orderbook_missing_cooldown_min_hits"] = int(
+                entry_orderbook_missing_cooldown_min_hits
+            )
+            return "orderbook_missing_recent", "近期订单簿缺失，候选进入冷却", details
         if (
             entry_skip_top_label
             and side_u == "NO"
@@ -11117,6 +11689,8 @@ def execute_auto_trades(
                     or ask_no > AUTO_TRADE_NO_ASK_MAX + TIME_EDGE_Q_EPS
                 ):
                     continue
+            if token_id and token_id in recent_orderbook_missing_tokens:
+                continue
             if (
                 entry_skip_top_label
                 and side == "NO"
@@ -11594,6 +12168,14 @@ def execute_auto_trades(
         if not outcome:
             return []
         forced_yes_top = expected_entry_strategy.get((outcome, "YES")) == "yes_top"
+        if not forced_yes_top:
+            expected_for_outcome = expected_entry_targets_by_outcome.get(outcome) or []
+            forced_yes_top = any(
+                str(item.get("side") or "").strip().upper() == "YES"
+                and str(item.get("strategy") or "").strip().lower() == "yes_top"
+                for item in expected_for_outcome
+                if isinstance(item, dict)
+            )
         yes_q_val = to_float(row.get("q_entry"))
         block_no_by_yes_q = (
             yes_q_val is not None
@@ -12328,6 +12910,8 @@ def execute_auto_trades(
                 if min_entry_size is not None and size < min_entry_size:
                     continue
             q_raw_val = to_float(row.get("q_round")) if side == "YES" else to_float(row.get("q_round_no"))
+            if token_id and token_id in recent_orderbook_missing_tokens:
+                continue
             cand = {
                 "side": side,
                 "edge_min": edge_min_eval,
@@ -12370,13 +12954,183 @@ def execute_auto_trades(
                 ),
                 reverse=True,
             )
-            candidates = candidates[:1]
+            best_by_side: Dict[str, Dict[str, Any]] = {}
+            selected: List[Dict[str, Any]] = []
+            for cand in candidates:
+                side_key = str(cand.get("side") or "").strip().upper()
+                if side_key in {"YES", "NO"}:
+                    if side_key in best_by_side:
+                        continue
+                    best_by_side[side_key] = cand
+                    selected.append(cand)
+                    if len(best_by_side) >= 2:
+                        continue
+                else:
+                    selected.append(cand)
+            candidates = selected
         return candidates
+
+    def _build_forced_expected_candidate(
+        row: Mapping[str, Any],
+        expected: Mapping[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        def _pick_num(*values: Any) -> Optional[float]:
+            for raw in values:
+                val = to_float(raw)
+                if val is not None and math.isfinite(val):
+                    return float(val)
+            return None
+
+        side = str(expected.get("side") or "").strip().upper()
+        strategy = str(expected.get("strategy") or "").strip().lower()
+        if side != "YES" or strategy != "yes_top":
+            return None
+        ask_val = _pick_num(row.get("best_ask"), expected.get("ask"))
+        q_prob_val = _pick_num(
+            row.get("q_entry"),
+            expected.get("q_min_bound"),
+            expected.get("q_entry"),
+        )
+        signal_edge_val = _pick_num(expected.get("edge_min"), expected.get("signal_edge"))
+        if (
+            ask_val is not None
+            and math.isfinite(ask_val)
+            and ask_val > 0
+            and q_prob_val is not None
+            and math.isfinite(q_prob_val)
+        ):
+            signal_edge_val = float(q_prob_val - ask_val)
+        if signal_edge_val is None or not math.isfinite(signal_edge_val):
+            return None
+        if q_prob_val is None and ask_val is not None and math.isfinite(ask_val):
+            q_prob_val = float(ask_val + signal_edge_val)
+        if (
+            ask_val is None
+            and q_prob_val is not None
+            and math.isfinite(q_prob_val)
+        ):
+            ask_val = float(q_prob_val - signal_edge_val)
+        if ask_val is None or not math.isfinite(ask_val) or ask_val <= 0:
+            ask_val = _pick_num(expected.get("order_price"), expected.get("price"))
+        if ask_val is None or not math.isfinite(ask_val) or ask_val <= 0:
+            return None
+        token_id = str(row.get("yes_token") or expected.get("token_id") or "").strip()
+        if not token_id:
+            return None
+        spread_val = _pick_num(row.get("spread"), expected.get("spread"))
+        best_bid_val = _pick_num(row.get("best_bid"), expected.get("best_bid"))
+        if (
+            (best_bid_val is None or not math.isfinite(best_bid_val))
+            and spread_val is not None
+            and math.isfinite(spread_val)
+            and spread_val >= 0
+        ):
+            best_bid_val = max(0.0, float(ask_val) - float(spread_val))
+        order_price = _resolve_yes_top_price(
+            ask_val,
+            best_bid_val,
+            spread_val,
+            entry_yes_top_price_spread_ratio,
+        )
+        if order_price is None or not math.isfinite(order_price) or order_price <= 0:
+            order_price = _resolve_mid_price(ask_val, best_bid_val, spread_val)
+        if order_price is None or not math.isfinite(order_price) or order_price <= 0:
+            order_price = _pick_num(
+                expected.get("order_price"),
+                expected.get("price"),
+            )
+        if order_price is None or not math.isfinite(order_price) or order_price <= 0:
+            return None
+        size = _resolve_order_size(order_price, 0.0, None)
+        if size is None or not math.isfinite(size) or size <= 0:
+            size = _pick_num(expected.get("order_size"), expected.get("size"))
+        if size is None or not math.isfinite(size) or size <= 0:
+            return None
+        cand = {
+            "side": "YES",
+            "edge_min": float(signal_edge_val),
+            "edge_score": _pick_num(row.get("edge_score_yes"), expected.get("edge_score")) or 0.0,
+            "exec_edge_entry": _pick_num(
+                row.get("exec_edge_entry_yes"),
+                expected.get("exec_edge_entry"),
+            ),
+            "exec_edge_exit": _pick_num(
+                row.get("exec_edge_exit_yes"),
+                expected.get("exec_edge_exit"),
+            ),
+            "exec_edge_score": _pick_num(
+                row.get("exec_edge_score_yes"),
+                expected.get("exec_edge_score"),
+            ),
+            "price": float(order_price),
+            "size": float(size),
+            "token_id": token_id,
+            "trend_limit": False,
+            "trend_limit_strict": False,
+            "limit_mode": "",
+            "trend_down": bool(row.get("trend_down_yes")),
+            "trend_up": bool(row.get("trend_up_yes")),
+            "trend_unknown": bool(row.get("trend_unknown_yes")),
+            "trend_pct": _pick_num(row.get("trend_pct_yes"), expected.get("trend_pct")),
+            "trend_consistency_up": _pick_num(
+                row.get("trend_consistency_up_yes"),
+                expected.get("trend_consistency_up"),
+            ),
+            "q_raw": _pick_num(row.get("q_round"), expected.get("q_round")),
+            "q_calibrated": _pick_num(
+                row.get("q_calibrated"),
+                expected.get("q_calibrated"),
+                expected.get("q_entry"),
+            ),
+            "q_edge": _pick_num(row.get("q_edge"), expected.get("q_edge")),
+            "strategy": "yes_top",
+            "priority": 998,
+            "forced_expected_target": True,
+        }
+        passthrough_numeric_keys = (
+            "edge_realizable",
+            "edge_realizable_v2",
+            "edge_realizable_v2_raw",
+            "edge_realizable_p_realize",
+            "edge_realizable_p_realize_min",
+            "edge_realizable_p_converge",
+            "edge_realizable_p_converge_min",
+            "edge_realizable_gate_v2_min",
+            "edge_tradeability_edge_lcb",
+            "edge_tradeability_edge_lcb_min",
+        )
+        for key in passthrough_numeric_keys:
+            val = _pick_num(expected.get(key))
+            if val is not None and math.isfinite(val):
+                cand[key] = float(val)
+        gate_strategy = str(expected.get("edge_realizable_gate_strategy") or "").strip().lower()
+        if gate_strategy:
+            cand["edge_realizable_gate_strategy"] = gate_strategy
+        if "edge_tradeability_pass" in expected:
+            cand["edge_tradeability_pass"] = bool(expected.get("edge_tradeability_pass"))
+        _candidate_realizable_sort_score(cand, row)
+        return cand
 
     entry_candidates_by_outcome: Dict[str, List[Dict[str, Any]]] = {}
     location_best_key: Optional[Tuple[str, str]] = None
     location_best_score: Optional[float] = None
     location_best_edge: Optional[float] = None
+    location_ranked_candidates: List[Tuple[float, float, str, str]] = []
+    location_ranked_candidates_eligible: List[Tuple[float, float, str, str]] = []
+    location_best_topn = _env_int("PM_AUTO_TRADE_LOCATION_BEST_TOPN")
+    if location_best_topn is None or location_best_topn < 1:
+        location_best_topn = 1
+    location_best_require_entry_eligible = _env_bool(
+        "PM_AUTO_TRADE_LOCATION_BEST_REQUIRE_ENTRY_ELIGIBLE",
+        True,
+    )
+    location_best_require_edge_lcb_positive = _env_bool(
+        "PM_AUTO_TRADE_LOCATION_BEST_REQUIRE_EDGE_LCB_POSITIVE",
+        True,
+    )
+    location_best_source = "all"
+    location_best_keys: List[Tuple[str, str]] = []
+    location_best_allowed_keys: Set[Tuple[str, str]] = set()
     entry_volume_blocked_sides: Set[Tuple[str, str]] = set()
     observed_runtime_outcomes: Set[str] = set()
     volume_refresh_cache: Dict[str, Any] = {"ts": 0.0, "lookup": {}}
@@ -12444,6 +13198,39 @@ def execute_auto_trades(
                 return False, volume_live, "below_live"
             return True, volume_live, "ok_live"
         return pre_ok, pre_value, pre_reason
+
+    def _location_candidate_entry_eligible(cand: Mapping[str, Any]) -> bool:
+        strategy_name = str(cand.get("strategy") or "").strip().lower() or "main"
+        gate_cfg = _edge_realizable_gates_for_strategy(strategy_name)
+        p_realize_min = to_float(gate_cfg.get("p_realize_min"))
+        if p_realize_min is not None and math.isfinite(p_realize_min) and p_realize_min > TIME_EDGE_Q_EPS:
+            p_realize_val = to_float(cand.get("edge_realizable_p_realize"))
+            if p_realize_val is None or not math.isfinite(p_realize_val):
+                return False
+            if p_realize_val + TIME_EDGE_Q_EPS < float(p_realize_min):
+                return False
+        p_converge_min = to_float(gate_cfg.get("p_converge_min"))
+        if p_converge_min is not None and math.isfinite(p_converge_min) and p_converge_min > TIME_EDGE_Q_EPS:
+            p_converge_val = to_float(cand.get("edge_realizable_p_converge"))
+            if p_converge_val is None or not math.isfinite(p_converge_val):
+                return False
+            if p_converge_val + TIME_EDGE_Q_EPS < float(p_converge_min):
+                return False
+        v2_min = to_float(gate_cfg.get("edge_realizable_v2_min"))
+        if v2_min is not None and math.isfinite(v2_min) and v2_min > TIME_EDGE_Q_EPS:
+            v2_val = to_float(cand.get("edge_realizable_v2"))
+            if v2_val is None or not math.isfinite(v2_val):
+                return False
+            if v2_val + TIME_EDGE_Q_EPS < float(v2_min):
+                return False
+        if location_best_require_edge_lcb_positive:
+            edge_lcb_val = to_float(cand.get("edge_tradeability_edge_lcb"))
+            if edge_lcb_val is None or not math.isfinite(edge_lcb_val):
+                return False
+            if edge_lcb_val <= TIME_EDGE_Q_EPS:
+                return False
+        return True
+
     for row in rows:
         outcome = str(row.get("outcome") or "")
         if not outcome:
@@ -12468,6 +13255,11 @@ def execute_auto_trades(
                 if exp_side in candidate_sides_runtime:
                     continue
                 exp_strategy = str(expected.get("strategy") or "").strip().lower()
+                forced_cand = _build_forced_expected_candidate(row, expected)
+                if isinstance(forced_cand, dict):
+                    candidates.append(forced_cand)
+                    candidate_sides_runtime.add(exp_side)
+                    continue
                 code, text, detail = _diagnose_expected_candidate_missing(
                     row,
                     outcome=outcome,
@@ -12481,6 +13273,39 @@ def execute_auto_trades(
                     text,
                     detail,
                 )
+        existing_candidates = entry_candidates_by_outcome.get(outcome) or []
+        if existing_candidates:
+            merged_candidates: List[Dict[str, Any]] = []
+            for cand_item in list(existing_candidates) + list(candidates):
+                if isinstance(cand_item, dict):
+                    merged_candidates.append(cand_item)
+            if len(merged_candidates) > 1:
+                merged_candidates.sort(
+                    key=lambda c: (
+                        c.get("priority", 0),
+                        _candidate_sort_score(c),
+                        to_float(c.get("edge_realizable_sort"))
+                        if to_float(c.get("edge_realizable_sort")) is not None
+                        else to_float(c.get("edge_min")) or 0.0,
+                    ),
+                    reverse=True,
+                )
+                best_by_side_merge: Dict[str, Dict[str, Any]] = {}
+                selected_merge: List[Dict[str, Any]] = []
+                for cand_item in merged_candidates:
+                    side_key = str(cand_item.get("side") or "").strip().upper()
+                    if side_key in {"YES", "NO"}:
+                        if side_key in best_by_side_merge:
+                            continue
+                        best_by_side_merge[side_key] = cand_item
+                        selected_merge.append(cand_item)
+                        if len(best_by_side_merge) >= 2:
+                            continue
+                    else:
+                        selected_merge.append(cand_item)
+                candidates = selected_merge
+            else:
+                candidates = merged_candidates
         entry_candidates_by_outcome[outcome] = candidates
         if candidates:
             cand = candidates[0]
@@ -12488,6 +13313,12 @@ def execute_auto_trades(
             edge_val = to_float(cand.get("edge_realizable_sort"))
             if edge_val is None or not math.isfinite(edge_val):
                 edge_val = to_float(cand.get("edge_min")) or 0.0
+            side_key = str(cand.get("side") or "").strip().upper()
+            if side_key in {"YES", "NO"}:
+                ranked_item = (float(score), float(edge_val), outcome, side_key)
+                location_ranked_candidates.append(ranked_item)
+                if _location_candidate_entry_eligible(cand):
+                    location_ranked_candidates_eligible.append(ranked_item)
             if location_best_key is None:
                 location_best_key = (outcome, str(cand.get("side") or ""))
                 location_best_score = score
@@ -12503,6 +13334,29 @@ def execute_auto_trades(
                     location_best_key = (outcome, str(cand.get("side") or ""))
                     location_best_score = score
                     location_best_edge = edge_val
+    location_ranked_for_best = location_ranked_candidates
+    if location_best_require_entry_eligible:
+        if location_ranked_candidates_eligible:
+            location_ranked_for_best = location_ranked_candidates_eligible
+            location_best_source = "entry_eligible"
+        else:
+            location_ranked_for_best = location_ranked_candidates
+            location_best_source = "fallback_all"
+    if location_ranked_for_best:
+        location_ranked_for_best.sort(
+            key=lambda item: (item[0], item[1], item[2], item[3]),
+            reverse=True,
+        )
+        for _, _, outcome_key, side_key in location_ranked_for_best:
+            key = (outcome_key, side_key)
+            if key in location_best_allowed_keys:
+                continue
+            location_best_allowed_keys.add(key)
+            location_best_keys.append(key)
+            if len(location_best_keys) >= int(location_best_topn):
+                break
+    if location_best_key is None and location_best_keys:
+        location_best_key = location_best_keys[0]
 
     follow_yes_pick_key: Optional[Tuple[str, str]] = None
     follow_yes_pick_score: Optional[float] = None
@@ -12627,10 +13481,37 @@ def execute_auto_trades(
         if not label_key or label_key in token_refresh_attempted:
             return {}
         token_refresh_attempted.add(label_key)
+        remap_gamma_timeout = _env_float("PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_TIMEOUT_SEC")
+        if (
+            remap_gamma_timeout is None
+            or not math.isfinite(remap_gamma_timeout)
+            or remap_gamma_timeout <= 0
+        ):
+            remap_gamma_timeout = min(float(GAMMA_TIMEOUT), 3.0)
+        remap_gamma_retries = _env_int("PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_RETRIES")
+        if remap_gamma_retries is None or remap_gamma_retries <= 0:
+            remap_gamma_retries = 1
+        remap_gamma_backoff = _env_float("PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_BACKOFF_SEC")
+        if (
+            remap_gamma_backoff is None
+            or not math.isfinite(remap_gamma_backoff)
+            or remap_gamma_backoff < 0
+        ):
+            remap_gamma_backoff = 0.1
+        remap_gamma_bypass_proxy = _env_bool(
+            "PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_BYPASS_PROXY",
+            False,
+        )
         outcome_tokens: List[Dict[str, Any]] = []
         event_detail = None
         try:
-            event_detail = fetch_gamma_event_by_slug(slug)
+            event_detail = fetch_gamma_event_by_slug(
+                slug,
+                timeout=remap_gamma_timeout,
+                retries=remap_gamma_retries,
+                backoff=remap_gamma_backoff,
+                bypass_proxy=remap_gamma_bypass_proxy,
+            )
         except Exception:
             event_detail = None
         if event_detail is not None:
@@ -12640,7 +13521,13 @@ def execute_auto_trades(
                 outcome_tokens = []
         if not outcome_tokens:
             try:
-                market = fetch_gamma_market_by_slug(slug)
+                market = fetch_gamma_market_by_slug(
+                    slug,
+                    timeout=remap_gamma_timeout,
+                    retries=remap_gamma_retries,
+                    backoff=remap_gamma_backoff,
+                    bypass_proxy=remap_gamma_bypass_proxy,
+                )
             except Exception:
                 market = None
             if market is not None:
@@ -12806,7 +13693,7 @@ def execute_auto_trades(
                 result["error_code"] = "orderbook_missing"
             retried = False
             fallback_price: Optional[float] = None
-            if "status=404" in err_text and allow_token_remap:
+            if ("status=404" in err_text or is_no_orderbook) and allow_token_remap:
                 refreshed = _refresh_token_ids_for_outcome(outcome_u)
                 new_token = refreshed.get("yes_token") if side_u == "YES" else refreshed.get("no_token")
                 fallback_key = "yes_price" if side_u == "YES" else "no_price"
@@ -13071,8 +13958,12 @@ def execute_auto_trades(
         if not outcome:
             continue
         candidates = entry_candidates_by_outcome.get(outcome) or []
-        candidate_side = {c["side"] for c in candidates}
-        candidate_map = {c["side"]: c for c in candidates}
+        candidate_map: Dict[str, Dict[str, Any]] = {}
+        for cand in candidates:
+            side_key = str(cand.get("side") or "").strip().upper()
+            if side_key in {"YES", "NO"} and side_key not in candidate_map:
+                candidate_map[side_key] = cand
+        candidate_side = set(candidate_map.keys())
         _seed_decision_context(outcome, "YES", row=row, candidate=candidate_map.get("YES"))
         _seed_decision_context(outcome, "NO", row=row, candidate=candidate_map.get("NO"))
         entry_volume_ok, entry_volume_value, entry_volume_reason = _resolve_entry_outcome_volume(row)
@@ -14169,6 +15060,23 @@ def execute_auto_trades(
                             entry_retry_count=prev_retry_count + 1,
                             trend_limit_step=None,
                         )
+                        if not exit_only and side in candidate_side:
+                            _buffer_decision(
+                                outcome,
+                                side,
+                                "entry",
+                                decided_state="blocked",
+                                will_order=False,
+                                reason_codes=["entry_gate_blocked", "exit_flag", "entry_stale_cancel_exit"],
+                                reasons=["挂单超时后检测到退出信号，本轮取消入场"],
+                                details={
+                                    "prev_state": prev_state,
+                                    "exit_flag": True,
+                                    "pending_age_sec": age_sec,
+                                    "stale_threshold_sec": stale_threshold,
+                                    "strategy": str((candidate or {}).get("strategy") or ""),
+                                },
+                            )
                         prev_state = "entry_failed"
                         continue
                     if candidate and token_id:
@@ -14250,6 +15158,112 @@ def execute_auto_trades(
                                 if price_for_amount is not None and math.isfinite(price_for_amount) and price_for_amount > 0:
                                     order_amount = market_size * price_for_amount
                                 strategy_name = str(candidate.get("strategy") or "").strip().lower()
+                                fallback_v2_val = to_float(candidate.get("edge_realizable_v2"))
+                                fallback_p_realize_val = to_float(
+                                    candidate.get("edge_realizable_p_realize")
+                                )
+                                fallback_block_codes: List[str] = []
+                                fallback_block_reasons: List[str] = []
+                                if entry_market_fallback_min_v2 > TIME_EDGE_Q_EPS:
+                                    if (
+                                        fallback_v2_val is None
+                                        or not math.isfinite(fallback_v2_val)
+                                    ):
+                                        fallback_block_codes.append(
+                                            "entry_market_fallback_edge_realizable_missing"
+                                        )
+                                        fallback_block_reasons.append(
+                                            "可兑现V2缺失，禁止市价补单"
+                                        )
+                                    elif (
+                                        fallback_v2_val + TIME_EDGE_Q_EPS
+                                        < entry_market_fallback_min_v2
+                                    ):
+                                        fallback_block_codes.append(
+                                            "entry_market_fallback_edge_realizable_low"
+                                        )
+                                        fallback_block_reasons.append(
+                                            f"可兑现V2={fallback_v2_val:.2%}<{entry_market_fallback_min_v2:.2%}，禁止市价补单"
+                                        )
+                                if entry_market_fallback_min_p_realize > TIME_EDGE_Q_EPS:
+                                    if (
+                                        fallback_p_realize_val is None
+                                        or not math.isfinite(fallback_p_realize_val)
+                                    ):
+                                        fallback_block_codes.append(
+                                            "entry_market_fallback_p_realize_missing"
+                                        )
+                                        fallback_block_reasons.append(
+                                            "可兑现概率缺失，禁止市价补单"
+                                        )
+                                    elif (
+                                        fallback_p_realize_val + TIME_EDGE_Q_EPS
+                                        < entry_market_fallback_min_p_realize
+                                    ):
+                                        fallback_block_codes.append(
+                                            "entry_market_fallback_p_realize_low"
+                                        )
+                                        fallback_block_reasons.append(
+                                            f"可兑现概率={fallback_p_realize_val:.2%}<{entry_market_fallback_min_p_realize:.2%}，禁止市价补单"
+                                        )
+                                if fallback_block_codes:
+                                    now_iso = utc_now_iso()
+                                    block_error = ",".join(fallback_block_codes)
+                                    _update_trade_state(
+                                        outcome,
+                                        side,
+                                        "entry_failed",
+                                        None,
+                                        "",
+                                        entry_price=price_for_amount,
+                                        entry_size=market_size,
+                                        last_action="entry_market_skip",
+                                        last_action_price=price_for_amount,
+                                        last_action_size=market_size,
+                                        last_action_order_type="FAK",
+                                        last_action_at=now_iso,
+                                        last_status="fallback_effective_edge_blocked",
+                                        last_error=block_error,
+                                        entry_retry_count=prev_retry_count + 1,
+                                        trend_limit_step=None,
+                                    )
+                                    _buffer_decision(
+                                        outcome,
+                                        side,
+                                        "entry",
+                                        decided_state="blocked",
+                                        will_order=False,
+                                        reason_codes=[
+                                            "entry_market_fallback_blocked_by_effective_edge"
+                                        ]
+                                        + fallback_block_codes,
+                                        reasons=(
+                                            ["市价补单硬门阻断：成交后有效边际不足"]
+                                            + fallback_block_reasons
+                                        ),
+                                        details={
+                                            "pending_age_sec": age_sec,
+                                            "fallback_sec": entry_market_fallback_sec,
+                                            "fallback_min_v2": entry_market_fallback_min_v2,
+                                            "fallback_min_p_realize": entry_market_fallback_min_p_realize,
+                                            "edge_realizable_v2": fallback_v2_val,
+                                            "edge_realizable_p_realize": fallback_p_realize_val,
+                                            "position_size": position_size_now,
+                                            "entry_target_size": entry_target_size,
+                                            "remaining_size": remaining_size,
+                                            "market_size": market_size,
+                                            "market_amount_usdc": order_amount,
+                                            "price_for_amount": price_for_amount,
+                                            "strategy": str(candidate.get("strategy") or ""),
+                                        },
+                                    )
+                                    print(
+                                        f"[auto-trade] entry market skip {title} {side} {outcome} "
+                                        "reason=fallback_effective_edge_blocked "
+                                        f"v2={_fmt_price(fallback_v2_val)} "
+                                        f"p_realize={_fmt_price(fallback_p_realize_val)}"
+                                    )
+                                    continue
                                 if (
                                     strategy_name == "follow_copy"
                                     and entry_follow_market_min_usdc > TIME_EDGE_Q_EPS
@@ -14740,8 +15754,42 @@ def execute_auto_trades(
                     reentry_blocked = True
             if pending_block:
                 if not exit_flag:
+                    if not exit_only and side in candidate_side:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["entry_pending_state"],
+                            reasons=["订单状态待确认，暂不发起新入场"],
+                            details={
+                                "prev_state": prev_state,
+                                "pending_block": True,
+                                "exit_flag": bool(exit_flag),
+                                "last_status": prev_last_status,
+                                "last_error": prev_last_error,
+                            },
+                        )
                     continue
             if exit_block and exit_flag:
+                if not exit_only and side in candidate_side:
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=["exit_processing"],
+                        reasons=["退出流程进行中，暂不发起新入场"],
+                        details={
+                            "prev_state": prev_state,
+                            "exit_block": True,
+                            "exit_flag": bool(exit_flag),
+                            "last_status": prev_last_status,
+                            "last_error": prev_last_error,
+                        },
+                    )
                 continue
             other_side = "NO" if side == "YES" else "YES"
             other_prev = prev_states.get((outcome, other_side), {})
@@ -15236,6 +16284,13 @@ def execute_auto_trades(
                         if note_text:
                             refresh_note = f" · 补拉={note_text}"
                     refresh_no_orderbook = refresh_error_code == "orderbook_missing"
+                    if refresh_no_orderbook:
+                        refresh_token_id = str(candidate.get("token_id") or "").strip()
+                        if refresh_token_id:
+                            recent_orderbook_missing_counts[refresh_token_id] = int(
+                                recent_orderbook_missing_counts.get(refresh_token_id) or 0
+                            ) + 1
+                            recent_orderbook_missing_tokens.add(refresh_token_id)
                     if tick_age_sec is None and market_tick_require_present:
                         if refresh_no_orderbook:
                             _buffer_decision(
@@ -15379,13 +16434,25 @@ def execute_auto_trades(
                     "adj_pair",
                     "follow_copy",
                 }
+                location_candidate_key = (outcome, side)
+                enforce_location_not_best = True
+                if location_best_source == "fallback_all":
+                    enforce_location_not_best = False
+                location_not_best = False
+                if location_key:
+                    if location_best_allowed_keys:
+                        location_not_best = (
+                            location_candidate_key not in location_best_allowed_keys
+                        )
+                    elif location_best_key:
+                        location_not_best = location_candidate_key != location_best_key
                 location_block = False
                 if not allow_topup and prev_state not in {"entry", "entry_pending"}:
                     if event_active_entry:
                         location_block = True
                     elif location_key and location_active_entry:
                         location_block = True
-                    elif location_key and location_best_key and (outcome, side) != location_best_key:
+                    elif location_key and location_not_best and enforce_location_not_best:
                         location_block = True
                 if location_block and not allow_location_override:
                     rc = ["location_block"]
@@ -15403,9 +16470,17 @@ def execute_auto_trades(
                                 f"{bt.get('side')} {bt.get('outcome')} pos={bt.get('position_size')}"
                             )
                         rs.append(f"同地点已有活跃持仓({block_text})")
-                    elif location_key and location_best_key and (outcome, side) != location_best_key:
+                    elif location_key and location_not_best:
                         rc.append("not_location_best")
-                        rs.append(f"非该地点最优候选(best={location_best_key})")
+                        if location_best_keys:
+                            best_text = ", ".join(
+                                [f"{k[0]}:{k[1]}" for k in location_best_keys]
+                            )
+                            rs.append(
+                                f"非该地点优先候选(top{int(location_best_topn)}={best_text})"
+                            )
+                        else:
+                            rs.append(f"非该地点最优候选(best={location_best_key})")
                     _buffer_decision(
                         outcome,
                         side,
@@ -15422,6 +16497,26 @@ def execute_auto_trades(
                             "location_label": location_label,
                             "location_active_entry": location_active_entry,
                             "location_blocking_trade": location_blocking_trade,
+                            "location_block_max_event_age_days": int(location_block_max_event_age_days),
+                            "location_block_event_cutoff": location_block_event_cutoff,
+                            "location_block_event_date_gap_days": int(location_block_event_date_gap_days),
+                            "location_block_event_gap_cutoff": location_block_event_gap_cutoff,
+                            "location_block_effective_cutoff": location_block_effective_cutoff,
+                            "location_best_topn": int(location_best_topn),
+                            "location_best_source": location_best_source,
+                            "location_best_require_entry_eligible": bool(
+                                location_best_require_entry_eligible
+                            ),
+                            "location_best_require_edge_lcb_positive": bool(
+                                location_best_require_edge_lcb_positive
+                            ),
+                            "location_best_ranked_count": len(location_ranked_candidates),
+                            "location_best_ranked_eligible_count": len(
+                                location_ranked_candidates_eligible
+                            ),
+                            "location_not_best_enforced": bool(enforce_location_not_best),
+                            "location_best_keys": [list(k) for k in location_best_keys],
+                            "location_not_best": bool(location_not_best),
                             "location_best_key": location_best_key,
                             "prev_state": prev_state,
                             "allow_topup": allow_topup,
@@ -16411,7 +17506,44 @@ def execute_auto_trades(
                 candidate["edge_realizable_p_converge_min"] = float(
                     entry_edge_realizable_p_converge_min_gate
                 )
+                hq_signal_lcb_min_gate = to_float(edge_gate_cfg.get("high_quality_signal_lcb_min"))
+                hq_path_lcb_min_gate = to_float(edge_gate_cfg.get("high_quality_path_lcb_min"))
+                hq_edge_lcb_min_gate = to_float(edge_gate_cfg.get("high_quality_edge_lcb_min"))
+                hq_bypass_p_realize_gate = bool(
+                    edge_gate_cfg.get("high_quality_bypass_p_realize_min")
+                )
+                hq_bypass_p_converge_gate = bool(
+                    edge_gate_cfg.get("high_quality_bypass_p_converge_min")
+                )
+                if hq_signal_lcb_min_gate is not None and math.isfinite(hq_signal_lcb_min_gate):
+                    candidate["edge_realizable_hq_signal_lcb_min"] = float(hq_signal_lcb_min_gate)
+                if hq_path_lcb_min_gate is not None and math.isfinite(hq_path_lcb_min_gate):
+                    candidate["edge_realizable_hq_path_lcb_min"] = float(hq_path_lcb_min_gate)
+                if hq_edge_lcb_min_gate is not None and math.isfinite(hq_edge_lcb_min_gate):
+                    candidate["edge_realizable_hq_edge_lcb_min"] = float(hq_edge_lcb_min_gate)
+                candidate["edge_realizable_hq_bypass_p_realize_min"] = bool(
+                    hq_bypass_p_realize_gate
+                )
+                candidate["edge_realizable_hq_bypass_p_converge_min"] = bool(
+                    hq_bypass_p_converge_gate
+                )
                 strategy_gate_entry = _strategy_gate_entry_for(strategy_name)
+                strategy_realized_edge_gate_cfg = _strategy_realized_edge_gates_for_strategy(
+                    strategy_name
+                )
+                strategy_realized_edge_gate_enabled_val = bool(
+                    strategy_realized_edge_gate_cfg.get("gate_enabled")
+                )
+                strategy_realized_edge_min_gate = float(
+                    strategy_realized_edge_gate_cfg.get("realized_edge_min") or 0.0
+                )
+                strategy_realized_edge_min_samples_gate = int(
+                    strategy_realized_edge_gate_cfg.get("min_samples")
+                    or strategy_realized_edge_min_samples
+                )
+                strategy_realized_edge_block_missing_gate = bool(
+                    strategy_realized_edge_gate_cfg.get("block_missing")
+                )
                 strategy_realized_edge_val = None
                 strategy_sample_n = None
                 if isinstance(strategy_gate_entry, dict):
@@ -16428,11 +17560,22 @@ def execute_auto_trades(
                             strategy_gate_entry.get("closed_trade_count")
                         )
                 candidate["strategy_realized_edge_gate_enabled"] = bool(
-                    strategy_realized_edge_gate_enabled
+                    strategy_realized_edge_gate_enabled_val
                 )
-                candidate["strategy_realized_edge_min"] = float(strategy_realized_edge_min)
+                candidate["strategy_realized_edge_gate_override_applied"] = bool(
+                    strategy_realized_edge_gate_cfg.get("override_applied")
+                )
+                candidate["strategy_realized_edge_gate_override_keys"] = str(
+                    strategy_realized_edge_gate_cfg.get("override_keys") or ""
+                )
+                candidate["strategy_realized_edge_min"] = float(
+                    strategy_realized_edge_min_gate
+                )
                 candidate["strategy_realized_edge_min_samples"] = float(
-                    strategy_realized_edge_min_samples
+                    strategy_realized_edge_min_samples_gate
+                )
+                candidate["strategy_realized_edge_block_missing"] = bool(
+                    strategy_realized_edge_block_missing_gate
                 )
                 candidate["strategy_realized_edge_source_path"] = str(
                     strategy_gate_report_path or ""
@@ -16440,6 +17583,7 @@ def execute_auto_trades(
                 candidate["strategy_realized_edge_source_generated_at"] = str(
                     strategy_gate_generated_at or ""
                 )
+                candidate["edge_lcb_single_judge_mode"] = bool(edge_lcb_single_judge_mode)
                 if strategy_sample_n is not None and math.isfinite(strategy_sample_n):
                     candidate["strategy_realized_edge_sample_n"] = float(strategy_sample_n)
                 if strategy_realized_edge_val is not None and math.isfinite(strategy_realized_edge_val):
@@ -16447,11 +17591,12 @@ def execute_auto_trades(
                 _seed_decision_context(outcome, side, candidate=candidate, action="entry")
                 if (
                     is_new_entry
-                    and strategy_realized_edge_gate_enabled
+                    and strategy_realized_edge_gate_enabled_val
+                    and (not edge_lcb_single_judge_mode)
                 ):
                     if strategy_gate_entry is None:
                         candidate["strategy_realized_edge_missing"] = True
-                        if strategy_realized_edge_block_missing:
+                        if strategy_realized_edge_block_missing_gate:
                             _buffer_decision(
                                 outcome,
                                 side,
@@ -16464,16 +17609,16 @@ def execute_auto_trades(
                                     "strategy": strategy_name,
                                     "strategy_realized_edge_source_path": str(strategy_gate_report_path or ""),
                                     "strategy_realized_edge_source_generated_at": str(strategy_gate_generated_at or ""),
-                                    "strategy_realized_edge_min": float(strategy_realized_edge_min),
-                                    "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples),
+                                    "strategy_realized_edge_min": float(strategy_realized_edge_min_gate),
+                                    "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples_gate),
                                 },
                             )
                             continue
                     else:
                         has_sample_n = strategy_sample_n is not None and math.isfinite(strategy_sample_n)
-                        if (not has_sample_n) or float(strategy_sample_n) + TIME_EDGE_Q_EPS < float(strategy_realized_edge_min_samples):
+                        if (not has_sample_n) or float(strategy_sample_n) + TIME_EDGE_Q_EPS < float(strategy_realized_edge_min_samples_gate):
                             candidate["strategy_realized_edge_low_sample"] = True
-                            if strategy_realized_edge_block_missing:
+                            if strategy_realized_edge_block_missing_gate:
                                 _buffer_decision(
                                     outcome,
                                     side,
@@ -16486,8 +17631,8 @@ def execute_auto_trades(
                                         "strategy": strategy_name,
                                         "strategy_realized_edge": strategy_realized_edge_val,
                                         "strategy_realized_edge_sample_n": strategy_sample_n,
-                                        "strategy_realized_edge_min": float(strategy_realized_edge_min),
-                                        "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples),
+                                        "strategy_realized_edge_min": float(strategy_realized_edge_min_gate),
+                                        "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples_gate),
                                         "strategy_realized_edge_source_path": str(strategy_gate_report_path or ""),
                                         "strategy_realized_edge_source_generated_at": str(strategy_gate_generated_at or ""),
                                     },
@@ -16498,7 +17643,7 @@ def execute_auto_trades(
                             or not math.isfinite(strategy_realized_edge_val)
                         ):
                             candidate["strategy_realized_edge_missing"] = True
-                            if strategy_realized_edge_block_missing:
+                            if strategy_realized_edge_block_missing_gate:
                                 _buffer_decision(
                                     outcome,
                                     side,
@@ -16511,14 +17656,14 @@ def execute_auto_trades(
                                         "strategy": strategy_name,
                                         "strategy_realized_edge": strategy_realized_edge_val,
                                         "strategy_realized_edge_sample_n": strategy_sample_n,
-                                        "strategy_realized_edge_min": float(strategy_realized_edge_min),
-                                        "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples),
+                                        "strategy_realized_edge_min": float(strategy_realized_edge_min_gate),
+                                        "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples_gate),
                                         "strategy_realized_edge_source_path": str(strategy_gate_report_path or ""),
                                         "strategy_realized_edge_source_generated_at": str(strategy_gate_generated_at or ""),
                                     },
                                 )
                                 continue
-                        elif strategy_realized_edge_val + TIME_EDGE_Q_EPS < float(strategy_realized_edge_min):
+                        elif strategy_realized_edge_val + TIME_EDGE_Q_EPS < float(strategy_realized_edge_min_gate):
                             candidate["strategy_realized_edge_blocked"] = True
                             _buffer_decision(
                                 outcome,
@@ -16528,21 +17673,21 @@ def execute_auto_trades(
                                 will_order=False,
                                 reason_codes=["strategy_realized_edge_blocked"],
                                 reasons=[
-                                    f"策略真实兑现边际={strategy_realized_edge_val:.2%}<{strategy_realized_edge_min:.2%}，禁止入场"
+                                    f"策略真实兑现边际={strategy_realized_edge_val:.2%}<{strategy_realized_edge_min_gate:.2%}，禁止入场"
                                 ],
                                 details={
                                     "strategy": strategy_name,
                                     "strategy_realized_edge": strategy_realized_edge_val,
                                     "strategy_realized_edge_sample_n": strategy_sample_n,
-                                    "strategy_realized_edge_min": float(strategy_realized_edge_min),
-                                    "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples),
+                                    "strategy_realized_edge_min": float(strategy_realized_edge_min_gate),
+                                    "strategy_realized_edge_min_samples": float(strategy_realized_edge_min_samples_gate),
                                     "strategy_realized_edge_source_path": str(strategy_gate_report_path or ""),
                                     "strategy_realized_edge_source_generated_at": str(strategy_gate_generated_at or ""),
                                 },
                             )
                             continue
                 if is_new_entry and edge_realizable_v2_gate_entry:
-                    if candidate.get("edge_realizable_exec_audit_blocked"):
+                    if candidate.get("edge_realizable_exec_audit_blocked") and (not edge_lcb_single_judge_mode):
                         _buffer_decision(
                             outcome,
                             side,
@@ -16591,7 +17736,7 @@ def execute_auto_trades(
                         )
                         continue
                     v2_val = to_float(candidate.get("edge_realizable_v2"))
-                    if v2_val is None or not math.isfinite(v2_val):
+                    if (not edge_lcb_single_judge_mode) and (v2_val is None or not math.isfinite(v2_val)):
                         p_fill_entry_val = to_float(candidate.get("edge_realizable_p_fill_entry"))
                         p_fill_exit_val = to_float(candidate.get("edge_realizable_p_fill_exit"))
                         p_converge_val = to_float(candidate.get("edge_realizable_p_converge"))
@@ -16628,85 +17773,164 @@ def execute_auto_trades(
                             },
                         )
                         continue
-                    if entry_edge_realizable_p_realize_min_gate > TIME_EDGE_Q_EPS:
+                    hq_signal_lcb_min_gate = to_float(candidate.get("edge_realizable_hq_signal_lcb_min"))
+                    hq_path_lcb_min_gate = to_float(candidate.get("edge_realizable_hq_path_lcb_min"))
+                    hq_edge_lcb_min_gate = to_float(candidate.get("edge_realizable_hq_edge_lcb_min"))
+                    hq_bypass_p_realize_gate = bool(
+                        candidate.get("edge_realizable_hq_bypass_p_realize_min")
+                    )
+                    hq_bypass_p_converge_gate = bool(
+                        candidate.get("edge_realizable_hq_bypass_p_converge_min")
+                    )
+                    hq_signal_lcb_val = to_float(candidate.get("edge_signal_lcb"))
+                    hq_path_lcb_val = to_float(candidate.get("edge_path_p_reach_lcb"))
+                    hq_edge_lcb_val = to_float(candidate.get("edge_tradeability_edge_lcb"))
+                    hq_checks: List[bool] = []
+                    if hq_signal_lcb_min_gate is not None and math.isfinite(hq_signal_lcb_min_gate):
+                        hq_checks.append(
+                            hq_signal_lcb_val is not None
+                            and math.isfinite(hq_signal_lcb_val)
+                            and hq_signal_lcb_val + TIME_EDGE_Q_EPS >= hq_signal_lcb_min_gate
+                        )
+                    if hq_path_lcb_min_gate is not None and math.isfinite(hq_path_lcb_min_gate):
+                        hq_checks.append(
+                            hq_path_lcb_val is not None
+                            and math.isfinite(hq_path_lcb_val)
+                            and hq_path_lcb_val + TIME_EDGE_Q_EPS >= hq_path_lcb_min_gate
+                        )
+                    if hq_edge_lcb_min_gate is not None and math.isfinite(hq_edge_lcb_min_gate):
+                        hq_checks.append(
+                            hq_edge_lcb_val is not None
+                            and math.isfinite(hq_edge_lcb_val)
+                            and hq_edge_lcb_val + TIME_EDGE_Q_EPS >= hq_edge_lcb_min_gate
+                        )
+                    edge_realizable_hq_pass = bool(hq_checks) and all(hq_checks)
+                    candidate["edge_realizable_hq_pass"] = bool(edge_realizable_hq_pass)
+                    if (not edge_lcb_single_judge_mode) and entry_edge_realizable_p_realize_min_gate > TIME_EDGE_Q_EPS:
                         p_realize_val = to_float(candidate.get("edge_realizable_p_realize"))
                         if p_realize_val is None or not math.isfinite(p_realize_val):
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["edge_realizable_p_realize_missing"],
-                                reasons=["可兑现V2兑现概率缺失，禁止入场"],
-                                details={
-                                    "edge_realizable_v2": v2_val,
-                                    "edge_realizable_p_realize": p_realize_val,
-                                    "edge_realizable_p_realize_min": float(entry_edge_realizable_p_realize_min_gate),
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                },
-                            )
-                            continue
-                        if p_realize_val + TIME_EDGE_Q_EPS < entry_edge_realizable_p_realize_min_gate:
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["edge_realizable_p_realize_below_min"],
-                                reasons=[
-                                    f"可兑现V2兑现概率={p_realize_val:.2%}<{entry_edge_realizable_p_realize_min_gate:.2%}，禁止入场"
-                                ],
-                                details={
-                                    "edge_realizable_v2": v2_val,
-                                    "edge_realizable_p_realize": p_realize_val,
-                                    "edge_realizable_p_realize_min": float(entry_edge_realizable_p_realize_min_gate),
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                },
-                            )
-                            continue
-                    if entry_edge_realizable_p_converge_min_gate > TIME_EDGE_Q_EPS:
+                            if edge_realizable_hq_pass and hq_bypass_p_realize_gate:
+                                candidate["edge_realizable_hq_bypassed_p_realize_min"] = True
+                                p_realize_val = None
+                            else:
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["edge_realizable_p_realize_missing"],
+                                    reasons=["可兑现V2兑现概率缺失，禁止入场"],
+                                    details={
+                                        "edge_realizable_v2": v2_val,
+                                        "edge_realizable_p_realize": p_realize_val,
+                                        "edge_realizable_p_realize_min": float(entry_edge_realizable_p_realize_min_gate),
+                                        "edge_realizable_hq_pass": bool(edge_realizable_hq_pass),
+                                        "edge_realizable_hq_bypass_p_realize_min": bool(hq_bypass_p_realize_gate),
+                                        "edge_realizable_hq_signal_lcb_min": hq_signal_lcb_min_gate,
+                                        "edge_realizable_hq_path_lcb_min": hq_path_lcb_min_gate,
+                                        "edge_realizable_hq_edge_lcb_min": hq_edge_lcb_min_gate,
+                                        "edge_signal_lcb": hq_signal_lcb_val,
+                                        "edge_path_p_reach_lcb": hq_path_lcb_val,
+                                        "edge_tradeability_edge_lcb": hq_edge_lcb_val,
+                                        "strategy": str(candidate.get("strategy") or ""),
+                                    },
+                                )
+                                continue
+                        if p_realize_val is not None and p_realize_val + TIME_EDGE_Q_EPS < entry_edge_realizable_p_realize_min_gate:
+                            if edge_realizable_hq_pass and hq_bypass_p_realize_gate:
+                                candidate["edge_realizable_hq_bypassed_p_realize_min"] = True
+                            else:
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["edge_realizable_p_realize_below_min"],
+                                    reasons=[
+                                        f"可兑现V2兑现概率={p_realize_val:.2%}<{entry_edge_realizable_p_realize_min_gate:.2%}，禁止入场"
+                                    ],
+                                    details={
+                                        "edge_realizable_v2": v2_val,
+                                        "edge_realizable_p_realize": p_realize_val,
+                                        "edge_realizable_p_realize_min": float(entry_edge_realizable_p_realize_min_gate),
+                                        "edge_realizable_hq_pass": bool(edge_realizable_hq_pass),
+                                        "edge_realizable_hq_bypass_p_realize_min": bool(hq_bypass_p_realize_gate),
+                                        "edge_realizable_hq_signal_lcb_min": hq_signal_lcb_min_gate,
+                                        "edge_realizable_hq_path_lcb_min": hq_path_lcb_min_gate,
+                                        "edge_realizable_hq_edge_lcb_min": hq_edge_lcb_min_gate,
+                                        "edge_signal_lcb": hq_signal_lcb_val,
+                                        "edge_path_p_reach_lcb": hq_path_lcb_val,
+                                        "edge_tradeability_edge_lcb": hq_edge_lcb_val,
+                                        "strategy": str(candidate.get("strategy") or ""),
+                                    },
+                                )
+                                continue
+                    if (not edge_lcb_single_judge_mode) and entry_edge_realizable_p_converge_min_gate > TIME_EDGE_Q_EPS:
                         p_converge_val = to_float(candidate.get("edge_realizable_p_converge"))
                         if p_converge_val is None or not math.isfinite(p_converge_val):
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["edge_realizable_p_converge_missing"],
-                                reasons=["可兑现V2收敛概率缺失，禁止入场"],
-                                details={
-                                    "edge_realizable_v2": v2_val,
-                                    "edge_realizable_p_realize": to_float(candidate.get("edge_realizable_p_realize")),
-                                    "edge_realizable_p_converge": p_converge_val,
-                                    "edge_realizable_p_converge_min": float(entry_edge_realizable_p_converge_min_gate),
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                },
-                            )
-                            continue
-                        if p_converge_val + TIME_EDGE_Q_EPS < entry_edge_realizable_p_converge_min_gate:
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["edge_realizable_p_converge_below_min"],
-                                reasons=[
-                                    f"可兑现V2收敛概率={p_converge_val:.2%}<{entry_edge_realizable_p_converge_min_gate:.2%}，禁止入场"
-                                ],
-                                details={
-                                    "edge_realizable_v2": v2_val,
-                                    "edge_realizable_p_realize": to_float(candidate.get("edge_realizable_p_realize")),
-                                    "edge_realizable_p_converge": p_converge_val,
-                                    "edge_realizable_p_converge_min": float(entry_edge_realizable_p_converge_min_gate),
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                },
-                            )
-                            continue
-                if is_new_entry and edge_realizable_report_enabled:
+                            if edge_realizable_hq_pass and hq_bypass_p_converge_gate:
+                                candidate["edge_realizable_hq_bypassed_p_converge_min"] = True
+                                p_converge_val = None
+                            else:
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["edge_realizable_p_converge_missing"],
+                                    reasons=["可兑现V2收敛概率缺失，禁止入场"],
+                                    details={
+                                        "edge_realizable_v2": v2_val,
+                                        "edge_realizable_p_realize": to_float(candidate.get("edge_realizable_p_realize")),
+                                        "edge_realizable_p_converge": p_converge_val,
+                                        "edge_realizable_p_converge_min": float(entry_edge_realizable_p_converge_min_gate),
+                                        "edge_realizable_hq_pass": bool(edge_realizable_hq_pass),
+                                        "edge_realizable_hq_bypass_p_converge_min": bool(hq_bypass_p_converge_gate),
+                                        "edge_realizable_hq_signal_lcb_min": hq_signal_lcb_min_gate,
+                                        "edge_realizable_hq_path_lcb_min": hq_path_lcb_min_gate,
+                                        "edge_realizable_hq_edge_lcb_min": hq_edge_lcb_min_gate,
+                                        "edge_signal_lcb": hq_signal_lcb_val,
+                                        "edge_path_p_reach_lcb": hq_path_lcb_val,
+                                        "edge_tradeability_edge_lcb": hq_edge_lcb_val,
+                                        "strategy": str(candidate.get("strategy") or ""),
+                                    },
+                                )
+                                continue
+                        if p_converge_val is not None and p_converge_val + TIME_EDGE_Q_EPS < entry_edge_realizable_p_converge_min_gate:
+                            if edge_realizable_hq_pass and hq_bypass_p_converge_gate:
+                                candidate["edge_realizable_hq_bypassed_p_converge_min"] = True
+                            else:
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["edge_realizable_p_converge_below_min"],
+                                    reasons=[
+                                        f"可兑现V2收敛概率={p_converge_val:.2%}<{entry_edge_realizable_p_converge_min_gate:.2%}，禁止入场"
+                                    ],
+                                    details={
+                                        "edge_realizable_v2": v2_val,
+                                        "edge_realizable_p_realize": to_float(candidate.get("edge_realizable_p_realize")),
+                                        "edge_realizable_p_converge": p_converge_val,
+                                        "edge_realizable_p_converge_min": float(entry_edge_realizable_p_converge_min_gate),
+                                        "edge_realizable_hq_pass": bool(edge_realizable_hq_pass),
+                                        "edge_realizable_hq_bypass_p_converge_min": bool(hq_bypass_p_converge_gate),
+                                        "edge_realizable_hq_signal_lcb_min": hq_signal_lcb_min_gate,
+                                        "edge_realizable_hq_path_lcb_min": hq_path_lcb_min_gate,
+                                        "edge_realizable_hq_edge_lcb_min": hq_edge_lcb_min_gate,
+                                        "edge_signal_lcb": hq_signal_lcb_val,
+                                        "edge_path_p_reach_lcb": hq_path_lcb_val,
+                                        "edge_tradeability_edge_lcb": hq_edge_lcb_val,
+                                        "strategy": str(candidate.get("strategy") or ""),
+                                    },
+                                )
+                                continue
+                if is_new_entry and edge_realizable_report_enabled and (not edge_lcb_single_judge_mode):
                     if candidate.get("edge_realizable_report_blocked"):
                         _buffer_decision(
                             outcome,
@@ -16806,7 +18030,7 @@ def execute_auto_trades(
                             )
                             continue
                     # Hard gate: YES-top entry must be positive expectancy at executable entry price.
-                    if entry_yes_top_require_exec_edge:
+                    if entry_yes_top_require_exec_edge and (not edge_lcb_single_judge_mode):
                         if exec_edge_entry_val is None or not math.isfinite(exec_edge_entry_val):
                             _buffer_decision(
                                 outcome,
@@ -16846,7 +18070,7 @@ def execute_auto_trades(
                             continue
                 # Strategy-specific hard gate: require positive tradable edge at executable price.
                 # This gate is independent from edge_realizable_score tiering (which may be bypassed for follow_copy).
-                if candidate_strategy == "follow_copy" and entry_follow_require_exec_edge:
+                if candidate_strategy == "follow_copy" and entry_follow_require_exec_edge and (not edge_lcb_single_judge_mode):
                     if exec_edge_entry_val is None or not math.isfinite(exec_edge_entry_val):
                         _buffer_decision(
                             outcome,
@@ -16885,7 +18109,7 @@ def execute_auto_trades(
                             },
                         )
                         continue
-                if candidate_strategy == "hard_bound_no" and entry_hard_bound_no_require_exec_edge:
+                if candidate_strategy == "hard_bound_no" and entry_hard_bound_no_require_exec_edge and (not edge_lcb_single_judge_mode):
                     if exec_edge_entry_val is None or not math.isfinite(exec_edge_entry_val):
                         _buffer_decision(
                             outcome,
@@ -16924,7 +18148,7 @@ def execute_auto_trades(
                             },
                         )
                         continue
-                if candidate_strategy == "adj_pair" and entry_adj_pair_require_exec_edge:
+                if candidate_strategy == "adj_pair" and entry_adj_pair_require_exec_edge and (not edge_lcb_single_judge_mode):
                     if exec_edge_entry_val is None or not math.isfinite(exec_edge_entry_val):
                         _buffer_decision(
                             outcome,
@@ -16963,7 +18187,7 @@ def execute_auto_trades(
                             },
                         )
                         continue
-                if is_new_entry and entry_require_edge_realizable:
+                if is_new_entry and entry_require_edge_realizable and (not edge_lcb_single_judge_mode):
                     if edge_realizable_val is None or not math.isfinite(edge_realizable_val):
                         _buffer_decision(
                             outcome,
@@ -19356,7 +20580,14 @@ def _mark_no_orderbook_skips(
         params.append(event_date)
     where_sql = " AND ".join(where_parts)
     cur = conn.cursor()
-    cur.execute(
+    retry_attempts = _env_int("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_RETRY_ATTEMPTS")
+    if retry_attempts is None or retry_attempts <= 0:
+        retry_attempts = 10
+    retry_sleep = _env_float("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_RETRY_SLEEP_SEC", 0.4)
+    if retry_sleep is None or not math.isfinite(retry_sleep) or retry_sleep < 0:
+        retry_sleep = 0.4
+    _sqlite_execute_with_retry(
+        cur,
         f"""
         UPDATE edge_trades
         SET exit_skip_reason = 'no_orderbook',
@@ -19364,7 +20595,9 @@ def _mark_no_orderbook_skips(
             exit_skip_at = COALESCE(exit_skip_at, last_action_at, ?)
         WHERE {where_sql}
         """,
-        params,
+        tuple(params),
+        attempts=int(retry_attempts),
+        sleep_base_sec=float(retry_sleep),
     )
     return int(cur.rowcount or 0)
 
@@ -19936,8 +21169,10 @@ def sync_trade_fills(
     auto_order_cache: Dict[str, bool] = {}
     auto_order_strategy_cache: Dict[str, str] = {}
     auto_order_row_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+    auto_order_key_rows_cache: Dict[Tuple[str, str, str, str], List[Dict[str, Any]]] = {}
     auto_order_recover_attempted: Set[str] = set()
     decision_match_cache: Dict[Tuple[str, str, str, str, str, str, str], Optional[Dict[str, Any]]] = {}
+    decision_run_id_cache: Dict[int, Optional[int]] = {}
     fill_id_cache: Dict[str, Optional[int]] = {}
     trade_exists_cache: Dict[str, bool] = {}
     sms_sent_cache: Dict[str, bool] = {}
@@ -19946,6 +21181,21 @@ def sync_trade_fills(
     attr_window_sec = _env_float("PM_TRADE_SYNC_ATTR_DECISION_WINDOW_SEC")
     if attr_window_sec is None or not math.isfinite(attr_window_sec) or attr_window_sec <= 0:
         attr_window_sec = 6 * 3600
+    attr_auto_order_window_sec = _env_float("PM_TRADE_SYNC_ATTR_AUTO_ORDER_WINDOW_SEC")
+    if (
+        attr_auto_order_window_sec is None
+        or not math.isfinite(attr_auto_order_window_sec)
+        or attr_auto_order_window_sec <= 0
+    ):
+        attr_auto_order_window_sec = 168 * 3600
+
+    def _normalize_auto_order_action(action: Optional[str]) -> str:
+        action_key = str(action or "").strip().lower()
+        if action_key in {"entry_topup", "entry_improve"}:
+            return "entry"
+        if action_key == "exit_reduce":
+            return "exit"
+        return action_key
 
     def _recover_auto_order_from_decision(order_id: Optional[str]) -> Optional[Dict[str, Any]]:
         key = str(order_id or "").strip()
@@ -19976,16 +21226,12 @@ def sync_trade_fills(
         event_date = _normalize_date_key(str(row[2] or "").strip())
         outcome = str(row[3] or "").strip()
         side = str(row[4] or "").strip().upper()
-        action = str(row[5] or "").strip().lower()
+        action = _normalize_auto_order_action(row[5])
         created_at = str(row[6] or "").strip()
         reason_codes_raw = str(row[7] or "").strip()
         details_raw = str(row[8] or "").strip()
         if not slug or not event_date or not outcome or side not in {"YES", "NO"}:
             return None
-        if action in {"entry_topup", "entry_improve"}:
-            action = "entry"
-        elif action == "exit_reduce":
-            action = "exit"
         if action not in {"entry", "exit"}:
             return None
         details: Dict[str, Any] = {}
@@ -20109,7 +21355,7 @@ def sync_trade_fills(
             "event_date": _normalize_date_key(str(row[3] or "").strip()),
             "outcome": str(row[4] or "").strip(),
             "side": str(row[5] or "").strip().upper(),
-            "action": str(row[6] or "").strip().lower(),
+            "action": _normalize_auto_order_action(row[6]),
             "strategy": str(row[7] or "").strip(),
             "created_at": str(row[8] or "").strip(),
         }
@@ -20154,6 +21400,137 @@ def sync_trade_fills(
         if side_key == "SELL":
             return "exit"
         return ""
+
+    def _load_auto_order_rows_by_key(
+        slug: str,
+        event_date: str,
+        outcome: str,
+        side: str,
+    ) -> List[Dict[str, Any]]:
+        slug_key = str(slug or "").strip()
+        event_date_key = _normalize_date_key(str(event_date or "").strip())
+        outcome_key = str(outcome or "").strip()
+        side_key = str(side or "").strip().upper()
+        if not slug_key or not event_date_key or not outcome_key or side_key not in {"YES", "NO"}:
+            return []
+        cache_key = (slug_key, event_date_key, outcome_key, side_key)
+        cached_rows = auto_order_key_rows_cache.get(cache_key)
+        if cached_rows is not None:
+            return cached_rows
+        try:
+            cur.execute(
+                """
+                SELECT id, order_id, slug, event_date, outcome, side, action, strategy, created_at
+                FROM auto_orders
+                WHERE slug = ?
+                  AND event_date = ?
+                  AND outcome = ?
+                  AND upper(COALESCE(side, '')) = ?
+                ORDER BY datetime(created_at) DESC, id DESC
+                LIMIT 240
+                """,
+                (slug_key, event_date_key, outcome_key, side_key),
+            )
+            db_rows = cur.fetchall() or []
+        except sqlite3.OperationalError:
+            auto_order_key_rows_cache[cache_key] = []
+            return []
+        rows: List[Dict[str, Any]] = []
+        for row in db_rows:
+            rows.append(
+                {
+                    "id": int(row[0]) if row[0] is not None else None,
+                    "order_id": str(row[1] or "").strip(),
+                    "slug": str(row[2] or "").strip(),
+                    "event_date": _normalize_date_key(str(row[3] or "").strip()),
+                    "outcome": str(row[4] or "").strip(),
+                    "side": str(row[5] or "").strip().upper(),
+                    "action": _normalize_auto_order_action(row[6]),
+                    "strategy": str(row[7] or "").strip(),
+                    "created_at": str(row[8] or "").strip(),
+                }
+            )
+        auto_order_key_rows_cache[cache_key] = rows
+        return rows
+
+    def _infer_auto_order_row_from_key_time(
+        *,
+        slug: str,
+        event_date: str,
+        outcome: str,
+        side: str,
+        trade_side: str,
+        trade_time: Optional[str],
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        evidence: Dict[str, Any] = {}
+        candidates = _load_auto_order_rows_by_key(slug, event_date, outcome, side)
+        if not candidates:
+            evidence["status"] = "no_key_match"
+            return None, evidence
+        action_need = _infer_action_from_trade_side(trade_side)
+        pool = candidates
+        action_fallback = False
+        if action_need in {"entry", "exit"}:
+            filtered = [
+                row
+                for row in candidates
+                if _normalize_auto_order_action(row.get("action")) == action_need
+            ]
+            if filtered:
+                pool = filtered
+            else:
+                action_fallback = True
+        anchor_text = str(trade_time or "").strip()
+        anchor_dt = _parse_iso_dt(anchor_text)
+        if anchor_dt is not None and anchor_dt.tzinfo is None:
+            anchor_dt = anchor_dt.replace(tzinfo=timezone.utc)
+        best_row: Optional[Dict[str, Any]] = None
+        best_rank: Optional[Tuple[int, float, int]] = None
+        best_delta: Optional[float] = None
+        for row in pool:
+            created_dt = _parse_iso_dt(str(row.get("created_at") or ""))
+            if created_dt is not None and created_dt.tzinfo is None:
+                created_dt = created_dt.replace(tzinfo=timezone.utc)
+            delta_sec: Optional[float] = None
+            if anchor_dt is not None and created_dt is not None:
+                delta_sec = abs((anchor_dt - created_dt).total_seconds())
+            rank = (
+                1 if delta_sec is None else 0,
+                float(delta_sec or 0.0),
+                -int(row.get("id") or 0),
+            )
+            if best_rank is None or rank < best_rank:
+                best_rank = rank
+                best_row = row
+                best_delta = delta_sec
+        if best_row is None:
+            evidence["status"] = "no_candidate"
+            return None, evidence
+        if (
+            best_delta is not None
+            and attr_auto_order_window_sec > 0
+            and best_delta > float(attr_auto_order_window_sec)
+        ):
+            evidence["status"] = "delta_too_large"
+            evidence["delta_sec"] = float(best_delta)
+            evidence["window_sec"] = float(attr_auto_order_window_sec)
+            evidence["candidate_count"] = len(candidates)
+            evidence["pool_count"] = len(pool)
+            evidence["action_need"] = action_need
+            evidence["action_fallback"] = bool(action_fallback)
+            return None, evidence
+        evidence["status"] = "matched"
+        evidence["delta_sec"] = float(best_delta or 0.0) if best_delta is not None else None
+        evidence["window_sec"] = float(attr_auto_order_window_sec)
+        evidence["candidate_count"] = len(candidates)
+        evidence["pool_count"] = len(pool)
+        evidence["action_need"] = action_need
+        evidence["action_fallback"] = bool(action_fallback)
+        evidence["matched_order_id"] = str(best_row.get("order_id") or "")
+        evidence["matched_action"] = str(best_row.get("action") or "")
+        evidence["matched_strategy"] = str(best_row.get("strategy") or "")
+        evidence["matched_created_at"] = str(best_row.get("created_at") or "")
+        return best_row, evidence
 
     def _resolve_fill_id(trade_id: Optional[str]) -> Optional[int]:
         key = str(trade_id or "").strip()
@@ -20201,10 +21578,10 @@ def sync_trade_fills(
         rows: List[Any] = []
         if order_key:
             try:
-                will_order_sql = "AND will_order = 1" if action_key == "entry" else ""
+                will_order_sql = "AND will_order = 1"
                 cur.execute(
                     f"""
-                    SELECT id, run_id, created_at
+                    SELECT id, run_id, run_date, created_at
                     FROM auto_trade_decisions
                     WHERE json_extract(details_json, '$.order_id') = ?
                       AND action = ?
@@ -20223,15 +21600,15 @@ def sync_trade_fills(
                 rows = []
             if not rows:
                 try:
-                    will_order_sql = "AND will_order = 1" if action_key == "entry" else ""
+                    will_order_sql = "AND will_order = 1"
                     cur.execute(
                         f"""
-                        SELECT id, run_id, created_at
-                        FROM auto_trade_decisions
-                        WHERE json_extract(details_json, '$.order_id') = ?
-                          AND action = ?
-                          {will_order_sql}
-                        ORDER BY datetime(created_at) DESC, id DESC
+                    SELECT id, run_id, run_date, created_at
+                    FROM auto_trade_decisions
+                    WHERE json_extract(details_json, '$.order_id') = ?
+                      AND action = ?
+                      {will_order_sql}
+                    ORDER BY datetime(created_at) DESC, id DESC
                         LIMIT 40
                         """,
                         (order_key, action_key),
@@ -20241,10 +21618,10 @@ def sync_trade_fills(
                     rows = []
         try:
             if not rows:
-                will_order_sql = "AND will_order = 1" if action_key == "entry" else ""
+                will_order_sql = "AND will_order = 1"
                 cur.execute(
                     f"""
-                    SELECT id, run_id, created_at
+                    SELECT id, run_id, run_date, created_at
                     FROM auto_trade_decisions
                     WHERE slug = ?
                       AND (event_date = ? OR substr(event_date, 1, 10) = ?)
@@ -20263,7 +21640,7 @@ def sync_trade_fills(
             return None
         candidates: List[Dict[str, Any]] = []
         for row in rows:
-            row_dt = _parse_iso_dt(str(row[2] or ""))
+            row_dt = _parse_iso_dt(str(row[3] or ""))
             if row_dt is not None and row_dt.tzinfo is None:
                 row_dt = row_dt.replace(tzinfo=timezone.utc)
             delta_sec: Optional[float] = None
@@ -20273,7 +21650,8 @@ def sync_trade_fills(
                 {
                     "id": int(row[0]) if row[0] is not None else None,
                     "run_id": int(row[1]) if row[1] is not None else None,
-                    "created_at": str(row[2] or ""),
+                    "run_date": _normalize_date_key(str(row[2] or "").strip()),
+                    "created_at": str(row[3] or ""),
                     "delta_sec": delta_sec,
                 }
             )
@@ -20306,6 +21684,97 @@ def sync_trade_fills(
         matched = _pick_best(in_window) or _pick_best(candidates)
         decision_match_cache[cache_key] = matched
         return matched
+
+    def _resolve_decision_run_id(
+        *,
+        decision_id: Optional[int],
+        run_date_hint: Optional[str],
+        created_at_hint: Optional[str],
+    ) -> Optional[int]:
+        did = int(decision_id) if decision_id is not None else 0
+        if did > 0 and did in decision_run_id_cache:
+            return decision_run_id_cache[did]
+        run_date_key = _normalize_date_key(str(run_date_hint or "").strip())
+        created_at_text = str(created_at_hint or "").strip()
+        if not run_date_key:
+            run_date_key = _run_date_from_trade_time_et(created_at_text)
+        if not run_date_key:
+            if did > 0:
+                decision_run_id_cache[did] = None
+            return None
+        anchor_dt = _parse_iso_dt(created_at_text)
+        if anchor_dt is not None and anchor_dt.tzinfo is None:
+            anchor_dt = anchor_dt.replace(tzinfo=timezone.utc)
+        resolved_run_id: Optional[int] = None
+        try:
+            cur.execute(
+                """
+                SELECT id, started_at, created_at
+                FROM auto_trade_runs
+                WHERE run_date = ?
+                ORDER BY datetime(COALESCE(started_at, created_at)) DESC, id DESC
+                LIMIT 240
+                """,
+                (run_date_key,),
+            )
+            run_rows = cur.fetchall() or []
+        except sqlite3.OperationalError:
+            run_rows = []
+        if run_rows:
+            best_pair: Optional[Tuple[float, int]] = None
+            for run_row in run_rows:
+                rid = int(run_row[0]) if run_row[0] is not None else 0
+                if rid <= 0:
+                    continue
+                if anchor_dt is None:
+                    resolved_run_id = rid
+                    break
+                run_ts = str(run_row[1] or run_row[2] or "").strip()
+                run_dt = _parse_iso_dt(run_ts)
+                if run_dt is not None and run_dt.tzinfo is None:
+                    run_dt = run_dt.replace(tzinfo=timezone.utc)
+                if run_dt is None:
+                    continue
+                delta = abs((run_dt - anchor_dt).total_seconds())
+                pair = (delta, -rid)
+                if best_pair is None or pair < best_pair:
+                    best_pair = pair
+                    resolved_run_id = rid
+        if resolved_run_id is None:
+            try:
+                cur.execute(
+                    """
+                    SELECT MAX(run_id)
+                    FROM auto_trade_decisions
+                    WHERE run_date = ?
+                      AND run_id IS NOT NULL
+                      AND run_id > 0
+                    """,
+                    (run_date_key,),
+                )
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    candidate = int(row[0])
+                    if candidate > 0:
+                        resolved_run_id = candidate
+            except sqlite3.OperationalError:
+                resolved_run_id = None
+        if did > 0 and resolved_run_id is not None and resolved_run_id > 0:
+            try:
+                cur.execute(
+                    """
+                    UPDATE auto_trade_decisions
+                    SET run_id = ?
+                    WHERE id = ?
+                      AND (run_id IS NULL OR run_id <= 0)
+                    """,
+                    (int(resolved_run_id), did),
+                )
+            except sqlite3.OperationalError:
+                pass
+        if did > 0:
+            decision_run_id_cache[did] = resolved_run_id
+        return resolved_run_id
 
     def _upsert_trade_fill_attribution(
         *,
@@ -20344,12 +21813,30 @@ def sync_trade_fills(
         else:
             evidence["order_id"] = order_key
             auto_row = _load_auto_order_row(order_key)
+            decision_lookup_order_id = order_key
             if not auto_row:
-                reason = "no_auto_order"
-            else:
+                inferred_row, inferred_info = _infer_auto_order_row_from_key_time(
+                    slug=slug,
+                    event_date=event_date_key,
+                    outcome=outcome,
+                    side=side,
+                    trade_side=trade_side,
+                    trade_time=trade_time,
+                )
+                if inferred_info:
+                    evidence["auto_order_infer"] = inferred_info
+                if inferred_row:
+                    auto_row = inferred_row
+                    matched_order_id = str(auto_row.get("order_id") or "").strip()
+                    if matched_order_id and matched_order_id != order_key:
+                        evidence["auto_order_inferred_from_order_id"] = matched_order_id
+                        decision_lookup_order_id = matched_order_id
+                else:
+                    reason = "no_auto_order"
+            if auto_row:
                 auto_order_id_val = auto_row.get("id")
                 auto_order_id = int(auto_order_id_val) if auto_order_id_val is not None else None
-                auto_order_action = str(auto_row.get("action") or "").strip().lower()
+                auto_order_action = _normalize_auto_order_action(auto_row.get("action"))
                 auto_order_strategy = str(auto_row.get("strategy") or "").strip()
                 evidence["auto_order_created_at"] = str(auto_row.get("created_at") or "")
                 evidence["auto_order_action"] = auto_order_action
@@ -20371,19 +21858,17 @@ def sync_trade_fills(
                     reason = "order_key_mismatch"
                     evidence["order_mismatch_fields"] = mismatch_fields
                 else:
-                    action_key = str(auto_order_action or "").strip().lower()
-                    if action_key in {"entry_topup", "entry_improve"}:
-                        action_key = "entry"
-                    elif action_key == "exit_reduce":
-                        action_key = "exit"
+                    action_key = _normalize_auto_order_action(auto_order_action)
                     if action_key not in {"entry", "exit"}:
                         action_key = _infer_action_from_trade_side(trade_side)
                     if action_key not in {"entry", "exit"}:
                         reason = "unknown_action"
                     else:
                         anchor_ts = str(trade_time or "").strip() or str(auto_row.get("created_at") or "").strip()
+                        if decision_lookup_order_id and decision_lookup_order_id != order_key:
+                            evidence["decision_lookup_order_id"] = decision_lookup_order_id
                         match = _find_matching_decision(
-                            order_id=order_key,
+                            order_id=decision_lookup_order_id,
                             slug=slug,
                             event_date=event_date_key,
                             outcome=outcome,
@@ -20401,10 +21886,21 @@ def sync_trade_fills(
                                 int(decision_run_id_val) if decision_run_id_val is not None else None
                             )
                             evidence["decision_created_at"] = str(match.get("created_at") or "")
+                            evidence["decision_run_date"] = str(match.get("run_date") or "")
                             if match.get("delta_sec") is not None:
                                 evidence["decision_delta_sec"] = float(match.get("delta_sec") or 0.0)
                             if decision_run_id is None or decision_run_id <= 0:
-                                if action_key == "exit" and decision_id is not None:
+                                repaired_run_id = _resolve_decision_run_id(
+                                    decision_id=decision_id,
+                                    run_date_hint=str(match.get("run_date") or event_date_key),
+                                    created_at_hint=str(match.get("created_at") or ""),
+                                )
+                                if repaired_run_id is not None and repaired_run_id > 0:
+                                    decision_run_id = int(repaired_run_id)
+                                    evidence["decision_run_id_repaired"] = int(repaired_run_id)
+                                    linked = 1
+                                    reason = "linked"
+                                elif action_key == "exit" and decision_id is not None:
                                     linked = 1
                                     reason = "linked"
                                     evidence["decision_missing_run_id"] = True
@@ -20711,15 +22207,9 @@ def sync_trade_fills(
                 cur.execute(
                     """
                     SELECT id
-                    FROM auto_trade_jobs
+                    FROM auto_trade_runs
                     WHERE run_date = ?
                     ORDER BY
-                      CASE
-                        WHEN state = 'success' THEN 0
-                        WHEN state = 'running' THEN 1
-                        WHEN state = 'superseded' THEN 2
-                        ELSE 3
-                      END ASC,
                       datetime(COALESCE(started_at, created_at)) DESC,
                       id DESC
                     LIMIT 1
@@ -20835,7 +22325,8 @@ def sync_trade_fills(
             "action": action_key,
         }
         try:
-            cur.execute(
+            _sqlite_execute_with_retry(
+                cur,
                 """
                 INSERT INTO auto_trade_decisions(
                     run_id, run_date, slug, event_date, title,
@@ -20862,6 +22353,8 @@ def sync_trade_fills(
                     json.dumps(details, ensure_ascii=False),
                     utc_now_iso(),
                 ),
+                attempts=10,
+                sleep_base_sec=0.4,
             )
             return True
         except sqlite3.OperationalError:
@@ -21754,9 +23247,9 @@ def sync_positions_to_db(
     conn: sqlite3.Connection,
     positions_by_token: Dict[str, Dict[str, Optional[float]]],
 ) -> int:
-    if not positions_by_token:
-        return 0
     token_map = build_token_map_latest_runs(conn)
+    if not token_map:
+        return 0
     key_to_token = {
         (meta["slug"], meta["event_date"], meta["outcome"], meta["side"]): token
         for token, meta in token_map.items()
@@ -21770,6 +23263,29 @@ def sync_positions_to_db(
             continue
         size = to_float(entry.get("size"))
         if size is None or not math.isfinite(size):
+            continue
+        if size <= 0 and POSITIONS_ASSUME_ZERO:
+            cur.execute(
+                """
+                UPDATE edge_trades
+                SET position_size = 0,
+                    state = 'exit',
+                    last_action = ?,
+                    last_action_at = ?,
+                    last_status = 'no_position',
+                    last_error = ''
+                WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ? AND position_size > 0
+                """,
+                (
+                    "pos_sync_clear",
+                    now_iso,
+                    mapping["slug"],
+                    mapping["event_date"],
+                    mapping["outcome"],
+                    mapping["side"],
+                ),
+            )
+            updated += cur.rowcount
             continue
         avg_price = to_float(entry.get("avg_price"))
         state = "entry" if size > 0 else "exit"
@@ -21811,7 +23327,7 @@ def sync_positions_to_db(
                     last_action = ?,
                     last_action_at = ?,
                     last_status = 'no_position',
-                    last_error = 'no_position'
+                    last_error = ''
                 WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ? AND position_size > 0
                 """,
                 (
@@ -22158,7 +23674,8 @@ def _record_auto_trade_fallback_decisions(
                 rows_to_insert = filtered
             if not rows_to_insert:
                 return 0
-            cur.executemany(
+            _sqlite_executemany_with_retry(
+                cur,
                 """
                 INSERT INTO auto_trade_decisions(
                     run_id, run_date, slug, event_date, title,
@@ -22170,6 +23687,8 @@ def _record_auto_trade_fallback_decisions(
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows_to_insert,
+                attempts=10,
+                sleep_base_sec=0.4,
             )
             conn.commit()
             return len(rows_to_insert)
@@ -22502,6 +24021,22 @@ def _auto_trade_event_worker(
         ).strip().lower() in {"1", "true", "yes", "on"}
         if not worker_clob_global_rate_limit:
             os.environ["PM_CLOB_BOOK_GLOBAL_RATE_LIMIT"] = "0"
+        worker_db_connect_timeout_sec = _env_float(
+            "PM_AUTO_TRADE_EVENT_WORKER_DB_CONNECT_TIMEOUT_SEC"
+        )
+        if (
+            worker_db_connect_timeout_sec is None
+            or not math.isfinite(worker_db_connect_timeout_sec)
+            or worker_db_connect_timeout_sec < 0
+        ):
+            worker_db_connect_timeout_sec = 0.25
+        worker_db_connect_timeout_sec = min(float(worker_db_connect_timeout_sec), 5.0)
+        os.environ["PM_DB_CONNECT_TIMEOUT_SEC"] = f"{worker_db_connect_timeout_sec:.3f}"
+        worker_db_busy_timeout_ms = _env_int("PM_AUTO_TRADE_EVENT_WORKER_DB_BUSY_TIMEOUT_MS")
+        if worker_db_busy_timeout_ms is None or worker_db_busy_timeout_ms <= 0:
+            worker_db_busy_timeout_ms = 5000
+        worker_db_busy_timeout_ms = min(int(worker_db_busy_timeout_ms), 30000)
+        os.environ["PM_DB_BUSY_TIMEOUT_MS"] = str(worker_db_busy_timeout_ms)
         execute_auto_trades(
             run_date_key,
             event_date_key,
@@ -22611,13 +24146,54 @@ def run_auto_trades_for_date(
     processed = 0
     skipped = 0
     deferred = 0
+    skipped_old_events = 0
     events_per_job_max = _env_int("PM_AUTO_TRADE_EVENTS_PER_JOB_MAX")
     if events_per_job_max is None or events_per_job_max <= 0:
         events_per_job_max = 0
     attempted_events = 0
+    event_max_age_days_raw = _env_int("PM_AUTO_TRADE_EVENT_MAX_AGE_DAYS")
+    event_max_age_days: Optional[int] = None
+    if event_max_age_days_raw is not None and event_max_age_days_raw >= 0:
+        event_max_age_days = int(event_max_age_days_raw)
+    event_age_today = _parse_date(et_today)
+    active_position_keys: Set[Tuple[str, str]] = set()
+    if not exit_only:
+        try:
+            with open_db() as conn_active:
+                cur_active = conn_active.cursor()
+                cur_active.execute(
+                    """
+                    SELECT DISTINCT slug, substr(event_date, 1, 10)
+                    FROM edge_trades
+                    WHERE (state IN ('entry', 'entry_pending') OR (position_size IS NOT NULL AND position_size > 0))
+                    """
+                )
+                for row in cur_active.fetchall() or []:
+                    slug_val = str(row[0] or "").strip()
+                    event_date_val = str(row[1] or "").strip()
+                    if slug_val and event_date_val:
+                        active_position_keys.add((slug_val, event_date_val))
+        except sqlite3.OperationalError:
+            active_position_keys = set()
 
     def _event_cap_reached() -> bool:
         return bool(events_per_job_max and attempted_events >= int(events_per_job_max))
+
+    def _should_skip_old_event(slug: str, event_date_key: str) -> bool:
+        nonlocal skipped, skipped_old_events
+        if exit_only or event_max_age_days is None or event_age_today is None:
+            return False
+        event_dt = _parse_date(event_date_key)
+        if event_dt is None:
+            return False
+        age_days = (event_age_today - event_dt).days
+        if age_days <= int(event_max_age_days):
+            return False
+        if (slug, event_date_key) in active_position_keys:
+            return False
+        skipped += 1
+        skipped_old_events += 1
+        return True
 
     def _execute_payload(payload: Dict[str, Any], slug: str, event_date_key: str) -> None:
         nonlocal processed, skipped
@@ -22824,6 +24400,8 @@ def run_auto_trades_for_date(
         if key in seen:
             return
         seen.add(key)
+        if _should_skip_old_event(slug, event_date_key):
+            return
         payload_raw = row["payload_json"]
         if not payload_raw:
             skipped += 1
@@ -22862,6 +24440,8 @@ def run_auto_trades_for_date(
         if key in seen:
             return
         seen.add(key)
+        if _should_skip_old_event(slug, event_date_key):
+            return
         payload_raw = row.get("fact_json")
         if not payload_raw:
             skipped += 1
@@ -22933,6 +24513,9 @@ def run_auto_trades_for_date(
     if deferred > 0:
         result["deferred"] = int(deferred)
         result["events_per_job_max"] = int(events_per_job_max)
+    if skipped_old_events > 0:
+        result["skipped_old_events"] = int(skipped_old_events)
+        result["event_max_age_days"] = int(event_max_age_days or 0)
     return result
 
 
@@ -28867,15 +30450,34 @@ def requests_get(
     raise requests.RequestException("requests_get failed")
 
 
-def fetch_gamma_market_by_slug(slug: str) -> Optional[Dict]:
+def fetch_gamma_market_by_slug(
+    slug: str,
+    *,
+    timeout: Optional[float] = None,
+    retries: Optional[int] = None,
+    backoff: Optional[float] = None,
+    bypass_proxy: Optional[bool] = None,
+) -> Optional[Dict]:
+    timeout_val = to_float(timeout)
+    if timeout_val is None or not math.isfinite(timeout_val) or timeout_val <= 0:
+        timeout_val = float(GAMMA_TIMEOUT)
+    try:
+        retries_val = int(retries) if retries is not None else int(GAMMA_RETRIES)
+    except Exception:
+        retries_val = int(GAMMA_RETRIES)
+    retries_val = max(1, retries_val)
+    backoff_val = to_float(backoff)
+    if backoff_val is None or not math.isfinite(backoff_val) or backoff_val < 0:
+        backoff_val = float(GAMMA_BACKOFF)
+    bypass_proxy_val = bool(bypass_proxy) if bypass_proxy is not None else False
     r = requests_get(
         GAMMA_MARKETS_URL,
         params={"slug": slug},
         headers=DEFAULT_REQUEST_HEADERS,
-        bypass_proxy=False,
-        retries=GAMMA_RETRIES,
-        backoff=GAMMA_BACKOFF,
-        timeout=GAMMA_TIMEOUT,
+        bypass_proxy=bypass_proxy_val,
+        retries=int(retries_val),
+        backoff=float(backoff_val),
+        timeout=float(timeout_val),
     )
     r.raise_for_status()
     data = r.json()
@@ -28923,17 +30525,36 @@ def _mark_gamma_event_404(slug: str, err: str) -> None:
         }
 
 
-def fetch_gamma_event_by_slug(slug: str) -> Optional[Dict]:
+def fetch_gamma_event_by_slug(
+    slug: str,
+    *,
+    timeout: Optional[float] = None,
+    retries: Optional[int] = None,
+    backoff: Optional[float] = None,
+    bypass_proxy: Optional[bool] = None,
+) -> Optional[Dict]:
     if _gamma_event_404_skip(slug):
         return None
+    timeout_val = to_float(timeout)
+    if timeout_val is None or not math.isfinite(timeout_val) or timeout_val <= 0:
+        timeout_val = float(GAMMA_TIMEOUT)
+    try:
+        retries_val = int(retries) if retries is not None else int(GAMMA_RETRIES)
+    except Exception:
+        retries_val = int(GAMMA_RETRIES)
+    retries_val = max(1, retries_val)
+    backoff_val = to_float(backoff)
+    if backoff_val is None or not math.isfinite(backoff_val) or backoff_val < 0:
+        backoff_val = float(GAMMA_BACKOFF)
+    bypass_proxy_val = bool(bypass_proxy) if bypass_proxy is not None else False
     r = requests_get(
         GAMMA_EVENTS_URL,
         params={"slug": slug},
         headers=DEFAULT_REQUEST_HEADERS,
-        bypass_proxy=False,
-        retries=GAMMA_RETRIES,
-        backoff=GAMMA_BACKOFF,
-        timeout=GAMMA_TIMEOUT,
+        bypass_proxy=bypass_proxy_val,
+        retries=int(retries_val),
+        backoff=float(backoff_val),
+        timeout=float(timeout_val),
     )
     try:
         r.raise_for_status()
@@ -31292,11 +32913,17 @@ def ensure_column(conn: sqlite3.Connection, table: str, column: str, coltype: st
 
 
 def open_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=DB_CONNECT_TIMEOUT_SEC)
+    connect_timeout = _env_float("PM_DB_CONNECT_TIMEOUT_SEC")
+    if connect_timeout is None or not math.isfinite(connect_timeout) or connect_timeout < 0:
+        connect_timeout = float(DB_CONNECT_TIMEOUT_SEC)
+    busy_timeout_ms = _env_int("PM_DB_BUSY_TIMEOUT_MS")
+    if busy_timeout_ms is None or busy_timeout_ms < 0:
+        busy_timeout_ms = int(DB_BUSY_TIMEOUT_MS)
+    conn = sqlite3.connect(DB_PATH, timeout=float(connect_timeout))
     try:
         conn.execute(f"PRAGMA journal_mode={DB_JOURNAL_MODE}")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}")
+        conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
     except sqlite3.Error:
         pass
     return conn
@@ -31996,6 +33623,12 @@ def init_db() -> None:
     )
     cur.execute(
         """
+        CREATE INDEX IF NOT EXISTS idx_event_market_ticks_slug_event_created
+        ON event_market_ticks(slug, event_date, created_at)
+        """
+    )
+    cur.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_event_market_ticks_created_at
         ON event_market_ticks(created_at)
         """
@@ -32024,6 +33657,36 @@ def init_db() -> None:
         ON event_runs(slug, event_date, created_at DESC)
         """
     )
+    for sql in (
+        """
+        CREATE INDEX IF NOT EXISTS idx_event_runs_station_upper_slug_event
+        ON event_runs(UPPER(station_id), slug, event_date)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_event_runs_city_lower_slug_event
+        ON event_runs(LOWER(city), slug, event_date)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_event_runs_slug_event_settle_closed
+        ON event_runs(slug, event_date, settlement_actual, market_closed)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_edge_trades_active_updated
+        ON edge_trades(updated_at DESC)
+        WHERE state IN ('entry', 'entry_pending')
+           OR (position_size IS NOT NULL AND position_size > 0)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_edge_trades_active_slug_event_updated
+        ON edge_trades(slug, event_date, updated_at DESC)
+        WHERE state IN ('entry', 'entry_pending')
+           OR (position_size IS NOT NULL AND position_size > 0)
+        """,
+    ):
+        try:
+            cur.execute(sql)
+        except sqlite3.OperationalError:
+            pass
     for sql in (
         """
         CREATE INDEX IF NOT EXISTS idx_event_fact_history_fact_as_of
@@ -33164,6 +34827,261 @@ def refresh_market_ticks_for_event(
     # forever while never updating `event_market_ticks.created_at`, making freshness look stuck.
     any_quote = False
     last_ob_error: Optional[str] = None
+    allow_token_remap = _env_bool("PM_SCAN_MARKET_REFRESH_ALLOW_TOKEN_REMAP", True)
+    allow_gamma_price_fallback = _env_bool("PM_SCAN_MARKET_REFRESH_ALLOW_GAMMA_PRICE_FALLBACK", True)
+    allow_last_tick_fallback = _env_bool("PM_SCAN_MARKET_REFRESH_ALLOW_LAST_TICK_FALLBACK", True)
+    token_refresh_attempted: Set[str] = set()
+    last_tick_fallback_cache: Dict[Tuple[str, str], Tuple[Optional[float], Optional[float], Optional[float], float, float]] = {}
+
+    def _looks_like_no_orderbook_error(text: str) -> bool:
+        lowered = str(text or "").lower()
+        if "status=404" in lowered or "orderbook_unavailable" in lowered:
+            return True
+        if "orderbook" not in lowered:
+            return False
+        return ("does not exist" in lowered) or ("no orderbook" in lowered)
+
+    def _refresh_token_ids_for_label(outcome_label: str) -> Dict[str, Any]:
+        label = str(outcome_label or "").strip()
+        if not label:
+            return {}
+        label_key = _normalize_outcome_key(label)
+        if not label_key or label_key in token_refresh_attempted:
+            return {}
+        token_refresh_attempted.add(label_key)
+        remap_gamma_timeout = _env_float("PM_SCAN_MARKET_REFRESH_TOKEN_REMAP_GAMMA_TIMEOUT_SEC")
+        if (
+            remap_gamma_timeout is None
+            or not math.isfinite(remap_gamma_timeout)
+            or remap_gamma_timeout <= 0
+        ):
+            remap_gamma_timeout = min(float(GAMMA_TIMEOUT), 3.0)
+        remap_gamma_retries = _env_int("PM_SCAN_MARKET_REFRESH_TOKEN_REMAP_GAMMA_RETRIES")
+        if remap_gamma_retries is None or remap_gamma_retries <= 0:
+            remap_gamma_retries = 1
+        remap_gamma_backoff = _env_float("PM_SCAN_MARKET_REFRESH_TOKEN_REMAP_GAMMA_BACKOFF_SEC")
+        if (
+            remap_gamma_backoff is None
+            or not math.isfinite(remap_gamma_backoff)
+            or remap_gamma_backoff < 0
+        ):
+            remap_gamma_backoff = 0.1
+        remap_gamma_bypass_proxy = _env_bool(
+            "PM_SCAN_MARKET_REFRESH_TOKEN_REMAP_GAMMA_BYPASS_PROXY",
+            False,
+        )
+        remap_tokens: List[Dict[str, Any]] = []
+        try:
+            detail = fetch_gamma_event_by_slug(
+                slug,
+                timeout=remap_gamma_timeout,
+                retries=remap_gamma_retries,
+                backoff=remap_gamma_backoff,
+                bypass_proxy=remap_gamma_bypass_proxy,
+            )
+        except Exception:
+            detail = None
+        if detail is not None:
+            try:
+                remap_tokens = parse_outcomes_and_tokens_from_event(detail)
+            except Exception:
+                remap_tokens = []
+        if not remap_tokens:
+            try:
+                market = fetch_gamma_market_by_slug(
+                    slug,
+                    timeout=remap_gamma_timeout,
+                    retries=remap_gamma_retries,
+                    backoff=remap_gamma_backoff,
+                    bypass_proxy=remap_gamma_bypass_proxy,
+                )
+            except Exception:
+                market = None
+            if market is not None:
+                try:
+                    remap_tokens = parse_outcomes_and_tokens(market)
+                except Exception:
+                    remap_tokens = []
+        if not remap_tokens:
+            return {}
+        try:
+            init_db()
+            with open_db() as conn:
+                _save_cached_market_tokens(conn, slug, event_date, remap_tokens, utc_now_iso())
+                conn.commit()
+        except Exception:
+            pass
+        for token_item in remap_tokens:
+            if not isinstance(token_item, dict):
+                continue
+            item_label = _normalize_outcome_key(token_item.get("label"))
+            if item_label != label_key:
+                continue
+            out: Dict[str, Any] = {}
+            yes_token = str(token_item.get("yes_token") or "").strip()
+            no_token = str(token_item.get("no_token") or "").strip()
+            yes_price = to_float(token_item.get("yes_price"))
+            no_price = to_float(token_item.get("no_price"))
+            if yes_token:
+                out["yes_token"] = yes_token
+            if no_token:
+                out["no_token"] = no_token
+            if yes_price is not None and math.isfinite(yes_price):
+                out["yes_price"] = float(yes_price)
+            if no_price is not None and math.isfinite(no_price):
+                out["no_price"] = float(no_price)
+            return out
+        return {}
+
+    def _fetch_side_quote(
+        outcome_label: str,
+        item_ref: Dict[str, Any],
+        side: str,
+    ) -> Tuple[Optional[float], Optional[float], Optional[float], float, float, Optional[str]]:
+        side_u = str(side or "").strip().upper()
+        token_key = "yes_token" if side_u == "YES" else "no_token"
+        price_key = "yes_price" if side_u == "YES" else "no_price"
+        token_id = str(item_ref.get(token_key) or "").strip()
+        fallback_price = to_float(item_ref.get(price_key))
+        if not token_id and allow_token_remap:
+            remap = _refresh_token_ids_for_label(outcome_label)
+            if remap.get(token_key):
+                token_id = str(remap.get(token_key) or "").strip()
+                item_ref[token_key] = token_id
+            remap_price = to_float(remap.get(price_key))
+            if remap_price is not None and math.isfinite(remap_price):
+                fallback_price = float(remap_price)
+                item_ref[price_key] = fallback_price
+        if not token_id:
+            return None, None, None, 0.0, 0.0, f"{side_u.lower()}_missing_token"
+        try:
+            book = fetch_orderbook(
+                token_id,
+                retries=clob_retries,
+                backoff=0.25,
+                timeout_sec=clob_timeout_sec,
+            )
+            (
+                best_bid_val,
+                best_ask_val,
+                spread_val,
+                bid_depth_val,
+                ask_depth_val,
+                _best_bid_size,
+                _best_ask_size,
+            ) = best_bid_ask_and_depth(book, levels=args.depth_levels)
+            return (
+                best_bid_val,
+                best_ask_val,
+                spread_val,
+                float(bid_depth_val or 0.0),
+                float(ask_depth_val or 0.0),
+                None,
+            )
+        except Exception as exc:
+            err_text = str(exc or "")
+            is_no_orderbook = _looks_like_no_orderbook_error(err_text)
+            if is_no_orderbook and allow_token_remap:
+                remap = _refresh_token_ids_for_label(outcome_label)
+                new_token = str(remap.get(token_key) or "").strip()
+                if new_token and new_token != token_id:
+                    token_id = new_token
+                    item_ref[token_key] = token_id
+                    remap_price = to_float(remap.get(price_key))
+                    if remap_price is not None and math.isfinite(remap_price):
+                        fallback_price = float(remap_price)
+                        item_ref[price_key] = fallback_price
+                    try:
+                        book = fetch_orderbook(
+                            token_id,
+                            retries=clob_retries,
+                            backoff=0.25,
+                            timeout_sec=clob_timeout_sec,
+                        )
+                        (
+                            best_bid_val,
+                            best_ask_val,
+                            spread_val,
+                            bid_depth_val,
+                            ask_depth_val,
+                            _best_bid_size,
+                            _best_ask_size,
+                        ) = best_bid_ask_and_depth(book, levels=args.depth_levels)
+                        return (
+                            best_bid_val,
+                            best_ask_val,
+                            spread_val,
+                            float(bid_depth_val or 0.0),
+                            float(ask_depth_val or 0.0),
+                            None,
+                        )
+                    except Exception as retry_exc:
+                        err_text = str(retry_exc or err_text)
+            if (
+                allow_gamma_price_fallback
+                and fallback_price is not None
+                and math.isfinite(fallback_price)
+                and fallback_price > 0
+            ):
+                return float(fallback_price), float(fallback_price), 0.0, 0.0, 0.0, "gamma_price_fallback"
+            if allow_last_tick_fallback:
+                cache_key = (str(outcome_label or "").strip(), side_u)
+                fallback_tick = last_tick_fallback_cache.get(cache_key)
+                if fallback_tick is None:
+                    try:
+                        init_db()
+                        with open_db() as conn:
+                            (
+                                fb_bid,
+                                fb_ask,
+                                fb_bid_depth,
+                                fb_ask_depth,
+                                _prev_bid,
+                                _prev_ask,
+                                _prev_bid_depth,
+                                _prev_ask_depth,
+                            ) = _latest_tick_for_outcome(
+                                conn,
+                                slug,
+                                event_date,
+                                cache_key[0],
+                                side_u,
+                            )
+                    except Exception:
+                        fb_bid = None
+                        fb_ask = None
+                        fb_bid_depth = None
+                        fb_ask_depth = None
+                    fb_spread = (
+                        max(float(fb_ask) - float(fb_bid), 0.0)
+                        if (
+                            fb_bid is not None
+                            and math.isfinite(fb_bid)
+                            and fb_ask is not None
+                            and math.isfinite(fb_ask)
+                        )
+                        else None
+                    )
+                    fallback_tick = (
+                        fb_bid,
+                        fb_ask,
+                        fb_spread,
+                        float(fb_bid_depth or 0.0),
+                        float(fb_ask_depth or 0.0),
+                    )
+                    last_tick_fallback_cache[cache_key] = fallback_tick
+                if fallback_tick[0] is not None or fallback_tick[1] is not None:
+                    return (
+                        fallback_tick[0],
+                        fallback_tick[1],
+                        fallback_tick[2],
+                        fallback_tick[3],
+                        fallback_tick[4],
+                        "last_tick_fallback",
+                    )
+            hint = "orderbook_missing" if is_no_orderbook else "orderbook_fetch_failed"
+            return None, None, None, 0.0, 0.0, f"{side_u.lower()}_{hint}:{err_text[:120]}"
+
     t0 = time.monotonic()
     for item in sorted_tokens:
         if time_budget_sec > 0 and (time.monotonic() - t0) >= time_budget_sec and rows:
@@ -33183,46 +35101,29 @@ def refresh_market_ticks_for_event(
         spread_no = None
         bid_depth_no = 0.0
         ask_depth_no = 0.0
-        if yes_token:
-            try:
-                book_yes = fetch_orderbook(
-                    str(yes_token),
-                    retries=clob_retries,
-                    backoff=0.25,
-                    timeout_sec=clob_timeout_sec,
-                )
-                (
-                    best_bid,
-                    best_ask,
-                    spread,
-                    bid_depth,
-                    ask_depth,
-                    _best_bid_size,
-                    _best_ask_size,
-                ) = best_bid_ask_and_depth(book_yes, levels=args.depth_levels)
-            except Exception:
-                last_ob_error = "yes_orderbook_fetch_failed"
-                pass
-        if no_token:
-            try:
-                book_no = fetch_orderbook(
-                    str(no_token),
-                    retries=clob_retries,
-                    backoff=0.25,
-                    timeout_sec=clob_timeout_sec,
-                )
-                (
-                    best_bid_no,
-                    best_ask_no,
-                    spread_no,
-                    bid_depth_no,
-                    ask_depth_no,
-                    _best_bid_size_no,
-                    _best_ask_size_no,
-                ) = best_bid_ask_and_depth(book_no, levels=args.depth_levels)
-            except Exception:
-                last_ob_error = "no_orderbook_fetch_failed"
-                pass
+        item_mut = item if isinstance(item, dict) else {}
+        if yes_token or allow_token_remap:
+            (
+                best_bid,
+                best_ask,
+                spread,
+                bid_depth,
+                ask_depth,
+                yes_err,
+            ) = _fetch_side_quote(label, item_mut, "YES")
+            if yes_err:
+                last_ob_error = yes_err
+        if no_token or allow_token_remap:
+            (
+                best_bid_no,
+                best_ask_no,
+                spread_no,
+                bid_depth_no,
+                ask_depth_no,
+                no_err,
+            ) = _fetch_side_quote(label, item_mut, "NO")
+            if no_err:
+                last_ob_error = no_err
         if (
             best_bid is not None
             or best_ask is not None
@@ -41814,6 +43715,11 @@ def main() -> None:
                     # minute refresh does not get stuck on execution-fixed slugs forever.
                     reserve_tail_slot = _env_bool("PM_SCAN_PRIORITY_RESERVE_TAIL_SLOT", False)
                     tail_slugs_plan = priority_plan.get("tail_slugs") if isinstance(priority_plan, dict) else []
+                    pruned_no_quote_slugs = {
+                        str(s or "").strip()
+                        for s in (priority_plan.get("fixed_pruned_no_quote_slugs") or [])
+                    } if isinstance(priority_plan, dict) else set()
+                    pruned_no_quote_slugs.discard("")
                     if (
                         reserve_tail_slot
                         and args.market_refresh_only
@@ -41849,6 +43755,8 @@ def main() -> None:
                         for slug_tail in tail_order:
                             ss_tail = str(slug_tail or "").strip()
                             if not ss_tail or ss_tail in selected_slug_set:
+                                continue
+                            if ss_tail in pruned_no_quote_slugs:
                                 continue
                             for ev in events:
                                 if not isinstance(ev, dict):

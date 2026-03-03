@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sqlite3
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -184,18 +185,55 @@ def main() -> int:
         )
 
     edge_exec_audit = _load_json(Path(args.edge_exec_audit))
-    edge_exec_pred = (
-        ((edge_exec_audit.get("replay") or {}).get("prediction_vs_realized_closed") or {})
-        if isinstance(edge_exec_audit, dict)
-        else {}
-    )
+    edge_exec_replay = (edge_exec_audit.get("replay") or {}) if isinstance(edge_exec_audit, dict) else {}
+    edge_exec_pred = (edge_exec_replay.get("prediction_vs_realized_closed") or {})
+    edge_exec_effective = (edge_exec_replay.get("prediction_vs_effective_matured") or {})
     edge_exec_avg_real = _to_float(edge_exec_pred.get("avg_realized_edge"))
     edge_exec_pred_n = _to_float(edge_exec_pred.get("n"))
+    edge_exec_effective_avg = _to_float(edge_exec_effective.get("avg_effective_edge"))
+    edge_exec_effective_n = _to_float(edge_exec_effective.get("n"))
     edge_exec_gate_pass = (
         (edge_exec_audit.get("gate") or {}).get("pass")
         if isinstance(edge_exec_audit.get("gate"), dict)
         else None
     )
+    try:
+        exec_min_rows = float(os.environ.get("PM_EDGE_TRADEABILITY_EXEC_MIN_ROWS", "10") or 10)
+    except Exception:
+        exec_min_rows = 10.0
+    if not math.isfinite(exec_min_rows) or exec_min_rows < 1:
+        exec_min_rows = 10.0
+    try:
+        exec_min_closed_rows_for_avg = float(
+            os.environ.get("PM_EDGE_TRADEABILITY_EXEC_MIN_CLOSED_ROWS_FOR_AVG", "3") or 3
+        )
+    except Exception:
+        exec_min_closed_rows_for_avg = 3.0
+    if (
+        not math.isfinite(exec_min_closed_rows_for_avg)
+        or exec_min_closed_rows_for_avg < 1
+    ):
+        exec_min_closed_rows_for_avg = 3.0
+
+    edge_exec_rows_for_gate = edge_exec_pred_n
+    edge_exec_rows_source = "prediction_vs_realized_closed"
+    if (
+        edge_exec_rows_for_gate is None
+        or edge_exec_rows_for_gate + 1e-9 < exec_min_rows
+    ):
+        if edge_exec_effective_n is not None and math.isfinite(edge_exec_effective_n):
+            edge_exec_rows_for_gate = float(edge_exec_effective_n)
+            edge_exec_rows_source = "prediction_vs_effective_matured"
+
+    edge_exec_avg_for_gate = edge_exec_avg_real
+    edge_exec_avg_source = "prediction_vs_realized_closed"
+    if (
+        edge_exec_pred_n is None
+        or edge_exec_pred_n + 1e-9 < exec_min_closed_rows_for_avg
+    ):
+        if edge_exec_effective_avg is not None and math.isfinite(edge_exec_effective_avg):
+            edge_exec_avg_for_gate = float(edge_exec_effective_avg)
+            edge_exec_avg_source = "prediction_vs_effective_matured"
 
     gate_checks = [
         {
@@ -214,17 +252,19 @@ def main() -> int:
         },
         {
             "name": "edge_exec_avg_realized_edge_nonneg",
-            "ok": edge_exec_avg_real is not None and edge_exec_avg_real >= 0.0,
-            "value": edge_exec_avg_real,
+            "ok": edge_exec_avg_for_gate is not None and edge_exec_avg_for_gate >= 0.0,
+            "value": edge_exec_avg_for_gate,
             "threshold": 0.0,
             "comparator": ">=",
+            "source": edge_exec_avg_source,
         },
         {
             "name": "edge_exec_pred_rows_min",
-            "ok": edge_exec_pred_n is not None and edge_exec_pred_n >= 10.0,
-            "value": edge_exec_pred_n,
-            "threshold": 10.0,
+            "ok": edge_exec_rows_for_gate is not None and edge_exec_rows_for_gate >= exec_min_rows,
+            "value": edge_exec_rows_for_gate,
+            "threshold": exec_min_rows,
             "comparator": ">=",
+            "source": edge_exec_rows_source,
         },
         {
             "name": "edge_exec_gate_pass",
@@ -270,6 +310,16 @@ def main() -> int:
             "gate_pass": edge_exec_gate_pass,
             "pred_n": edge_exec_pred_n,
             "avg_realized_edge": edge_exec_avg_real,
+            "pred_n_closed": edge_exec_pred_n,
+            "avg_realized_edge_closed": edge_exec_avg_real,
+            "pred_n_effective": edge_exec_effective_n,
+            "avg_effective_edge": edge_exec_effective_avg,
+            "pred_rows_for_gate": edge_exec_rows_for_gate,
+            "pred_rows_for_gate_source": edge_exec_rows_source,
+            "avg_edge_for_gate": edge_exec_avg_for_gate,
+            "avg_edge_for_gate_source": edge_exec_avg_source,
+            "exec_min_rows": exec_min_rows,
+            "exec_min_closed_rows_for_avg": exec_min_closed_rows_for_avg,
         },
         "gate": {
             "pass": gate_pass,
@@ -296,4 +346,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

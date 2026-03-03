@@ -1,0 +1,960 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "自动交易" [ref=e8] [cursor=pointer]:
+            - /url: "#autoTradeSection"
+          - link "策略配置" [ref=e9] [cursor=pointer]:
+            - /url: "#strategySection"
+          - link "站点/模型" [ref=e10] [cursor=pointer]:
+            - /url: "#availabilitySection"
+        - generic [ref=e11]:
+          - link "事件" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "评分校正" [ref=e13] [cursor=pointer]:
+            - /url: "#ratingBiasSectionBlock"
+      - generic [ref=e14]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e16] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e17]: 总开关
+          - generic [ref=e18]: 开启
+        - generic [ref=e21]:
+          - button "同步" [ref=e22] [cursor=pointer]
+          - button "模型" [ref=e23] [cursor=pointer]
+          - button "盘口" [ref=e24] [cursor=pointer]
+          - button "刷新" [ref=e25] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e26] [cursor=pointer]
+          - button "日志" [ref=e28] [cursor=pointer]
+          - group [ref=e29]:
+            - generic "控制中心" [ref=e30] [cursor=pointer]: 控
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - status [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: 新鲜度
+            - generic [ref=e37]: 等待数据…时效口径
+            - generic [ref=e38]:
+              - generic [ref=e40]:
+                - generic [ref=e41]: 模型
+                - generic [ref=e42]: —
+              - generic [ref=e45]:
+                - generic [ref=e46]: 盘口
+                - generic [ref=e47]: —
+          - generic [ref=e49]:
+            - generic [ref=e50]:
+              - generic [ref=e51] [cursor=pointer]:
+                - generic [ref=e52]: 健康检查
+                - generic [ref=e53]: 展开
+                - button "复制" [ref=e54]
+              - generic: —
+            - group [ref=e55]:
+              - generic "追涨触发统计" [ref=e56] [cursor=pointer]:
+                - generic [ref=e57]: 追涨触发统计
+      - generic [ref=e58]:
+        - generic [ref=e60]: 自动买卖检测
+        - generic [ref=e61]: —
+        - generic [ref=e62]: —
+        - generic [ref=e64]: 事件口径
+        - generic [ref=e65]:
+          - generic [ref=e66]: 自动交易：—
+          - generic [ref=e67]: 成交同步：—
+          - generic [ref=e68]: 最后触发：—
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic "页面数据状态：刷新中 · 03-03 15:44" [ref=e72]:
+              - generic [ref=e74]: 刷新中
+              - generic "页面数据最后刷新/失败时间" [ref=e75]: 03-03 15:44
+            - generic [ref=e77]: 加载中...
+          - generic [ref=e78]:
+            - generic [ref=e79]: 主策略 关 1.00x
+            - generic [ref=e80]: YES最高桶 开 1.00x
+            - generic [ref=e81]: 临结价差 开 1.00x
+            - generic [ref=e82]: 物理边界NO 开 1.00x
+            - generic [ref=e83]: 邻桶配对 开 1.00x
+            - generic [ref=e84]: 影子跟单 关 0.08x
+        - generic [ref=e85]:
+          - button "auto_trade_watcher" [ref=e86] [cursor=pointer]
+          - button "残留清理" [ref=e87] [cursor=pointer]
+          - generic [ref=e88] [cursor=pointer]:
+            - checkbox "自动交易 关闭"
+            - generic [ref=e90]: 自动交易 关闭
+    - generic [ref=e92]: 自动交易总览
+    - generic [ref=e94]:
+      - generic [ref=e95]: 自动交易策略配置
+      - generic [ref=e97]:
+        - generic [ref=e98]: 策略配置面板
+        - generic [ref=e99]:
+          - generic [ref=e100]: 预设方案
+          - generic [ref=e101]: 当前：吃edge版
+          - generic [ref=e102]:
+            - button "默认" [ref=e103] [cursor=pointer]
+            - button "保守型" [ref=e104] [cursor=pointer]
+            - button "进攻型" [ref=e105] [cursor=pointer]
+            - button "吃edge版当前" [ref=e106] [cursor=pointer]
+            - button "默认edge方案" [ref=e107] [cursor=pointer]
+            - button "低yes 高no（杠铃策略）" [ref=e108] [cursor=pointer]
+          - generic [ref=e109]:
+            - button "保存为新方案" [ref=e110] [cursor=pointer]
+            - button "更新当前方案" [ref=e111] [cursor=pointer]
+            - button "重命名" [ref=e112] [cursor=pointer]
+            - button "删除" [ref=e113] [cursor=pointer]
+        - generic [ref=e114]:
+          - generic [ref=e115]:
+            - generic [ref=e116]: 当前符合的温度事件
+            - strong [ref=e117]: —
+            - generic [ref=e118]: / —
+          - generic [ref=e119]:
+            - generic [ref=e122]: 已保存
+            - button "一键检测" [ref=e123] [cursor=pointer]
+            - button "自动修复" [ref=e124] [cursor=pointer]
+            - button "保存设置" [disabled] [ref=e125]
+        - generic [ref=e126]:
+          - generic [ref=e127]:
+            - generic [ref=e128]: 可视化冲突提示
+            - generic [ref=e129]: 错误 0 · 警告 0 · 提示 2
+          - generic [ref=e130]:
+            - generic [ref=e131]:
+              - generic [ref=e132]: 提示
+              - generic [ref=e133]: q范围开关关闭：entry_q_min/max 不参与过滤。建议：需要生效则打开开关，或清空该值（当前不参与过滤）
+            - generic [ref=e134]:
+              - generic [ref=e135]: 提示
+              - generic [ref=e136]: 买价上限开关关闭：auto_max_ask 不参与过滤。建议：需要生效则打开开关，或清空该值（当前不参与过滤）
+        - generic [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: 策略开关 · 一键启停
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - generic [ref=e142]: 入场策略总开关（主策略 + 独立策略）
+                - generic [ref=e143]:
+                  - button "一键启动全部策略" [ref=e144] [cursor=pointer]
+                  - button "一键关闭到仅主策略" [ref=e145] [cursor=pointer]
+              - generic [ref=e146]:
+                - generic [ref=e147]:
+                  - checkbox "主策略" [ref=e148]
+                  - text: 主策略
+                - generic [ref=e149]:
+                  - checkbox "YES最高桶" [checked] [ref=e150]
+                  - text: YES最高桶
+                - generic [ref=e151]:
+                  - checkbox "临结价差" [checked] [ref=e152]
+                  - text: 临结价差
+                - generic [ref=e153]:
+                  - checkbox "影子跟单" [ref=e154]
+                  - text: 影子跟单
+                - generic [ref=e155]:
+                  - checkbox "物理边界 NO" [checked] [ref=e156]
+                  - text: 物理边界 NO
+                - generic [ref=e157]:
+                  - checkbox "邻桶配对" [checked] [ref=e158]
+                  - text: 邻桶配对
+              - generic [ref=e159]:
+                - generic [ref=e160]:
+                  - checkbox "模型扫描" [ref=e161]
+                  - text: 模型扫描
+                - generic [ref=e162]:
+                  - checkbox "盘口刷新" [ref=e163]
+                  - text: 盘口刷新
+                - generic [ref=e164]:
+                  - checkbox "自动交易（总开关）" [ref=e165]
+                  - text: 自动交易（总开关）
+              - generic [ref=e166]: 说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。
+              - generic [ref=e167]: 上面的“一键按钮”会同时作用于全部策略开关（含 YES最高桶 / 临结价差 / 影子跟单）。
+              - generic [ref=e168]: 总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。
+              - generic [ref=e169]:
+                - generic [ref=e170]:
+                  - generic [ref=e171]: 主策略仓位系数
+                  - spinbutton [ref=e173]: "1"
+                - generic [ref=e174]:
+                  - generic [ref=e175]: YES最高桶仓位系数
+                  - spinbutton [ref=e177]: "1"
+                - generic [ref=e178]:
+                  - generic [ref=e179]: 临结价差仓位系数
+                  - spinbutton [ref=e181]: "1"
+              - generic [ref=e182]:
+                - generic [ref=e183]:
+                  - generic [ref=e184]: 物理边界NO仓位系数
+                  - spinbutton [ref=e186]: "1"
+                - generic [ref=e187]:
+                  - generic [ref=e188]: 邻桶配对仓位系数
+                  - spinbutton [ref=e190]: "1"
+                - generic [ref=e191]:
+                  - generic [ref=e192]: 影子跟单份数比例（1.00=100%，0.10=10%，0.08=8%）
+                  - spinbutton [ref=e194]: "0.08"
+                - generic [ref=e195]:
+                  - generic [ref=e196]: 影子跟单最小下单金额（USDC）
+                  - spinbutton [ref=e198]: "0"
+              - generic [ref=e199]: 仓位系数基准为 1.00x；0 表示该策略当轮不下单。
+              - generic [ref=e200]:
+                - generic [ref=e201]:
+                  - text: 主策略 · 关 ·
+                  - generic [ref=e202]: 1.00x
+                - generic [ref=e203]:
+                  - text: YES最高桶 · 开 ·
+                  - generic [ref=e204]: 1.00x
+                - generic [ref=e205]:
+                  - text: 临结价差 · 开 ·
+                  - generic [ref=e206]: 1.00x
+                - generic [ref=e207]:
+                  - text: 物理边界NO · 开 ·
+                  - generic [ref=e208]: 1.00x
+                - generic [ref=e209]:
+                  - text: 邻桶配对 · 开 ·
+                  - generic [ref=e210]: 1.00x
+                - generic [ref=e211]:
+                  - text: 影子跟单 · 关 ·
+                  - generic [ref=e212]: 0.08x
+          - generic [ref=e213]:
+            - generic [ref=e214]: 入场阈值 · EdgeScore
+            - generic [ref=e215]:
+              - generic [ref=e216]:
+                - generic [ref=e217]: 全局最低门槛
+                - generic "全局最低 有效优势分 门槛（edge_score_min），低于该值直接不进场。" [ref=e218]: i
+                - spinbutton [ref=e220]: "1"
+              - generic [ref=e221]:
+                - generic [ref=e222]: 温度事件显示阈值
+                - generic "温度事件有效优势分阈值（temperature_event_min_edge_score_display）：低于该值会在扫描归档时跳过，并阻止自动交易入场；UI 也会隐藏。" [ref=e223]: i
+                - spinbutton [ref=e225]: "1"
+            - generic [ref=e226]: 这是最硬的全局门槛，优先级高于其它区间控制。
+            - generic [ref=e227]:
+              - generic [ref=e228]:
+                - generic [ref=e229]:
+                  - checkbox "有效优势分 Never i" [ref=e230]
+                  - text: 有效优势分 Never
+                  - generic "硬过滤区间（edge_score_never_min / edge_score_never_max）。低于下限或高于上限直接不考虑该侧。" [ref=e231]: i
+                - generic [ref=e232]:
+                  - spinbutton [ref=e234]: "5"
+                  - generic [ref=e235]: ~
+                  - spinbutton [ref=e237]: "40"
+              - generic [ref=e238]:
+                - generic [ref=e239]:
+                  - checkbox "有效优势分 可买 i" [checked] [ref=e240]
+                  - text: 有效优势分 可买
+                  - generic "通过过滤后进入可买区间（edge_score_buy_min / edge_score_buy_max）才允许下单，用于控制进场强度。" [ref=e241]: i
+                - generic [ref=e242]:
+                  - spinbutton [ref=e244]: "1"
+                  - generic [ref=e245]: ~
+                  - spinbutton [ref=e247]: "40"
+            - generic [ref=e248]: 用于剔除过低/过高 有效优势分。调高下限或调低上限=更严格；调低下限或调高上限=放宽。
+            - generic [ref=e249]: 有效优势分 可买区间以配置为准（edge_score_buy_min / edge_score_buy_max），只有落在这两个值之间的事件才会进入下一步筛选。 把下限调高或上限调低会更加严格地排除极端高/低预测；调低下限或抬上限则能在更宽的 有效优势分 带宽里试错。
+            - generic [ref=e251]:
+              - generic [ref=e252]: Time×Structure 最低值
+              - generic "time_factor × structure_factor 的最小乘积（time_structure_min / PM_TIME_STRUCTURE_MIN），决定 EdgeScore 的下限。调高可以让 time/structure 对 EdgeScore 的影响更大。" [ref=e253]: i
+              - spinbutton [ref=e255]: "0.2"
+            - generic [ref=e258]:
+              - checkbox "自动交易前预取事件详情 i" [checked] [ref=e259]
+              - text: 自动交易前预取事件详情
+              - generic "启动 trade_sync_loop 前先跑一次详情抓取（PM_SCAN_FETCH_EVENT_DETAIL=1 scan_weather_market.py --scan-weather-today ...），确保最新 outcome_volume 反映在 event_runs 再执行自动交易。" [ref=e260]: i
+            - generic [ref=e262]:
+              - generic [ref=e263]: 自动交易最小间隔(秒)
+              - generic "自动交易运行节流的最小间隔（PM_AUTO_TRADE_MIN_RUN_INTERVAL_SEC）。调低=更频繁触发，调高=更保守。" [ref=e264]: i
+              - spinbutton [ref=e266]: "30"
+            - generic [ref=e267]:
+              - generic [ref=e268]:
+                - generic [ref=e269]:
+                  - checkbox "买价上限 i" [disabled] [ref=e270]
+                  - text: 买价上限
+                  - generic "ask高于上限不买，避免追高。" [ref=e271]: i
+                - generic [ref=e272]:
+                  - spinbutton [disabled] [ref=e273]: "0.95"
+                  - generic [ref=e274]: 开关关闭，当前不生效
+              - generic [ref=e275]:
+                - generic [ref=e276]: 每单预算
+                - generic "用于换算下单数量：size=预算/价格。实际还会受单笔上限和最小下单量限制。" [ref=e277]: i
+                - spinbutton [ref=e279]: "3"
+                - generic [ref=e280]: USDC
+            - generic [ref=e281]: 买价上限(ask)。调低=只买更便宜；调高=允许更贵的报价。
+            - generic [ref=e282]: 用于换算下单数量(预算/价格)。实际还会受“单笔上限”影响。
+          - generic [ref=e283]:
+            - generic [ref=e284]: 入场阈值 · 可兑现口径（不扣手续费）
+            - generic [ref=e285]:
+              - generic [ref=e286]:
+                - generic [ref=e287]:
+                  - checkbox "可兑现口径门槛 i" [checked] [ref=e288]
+                  - text: 可兑现口径门槛
+                  - generic "edge_realizable(v2)=exec_edge_entry×p_realize−持有成本；p_realize=入场成交×回归×退出成交。v1=exec_edge_entry（q_entry−可成交价−执行成本）。" [ref=e289]: i
+                - spinbutton [ref=e292]: "0.05"
+              - generic [ref=e293]:
+                - generic [ref=e294]: 预估手续费(停用)
+                - generic "当前口径不扣手续费，字段保留为兼容。" [ref=e295]: i
+                - spinbutton [ref=e297]: "100"
+                - generic [ref=e298]: bps
+            - generic [ref=e299]: 核心思路：只看执行成本后的可兑现边际为正才允许入场。
+          - generic [ref=e300]:
+            - generic [ref=e301]: 入场条件 · 概率与盘口
+            - generic [ref=e302]:
+              - generic [ref=e303]:
+                - generic [ref=e304]:
+                  - checkbox "q区间 i" [disabled] [ref=e305]
+                  - text: q区间
+                  - generic "模型概率过滤。太低或太高都不做，避免噪音或过热区间。" [ref=e306]: i
+                - generic [ref=e307]:
+                  - generic [ref=e308]:
+                    - spinbutton [disabled] [ref=e309]: "0.2"
+                    - generic [ref=e310]: 开关关闭，当前不生效
+                  - generic [ref=e311]: ~
+                  - generic [ref=e312]:
+                    - spinbutton [disabled] [ref=e313]: "0.9"
+                    - generic [ref=e314]: 开关关闭，当前不生效
+              - generic [ref=e316]:
+                - checkbox "q分段 i" [disabled] [ref=e317]
+                - text: q分段
+                - generic "q 必须落在任意一个分段区间内。用于分段过滤。" [ref=e318]: i
+              - generic [ref=e320]:
+                - generic [ref=e321]: 段1
+                - spinbutton [disabled] [ref=e323]: "0.2"
+                - generic [ref=e324]: ~
+                - spinbutton [disabled] [ref=e326]: "0.4"
+              - generic [ref=e328]:
+                - generic [ref=e329]: 段2
+                - spinbutton [disabled] [ref=e331]: "0.93"
+                - generic [ref=e332]: ~
+                - spinbutton [disabled] [ref=e334]: "0.99"
+              - generic [ref=e336]:
+                - generic [ref=e337]: 段3
+                - spinbutton [disabled] [ref=e339]
+                - generic [ref=e340]: ~
+                - spinbutton [disabled] [ref=e342]
+            - generic [ref=e343]: q在区间内才进场。调高下限/调低上限=更保守；调低下限/调高上限=更宽松。
+            - generic [ref=e344]:
+              - generic [ref=e345]:
+                - generic [ref=e346]:
+                  - checkbox "ask过滤区间(YES) i" [disabled] [ref=e347]
+                  - text: ask过滤区间(YES)
+                  - generic "用于过滤当时盘口 best_ask(YES)。注意：系统下单通常用更保守的限价(如 mid)，成交价也可能低于 best_ask/低于该下限；该下限不是“成交价下限”。" [ref=e348]: i
+                - generic [ref=e349]:
+                  - spinbutton [disabled] [ref=e351]: "0.02"
+                  - generic [ref=e352]: ~
+                  - spinbutton [disabled] [ref=e354]: "0.95"
+              - generic [ref=e355]:
+                - generic [ref=e356]:
+                  - checkbox "ask过滤区间(NO) i" [disabled] [ref=e357]
+                  - text: ask过滤区间(NO)
+                  - generic "用于过滤当时盘口 best_ask(NO)。注意：该下限不是“成交价下限”。" [ref=e358]: i
+                - generic [ref=e359]:
+                  - spinbutton [disabled] [ref=e361]: "0.02"
+                  - generic [ref=e362]: ~
+                  - spinbutton [disabled] [ref=e364]: "0.95"
+            - generic [ref=e365]: 调高下限=剔除过低卖价；调低上限=剔除过高卖价。
+            - generic [ref=e366]:
+              - generic [ref=e367]:
+                - generic [ref=e368]:
+                  - checkbox "ask≤q_min i" [disabled] [ref=e369]
+                  - text: ask≤q_min
+                  - generic "买入价不能高于保守概率下界，避免高估入场。" [ref=e370]: i
+                - generic [ref=e371]:
+                  - generic [ref=e372]: 缓冲
+                  - generic "允许ask略高于q_min的幅度，调大=更宽松。" [ref=e373]: i
+                  - spinbutton [disabled] [ref=e375]: "0.03"
+              - generic [ref=e377]:
+                - checkbox "spread≥0 i" [checked] [ref=e378]
+                - text: spread≥0
+                - generic "排除倒挂盘口(价差为负)。" [ref=e379]: i
+              - generic [ref=e380]:
+                - generic [ref=e381]:
+                  - checkbox "spread≤ i" [disabled] [ref=e382]
+                  - text: spread≤
+                  - generic "只在点差足够小的时候进场，避免滑点。" [ref=e383]: i
+                - spinbutton [disabled] [ref=e385]: "0.03"
+              - generic [ref=e386]:
+                - generic [ref=e387]:
+                  - checkbox "信号边际≥ i" [ref=e388]
+                  - text: 信号边际≥
+                  - generic "信号边际（入场口径）= q_entry - 可成交价（NO 用 q_entry_no - 可成交价_no）。q_entry 优先 q_calibrated，其次 q_raw。阈值越高越严格。" [ref=e389]: i
+                - generic [ref=e390]:
+                  - spinbutton [ref=e392]: "0.1"
+                  - generic [ref=e393]: 连续
+                  - generic "需要连续N次满足条件，降低瞬时噪音单。" [ref=e394]: i
+                  - spinbutton [ref=e396]: "1"
+            - generic [ref=e397]: ask≤q_min+缓冲避免高估入场；缓冲=允许ask略高。spread≥0剔除倒挂；spread≤上限只在小点差入场；信号边际≥阈值才进场。连续次数提高=更严格。
+            - generic [ref=e398]:
+              - generic [ref=e399]: Edge（原始信号边际）历史偏差校正
+              - generic [ref=e400]:
+                - generic [ref=e401]: 可信度关闭
+                - generic [ref=e402]: 偏差关闭
+                - generic [ref=e403]: 校正关闭
+              - generic [ref=e404]:
+                - generic [ref=e405]:
+                  - generic [ref=e406]:
+                    - checkbox "可信度≥ i" [ref=e407]
+                    - text: 可信度≥
+                    - generic "可信度=实现优势/预测优势（Edge偏差校正）。低于阈值不进场。" [ref=e408]: i
+                  - spinbutton [ref=e410]: "0.5474669783545848"
+                - generic [ref=e411]:
+                  - generic [ref=e412]:
+                    - checkbox "偏差≥ i" [ref=e413]
+                    - text: 偏差≥
+                    - generic "偏差=实际-预测（%）。低于阈值不进场。可填负值。" [ref=e414]: i
+                  - spinbutton [ref=e416]: "-5"
+                - generic [ref=e417]:
+                  - generic [ref=e418]:
+                    - checkbox "偏差校正 i" [ref=e419]
+                    - text: 偏差校正
+                    - generic "使用历史偏差做可信度/偏差过滤（不修改信号边际）。" [ref=e420]: i
+                  - generic [ref=e421]:
+                    - generic [ref=e422]: 天数
+                    - spinbutton [ref=e424]: "30"
+            - generic [ref=e425]: 可信度/偏差来自 Edge 历史偏差校正（事件口径）。偏差校正仅用于过滤，不修改信号边际。
+            - generic [ref=e426]:
+              - generic [ref=e428]:
+                - checkbox "edge区间 i" [ref=e429]
+                - text: edge区间
+                - generic "信号边际必须落在任意一个区间内，用于分段过滤。" [ref=e430]: i
+              - generic [ref=e432]:
+                - generic [ref=e433]: 段1
+                - spinbutton [ref=e435]: "0.01"
+                - generic [ref=e436]: ~
+                - spinbutton [ref=e438]: "0.8"
+              - generic [ref=e440]:
+                - generic [ref=e441]: 段2
+                - spinbutton [ref=e443]
+                - generic [ref=e444]: ~
+                - spinbutton [ref=e446]
+              - generic [ref=e448]:
+                - generic [ref=e449]: 段3
+                - spinbutton [ref=e451]
+                - generic [ref=e452]: ~
+                - spinbutton [ref=e454]
+            - generic [ref=e455]: edge区间开启后，信号边际必须落在任意一段区间内；区间可留空表示不启用该段。
+            - generic [ref=e457]:
+              - generic [ref=e458]: 入场价(限价)
+              - generic "默认使用中间价：有 bid 时 (bid+ask)/2；无 bid 则 ask - spread/2。趋势/lag 限价保护会覆盖。" [ref=e459]: i
+              - generic [ref=e460]: 中间价
+            - generic [ref=e461]: 不再直接用 best_ask，改为基于 spread 的中间价作为默认下单价。
+            - generic [ref=e462]:
+              - generic [ref=e464]:
+                - checkbox "最高概率桶NO禁入（市场盘口） i" [disabled] [ref=e465]
+                - text: 最高概率桶NO禁入（市场盘口）
+                - generic "最高概率标签在某桶时不做NO，避免逆势。" [ref=e466]: i
+              - generic [ref=e467]:
+                - generic [ref=e468]:
+                  - checkbox "NO禁入(YES q) i" [disabled] [ref=e469]
+                  - text: NO禁入(YES q)
+                  - generic "当YES侧概率落在禁入区间时不做NO。" [ref=e470]: i
+                - generic [ref=e471]:
+                  - spinbutton [ref=e473]: "0.65"
+                  - generic [ref=e474]: ~
+                  - spinbutton [ref=e476]: "1"
+            - generic [ref=e477]: 最高概率桶NO禁入（市场盘口温度口径）：开启则不买“市场盘口最高概率桶”的NO。NO禁入：YES q落在区间内则不买NO；调高下限缩小禁入区间，调高上限扩大禁入区间。
+            - generic [ref=e479]:
+              - generic [ref=e480]:
+                - checkbox "YES高估 i" [disabled] [ref=e481]
+                - text: YES高估
+                - generic "仅当YES明显偏贵时才买NO；阈值越低越容易买NO。" [ref=e482]: i
+              - generic [ref=e483]:
+                - spinbutton [ref=e485]: "0.03"
+                - generic [ref=e486]: ≥
+                - generic [ref=e487]: ask − q
+            - generic [ref=e488]: YES高估(ask−q)。调高=需更明显高估才买NO；调低=更容易买NO。
+          - generic [ref=e489]:
+            - generic [ref=e490]: 独立策略 · YES最高桶策略
+            - generic [ref=e491]:
+              - generic [ref=e492]:
+                - generic [ref=e493]: 只买YES
+                - generic [ref=e494]: 最高概率桶策略：三权重一致为加分项；重点看 q_raw 与 q_calibrated、一致的四大模型。盘口/模型一致时仅代表“更强一致性”，仍需满足 exec_edge（可兑现边际）门槛。
+              - generic [ref=e495]:
+                - generic [ref=e496]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e497]:
+                  - checkbox "仅独立策略 i" [ref=e498]
+                  - text: 仅独立策略
+                  - generic "开启后主策略进场暂停，仅保留YES最高概率桶策略。" [ref=e499]: i
+                - generic [ref=e500]:
+                  - generic [ref=e501]: 最高桶 q≥
+                  - spinbutton [ref=e503]: "0.38"
+                - generic [ref=e504]:
+                  - generic [ref=e505]: 领先差≥
+                  - spinbutton [ref=e507]: "0.14"
+                  - generic [ref=e508]: Top-2
+                - generic [ref=e509]:
+                  - generic [ref=e510]: 模型差≤
+                  - spinbutton [ref=e512]: "0.1"
+                - generic [ref=e513]:
+                  - generic [ref=e514]: 模型≥
+                  - spinbutton [ref=e516]: "3"
+                - generic [ref=e517]:
+                  - generic [ref=e518]: YES 信号边际≥
+                  - spinbutton [ref=e520]: "0.06"
+                - generic [ref=e521]:
+                  - checkbox "exec_edge≥ i" [checked] [ref=e522]
+                  - text: exec_edge≥
+                  - generic "可兑现边际：q_entry − 可成交价 − 执行成本。作为 YES Top 的硬门槛（核心变现口径）。" [ref=e523]: i
+                - spinbutton [ref=e525]: "0.01"
+              - generic [ref=e526]:
+                - generic [ref=e527]:
+                  - checkbox "ask≥ i" [checked] [ref=e528]
+                  - text: ask≥
+                  - generic "最高概率桶的YES买价下限，过滤尾盘锁价假edge。" [ref=e529]: i
+                - spinbutton [ref=e531]: "0.03"
+                - generic [ref=e532]:
+                  - checkbox "ask≤ i" [checked] [ref=e533]
+                  - text: ask≤
+                  - generic "最高概率桶的YES买价上限。" [ref=e534]: i
+                - spinbutton [ref=e536]: "0.68"
+                - generic [ref=e537]:
+                  - checkbox "spread≤ i" [checked] [ref=e538]
+                  - text: spread≤
+                  - generic "最高概率桶的点差上限，避免滑点。" [ref=e539]: i
+                - spinbutton [ref=e541]: "0.03"
+              - generic [ref=e542]:
+                - generic [ref=e543]:
+                  - generic [ref=e544]: 价差比≤
+                  - spinbutton [ref=e546]: "0.1"
+                  - generic [ref=e547]: spread/price
+                - generic [ref=e548]:
+                  - generic [ref=e549]: 追价信号边际≥
+                  - spinbutton [ref=e551]: "0.1"
+                - generic [ref=e552]:
+                  - generic [ref=e553]: 趋势强度≥
+                  - spinbutton [ref=e555]: "0.01"
+              - generic [ref=e556]: YES Top 独立退出（仅作用于 YES Top 持仓）
+              - generic [ref=e557]:
+                - generic [ref=e558]:
+                  - generic [ref=e559]: 止损(%)
+                  - spinbutton [ref=e561]: "0.18"
+                - generic [ref=e562]:
+                  - generic [ref=e563]: 回撤止盈(%)
+                  - spinbutton [ref=e565]: "0.12"
+                - generic [ref=e566]:
+                  - generic [ref=e567]: 最短持有(秒)
+                  - spinbutton [ref=e569]: "1800"
+              - generic [ref=e570]:
+                - generic [ref=e571]:
+                  - generic [ref=e572]: q 下限≤
+                  - spinbutton [ref=e574]: "0.5"
+                - generic [ref=e575]:
+                  - generic [ref=e576]: 入场回撤≥
+                  - spinbutton [ref=e578]: "0.12"
+                - generic [ref=e579]:
+                  - generic [ref=e580]: Top 差距≥
+                  - spinbutton [ref=e582]: "0.1"
+              - generic [ref=e583]:
+                - generic [ref=e584]:
+                  - checkbox "要求模型确认" [checked] [ref=e585]
+                  - text: 要求模型确认
+                - generic [ref=e586]:
+                  - checkbox "允许 trend_down 触发退出" [ref=e587]
+                  - text: 允许 trend_down 触发退出
+              - generic [ref=e588]: 最高桶 q=模型最高概率；领先差=最高桶q−次高桶q；模型差=该桶 q_max−q_min（当模型一致率=100%时不再检查模型差）。三权重一致仅作加分；q_raw 与 q_calibrated 一致、或四大模型一致时可放宽过滤；若 q_raw/q_calibrated/市场盘口三者一致则直接入场。该策略仍受开盘等待/最小下单量等保护。
+              - generic [ref=e589]: 价差比/追价信号/趋势强度用于 YES Top 入场执行节奏。YES Top 独立退出参数用于“最高桶反转”退出，不影响主策略退出参数。
+          - generic [ref=e590]:
+            - generic [ref=e591]: 独立策略 · 临结价差策略（临近结算分布）
+            - generic [ref=e592]:
+              - generic [ref=e593]:
+                - generic [ref=e594]: 概率门控
+                - generic [ref=e595]: 临近结算窗口内按分布价差做组合入场：NO 主腿（高概率不发生桶）+ YES 辅助腿（中心/对冲），并按事件级净暴露风控。
+              - generic [ref=e596]:
+                - generic [ref=e597]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e598]:
+                  - checkbox "仅最高温度桶事件" [checked] [ref=e599]
+                  - text: 仅最高温度桶事件
+                - generic [ref=e600]:
+                  - checkbox "仅 NO 侧入场" [ref=e601]
+                  - text: 仅 NO 侧入场
+                - generic [ref=e602]:
+                  - checkbox "启用 YES 辅助腿" [checked] [ref=e603]
+                  - text: 启用 YES 辅助腿
+                - generic [ref=e604]:
+                  - checkbox "NO 核心条件门禁" [checked] [ref=e605]
+                  - text: NO 核心条件门禁
+                - generic [ref=e606]:
+                  - checkbox "YES 仅作对冲" [ref=e607]
+                  - text: YES 仅作对冲
+                - generic [ref=e608]:
+                  - checkbox "启用盘口深度门禁" [checked] [ref=e609]
+                  - text: 启用盘口深度门禁
+                - generic [ref=e610]:
+                  - checkbox "跳过趋势门禁" [checked] [ref=e611]
+                  - text: 跳过趋势门禁
+                - generic [ref=e612]:
+                  - checkbox "跳过 可兑现分(扣费)≥分层门槛(D=*) i" [checked] [ref=e613]
+                  - text: 跳过 可兑现分(扣费)≥分层门槛(D=*)
+                  - generic "仅跳过 可兑现分(扣费)(edge_realizable_score) 分层门槛(D=*)（用于提高临结价差策略成交率）；不影响 exec_edge_entry（可兑现期望）硬门槛。" [ref=e614]: i
+                - generic [ref=e615]:
+                  - generic [ref=e616]: 结算前窗口(h)
+                  - generic "距离结算前N小时内允许临结价差入场。" [ref=e617]: i
+                  - spinbutton [ref=e619]: "20"
+                - generic [ref=e620]:
+                  - generic [ref=e621]: 结算后窗口(h)
+                  - generic "结算后容忍窗口（通常保持较小）。" [ref=e622]: i
+                  - spinbutton [ref=e624]: "4"
+              - generic [ref=e625]:
+                - generic [ref=e626]:
+                  - checkbox "硬门槛：exec_edge_entry i" [checked] [ref=e627]
+                  - text: 硬门槛：exec_edge_entry
+                  - generic "要求该腿在可成交价上仍为正期望：exec_edge_entry = q_entry − 可成交价 − 成本。" [ref=e628]: i
+                - generic [ref=e629]:
+                  - generic [ref=e630]: exec_edge阈值
+                  - generic "阈值越高越保守；0 表示仅要求 >0。" [ref=e631]: i
+                  - spinbutton [ref=e633]: "0"
+              - generic [ref=e634]:
+                - generic [ref=e635]:
+                  - generic [ref=e636]: NO 价格下限
+                  - generic "BUY NO 时要求 ask 不低于该值。" [ref=e637]: i
+                  - spinbutton [ref=e639]: "0.94"
+                - generic [ref=e640]:
+                  - generic [ref=e641]: YES 价格上限
+                  - generic "BUY YES 时要求 ask 不高于该值。" [ref=e642]: i
+                  - spinbutton [ref=e644]: "0.35"
+                - generic [ref=e645]:
+                  - generic [ref=e646]: 成本缓冲
+                  - generic "edge 计算时额外扣减成本缓冲。" [ref=e647]: i
+                  - spinbutton [ref=e649]: "0.006"
+                - generic [ref=e650]:
+                  - generic [ref=e651]: 最小信号边际
+                  - generic "临结价差候选 signal_edge 需高于该阈值。" [ref=e652]: i
+                  - spinbutton [ref=e654]: "0.005"
+                - generic [ref=e655]:
+                  - generic [ref=e656]: NO 优先加分
+                  - generic "候选排序时给 NO 侧加分，提升 NO 主腿优先级。" [ref=e657]: i
+                  - spinbutton [ref=e659]: "4"
+                - generic [ref=e660]:
+                  - generic [ref=e661]: YES 辅助信号下限
+                  - spinbutton [ref=e663]: "0.02"
+                - generic [ref=e664]:
+                  - generic [ref=e665]: YES Top 排名上限
+                  - spinbutton [ref=e667]: "2"
+                - generic [ref=e668]:
+                  - generic [ref=e669]: 深度倍率
+                  - spinbutton [ref=e671]: "1.1"
+              - generic [ref=e672]:
+                - generic [ref=e673]:
+                  - generic [ref=e674]: NO 最大腿数
+                  - spinbutton [ref=e676]: "8"
+                - generic [ref=e677]:
+                  - generic [ref=e678]: YES 最大腿数
+                  - spinbutton [ref=e680]: "1"
+                - generic [ref=e681]:
+                  - generic [ref=e682]: 事件总腿数上限
+                  - spinbutton [ref=e684]: "8"
+                - generic [ref=e685]:
+                  - generic [ref=e686]: 净 short-YES 上限(USDC)
+                  - spinbutton [ref=e688]: "45"
+                - generic [ref=e689]:
+                  - generic [ref=e690]: YES 对冲触发净 short 最低(USDC)
+                  - spinbutton [ref=e692]: "5"
+              - generic [ref=e693]: 临结价差策略独立退出
+              - generic [ref=e694]:
+                - generic [ref=e695]:
+                  - checkbox "启用独立退出 i" [checked] [ref=e696]
+                  - text: 启用独立退出
+                  - generic "关闭时临结价差持仓沿用主策略退出口径。" [ref=e697]: i
+                - generic [ref=e698]:
+                  - generic [ref=e699]: 止损(%)
+                  - spinbutton [ref=e701]: "0.07"
+                - generic [ref=e702]:
+                  - generic [ref=e703]: 回撤止盈(%)
+                  - spinbutton [ref=e705]: "0.04"
+                - generic [ref=e706]:
+                  - checkbox "持有到结算优先" [ref=e707]
+                  - text: 持有到结算优先
+                - generic [ref=e708]:
+                  - generic [ref=e709]: 释放窗口(结算前h)
+                  - spinbutton [ref=e711]: "1"
+                - generic [ref=e712]:
+                  - generic [ref=e713]: 止盈重定价阈值(%)
+                  - spinbutton [ref=e715]: "0.05"
+                - generic [ref=e716]:
+                  - generic [ref=e717]: 止盈重定价最短持有(s)
+                  - spinbutton [ref=e719]: "120"
+              - generic [ref=e720]: 核心口径：NO 主腿满足 P(YES)_true < 1-price(NO)-cost；YES 辅助腿用于中心桶校正/对冲。支持事件内 NO+YES 组合，不是单桶孤立下单。
+              - generic [ref=e721]: 事件级风控：腿数上限 + 净 short-YES 上限；YES 默认仅在已有 NO 暴露时启用（对冲修正）。
+              - generic [ref=e722]: 独立退出开启后，仅对临结价差持仓生效；默认“持有到结算优先”，在释放窗口外仅保留防守退出（止损/回撤/超时）与止盈重定价。
+          - generic [ref=e723]:
+            - generic [ref=e724]: 独立策略 · 物理边界NO（实况/规则触发）
+            - generic [ref=e725]:
+              - generic [ref=e726]:
+                - generic [ref=e727]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e728]:
+                  - checkbox "硬门槛：exec_edge_entry i" [checked] [ref=e729]
+                  - text: 硬门槛：exec_edge_entry
+                  - generic "要求入场价位上仍为正期望：exec_edge_entry = q_entry − 可成交价 − 成本。" [ref=e730]: i
+                - generic [ref=e731]:
+                  - generic [ref=e732]: exec_edge阈值
+                  - generic "阈值越高越保守；0 表示仅要求 >0。" [ref=e733]: i
+                  - spinbutton [ref=e735]: "0"
+                - generic [ref=e736]:
+                  - generic [ref=e737]: 最小信号边际
+                  - spinbutton [ref=e739]: "0.02"
+                - generic [ref=e740]:
+                  - generic [ref=e741]: 实况缓存(s)
+                  - spinbutton [ref=e743]: "180"
+                - generic [ref=e744]:
+                  - generic [ref=e745]: 拉取超时(s)
+                  - spinbutton [ref=e747]: "3"
+              - generic [ref=e748]: 触发逻辑：当实况/规则判定“已越过该桶上界”时买 NO（仅最高温事件，且通常 D0 更有效）。该策略仍受统一门禁（最高概率桶NO禁入等）约束。
+          - generic [ref=e749]:
+            - generic [ref=e750]: 独立策略 · 邻桶曲线套利（adj_pair）
+            - generic [ref=e751]:
+              - generic [ref=e752]:
+                - generic [ref=e753]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e754]:
+                  - checkbox "硬门槛：exec_edge_entry i" [checked] [ref=e755]
+                  - text: 硬门槛：exec_edge_entry
+                  - generic "要求最终执行的那一腿在可成交价上仍为正期望。" [ref=e756]: i
+                - generic [ref=e757]:
+                  - generic [ref=e758]: exec_edge阈值
+                  - generic "阈值越高越保守；0 表示仅要求 >0。" [ref=e759]: i
+                  - spinbutton [ref=e761]: "0.01"
+                - generic [ref=e762]:
+                  - generic [ref=e763]: 组合边际≥
+                  - spinbutton [ref=e765]: "0.03"
+                - generic [ref=e766]:
+                  - generic [ref=e767]: 单腿边际≥
+                  - spinbutton [ref=e769]: "0.015"
+              - generic [ref=e770]: 逻辑：低桶买 YES + 高邻桶买 NO 形成“曲线套利”，执行层会择优只下单“可兑现边际更好”的那一腿；仍受统一门禁约束。
+          - generic [ref=e771]:
+            - generic [ref=e772]: 入场条件 · 深度与趋势
+            - generic [ref=e773]:
+              - generic [ref=e774]:
+                - generic [ref=e775]:
+                  - checkbox "深度倍率 i" [disabled] [ref=e776]
+                  - text: 深度倍率
+                  - generic "盘口深度/下单量≥倍率才进场，避免单子吃光薄盘口。" [ref=e777]: i
+                - spinbutton [disabled] [ref=e779]: "1.2"
+              - generic [ref=e781]:
+                - spinbutton [disabled] [ref=e783]: "1"
+                - generic [ref=e784]: ~
+                - generic "倍率上下限，有效优势分变化时会在区间内调整。" [ref=e785]: i
+                - spinbutton [disabled] [ref=e787]: "1.2"
+              - generic [ref=e789]:
+                - generic [ref=e790]: 坡度
+                - generic "有效优势分越高，倍率下降越快；值越大越容易放行高分单。" [ref=e791]: i
+                - spinbutton [disabled] [ref=e793]: "0.02"
+              - generic [ref=e795]:
+                - generic [ref=e796]: VWAP
+                - generic "多档深度缓冲倍率，考虑盘口多档吃单的成本。" [ref=e797]: i
+                - spinbutton [ref=e799]: "2"
+              - generic [ref=e801]:
+                - generic [ref=e802]: Outcome vol≥
+                - generic "按 outcome 维度的成交量门槛；默认在下单前实时确认，实时值低于阈值时禁入。0 表示关闭。" [ref=e803]: i
+                - spinbutton [disabled] [ref=e805]: "0"
+            - generic [ref=e806]: 深度倍率用于限制单量(ask_depth/倍率)。倍率越大越严格；最小/最大是上下限；斜率越大表示有效优势分越高时要求下降越快(更容易放行)。VWAP倍率用于多档深度缓冲。Outcome vol 默认在下单前做实时确认。
+            - generic [ref=e807]:
+              - generic [ref=e808]:
+                - generic [ref=e809]:
+                  - checkbox "lag≤ i" [disabled] [ref=e810]
+                  - text: lag≤
+                  - generic "盘口/模型不同步程度。越小越严格，越大越宽松。" [ref=e811]: i
+                - spinbutton [disabled] [ref=e813]: "0.6"
+              - generic [ref=e814]:
+                - generic [ref=e815]:
+                  - checkbox "lag≥限价 i" [disabled] [ref=e816]
+                  - text: lag≥限价
+                  - generic "lag达到阈值时强制限价入场，避免追价。" [ref=e817]: i
+                - spinbutton [disabled] [ref=e819]: "0.5"
+            - generic [ref=e820]: lag越小越新。调低=更严格；调高=容忍更慢刷新。lag≥阈值时强制限价入场。
+            - generic [ref=e821]:
+              - generic [ref=e822]:
+                - generic [ref=e823]: 开盘等待(动态)
+                - generic "开盘后先等待，避免开盘价偏离；等待直到价格从开盘峰值回落到阈值，或超过最长等待。" [ref=e824]: i
+                - generic [ref=e825]:
+                  - generic [ref=e826]: 最短(秒)
+                  - spinbutton [ref=e828]: "900"
+                  - generic [ref=e829]: 最长(秒)
+                  - spinbutton [ref=e831]: "3600"
+              - generic [ref=e832]:
+                - generic [ref=e833]: Spread基准
+                - generic "spread≥基准时使用最长等待；更小则按比例缩短。" [ref=e834]: i
+                - spinbutton [ref=e836]: "0.06"
+            - generic [ref=e837]:
+              - generic [ref=e838]:
+                - generic [ref=e839]: 回落阈值
+                - generic "当前中间价相对开盘峰值的回落比例，达到阈值才允许进场。" [ref=e840]: i
+                - spinbutton [ref=e842]: "0.03"
+              - generic [ref=e843]:
+                - generic [ref=e844]: 峰值窗口(秒)
+                - generic "只统计开盘后该窗口内的最高价作为峰值基准。" [ref=e845]: i
+                - spinbutton [ref=e847]: "1800"
+            - generic [ref=e848]: 开盘时间=市场创建时间(Gamma)。等待规则：至少最短秒；若当前中间价从开盘峰值回落≥阈值则放行，否则最多等待到最长秒。
+            - generic [ref=e849]:
+              - generic [ref=e851]:
+                - checkbox "部分成交追补 i" [checked] [ref=e852]
+                - text: 部分成交追补
+                - generic "首单只成交部分时自动补单，直到接近目标数量。" [ref=e853]: i
+              - generic [ref=e854]:
+                - generic [ref=e855]:
+                  - checkbox "追价 i" [checked] [ref=e856]
+                  - text: 追价
+                  - generic "补单允许限价高于当前ask，以吃到更深档位。" [ref=e857]: i
+                - generic [ref=e858]:
+                  - generic [ref=e859]: 步长
+                  - generic "每次补单提高限价的步进。" [ref=e860]: i
+                  - spinbutton [ref=e862]: "0.01"
+                - generic [ref=e863]:
+                  - generic [ref=e864]: 上限
+                  - generic "追价最大上浮幅度，防止过度追价。" [ref=e865]: i
+                  - spinbutton [ref=e867]: "0.03"
+            - generic [ref=e868]: 部分成交后自动补单；追价=允许限价高于当前ask，步长×次数不超过上限。
+            - generic [ref=e869]:
+              - generic [ref=e870]:
+                - generic [ref=e871]:
+                  - checkbox "模型方向 i" [checked] [ref=e872]
+                  - text: 模型方向
+                  - generic "多模型方向一致才进场，用于过滤分歧信号。" [ref=e873]: i
+                - generic [ref=e874]:
+                  - generic [ref=e875]: 步数
+                  - generic "用最近N次模型更新判断方向。" [ref=e876]: i
+                  - spinbutton [ref=e878]: "2"
+              - generic [ref=e880]:
+                - generic [ref=e881]: 一致性
+                - generic "同方向模型占比门槛，比如0.6=至少60%模型同向。" [ref=e882]: i
+                - spinbutton [ref=e884]: "0.6"
+              - generic [ref=e886]:
+                - generic [ref=e887]: 最少模型
+                - generic "参与方向判断的模型数量下限，避免样本太少。" [ref=e888]: i
+                - spinbutton [ref=e890]: "2"
+            - generic [ref=e891]: 模型方向一致才进场。步数越大/一致性越高=更严格；最少模型提高=更保守。
+            - generic [ref=e892]:
+              - generic [ref=e893]:
+                - generic [ref=e894]:
+                  - checkbox "趋势限价 i" [checked] [ref=e895]
+                  - text: 趋势限价
+                  - generic "趋势下行时不追价，改用更保守的限价入场。" [ref=e896]: i
+                - generic [ref=e897]:
+                  - generic [ref=e898]: 步数
+                  - generic "允许的降价尝试次数，次数越多越容易成交但可能更差价。" [ref=e899]: i
+                  - spinbutton [ref=e901]: "4"
+              - generic [ref=e903]:
+                - generic [ref=e904]: 强制E≥
+                - generic "有效优势分低于此值时使用更严格的限价。" [ref=e905]: i
+                - spinbutton [ref=e907]: "8"
+              - generic [ref=e909]:
+                - generic [ref=e910]: 折扣
+                - generic "限价折扣系数，越低越保守。" [ref=e911]: i
+                - spinbutton [ref=e913]: "0.9"
+            - generic [ref=e914]: 趋势下行时限价。步数越大=允许多次降价尝试；强制E阈值越高=更容易进入严格限价；折扣越低=限价更低更保守。
+            - generic [ref=e917]:
+              - generic [ref=e918]: 趋势最小跨度(秒)
+              - generic "最近N步的时间跨度不足该值则判定 trend_unknown（默认 600=10分钟）。" [ref=e919]: i
+              - spinbutton [ref=e921]: "60"
+            - generic [ref=e924]:
+              - checkbox "仅趋势上行入场 i" [ref=e925]
+              - text: 仅趋势上行入场
+              - generic "仅当该侧价格趋势上行(trend_up=true)才允许入场；趋势未知/趋势下行会阻断并写入未下单原因（SSOT）。" [ref=e926]: i
+            - generic [ref=e927]: 开启后更严格：只有价格趋势上行且信号满足才进场，避免“下跌中抄底”。
+          - generic [ref=e928]:
+            - generic [ref=e929]: 退出条件 · 风控与止损
+            - generic [ref=e930]:
+              - generic [ref=e931]:
+                - generic [ref=e932]:
+                  - checkbox "止损(%) i" [checked] [ref=e933]
+                  - text: 止损(%)
+                  - generic "亏损达到该比例触发退出。" [ref=e934]: i
+                - spinbutton [ref=e936]: "0.2"
+              - generic [ref=e937]:
+                - generic [ref=e938]:
+                  - checkbox "回撤止盈(%) i" [checked] [ref=e939]
+                  - text: 回撤止盈(%)
+                  - generic "从持仓峰值回撤达到该比例触发退出。" [ref=e940]: i
+                - spinbutton [ref=e942]: "0.12"
+            - generic [ref=e943]: 止损%调高=允许更大回撤再止损；调低=更紧。回撤止盈%调高=更宽松；调低=更敏感。
+            - generic [ref=e944]:
+              - generic [ref=e945]:
+                - generic [ref=e946]:
+                  - checkbox "趋势退出 i" [checked] [ref=e947]
+                  - text: 趋势退出
+                  - generic "价格/趋势持续走弱时退出，避免持续逆势。" [ref=e948]: i
+                - generic [ref=e949]:
+                  - generic [ref=e950]: 最小跌幅
+                  - generic "要求至少下跌到这个幅度才触发趋势退出。" [ref=e951]: i
+                  - spinbutton [ref=e953]: "0.05"
+              - generic [ref=e955]:
+                - generic [ref=e956]: 一致性
+                - generic "趋势信号一致性比例门槛，越高越严格。" [ref=e957]: i
+                - spinbutton [ref=e959]: "0.67"
+            - generic [ref=e960]: 调高最小跌幅/一致性=更严格；调低=更敏感。
+            - generic [ref=e961]:
+              - generic [ref=e962]:
+                - generic [ref=e963]:
+                  - checkbox "lag> i" [checked] [ref=e964]
+                  - text: lag>
+                  - generic "lag过高表示盘口偏离/更新滞后，视作风险信号。" [ref=e965]: i
+                - spinbutton [ref=e967]: "0.8"
+                - generic [ref=e968]:
+                  - generic [ref=e969]: 连续
+                  - generic "需要连续触发N次才退出，降低误触发。" [ref=e970]: i
+                  - spinbutton [ref=e972]: "2"
+              - generic [ref=e973]:
+                - generic [ref=e974]:
+                  - checkbox "翻转阈值 i" [checked] [ref=e975]
+                  - text: 翻转阈值
+                  - generic "边际反向达到该阈值才退出，避免轻微波动误退出。" [ref=e976]: i
+                - spinbutton [ref=e978]: "0.02"
+              - generic [ref=e979]:
+                - generic [ref=e980]: 信号边际<
+                - generic "信号边际低于该阈值才会计入弱势信号，用于翻转/退出判断。" [ref=e981]: i
+                - spinbutton [ref=e983]: "0.1"
+            - generic [ref=e984]: lag>阈值连续触发退出。连续次数越高=更宽松；越低=更敏感。翻转阈值调高=需更强反向才能退出；调低=更容易退出。信号边际<阈值越高=更容易视作弱势。
+        - generic [ref=e985]: 开关关闭时仅停用对应过滤，不清空阈值；点击保存后同步到自动交易进程。
+    - generic [ref=e987]: 站点映射与模型更新
+    - generic [ref=e989]:
+      - text: 事件列表（事实层）
+      - generic [ref=e990]: 加载中…
+    - generic [ref=e1006]: 评分与偏差校正
+  - button "/agentation v1.3.2 Output Detail Standard Marker Colour Purple Blue Cyan Green Yellow Orange Red Clear after output Block page interactions" [ref=e1007] [cursor=pointer]:
+    - img [ref=e1009]
+    - generic:
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button:
+          - img
+    - generic:
+      - generic:
+        - generic: /agentation
+        - generic: v1.3.2
+        - button "Switch to light mode":
+          - img
+      - generic:
+        - generic:
+          - generic:
+            - text: Output Detail
+            - generic:
+              - img
+          - button "Standard":
+            - generic: Standard
+      - generic:
+        - generic: Marker Colour
+        - generic:
+          - generic:
+            - generic "Purple"
+          - generic:
+            - generic "Blue"
+          - generic:
+            - generic "Cyan"
+          - generic:
+            - generic "Green"
+          - generic:
+            - generic "Yellow"
+          - generic:
+            - generic "Orange"
+          - generic:
+            - generic "Red"
+      - generic:
+        - generic:
+          - checkbox "Clear after output"
+          - generic:
+            - text: Clear after output
+            - generic:
+              - img
+        - generic:
+          - checkbox "Block page interactions"
+          - generic: Block page interactions

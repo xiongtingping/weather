@@ -151,7 +151,8 @@ class TestStrategyStats(unittest.TestCase):
         self.assertAlmostEqual(float(main["total_cost"] or 0.0), 4.1, places=6)
         self.assertEqual(int(main["closed_trade_count"] or 0), 1)
         self.assertEqual(int(main["win_count"] or 0), 1)
-        # Filled orders are counted by explicit order.strategy; legacy strategy="exit" is tracked under system bucket "exit".
+        # In this fixture, the same contract key has a later YES entry (yes_top),
+        # so exit fill attribution follows the latest entry timeline instead of main.
         self.assertEqual(int(main["filled_order_count"] or 0), 1)
         self.assertAlmostEqual(float(main["total_fees"] or 0.0), 0.2, places=6)
 
@@ -191,6 +192,54 @@ class TestStrategyStats(unittest.TestCase):
         # SSOT policy: do not create/accumulate "unknown" from fills missing auto_orders provenance.
         self.assertNotIn("unknown", stats)
         self.assertEqual(int(stats["main"]["buy_fill_count"] or 0), 0)
+
+    def test_strategy_stats_run_date_uses_activity_day(self) -> None:
+        from ui.server import compute_strategy_stats
+
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO auto_orders (order_id, slug, event_date, outcome, side, action, price, size, created_at, strategy)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "ord-activity-1",
+                "activity-slug",
+                "2026-02-20",
+                "10°C",
+                "YES",
+                "entry",
+                0.51,
+                3.0,
+                "2026-03-03T01:00:00Z",
+                "adj_pair",
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO edge_trade_fills (order_id, slug, event_date, outcome, outcome_side, trade_side, price, size, fee, trade_time, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "ord-activity-1",
+                "activity-slug",
+                "2026-02-20",
+                "10°C",
+                "YES",
+                "BUY",
+                0.51,
+                3.0,
+                0.0,
+                "2026-03-03T01:00:05Z",
+                "2026-03-03T01:00:05Z",
+            ),
+        )
+        conn.commit()
+
+        stats = compute_strategy_stats(conn, days=1, run_date="2026-03-03")
+        self.assertEqual(int(stats["adj_pair"]["filled_order_count"] or 0), 1)
+        self.assertEqual(int(stats["adj_pair"]["order_count"] or 0), 1)
 
 
 if __name__ == "__main__":

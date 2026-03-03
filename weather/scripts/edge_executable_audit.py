@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 DB_DEFAULT = str(Path(__file__).resolve().parent.parent / "data" / "archive.db")
 
@@ -47,6 +48,26 @@ def _parse_iso(ts: Any) -> Optional[datetime]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _event_end_utc(event_date: str, tz_name: str = "America/New_York") -> Optional[datetime]:
+    date_key = str(event_date or "").strip()
+    if not date_key:
+        return None
+    if "T" in date_key:
+        date_key = date_key.split("T", 1)[0]
+    elif " " in date_key:
+        date_key = date_key.split(" ", 1)[0]
+    try:
+        day = datetime.strptime(date_key, "%Y-%m-%d").date()
+    except Exception:
+        return None
+    try:
+        tz = ZoneInfo(str(tz_name or "America/New_York"))
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+    end_local = datetime(day.year, day.month, day.day, tzinfo=tz) + timedelta(days=1)
+    return end_local.astimezone(timezone.utc)
 
 
 def _safe_float(val: Any) -> Optional[float]:
@@ -328,6 +349,54 @@ def _touched_between(
     return bool(px >= float(limit_price) - 1e-9)
 
 
+def _derive_target_exit_price(
+    *,
+    exec_exit_price: Optional[float],
+    exec_edge_exit: Optional[float],
+    base_bid: Optional[float],
+    spread: Optional[float],
+) -> Optional[float]:
+    if exec_exit_price is None or not math.isfinite(exec_exit_price):
+        return None
+    if exec_edge_exit is None or not math.isfinite(exec_edge_exit):
+        return None
+    headroom = _env_float("PM_AUTO_TRADE_EXIT_HEADROOM_MIN", 0.02)
+    if not math.isfinite(headroom) or headroom < 0:
+        headroom = 0.02
+    raw_target = float(exec_exit_price) + float(exec_edge_exit) - float(headroom)
+    if not math.isfinite(raw_target) or raw_target <= 0:
+        return None
+    if base_bid is None or not math.isfinite(base_bid):
+        return float(raw_target)
+
+    delta_raw = float(raw_target) - float(base_bid)
+    if not math.isfinite(delta_raw):
+        return None
+    min_delta = _env_float("PM_EDGE_REALIZABLE_TARGET_EXIT_MIN_DELTA", 0.0)
+    if not math.isfinite(min_delta) or min_delta < 0:
+        min_delta = 0.0
+    max_delta = _env_float("PM_EDGE_REALIZABLE_TARGET_EXIT_MAX_DELTA", 0.06)
+    if not math.isfinite(max_delta) or max_delta <= 0:
+        max_delta = 0.06
+    max_spread_mult = _env_float("PM_EDGE_REALIZABLE_TARGET_EXIT_MAX_SPREAD_MULT", 2.0)
+    if not math.isfinite(max_spread_mult) or max_spread_mult <= 0:
+        max_spread_mult = 2.0
+    cap = max_delta
+    if spread is not None and math.isfinite(spread) and spread > 0:
+        cap = min(cap, float(spread) * float(max_spread_mult))
+    delta_final = float(delta_raw)
+    if delta_final < float(min_delta):
+        delta_final = float(min_delta)
+    if delta_final > float(cap):
+        delta_final = float(cap)
+    if delta_final < 0:
+        delta_final = 0.0
+    target = float(base_bid) + float(delta_final)
+    if not math.isfinite(target) or target <= 0:
+        return None
+    return float(target)
+
+
 @dataclass
 class OrderAudit:
     order_id: str
@@ -588,7 +657,11 @@ def _build_order_audits(
     return out
 
 
-def _replay_summary(audits: List[OrderAudit]) -> Dict[str, Any]:
+def _replay_summary(
+    audits: List[OrderAudit],
+    *,
+    mtm_mature_hours: float,
+) -> Dict[str, Any]:
     total = len(audits)
     entries = [x for x in audits if x.action == "entry"]
     exits = [x for x in audits if x.action == "exit"]
@@ -627,6 +700,12 @@ def _replay_summary(audits: List[OrderAudit]) -> Dict[str, Any]:
 
     pred_vs_real_x: List[float] = []
     pred_vs_real_y: List[float] = []
+    pred_vs_effective_x: List[float] = []
+    pred_vs_effective_y: List[float] = []
+    pred_vs_effective_source: Counter = Counter()
+    pred_vs_effective_strategy: Dict[str, Counter] = defaultdict(Counter)
+    now_dt = datetime.now(timezone.utc)
+    mature_sec = max(0.0, float(mtm_mature_hours)) * 3600.0
     for row in entries:
         if row.edge_realizable_v2 is None:
             continue
@@ -634,6 +713,47 @@ def _replay_summary(audits: List[OrderAudit]) -> Dict[str, Any]:
             continue
         pred_vs_real_x.append(float(row.edge_realizable_v2))
         pred_vs_real_y.append(float(row.edge_trade_realized_edge))
+
+    for row in entries:
+        pred_eff = row.edge_realizable_v2
+        if pred_eff is None:
+            pred_eff = row.edge_realizable
+        if pred_eff is None:
+            continue
+        created_dt = _parse_iso(row.created_at)
+        age_sec = None
+        if created_dt is not None:
+            age_sec = max(0.0, (now_dt - created_dt).total_seconds())
+        strategy_key = str(row.strategy or "").strip().lower() or "unknown"
+        if row.edge_trade_closed is True and row.edge_trade_realized_edge is not None:
+            pred_vs_effective_x.append(float(pred_eff))
+            pred_vs_effective_y.append(float(row.edge_trade_realized_edge))
+            pred_vs_effective_source["closed_realized"] += 1
+            pred_vs_effective_strategy[strategy_key]["n"] += 1
+            pred_vs_effective_strategy[strategy_key]["closed_realized_n"] += 1
+            continue
+        if (
+            row.edge_trade_mtm_edge is not None
+            and age_sec is not None
+            and age_sec + 1e-9 >= mature_sec
+        ):
+            pred_vs_effective_x.append(float(pred_eff))
+            pred_vs_effective_y.append(float(row.edge_trade_mtm_edge))
+            pred_vs_effective_source["open_mtm_mature"] += 1
+            pred_vs_effective_strategy[strategy_key]["n"] += 1
+            pred_vs_effective_strategy[strategy_key]["open_mtm_mature_n"] += 1
+
+    pred_vs_effective_by_strategy = []
+    for strategy_key, cnt in sorted(pred_vs_effective_strategy.items(), key=lambda kv: kv[0]):
+        n = int(cnt.get("n", 0))
+        pred_vs_effective_by_strategy.append(
+            {
+                "strategy": strategy_key,
+                "n": n,
+                "closed_realized_n": int(cnt.get("closed_realized_n", 0)),
+                "open_mtm_mature_n": int(cnt.get("open_mtm_mature_n", 0)),
+            }
+        )
 
     threshold_joint = [
         x
@@ -690,6 +810,18 @@ def _replay_summary(audits: List[OrderAudit]) -> Dict[str, Any]:
             "corr_v2_vs_real_edge": _corr(pred_vs_real_x, pred_vs_real_y),
             "avg_pred_v2": _avg(pred_vs_real_x),
             "avg_realized_edge": _avg(pred_vs_real_y),
+        },
+        "prediction_vs_effective_matured": {
+            "n": len(pred_vs_effective_x),
+            "corr_pred_vs_effective_edge": _corr(pred_vs_effective_x, pred_vs_effective_y),
+            "avg_pred_edge": _avg(pred_vs_effective_x),
+            "avg_effective_edge": _avg(pred_vs_effective_y),
+            "mtm_mature_hours": float(max(0.0, mtm_mature_hours)),
+            "source_counts": {
+                "closed_realized": int(pred_vs_effective_source.get("closed_realized", 0)),
+                "open_mtm_mature": int(pred_vs_effective_source.get("open_mtm_mature", 0)),
+            },
+            "by_strategy": pred_vs_effective_by_strategy,
         },
         "threshold_joint_v2_0_05_p_0_60": {
             "n": len(threshold_joint),
@@ -938,6 +1070,15 @@ def _walkforward_eval_rows(
 ) -> Dict[str, Any]:
     if not rows:
         return {"rows": 0, "daily": [], "overall": {}}
+    prior_strength = _env_float("PM_EDGE_AUDIT_CALIB_PRIOR_STRENGTH", 10.0)
+    if not math.isfinite(prior_strength) or prior_strength < 0:
+        prior_strength = 10.0
+
+    def _row_ts(r: Mapping[str, Any]) -> Optional[datetime]:
+        raw = r.get("ts")
+        if not raw:
+            return None
+        return _parse_iso(raw)
     by_day: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for r in rows:
         by_day[r["day"]].append(r)
@@ -962,14 +1103,16 @@ def _walkforward_eval_rows(
         for r in train:
             idx = min(9, max(0, int(r["p"] * 10)))
             bin_stats[idx].append(int(r["y"]))
+        train_base = (sum(int(r["y"]) for r in train) + 1.0) / (len(train) + 2.0)
         bin_p: Dict[int, float] = {}
         for idx in range(10):
             ys = bin_stats.get(idx) or []
             if ys:
-                # Laplace smoothing
-                bin_p[idx] = (sum(ys) + 1.0) / (len(ys) + 2.0)
+                bin_p[idx] = (sum(ys) + float(prior_strength) * float(train_base)) / (
+                    len(ys) + float(prior_strength)
+                )
             else:
-                bin_p[idx] = 0.5
+                bin_p[idx] = float(train_base)
         raw_samples = [(float(r["p"]), int(r["y"])) for r in test]
         cal_samples = []
         for r in test:
@@ -994,6 +1137,69 @@ def _walkforward_eval_rows(
         )
         joined_raw.extend(raw_samples)
         joined_cal.extend(cal_samples)
+
+    if not daily:
+        # Fallback: if rows cluster into too few days, day-based walkforward yields
+        # no evaluated days. Use a time-ordered split to still estimate calibration.
+        ordered: List[Tuple[datetime, Dict[str, Any]]] = []
+        for r in rows:
+            ts = _row_ts(r)
+            if ts is None:
+                continue
+            ordered.append((ts, r))
+        if ordered:
+            ordered.sort(key=lambda x: x[0])
+            ordered_rows = [r for _, r in ordered]
+        else:
+            ordered_rows = list(rows)
+
+        total_n = len(ordered_rows)
+        if total_n >= (min_train + min_test):
+            split = int(total_n * 0.8)
+            split = max(min_train, min(split, total_n - min_test))
+            train = ordered_rows[:split]
+            test = ordered_rows[split:]
+            if len(train) >= min_train and len(test) >= min_test:
+                bin_stats: Dict[int, List[int]] = defaultdict(list)
+                for r in train:
+                    idx = min(9, max(0, int(r["p"] * 10)))
+                    bin_stats[idx].append(int(r["y"]))
+                train_base = (sum(int(r["y"]) for r in train) + 1.0) / (len(train) + 2.0)
+                bin_p: Dict[int, float] = {}
+                for idx in range(10):
+                    ys = bin_stats.get(idx) or []
+                    if ys:
+                        bin_p[idx] = (sum(ys) + float(prior_strength) * float(train_base)) / (
+                            len(ys) + float(prior_strength)
+                        )
+                    else:
+                        bin_p[idx] = float(train_base)
+                raw_samples = [(float(r["p"]), int(r["y"])) for r in test]
+                cal_samples = []
+                for r in test:
+                    idx = min(9, max(0, int(r["p"] * 10)))
+                    cal_samples.append((float(bin_p[idx]), int(r["y"])))
+                brier_raw = sum((p - y) ** 2 for p, y in raw_samples) / len(raw_samples)
+                brier_cal = sum((p - y) ** 2 for p, y in cal_samples) / len(cal_samples)
+                stamp = (str(test[-1].get("day") or "").strip() or "time_split")
+                daily.append(
+                    {
+                        "day": stamp,
+                        "train_n": len(train),
+                        "test_n": len(test),
+                        "test_win_rate": sum(y for _, y in raw_samples) / len(raw_samples),
+                        "brier_raw": brier_raw,
+                        "brier_calibrated": brier_cal,
+                        "ece_raw": _ece(raw_samples),
+                        "ece_calibrated": _ece(cal_samples),
+                        "avg_real_edge": _avg([_safe_float(r.get("real_edge")) for r in test]),
+                        "avg_pred_p_realize": _avg([_safe_float(r.get("p")) for r in test]),
+                        "avg_pred_v2": _avg([_safe_float(r.get("v2")) for r in test]),
+                        "fallback_mode": "time_split",
+                    }
+                )
+                joined_raw = list(raw_samples)
+                joined_cal = list(cal_samples)
 
     rel_bins: Dict[int, List[Tuple[float, int]]] = defaultdict(list)
     for r in rows:
@@ -1058,6 +1264,7 @@ def _walkforward_realized(
         y = 1 if x.edge_trade_realized_edge > 0 else 0
         rows.append(
             {
+                "ts": x.created_at,
                 "day": x.created_day,
                 "p": p,
                 "y": y,
@@ -1090,6 +1297,12 @@ def _walkforward_proxy_from_decisions(
         FROM auto_trade_decisions
         WHERE action = 'entry'
           AND created_at >= ?
+          AND json_extract(details_json, '$.exec_exit_price') IS NOT NULL
+          AND json_extract(details_json, '$.exec_edge_exit') IS NOT NULL
+          AND (
+            json_extract(details_json, '$.edge_path_p_reach') IS NOT NULL
+            OR json_extract(details_json, '$.edge_realizable_p_converge') IS NOT NULL
+          )
         ORDER BY created_at DESC
         LIMIT ?
         """,
@@ -1097,7 +1310,9 @@ def _walkforward_proxy_from_decisions(
     )
     decision_rows = list(cur.fetchall())
     now_dt = datetime.now(timezone.utc)
+    horizon_hours = max(0.5, float(horizon_hours))
     rows: List[Dict[str, Any]] = []
+    p_source = "edge_path_p_reach"
     for drow in decision_rows:
         slug = str(drow["slug"] or "")
         event_date = str(drow["event_date"] or "")
@@ -1107,17 +1322,70 @@ def _walkforward_proxy_from_decisions(
         created_dt = _parse_iso(created_at)
         if not slug or not event_date or not outcome or side not in {"YES", "NO"} or created_dt is None:
             continue
+        event_end_dt = _event_end_utc(event_date)
+        if event_end_dt is None:
+            continue
+        # We want a fast, fully-observed proxy (so we can audit even when most markets
+        # haven't settled yet). Label "y" as whether the *target exit* was touched within
+        # a short horizon, but scale "p" down from the full-horizon probability using a
+        # simple hazard-rate assumption so p/y semantics stay aligned.
+        horizon_end_dt = created_dt + timedelta(hours=horizon_hours)
+        window_end_dt = horizon_end_dt if horizon_end_dt < event_end_dt else event_end_dt
+        if window_end_dt > now_dt:
+            # Only score fully-observed windows. Otherwise "not yet touched" becomes a false negative.
+            continue
         try:
             details = json.loads(drow["details_json"] or "{}")
         except Exception:
             details = {}
         if not isinstance(details, dict):
             continue
-        p = _clamp01(_safe_float(details.get("edge_realizable_p_realize")))
-        target = _safe_float(details.get("edge_realizable_target_exit_price"))
-        if p is None or target is None or target <= 0:
+        p_full = _clamp01(_safe_float(details.get("edge_path_p_reach")))
+        base_source = "edge_path_p_reach"
+        if p_full is None:
+            p_full = _clamp01(_safe_float(details.get("edge_realizable_p_converge")))
+            if p_full is not None:
+                base_source = "edge_realizable_p_converge"
+        if p_full is None:
             continue
-        end_dt = min(now_dt, created_dt + timedelta(hours=max(0.5, float(horizon_hours))))
+
+        target = _safe_float(details.get("edge_realizable_target_exit_price"))
+        if target is None or not math.isfinite(target) or target <= 0:
+            tick = _tick_before(
+                conn,
+                slug=slug,
+                event_date=event_date,
+                outcome=outcome,
+                side=side,
+                ts=created_at,
+            )
+            exec_exit_price = _safe_float(details.get("exec_exit_price"))
+            exec_edge_exit = _safe_float(details.get("exec_edge_exit"))
+            base_bid = _safe_float(tick["best_bid"]) if tick is not None else None
+            spread_val = _safe_float(tick["spread"]) if tick is not None else _safe_float(details.get("spread"))
+            target = _derive_target_exit_price(
+                exec_exit_price=exec_exit_price,
+                exec_edge_exit=exec_edge_exit,
+                base_bid=base_bid,
+                spread=spread_val,
+            )
+        if target is None or target <= 0:
+            continue
+        remaining_hours = max(0.0, (event_end_dt - created_dt).total_seconds() / 3600.0)
+        eval_hours = max(0.0, (window_end_dt - created_dt).total_seconds() / 3600.0)
+        if remaining_hours <= 1e-6 or eval_hours >= remaining_hours * 0.999:
+            p = float(p_full)
+            p_source = base_source
+        else:
+            # Convert a full-horizon reach probability into a shorter-horizon probability.
+            # If "reach" is approximately a memoryless (Poisson) event over time, then:
+            #   p(h) = 1 - (1 - p_full)^(h / H_full)
+            try:
+                p = 1.0 - (1.0 - float(p_full)) ** (float(eval_hours) / float(remaining_hours))
+            except Exception:
+                p = float(p_full)
+            p = _clamp01(p)
+            p_source = f"{base_source}_scaled_hazard"
         touched = _touched_between(
             conn,
             slug=slug,
@@ -1125,7 +1393,7 @@ def _walkforward_proxy_from_decisions(
             outcome=outcome,
             side=side,
             start_ts=created_at,
-            end_ts=end_dt.isoformat(timespec="seconds"),
+            end_ts=window_end_dt.isoformat(timespec="seconds"),
             action="exit",
             limit_price=target,
         )
@@ -1133,6 +1401,7 @@ def _walkforward_proxy_from_decisions(
             continue
         rows.append(
             {
+                "ts": created_at,
                 "day": created_dt.date().isoformat(),
                 "p": p,
                 "y": 1 if touched else 0,
@@ -1146,7 +1415,8 @@ def _walkforward_proxy_from_decisions(
         min_train=min_train,
         min_test=min_test,
     )
-    result["proxy_label"] = f"target_touched_within_{float(horizon_hours):.1f}h"
+    result["proxy_label"] = f"target_touched_within_{float(horizon_hours):.1f}h_or_event_end"
+    result["proxy_p_source"] = p_source
     result["decision_rows_scanned"] = len(decision_rows)
     return result
 
@@ -1347,8 +1617,21 @@ def main() -> int:
     ap.add_argument("--walk-train-days", type=int, default=30)
     ap.add_argument("--walk-min-train", type=int, default=30)
     ap.add_argument("--walk-min-test", type=int, default=5)
-    ap.add_argument("--walk-proxy-horizon-hours", type=float, default=12.0)
-    ap.add_argument("--walk-proxy-max-rows", type=int, default=8000)
+    ap.add_argument(
+        "--walk-proxy-horizon-hours",
+        type=float,
+        default=_env_float("PM_EDGE_AUDIT_WALK_PROXY_HORIZON_HOURS", 12.0),
+    )
+    ap.add_argument(
+        "--walk-proxy-max-rows",
+        type=int,
+        default=_env_int("PM_EDGE_AUDIT_WALK_PROXY_MAX_ROWS", 60000),
+    )
+    ap.add_argument(
+        "--mtm-mature-hours",
+        type=float,
+        default=_env_float("PM_EDGE_EXEC_MTM_MATURE_HOURS", 8.0),
+    )
     ap.add_argument("--max-records", type=int, default=400)
     ap.add_argument("--enforce-gate", default="0")
     ap.add_argument("--gate-min-entry-orders", type=int, default=_env_int("PM_EDGE_AUDIT_GATE_MIN_ENTRY_ORDERS", 80))
@@ -1389,7 +1672,10 @@ def main() -> int:
             touch_horizon_hours=float(args.touch_horizon_hours),
         )
 
-    replay = _replay_summary(audits)
+    replay = _replay_summary(
+        audits,
+        mtm_mature_hours=max(0.0, float(args.mtm_mature_hours)),
+    )
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         replay["fills_linkage"] = _fills_linkage_summary(

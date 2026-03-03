@@ -164,6 +164,50 @@ def _update_env_file(env_path: Path, updates: Dict[str, str]) -> Dict[str, Any]:
     return {"changed": changed, "changed_count": len(changed)}
 
 
+def _load_env_file_kv(env_path: Path) -> Dict[str, str]:
+    if not env_path.exists():
+        return {}
+    out: Dict[str, str] = {}
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = str(raw or "").strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        out[key] = value.strip()
+    return out
+
+
+def _parse_bool_text(raw: Any) -> Optional[bool]:
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return bool(raw)
+    text = str(raw).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _resolve_bool_setting(
+    key: str,
+    *,
+    default: bool,
+    env_file_kv: Dict[str, str],
+) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        raw = env_file_kv.get(key)
+    parsed = _parse_bool_text(raw)
+    if parsed is None:
+        return bool(default)
+    return bool(parsed)
+
+
 def _export_decision_dataset(
     *,
     db_path: Path,
@@ -611,6 +655,41 @@ def main() -> int:
         strategy_gate_env_path = str(strategy_gate_out.resolve().relative_to(data_dir.resolve()))
     except Exception:
         strategy_gate_env_path = str(strategy_gate_out)
+    env_file_kv = _load_env_file_kv(env_path)
+    strategy_enabled = {
+        "main": _resolve_bool_setting(
+            "PM_AUTO_TRADE_ENTRY_MAIN_ENABLED",
+            default=True,
+            env_file_kv=env_file_kv,
+        ),
+        "yes_top": _resolve_bool_setting(
+            "PM_AUTO_TRADE_ENTRY_YES_TOP_ENABLED",
+            default=True,
+            env_file_kv=env_file_kv,
+        ),
+        "adj_pair": _resolve_bool_setting(
+            "PM_AUTO_TRADE_ENTRY_ADJ_PAIR_ENABLED",
+            default=True,
+            env_file_kv=env_file_kv,
+        ),
+        "follow_copy": _resolve_bool_setting(
+            "PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED",
+            default=True,
+            env_file_kv=env_file_kv,
+        ),
+        "hard_bound_no": _resolve_bool_setting(
+            "PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_ENABLED",
+            default=True,
+            env_file_kv=env_file_kv,
+        ),
+    }
+    raw_blocked_strategies = list((strategy_gate_report.get("summary") or {}).get("blocked") or [])
+    blocked_active_strategies = [
+        str(name)
+        for name in raw_blocked_strategies
+        if strategy_enabled.get(str(name).strip().lower(), True)
+    ]
+    active_strategies = [name for name, enabled in strategy_enabled.items() if enabled]
 
     env_updates: Dict[str, str] = {}
     if args.apply_env_gates:
@@ -652,6 +731,9 @@ def main() -> int:
             "generated_at": strategy_gate_report.get("generated_at"),
             "gate": strategy_gate_report.get("gate"),
             "summary": strategy_gate_report.get("summary"),
+            "active_strategies": active_strategies,
+            "strategy_enabled": strategy_enabled,
+            "blocked_active_strategies": blocked_active_strategies,
         },
         "artifacts": {
             "calib_orders_out": str(orders_out),
@@ -679,11 +761,30 @@ def main() -> int:
             "tradeability_failed_names": list((tradeability_audit.get("gate") or {}).get("failed_names") or []),
             "rows_with_tradeability": int(((tradeability_audit.get("counts") or {}).get("rows_with_tradeability") or 0)),
             "exec_gate_pass": bool(((executable_audit.get("gate") or {}).get("pass"))),
-            "exec_pred_n": _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("pred_n")),
-            "exec_avg_realized_edge": _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("avg_realized_edge")),
+            "exec_pred_n": _to_float(
+                (tradeability_audit.get("edge_exec_audit") or {}).get("pred_rows_for_gate")
+            )
+            or _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("pred_n"))
+            or _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("pred_n_closed")),
+            "exec_pred_n_closed": _to_float(
+                (tradeability_audit.get("edge_exec_audit") or {}).get("pred_n_closed")
+            )
+            or _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("pred_n")),
+            "exec_avg_realized_edge": _to_float(
+                (tradeability_audit.get("edge_exec_audit") or {}).get("avg_edge_for_gate")
+            )
+            or _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("avg_realized_edge"))
+            or _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("avg_realized_edge_closed")),
+            "exec_avg_realized_edge_closed": _to_float(
+                (tradeability_audit.get("edge_exec_audit") or {}).get("avg_realized_edge_closed")
+            )
+            or _to_float((tradeability_audit.get("edge_exec_audit") or {}).get("avg_realized_edge")),
             "strategy_gate_eligible_count": int(((strategy_gate_report.get("summary") or {}).get("eligible_count") or 0)),
             "strategy_gate_blocked_count": int(((strategy_gate_report.get("summary") or {}).get("blocked_count") or 0)),
-            "strategy_gate_blocked": list((strategy_gate_report.get("summary") or {}).get("blocked") or []),
+            "strategy_gate_blocked": raw_blocked_strategies,
+            "strategy_gate_active_count": len(active_strategies),
+            "strategy_gate_blocked_active_count": len(blocked_active_strategies),
+            "strategy_gate_blocked_active": blocked_active_strategies,
         },
     }
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -698,9 +799,12 @@ def main() -> int:
                 "tradeability_gate_pass": payload["summary"]["tradeability_gate_pass"],
                 "rows_with_tradeability": payload["summary"]["rows_with_tradeability"],
                 "exec_pred_n": payload["summary"]["exec_pred_n"],
+                "exec_pred_n_closed": payload["summary"]["exec_pred_n_closed"],
                 "exec_avg_realized_edge": payload["summary"]["exec_avg_realized_edge"],
+                "exec_avg_realized_edge_closed": payload["summary"]["exec_avg_realized_edge_closed"],
                 "strategy_gate_eligible_count": payload["summary"]["strategy_gate_eligible_count"],
                 "strategy_gate_blocked_count": payload["summary"]["strategy_gate_blocked_count"],
+                "strategy_gate_blocked_active_count": payload["summary"]["strategy_gate_blocked_active_count"],
                 "env_changed_count": int(env_update_result.get("changed_count") or 0),
             },
             ensure_ascii=False,

@@ -160,6 +160,42 @@ PY
   echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] auto_trade running, prioritize Top OK (others=${PM_SCAN_PRIORITY_OTHERS_PER_RUN}, max_events=${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN})" >> "$ROOT/data/model_scan.log"
 fi
 
+# When auto-trade jobs are queued/running, let entry worker clear the queue first.
+# This avoids model_scan holding db_writer.lock back-to-back and starving auto-trade.
+if [ "${PM_MODEL_SCAN_PAUSE_WHEN_AUTO_JOB_ACTIVE:-1}" = "1" ] && [ -f "$ROOT/data/archive.db" ]; then
+  auto_job_active="$(python3 - "$ROOT/data/archive.db" "$(TZ=America/New_York date '+%Y-%m-%d')" <<'PY' 2>/dev/null || true
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+run_date = sys.argv[2]
+try:
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM auto_trade_jobs
+        WHERE run_date = ?
+          AND state IN ('queued','running')
+        """,
+        (run_date,),
+    )
+    row = cur.fetchone()
+    print(int((row[0] if row else 0) or 0))
+finally:
+    try:
+        conn.close()
+    except Exception:
+        pass
+PY
+)"
+  if [[ "${auto_job_active:-}" =~ ^[0-9]+$ ]] && [ "${auto_job_active}" -gt 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] paused for auto_trade queue active_jobs=${auto_job_active}" >> "$ROOT/data/model_scan.log"
+    exit 0
+  fi
+fi
+
 # If Open-Meteo 429 cooldown is active, reduce non-priority fan-out to avoid
 # re-triggering rate limits before cooldown windows finish.
 : "${PM_MODEL_SCAN_OPEN_METEO_COOLDOWN_ACTIVE_THRESHOLD:=1}"
