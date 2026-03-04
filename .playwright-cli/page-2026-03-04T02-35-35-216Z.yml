@@ -1,0 +1,3923 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "自动交易" [ref=e8] [cursor=pointer]:
+            - /url: "#autoTradeSection"
+          - link "策略配置" [ref=e9] [cursor=pointer]:
+            - /url: "#strategySection"
+          - link "站点/模型" [ref=e10] [cursor=pointer]:
+            - /url: "#availabilitySection"
+        - generic [ref=e11]:
+          - link "事件" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "评分校正" [ref=e13] [cursor=pointer]:
+            - /url: "#ratingBiasSectionBlock"
+      - generic [ref=e14]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e16] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e17]: 总开关
+          - generic [ref=e18]: 开启
+        - generic [ref=e21]:
+          - button "同步" [ref=e22] [cursor=pointer]
+          - button "模型" [ref=e23] [cursor=pointer]
+          - button "盘口" [ref=e24] [cursor=pointer]
+          - button "刷新" [ref=e25] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e26] [cursor=pointer]
+          - button "日志" [ref=e28] [cursor=pointer]
+          - group [ref=e29]:
+            - generic "控制中心" [ref=e30] [cursor=pointer]: 控
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - status [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: 新鲜度
+            - generic [ref=e37]: 等待数据…时效口径
+            - generic [ref=e38]:
+              - generic [ref=e40]:
+                - generic [ref=e41]: 模型
+                - generic [ref=e42]: —
+              - generic [ref=e45]:
+                - generic [ref=e46]: 盘口
+                - generic [ref=e47]: —
+          - generic [ref=e49]:
+            - generic [ref=e50]:
+              - generic [ref=e51] [cursor=pointer]:
+                - generic [ref=e52]: 健康检查
+                - generic [ref=e53]: 展开
+                - button "复制" [ref=e54]
+              - generic: —
+            - group [ref=e55]:
+              - generic "追涨触发统计" [ref=e56] [cursor=pointer]:
+                - generic [ref=e57]: 追涨触发统计
+      - generic [ref=e58]:
+        - generic [ref=e60]: 自动买卖检测
+        - generic [ref=e61]: —
+        - generic [ref=e62]: —
+        - generic [ref=e64]: 事件口径
+        - generic [ref=e65]:
+          - generic [ref=e66]: 自动交易：—
+          - generic [ref=e67]: 成交同步：—
+          - generic [ref=e68]: 最后触发：—
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic "页面数据状态：刷新中 · 03-04 10:35" [ref=e217]:
+              - generic [ref=e74]: 刷新中
+              - generic "页面数据最后刷新/失败时间" [ref=e218]: 03-04 10:35
+            - generic [ref=e219]: 加载中...
+          - generic [ref=e78]: LCB全市场 开 1.00x
+        - generic [ref=e79]:
+          - button "auto_trade_watcher" [ref=e80] [cursor=pointer]
+          - button "残留清理" [ref=e81] [cursor=pointer]
+          - generic [ref=e82] [cursor=pointer]:
+            - checkbox "自动交易 关闭"
+            - generic [ref=e84]: 自动交易 关闭
+    - generic [ref=e85]:
+      - generic [ref=e86]: 自动交易总览
+      - generic [ref=e87]:
+        - generic [ref=e221]:
+          - generic [ref=e224]: 自动交易成交分析（LCB全市场）
+          - generic [ref=e225]: 统计起点 2026-03-03 · 持仓口径=本地状态
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - generic [ref=e229]: 今日
+              - generic [ref=e230]: 过去7天
+              - generic [ref=e231]: 总计
+            - generic [ref=e232]:
+              - generic [ref=e233]:
+                - generic [ref=e234]: 持仓订单数量
+                - generic [ref=e235]:
+                  - generic [ref=e236]:
+                    - generic [ref=e237]: 今日
+                    - generic [ref=e238]: "0"
+                    - generic [ref=e239]: 今日开仓且仍持仓
+                  - generic [ref=e240]:
+                    - generic [ref=e241]: 过去7天
+                    - generic [ref=e242]: "0"
+                    - generic [ref=e243]: 7天开仓且仍持仓
+                  - generic [ref=e244]:
+                    - generic [ref=e245]: 总计
+                    - generic [ref=e246]: "0"
+                    - generic [ref=e247]: 当前交易中持仓
+                - generic [ref=e248]: "口径: trading_open (不含可赎回)"
+              - generic [ref=e249]:
+                - generic [ref=e250]: 已完成订单数量
+                - generic [ref=e251]:
+                  - generic [ref=e252]:
+                    - generic [ref=e253]: 今日
+                    - generic [ref=e254]: "0"
+                    - generic [ref=e255]: 盈 0 / 亏 0
+                  - generic [ref=e256]:
+                    - generic [ref=e257]: 过去7天
+                    - generic [ref=e258]: "0"
+                    - generic [ref=e259]: 盈 0 / 亏 0
+                  - generic [ref=e260]:
+                    - generic [ref=e261]: 总计
+                    - generic [ref=e262]: "0"
+                    - generic [ref=e263]: 盈 0 / 亏 0
+                - generic [ref=e264]: "打平(未计入完成): 今日 0 · 7天 0 · 总计 0"
+              - generic [ref=e265]:
+                - generic [ref=e266]: PnL
+                - generic [ref=e267]:
+                  - generic [ref=e268]:
+                    - generic [ref=e269]: 今日
+                    - generic [ref=e270]: —
+                    - generic [ref=e271]: 已实现 — / 未实现 —
+                  - generic [ref=e272]:
+                    - generic [ref=e273]: 过去7天
+                    - generic [ref=e274]: —
+                    - generic [ref=e275]: 已实现 — / 未实现 —
+                  - generic [ref=e276]:
+                    - generic [ref=e277]: 总计
+                    - generic [ref=e278]: —
+                    - generic [ref=e279]: 已实现 — / 未实现 —
+                - generic [ref=e280]: "单位: USDC"
+              - generic [ref=e281]:
+                - generic [ref=e282]: ROI
+                - generic [ref=e283]:
+                  - generic [ref=e284]:
+                    - generic [ref=e285]: 今日
+                    - generic [ref=e286]: —
+                    - generic [ref=e287]: 已实现 ROI
+                  - generic [ref=e288]:
+                    - generic [ref=e289]: 过去7天
+                    - generic [ref=e290]: —
+                    - generic [ref=e291]: 已实现 ROI
+                  - generic [ref=e292]:
+                    - generic [ref=e293]: 总计
+                    - generic [ref=e294]: —
+                    - generic [ref=e295]: 已实现 ROI
+        - generic [ref=e297]:
+          - generic [ref=e298]:
+            - generic [ref=e299]: 自动交易追踪（可兑现口径 · SSOT）
+            - generic [ref=e300]: 统一展示自动交易追踪、持仓、挂单与可兑现口径榜单
+          - generic [ref=e303]:
+            - generic [ref=e305]:
+              - generic [ref=e306]:
+                - generic [ref=e307]:
+                  - generic [ref=e308]: 城市/站点概览
+                  - generic [ref=e309]:
+                    - generic [ref=e310]:
+                      - generic [ref=e311]: 站
+                      - text: 站点 0
+                    - generic [ref=e312]:
+                      - generic [ref=e313]: 城
+                      - text: 城市 9
+                    - generic [ref=e314]: 分组 17
+                    - generic [ref=e315]: 事件 8
+                  - generic [ref=e316]: 按城市+站点合并展示，点击日期可直接跳转对应市场。
+                - generic [ref=e317]:
+                  - generic [ref=e318]:
+                    - generic [ref=e319]:
+                      - generic [ref=e320]: 站
+                      - generic [ref=e321]: 站点数据
+                    - generic [ref=e322]: 分组 7 · 事件 8
+                    - generic [ref=e323]:
+                      - generic [ref=e324]: 模型温度 8/8 · 100%
+                      - generic [ref=e325]: 盘口快照 0/8 · 0%
+                    - generic [ref=e326]: 中位：模型 — · 快照 10m
+                  - generic [ref=e327]:
+                    - generic [ref=e328]:
+                      - generic [ref=e329]: 城
+                      - generic [ref=e330]: 城市数据
+                    - generic [ref=e331]: 分组 10 · 事件 0
+                    - generic [ref=e332]:
+                      - generic [ref=e333]: 模型温度 —
+                      - generic [ref=e334]: 盘口快照 —
+                    - generic [ref=e335]: 中位：模型 — · 快照 —
+              - generic [ref=e336]:
+                - generic [ref=e337]:
+                  - generic [ref=e338]:
+                    - generic [ref=e339]: 站
+                    - generic [ref=e340]: KLGA
+                    - generic [ref=e341]: 纽约
+                  - link "03-04 ·" [ref=e343] [cursor=pointer]:
+                    - /url: "#event-highest-temperature-in-nyc-on-march-4-2026-6y2yfn"
+                    - generic [ref=e344]: 03-04
+                    - generic [ref=e345]: ·
+                - generic [ref=e346]:
+                  - generic [ref=e347]:
+                    - generic [ref=e348]: 站
+                    - generic [ref=e349]: KORD
+                    - generic [ref=e350]: 芝加哥
+                  - link "03-04 ·" [ref=e352] [cursor=pointer]:
+                    - /url: "#event-highest-temperature-in-chicago-on-march-4-2026-ulyfgn"
+                    - generic [ref=e353]: 03-04
+                    - generic [ref=e354]: ·
+                - generic [ref=e355]:
+                  - generic [ref=e356]:
+                    - generic [ref=e357]: 站
+                    - generic [ref=e358]: LFPG
+                    - generic [ref=e359]: Paris
+                  - link "03-05 ·" [ref=e361] [cursor=pointer]:
+                    - /url: "#event-highest-temperature-in-paris-on-march-5-2026-2jxgdl"
+                    - generic [ref=e362]: 03-05
+                    - generic [ref=e363]: ·
+                - generic [ref=e364]:
+                  - generic [ref=e365]:
+                    - generic [ref=e366]: 站
+                    - generic [ref=e367]: LTAC
+                    - generic [ref=e368]: Ankara
+                  - link "03-05 ·" [ref=e370] [cursor=pointer]:
+                    - /url: "#event-highest-temperature-in-ankara-on-march-5-2026-o0gu24"
+                    - generic [ref=e371]: 03-05
+                    - generic [ref=e372]: ·
+                - generic [ref=e373]:
+                  - generic [ref=e374]:
+                    - generic [ref=e375]: 站
+                    - generic [ref=e376]: NZWN
+                    - generic [ref=e377]: Wellington
+                  - link "03-04 ·" [ref=e379] [cursor=pointer]:
+                    - /url: "#event-highest-temperature-in-wellington-on-march-4-2026-jsx4xg"
+                    - generic [ref=e380]: 03-04
+                    - generic [ref=e381]: ·
+                - generic [ref=e382]:
+                  - generic [ref=e383]:
+                    - generic [ref=e384]: 站
+                    - generic [ref=e385]: RKSI
+                    - generic [ref=e386]: 首尔
+                  - generic [ref=e387]: 今日及未来无事件
+                - generic [ref=e388]:
+                  - generic [ref=e389]:
+                    - generic [ref=e390]: 站
+                    - generic [ref=e391]: VILK
+                    - generic [ref=e392]: Lucknow
+                  - link "03-05 ·" [ref=e394] [cursor=pointer]:
+                    - /url: "#event-highest-temperature-in-lucknow-on-march-5-2026-q9e3w7"
+                    - generic [ref=e395]: 03-05
+                    - generic [ref=e396]: ·
+                - generic [ref=e397]:
+                  - generic [ref=e398]:
+                    - generic [ref=e399]: 城
+                    - generic [ref=e400]: Miami
+                  - generic [ref=e401]: 今日及未来无事件
+                - generic [ref=e402]:
+                  - generic [ref=e403]:
+                    - generic [ref=e404]: 城
+                    - generic [ref=e405]: Sao Paulo
+                  - generic [ref=e406]: 今日及未来无事件
+                - generic [ref=e407]:
+                  - generic [ref=e408]:
+                    - generic [ref=e409]: 城
+                    - generic [ref=e410]: Seattle
+                  - generic [ref=e411]: 今日及未来无事件
+                - generic [ref=e412]:
+                  - generic [ref=e413]:
+                    - generic [ref=e414]: 城
+                    - generic [ref=e415]: 亚特兰大
+                  - generic [ref=e416]: 今日及未来无事件
+                - generic [ref=e417]:
+                  - generic [ref=e418]:
+                    - generic [ref=e419]: 城
+                    - generic [ref=e420]: 伦敦
+                  - generic [ref=e421]: 今日及未来无事件
+                - generic [ref=e422]:
+                  - generic [ref=e423]:
+                    - generic [ref=e424]: 城
+                    - generic [ref=e425]: 多伦多
+                  - generic [ref=e426]: 今日及未来无事件
+                - generic [ref=e427]:
+                  - generic [ref=e428]:
+                    - generic [ref=e429]: 城
+                    - generic [ref=e430]: 密西沙加
+                  - generic [ref=e431]: 今日及未来无事件
+                - generic [ref=e432]:
+                  - generic [ref=e433]:
+                    - generic [ref=e434]: 城
+                    - generic [ref=e435]: 布宜诺斯艾利斯
+                  - generic [ref=e436]: 今日及未来无事件
+                - generic [ref=e437]:
+                  - generic [ref=e438]:
+                    - generic [ref=e439]: 城
+                    - generic [ref=e440]: 洛杉矶
+                  - generic [ref=e441]: 今日及未来无事件
+                - generic [ref=e442]:
+                  - generic [ref=e443]:
+                    - generic [ref=e444]: 城
+                    - generic [ref=e445]: 达拉斯
+                  - generic [ref=e446]: 今日及未来无事件
+            - generic [ref=e447]:
+              - generic [ref=e448]:
+                - generic [ref=e449]:
+                  - generic [ref=e450]: LCB候选
+                  - generic [ref=e451]: "0"
+                  - generic [ref=e452]: 2026-03-03
+                - generic [ref=e453]:
+                  - generic [ref=e454]: LCB达标
+                  - generic [ref=e455]: "0"
+                  - generic [ref=e456]: 2026-03-03
+                - generic [ref=e457]:
+                  - generic [ref=e458]: LCB阻断
+                  - generic [ref=e459]: "0"
+                  - generic [ref=e460]: 2026-03-03
+              - generic [ref=e461]: 样本 LCB 0 · 2026-03-03
+            - generic [ref=e462]:
+              - generic [ref=e463]:
+                - generic [ref=e464]:
+                  - generic [ref=e465]: 自动交易追踪（LCB全市场）
+                  - generic [ref=e466]: 统一 LCB 决策链路 · 候选 -> 门禁 -> 下单 -> 成交 -> 退出
+                - button "加速决策" [ref=e469] [cursor=pointer]
+              - generic [ref=e472]: 加载中…
+    - generic [ref=e88]:
+      - generic [ref=e89]: 自动交易策略配置
+      - generic [ref=e91]:
+        - generic [ref=e92]: 策略配置面板
+        - generic [ref=e94]:
+          - generic [ref=e97]: 已保存
+          - button "保存设置" [disabled] [ref=e98]
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - generic [ref=e101]: 策略开关 · 一键启停
+            - generic [ref=e102]:
+              - generic [ref=e103]:
+                - generic [ref=e104]: 入场策略总开关（LCB全市场统一策略）
+                - generic [ref=e105]:
+                  - button "一键启用LCB策略" [ref=e106] [cursor=pointer]
+                  - button "恢复仅LCB" [ref=e107] [cursor=pointer]
+              - generic [ref=e109]:
+                - checkbox "LCB全市场" [checked] [ref=e110]
+                - text: LCB全市场
+              - generic [ref=e111]:
+                - generic [ref=e112]:
+                  - checkbox "模型扫描" [ref=e113]
+                  - text: 模型扫描
+                - generic [ref=e114]:
+                  - checkbox "盘口刷新" [ref=e115]
+                  - text: 盘口刷新
+                - generic [ref=e116]:
+                  - checkbox "自动交易（总开关）" [ref=e117]
+                  - text: 自动交易（总开关）
+              - generic [ref=e118]: 说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。
+              - generic [ref=e119]: 上面的“一键按钮”仅作用于 LCB 全市场策略开关。
+              - generic [ref=e120]: 总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。
+              - generic [ref=e121]:
+                - generic [ref=e122]:
+                  - generic [ref=e123]: LCB全市场仓位系数
+                  - spinbutton [ref=e125]: "1"
+                - generic [ref=e126]:
+                  - generic [ref=e127]: 信号下界阈值（signal_lcb）
+                  - spinbutton [ref=e129]: "0"
+                - generic [ref=e130]:
+                  - generic [ref=e131]: 路径下界阈值（path_lcb）
+                  - spinbutton [ref=e133]: "0.1"
+              - generic [ref=e134]:
+                - generic [ref=e135]:
+                  - generic [ref=e136]: 可交易下界阈值（edge_lcb）
+                  - spinbutton [ref=e138]: "0"
+                - generic [ref=e139]:
+                  - generic [ref=e140]: 最大盘口价差（spread）
+                  - spinbutton [ref=e142]: "0.08"
+                - generic [ref=e143]:
+                  - generic [ref=e144]: 最小盘口深度（USDC）
+                  - spinbutton [ref=e146]: "0"
+                - generic [ref=e147]:
+                  - generic [ref=e148]: 最大盘口时延（秒）
+                  - spinbutton [ref=e150]: "180"
+              - generic [ref=e151]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]: 每轮最多新开仓（0=不限制）
+                  - spinbutton [ref=e155]: "0"
+                - generic [ref=e156]:
+                  - generic [ref=e157]: 全局最多活跃持仓（0=不限制）
+                  - spinbutton [ref=e159]: "0"
+              - generic [ref=e160]: 仓位系数基准为 1.00x；0 表示本轮不新开仓。
+              - generic [ref=e162]:
+                - text: LCB全市场 · 开 ·
+                - generic [ref=e163]: 1.00x
+          - generic [ref=e164]:
+            - generic [ref=e165]: 执行参数（LCB）
+            - generic [ref=e168]:
+              - checkbox "自动交易前预取事件详情 i" [checked] [ref=e169]
+              - text: 自动交易前预取事件详情
+              - generic "启动 trade_sync_loop 前先跑一次详情抓取（PM_SCAN_FETCH_EVENT_DETAIL=1 scan_weather_market.py --scan-weather-today ...），确保最新 outcome_volume 反映在 event_runs 再执行自动交易。" [ref=e170]: i
+            - generic [ref=e172]:
+              - generic [ref=e173]: 自动交易最小间隔(秒)
+              - generic "自动交易运行节流的最小间隔（PM_AUTO_TRADE_MIN_RUN_INTERVAL_SEC）。调低=更频繁触发，调高=更保守。" [ref=e174]: i
+              - spinbutton [ref=e176]: "30"
+            - generic [ref=e177]:
+              - generic [ref=e178]:
+                - generic [ref=e179]:
+                  - checkbox "买价上限 i" [disabled] [ref=e180]
+                  - text: 买价上限
+                  - generic "ask高于上限不买，避免追高。" [ref=e181]: i
+                - generic [ref=e182]:
+                  - spinbutton [disabled] [ref=e183]: "0.95"
+                  - generic [ref=e184]: 开关关闭，当前不生效
+              - generic [ref=e185]:
+                - generic [ref=e186]: 每单预算
+                - generic "用于换算下单数量：size=预算/价格。实际还会受单笔上限和最小下单量限制。" [ref=e187]: i
+                - spinbutton [ref=e189]: "3"
+                - generic [ref=e190]: USDC
+            - generic [ref=e191]: 买价上限(ask)。调低=只买更便宜；调高=允许更贵的报价。
+            - generic [ref=e192]: 用于换算下单数量(预算/价格)。实际还会受“单笔上限”影响。
+          - generic [ref=e193]:
+            - generic [ref=e194]: 退出条件 · 风控与止损
+            - generic [ref=e195]:
+              - generic [ref=e196]:
+                - generic [ref=e197]:
+                  - checkbox "止损(%) i" [checked] [ref=e198]
+                  - text: 止损(%)
+                  - generic "亏损达到该比例触发退出。" [ref=e199]: i
+                - spinbutton [ref=e201]: "0.2"
+              - generic [ref=e202]:
+                - generic [ref=e203]:
+                  - checkbox "回撤止盈(%) i" [checked] [ref=e204]
+                  - text: 回撤止盈(%)
+                  - generic "从持仓峰值回撤达到该比例触发退出。" [ref=e205]: i
+                - spinbutton [ref=e207]: "0.12"
+            - generic [ref=e208]: 止损%调高=允许更大回撤再止损；调低=更紧。回撤止盈%调高=更宽松；调低=更敏感。
+        - generic [ref=e209]: 开关关闭时仅停用对应过滤，不清空阈值；点击保存后同步到自动交易进程。
+    - generic [ref=e211]: 站点映射与模型更新
+    - generic [ref=e212]:
+      - generic [ref=e213]:
+        - text: 事件列表（事实层）
+        - generic [ref=e214]: 已加载 10/46
+      - generic [ref=e474]:
+        - generic [ref=e475]:
+          - generic [ref=e477]:
+            - generic [ref=e478]: "1."
+            - link "Highest temperature in Ankara on March 5?" [ref=e479] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-ankara-on-march-5-2026
+            - generic [ref=e480]:
+              - generic [ref=e481]: 可下单
+              - generic [ref=e482]: 未操作
+            - button "复制事件标题" [ref=e483] [cursor=pointer]: 复制
+          - generic [ref=e484]:
+            - generic [ref=e485]: 事件概览
+            - generic [ref=e486]:
+              - generic [ref=e487]:
+                - generic [ref=e488]:
+                  - generic [ref=e489]: 事件概况
+                  - generic [ref=e490]: LTAC 2026-03-05 · temperature_2m_max C
+                - generic [ref=e492]:
+                  - generic [ref=e493]: 关键时间
+                  - generic [ref=e494]:
+                    - generic [ref=e495]:
+                      - generic [ref=e496]: 当地时间
+                      - generic [ref=e497]: 当地时间 03/04 02:35
+                    - generic [ref=e498]:
+                      - generic [ref=e499]: 距最高温可能出现时间
+                      - generic [ref=e500]: 33h 24m 25s
+                      - generic [ref=e501]: 2026/03/05 12:00
+              - generic [ref=e502]:
+                - generic [ref=e503]:
+                  - generic [ref=e504]: 市场温度
+                  - generic [ref=e505]: 11.00°C
+                  - generic [ref=e506]: 11°C
+                  - generic [ref=e507]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e509]:
+                  - generic [ref=e510]: 结算站点预报
+                  - generic [ref=e511]:
+                    - generic [ref=e513]: 数据新鲜 · 2.6h
+                    - generic [ref=e514]:
+                      - generic [ref=e515]: 10.5°C
+                      - generic [ref=e516]: 03/05
+                    - generic [ref=e517]:
+                      - text: 最高温 · 23:57 · 更新 03-04 07:57 (2.6h) ·
+                      - link "站点详情" [ref=e518] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/tr/%C3%A7ubuk/LTAC/date/2026-03-05
+                  - generic [ref=e519]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e520]:
+                - generic [ref=e521]:
+                  - generic [ref=e522]: 模型状态
+                  - generic [ref=e524]: ⭑ 模型数 3
+                  - generic [ref=e525]:
+                    - generic [ref=e526]:
+                      - generic [ref=e527]: 当前模型
+                      - generic [ref=e528]:
+                        - generic "美国 GFS 数值模式" [ref=e529]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e530]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e531]: ECMWF
+                    - generic [ref=e532]:
+                      - generic [ref=e533]: 缺失模型
+                      - generic "美国国家气象局人工+模型预报 · NWS 不适用（非美站点/区域）" [ref=e535]: NWS
+                - generic [ref=e537]:
+                  - generic [ref=e538]: 数据新鲜度
+                  - generic [ref=e539]: 模型温度 · 盘口快照
+                  - generic [ref=e540]:
+                    - generic [ref=e541]: 模型温度 — · 03-04 10:35
+                    - generic [ref=e542]: 盘口快照 3m · 03-04 10:32
+                    - generic [ref=e543]: 站点预报 2.6h · 03-04 07:57
+                  - generic [ref=e544]:
+                    - button "重新获取盘口" [ref=e545] [cursor=pointer]
+                    - generic [ref=e546]: 仅刷新市场数据
+          - generic [ref=e547]:
+            - generic [ref=e548]: 温度桶概览
+            - generic [ref=e550]:
+              - generic [ref=e551]: 最高概率与均值
+              - generic [ref=e552]:
+                - generic [ref=e553]:
+                  - generic [ref=e554]: 最高概率桶概率（q_raw）
+                  - generic [ref=e557]:
+                    - generic [ref=e558]:
+                      - generic [ref=e559]: 最高概率桶（原始数据）
+                      - generic [ref=e560]: 9°C
+                      - generic [ref=e561]: 桶区间 9-10°C
+                    - generic [ref=e562]:
+                      - generic [ref=e563]: 最高概率桶（校正后）
+                      - generic [ref=e564]: 9°C
+                      - generic [ref=e565]: 桶区间 9-10°C
+                  - generic [ref=e566]:
+                    - generic [ref=e567]: 最高概率桶轨迹
+                    - generic [ref=e568]:
+                      - generic [ref=e569]: 最高概率桶轨迹（当地时间 UTC）
+                      - generic [ref=e570]:
+                        - generic [ref=e571]:
+                          - generic [ref=e572]: 时间
+                          - generic [ref=e573]: 等权
+                          - generic [ref=e574]: 动态
+                          - generic [ref=e575]: 场景
+                        - generic [ref=e576]:
+                          - generic [ref=e577]:
+                            - generic [ref=e578]: 03/04 02:26
+                            - generic [ref=e580]: 9°C
+                            - generic [ref=e582]: 9°C
+                            - generic [ref=e584]: 9°C
+                          - generic [ref=e585]:
+                            - generic [ref=e586]: 03/03 23:57
+                            - generic [ref=e588]: 9°C
+                            - generic [ref=e590]: 9°C
+                            - generic [ref=e592]: 9°C
+                - generic [ref=e593]:
+                  - generic [ref=e594]: 最高概率桶模型差异
+                  - generic [ref=e596]:
+                    - generic [ref=e597]:
+                      - generic [ref=e598]:
+                        - generic [ref=e599]: 最高概率桶概率（q_raw）
+                        - generic [ref=e600]: 68.3%
+                        - generic [ref=e601]: 多模型加权平均
+                      - generic [ref=e602]:
+                        - generic [ref=e603]: 校准后概率（q_calibrated）
+                        - generic [ref=e604]: 36.6%
+                        - generic [ref=e605]: 历史可靠性校准
+                    - generic [ref=e606]:
+                      - generic [ref=e607]:
+                        - generic [ref=e608]: q_min
+                        - generic [ref=e609]: 41.0%
+                      - generic [ref=e610]:
+                        - generic [ref=e611]: q_max
+                        - generic [ref=e612]: 94.0%
+                      - generic [ref=e613]:
+                        - generic [ref=e614]: q_auto
+                        - generic [ref=e615]: 68.3%
+                      - generic [ref=e616]:
+                        - generic [ref=e617]: q_scenario
+                        - generic [ref=e618]: 70.2%
+                    - generic [ref=e619]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e620]:
+                    - generic [ref=e621]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                    - generic [ref=e624]:
+                      - generic [ref=e625]:
+                        - generic [ref=e626]: 时间
+                        - generic [ref=e627]: 原始最高桶
+                        - generic [ref=e628]: q_min
+                        - generic [ref=e629]: q_raw
+                        - generic [ref=e630]: q_calibrated
+                        - generic [ref=e631]: q_max
+                      - generic [ref=e632]:
+                        - generic [ref=e633]:
+                          - generic [ref=e634]: 03/04 02:26
+                          - generic [ref=e635]: 9°C
+                          - generic [ref=e636]: 41.0%
+                          - generic [ref=e637]: 68.3%
+                          - generic [ref=e638]: 36.6%
+                          - generic [ref=e639]: 94.0%
+                        - generic [ref=e640]:
+                          - generic [ref=e641]: 03/03 23:57
+                          - generic [ref=e642]: 9°C
+                          - generic [ref=e643]: 41.0%
+                          - generic [ref=e644]: 68.3%
+                          - generic [ref=e645]: 36.6%
+                          - generic [ref=e646]: 94.0%
+                  - generic [ref=e647]:
+                    - generic [ref=e648]: 自动交易成交
+                    - generic [ref=e650]:
+                      - generic [ref=e651]:
+                        - generic [ref=e652]:
+                          - generic [ref=e653]: NO 11°C
+                          - generic [ref=e654]:
+                            - generic [ref=e655]: 可兑现分 6.67
+                            - generic [ref=e656]: 有效优势分 8.15
+                        - generic [ref=e657]: 边际 29.00 × 时间 1.00（趋势 0.00 + base 1.00 × 新鲜度 1.00） × 结构 0.30（dominance 0.50，时间×结构最低 0.20） − 惩罚 0.55
+                      - generic [ref=e659]:
+                        - generic [ref=e661]: LCB全市场策略
+                        - generic [ref=e662]:
+                          - generic [ref=e664]: 信号满足
+                          - generic [ref=e665]: 全局/执行层拦截（NO 11°C）
+                          - generic [ref=e667]: 未触发下单
+                      - generic [ref=e668]:
+                        - generic [ref=e669]: 未退出
+                        - generic [ref=e670]:
+                          - generic [ref=e671]:
+                            - generic [ref=e672]: 原始信号边际
+                            - generic [ref=e674]: —
+                          - generic [ref=e675]:
+                            - generic [ref=e676]: LCB未退出原因（NO 11°C）
+                            - generic [ref=e678]: 无退出信号
+                - generic [ref=e679]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e680]: 均值桶
+                  - generic [ref=e683]:
+                    - generic [ref=e684]:
+                      - text: 等权9.28°C
+                      - generic [ref=e685]: P25–P75 9.00°C–10.00°C
+                    - generic [ref=e686]:
+                      - text: 动态9.28°C
+                      - generic [ref=e687]: P25–P75 9.00°C–10.00°C
+                    - generic [ref=e688]:
+                      - text: 场景9.25°C
+                      - generic [ref=e689]: P25–P75 9.00°C–10.00°C
+                - generic [ref=e690]:
+                  - generic [ref=e691]: 风险提示
+                  - generic [ref=e692]:
+                    - text: ✓
+                    - generic [ref=e693]: 分布提示
+                    - generic [ref=e694]: 当前：均值桶 = 最高概率桶（如等权的9°C），说明最高温分布更集中，温度变化更稳。参考：以最高概率桶为主，偏冷/偏热尾部风险较小。
+                - generic [ref=e695]:
+                  - generic [ref=e696]: 落桶概率分布
+                  - generic [ref=e698]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e699]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e701]:
+                      - generic [ref=e702]: 50%
+                      - generic [ref=e715]: <=5°C
+                      - generic [ref=e716]: 6-7°C
+                      - generic [ref=e717]: 7-8°C
+                      - generic [ref=e718]: 8-9°C
+                      - generic [ref=e719]: 9-10°C
+                      - generic [ref=e720]: 10-11°C
+                      - generic [ref=e721]: 11-12°C
+                      - generic [ref=e722]: 12-13°C
+                      - generic [ref=e723]: ">=13°C"
+                    - generic [ref=e724]:
+                      - generic [ref=e727]: 等权
+                      - generic [ref=e730]: 动态
+                      - generic [ref=e733]: 场景
+          - generic [ref=e734]:
+            - generic [ref=e735]: 落桶分布
+            - generic [ref=e736]:
+              - generic [ref=e737]: 诊断与命中率
+              - generic [ref=e738]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e740]:
+              - generic [ref=e741]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:32 (3m) · 偏旧。
+              - generic [ref=e742]:
+                - generic [ref=e743]: 温度落桶
+                - generic [ref=e744]: 标签
+                - generic [ref=e745]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e746]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e747]: 校准后概率（q_calibrated）
+                - generic [ref=e748]: edge（YES/NO）
+              - generic [ref=e749] [cursor=pointer]:
+                - generic [ref=e750]: 5°C or below
+                - generic [ref=e751]: —
+                - generic [ref=e752]:
+                  - generic [ref=e753]:
+                    - generic [ref=e754]: "YES"
+                    - generic [ref=e755]: 0.9¢
+                  - generic [ref=e756]:
+                    - generic [ref=e757]: "NO"
+                    - generic [ref=e758]: 99.8¢
+                - generic [ref=e759]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e760]:
+                  - generic [ref=e761]: 0.0%
+                  - generic [ref=e762]: 未校正 · 样本0 · 缺0
+                - generic [ref=e763]:
+                  - generic [ref=e764]:
+                    - generic [ref=e765]: "YES"
+                    - generic [ref=e767]: 0.00%
+                  - generic [ref=e768]:
+                    - generic [ref=e769]: "NO"
+                    - generic [ref=e772]: 0.20%
+              - generic [ref=e773] [cursor=pointer]:
+                - generic [ref=e774]: 6°C
+                - generic [ref=e775]: —
+                - generic [ref=e776]:
+                  - generic [ref=e777]:
+                    - generic [ref=e778]: "YES"
+                    - generic [ref=e779]: 1.4¢
+                  - generic [ref=e780]:
+                    - generic [ref=e781]: "NO"
+                    - generic [ref=e782]: 99.8¢
+                - generic [ref=e783]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e784]:
+                  - generic [ref=e785]: 0.0%
+                  - generic [ref=e786]: 未校正 · 样本0 · 缺0
+                - generic [ref=e787]:
+                  - generic [ref=e788]:
+                    - generic [ref=e789]: "YES"
+                    - generic [ref=e791]: 0.00%
+                  - generic [ref=e792]:
+                    - generic [ref=e793]: "NO"
+                    - generic [ref=e796]: 0.20%
+              - generic [ref=e797] [cursor=pointer]:
+                - generic [ref=e798]: 7°C
+                - generic [ref=e799]: —
+                - generic [ref=e800]:
+                  - generic [ref=e801]:
+                    - generic [ref=e802]: "YES"
+                    - generic [ref=e803]: 2.8¢
+                  - generic [ref=e804]:
+                    - generic [ref=e805]: "NO"
+                    - generic [ref=e806]: 98.9¢
+                - generic [ref=e807]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e808]:
+                  - generic [ref=e809]: 0.0%
+                  - generic [ref=e810]: 未校正 · 样本0 · 缺0
+                - generic [ref=e811]:
+                  - generic [ref=e812]:
+                    - generic [ref=e813]: "YES"
+                    - generic [ref=e815]: 0.00%
+                  - generic [ref=e816]:
+                    - generic [ref=e817]: "NO"
+                    - generic [ref=e820]: 1.10%
+              - generic [ref=e821] [cursor=pointer]:
+                - generic [ref=e822]: 8°C
+                - generic [ref=e823]: —
+                - generic [ref=e824]:
+                  - generic [ref=e825]:
+                    - generic [ref=e826]: "YES"
+                    - generic [ref=e827]: 5.8¢
+                  - generic [ref=e828]:
+                    - generic [ref=e829]: "NO"
+                    - generic [ref=e830]: 97.9¢
+                - generic [ref=e831]: 1.7%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e832]:
+                  - generic [ref=e833]: 1.7%
+                  - generic [ref=e834]: 未校正 · 样本0 · 缺0
+                - generic [ref=e835]:
+                  - generic [ref=e836]:
+                    - generic [ref=e837]: "YES"
+                    - generic [ref=e839]: 0.00%
+                  - generic [ref=e840]:
+                    - generic [ref=e841]: "NO"
+                    - generic [ref=e844]: 0.39%
+              - generic [ref=e845] [cursor=pointer]:
+                - generic [ref=e846]: 9°C
+                - generic [ref=e847]:
+                  - generic [ref=e848]:
+                    - generic [ref=e849]: 等权最高概率桶（q_raw）
+                    - generic [ref=e850]: 最高概率
+                    - generic [ref=e851]: 等权落桶
+                    - generic [ref=e852]: 动态落桶
+                    - generic [ref=e853]: 场景落桶
+                    - generic [ref=e854]: 等权最高概率
+                    - generic [ref=e855]: 动态最高概率
+                    - generic [ref=e856]: 场景最高概率
+                    - generic [ref=e857]: GFS
+                    - generic [ref=e858]: ECMWF
+                  - generic [ref=e859]:
+                    - generic [ref=e860]:
+                      - generic [ref=e861]: 美国 GFS 数值模式
+                      - text: 70.0%
+                    - generic [ref=e862]:
+                      - generic [ref=e863]: 欧洲 ECMWF IFS（0.25°）
+                      - text: 94.0%
+                - generic [ref=e864]:
+                  - generic [ref=e865]:
+                    - generic [ref=e866]: "YES"
+                    - generic [ref=e867]: 15.0¢
+                  - generic [ref=e868]:
+                    - generic [ref=e869]: "NO"
+                    - generic [ref=e870]: 86.0¢
+                - generic [ref=e871]: 68.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e872]:
+                  - generic [ref=e873]: 68.3%
+                  - generic [ref=e874]: 未校正 · 样本0 · 缺0
+                - generic [ref=e875]:
+                  - generic [ref=e876]:
+                    - generic [ref=e877]: "YES"
+                    - generic [ref=e880]: 53.34%
+                  - generic [ref=e881]:
+                    - generic [ref=e882]: "NO"
+                    - generic [ref=e884]: 0.00%
+              - generic [ref=e885] [cursor=pointer]:
+                - generic [ref=e886]: 10°C
+                - generic [ref=e887]:
+                  - generic [ref=e889]: ICON
+                  - generic [ref=e891]:
+                    - generic [ref=e892]: 德国 ICON 数值模式
+                    - text: 53.8%
+                - generic [ref=e893]:
+                  - generic [ref=e894]:
+                    - generic [ref=e895]: "YES"
+                    - generic [ref=e896]: 20.0¢
+                  - generic [ref=e897]:
+                    - generic [ref=e898]: "NO"
+                    - generic [ref=e899]: 83.0¢
+                - generic [ref=e900]: 29.9%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e901]:
+                  - generic [ref=e902]: 29.9%
+                  - generic [ref=e903]: 未校正 · 样本0 · 缺0
+                - generic [ref=e904]:
+                  - generic [ref=e905]:
+                    - generic [ref=e906]: "YES"
+                    - generic [ref=e909]: 9.95%
+                  - generic [ref=e910]:
+                    - generic [ref=e911]: "NO"
+                    - generic [ref=e913]: 0.00%
+              - generic [ref=e914] [cursor=pointer]:
+                - generic [ref=e915]: 11°C
+                - generic [ref=e918]: 市场盘口
+                - generic [ref=e919]:
+                  - generic [ref=e920]:
+                    - generic [ref=e921]: "YES"
+                    - generic [ref=e922]: 32.0¢
+                  - generic [ref=e923]:
+                    - generic [ref=e924]: "NO"
+                    - generic [ref=e925]: 71.0¢
+                - generic [ref=e926]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e927]:
+                  - generic [ref=e928]: 0.0%
+                  - generic [ref=e929]: 未校正 · 样本0 · 缺0
+                - generic [ref=e930]:
+                  - generic [ref=e931]:
+                    - generic [ref=e932]: "YES"
+                    - generic [ref=e934]: 0.00%
+                  - generic [ref=e935]:
+                    - generic [ref=e936]: "NO"
+                    - generic [ref=e939]: 29.00%
+              - generic [ref=e940] [cursor=pointer]:
+                - generic [ref=e941]: 12°C
+                - generic [ref=e942]: —
+                - generic [ref=e943]:
+                  - generic [ref=e944]:
+                    - generic [ref=e945]: "YES"
+                    - generic [ref=e946]: 26.0¢
+                  - generic [ref=e947]:
+                    - generic [ref=e948]: "NO"
+                    - generic [ref=e949]: 84.0¢
+                - generic [ref=e950]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e951]:
+                  - generic [ref=e952]: 0.0%
+                  - generic [ref=e953]: 未校正 · 样本0 · 缺0
+                - generic [ref=e954]:
+                  - generic [ref=e955]:
+                    - generic [ref=e956]: "YES"
+                    - generic [ref=e958]: 0.00%
+                  - generic [ref=e959]:
+                    - generic [ref=e960]: "NO"
+                    - generic [ref=e963]: 16.00%
+              - generic [ref=e964] [cursor=pointer]:
+                - generic [ref=e965]: 13°C or higher
+                - generic [ref=e966]: —
+                - generic [ref=e967]:
+                  - generic [ref=e968]:
+                    - generic [ref=e969]: "YES"
+                    - generic [ref=e970]: 6.0¢
+                  - generic [ref=e971]:
+                    - generic [ref=e972]: "NO"
+                    - generic [ref=e973]: 96.9¢
+                - generic [ref=e974]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e975]:
+                  - generic [ref=e976]: 0.0%
+                  - generic [ref=e977]: 未校正 · 样本0 · 缺0
+                - generic [ref=e978]:
+                  - generic [ref=e979]:
+                    - generic [ref=e980]: "YES"
+                    - generic [ref=e982]: 0.00%
+                  - generic [ref=e983]:
+                    - generic [ref=e984]: "NO"
+                    - generic [ref=e987]: 3.10%
+          - generic [ref=e988]: 建议：—
+        - generic [ref=e989]:
+          - generic [ref=e991]:
+            - generic [ref=e992]: "2."
+            - link "Highest temperature in Lucknow on March 5?" [ref=e993] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-lucknow-on-march-5-2026
+            - generic [ref=e994]:
+              - generic [ref=e995]: 可下单
+              - generic [ref=e996]: 未操作
+            - button "复制事件标题" [ref=e997] [cursor=pointer]: 复制
+          - generic [ref=e998]:
+            - generic [ref=e999]: 事件概览
+            - generic [ref=e1000]:
+              - generic [ref=e1001]:
+                - generic [ref=e1002]:
+                  - generic [ref=e1003]: 事件概况
+                  - generic [ref=e1004]: VILK 2026-03-05 · temperature_2m_max C
+                - generic [ref=e1006]:
+                  - generic [ref=e1007]: 关键时间
+                  - generic [ref=e1008]:
+                    - generic [ref=e1009]:
+                      - generic [ref=e1010]: 当地时间
+                      - generic [ref=e1011]: 当地时间 03/04 02:35
+                    - generic [ref=e1012]:
+                      - generic [ref=e1013]: 距最高温可能出现时间
+                      - generic [ref=e1014]: 33h 24m 25s
+                      - generic [ref=e1015]: 2026/03/05 12:00
+              - generic [ref=e1016]:
+                - generic [ref=e1017]:
+                  - generic [ref=e1018]: 市场温度
+                  - generic [ref=e1019]: 34.00°C
+                  - generic [ref=e1020]: 34°C or below
+                  - generic [ref=e1021]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e1023]:
+                  - generic [ref=e1024]: 结算站点预报
+                  - generic [ref=e1025]:
+                    - generic [ref=e1026]:
+                      - generic [ref=e1027]: 暂无数据
+                      - generic [ref=e1028]: 03/05
+                    - generic [ref=e1029]:
+                      - text: 未找到站点预报记录 ·
+                      - link "站点详情" [ref=e1030] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/in/lucknow/VILK/date/2026-03-05
+                  - generic [ref=e1031]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e1032]:
+                - generic [ref=e1033]:
+                  - generic [ref=e1034]: 模型状态
+                  - generic [ref=e1036]: ⭑ 模型数 3
+                  - generic [ref=e1037]:
+                    - generic [ref=e1038]:
+                      - generic [ref=e1039]: 当前模型
+                      - generic [ref=e1040]:
+                        - generic "美国 GFS 数值模式" [ref=e1041]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e1042]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e1043]: ECMWF
+                    - generic [ref=e1044]:
+                      - generic [ref=e1045]: 缺失模型
+                      - generic "美国国家气象局人工+模型预报 · NWS 不适用（非美站点/区域）" [ref=e1047]: NWS
+                - generic [ref=e1049]:
+                  - generic [ref=e1050]: 数据新鲜度
+                  - generic [ref=e1051]: 模型温度 · 盘口快照
+                  - generic [ref=e1052]:
+                    - generic [ref=e1053]: 模型温度 — · 03-04 10:35
+                    - generic [ref=e1054]: 盘口快照 12m · 03-04 10:23
+                    - generic [ref=e1055]: 站点预报 —
+                  - generic [ref=e1056]:
+                    - button "重新获取盘口" [ref=e1057] [cursor=pointer]
+                    - generic [ref=e1058]: 仅刷新市场数据
+          - generic [ref=e1059]:
+            - generic [ref=e1060]: 温度桶概览
+            - generic [ref=e1062]:
+              - generic [ref=e1063]: 最高概率与均值
+              - generic [ref=e1064]:
+                - generic [ref=e1065]:
+                  - generic [ref=e1066]: 最高概率桶概率（q_raw）
+                  - generic [ref=e1069]:
+                    - generic [ref=e1070]:
+                      - generic [ref=e1071]: 最高概率桶（原始数据）
+                      - generic [ref=e1072]: 34°C or below
+                      - generic [ref=e1073]: 桶区间 <=34°C
+                    - generic [ref=e1074]:
+                      - generic [ref=e1075]: 最高概率桶（校正后）
+                      - generic [ref=e1076]: 34°C
+                      - generic [ref=e1077]: 桶区间 <=34°C
+                  - generic [ref=e1078]:
+                    - generic [ref=e1079]: 最高概率桶轨迹
+                    - generic [ref=e1080]:
+                      - generic [ref=e1081]: 最高概率桶轨迹（当地时间 UTC）
+                      - generic [ref=e1082]:
+                        - generic [ref=e1083]:
+                          - generic [ref=e1084]: 时间
+                          - generic [ref=e1085]: 等权
+                          - generic [ref=e1086]: 动态
+                          - generic [ref=e1087]: 场景
+                        - generic [ref=e1088]:
+                          - generic [ref=e1089]:
+                            - generic [ref=e1090]: 03/04 02:23
+                            - generic [ref=e1092]: <=34°C
+                            - generic [ref=e1094]: <=34°C
+                            - generic [ref=e1096]: <=34°C
+                          - generic [ref=e1097]:
+                            - generic [ref=e1098]: 03/03 16:38
+                            - generic [ref=e1100]: <=34°C
+                            - generic [ref=e1102]: <=34°C
+                            - generic [ref=e1104]: <=34°C
+                - generic [ref=e1105]:
+                  - generic [ref=e1106]: 最高概率桶模型差异
+                  - generic [ref=e1108]:
+                    - generic [ref=e1109]:
+                      - generic [ref=e1110]:
+                        - generic [ref=e1111]: 最高概率桶概率（q_raw）
+                        - generic [ref=e1112]: 76.7%
+                        - generic [ref=e1113]: 多模型加权平均
+                      - generic [ref=e1114]:
+                        - generic [ref=e1115]: 校准后概率（q_calibrated）
+                        - generic [ref=e1116]: 32.3%
+                        - generic [ref=e1117]: 历史可靠性校准
+                    - generic [ref=e1118]:
+                      - generic [ref=e1119]:
+                        - generic [ref=e1120]: q_min
+                        - generic [ref=e1121]: 30.0%
+                      - generic [ref=e1122]:
+                        - generic [ref=e1123]: q_max
+                        - generic [ref=e1124]: 100.0%
+                      - generic [ref=e1125]:
+                        - generic [ref=e1126]: q_auto
+                        - generic [ref=e1127]: 74.3%
+                      - generic [ref=e1128]:
+                        - generic [ref=e1129]: q_scenario
+                        - generic [ref=e1130]: 100.0%
+                    - generic [ref=e1131]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e1132]:
+                    - generic [ref=e1133]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                    - generic [ref=e1136]:
+                      - generic [ref=e1137]:
+                        - generic [ref=e1138]: 时间
+                        - generic [ref=e1139]: 原始最高桶
+                        - generic [ref=e1140]: q_min
+                        - generic [ref=e1141]: q_raw
+                        - generic [ref=e1142]: q_calibrated
+                        - generic [ref=e1143]: q_max
+                      - generic [ref=e1144]:
+                        - generic [ref=e1145]:
+                          - generic [ref=e1146]: 03/04 02:23
+                          - generic [ref=e1147]: <=34°C
+                          - generic [ref=e1148]: 30.0%
+                          - generic [ref=e1149]: 76.7%
+                          - generic [ref=e1150]: 32.3%
+                          - generic [ref=e1151]: 100.0%
+                        - generic [ref=e1152]:
+                          - generic [ref=e1153]: 03/03 16:38
+                          - generic [ref=e1154]: <=34°C
+                          - generic [ref=e1155]: 30.0%
+                          - generic [ref=e1156]: 76.7%
+                          - generic [ref=e1157]: 32.3%
+                          - generic [ref=e1158]: 100.0%
+                  - generic [ref=e1159]:
+                    - generic [ref=e1160]: 自动交易成交
+                    - generic [ref=e1162]:
+                      - generic [ref=e1163]:
+                        - generic [ref=e1164]:
+                          - generic [ref=e1165]: YES 37°C
+                          - generic [ref=e1166]:
+                            - generic [ref=e1167]: 可兑现分 2.89
+                            - generic [ref=e1168]: 有效优势分 0.83
+                        - generic [ref=e1169]: 边际 2.78 × 时间 0.99（趋势 0.00 + base 0.99 × 新鲜度 1.00） × 结构 0.30（dominance 0.50，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e1171]:
+                        - generic [ref=e1173]: LCB全市场策略
+                        - generic [ref=e1174]:
+                          - generic [ref=e1176]: 信号满足
+                          - generic [ref=e1177]: 全局/执行层拦截（YES 37°C）
+                          - generic [ref=e1179]: 未触发下单
+                      - generic [ref=e1180]:
+                        - generic [ref=e1181]: 未退出
+                        - generic [ref=e1182]:
+                          - generic [ref=e1183]:
+                            - generic [ref=e1184]: 原始信号边际
+                            - generic [ref=e1186]: —
+                          - generic [ref=e1187]:
+                            - generic [ref=e1188]: LCB未退出原因（YES 37°C）
+                            - generic [ref=e1190]: 无退出信号
+                - generic [ref=e1191]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e1192]: 均值桶
+                  - generic [ref=e1195]:
+                    - generic [ref=e1196]:
+                      - text: 等权34.47°C
+                      - generic [ref=e1197]: P25–P75 34.00°C–34.00°C
+                    - generic [ref=e1198]:
+                      - text: 动态34.51°C
+                      - generic [ref=e1199]: P25–P75 34.00°C–35.00°C
+                    - generic [ref=e1200]:
+                      - text: 场景34.00°C
+                      - generic [ref=e1201]: P25–P75 34.00°C–34.00°C
+                - generic [ref=e1202]:
+                  - generic [ref=e1203]: 风险提示
+                  - generic [ref=e1204]:
+                    - text: ✓
+                    - generic [ref=e1205]: 分布提示
+                    - generic [ref=e1206]: 当前：均值桶 = 最高概率桶（如等权的34°C or below），说明最高温分布更集中，温度变化更稳。参考：以最高概率桶为主，偏冷/偏热尾部风险较小。
+                - generic [ref=e1207]:
+                  - generic [ref=e1208]: 落桶概率分布
+                  - generic [ref=e1210]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e1211]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e1213]:
+                      - generic [ref=e1214]: 50%
+                      - generic [ref=e1227]: <=34°C
+                      - generic [ref=e1228]: 35-36°C
+                      - generic [ref=e1229]: 36-37°C
+                      - generic [ref=e1230]: 37-38°C
+                      - generic [ref=e1231]: 38-39°C
+                      - generic [ref=e1232]: 39-40°C
+                      - generic [ref=e1233]: 40-41°C
+                      - generic [ref=e1234]: 41-42°C
+                      - generic [ref=e1235]: ">=42°C"
+                    - generic [ref=e1236]:
+                      - generic [ref=e1239]: 等权
+                      - generic [ref=e1242]: 动态
+                      - generic [ref=e1245]: 场景
+          - generic [ref=e1246]:
+            - generic [ref=e1247]: 落桶分布
+            - generic [ref=e1248]:
+              - generic [ref=e1249]: 诊断与命中率
+              - generic [ref=e1250]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e1252]:
+              - generic [ref=e1253]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:23 (12m) · 偏旧。
+              - generic [ref=e1254]:
+                - generic [ref=e1255]: 温度落桶
+                - generic [ref=e1256]: 标签
+                - generic [ref=e1257]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e1258]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e1259]: 校准后概率（q_calibrated）
+                - generic [ref=e1260]: edge（YES/NO）
+              - generic [ref=e1261] [cursor=pointer]:
+                - generic [ref=e1262]: 34°C or below
+                - generic [ref=e1263]:
+                  - generic [ref=e1264]:
+                    - generic [ref=e1265]: 市场盘口
+                    - generic [ref=e1266]: 等权最高概率桶（q_raw）
+                    - generic [ref=e1267]: 最高概率
+                    - generic [ref=e1268]: 等权落桶
+                    - generic [ref=e1269]: 动态落桶
+                    - generic [ref=e1270]: 场景落桶
+                    - generic [ref=e1271]: 等权最高概率
+                    - generic [ref=e1272]: 动态最高概率
+                    - generic [ref=e1273]: 场景最高概率
+                    - generic [ref=e1274]: GFS
+                    - generic [ref=e1275]: ICON
+                    - generic [ref=e1276]: ECMWF
+                  - generic [ref=e1277]:
+                    - generic [ref=e1278]:
+                      - generic [ref=e1279]: 美国 GFS 数值模式
+                      - text: 30.0%
+                    - generic [ref=e1280]:
+                      - generic [ref=e1281]: 德国 ICON 数值模式
+                      - text: 100.0%
+                    - generic [ref=e1282]:
+                      - generic [ref=e1283]: 欧洲 ECMWF IFS（0.25°）
+                      - text: 100.0%
+                - generic [ref=e1284]:
+                  - generic [ref=e1285]:
+                    - generic [ref=e1286]: "YES"
+                    - generic [ref=e1287]: 78.0¢
+                  - generic [ref=e1288]:
+                    - generic [ref=e1289]: "NO"
+                    - generic [ref=e1290]: 49.0¢
+                - generic [ref=e1291]: 76.7%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1292]:
+                  - generic [ref=e1293]: 76.7%
+                  - generic [ref=e1294]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1295]:
+                  - generic [ref=e1296]:
+                    - generic [ref=e1297]: "YES"
+                    - generic [ref=e1299]: 0.00%
+                  - generic [ref=e1300]:
+                    - generic [ref=e1301]: "NO"
+                    - generic [ref=e1303]: 0.00%
+              - generic [ref=e1304] [cursor=pointer]:
+                - generic [ref=e1305]: 35°C
+                - generic [ref=e1306]: —
+                - generic [ref=e1307]:
+                  - generic [ref=e1308]:
+                    - generic [ref=e1309]: "YES"
+                    - generic [ref=e1310]: 35.0¢
+                  - generic [ref=e1311]:
+                    - generic [ref=e1312]: "NO"
+                    - generic [ref=e1313]: 91.0¢
+                - generic [ref=e1314]: 10.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1315]:
+                  - generic [ref=e1316]: 10.0%
+                  - generic [ref=e1317]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1318]:
+                  - generic [ref=e1319]:
+                    - generic [ref=e1320]: "YES"
+                    - generic [ref=e1322]: 0.00%
+                  - generic [ref=e1323]:
+                    - generic [ref=e1324]: "NO"
+                    - generic [ref=e1326]: 0.00%
+              - generic [ref=e1327] [cursor=pointer]:
+                - generic [ref=e1328]: 36°C
+                - generic [ref=e1329]: —
+                - generic [ref=e1330]:
+                  - generic [ref=e1331]:
+                    - generic [ref=e1332]: "YES"
+                    - generic [ref=e1333]: 24.0¢
+                  - generic [ref=e1334]:
+                    - generic [ref=e1335]: "NO"
+                    - generic [ref=e1336]: 92.0¢
+                - generic [ref=e1337]: 4.4%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1338]:
+                  - generic [ref=e1339]: 4.4%
+                  - generic [ref=e1340]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1341]:
+                  - generic [ref=e1342]:
+                    - generic [ref=e1343]: "YES"
+                    - generic [ref=e1345]: 0.00%
+                  - generic [ref=e1346]:
+                    - generic [ref=e1347]: "NO"
+                    - generic [ref=e1350]: 3.56%
+              - generic [ref=e1351] [cursor=pointer]:
+                - generic [ref=e1352]: 37°C
+                - generic [ref=e1353]: —
+                - generic [ref=e1354]:
+                  - generic [ref=e1355]:
+                    - generic [ref=e1356]: "YES"
+                    - generic [ref=e1357]: 5.0¢
+                  - generic [ref=e1358]:
+                    - generic [ref=e1359]: "NO"
+                    - generic [ref=e1360]: 97.0¢
+                - generic [ref=e1361]: 7.8%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1362]:
+                  - generic [ref=e1363]: 7.8%
+                  - generic [ref=e1364]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1365]:
+                  - generic [ref=e1366]:
+                    - generic [ref=e1367]: "YES"
+                    - generic [ref=e1370]: 2.78%
+                  - generic [ref=e1371]:
+                    - generic [ref=e1372]: "NO"
+                    - generic [ref=e1374]: 0.00%
+              - generic [ref=e1375] [cursor=pointer]:
+                - generic [ref=e1376]: 38°C
+                - generic [ref=e1377]: —
+                - generic [ref=e1378]:
+                  - generic [ref=e1379]:
+                    - generic [ref=e1380]: "YES"
+                    - generic [ref=e1381]: 2.8¢
+                  - generic [ref=e1382]:
+                    - generic [ref=e1383]: "NO"
+                    - generic [ref=e1384]: 99.0¢
+                - generic [ref=e1385]: 1.1%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1386]:
+                  - generic [ref=e1387]: 1.1%
+                  - generic [ref=e1388]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1389]:
+                  - generic [ref=e1390]:
+                    - generic [ref=e1391]: "YES"
+                    - generic [ref=e1393]: 0.00%
+                  - generic [ref=e1394]:
+                    - generic [ref=e1395]: "NO"
+                    - generic [ref=e1397]: 0.00%
+              - generic [ref=e1398] [cursor=pointer]:
+                - generic [ref=e1399]: 39°C
+                - generic [ref=e1400]: —
+                - generic [ref=e1401]:
+                  - generic [ref=e1402]:
+                    - generic [ref=e1403]: "YES"
+                    - generic [ref=e1404]: 1.9¢
+                  - generic [ref=e1405]:
+                    - generic [ref=e1406]: "NO"
+                    - generic [ref=e1407]: 99.0¢
+                - generic [ref=e1408]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1409]:
+                  - generic [ref=e1410]: 0.0%
+                  - generic [ref=e1411]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1412]:
+                  - generic [ref=e1413]:
+                    - generic [ref=e1414]: "YES"
+                    - generic [ref=e1416]: 0.00%
+                  - generic [ref=e1417]:
+                    - generic [ref=e1418]: "NO"
+                    - generic [ref=e1421]: 1.00%
+              - generic [ref=e1422] [cursor=pointer]:
+                - generic [ref=e1423]: 40°C
+                - generic [ref=e1424]: —
+                - generic [ref=e1425]:
+                  - generic [ref=e1426]:
+                    - generic [ref=e1427]: "YES"
+                    - generic [ref=e1428]: 0.9¢
+                  - generic [ref=e1429]:
+                    - generic [ref=e1430]: "NO"
+                    - generic [ref=e1431]: 99.4¢
+                - generic [ref=e1432]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1433]:
+                  - generic [ref=e1434]: 0.0%
+                  - generic [ref=e1435]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1436]:
+                  - generic [ref=e1437]:
+                    - generic [ref=e1438]: "YES"
+                    - generic [ref=e1440]: 0.00%
+                  - generic [ref=e1441]:
+                    - generic [ref=e1442]: "NO"
+                    - generic [ref=e1445]: 0.60%
+              - generic [ref=e1446] [cursor=pointer]:
+                - generic [ref=e1447]: 41°C
+                - generic [ref=e1448]: —
+                - generic [ref=e1449]:
+                  - generic [ref=e1450]:
+                    - generic [ref=e1451]: "YES"
+                    - generic [ref=e1452]: 0.4¢
+                  - generic [ref=e1453]:
+                    - generic [ref=e1454]: "NO"
+                    - generic [ref=e1455]: 99.8¢
+                - generic [ref=e1456]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1457]:
+                  - generic [ref=e1458]: 0.0%
+                  - generic [ref=e1459]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1460]:
+                  - generic [ref=e1461]:
+                    - generic [ref=e1462]: "YES"
+                    - generic [ref=e1464]: 0.00%
+                  - generic [ref=e1465]:
+                    - generic [ref=e1466]: "NO"
+                    - generic [ref=e1469]: 0.20%
+              - generic [ref=e1470] [cursor=pointer]:
+                - generic [ref=e1471]: 42°C or higher
+                - generic [ref=e1472]: —
+                - generic [ref=e1473]:
+                  - generic [ref=e1474]:
+                    - generic [ref=e1475]: "YES"
+                    - generic [ref=e1476]: 0.5¢
+                  - generic [ref=e1477]:
+                    - generic [ref=e1478]: "NO"
+                    - generic [ref=e1479]: 99.8¢
+                - generic [ref=e1480]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1481]:
+                  - generic [ref=e1482]: 0.0%
+                  - generic [ref=e1483]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1484]:
+                  - generic [ref=e1485]:
+                    - generic [ref=e1486]: "YES"
+                    - generic [ref=e1488]: 0.00%
+                  - generic [ref=e1489]:
+                    - generic [ref=e1490]: "NO"
+                    - generic [ref=e1493]: 0.20%
+          - generic [ref=e1494]: 建议：—
+        - generic [ref=e1495]:
+          - generic [ref=e1497]:
+            - generic [ref=e1498]: "3."
+            - link "Highest temperature in Paris on March 5?" [ref=e1499] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-paris-on-march-5-2026
+            - generic [ref=e1500]:
+              - generic [ref=e1501]: 可下单
+              - generic [ref=e1502]: 未操作
+            - button "复制事件标题" [ref=e1503] [cursor=pointer]: 复制
+          - generic [ref=e1504]:
+            - generic [ref=e1505]: 事件概览
+            - generic [ref=e1506]:
+              - generic [ref=e1507]:
+                - generic [ref=e1508]:
+                  - generic [ref=e1509]: 事件概况
+                  - generic [ref=e1510]: LFPG 2026-03-05 · temperature_2m_max C
+                - generic [ref=e1512]:
+                  - generic [ref=e1513]: 关键时间
+                  - generic [ref=e1514]:
+                    - generic [ref=e1515]:
+                      - generic [ref=e1516]: 当地时间
+                      - generic [ref=e1517]: 当地时间 03/04 02:35
+                    - generic [ref=e1518]:
+                      - generic [ref=e1519]: 距最高温可能出现时间
+                      - generic [ref=e1520]: 33h 24m 25s
+                      - generic [ref=e1521]: 2026/03/05 12:00
+              - generic [ref=e1522]:
+                - generic [ref=e1523]:
+                  - generic [ref=e1524]: 市场温度
+                  - generic [ref=e1525]: 19.00°C
+                  - generic [ref=e1526]: 19°C
+                  - generic [ref=e1527]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e1529]:
+                  - generic [ref=e1530]: 结算站点预报
+                  - generic [ref=e1531]:
+                    - generic [ref=e1532]:
+                      - generic [ref=e1533]: 暂无数据
+                      - generic [ref=e1534]: 03/05
+                    - generic [ref=e1535]:
+                      - text: 未找到站点预报记录 ·
+                      - link "站点详情" [ref=e1536] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/fr/paris/LFPG/date/2026-03-05
+                  - generic [ref=e1537]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e1538]:
+                - generic [ref=e1539]:
+                  - generic [ref=e1540]: 模型状态
+                  - generic [ref=e1542]: ⭑ 模型数 3
+                  - generic [ref=e1543]:
+                    - generic [ref=e1544]:
+                      - generic [ref=e1545]: 当前模型
+                      - generic [ref=e1546]:
+                        - generic "美国 GFS 数值模式" [ref=e1547]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e1548]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e1549]: ECMWF
+                    - generic [ref=e1550]:
+                      - generic [ref=e1551]: 缺失模型
+                      - generic "美国国家气象局人工+模型预报 · NWS 不适用（非美站点/区域）" [ref=e1553]: NWS
+                - generic [ref=e1555]:
+                  - generic [ref=e1556]: 数据新鲜度
+                  - generic [ref=e1557]: 模型温度 · 盘口快照
+                  - generic [ref=e1558]:
+                    - generic [ref=e1559]: 模型温度 3.9h · 03-04 06:44
+                    - generic [ref=e1560]: 盘口快照 10m · 03-04 10:25
+                    - generic [ref=e1561]: 站点预报 —
+                  - generic [ref=e1562]:
+                    - button "重新获取盘口" [ref=e1563] [cursor=pointer]
+                    - generic [ref=e1564]: 仅刷新市场数据
+          - generic [ref=e1565]:
+            - generic [ref=e1566]: 温度桶概览
+            - generic [ref=e1568]:
+              - generic [ref=e1569]: 最高概率与均值
+              - generic [ref=e1570]:
+                - generic [ref=e1571]:
+                  - generic [ref=e1572]: 最高概率桶概率（q_raw）
+                  - generic [ref=e1575]:
+                    - generic [ref=e1576]:
+                      - generic [ref=e1577]: 最高概率桶（原始数据）
+                      - generic [ref=e1578]: 17°C
+                      - generic [ref=e1579]: 桶区间 17-18°C
+                    - generic [ref=e1580]:
+                      - generic [ref=e1581]: 最高概率桶（校正后）
+                      - generic [ref=e1582]: 17°C
+                      - generic [ref=e1583]: 桶区间 17-18°C
+                  - generic [ref=e1584]:
+                    - generic [ref=e1585]: 最高概率桶轨迹
+                    - generic [ref=e1586]:
+                      - generic [ref=e1587]: 最高概率桶轨迹（当地时间 UTC）
+                      - generic [ref=e1588]:
+                        - generic [ref=e1589]:
+                          - generic [ref=e1590]: 时间
+                          - generic [ref=e1591]: 等权
+                          - generic [ref=e1592]: 动态
+                          - generic [ref=e1593]: 场景
+                        - generic [ref=e1594]:
+                          - generic [ref=e1595]:
+                            - generic [ref=e1596]: 03/04 02:25
+                            - generic [ref=e1598]: 17°C
+                            - generic [ref=e1600]: 17°C
+                            - generic [ref=e1602]: 17°C
+                          - generic [ref=e1603]:
+                            - generic [ref=e1604]: 03/03 22:14
+                            - generic [ref=e1606]: 17°C
+                            - generic [ref=e1608]: 17°C
+                            - generic [ref=e1610]: 17°C
+                          - generic [ref=e1611]:
+                            - generic [ref=e1612]: 03/03 18:23
+                            - generic [ref=e1614]: 17°C
+                            - generic [ref=e1616]: 17°C
+                            - generic [ref=e1618]: 17°C
+                - generic [ref=e1619]:
+                  - generic [ref=e1620]: 最高概率桶模型差异
+                  - generic [ref=e1622]:
+                    - generic [ref=e1623]:
+                      - generic [ref=e1624]:
+                        - generic [ref=e1625]: 最高概率桶概率（q_raw）
+                        - generic [ref=e1626]: 60.3%
+                        - generic [ref=e1627]: 多模型加权平均
+                      - generic [ref=e1628]:
+                        - generic [ref=e1629]: 校准后概率（q_calibrated）
+                        - generic [ref=e1630]: 30.8%
+                        - generic [ref=e1631]: 历史可靠性校准
+                    - generic [ref=e1632]:
+                      - generic [ref=e1633]:
+                        - generic [ref=e1634]: q_min
+                        - generic [ref=e1635]: 10.3%
+                      - generic [ref=e1636]:
+                        - generic [ref=e1637]: q_max
+                        - generic [ref=e1638]: 94.0%
+                      - generic [ref=e1639]:
+                        - generic [ref=e1640]: q_auto
+                        - generic [ref=e1641]: 61.0%
+                      - generic [ref=e1642]:
+                        - generic [ref=e1643]: q_scenario
+                        - generic [ref=e1644]: 56.3%
+                    - generic [ref=e1645]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e1646]:
+                    - generic [ref=e1647]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                    - generic [ref=e1650]:
+                      - generic [ref=e1651]:
+                        - generic [ref=e1652]: 时间
+                        - generic [ref=e1653]: 原始最高桶
+                        - generic [ref=e1654]: q_min
+                        - generic [ref=e1655]: q_raw
+                        - generic [ref=e1656]: q_calibrated
+                        - generic [ref=e1657]: q_max
+                      - generic [ref=e1658]:
+                        - generic [ref=e1659]:
+                          - generic [ref=e1660]: 03/04 02:25
+                          - generic [ref=e1661]: 17°C
+                          - generic [ref=e1662]: 10.3%
+                          - generic [ref=e1663]: 60.3%
+                          - generic [ref=e1664]: 30.8%
+                          - generic [ref=e1665]: 94.0%
+                        - generic [ref=e1666]:
+                          - generic [ref=e1667]: 03/03 22:14
+                          - generic [ref=e1668]: 17°C
+                          - generic [ref=e1669]: 10.3%
+                          - generic [ref=e1670]: 60.3%
+                          - generic [ref=e1671]: 30.8%
+                          - generic [ref=e1672]: 94.0%
+                        - generic [ref=e1673]:
+                          - generic [ref=e1674]: 03/03 18:23
+                          - generic [ref=e1675]: 17°C
+                          - generic [ref=e1676]: 28.2%
+                          - generic [ref=e1677]: 66.3%
+                          - generic [ref=e1678]: 33.2%
+                          - generic [ref=e1679]: 94.0%
+                  - generic [ref=e1680]:
+                    - generic [ref=e1681]: 自动交易成交
+                    - generic [ref=e1683]:
+                      - generic [ref=e1684]:
+                        - generic [ref=e1685]:
+                          - generic [ref=e1686]: YES 17°C
+                          - generic [ref=e1687]:
+                            - generic [ref=e1688]: 可兑现分 7.23
+                            - generic [ref=e1689]: 有效优势分 18.20
+                        - generic [ref=e1690]: 边际 50.31 × 时间 0.93（趋势 0.20 + base 1.00 × 新鲜度 0.73） × 结构 0.39（dominance 0.35，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e1692]:
+                        - generic [ref=e1694]: LCB全市场策略
+                        - generic [ref=e1695]:
+                          - generic [ref=e1697]: 信号满足
+                          - generic [ref=e1698]: 全局/执行层拦截（YES 17°C）
+                          - generic [ref=e1700]: 未触发下单
+                      - generic [ref=e1701]:
+                        - generic [ref=e1702]: 未退出
+                        - generic [ref=e1703]:
+                          - generic [ref=e1704]:
+                            - generic [ref=e1705]: 原始信号边际
+                            - generic [ref=e1707]: —
+                          - generic [ref=e1708]:
+                            - generic [ref=e1709]: LCB未退出原因（YES 17°C）
+                            - generic [ref=e1711]: 无退出信号
+                - generic [ref=e1712]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e1713]: 均值桶
+                  - generic [ref=e1716]:
+                    - generic [ref=e1717]:
+                      - text: 等权17.33°C
+                      - generic [ref=e1718]: P25–P75 17.00°C–18.00°C
+                    - generic [ref=e1719]:
+                      - text: 动态17.33°C
+                      - generic [ref=e1720]: P25–P75 17.00°C–18.00°C
+                    - generic [ref=e1721]:
+                      - text: 场景17.37°C
+                      - generic [ref=e1722]: P25–P75 17.00°C–18.00°C
+                - generic [ref=e1723]:
+                  - generic [ref=e1724]: 风险提示
+                  - generic [ref=e1725]:
+                    - text: ✓
+                    - generic [ref=e1726]: 分布提示
+                    - generic [ref=e1727]: 当前：均值桶 = 最高概率桶（如等权的17°C），说明最高温分布更集中，温度变化更稳。参考：以最高概率桶为主，偏冷/偏热尾部风险较小。
+                - generic [ref=e1728]:
+                  - generic [ref=e1729]: 落桶概率分布
+                  - generic [ref=e1731]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e1732]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e1734]:
+                      - generic [ref=e1735]: 50%
+                      - generic [ref=e1748]: <=13°C
+                      - generic [ref=e1749]: 14-15°C
+                      - generic [ref=e1750]: 15-16°C
+                      - generic [ref=e1751]: 16-17°C
+                      - generic [ref=e1752]: 17-18°C
+                      - generic [ref=e1753]: 18-19°C
+                      - generic [ref=e1754]: 19-20°C
+                      - generic [ref=e1755]: 20-21°C
+                      - generic [ref=e1756]: ">=21°C"
+                    - generic [ref=e1757]:
+                      - generic [ref=e1760]: 等权
+                      - generic [ref=e1763]: 动态
+                      - generic [ref=e1766]: 场景
+          - generic [ref=e1767]:
+            - generic [ref=e1768]: 落桶分布
+            - generic [ref=e1769]:
+              - generic [ref=e1770]: 诊断与命中率
+              - generic [ref=e1771]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e1773]:
+              - generic [ref=e1774]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:25 (10m) · 偏旧。
+              - generic [ref=e1775]:
+                - generic [ref=e1776]: 温度落桶
+                - generic [ref=e1777]: 标签
+                - generic [ref=e1778]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e1779]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e1780]: 校准后概率（q_calibrated）
+                - generic [ref=e1781]: edge（YES/NO）
+              - generic [ref=e1782] [cursor=pointer]:
+                - generic [ref=e1783]: 13°C or below
+                - generic [ref=e1784]: —
+                - generic [ref=e1785]:
+                  - generic [ref=e1786]:
+                    - generic [ref=e1787]: "YES"
+                    - generic [ref=e1788]: 0.6¢
+                  - generic [ref=e1789]:
+                    - generic [ref=e1790]: "NO"
+                    - generic [ref=e1791]: 99.8¢
+                - generic [ref=e1792]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1793]:
+                  - generic [ref=e1794]: 0.0%
+                  - generic [ref=e1795]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1796]:
+                  - generic [ref=e1797]:
+                    - generic [ref=e1798]: "YES"
+                    - generic [ref=e1800]: 0.00%
+                  - generic [ref=e1801]:
+                    - generic [ref=e1802]: "NO"
+                    - generic [ref=e1805]: 0.20%
+              - generic [ref=e1806] [cursor=pointer]:
+                - generic [ref=e1807]: 14°C
+                - generic [ref=e1808]: —
+                - generic [ref=e1809]:
+                  - generic [ref=e1810]:
+                    - generic [ref=e1811]: "YES"
+                    - generic [ref=e1812]: 0.7¢
+                  - generic [ref=e1813]:
+                    - generic [ref=e1814]: "NO"
+                    - generic [ref=e1815]: 99.8¢
+                - generic [ref=e1816]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1817]:
+                  - generic [ref=e1818]: 0.0%
+                  - generic [ref=e1819]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1820]:
+                  - generic [ref=e1821]:
+                    - generic [ref=e1822]: "YES"
+                    - generic [ref=e1824]: 0.00%
+                  - generic [ref=e1825]:
+                    - generic [ref=e1826]: "NO"
+                    - generic [ref=e1829]: 0.20%
+              - generic [ref=e1830] [cursor=pointer]:
+                - generic [ref=e1831]: 15°C
+                - generic [ref=e1832]: —
+                - generic [ref=e1833]:
+                  - generic [ref=e1834]:
+                    - generic [ref=e1835]: "YES"
+                    - generic [ref=e1836]: 0.6¢
+                  - generic [ref=e1837]:
+                    - generic [ref=e1838]: "NO"
+                    - generic [ref=e1839]: 99.5¢
+                - generic [ref=e1840]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1841]:
+                  - generic [ref=e1842]: 0.0%
+                  - generic [ref=e1843]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1844]:
+                  - generic [ref=e1845]:
+                    - generic [ref=e1846]: "YES"
+                    - generic [ref=e1848]: 0.00%
+                  - generic [ref=e1849]:
+                    - generic [ref=e1850]: "NO"
+                    - generic [ref=e1853]: 0.50%
+              - generic [ref=e1854] [cursor=pointer]:
+                - generic [ref=e1855]: 16°C
+                - generic [ref=e1856]: —
+                - generic [ref=e1857]:
+                  - generic [ref=e1858]:
+                    - generic [ref=e1859]: "YES"
+                    - generic [ref=e1860]: 1.4¢
+                  - generic [ref=e1861]:
+                    - generic [ref=e1862]: "NO"
+                    - generic [ref=e1863]: 98.7¢
+                - generic [ref=e1864]: 4.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1865]:
+                  - generic [ref=e1866]: 4.0%
+                  - generic [ref=e1867]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1868]:
+                  - generic [ref=e1869]:
+                    - generic [ref=e1870]: "YES"
+                    - generic [ref=e1873]: 2.57%
+                  - generic [ref=e1874]:
+                    - generic [ref=e1875]: "NO"
+                    - generic [ref=e1877]: 0.00%
+              - generic [ref=e1878] [cursor=pointer]:
+                - generic [ref=e1879]: 17°C
+                - generic [ref=e1880]:
+                  - generic [ref=e1881]:
+                    - generic [ref=e1882]: 等权最高概率桶（q_raw）
+                    - generic [ref=e1883]: 最高概率
+                    - generic [ref=e1884]: 等权落桶
+                    - generic [ref=e1885]: 动态落桶
+                    - generic [ref=e1886]: 场景落桶
+                    - generic [ref=e1887]: 等权最高概率
+                    - generic [ref=e1888]: 动态最高概率
+                    - generic [ref=e1889]: 场景最高概率
+                    - generic [ref=e1890]: GFS
+                    - generic [ref=e1891]: ECMWF
+                  - generic [ref=e1892]:
+                    - generic [ref=e1893]:
+                      - generic [ref=e1894]: 美国 GFS 数值模式
+                      - text: 76.7%
+                    - generic [ref=e1895]:
+                      - generic [ref=e1896]: 欧洲 ECMWF IFS（0.25°）
+                      - text: 94.0%
+                - generic [ref=e1897]:
+                  - generic [ref=e1898]:
+                    - generic [ref=e1899]: "YES"
+                    - generic [ref=e1900]: 10.0¢
+                  - generic [ref=e1901]:
+                    - generic [ref=e1902]: "NO"
+                    - generic [ref=e1903]: 92.0¢
+                - generic [ref=e1904]: 60.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1905]:
+                  - generic [ref=e1906]: 60.3%
+                  - generic [ref=e1907]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1908]:
+                  - generic [ref=e1909]:
+                    - generic [ref=e1910]: "YES"
+                    - generic [ref=e1913]: 50.31%
+                  - generic [ref=e1914]:
+                    - generic [ref=e1915]: "NO"
+                    - generic [ref=e1917]: 0.00%
+              - generic [ref=e1918] [cursor=pointer]:
+                - generic [ref=e1919]: 18°C
+                - generic [ref=e1920]:
+                  - generic [ref=e1922]: ICON
+                  - generic [ref=e1924]:
+                    - generic [ref=e1925]: 德国 ICON 数值模式
+                    - text: 82.1%
+                - generic [ref=e1926]:
+                  - generic [ref=e1927]:
+                    - generic [ref=e1928]: "YES"
+                    - generic [ref=e1929]: 29.0¢
+                  - generic [ref=e1930]:
+                    - generic [ref=e1931]: "NO"
+                    - generic [ref=e1932]: 72.0¢
+                - generic [ref=e1933]: 34.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1934]:
+                  - generic [ref=e1935]: 34.0%
+                  - generic [ref=e1936]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1937]:
+                  - generic [ref=e1938]:
+                    - generic [ref=e1939]: "YES"
+                    - generic [ref=e1942]: 5.02%
+                  - generic [ref=e1943]:
+                    - generic [ref=e1944]: "NO"
+                    - generic [ref=e1946]: 0.00%
+              - generic [ref=e1947] [cursor=pointer]:
+                - generic [ref=e1948]: 19°C
+                - generic [ref=e1951]: 市场盘口
+                - generic [ref=e1952]:
+                  - generic [ref=e1953]:
+                    - generic [ref=e1954]: "YES"
+                    - generic [ref=e1955]: 41.0¢
+                  - generic [ref=e1956]:
+                    - generic [ref=e1957]: "NO"
+                    - generic [ref=e1958]: 67.0¢
+                - generic [ref=e1959]: 1.7%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1960]:
+                  - generic [ref=e1961]: 1.7%
+                  - generic [ref=e1962]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1963]:
+                  - generic [ref=e1964]:
+                    - generic [ref=e1965]: "YES"
+                    - generic [ref=e1967]: 0.00%
+                  - generic [ref=e1968]:
+                    - generic [ref=e1969]: "NO"
+                    - generic [ref=e1972]: 31.29%
+              - generic [ref=e1973] [cursor=pointer]:
+                - generic [ref=e1974]: 20°C
+                - generic [ref=e1975]: —
+                - generic [ref=e1976]:
+                  - generic [ref=e1977]:
+                    - generic [ref=e1978]: "YES"
+                    - generic [ref=e1979]: 23.0¢
+                  - generic [ref=e1980]:
+                    - generic [ref=e1981]: "NO"
+                    - generic [ref=e1982]: 81.0¢
+                - generic [ref=e1983]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e1984]:
+                  - generic [ref=e1985]: 0.0%
+                  - generic [ref=e1986]: 未校正 · 样本0 · 缺0
+                - generic [ref=e1987]:
+                  - generic [ref=e1988]:
+                    - generic [ref=e1989]: "YES"
+                    - generic [ref=e1991]: 0.00%
+                  - generic [ref=e1992]:
+                    - generic [ref=e1993]: "NO"
+                    - generic [ref=e1996]: 19.00%
+              - generic [ref=e1997] [cursor=pointer]:
+                - generic [ref=e1998]: 21°C or higher
+                - generic [ref=e1999]: —
+                - generic [ref=e2000]:
+                  - generic [ref=e2001]:
+                    - generic [ref=e2002]: "YES"
+                    - generic [ref=e2003]: 8.0¢
+                  - generic [ref=e2004]:
+                    - generic [ref=e2005]: "NO"
+                    - generic [ref=e2006]: 96.0¢
+                - generic [ref=e2007]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2008]:
+                  - generic [ref=e2009]: 0.0%
+                  - generic [ref=e2010]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2011]:
+                  - generic [ref=e2012]:
+                    - generic [ref=e2013]: "YES"
+                    - generic [ref=e2015]: 0.00%
+                  - generic [ref=e2016]:
+                    - generic [ref=e2017]: "NO"
+                    - generic [ref=e2020]: 4.00%
+          - generic [ref=e2021]: 建议：—
+        - generic [ref=e2022]:
+          - generic [ref=e2024]:
+            - generic [ref=e2025]: "4."
+            - link "Highest temperature in Chicago on March 4?" [ref=e2026] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-chicago-on-march-4-2026
+            - generic [ref=e2027]:
+              - generic [ref=e2028]: 可下单
+              - generic [ref=e2029]: 未操作
+            - button "复制事件标题" [ref=e2030] [cursor=pointer]: 复制
+          - generic [ref=e2031]:
+            - generic [ref=e2032]: 事件概览
+            - generic [ref=e2033]:
+              - generic [ref=e2034]:
+                - generic [ref=e2035]:
+                  - generic [ref=e2036]: 事件概况
+                  - generic [ref=e2037]: KORD 2026-03-04 · temperature_2m_max F
+                - generic [ref=e2039]:
+                  - generic [ref=e2040]: 关键时间
+                  - generic [ref=e2041]:
+                    - generic [ref=e2042]:
+                      - generic [ref=e2043]: 当地时间
+                      - generic [ref=e2044]: 当地时间 03/04 02:35
+                    - generic [ref=e2045]:
+                      - generic [ref=e2046]: 距最高温可能出现时间
+                      - generic [ref=e2047]: 9h 24m 25s
+                      - generic [ref=e2048]: 2026/03/04 12:00
+              - generic [ref=e2049]:
+                - generic [ref=e2050]:
+                  - generic [ref=e2051]: 市场温度
+                  - generic [ref=e2052]: 48.50°F
+                  - generic [ref=e2053]: 48-49°F
+                  - generic [ref=e2054]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e2056]:
+                  - generic [ref=e2057]: 结算站点预报
+                  - generic [ref=e2058]:
+                    - generic [ref=e2060]: 数据新鲜 · 48m
+                    - generic [ref=e2061]:
+                      - generic [ref=e2062]: 45.0°F
+                      - generic [ref=e2063]: 03/04
+                    - generic [ref=e2064]:
+                      - text: 最高温 · 01:47 · 来源 NWS · 更新 03-04 09:47 (48m) ·
+                      - link "站点详情" [ref=e2065] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/us/il/chicago/KORD/date/2026-03-04
+                  - generic [ref=e2066]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e2067]:
+                - generic [ref=e2068]:
+                  - generic [ref=e2069]: 模型状态
+                  - generic [ref=e2071]: ⭑ 模型数 4
+                  - generic [ref=e2072]:
+                    - generic [ref=e2073]:
+                      - generic [ref=e2074]: 当前模型
+                      - generic [ref=e2075]:
+                        - generic "美国 GFS 数值模式" [ref=e2076]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e2077]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e2078]: ECMWF
+                        - generic "美国国家气象局人工+模型预报" [ref=e2079]: NWS
+                    - generic [ref=e2080]:
+                      - generic [ref=e2081]: 缺失模型
+                      - generic [ref=e2083]: 无缺失
+                - generic [ref=e2085]:
+                  - generic [ref=e2086]: 数据新鲜度
+                  - generic [ref=e2087]: 模型温度 · 盘口快照
+                  - generic [ref=e2088]:
+                    - generic [ref=e2089]: 模型温度 — · 03-04 10:35
+                    - generic [ref=e2090]: 盘口快照 1.1h · 03-04 09:30
+                    - generic [ref=e2091]: 站点预报 48m · 03-04 09:47
+                  - generic [ref=e2092]:
+                    - button "重新获取盘口(缺)" [ref=e2093] [cursor=pointer]
+                    - generic [ref=e2094]: 仅刷新市场数据
+          - generic [ref=e2095]:
+            - generic [ref=e2096]: 温度桶概览
+            - generic [ref=e2098]:
+              - generic [ref=e2099]: 最高概率与均值
+              - generic [ref=e2100]:
+                - generic [ref=e2101]:
+                  - generic [ref=e2102]: 最高概率桶概率（q_raw）
+                  - generic [ref=e2105]:
+                    - generic [ref=e2106]:
+                      - generic [ref=e2107]: 最高概率桶（原始数据）
+                      - generic [ref=e2108]: 46-47°F
+                    - generic [ref=e2109]:
+                      - generic [ref=e2110]: 最高概率桶（校正后）
+                      - generic [ref=e2111]: 46°F
+                      - generic [ref=e2112]: 标签 46-47°F
+                  - generic [ref=e2113]:
+                    - generic [ref=e2114]: 最高概率桶轨迹
+                    - generic [ref=e2116]: 加载中…
+                - generic [ref=e2117]:
+                  - generic [ref=e2118]: 最高概率桶模型差异
+                  - generic [ref=e2120]:
+                    - generic [ref=e2121]:
+                      - generic [ref=e2122]:
+                        - generic [ref=e2123]: 最高概率桶概率（q_raw）
+                        - generic [ref=e2124]: 27.6%
+                        - generic [ref=e2125]: 多模型加权平均
+                      - generic [ref=e2126]:
+                        - generic [ref=e2127]: 校准后概率（q_calibrated）
+                        - generic [ref=e2128]: 16.7%
+                        - generic [ref=e2129]: 历史可靠性校准
+                    - generic [ref=e2130]:
+                      - generic [ref=e2131]:
+                        - generic [ref=e2132]: q_min
+                        - generic [ref=e2133]: 16.7%
+                      - generic [ref=e2134]:
+                        - generic [ref=e2135]: q_max
+                        - generic [ref=e2136]: 38.0%
+                      - generic [ref=e2137]:
+                        - generic [ref=e2138]: q_auto
+                        - generic [ref=e2139]: 26.6%
+                      - generic [ref=e2140]:
+                        - generic [ref=e2141]: q_scenario
+                        - generic [ref=e2142]: 29.8%
+                    - generic [ref=e2143]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e2145]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                  - generic [ref=e2146]:
+                    - generic [ref=e2147]: 自动交易成交
+                    - generic [ref=e2149]:
+                      - generic [ref=e2150]:
+                        - generic [ref=e2151]:
+                          - generic [ref=e2152]: YES 42-43°F
+                          - generic [ref=e2153]:
+                            - generic [ref=e2154]: 可兑现分 6.77
+                            - generic [ref=e2155]: 有效优势分 7.74
+                        - generic [ref=e2156]: 边际 13.13 × 时间 1.00（趋势 0.00 + base 1.00 × 新鲜度 1.00） × 结构 0.59（dominance 0.26，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e2158]:
+                        - generic [ref=e2160]: LCB全市场策略
+                        - generic [ref=e2161]:
+                          - generic [ref=e2163]: 信号满足
+                          - generic [ref=e2164]: 全局/执行层拦截（YES 42-43°F）
+                          - generic [ref=e2166]: 未触发下单
+                      - generic [ref=e2167]:
+                        - generic [ref=e2168]: 未退出
+                        - generic [ref=e2169]:
+                          - generic [ref=e2170]:
+                            - generic [ref=e2171]: 原始信号边际
+                            - generic [ref=e2173]: —
+                          - generic [ref=e2174]:
+                            - generic [ref=e2175]: LCB未退出原因（YES 42-43°F）
+                            - generic [ref=e2177]: 无退出信号
+                - generic [ref=e2178]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e2179]: 均值桶
+                  - generic [ref=e2182]:
+                    - generic [ref=e2183]:
+                      - text: 等权45.15°F
+                      - generic [ref=e2184]: P25–P75 44.00°F–48.00°F
+                    - generic [ref=e2185]:
+                      - text: 动态45.52°F
+                      - generic [ref=e2186]: P25–P75 44.00°F–48.00°F
+                    - generic [ref=e2187]:
+                      - text: 场景44.26°F
+                      - generic [ref=e2188]: P25–P75 42.00°F–46.00°F
+                - generic [ref=e2189]:
+                  - generic [ref=e2190]: 风险提示
+                  - generic [ref=e2191]:
+                    - text: ⚠
+                    - generic [ref=e2192]: 风险提示
+                    - generic [ref=e2193]: 当前：均值桶 ≠ 最高概率桶（以等权为例：均值桶 44-45°F，最高概率桶 46-47°F，均值偏低约2.0°F）。相对最高概率桶，最高温均值偏低约2.0°F，说明冷尾情景在拉动均值。参考：以最高概率桶为主情景，同时关注更低区间的降温风险；若后续预报/站点观测呈转冷，落桶可能向更低档移动。
+                - generic [ref=e2194]:
+                  - generic [ref=e2195]: 落桶概率分布
+                  - generic [ref=e2197]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e2198]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e2200]:
+                      - generic [ref=e2201]: 50%
+                      - generic [ref=e2214]: <=35°F
+                      - generic [ref=e2215]: 36-37°F
+                      - generic [ref=e2216]: 38-39°F
+                      - generic [ref=e2217]: 40-41°F
+                      - generic [ref=e2218]: 42-43°F
+                      - generic [ref=e2219]: 44-45°F
+                      - generic [ref=e2220]: 46-47°F
+                      - generic [ref=e2221]: 48-49°F
+                      - generic [ref=e2222]: ">=50°F"
+                    - generic [ref=e2223]:
+                      - generic [ref=e2226]: 等权
+                      - generic [ref=e2229]: 动态
+                      - generic [ref=e2232]: 场景
+          - generic [ref=e2233]:
+            - generic [ref=e2234]: 落桶分布
+            - generic [ref=e2235]:
+              - generic [ref=e2236]: 诊断与命中率
+              - generic [ref=e2237]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e2239]:
+              - generic [ref=e2240]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 09:30 (1.1h) · 偏旧。
+              - generic [ref=e2241]:
+                - generic [ref=e2242]: 温度落桶
+                - generic [ref=e2243]: 标签
+                - generic [ref=e2244]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e2245]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e2246]: 校准后概率（q_calibrated）
+                - generic [ref=e2247]: edge（YES/NO）
+              - generic [ref=e2248] [cursor=pointer]:
+                - generic [ref=e2249]: 35°F or below
+                - generic [ref=e2250]: —
+                - generic [ref=e2251]:
+                  - generic [ref=e2252]:
+                    - generic [ref=e2253]: "YES"
+                    - generic [ref=e2254]: 0.2¢
+                  - generic [ref=e2255]:
+                    - generic [ref=e2256]: "NO"
+                    - generic [ref=e2257]: —
+                - generic [ref=e2258]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2259]:
+                  - generic [ref=e2260]: 0.0%
+                  - generic [ref=e2261]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2262]:
+                  - generic [ref=e2263]:
+                    - generic [ref=e2264]: "YES"
+                    - generic [ref=e2266]: 0.00%
+                  - generic [ref=e2267]:
+                    - generic [ref=e2268]: "NO"
+                    - generic [ref=e2271]: 100.00%
+              - generic [ref=e2272] [cursor=pointer]:
+                - generic [ref=e2273]: 36-37°F
+                - generic [ref=e2274]: —
+                - generic [ref=e2275]:
+                  - generic [ref=e2276]:
+                    - generic [ref=e2277]: "YES"
+                    - generic [ref=e2278]: 0.6¢
+                  - generic [ref=e2279]:
+                    - generic [ref=e2280]: "NO"
+                    - generic [ref=e2281]: 99.9¢
+                - generic [ref=e2282]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2283]:
+                  - generic [ref=e2284]: 0.0%
+                  - generic [ref=e2285]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2286]:
+                  - generic [ref=e2287]:
+                    - generic [ref=e2288]: "YES"
+                    - generic [ref=e2290]: 0.00%
+                  - generic [ref=e2291]:
+                    - generic [ref=e2292]: "NO"
+                    - generic [ref=e2295]: 0.10%
+              - generic [ref=e2296] [cursor=pointer]:
+                - generic [ref=e2297]: 38-39°F
+                - generic [ref=e2298]: —
+                - generic [ref=e2299]:
+                  - generic [ref=e2300]:
+                    - generic [ref=e2301]: "YES"
+                    - generic [ref=e2302]: 1.4¢
+                  - generic [ref=e2303]:
+                    - generic [ref=e2304]: "NO"
+                    - generic [ref=e2305]: 99.4¢
+                - generic [ref=e2306]: 1.9%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2307]:
+                  - generic [ref=e2308]: 1.9%
+                  - generic [ref=e2309]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2310]:
+                  - generic [ref=e2311]:
+                    - generic [ref=e2312]: "YES"
+                    - generic [ref=e2315]: 0.49%
+                  - generic [ref=e2316]:
+                    - generic [ref=e2317]: "NO"
+                    - generic [ref=e2319]: 0.00%
+              - generic [ref=e2320] [cursor=pointer]:
+                - generic [ref=e2321]: 40-41°F
+                - generic [ref=e2322]: —
+                - generic [ref=e2323]:
+                  - generic [ref=e2324]:
+                    - generic [ref=e2325]: "YES"
+                    - generic [ref=e2326]: 2.4¢
+                  - generic [ref=e2327]:
+                    - generic [ref=e2328]: "NO"
+                    - generic [ref=e2329]: 98.0¢
+                - generic [ref=e2330]: 7.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2331]:
+                  - generic [ref=e2332]: 7.3%
+                  - generic [ref=e2333]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2334]:
+                  - generic [ref=e2335]:
+                    - generic [ref=e2336]: "YES"
+                    - generic [ref=e2339]: 4.88%
+                  - generic [ref=e2340]:
+                    - generic [ref=e2341]: "NO"
+                    - generic [ref=e2343]: 0.00%
+              - generic [ref=e2344] [cursor=pointer]:
+                - generic [ref=e2345]: 42-43°F
+                - generic [ref=e2346]: —
+                - generic [ref=e2347]:
+                  - generic [ref=e2348]:
+                    - generic [ref=e2349]: "YES"
+                    - generic [ref=e2350]: 2.5¢
+                  - generic [ref=e2351]:
+                    - generic [ref=e2352]: "NO"
+                    - generic [ref=e2353]: 98.0¢
+                - generic [ref=e2354]: 15.6%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2355]:
+                  - generic [ref=e2356]: 15.6%
+                  - generic [ref=e2357]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2358]:
+                  - generic [ref=e2359]:
+                    - generic [ref=e2360]: "YES"
+                    - generic [ref=e2363]: 13.13%
+                  - generic [ref=e2364]:
+                    - generic [ref=e2365]: "NO"
+                    - generic [ref=e2367]: 0.00%
+              - generic [ref=e2368] [cursor=pointer]:
+                - generic [ref=e2369]: 44-45°F
+                - generic [ref=e2370]:
+                  - generic [ref=e2371]:
+                    - generic [ref=e2372]: 等权落桶
+                    - generic [ref=e2373]: 动态落桶
+                    - generic [ref=e2374]: 场景落桶
+                    - generic [ref=e2375]: NWS
+                  - generic [ref=e2377]:
+                    - generic [ref=e2378]: 美国国家气象局人工+模型预报
+                    - text: 30.0%
+                - generic [ref=e2379]:
+                  - generic [ref=e2380]:
+                    - generic [ref=e2381]: "YES"
+                    - generic [ref=e2382]: 14.0¢
+                  - generic [ref=e2383]:
+                    - generic [ref=e2384]: "NO"
+                    - generic [ref=e2385]: 88.0¢
+                - generic [ref=e2386]: 20.4%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2387]:
+                  - generic [ref=e2388]: 20.4%
+                  - generic [ref=e2389]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2390]:
+                  - generic [ref=e2391]:
+                    - generic [ref=e2392]: "YES"
+                    - generic [ref=e2395]: 6.40%
+                  - generic [ref=e2396]:
+                    - generic [ref=e2397]: "NO"
+                    - generic [ref=e2399]: 0.00%
+              - generic [ref=e2400] [cursor=pointer]:
+                - generic [ref=e2401]: 46-47°F
+                - generic [ref=e2402]:
+                  - generic [ref=e2403]:
+                    - generic [ref=e2404]: 等权最高概率桶（q_raw）
+                    - generic [ref=e2405]: 最高概率
+                    - generic [ref=e2406]: 等权最高概率
+                    - generic [ref=e2407]: 动态最高概率
+                    - generic [ref=e2408]: 场景最高概率
+                    - generic [ref=e2409]: ECMWF
+                  - generic [ref=e2411]:
+                    - generic [ref=e2412]: 欧洲 ECMWF IFS（0.25°）
+                    - text: 38.0%
+                - generic [ref=e2413]:
+                  - generic [ref=e2414]:
+                    - generic [ref=e2415]: "YES"
+                    - generic [ref=e2416]: 26.0¢
+                  - generic [ref=e2417]:
+                    - generic [ref=e2418]: "NO"
+                    - generic [ref=e2419]: 77.0¢
+                - generic [ref=e2420]: 27.6%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2421]:
+                  - generic [ref=e2422]: 27.6%
+                  - generic [ref=e2423]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2424]:
+                  - generic [ref=e2425]:
+                    - generic [ref=e2426]: "YES"
+                    - generic [ref=e2429]: 1.58%
+                  - generic [ref=e2430]:
+                    - generic [ref=e2431]: "NO"
+                    - generic [ref=e2433]: 0.00%
+              - generic [ref=e2434] [cursor=pointer]:
+                - generic [ref=e2435]: 48-49°F
+                - generic [ref=e2436]:
+                  - generic [ref=e2437]:
+                    - generic [ref=e2438]: 市场盘口
+                    - generic [ref=e2439]: GFS
+                  - generic [ref=e2441]:
+                    - generic [ref=e2442]: 美国 GFS 数值模式
+                    - text: 46.7%
+                - generic [ref=e2443]:
+                  - generic [ref=e2444]:
+                    - generic [ref=e2445]: "YES"
+                    - generic [ref=e2446]: 29.0¢
+                  - generic [ref=e2447]:
+                    - generic [ref=e2448]: "NO"
+                    - generic [ref=e2449]: 74.0¢
+                - generic [ref=e2450]: 15.7%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2451]:
+                  - generic [ref=e2452]: 15.7%
+                  - generic [ref=e2453]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2454]:
+                  - generic [ref=e2455]:
+                    - generic [ref=e2456]: "YES"
+                    - generic [ref=e2458]: 0.00%
+                  - generic [ref=e2459]:
+                    - generic [ref=e2460]: "NO"
+                    - generic [ref=e2463]: 10.30%
+              - generic [ref=e2464] [cursor=pointer]:
+                - generic [ref=e2465]: 50°F or higher
+                - generic [ref=e2466]:
+                  - generic [ref=e2468]: ICON
+                  - generic [ref=e2470]:
+                    - generic [ref=e2471]: 德国 ICON 数值模式
+                    - text: 30.8%
+                - generic [ref=e2472]:
+                  - generic [ref=e2473]:
+                    - generic [ref=e2474]: "YES"
+                    - generic [ref=e2475]: 16.0¢
+                  - generic [ref=e2476]:
+                    - generic [ref=e2477]: "NO"
+                    - generic [ref=e2478]: 86.0¢
+                - generic [ref=e2479]: 11.5%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2480]:
+                  - generic [ref=e2481]: 11.5%
+                  - generic [ref=e2482]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2483]:
+                  - generic [ref=e2484]:
+                    - generic [ref=e2485]: "YES"
+                    - generic [ref=e2487]: 0.00%
+                  - generic [ref=e2488]:
+                    - generic [ref=e2489]: "NO"
+                    - generic [ref=e2492]: 2.47%
+          - generic [ref=e2493]: 建议：—
+        - generic [ref=e2494]:
+          - generic [ref=e2496]:
+            - generic [ref=e2497]: "5."
+            - link "Highest temperature in NYC on March 4?" [ref=e2498] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-nyc-on-march-4-2026
+            - generic [ref=e2499]:
+              - generic [ref=e2500]: 可下单
+              - generic [ref=e2501]: 未操作
+            - button "复制事件标题" [ref=e2502] [cursor=pointer]: 复制
+          - generic [ref=e2503]:
+            - generic [ref=e2504]: 事件概览
+            - generic [ref=e2505]:
+              - generic [ref=e2506]:
+                - generic [ref=e2507]:
+                  - generic [ref=e2508]: 事件概况
+                  - generic [ref=e2509]: KLGA 2026-03-04 · temperature_2m_max F
+                - generic [ref=e2511]:
+                  - generic [ref=e2512]: 关键时间
+                  - generic [ref=e2513]:
+                    - generic [ref=e2514]:
+                      - generic [ref=e2515]: 当地时间
+                      - generic [ref=e2516]: 当地时间 03/03 21:35
+                    - generic [ref=e2517]:
+                      - generic [ref=e2518]: 距最高温可能出现时间
+                      - generic [ref=e2519]: 9h 24m 25s
+                      - generic [ref=e2520]: 2026/03/04 07:00
+              - generic [ref=e2521]:
+                - generic [ref=e2522]:
+                  - generic [ref=e2523]: 市场温度
+                  - generic [ref=e2524]: 48.00°F
+                  - generic [ref=e2525]: 48°F or higher
+                  - generic [ref=e2526]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e2528]:
+                  - generic [ref=e2529]: 结算站点预报
+                  - generic [ref=e2530]:
+                    - generic [ref=e2531]:
+                      - generic [ref=e2532]: 暂无数据
+                      - generic [ref=e2533]: 03/04
+                    - generic [ref=e2534]:
+                      - text: 未找到站点预报记录 ·
+                      - link "站点详情" [ref=e2535] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA/date/2026-03-04
+                  - generic [ref=e2536]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e2537]:
+                - generic [ref=e2538]:
+                  - generic [ref=e2539]: 模型状态
+                  - generic [ref=e2541]: ⭑ 模型数 4
+                  - generic [ref=e2542]:
+                    - generic [ref=e2543]:
+                      - generic [ref=e2544]: 当前模型
+                      - generic [ref=e2545]:
+                        - generic "美国 GFS 数值模式" [ref=e2546]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e2547]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e2548]: ECMWF
+                        - generic "美国国家气象局人工+模型预报" [ref=e2549]: NWS
+                    - generic [ref=e2550]:
+                      - generic [ref=e2551]: 缺失模型
+                      - generic [ref=e2553]: 无缺失
+                - generic [ref=e2555]:
+                  - generic [ref=e2556]: 数据新鲜度
+                  - generic [ref=e2557]: 模型温度 · 盘口快照
+                  - generic [ref=e2558]:
+                    - generic [ref=e2559]: 模型温度 — · 03-04 10:35
+                    - generic [ref=e2560]: 盘口快照 8m · 03-04 10:27
+                    - generic [ref=e2561]: 站点预报 —
+                  - generic [ref=e2562]:
+                    - button "重新获取盘口(缺)" [ref=e2563] [cursor=pointer]
+                    - generic [ref=e2564]: 仅刷新市场数据
+          - generic [ref=e2565]:
+            - generic [ref=e2566]: 温度桶概览
+            - generic [ref=e2568]:
+              - generic [ref=e2569]: 最高概率与均值
+              - generic [ref=e2570]:
+                - generic [ref=e2571]:
+                  - generic [ref=e2572]: 最高概率桶概率（q_raw）
+                  - generic [ref=e2575]:
+                    - generic [ref=e2576]:
+                      - generic [ref=e2577]: 最高概率桶（原始数据）
+                      - generic [ref=e2578]: 48°F or higher
+                      - generic [ref=e2579]: 桶区间 >=48°F
+                    - generic [ref=e2580]:
+                      - generic [ref=e2581]: 最高概率桶（校正后）
+                      - generic [ref=e2582]: 48°F
+                      - generic [ref=e2583]: 桶区间 >=48°F
+                  - generic [ref=e2584]:
+                    - generic [ref=e2585]: 最高概率桶轨迹
+                    - generic [ref=e2587]: 加载中…
+                - generic [ref=e2588]:
+                  - generic [ref=e2589]: 最高概率桶模型差异
+                  - generic [ref=e2591]:
+                    - generic [ref=e2592]:
+                      - generic [ref=e2593]:
+                        - generic [ref=e2594]: 最高概率桶概率（q_raw）
+                        - generic [ref=e2595]: 76.9%
+                        - generic [ref=e2596]: 多模型加权平均
+                      - generic [ref=e2597]:
+                        - generic [ref=e2598]: 校准后概率（q_calibrated）
+                        - generic [ref=e2599]: 34.4%
+                        - generic [ref=e2600]: 历史可靠性校准
+                    - generic [ref=e2601]:
+                      - generic [ref=e2602]:
+                        - generic [ref=e2603]: q_min
+                        - generic [ref=e2604]: 50.0%
+                      - generic [ref=e2605]:
+                        - generic [ref=e2606]: q_max
+                        - generic [ref=e2607]: 100.0%
+                      - generic [ref=e2608]:
+                        - generic [ref=e2609]: q_auto
+                        - generic [ref=e2610]: 82.8%
+                      - generic [ref=e2611]:
+                        - generic [ref=e2612]: q_scenario
+                        - generic [ref=e2613]: 62.6%
+                    - generic [ref=e2614]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e2616]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                  - generic [ref=e2617]:
+                    - generic [ref=e2618]: 自动交易成交
+                    - generic [ref=e2620]:
+                      - generic [ref=e2621]:
+                        - generic [ref=e2622]:
+                          - generic [ref=e2623]: NO 48°F or higher
+                          - generic [ref=e2624]:
+                            - generic [ref=e2625]: 可兑现分 27.43
+                            - generic [ref=e2626]: 有效优势分 2.97
+                        - generic [ref=e2627]: 边际 5.06 × 时间 1.00（趋势 0.20 + base 1.00 × 新鲜度 1.00） × 结构 0.59（dominance 0.27，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e2629]:
+                        - generic [ref=e2631]: LCB全市场策略
+                        - generic [ref=e2632]:
+                          - generic [ref=e2634]: 信号满足
+                          - generic [ref=e2635]: 全局/执行层拦截（NO 48°F or higher）
+                          - generic [ref=e2637]: 未触发下单
+                      - generic [ref=e2638]:
+                        - generic [ref=e2639]: 未退出
+                        - generic [ref=e2640]:
+                          - generic [ref=e2641]:
+                            - generic [ref=e2642]: 原始信号边际
+                            - generic [ref=e2644]: —
+                          - generic [ref=e2645]:
+                            - generic [ref=e2646]: LCB未退出原因（NO 48°F or higher）
+                            - generic [ref=e2648]: 无退出信号
+                - generic [ref=e2649]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e2650]: 均值桶
+                  - generic [ref=e2653]:
+                    - generic [ref=e2654]:
+                      - text: 等权47.17°F
+                      - generic [ref=e2655]: P25–P75 48.00°F–48.00°F
+                    - generic [ref=e2656]:
+                      - text: 动态47.39°F
+                      - generic [ref=e2657]: P25–P75 48.00°F–48.00°F
+                    - generic [ref=e2658]:
+                      - text: 场景46.67°F
+                      - generic [ref=e2659]: P25–P75 46.00°F–48.00°F
+                - generic [ref=e2660]:
+                  - generic [ref=e2661]: 风险提示
+                  - generic [ref=e2662]:
+                    - text: ⚠
+                    - generic [ref=e2663]: 风险提示
+                    - generic [ref=e2664]: 当前：均值桶 ≠ 最高概率桶（以等权为例：均值桶 46-47°F，最高概率桶 48°F or higher，均值偏低约1.5°F）。相对最高概率桶，最高温均值偏低约1.5°F，说明冷尾情景在拉动均值。参考：以最高概率桶为主情景，同时关注更低区间的降温风险；若后续预报/站点观测呈转冷，落桶可能向更低档移动。
+                - generic [ref=e2665]:
+                  - generic [ref=e2666]: 落桶概率分布
+                  - generic [ref=e2668]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e2669]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e2671]:
+                      - generic [ref=e2672]: 50%
+                      - generic [ref=e2685]: <=33°F
+                      - generic [ref=e2686]: 34-35°F
+                      - generic [ref=e2687]: 36-37°F
+                      - generic [ref=e2688]: 38-39°F
+                      - generic [ref=e2689]: 40-41°F
+                      - generic [ref=e2690]: 42-43°F
+                      - generic [ref=e2691]: 44-45°F
+                      - generic [ref=e2692]: 46-47°F
+                      - generic [ref=e2693]: ">=48°F"
+                    - generic [ref=e2694]:
+                      - generic [ref=e2697]: 等权
+                      - generic [ref=e2700]: 动态
+                      - generic [ref=e2703]: 场景
+          - generic [ref=e2704]:
+            - generic [ref=e2705]: 落桶分布
+            - generic [ref=e2706]:
+              - generic [ref=e2707]: 诊断与命中率
+              - generic [ref=e2708]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e2710]:
+              - generic [ref=e2711]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:27 (8m) · 偏旧。
+              - generic [ref=e2712]:
+                - generic [ref=e2713]: 温度落桶
+                - generic [ref=e2714]: 标签
+                - generic [ref=e2715]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e2716]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e2717]: 校准后概率（q_calibrated）
+                - generic [ref=e2718]: edge（YES/NO）
+              - generic [ref=e2719] [cursor=pointer]:
+                - generic [ref=e2720]: 33°F or below
+                - generic [ref=e2721]: —
+                - generic [ref=e2722]:
+                  - generic [ref=e2723]:
+                    - generic [ref=e2724]: "YES"
+                    - generic [ref=e2725]: 0.2¢
+                  - generic [ref=e2726]:
+                    - generic [ref=e2727]: "NO"
+                    - generic [ref=e2728]: —
+                - generic [ref=e2729]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2730]:
+                  - generic [ref=e2731]: 0.0%
+                  - generic [ref=e2732]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2733]:
+                  - generic [ref=e2734]:
+                    - generic [ref=e2735]: "YES"
+                    - generic [ref=e2737]: 0.00%
+                  - generic [ref=e2738]:
+                    - generic [ref=e2739]: "NO"
+                    - generic [ref=e2742]: 100.00%
+              - generic [ref=e2743] [cursor=pointer]:
+                - generic [ref=e2744]: 34-35°F
+                - generic [ref=e2745]: —
+                - generic [ref=e2746]:
+                  - generic [ref=e2747]:
+                    - generic [ref=e2748]: "YES"
+                    - generic [ref=e2749]: 0.3¢
+                  - generic [ref=e2750]:
+                    - generic [ref=e2751]: "NO"
+                    - generic [ref=e2752]: 99.8¢
+                - generic [ref=e2753]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2754]:
+                  - generic [ref=e2755]: 0.0%
+                  - generic [ref=e2756]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2757]:
+                  - generic [ref=e2758]:
+                    - generic [ref=e2759]: "YES"
+                    - generic [ref=e2761]: 0.00%
+                  - generic [ref=e2762]:
+                    - generic [ref=e2763]: "NO"
+                    - generic [ref=e2766]: 0.20%
+              - generic [ref=e2767] [cursor=pointer]:
+                - generic [ref=e2768]: 36-37°F
+                - generic [ref=e2769]: —
+                - generic [ref=e2770]:
+                  - generic [ref=e2771]:
+                    - generic [ref=e2772]: "YES"
+                    - generic [ref=e2773]: 0.1¢
+                  - generic [ref=e2774]:
+                    - generic [ref=e2775]: "NO"
+                    - generic [ref=e2776]: —
+                - generic [ref=e2777]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2778]:
+                  - generic [ref=e2779]: 0.0%
+                  - generic [ref=e2780]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2781]:
+                  - generic [ref=e2782]:
+                    - generic [ref=e2783]: "YES"
+                    - generic [ref=e2785]: 0.00%
+                  - generic [ref=e2786]:
+                    - generic [ref=e2787]: "NO"
+                    - generic [ref=e2790]: 100.00%
+              - generic [ref=e2791] [cursor=pointer]:
+                - generic [ref=e2792]: 38-39°F
+                - generic [ref=e2793]: —
+                - generic [ref=e2794]:
+                  - generic [ref=e2795]:
+                    - generic [ref=e2796]: "YES"
+                    - generic [ref=e2797]: 0.4¢
+                  - generic [ref=e2798]:
+                    - generic [ref=e2799]: "NO"
+                    - generic [ref=e2800]: 99.9¢
+                - generic [ref=e2801]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2802]:
+                  - generic [ref=e2803]: 0.0%
+                  - generic [ref=e2804]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2805]:
+                  - generic [ref=e2806]:
+                    - generic [ref=e2807]: "YES"
+                    - generic [ref=e2809]: 0.00%
+                  - generic [ref=e2810]:
+                    - generic [ref=e2811]: "NO"
+                    - generic [ref=e2814]: 0.10%
+              - generic [ref=e2815] [cursor=pointer]:
+                - generic [ref=e2816]: 40-41°F
+                - generic [ref=e2817]: —
+                - generic [ref=e2818]:
+                  - generic [ref=e2819]:
+                    - generic [ref=e2820]: "YES"
+                    - generic [ref=e2821]: 0.5¢
+                  - generic [ref=e2822]:
+                    - generic [ref=e2823]: "NO"
+                    - generic [ref=e2824]: 99.9¢
+                - generic [ref=e2825]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2826]:
+                  - generic [ref=e2827]: 0.0%
+                  - generic [ref=e2828]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2829]:
+                  - generic [ref=e2830]:
+                    - generic [ref=e2831]: "YES"
+                    - generic [ref=e2833]: 0.00%
+                  - generic [ref=e2834]:
+                    - generic [ref=e2835]: "NO"
+                    - generic [ref=e2838]: 0.10%
+              - generic [ref=e2839] [cursor=pointer]:
+                - generic [ref=e2840]: 42-43°F
+                - generic [ref=e2841]: —
+                - generic [ref=e2842]:
+                  - generic [ref=e2843]:
+                    - generic [ref=e2844]: "YES"
+                    - generic [ref=e2845]: 0.7¢
+                  - generic [ref=e2846]:
+                    - generic [ref=e2847]: "NO"
+                    - generic [ref=e2848]: 99.6¢
+                - generic [ref=e2849]: 5.5%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2850]:
+                  - generic [ref=e2851]: 5.5%
+                  - generic [ref=e2852]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2853]:
+                  - generic [ref=e2854]:
+                    - generic [ref=e2855]: "YES"
+                    - generic [ref=e2858]: 4.83%
+                  - generic [ref=e2859]:
+                    - generic [ref=e2860]: "NO"
+                    - generic [ref=e2862]: 0.00%
+              - generic [ref=e2863] [cursor=pointer]:
+                - generic [ref=e2864]: 44-45°F
+                - generic [ref=e2865]: —
+                - generic [ref=e2866]:
+                  - generic [ref=e2867]:
+                    - generic [ref=e2868]: "YES"
+                    - generic [ref=e2869]: 5.7¢
+                  - generic [ref=e2870]:
+                    - generic [ref=e2871]: "NO"
+                    - generic [ref=e2872]: 94.6¢
+                - generic [ref=e2873]: 7.1%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2874]:
+                  - generic [ref=e2875]: 7.1%
+                  - generic [ref=e2876]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2877]:
+                  - generic [ref=e2878]:
+                    - generic [ref=e2879]: "YES"
+                    - generic [ref=e2882]: 1.44%
+                  - generic [ref=e2883]:
+                    - generic [ref=e2884]: "NO"
+                    - generic [ref=e2886]: 0.00%
+              - generic [ref=e2887] [cursor=pointer]:
+                - generic [ref=e2888]: 46-47°F
+                - generic [ref=e2890]:
+                  - generic [ref=e2891]: 等权落桶
+                  - generic [ref=e2892]: 动态落桶
+                  - generic [ref=e2893]: 场景落桶
+                - generic [ref=e2894]:
+                  - generic [ref=e2895]:
+                    - generic [ref=e2896]: "YES"
+                    - generic [ref=e2897]: 11.0¢
+                  - generic [ref=e2898]:
+                    - generic [ref=e2899]: "NO"
+                    - generic [ref=e2900]: 90.0¢
+                - generic [ref=e2901]: 10.4%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2902]:
+                  - generic [ref=e2903]: 10.4%
+                  - generic [ref=e2904]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2905]:
+                  - generic [ref=e2906]:
+                    - generic [ref=e2907]: "YES"
+                    - generic [ref=e2909]: 0.00%
+                  - generic [ref=e2910]:
+                    - generic [ref=e2911]: "NO"
+                    - generic [ref=e2913]: 0.00%
+              - generic [ref=e2914] [cursor=pointer]:
+                - generic [ref=e2915]: 48°F or higher
+                - generic [ref=e2916]:
+                  - generic [ref=e2917]:
+                    - generic [ref=e2918]: 市场盘口
+                    - generic [ref=e2919]: 等权最高概率桶（q_raw）
+                    - generic [ref=e2920]: 最高概率
+                    - generic [ref=e2921]: 等权最高概率
+                    - generic [ref=e2922]: 动态最高概率
+                    - generic [ref=e2923]: 场景最高概率
+                    - generic [ref=e2924]: GFS
+                    - generic [ref=e2925]: ICON
+                    - generic [ref=e2926]: ECMWF
+                    - generic [ref=e2927]: NWS
+                  - generic [ref=e2928]:
+                    - generic [ref=e2929]:
+                      - generic [ref=e2930]: 美国 GFS 数值模式
+                      - text: 100.0%
+                    - generic [ref=e2931]:
+                      - generic [ref=e2932]: 德国 ICON 数值模式
+                      - text: 89.7%
+                    - generic [ref=e2933]:
+                      - generic [ref=e2934]: 欧洲 ECMWF IFS（0.25°）
+                      - text: 68.0%
+                    - generic [ref=e2935]:
+                      - generic [ref=e2936]: 美国国家气象局人工+模型预报
+                      - text: 50.0%
+                - generic [ref=e2937]:
+                  - generic [ref=e2938]:
+                    - generic [ref=e2939]: "YES"
+                    - generic [ref=e2940]: 84.0¢
+                  - generic [ref=e2941]:
+                    - generic [ref=e2942]: "NO"
+                    - generic [ref=e2943]: 18.0¢
+                - generic [ref=e2944]: 76.9%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e2945]:
+                  - generic [ref=e2946]: 76.9%
+                  - generic [ref=e2947]: 未校正 · 样本0 · 缺0
+                - generic [ref=e2948]:
+                  - generic [ref=e2949]:
+                    - generic [ref=e2950]: "YES"
+                    - generic [ref=e2952]: 0.00%
+                  - generic [ref=e2953]:
+                    - generic [ref=e2954]: "NO"
+                    - generic [ref=e2957]: 5.06%
+          - generic [ref=e2958]: 建议：—
+        - generic [ref=e2959]:
+          - generic [ref=e2961]:
+            - generic [ref=e2962]: "6."
+            - link "Highest temperature in Wellington on March 4?" [ref=e2963] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-wellington-on-march-4-2026
+            - generic [ref=e2964]:
+              - generic [ref=e2965]: 可下单
+              - generic [ref=e2966]: 未操作
+            - button "复制事件标题" [ref=e2967] [cursor=pointer]: 复制
+          - generic [ref=e2968]:
+            - generic [ref=e2969]: 事件概览
+            - generic [ref=e2970]:
+              - generic [ref=e2971]:
+                - generic [ref=e2972]:
+                  - generic [ref=e2973]: 事件概况
+                  - generic [ref=e2974]: NZWN 2026-03-04 · temperature_2m_max C
+                - generic [ref=e2976]:
+                  - generic [ref=e2977]: 关键时间
+                  - generic [ref=e2978]:
+                    - generic [ref=e2979]:
+                      - generic [ref=e2980]: 当地时间
+                      - generic [ref=e2981]: 当地时间 03/04 02:35
+                    - generic [ref=e2982]:
+                      - generic [ref=e2983]: 距最高温可能出现时间
+                      - generic [ref=e2984]: 9h 24m 25s
+                      - generic [ref=e2985]: 2026/03/04 12:00
+              - generic [ref=e2986]:
+                - generic [ref=e2987]:
+                  - generic [ref=e2988]: 市场温度
+                  - generic [ref=e2989]: 17.00°C
+                  - generic [ref=e2990]: 17°C
+                  - generic [ref=e2991]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e2993]:
+                  - generic [ref=e2994]: 结算站点预报
+                  - generic [ref=e2995]:
+                    - generic [ref=e2996]:
+                      - generic [ref=e2997]: 暂无数据
+                      - generic [ref=e2998]: 03/04
+                    - generic [ref=e2999]:
+                      - text: 未找到站点预报记录 ·
+                      - link "站点详情" [ref=e3000] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/nz/wellington/NZWN/date/2026-03-04
+                  - generic [ref=e3001]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e3002]:
+                - generic [ref=e3003]:
+                  - generic [ref=e3004]: 模型状态
+                  - generic [ref=e3006]: ⭑ 模型数 3
+                  - generic [ref=e3007]:
+                    - generic [ref=e3008]:
+                      - generic [ref=e3009]: 当前模型
+                      - generic [ref=e3010]:
+                        - generic "美国 GFS 数值模式" [ref=e3011]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e3012]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e3013]: ECMWF
+                    - generic [ref=e3014]:
+                      - generic [ref=e3015]: 缺失模型
+                      - generic "美国国家气象局人工+模型预报 · NWS 不适用（非美站点/区域）" [ref=e3017]: NWS
+                - generic [ref=e3019]:
+                  - generic [ref=e3020]: 数据新鲜度
+                  - generic [ref=e3021]: 模型温度 · 盘口快照
+                  - generic [ref=e3022]:
+                    - generic [ref=e3023]: 模型温度 — · 03-04 10:35
+                    - generic [ref=e3024]: 盘口快照 11m · 03-04 10:24
+                    - generic [ref=e3025]: 站点预报 —
+                  - generic [ref=e3026]:
+                    - button "重新获取盘口(缺)" [ref=e3027] [cursor=pointer]
+                    - generic [ref=e3028]: 仅刷新市场数据
+          - generic [ref=e3029]:
+            - generic [ref=e3030]: 温度桶概览
+            - generic [ref=e3032]:
+              - generic [ref=e3033]: 最高概率与均值
+              - generic [ref=e3034]:
+                - generic [ref=e3035]:
+                  - generic [ref=e3036]: 最高概率桶概率（q_raw）
+                  - generic [ref=e3039]:
+                    - generic [ref=e3040]:
+                      - generic [ref=e3041]: 最高概率桶（原始数据）
+                      - generic [ref=e3042]: 16°C
+                      - generic [ref=e3043]: 桶区间 16-17°C
+                    - generic [ref=e3044]:
+                      - generic [ref=e3045]: 最高概率桶（校正后）
+                      - generic [ref=e3046]: 16°C
+                      - generic [ref=e3047]: 桶区间 16-17°C
+                  - generic [ref=e3048]:
+                    - generic [ref=e3049]: 最高概率桶轨迹
+                    - generic [ref=e3051]: 加载中…
+                - generic [ref=e3052]:
+                  - generic [ref=e3053]: 最高概率桶模型差异
+                  - generic [ref=e3055]:
+                    - generic [ref=e3056]:
+                      - generic [ref=e3057]:
+                        - generic [ref=e3058]: 最高概率桶概率（q_raw）
+                        - generic [ref=e3059]: 47.3%
+                        - generic [ref=e3060]: 多模型加权平均
+                      - generic [ref=e3061]:
+                        - generic [ref=e3062]: 校准后概率（q_calibrated）
+                        - generic [ref=e3063]: 26.9%
+                        - generic [ref=e3064]: 历史可靠性校准
+                    - generic [ref=e3065]:
+                      - generic [ref=e3066]:
+                        - generic [ref=e3067]: q_min
+                        - generic [ref=e3068]: 33.3%
+                      - generic [ref=e3069]:
+                        - generic [ref=e3070]: q_max
+                        - generic [ref=e3071]: 66.7%
+                      - generic [ref=e3072]:
+                        - generic [ref=e3073]: q_auto
+                        - generic [ref=e3074]: 48.3%
+                      - generic [ref=e3075]:
+                        - generic [ref=e3076]: q_scenario
+                        - generic [ref=e3077]: 46.0%
+                    - generic [ref=e3078]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e3080]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                  - generic [ref=e3081]:
+                    - generic [ref=e3082]: 自动交易成交
+                    - generic [ref=e3084]:
+                      - generic [ref=e3085]:
+                        - generic [ref=e3086]:
+                          - generic [ref=e3087]: NO 17°C
+                          - generic [ref=e3088]:
+                            - generic [ref=e3089]: 可兑现分 8.79
+                            - generic [ref=e3090]: 有效优势分 5.54
+                        - generic [ref=e3091]: 边际 18.46 × 时间 1.00（趋势 0.00 + base 1.00 × 新鲜度 1.00） × 结构 0.30（dominance 0.50，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e3093]:
+                        - generic [ref=e3095]: LCB全市场策略
+                        - generic [ref=e3096]:
+                          - generic [ref=e3098]: 信号满足
+                          - generic [ref=e3099]: 全局/执行层拦截（NO 17°C）
+                          - generic [ref=e3101]: 未触发下单
+                      - generic [ref=e3102]:
+                        - generic [ref=e3103]: 未退出
+                        - generic [ref=e3104]:
+                          - generic [ref=e3105]:
+                            - generic [ref=e3106]: 原始信号边际
+                            - generic [ref=e3108]: —
+                          - generic [ref=e3109]:
+                            - generic [ref=e3110]: LCB未退出原因（NO 17°C）
+                            - generic [ref=e3112]: 无退出信号
+                - generic [ref=e3113]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e3114]: 均值桶
+                  - generic [ref=e3117]:
+                    - generic [ref=e3118]:
+                      - text: 等权16.33°C
+                      - generic [ref=e3119]: P25–P75 16.00°C–17.00°C
+                    - generic [ref=e3120]:
+                      - text: 动态16.30°C
+                      - generic [ref=e3121]: P25–P75 16.00°C–17.00°C
+                    - generic [ref=e3122]:
+                      - text: 场景16.39°C
+                      - generic [ref=e3123]: P25–P75 16.00°C–17.00°C
+                - generic [ref=e3124]:
+                  - generic [ref=e3125]: 风险提示
+                  - generic [ref=e3126]:
+                    - text: ✓
+                    - generic [ref=e3127]: 分布提示
+                    - generic [ref=e3128]: 当前：均值桶 = 最高概率桶（如等权的16°C），说明最高温分布更集中，温度变化更稳。参考：以最高概率桶为主，偏冷/偏热尾部风险较小。
+                - generic [ref=e3129]:
+                  - generic [ref=e3130]: 落桶概率分布
+                  - generic [ref=e3132]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e3133]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e3135]:
+                      - generic [ref=e3136]: 50%
+                      - generic [ref=e3149]: <=12°C
+                      - generic [ref=e3150]: 13-14°C
+                      - generic [ref=e3151]: 14-15°C
+                      - generic [ref=e3152]: 15-16°C
+                      - generic [ref=e3153]: 16-17°C
+                      - generic [ref=e3154]: 17-18°C
+                      - generic [ref=e3155]: 18-19°C
+                      - generic [ref=e3156]: 19-20°C
+                      - generic [ref=e3157]: ">=20°C"
+                    - generic [ref=e3158]:
+                      - generic [ref=e3161]: 等权
+                      - generic [ref=e3164]: 动态
+                      - generic [ref=e3167]: 场景
+          - generic [ref=e3168]:
+            - generic [ref=e3169]: 落桶分布
+            - generic [ref=e3170]:
+              - generic [ref=e3171]: 诊断与命中率
+              - generic [ref=e3172]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e3174]:
+              - generic [ref=e3175]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:24 (11m) · 偏旧。
+              - generic [ref=e3176]:
+                - generic [ref=e3177]: 温度落桶
+                - generic [ref=e3178]: 标签
+                - generic [ref=e3179]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e3180]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e3181]: 校准后概率（q_calibrated）
+                - generic [ref=e3182]: edge（YES/NO）
+              - generic [ref=e3183] [cursor=pointer]:
+                - generic [ref=e3184]: 12°C or below
+                - generic [ref=e3185]: —
+                - generic [ref=e3186]:
+                  - generic [ref=e3187]:
+                    - generic [ref=e3188]: "YES"
+                    - generic [ref=e3189]: 0.1¢
+                  - generic [ref=e3190]:
+                    - generic [ref=e3191]: "NO"
+                    - generic [ref=e3192]: —
+                - generic [ref=e3193]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3194]:
+                  - generic [ref=e3195]: 0.0%
+                  - generic [ref=e3196]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3197]:
+                  - generic [ref=e3198]:
+                    - generic [ref=e3199]: "YES"
+                    - generic [ref=e3201]: 0.00%
+                  - generic [ref=e3202]:
+                    - generic [ref=e3203]: "NO"
+                    - generic [ref=e3206]: 100.00%
+              - generic [ref=e3207] [cursor=pointer]:
+                - generic [ref=e3208]: 13°C
+                - generic [ref=e3209]: —
+                - generic [ref=e3210]:
+                  - generic [ref=e3211]:
+                    - generic [ref=e3212]: "YES"
+                    - generic [ref=e3213]: 0.5¢
+                  - generic [ref=e3214]:
+                    - generic [ref=e3215]: "NO"
+                    - generic [ref=e3216]: 99.9¢
+                - generic [ref=e3217]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3218]:
+                  - generic [ref=e3219]: 0.0%
+                  - generic [ref=e3220]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3221]:
+                  - generic [ref=e3222]:
+                    - generic [ref=e3223]: "YES"
+                    - generic [ref=e3225]: 0.00%
+                  - generic [ref=e3226]:
+                    - generic [ref=e3227]: "NO"
+                    - generic [ref=e3230]: 0.10%
+              - generic [ref=e3231] [cursor=pointer]:
+                - generic [ref=e3232]: 14°C
+                - generic [ref=e3233]: —
+                - generic [ref=e3234]:
+                  - generic [ref=e3235]:
+                    - generic [ref=e3236]: "YES"
+                    - generic [ref=e3237]: 0.1¢
+                  - generic [ref=e3238]:
+                    - generic [ref=e3239]: "NO"
+                    - generic [ref=e3240]: —
+                - generic [ref=e3241]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3242]:
+                  - generic [ref=e3243]: 0.0%
+                  - generic [ref=e3244]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3245]:
+                  - generic [ref=e3246]:
+                    - generic [ref=e3247]: "YES"
+                    - generic [ref=e3249]: 0.00%
+                  - generic [ref=e3250]:
+                    - generic [ref=e3251]: "NO"
+                    - generic [ref=e3254]: 100.00%
+              - generic [ref=e3255] [cursor=pointer]:
+                - generic [ref=e3256]: 15°C
+                - generic [ref=e3257]: —
+                - generic [ref=e3258]:
+                  - generic [ref=e3259]:
+                    - generic [ref=e3260]: "YES"
+                    - generic [ref=e3261]: 0.1¢
+                  - generic [ref=e3262]:
+                    - generic [ref=e3263]: "NO"
+                    - generic [ref=e3264]: —
+                - generic [ref=e3265]: 11.7%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3266]:
+                  - generic [ref=e3267]: 11.7%
+                  - generic [ref=e3268]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3269]:
+                  - generic [ref=e3270]:
+                    - generic [ref=e3271]: "YES"
+                    - generic [ref=e3274]: 11.61%
+                  - generic [ref=e3275]:
+                    - generic [ref=e3276]: "NO"
+                    - generic [ref=e3279]: 88.29%
+              - generic [ref=e3280] [cursor=pointer]:
+                - generic [ref=e3281]: 16°C
+                - generic [ref=e3282]:
+                  - generic [ref=e3283]:
+                    - generic [ref=e3284]: 等权最高概率桶（q_raw）
+                    - generic [ref=e3285]: 最高概率
+                    - generic [ref=e3286]: 等权落桶
+                    - generic [ref=e3287]: 动态落桶
+                    - generic [ref=e3288]: 场景落桶
+                    - generic [ref=e3289]: 等权最高概率
+                    - generic [ref=e3290]: 动态最高概率
+                    - generic [ref=e3291]: 场景最高概率
+                    - generic [ref=e3292]: GFS
+                  - generic [ref=e3294]:
+                    - generic [ref=e3295]: 美国 GFS 数值模式
+                    - text: 66.7%
+                - generic [ref=e3296]:
+                  - generic [ref=e3297]:
+                    - generic [ref=e3298]: "YES"
+                    - generic [ref=e3299]: 25.0¢
+                  - generic [ref=e3300]:
+                    - generic [ref=e3301]: "NO"
+                    - generic [ref=e3302]: 84.0¢
+                - generic [ref=e3303]: 47.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3304]:
+                  - generic [ref=e3305]: 47.3%
+                  - generic [ref=e3306]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3307]:
+                  - generic [ref=e3308]:
+                    - generic [ref=e3309]: "YES"
+                    - generic [ref=e3312]: 22.33%
+                  - generic [ref=e3313]:
+                    - generic [ref=e3314]: "NO"
+                    - generic [ref=e3316]: 0.00%
+              - generic [ref=e3317] [cursor=pointer]:
+                - generic [ref=e3318]: 17°C
+                - generic [ref=e3319]:
+                  - generic [ref=e3320]:
+                    - generic [ref=e3321]: 市场盘口
+                    - generic [ref=e3322]: ICON
+                    - generic [ref=e3323]: ECMWF
+                  - generic [ref=e3324]:
+                    - generic [ref=e3325]:
+                      - generic [ref=e3326]: 德国 ICON 数值模式
+                      - text: 51.3%
+                    - generic [ref=e3327]:
+                      - generic [ref=e3328]: 欧洲 ECMWF IFS（0.25°）
+                      - text: 58.0%
+                - generic [ref=e3329]:
+                  - generic [ref=e3330]:
+                    - generic [ref=e3331]: "YES"
+                    - generic [ref=e3332]: 62.0¢
+                  - generic [ref=e3333]:
+                    - generic [ref=e3334]: "NO"
+                    - generic [ref=e3335]: 44.0¢
+                - generic [ref=e3336]: 37.5%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3337]:
+                  - generic [ref=e3338]: 37.5%
+                  - generic [ref=e3339]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3340]:
+                  - generic [ref=e3341]:
+                    - generic [ref=e3342]: "YES"
+                    - generic [ref=e3344]: 0.00%
+                  - generic [ref=e3345]:
+                    - generic [ref=e3346]: "NO"
+                    - generic [ref=e3349]: 18.46%
+              - generic [ref=e3350] [cursor=pointer]:
+                - generic [ref=e3351]: 18°C
+                - generic [ref=e3352]: —
+                - generic [ref=e3353]:
+                  - generic [ref=e3354]:
+                    - generic [ref=e3355]: "YES"
+                    - generic [ref=e3356]: 20.0¢
+                  - generic [ref=e3357]:
+                    - generic [ref=e3358]: "NO"
+                    - generic [ref=e3359]: 84.0¢
+                - generic [ref=e3360]: 3.4%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3361]:
+                  - generic [ref=e3362]: 3.4%
+                  - generic [ref=e3363]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3364]:
+                  - generic [ref=e3365]:
+                    - generic [ref=e3366]: "YES"
+                    - generic [ref=e3368]: 0.00%
+                  - generic [ref=e3369]:
+                    - generic [ref=e3370]: "NO"
+                    - generic [ref=e3373]: 12.58%
+              - generic [ref=e3374] [cursor=pointer]:
+                - generic [ref=e3375]: 19°C
+                - generic [ref=e3376]: —
+                - generic [ref=e3377]:
+                  - generic [ref=e3378]:
+                    - generic [ref=e3379]: "YES"
+                    - generic [ref=e3380]: 3.8¢
+                  - generic [ref=e3381]:
+                    - generic [ref=e3382]: "NO"
+                    - generic [ref=e3383]: 96.6¢
+                - generic [ref=e3384]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3385]:
+                  - generic [ref=e3386]: 0.0%
+                  - generic [ref=e3387]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3388]:
+                  - generic [ref=e3389]:
+                    - generic [ref=e3390]: "YES"
+                    - generic [ref=e3392]: 0.00%
+                  - generic [ref=e3393]:
+                    - generic [ref=e3394]: "NO"
+                    - generic [ref=e3397]: 3.40%
+              - generic [ref=e3398] [cursor=pointer]:
+                - generic [ref=e3399]: 20°C or higher
+                - generic [ref=e3400]: —
+                - generic [ref=e3401]:
+                  - generic [ref=e3402]:
+                    - generic [ref=e3403]: "YES"
+                    - generic [ref=e3404]: 0.7¢
+                  - generic [ref=e3405]:
+                    - generic [ref=e3406]: "NO"
+                    - generic [ref=e3407]: 99.6¢
+                - generic [ref=e3408]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3409]:
+                  - generic [ref=e3410]: 0.0%
+                  - generic [ref=e3411]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3412]:
+                  - generic [ref=e3413]:
+                    - generic [ref=e3414]: "YES"
+                    - generic [ref=e3416]: 0.00%
+                  - generic [ref=e3417]:
+                    - generic [ref=e3418]: "NO"
+                    - generic [ref=e3421]: 0.40%
+          - generic [ref=e3422]: 建议：—
+        - generic [ref=e3423]:
+          - generic [ref=e3425]:
+            - generic [ref=e3426]: "7."
+            - link "Highest temperature in NYC on March 3?" [ref=e3427] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-nyc-on-march-3-2026
+            - generic [ref=e3428]:
+              - generic [ref=e3429]: 可下单
+              - generic [ref=e3430]: 未操作
+            - button "复制事件标题" [ref=e3431] [cursor=pointer]: 复制
+          - generic [ref=e3432]:
+            - generic [ref=e3433]: 事件概览
+            - generic [ref=e3434]:
+              - generic [ref=e3435]:
+                - generic [ref=e3436]:
+                  - generic [ref=e3437]: 事件概况
+                  - generic [ref=e3438]: KLGA 2026-03-03 · temperature_2m_max F
+                - generic [ref=e3440]:
+                  - generic [ref=e3441]: 关键时间
+                  - generic [ref=e3442]:
+                    - generic [ref=e3443]:
+                      - generic [ref=e3444]: 当地时间
+                      - generic [ref=e3445]: 当地时间 03/03 21:35
+                    - generic [ref=e3446]:
+                      - generic [ref=e3447]: 距最高温可能出现时间
+                      - generic [ref=e3448]: 已结束
+                      - generic [ref=e3449]: 2026/03/03 07:00
+              - generic [ref=e3450]:
+                - generic [ref=e3451]:
+                  - generic [ref=e3452]: 市场温度
+                  - generic [ref=e3453]: 34.50°F
+                  - generic [ref=e3454]: 34-35°F
+                  - generic [ref=e3455]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e3457]:
+                  - generic [ref=e3458]: 结算站点预报
+                  - generic [ref=e3459]:
+                    - generic [ref=e3460]:
+                      - generic [ref=e3461]: 暂无数据
+                      - generic [ref=e3462]: 03/03
+                    - generic [ref=e3463]:
+                      - text: 未找到站点预报记录 ·
+                      - link "站点详情" [ref=e3464] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA/date/2026-03-03
+                  - generic [ref=e3465]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e3466]:
+                - generic [ref=e3467]:
+                  - generic [ref=e3468]: 模型状态
+                  - generic [ref=e3470]: ⭑ 模型数 4
+                  - generic [ref=e3471]:
+                    - generic [ref=e3472]:
+                      - generic [ref=e3473]: 当前模型
+                      - generic [ref=e3474]:
+                        - generic "美国 GFS 数值模式" [ref=e3475]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e3476]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e3477]: ECMWF
+                        - generic "美国国家气象局人工+模型预报" [ref=e3478]: NWS
+                    - generic [ref=e3479]:
+                      - generic [ref=e3480]: 缺失模型
+                      - generic [ref=e3482]: 无缺失
+                - generic [ref=e3484]:
+                  - generic [ref=e3485]: 数据新鲜度
+                  - generic [ref=e3486]: 模型温度 · 盘口快照
+                  - generic [ref=e3487]:
+                    - generic [ref=e3488]: 模型温度 2.1h · 03-04 08:31
+                    - generic [ref=e3489]: 盘口快照 8m · 03-04 10:27
+                    - generic [ref=e3490]: 站点预报 —
+                  - generic [ref=e3491]:
+                    - button "重新获取盘口(缺)" [ref=e3492] [cursor=pointer]
+                    - generic [ref=e3493]: 仅刷新市场数据
+          - generic [ref=e3494]:
+            - generic [ref=e3495]: 温度桶概览
+            - generic [ref=e3497]:
+              - generic [ref=e3498]: 最高概率与均值
+              - generic [ref=e3499]:
+                - generic [ref=e3500]:
+                  - generic [ref=e3501]: 最高概率桶概率（q_raw）
+                  - generic [ref=e3504]:
+                    - generic [ref=e3505]:
+                      - generic [ref=e3506]: 最高概率桶（原始数据）
+                      - generic [ref=e3507]: 38-39°F
+                    - generic [ref=e3508]:
+                      - generic [ref=e3509]: 最高概率桶（校正后）
+                      - generic [ref=e3510]: 38°F
+                      - generic [ref=e3511]: 标签 38-39°F
+                  - generic [ref=e3512]:
+                    - generic [ref=e3513]: 最高概率桶轨迹
+                    - generic [ref=e3515]: 加载中…
+                - generic [ref=e3516]:
+                  - generic [ref=e3517]: 最高概率桶模型差异
+                  - generic [ref=e3519]:
+                    - generic [ref=e3520]:
+                      - generic [ref=e3521]:
+                        - generic [ref=e3522]: 最高概率桶概率（q_raw）
+                        - generic [ref=e3523]: 30.4%
+                        - generic [ref=e3524]: 多模型加权平均
+                      - generic [ref=e3525]:
+                        - generic [ref=e3526]: 校准后概率（q_calibrated）
+                        - generic [ref=e3527]: 16.6%
+                        - generic [ref=e3528]: 历史可靠性校准
+                    - generic [ref=e3529]:
+                      - generic [ref=e3530]:
+                        - generic [ref=e3531]: q_min
+                        - generic [ref=e3532]: 20.0%
+                      - generic [ref=e3533]:
+                        - generic [ref=e3534]: q_max
+                        - generic [ref=e3535]: 36.0%
+                      - generic [ref=e3536]:
+                        - generic [ref=e3537]: q_auto
+                        - generic [ref=e3538]: 29.2%
+                      - generic [ref=e3539]:
+                        - generic [ref=e3540]: q_scenario
+                        - generic [ref=e3541]: 33.3%
+                    - generic [ref=e3542]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e3544]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                  - generic [ref=e3545]:
+                    - generic [ref=e3546]: 自动交易成交
+                    - generic [ref=e3548]:
+                      - generic [ref=e3549]:
+                        - generic [ref=e3550]:
+                          - generic [ref=e3551]: NO 34-35°F
+                          - generic [ref=e3552]:
+                            - generic [ref=e3553]: 可兑现分 28.28
+                            - generic [ref=e3554]: 有效优势分 29.60
+                        - generic [ref=e3555]: 边际 81.42 × 时间 0.61（趋势 0.00 + base 1.00 × 新鲜度 0.61） × 结构 0.59（dominance 0.26，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e3557]:
+                        - generic [ref=e3559]: LCB全市场策略
+                        - generic [ref=e3560]:
+                          - generic [ref=e3562]: 信号满足
+                          - generic [ref=e3563]: 全局/执行层拦截（NO 34-35°F）
+                          - generic [ref=e3565]: 未触发下单
+                      - generic [ref=e3566]:
+                        - generic [ref=e3567]: 未退出
+                        - generic [ref=e3568]:
+                          - generic [ref=e3569]:
+                            - generic [ref=e3570]: 原始信号边际
+                            - generic [ref=e3572]: —
+                          - generic [ref=e3573]:
+                            - generic [ref=e3574]: LCB未退出原因（NO 34-35°F）
+                            - generic [ref=e3576]: 无退出信号
+                - generic [ref=e3577]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e3578]: 均值桶
+                  - generic [ref=e3581]:
+                    - generic [ref=e3582]:
+                      - text: 等权38.86°F
+                      - generic [ref=e3583]: P25–P75 38.00°F–40.00°F
+                    - generic [ref=e3584]:
+                      - text: 动态38.88°F
+                      - generic [ref=e3585]: P25–P75 38.00°F–40.00°F
+                    - generic [ref=e3586]:
+                      - text: 场景38.98°F
+                      - generic [ref=e3587]: P25–P75 38.00°F–40.00°F
+                - generic [ref=e3588]:
+                  - generic [ref=e3589]: 风险提示
+                  - generic [ref=e3590]:
+                    - text: ⚠
+                    - generic [ref=e3591]: 风险提示
+                    - generic [ref=e3592]: 当前：均值桶 ≠ 最高概率桶（以动态为例：均值桶 38-39°F，最高概率桶 40-41°F，均值偏低约2.0°F）。相对最高概率桶，最高温均值偏低约2.0°F，说明冷尾情景在拉动均值。参考：以最高概率桶为主情景，同时关注更低区间的降温风险；若后续预报/站点观测呈转冷，落桶可能向更低档移动。
+                - generic [ref=e3593]:
+                  - generic [ref=e3594]: 落桶概率分布
+                  - generic [ref=e3596]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e3597]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e3599]:
+                      - generic [ref=e3600]: 50%
+                      - generic [ref=e3613]: <=31°F
+                      - generic [ref=e3614]: 32-33°F
+                      - generic [ref=e3615]: 34-35°F
+                      - generic [ref=e3616]: 36-37°F
+                      - generic [ref=e3617]: 38-39°F
+                      - generic [ref=e3618]: 40-41°F
+                      - generic [ref=e3619]: 42-43°F
+                      - generic [ref=e3620]: 44-45°F
+                      - generic [ref=e3621]: ">=46°F"
+                    - generic [ref=e3622]:
+                      - generic [ref=e3625]: 等权
+                      - generic [ref=e3628]: 动态
+                      - generic [ref=e3631]: 场景
+          - generic [ref=e3632]:
+            - generic [ref=e3633]: 落桶分布
+            - generic [ref=e3634]:
+              - generic [ref=e3635]: 诊断与命中率
+              - generic [ref=e3636]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e3638]:
+              - generic [ref=e3639]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:27 (8m) · 偏旧。
+              - generic [ref=e3640]:
+                - generic [ref=e3641]: 温度落桶
+                - generic [ref=e3642]: 标签
+                - generic [ref=e3643]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e3644]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e3645]: 校准后概率（q_calibrated）
+                - generic [ref=e3646]: edge（YES/NO）
+              - generic [ref=e3647] [cursor=pointer]:
+                - generic [ref=e3648]: 31°F or below
+                - generic [ref=e3649]: —
+                - generic [ref=e3650]:
+                  - generic [ref=e3651]:
+                    - generic [ref=e3652]: "YES"
+                    - generic [ref=e3653]: 0.1¢
+                  - generic [ref=e3654]:
+                    - generic [ref=e3655]: "NO"
+                    - generic [ref=e3656]: —
+                - generic [ref=e3657]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3658]:
+                  - generic [ref=e3659]: 0.0%
+                  - generic [ref=e3660]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3661]:
+                  - generic [ref=e3662]:
+                    - generic [ref=e3663]: "YES"
+                    - generic [ref=e3665]: 0.00%
+                  - generic [ref=e3666]:
+                    - generic [ref=e3667]: "NO"
+                    - generic [ref=e3670]: 100.00%
+              - generic [ref=e3671] [cursor=pointer]:
+                - generic [ref=e3672]: 32-33°F
+                - generic [ref=e3673]: —
+                - generic [ref=e3674]:
+                  - generic [ref=e3675]:
+                    - generic [ref=e3676]: "YES"
+                    - generic [ref=e3677]: 0.9¢
+                  - generic [ref=e3678]:
+                    - generic [ref=e3679]: "NO"
+                    - generic [ref=e3680]: 99.9¢
+                - generic [ref=e3681]: 1.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3682]:
+                  - generic [ref=e3683]: 1.3%
+                  - generic [ref=e3684]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3685]:
+                  - generic [ref=e3686]:
+                    - generic [ref=e3687]: "YES"
+                    - generic [ref=e3690]: 0.38%
+                  - generic [ref=e3691]:
+                    - generic [ref=e3692]: "NO"
+                    - generic [ref=e3694]: 0.00%
+              - generic [ref=e3695] [cursor=pointer]:
+                - generic [ref=e3696]: 34-35°F
+                - generic [ref=e3699]: 市场盘口
+                - generic [ref=e3700]:
+                  - generic [ref=e3701]:
+                    - generic [ref=e3702]: "YES"
+                    - generic [ref=e3703]: 90.9¢
+                  - generic [ref=e3704]:
+                    - generic [ref=e3705]: "NO"
+                    - generic [ref=e3706]: 9.7¢
+                - generic [ref=e3707]: 8.9%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3708]:
+                  - generic [ref=e3709]: 8.9%
+                  - generic [ref=e3710]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3711]:
+                  - generic [ref=e3712]:
+                    - generic [ref=e3713]: "YES"
+                    - generic [ref=e3715]: 0.00%
+                  - generic [ref=e3716]:
+                    - generic [ref=e3717]: "NO"
+                    - generic [ref=e3720]: 81.42%
+              - generic [ref=e3721] [cursor=pointer]:
+                - generic [ref=e3722]: 36-37°F
+                - generic [ref=e3723]: —
+                - generic [ref=e3724]:
+                  - generic [ref=e3725]:
+                    - generic [ref=e3726]: "YES"
+                    - generic [ref=e3727]: 10.0¢
+                  - generic [ref=e3728]:
+                    - generic [ref=e3729]: "NO"
+                    - generic [ref=e3730]: 93.0¢
+                - generic [ref=e3731]: 11.6%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3732]:
+                  - generic [ref=e3733]: 11.6%
+                  - generic [ref=e3734]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3735]:
+                  - generic [ref=e3736]:
+                    - generic [ref=e3737]: "YES"
+                    - generic [ref=e3740]: 1.63%
+                  - generic [ref=e3741]:
+                    - generic [ref=e3742]: "NO"
+                    - generic [ref=e3744]: 0.00%
+              - generic [ref=e3745] [cursor=pointer]:
+                - generic [ref=e3746]: 38-39°F
+                - generic [ref=e3747]:
+                  - generic [ref=e3748]:
+                    - generic [ref=e3749]: 等权最高概率桶（q_raw）
+                    - generic [ref=e3750]: 最高概率
+                    - generic [ref=e3751]: 等权落桶
+                    - generic [ref=e3752]: 动态落桶
+                    - generic [ref=e3753]: 场景落桶
+                    - generic [ref=e3754]: 等权最高概率
+                    - generic [ref=e3755]: 场景最高概率
+                    - generic [ref=e3756]: ICON
+                    - generic [ref=e3757]: NWS
+                  - generic [ref=e3758]:
+                    - generic [ref=e3759]:
+                      - generic [ref=e3760]: 德国 ICON 数值模式
+                      - text: 30.8%
+                    - generic [ref=e3761]:
+                      - generic [ref=e3762]: 美国国家气象局人工+模型预报
+                      - text: 35.0%
+                - generic [ref=e3763]:
+                  - generic [ref=e3764]:
+                    - generic [ref=e3765]: "YES"
+                    - generic [ref=e3766]: 3.2¢
+                  - generic [ref=e3767]:
+                    - generic [ref=e3768]: "NO"
+                    - generic [ref=e3769]: 99.8¢
+                - generic [ref=e3770]: 30.4%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3771]:
+                  - generic [ref=e3772]: 30.4%
+                  - generic [ref=e3773]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3774]:
+                  - generic [ref=e3775]:
+                    - generic [ref=e3776]: "YES"
+                    - generic [ref=e3779]: 27.24%
+                  - generic [ref=e3780]:
+                    - generic [ref=e3781]: "NO"
+                    - generic [ref=e3783]: 0.00%
+              - generic [ref=e3784] [cursor=pointer]:
+                - generic [ref=e3785]: 40-41°F
+                - generic [ref=e3786]:
+                  - generic [ref=e3787]:
+                    - generic [ref=e3788]: 动态最高概率
+                    - generic [ref=e3789]: GFS
+                    - generic [ref=e3790]: ECMWF
+                  - generic [ref=e3791]:
+                    - generic [ref=e3792]:
+                      - generic [ref=e3793]: 美国 GFS 数值模式
+                      - text: 53.3%
+                    - generic [ref=e3794]:
+                      - generic [ref=e3795]: 欧洲 ECMWF IFS（0.25°）
+                      - text: 38.0%
+                - generic [ref=e3796]:
+                  - generic [ref=e3797]:
+                    - generic [ref=e3798]: "YES"
+                    - generic [ref=e3799]: 5.0¢
+                  - generic [ref=e3800]:
+                    - generic [ref=e3801]: "NO"
+                    - generic [ref=e3802]: 95.6¢
+                - generic [ref=e3803]: 29.8%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3804]:
+                  - generic [ref=e3805]: 29.8%
+                  - generic [ref=e3806]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3807]:
+                  - generic [ref=e3808]:
+                    - generic [ref=e3809]: "YES"
+                    - generic [ref=e3812]: 24.79%
+                  - generic [ref=e3813]:
+                    - generic [ref=e3814]: "NO"
+                    - generic [ref=e3816]: 0.00%
+              - generic [ref=e3817] [cursor=pointer]:
+                - generic [ref=e3818]: 42-43°F
+                - generic [ref=e3819]: —
+                - generic [ref=e3820]:
+                  - generic [ref=e3821]:
+                    - generic [ref=e3822]: "YES"
+                    - generic [ref=e3823]: 1.2¢
+                  - generic [ref=e3824]:
+                    - generic [ref=e3825]: "NO"
+                    - generic [ref=e3826]: 98.9¢
+                - generic [ref=e3827]: 10.9%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3828]:
+                  - generic [ref=e3829]: 10.9%
+                  - generic [ref=e3830]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3831]:
+                  - generic [ref=e3832]:
+                    - generic [ref=e3833]: "YES"
+                    - generic [ref=e3836]: 9.67%
+                  - generic [ref=e3837]:
+                    - generic [ref=e3838]: "NO"
+                    - generic [ref=e3840]: 0.00%
+              - generic [ref=e3841] [cursor=pointer]:
+                - generic [ref=e3842]: 44-45°F
+                - generic [ref=e3843]: —
+                - generic [ref=e3844]:
+                  - generic [ref=e3845]:
+                    - generic [ref=e3846]: "YES"
+                    - generic [ref=e3847]: 0.7¢
+                  - generic [ref=e3848]:
+                    - generic [ref=e3849]: "NO"
+                    - generic [ref=e3850]: 99.6¢
+                - generic [ref=e3851]: 3.8%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3852]:
+                  - generic [ref=e3853]: 3.8%
+                  - generic [ref=e3854]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3855]:
+                  - generic [ref=e3856]:
+                    - generic [ref=e3857]: "YES"
+                    - generic [ref=e3860]: 3.08%
+                  - generic [ref=e3861]:
+                    - generic [ref=e3862]: "NO"
+                    - generic [ref=e3864]: 0.00%
+              - generic [ref=e3865] [cursor=pointer]:
+                - generic [ref=e3866]: 46°F or higher
+                - generic [ref=e3867]: —
+                - generic [ref=e3868]:
+                  - generic [ref=e3869]:
+                    - generic [ref=e3870]: "YES"
+                    - generic [ref=e3871]: 0.1¢
+                  - generic [ref=e3872]:
+                    - generic [ref=e3873]: "NO"
+                    - generic [ref=e3874]: —
+                - generic [ref=e3875]: 3.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e3876]:
+                  - generic [ref=e3877]: 3.3%
+                  - generic [ref=e3878]: 未校正 · 样本0 · 缺0
+                - generic [ref=e3879]:
+                  - generic [ref=e3880]:
+                    - generic [ref=e3881]: "YES"
+                    - generic [ref=e3884]: 3.23%
+                  - generic [ref=e3885]:
+                    - generic [ref=e3886]: "NO"
+                    - generic [ref=e3889]: 96.67%
+          - generic [ref=e3890]: 建议：—
+        - generic [ref=e3891]:
+          - generic [ref=e3893]:
+            - generic [ref=e3894]: "8."
+            - link "Highest temperature in Seoul on March 3?" [ref=e3895] [cursor=pointer]:
+              - /url: https://polymarket.com/event/highest-temperature-in-seoul-on-march-3-2026
+            - generic [ref=e3897]: 日期已过
+            - button "复制事件标题" [ref=e3898] [cursor=pointer]: 复制
+          - generic [ref=e3899]:
+            - generic [ref=e3900]: 事件概览
+            - generic [ref=e3901]:
+              - generic [ref=e3902]:
+                - generic [ref=e3903]:
+                  - generic [ref=e3904]: 事件概况
+                  - generic [ref=e3905]: RKSI 2026-03-03 · temperature_2m_max C
+                - generic [ref=e3907]:
+                  - generic [ref=e3908]: 关键时间
+                  - generic [ref=e3909]:
+                    - generic [ref=e3910]:
+                      - generic [ref=e3911]: 当地时间
+                      - generic [ref=e3912]: 当地时间 03/04 11:35
+                    - generic [ref=e3913]:
+                      - generic [ref=e3914]: 距最高温可能出现时间
+                      - generic [ref=e3915]: 已结束
+                      - generic [ref=e3916]: 2026/03/03 21:00
+              - generic [ref=e3917]:
+                - generic [ref=e3918]:
+                  - generic [ref=e3919]: 市场温度
+                  - generic [ref=e3920]: 10.00°C
+                  - generic [ref=e3921]: 10°C
+                  - generic [ref=e3922]: 市场盘口命中率(首次) —近7天样本
+                - generic [ref=e3924]:
+                  - generic [ref=e3925]: 结算站点预报
+                  - generic [ref=e3926]:
+                    - generic [ref=e3927]:
+                      - generic [ref=e3928]: 暂无数据
+                      - generic [ref=e3929]: 03/03
+                    - generic [ref=e3930]:
+                      - text: 未找到站点预报记录 ·
+                      - link "站点详情" [ref=e3931] [cursor=pointer]:
+                        - /url: https://www.wunderground.com/history/daily/kr/incheon/RKSI/date/2026-03-03
+                  - generic [ref=e3932]: 结算站点预报命中率 —近7天样本
+              - generic [ref=e3933]:
+                - generic [ref=e3934]:
+                  - generic [ref=e3935]: 模型状态
+                  - generic [ref=e3937]: ⭑ 模型数 3
+                  - generic [ref=e3938]:
+                    - generic [ref=e3939]:
+                      - generic [ref=e3940]: 当前模型
+                      - generic [ref=e3941]:
+                        - generic "美国 GFS 数值模式" [ref=e3942]: GFS
+                        - generic "德国 ICON 数值模式" [ref=e3943]: ICON
+                        - generic "欧洲 ECMWF IFS（0.25°）" [ref=e3944]: ECMWF
+                    - generic [ref=e3945]:
+                      - generic [ref=e3946]: 缺失模型
+                      - generic "美国国家气象局人工+模型预报 · NWS 不适用（非美站点/区域）" [ref=e3948]: NWS
+                - generic [ref=e3950]:
+                  - generic [ref=e3951]: 数据新鲜度
+                  - generic [ref=e3952]: 模型温度 · 盘口快照
+                  - generic [ref=e3953]:
+                    - generic [ref=e3954]: 模型温度 — · 03-04 10:35
+                    - generic [ref=e3955]: 盘口快照 11m · 03-04 10:25
+                    - generic [ref=e3956]: 站点预报 —
+                  - generic [ref=e3957]:
+                    - button "重新获取盘口(缺)" [ref=e3958] [cursor=pointer]
+                    - generic [ref=e3959]: 仅刷新市场数据
+          - generic [ref=e3960]:
+            - generic [ref=e3961]: 温度桶概览
+            - generic [ref=e3963]:
+              - generic [ref=e3964]: 最高概率与均值
+              - generic [ref=e3965]:
+                - generic [ref=e3966]:
+                  - generic [ref=e3967]: 最高概率桶概率（q_raw）
+                  - generic [ref=e3970]:
+                    - generic [ref=e3971]:
+                      - generic [ref=e3972]: 最高概率桶（原始数据）
+                      - generic [ref=e3973]: 9°C
+                      - generic [ref=e3974]: 桶区间 9-10°C
+                    - generic [ref=e3975]:
+                      - generic [ref=e3976]: 最高概率桶（校正后）
+                      - generic [ref=e3977]: 9°C
+                      - generic [ref=e3978]: 桶区间 9-10°C
+                  - generic [ref=e3979]:
+                    - generic [ref=e3980]: 最高概率桶轨迹
+                    - generic [ref=e3982]: 加载中…
+                - generic [ref=e3983]:
+                  - generic [ref=e3984]: 最高概率桶模型差异
+                  - generic [ref=e3986]:
+                    - generic [ref=e3987]:
+                      - generic [ref=e3988]:
+                        - generic [ref=e3989]: 最高概率桶概率（q_raw）
+                        - generic [ref=e3990]: 35.1%
+                        - generic [ref=e3991]: 多模型加权平均
+                      - generic [ref=e3992]:
+                        - generic [ref=e3993]: 校准后概率（q_calibrated）
+                        - generic [ref=e3994]: 21.1%
+                        - generic [ref=e3995]: 历史可靠性校准
+                    - generic [ref=e3996]:
+                      - generic [ref=e3997]:
+                        - generic [ref=e3998]: q_min
+                        - generic [ref=e3999]: 2.6%
+                      - generic [ref=e4000]:
+                        - generic [ref=e4001]: q_max
+                        - generic [ref=e4002]: 56.0%
+                      - generic [ref=e4003]:
+                        - generic [ref=e4004]: q_auto
+                        - generic [ref=e4005]: 35.6%
+                      - generic [ref=e4006]:
+                        - generic [ref=e4007]: q_scenario
+                        - generic [ref=e4008]: 40.3%
+                    - generic [ref=e4009]: q_min=模型最低概率 · q_max=模型最高概率 · q_auto=自动权重 · q_scenario=情景偏置
+                  - generic [ref=e4011]: 原始最高桶 / q_min / q_raw / q_calibrated / q_max 变化
+                  - generic [ref=e4012]:
+                    - generic [ref=e4013]: 自动交易成交
+                    - generic [ref=e4015]:
+                      - generic [ref=e4016]:
+                        - generic [ref=e4017]:
+                          - generic [ref=e4018]: NO 10°C
+                          - generic [ref=e4019]:
+                            - generic [ref=e4020]: 可兑现分 32.45
+                            - generic [ref=e4021]: 有效优势分 33.88
+                        - generic [ref=e4022]: 边际 87.23 × 时间 1.00（趋势 0.20 + base 1.00 × 新鲜度 1.00） × 结构 0.39（dominance 0.35，时间×结构最低 0.20） − 惩罚 0.00
+                      - generic [ref=e4024]:
+                        - generic [ref=e4026]: LCB全市场策略
+                        - generic [ref=e4027]:
+                          - generic [ref=e4029]: 信号满足
+                          - generic [ref=e4030]: 全局/执行层拦截（NO 10°C）
+                          - generic [ref=e4032]: 未触发下单
+                      - generic [ref=e4033]:
+                        - generic [ref=e4034]: 未退出
+                        - generic [ref=e4035]:
+                          - generic [ref=e4036]:
+                            - generic [ref=e4037]: 原始信号边际
+                            - generic [ref=e4039]: —
+                          - generic [ref=e4040]:
+                            - generic [ref=e4041]: LCB未退出原因（NO 10°C）
+                            - generic [ref=e4043]: 无退出信号
+                - generic [ref=e4044]:
+                  - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e4045]: 均值桶
+                  - generic [ref=e4048]:
+                    - generic [ref=e4049]:
+                      - text: 等权8.24°C
+                      - generic [ref=e4050]: P25–P75 7.00°C–9.00°C
+                    - generic [ref=e4051]:
+                      - text: 动态8.24°C
+                      - generic [ref=e4052]: P25–P75 7.00°C–9.00°C
+                    - generic [ref=e4053]:
+                      - text: 场景8.51°C
+                      - generic [ref=e4054]: P25–P75 8.00°C–9.00°C
+                - generic [ref=e4055]:
+                  - generic [ref=e4056]: 风险提示
+                  - generic [ref=e4057]:
+                    - text: ⚠
+                    - generic [ref=e4058]: 风险提示
+                    - generic [ref=e4059]: 当前：均值桶 ≠ 最高概率桶（以等权为例：均值桶 8°C，最高概率桶 9°C，均值偏低约1.0°C）。相对最高概率桶，最高温均值偏低约1.0°C，说明冷尾情景在拉动均值。参考：以最高概率桶为主情景，同时关注更低区间的降温风险；若后续预报/站点观测呈转冷，落桶可能向更低档移动。
+                - generic [ref=e4060]:
+                  - generic [ref=e4061]: 落桶概率分布
+                  - generic [ref=e4063]:
+                    - generic "均值桶=平均值，辅助最高桶作为参考和判断" [ref=e4064]: 实心点=最高概率桶 · 空心点=均值桶
+                    - img "落桶概率分布" [ref=e4066]:
+                      - generic [ref=e4067]: 50%
+                      - generic [ref=e4080]: <=4°C
+                      - generic [ref=e4081]: 5-6°C
+                      - generic [ref=e4082]: 6-7°C
+                      - generic [ref=e4083]: 7-8°C
+                      - generic [ref=e4084]: 8-9°C
+                      - generic [ref=e4085]: 9-10°C
+                      - generic [ref=e4086]: 10-11°C
+                      - generic [ref=e4087]: 11-12°C
+                      - generic [ref=e4088]: ">=12°C"
+                    - generic [ref=e4089]:
+                      - generic [ref=e4092]: 等权
+                      - generic [ref=e4095]: 动态
+                      - generic [ref=e4098]: 场景
+          - generic [ref=e4099]:
+            - generic [ref=e4100]: 落桶分布
+            - generic [ref=e4101]:
+              - generic [ref=e4102]: 诊断与命中率
+              - generic [ref=e4103]: 最高概率桶概率（q_raw）命中率：—
+            - generic [ref=e4105]:
+              - generic [ref=e4106]: 达标进度：暂无。最高概率桶概率（q_raw）=实时最新概率；校准后概率（q_calibrated）=历史可靠性校准值（未达标前显示q_raw，仅展示不接入Edge）。每桶会标记是否校准及缺失样本数。标签说明：最高概率桶概率（q_raw）=模型最高桶概率；校准后概率（q_calibrated）最高=可靠性校准后最高桶（只在达标桶内比较）。两者可能不一致。 盘口快照更新 03-04 10:25 (11m) · 偏旧。
+              - generic [ref=e4107]:
+                - generic [ref=e4108]: 温度落桶
+                - generic [ref=e4109]: 标签
+                - generic [ref=e4110]: 市场卖价(Yes/No)
+                - generic "q_raw=实时最新概率" [ref=e4111]: q_raw（实时）
+                - generic "校准后概率（q_calibrated）=历史可靠性校准值（样本达标才启用），每桶显示校正状态与缺样本数" [ref=e4112]: 校准后概率（q_calibrated）
+                - generic [ref=e4113]: edge（YES/NO）
+              - generic [ref=e4114] [cursor=pointer]:
+                - generic [ref=e4115]: 4°C or below
+                - generic [ref=e4116]: —
+                - generic [ref=e4117]:
+                  - generic [ref=e4118]:
+                    - generic [ref=e4119]: "YES"
+                    - generic [ref=e4120]: 0.1¢
+                  - generic [ref=e4121]:
+                    - generic [ref=e4122]: "NO"
+                    - generic [ref=e4123]: —
+                - generic [ref=e4124]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4125]:
+                  - generic [ref=e4126]: 0.0%
+                  - generic [ref=e4127]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4128]:
+                  - generic [ref=e4129]:
+                    - generic [ref=e4130]: "YES"
+                    - generic [ref=e4132]: 0.00%
+                  - generic [ref=e4133]:
+                    - generic [ref=e4134]: "NO"
+                    - generic [ref=e4137]: 100.00%
+              - generic [ref=e4138] [cursor=pointer]:
+                - generic [ref=e4139]: 5°C
+                - generic [ref=e4140]: —
+                - generic [ref=e4141]:
+                  - generic [ref=e4142]:
+                    - generic [ref=e4143]: "YES"
+                    - generic [ref=e4144]: 0.1¢
+                  - generic [ref=e4145]:
+                    - generic [ref=e4146]: "NO"
+                    - generic [ref=e4147]: —
+                - generic [ref=e4148]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4149]:
+                  - generic [ref=e4150]: 0.0%
+                  - generic [ref=e4151]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4152]:
+                  - generic [ref=e4153]:
+                    - generic [ref=e4154]: "YES"
+                    - generic [ref=e4156]: 0.00%
+                  - generic [ref=e4157]:
+                    - generic [ref=e4158]: "NO"
+                    - generic [ref=e4161]: 100.00%
+              - generic [ref=e4162] [cursor=pointer]:
+                - generic [ref=e4163]: 6°C
+                - generic [ref=e4164]: —
+                - generic [ref=e4165]:
+                  - generic [ref=e4166]:
+                    - generic [ref=e4167]: "YES"
+                    - generic [ref=e4168]: 0.1¢
+                  - generic [ref=e4169]:
+                    - generic [ref=e4170]: "NO"
+                    - generic [ref=e4171]: —
+                - generic [ref=e4172]: 8.5%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4173]:
+                  - generic [ref=e4174]: 8.5%
+                  - generic [ref=e4175]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4176]:
+                  - generic [ref=e4177]:
+                    - generic [ref=e4178]: "YES"
+                    - generic [ref=e4181]: 8.45%
+                  - generic [ref=e4182]:
+                    - generic [ref=e4183]: "NO"
+                    - generic [ref=e4186]: 91.45%
+              - generic [ref=e4187] [cursor=pointer]:
+                - generic [ref=e4188]: 7°C
+                - generic [ref=e4189]:
+                  - generic [ref=e4191]: ICON
+                  - generic [ref=e4193]:
+                    - generic [ref=e4194]: 德国 ICON 数值模式
+                    - text: 51.3%
+                - generic [ref=e4195]:
+                  - generic [ref=e4196]:
+                    - generic [ref=e4197]: "YES"
+                    - generic [ref=e4198]: 0.1¢
+                  - generic [ref=e4199]:
+                    - generic [ref=e4200]: "NO"
+                    - generic [ref=e4201]: —
+                - generic [ref=e4202]: 19.3%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4203]:
+                  - generic [ref=e4204]: 19.3%
+                  - generic [ref=e4205]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4206]:
+                  - generic [ref=e4207]:
+                    - generic [ref=e4208]: "YES"
+                    - generic [ref=e4211]: 19.22%
+                  - generic [ref=e4212]:
+                    - generic [ref=e4213]: "NO"
+                    - generic [ref=e4216]: 80.68%
+              - generic [ref=e4217] [cursor=pointer]:
+                - generic [ref=e4218]: 8°C
+                - generic [ref=e4219]:
+                  - generic [ref=e4220]:
+                    - generic [ref=e4221]: 等权落桶
+                    - generic [ref=e4222]: 动态落桶
+                    - generic [ref=e4223]: 场景落桶
+                    - generic [ref=e4224]: GFS
+                  - generic [ref=e4226]:
+                    - generic [ref=e4227]: 美国 GFS 数值模式
+                    - text: 46.7%
+                - generic [ref=e4228]:
+                  - generic [ref=e4229]:
+                    - generic [ref=e4230]: "YES"
+                    - generic [ref=e4231]: 0.1¢
+                  - generic [ref=e4232]:
+                    - generic [ref=e4233]: "NO"
+                    - generic [ref=e4234]: —
+                - generic [ref=e4235]: 24.4%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4236]:
+                  - generic [ref=e4237]: 24.4%
+                  - generic [ref=e4238]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4239]:
+                  - generic [ref=e4240]:
+                    - generic [ref=e4241]: "YES"
+                    - generic [ref=e4244]: 24.29%
+                  - generic [ref=e4245]:
+                    - generic [ref=e4246]: "NO"
+                    - generic [ref=e4249]: 75.61%
+              - generic [ref=e4250] [cursor=pointer]:
+                - generic [ref=e4251]: 9°C
+                - generic [ref=e4252]:
+                  - generic [ref=e4253]:
+                    - generic [ref=e4254]: 等权最高概率桶（q_raw）
+                    - generic [ref=e4255]: 最高概率
+                    - generic [ref=e4256]: 等权最高概率
+                    - generic [ref=e4257]: 动态最高概率
+                    - generic [ref=e4258]: 场景最高概率
+                    - generic [ref=e4259]: ECMWF
+                  - generic [ref=e4261]:
+                    - generic [ref=e4262]: 欧洲 ECMWF IFS（0.25°）
+                    - text: 56.0%
+                - generic [ref=e4263]:
+                  - generic [ref=e4264]:
+                    - generic [ref=e4265]: "YES"
+                    - generic [ref=e4266]: 0.1¢
+                  - generic [ref=e4267]:
+                    - generic [ref=e4268]: "NO"
+                    - generic [ref=e4269]: —
+                - generic [ref=e4270]: 35.1%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4271]:
+                  - generic [ref=e4272]: 35.1%
+                  - generic [ref=e4273]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4274]:
+                  - generic [ref=e4275]:
+                    - generic [ref=e4276]: "YES"
+                    - generic [ref=e4279]: 34.98%
+                  - generic [ref=e4280]:
+                    - generic [ref=e4281]: "NO"
+                    - generic [ref=e4284]: 64.92%
+              - generic [ref=e4285] [cursor=pointer]:
+                - generic [ref=e4286]: 10°C
+                - generic [ref=e4289]: 市场盘口
+                - generic [ref=e4290]:
+                  - generic [ref=e4291]:
+                    - generic [ref=e4292]: "YES"
+                    - generic [ref=e4293]: —
+                  - generic [ref=e4294]:
+                    - generic [ref=e4295]: "NO"
+                    - generic [ref=e4296]: 0.1¢
+                - generic [ref=e4297]: 12.7%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4298]:
+                  - generic [ref=e4299]: 12.7%
+                  - generic [ref=e4300]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4301]:
+                  - generic [ref=e4302]:
+                    - generic [ref=e4303]: "YES"
+                    - generic [ref=e4306]: 12.67%
+                  - generic [ref=e4307]:
+                    - generic [ref=e4308]: "NO"
+                    - generic [ref=e4311]: 87.23%
+              - generic [ref=e4312] [cursor=pointer]:
+                - generic [ref=e4313]: 11°C
+                - generic [ref=e4314]: —
+                - generic [ref=e4315]:
+                  - generic [ref=e4316]:
+                    - generic [ref=e4317]: "YES"
+                    - generic [ref=e4318]: 0.1¢
+                  - generic [ref=e4319]:
+                    - generic [ref=e4320]: "NO"
+                    - generic [ref=e4321]: —
+                - generic [ref=e4322]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4323]:
+                  - generic [ref=e4324]: 0.0%
+                  - generic [ref=e4325]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4326]:
+                  - generic [ref=e4327]:
+                    - generic [ref=e4328]: "YES"
+                    - generic [ref=e4330]: 0.00%
+                  - generic [ref=e4331]:
+                    - generic [ref=e4332]: "NO"
+                    - generic [ref=e4335]: 100.00%
+              - generic [ref=e4336] [cursor=pointer]:
+                - generic [ref=e4337]: 12°C or higher
+                - generic [ref=e4338]: —
+                - generic [ref=e4339]:
+                  - generic [ref=e4340]:
+                    - generic [ref=e4341]: "YES"
+                    - generic [ref=e4342]: 0.4¢
+                  - generic [ref=e4343]:
+                    - generic [ref=e4344]: "NO"
+                    - generic [ref=e4345]: —
+                - generic [ref=e4346]: 0.0%
+                - generic "校正状态：未校正｜箱—｜样本0 · 缺0" [ref=e4347]:
+                  - generic [ref=e4348]: 0.0%
+                  - generic [ref=e4349]: 未校正 · 样本0 · 缺0
+                - generic [ref=e4350]:
+                  - generic [ref=e4351]:
+                    - generic [ref=e4352]: "YES"
+                    - generic [ref=e4354]: 0.00%
+                  - generic [ref=e4355]:
+                    - generic [ref=e4356]: "NO"
+                    - generic [ref=e4359]: 100.00%
+          - generic [ref=e4360]: 建议：—
+    - generic [ref=e215]:
+      - generic [ref=e216]: 评分与偏差校正
+      - generic [ref=e4362]:
+        - generic [ref=e4363]: 评分与偏差校正（LCB最小监控）
+        - generic [ref=e4364]: 仅保留 4 项：达标率、阻断Top、成交表现、持仓真值
+        - generic [ref=e4365]:
+          - generic [ref=e4366]:
+            - generic [ref=e4367]: LCB门禁转化
+            - generic [ref=e4368]:
+              - generic [ref=e4369]:
+                - generic [ref=e4370]: 候选 / 达标 / 阻断
+                - strong [ref=e4371]: 0 / 0 / 0
+              - generic [ref=e4372]:
+                - generic [ref=e4373]: 达标率
+                - strong [ref=e4374]: 0.0%
+              - generic [ref=e4375]:
+                - generic [ref=e4376]: run_date
+                - strong [ref=e4377]: —
+              - generic [ref=e4378]:
+                - generic [ref=e4379]: trace更新时间
+                - strong [ref=e4380]: —
+          - generic [ref=e4381]:
+            - generic [ref=e4382]: LCB成交表现
+            - generic [ref=e4383]:
+              - generic [ref=e4384]:
+                - generic [ref=e4385]: 今日成交
+                - strong [ref=e4386]: "0"
+              - generic [ref=e4387]:
+                - generic [ref=e4388]: 累计成交
+                - strong [ref=e4389]: "0"
+              - generic [ref=e4390]:
+                - generic [ref=e4391]: 累计盈亏 / ROI
+                - strong [ref=e4392]: — / —
+              - generic [ref=e4393]:
+                - generic [ref=e4394]: 累计胜率
+                - strong [ref=e4395]: —
+          - generic [ref=e4396]:
+            - generic [ref=e4397]: LCB阻断Top（SSOT）
+            - generic [ref=e4399]:
+              - generic [ref=e4400]: 阻断Top
+              - strong [ref=e4401]: 暂无
+          - generic [ref=e4402]:
+            - generic [ref=e4403]: 持仓真值口径
+            - generic [ref=e4404]:
+              - generic [ref=e4405]:
+                - generic [ref=e4406]: 真值来源
+                - strong [ref=e4407]: 降级本地
+              - generic [ref=e4408]:
+                - generic [ref=e4409]: 交易中 / 可赎回
+                - strong [ref=e4410]: 0 / 0
+              - generic [ref=e4411]:
+                - generic [ref=e4412]: 总持仓
+                - strong [ref=e4413]: "0"
+  - button "/agentation v1.3.2 Output Detail Standard Marker Colour Purple Blue Cyan Green Yellow Orange Red Clear after output Block page interactions" [ref=e4414] [cursor=pointer]:
+    - img [ref=e4416]
+    - generic:
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button:
+          - img
+    - generic:
+      - generic:
+        - generic: /agentation
+        - generic: v1.3.2
+        - button "Switch to light mode":
+          - img
+      - generic:
+        - generic:
+          - generic:
+            - text: Output Detail
+            - generic:
+              - img
+          - button "Standard":
+            - generic: Standard
+      - generic:
+        - generic: Marker Colour
+        - generic:
+          - generic:
+            - generic "Purple"
+          - generic:
+            - generic "Blue"
+          - generic:
+            - generic "Cyan"
+          - generic:
+            - generic "Green"
+          - generic:
+            - generic "Yellow"
+          - generic:
+            - generic "Orange"
+          - generic:
+            - generic "Red"
+      - generic:
+        - generic:
+          - checkbox "Clear after output"
+          - generic:
+            - text: Clear after output
+            - generic:
+              - img
+        - generic:
+          - checkbox "Block page interactions"
+          - generic: Block page interactions

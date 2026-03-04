@@ -128,13 +128,30 @@ AUTO_TRADE_TRACE_MARKET_REFRESH_HINT_SEC = max(
 AUTO_TRADE_TRACE_PENDING_RECOMPUTE_SEC = max(
     8, int(os.environ.get("PM_AUTO_TRADE_TRACE_PENDING_RECOMPUTE_SEC", "15") or 15)
 )
+AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS = max(
+    3, int(os.environ.get("PM_AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS", "8") or 8)
+)
+AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX = min(
+    0.01, max(0.0005, float(os.environ.get("PM_AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX", "0.0015") or 0.0015))
+)
 _AUTO_TRADE_TRACE_MARKET_REFRESH_AT: Dict[str, float] = {}
 _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_AT: Dict[str, float] = {}
 _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_CREATED: Dict[str, str] = {}
 _AUTO_TRADE_TRACE_MARKET_REFRESH_AT_LOCK = threading.Lock()
+UI_SNAPSHOT_CACHE_SEC = max(0, int(os.environ.get("PM_UI_SNAPSHOT_CACHE_SEC", "2") or 2))
+_UI_SNAPSHOT_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_UI_SNAPSHOT_CACHE_LOCK = threading.Lock()
+UI_STRIP_MODEL_RAW = str(os.environ.get("PM_UI_STRIP_MODEL_RAW", "1") or "1").strip().lower() not in {
+    "",
+    "0",
+    "false",
+    "off",
+    "no",
+}
 STATION_FORECAST_TTL_SEC = int(os.environ.get("PM_STATION_FORECAST_TTL_SEC", "21600"))
 ENV_PATH = ROOT_DIR / ".env"
 HTML_PATH = Path(__file__).with_name("index.html")
+LCB_HTML_PATH = Path(__file__).with_name("lcb.html")
 FOLLOW_HTML_PATH = Path(__file__).with_name("follow_london.html")
 # London follow-sim (paper trading only): mirror source flow with account-based sizing.
 LONDON_FOLLOW_SIM_ENABLED = str(
@@ -702,7 +719,7 @@ Q_CALIBRATION_STABLE_N = int(os.environ.get("PM_Q_CALIB_STABLE_N", "3"))
 Q_CALIBRATION_STABLE_EPS = float(os.environ.get("PM_Q_CALIB_STABLE_EPS", "0.02"))
 Q_CALIBRATION_STATS_CACHE: Dict[int, Dict[str, Any]] = {}
 Q_CALIBRATION_STABLE_CACHE: Dict[int, Dict[str, Any]] = {}
-STATS_CUTOFF_DATE = os.environ.get("PM_STATS_CUTOFF_DATE", "2026-01-26")
+STATS_CUTOFF_DATE = os.environ.get("PM_STATS_CUTOFF_DATE", "2026-03-03")
 STATS_STRICT_MIRROR_FOLLOW = str(
     os.environ.get("PM_STATS_STRICT_MIRROR_FOLLOW", "1") or ""
 ).strip().lower() in {"1", "true", "yes", "on"}
@@ -928,6 +945,16 @@ AUTO_TRADE_IGNORED_ERRORS = {
     "exit_size_too_small",
     "residual_clear",
 }
+AUTO_TRADE_NON_STAT_BLOCKER_CODES = {
+    "market_ask_missing",
+    "market_one_sided_thin_book",
+}
+
+
+def is_non_stat_blocker_code(code: Any) -> bool:
+    return str(code or "").strip().lower() in AUTO_TRADE_NON_STAT_BLOCKER_CODES
+
+
 SIGNER_ADDRESS_CACHE: Dict[str, str] = {"private_key": "", "address": ""}
 Q_CALIBRATION_BINS = [
     (0.0, 0.02),
@@ -1178,6 +1205,10 @@ def load_html() -> str:
 
 def load_follow_html() -> str:
     return FOLLOW_HTML_PATH.read_text(encoding="utf-8")
+
+
+def load_lcb_html() -> str:
+    return LCB_HTML_PATH.read_text(encoding="utf-8")
 
 
 def html_mtime() -> int:
@@ -2387,7 +2418,15 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         "open_order_recheck_cooldown_sec": env_float("PM_AUTO_TRADE_OPEN_ORDER_RECHECK_COOLDOWN_SEC", 20.0),
         "open_order_auto_cancel_enabled": env_bool("PM_AUTO_TRADE_OPEN_ORDER_AUTO_CANCEL_ENABLED", True),
         "open_order_auto_cancel_sec": env_float("PM_AUTO_TRADE_OPEN_ORDER_AUTO_CANCEL_SEC", 300.0),
-        "order_usdc": env_float("PM_ORDER_USDC", 4.0),
+        "order_usdc": env_float("PM_ORDER_USDC", 10.0),
+        "kelly_enabled": env_bool("PM_KELLY_ENABLED", True),
+        "kelly_fraction": env_float("PM_KELLY_FRACTION", 0.25),
+        "kelly_ref_fraction": env_float("PM_KELLY_REF_FRACTION", 0.05),
+        "kelly_min_scale": env_float("PM_KELLY_MIN_SCALE", 0.5),
+        "kelly_max_scale": env_float("PM_KELLY_MAX_SCALE", 2.0),
+        "kelly_min_notional_usdc": env_float("PM_KELLY_MIN_NOTIONAL_USDC", 5.0),
+        "kelly_max_notional_usdc": env_float("PM_KELLY_MAX_NOTIONAL_USDC", 20.0),
+        "kelly_block_nonpositive": env_bool("PM_KELLY_BLOCK_NONPOSITIVE", False),
         "auto_max_ask": env_float("PM_AUTO_TRADE_MAX_ASK", 0.65),
         "entry_open_delay_min_sec": env_float("PM_AUTO_TRADE_ENTRY_OPEN_DELAY_MIN_SEC", 900),
         "entry_open_delay_max_sec": env_float("PM_AUTO_TRADE_ENTRY_OPEN_DELAY_MAX_SEC", 3600),
@@ -2451,12 +2490,25 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         "entry_skip_top_label": entry_skip_top_label,
         "entry_main_enabled": env_bool("PM_AUTO_TRADE_ENTRY_MAIN_ENABLED", True),
         "entry_follow_enabled": env_bool("PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED", False),
+        "lcb_global_enabled": env_bool("PM_LCB_GLOBAL_ENABLED", True),
         "mirror_follow_enabled": env_bool("PM_MIRROR_TRADING_ENABLED", False),
         "entry_main_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_MAIN_SIZE_RATIO", 1.0),
         "entry_yes_top_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_YES_TOP_SIZE_RATIO", 1.0),
         "entry_follow_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_FOLLOW_SIZE_RATIO", 1.0),
         "entry_hard_bound_no_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_SIZE_RATIO", 1.0),
         "entry_adj_pair_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_ADJ_PAIR_SIZE_RATIO", 1.0),
+        "lcb_global_size_ratio": env_float("PM_LCB_GLOBAL_SIZE_RATIO", 1.0),
+        "lcb_global_signal_lcb_min": env_float("PM_LCB_GLOBAL_SIGNAL_LCB_MIN", 0.0),
+        "lcb_global_path_lcb_min": env_float("PM_LCB_GLOBAL_PATH_LCB_MIN", 0.10),
+        "lcb_global_edge_lcb_min": env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN", 0.0),
+        "lcb_global_max_spread": env_float("PM_LCB_GLOBAL_MAX_SPREAD", 0.08),
+        "lcb_global_min_depth_usdc": env_float("PM_LCB_GLOBAL_MIN_DEPTH_USDC", 0.0),
+        "lcb_global_max_tick_age_sec": env_float("PM_LCB_GLOBAL_MAX_TICK_AGE_SEC", 180.0),
+        "lcb_global_max_new_orders_per_run": env_int("PM_LCB_GLOBAL_MAX_NEW_ORDERS_PER_RUN", 0),
+        "lcb_global_max_open_positions": env_int("PM_LCB_GLOBAL_MAX_OPEN_POSITIONS", 0),
+        "lcb_global_disable_location_block": env_bool("PM_LCB_GLOBAL_DISABLE_LOCATION_BLOCK", True),
+        "lcb_global_signal_edge_min": env_float_optional("PM_LCB_GLOBAL_SIGNAL_EDGE_MIN"),
+        "lcb_global_require_nonnegative_signal_edge": env_bool("PM_LCB_GLOBAL_REQUIRE_NONNEG_SIGNAL_EDGE", True),
         "mirror_follow_size_ratio": env_float("PM_MIRROR_COPY_RATIO", 1.0),
         "mirror_follow_size_ratio_yes": env_float_optional("PM_MIRROR_COPY_RATIO_YES"),
         "mirror_follow_size_ratio_no": env_float_optional("PM_MIRROR_COPY_RATIO_NO"),
@@ -3090,16 +3142,18 @@ def validate_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if flag("entry_yes_top_only") and not flag("entry_yes_top_enabled"):
         errors.append("仅独立策略已开启但YES最高概率桶未启用")
     if (
-        not flag("entry_main_enabled")
+        not flag("lcb_global_enabled")
+        and not flag("entry_main_enabled")
         and not flag("entry_follow_enabled")
         and not flag("entry_yes_top_enabled")
         and not flag("entry_hard_bound_no_enabled")
         and not flag("entry_adj_pair_enabled")
         and not flag("mirror_follow_enabled")
     ):
-        errors.append("主策略已关闭且无其他策略启用（含影子跟单）")
+        errors.append("LCB全市场已关闭且无其他策略启用")
 
     strategy_ratio_specs = [
+        ("lcb_global_size_ratio", "LCB全市场"),
         ("entry_main_size_ratio", "主策略"),
         ("entry_yes_top_size_ratio", "YES最高桶"),
         ("entry_follow_size_ratio", "临结价差"),
@@ -3111,6 +3165,8 @@ def validate_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
         ratio_val = num(key)
         if ratio_val is not None and ratio_val < 0:
             errors.append(f"{label}仓位系数不能为负")
+    if flag("lcb_global_enabled") and (num("lcb_global_size_ratio") is not None) and num("lcb_global_size_ratio") <= 0:
+        warnings.append("LCB全市场已启用但仓位系数为0，本轮不会新开仓")
     if flag("entry_main_enabled") and (num("entry_main_size_ratio") is not None) and num("entry_main_size_ratio") <= 0:
         warnings.append("主策略已启用但仓位系数为0，本轮不会新开仓")
     if flag("entry_yes_top_enabled") and (num("entry_yes_top_size_ratio") is not None) and num("entry_yes_top_size_ratio") <= 0:
@@ -3126,6 +3182,44 @@ def validate_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
     mirror_min_order_usdc = num("mirror_min_order_usdc")
     if mirror_min_order_usdc is not None and mirror_min_order_usdc < 0:
         errors.append("影子跟单最小下单金额不能为负")
+    order_usdc = num("order_usdc")
+    if order_usdc is not None and order_usdc <= 0:
+        errors.append("单笔基础预算(order_usdc)需>0")
+    if flag("kelly_enabled"):
+        kelly_fraction = num("kelly_fraction")
+        if kelly_fraction is None or not math.isfinite(kelly_fraction):
+            errors.append("凯利系数(kelly_fraction)无效")
+        elif kelly_fraction <= 0 or kelly_fraction > 1:
+            errors.append("凯利系数(kelly_fraction)需在(0,1]")
+        kelly_ref_fraction = num("kelly_ref_fraction")
+        if kelly_ref_fraction is None or not math.isfinite(kelly_ref_fraction):
+            errors.append("凯利参考分数(kelly_ref_fraction)无效")
+        elif kelly_ref_fraction <= 0 or kelly_ref_fraction > 1:
+            errors.append("凯利参考分数(kelly_ref_fraction)需在(0,1]")
+        kelly_min_scale = num("kelly_min_scale")
+        kelly_max_scale = num("kelly_max_scale")
+        if kelly_min_scale is not None and kelly_min_scale < 0:
+            errors.append("凯利最小倍率(kelly_min_scale)不能为负")
+        if kelly_max_scale is not None and kelly_max_scale <= 0:
+            errors.append("凯利最大倍率(kelly_max_scale)需>0")
+        if (
+            kelly_min_scale is not None
+            and kelly_max_scale is not None
+            and kelly_min_scale > kelly_max_scale
+        ):
+            errors.append("凯利最小倍率不能大于最大倍率")
+        kelly_min_notional = num("kelly_min_notional_usdc")
+        kelly_max_notional = num("kelly_max_notional_usdc")
+        if kelly_min_notional is not None and kelly_min_notional < 0:
+            errors.append("凯利最小金额(kelly_min_notional_usdc)不能为负")
+        if kelly_max_notional is not None and kelly_max_notional <= 0:
+            errors.append("凯利最大金额(kelly_max_notional_usdc)需>0")
+        if (
+            kelly_min_notional is not None
+            and kelly_max_notional is not None
+            and kelly_min_notional > kelly_max_notional
+        ):
+            errors.append("凯利最小金额不能大于最大金额")
 
     if flag("entry_follow_enabled"):
         if flag("entry_yes_top_only"):
@@ -3339,34 +3433,39 @@ def build_auto_trade_criteria_pills(config: Dict[str, Any]) -> Dict[str, Any]:
         return out
 
     entry: List[Dict[str, Any]] = []
-    if _flag("entry_main_enabled", True):
-        entry.append(_pill("主策略：启用", strong=True))
+    if _flag("lcb_global_enabled", True):
+        entry.append(_pill("LCB全市场：启用", strong=True))
     else:
-        entry.append(_pill("主策略：关闭", enabled=False, strong=True))
-    if _flag("entry_follow_enabled", False):
-        entry.append(_pill("临结价差策略：启用", strong=True))
-    else:
-        entry.append(_pill("临结价差策略：未启用", enabled=False, strong=True))
-    if _flag("mirror_follow_enabled", False):
-        entry.append(_pill("影子跟单策略：启用", strong=True))
-    else:
-        entry.append(_pill("影子跟单策略：未启用", enabled=False, strong=True))
+        entry.append(_pill("LCB全市场：关闭", enabled=False, strong=True))
+    entry.append(_pill(f"LCB仓位系数={_f2(_num('lcb_global_size_ratio'))}x"))
     entry.append(
         _pill(
-            "仓位系数"
-            f" main={_f2(_num('entry_main_size_ratio'))}x"
-            f" yes_top={_f2(_num('entry_yes_top_size_ratio'))}x"
-            f" follow={_f2(_num('entry_follow_size_ratio'))}x"
-            f" hard_bound={_f2(_num('entry_hard_bound_no_size_ratio'))}x"
-            f" adj_pair={_f2(_num('entry_adj_pair_size_ratio'))}x"
+            "LCB门槛"
+            f" signal_lcb≥{_f3(_num('lcb_global_signal_lcb_min'))}"
+            f" path_lcb≥{_f3(_num('lcb_global_path_lcb_min'))}"
+            f" edge_lcb≥{_f3(_num('lcb_global_edge_lcb_min'))}"
         )
     )
     entry.append(
-        _pill(f"影子跟单比例={_f2(_num('mirror_follow_size_ratio'))}x")
+        _pill(
+            "LCB执行约束"
+            f" spread≤{_f3(_num('lcb_global_max_spread'))}"
+            f" depth≥{_f2(_num('lcb_global_min_depth_usdc'))}"
+            f" tick_age≤{_f1(_num('lcb_global_max_tick_age_sec'))}s"
+        )
     )
-    entry.append(
-        _pill(f"影子跟单最小下单金额≥{_f2(_num('mirror_min_order_usdc'))} USDC")
-    )
+    if _flag("kelly_enabled", True):
+        entry.append(
+            _pill(
+                "凯利仓位"
+                f" f={_f2(_num('kelly_fraction'))}"
+                f" ref={_f2(_num('kelly_ref_fraction'))}"
+                f" scale[{_f2(_num('kelly_min_scale'))},{_f2(_num('kelly_max_scale'))}]"
+                f" usdc[{_f2(_num('kelly_min_notional_usdc'))},{_f2(_num('kelly_max_notional_usdc'))}]"
+            )
+        )
+    else:
+        entry.append(_pill("凯利仓位（已关闭）", enabled=False))
     if _flag("entry_require_ask_range", True):
         entry.append(_pill(f"ask[{_f2(_num('entry_ask_min'))},{_f2(_num('entry_ask_max'))}]", strong=True))
     else:
@@ -4383,11 +4482,29 @@ def apply_auto_trade_config(payload: Dict[str, Any]) -> None:
     )
     apply_float("open_order_auto_cancel_sec", "PM_AUTO_TRADE_OPEN_ORDER_AUTO_CANCEL_SEC", 0)
     apply_float("order_usdc", "PM_ORDER_USDC", 0)
+    apply_bool("kelly_enabled", "PM_KELLY_ENABLED")
+    apply_float("kelly_fraction", "PM_KELLY_FRACTION", 0)
+    apply_float("kelly_ref_fraction", "PM_KELLY_REF_FRACTION", 0)
+    apply_float("kelly_min_scale", "PM_KELLY_MIN_SCALE", 0)
+    apply_float("kelly_max_scale", "PM_KELLY_MAX_SCALE", 0)
+    apply_float("kelly_min_notional_usdc", "PM_KELLY_MIN_NOTIONAL_USDC", 0)
+    apply_float("kelly_max_notional_usdc", "PM_KELLY_MAX_NOTIONAL_USDC", 0)
+    apply_bool("kelly_block_nonpositive", "PM_KELLY_BLOCK_NONPOSITIVE")
     apply_float("entry_main_size_ratio", "PM_AUTO_TRADE_ENTRY_MAIN_SIZE_RATIO", 0)
     apply_float("entry_yes_top_size_ratio", "PM_AUTO_TRADE_ENTRY_YES_TOP_SIZE_RATIO", 0)
     apply_float("entry_follow_size_ratio", "PM_AUTO_TRADE_ENTRY_FOLLOW_SIZE_RATIO", 0)
     apply_float("entry_hard_bound_no_size_ratio", "PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_SIZE_RATIO", 0)
     apply_float("entry_adj_pair_size_ratio", "PM_AUTO_TRADE_ENTRY_ADJ_PAIR_SIZE_RATIO", 0)
+    apply_float("lcb_global_size_ratio", "PM_LCB_GLOBAL_SIZE_RATIO", 0)
+    apply_float("lcb_global_signal_lcb_min", "PM_LCB_GLOBAL_SIGNAL_LCB_MIN", 0)
+    apply_float("lcb_global_path_lcb_min", "PM_LCB_GLOBAL_PATH_LCB_MIN", 0)
+    apply_float("lcb_global_edge_lcb_min", "PM_LCB_GLOBAL_EDGE_LCB_MIN", -0.05)
+    apply_float("lcb_global_max_spread", "PM_LCB_GLOBAL_MAX_SPREAD", 0)
+    apply_float("lcb_global_min_depth_usdc", "PM_LCB_GLOBAL_MIN_DEPTH_USDC", 0)
+    apply_float("lcb_global_max_tick_age_sec", "PM_LCB_GLOBAL_MAX_TICK_AGE_SEC", 0)
+    apply_int("lcb_global_max_new_orders_per_run", "PM_LCB_GLOBAL_MAX_NEW_ORDERS_PER_RUN", 0)
+    apply_int("lcb_global_max_open_positions", "PM_LCB_GLOBAL_MAX_OPEN_POSITIONS", 0)
+    apply_float("lcb_global_signal_edge_min", "PM_LCB_GLOBAL_SIGNAL_EDGE_MIN", 0)
     apply_float("mirror_follow_size_ratio", "PM_MIRROR_COPY_RATIO", 0)
     apply_float("mirror_follow_size_ratio_yes", "PM_MIRROR_COPY_RATIO_YES", 0)
     apply_float("mirror_follow_size_ratio_no", "PM_MIRROR_COPY_RATIO_NO", 0)
@@ -4526,6 +4643,9 @@ def apply_auto_trade_config(payload: Dict[str, Any]) -> None:
     apply_bool("entry_skip_top_label", "PM_AUTO_TRADE_ENTRY_SKIP_TOP_LABEL")
     apply_bool("entry_main_enabled", "PM_AUTO_TRADE_ENTRY_MAIN_ENABLED")
     apply_bool("entry_follow_enabled", "PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED")
+    apply_bool("lcb_global_enabled", "PM_LCB_GLOBAL_ENABLED")
+    apply_bool("lcb_global_disable_location_block", "PM_LCB_GLOBAL_DISABLE_LOCATION_BLOCK")
+    apply_bool("lcb_global_require_nonnegative_signal_edge", "PM_LCB_GLOBAL_REQUIRE_NONNEG_SIGNAL_EDGE")
     apply_bool("mirror_follow_enabled", "PM_MIRROR_TRADING_ENABLED")
     apply_bool("entry_follow_require_highest_temp", "PM_AUTO_TRADE_ENTRY_FOLLOW_REQUIRE_HIGHEST_TEMP")
     apply_bool("entry_follow_no_only", "PM_AUTO_TRADE_ENTRY_FOLLOW_NO_ONLY")
@@ -5362,6 +5482,8 @@ def auto_trade_health(prefer_run_date: str = "") -> Dict[str, Any]:
                 last_decision_at = ""
                 chase_market_count = 0
                 chase_topup_count = 0
+                decision_rows_countable = 0
+                non_stat_blocked_count = 0
                 for row in rows:
                     if not last_decision_at:
                         last_decision_at = str(row["created_at"] or "")
@@ -5371,12 +5493,21 @@ def auto_trade_health(prefer_run_date: str = "") -> Dict[str, Any]:
                     if state == "entry_ok":
                         entry_ok_count += 1
                     codes = safe_json_loads(row["reason_codes_json"])
+                    row_codes: List[str] = []
                     if isinstance(codes, list):
                         for code in codes:
                             c = str(code or "").strip()
                             if not c:
                                 continue
+                            row_codes.append(c)
+                            if is_non_stat_blocker_code(c):
+                                continue
                             reason_counts[c] = int(reason_counts.get(c) or 0) + 1
+                    has_non_stat_code = any(is_non_stat_blocker_code(code) for code in row_codes)
+                    if has_non_stat_code and int(row["will_order"] or 0) <= 0:
+                        non_stat_blocked_count += 1
+                    else:
+                        decision_rows_countable += 1
                     if int(row["will_order"] or 0) == 1:
                         details = safe_json_loads(row["details_json"])
                         if isinstance(details, dict):
@@ -5387,6 +5518,8 @@ def auto_trade_health(prefer_run_date: str = "") -> Dict[str, Any]:
                 top_reasons = sorted(reason_counts.items(), key=lambda kv: (-int(kv[1]), str(kv[0])))[:12]
                 decision_stats = {
                     "decision_rows": len(rows),
+                    "decision_rows_countable": int(decision_rows_countable),
+                    "non_stat_blocked_count": int(non_stat_blocked_count),
                     "entry_ok_count": entry_ok_count,
                     "will_order_count": will_order_count,
                     "last_decision_at": last_decision_at,
@@ -6075,6 +6208,30 @@ def _sanitize_errno24_payload(payload: Any) -> Any:
         return [_sanitize_errno24_payload(v) for v in payload]
     if isinstance(payload, str):
         return _sanitize_errno24_text(payload)
+    return payload
+
+
+def _prune_raw_response_fields_in_place(node: Any) -> None:
+    if isinstance(node, dict):
+        node.pop("raw_response", None)
+        for value in node.values():
+            _prune_raw_response_fields_in_place(value)
+        return
+    if isinstance(node, list):
+        for value in node:
+            _prune_raw_response_fields_in_place(value)
+        return
+    if isinstance(node, tuple):
+        for value in node:
+            _prune_raw_response_fields_in_place(value)
+
+
+def _slim_fact_payload_for_ui(payload: Any) -> Any:
+    if not UI_STRIP_MODEL_RAW or not isinstance(payload, dict):
+        return payload
+    provenance = payload.get("model_provenance")
+    if isinstance(provenance, (dict, list, tuple)):
+        _prune_raw_response_fields_in_place(provenance)
     return payload
 
 
@@ -7957,6 +8114,7 @@ def compute_auto_trade_daily_stats(
             "stats_today": today.isoformat(),
             "stats_today_source": today_source,
             "stats_scope": stats_scope,
+            "stats_start_date": cutoff_text,
         }
         open_count = 0
         try:
@@ -8003,6 +8161,30 @@ def compute_auto_trade_daily_stats(
         out["active_positions"] = open_count
         out["realized_pnl"] = 0.0
         out["unrealized_pnl"] = 0.0
+        out["successful_trade_count"] = 0
+        out["successful_trade_count_7d"] = 0
+        out["successful_trade_count_today"] = 0
+        out["failed_trade_count"] = 0
+        out["failed_trade_count_7d"] = 0
+        out["failed_trade_count_today"] = 0
+        out["break_even_trade_count"] = 0
+        out["break_even_trade_count_7d"] = 0
+        out["break_even_trade_count_today"] = 0
+        out["completed_trade_count"] = 0
+        out["completed_trade_count_7d"] = 0
+        out["completed_trade_count_today"] = 0
+        out["total_roi"] = None
+        out["lcb_global_summary"] = {
+            "start_date": cutoff_text,
+            "open_position_count": open_count,
+            "completed_order_count": 0,
+            "completed_success_count": 0,
+            "completed_failed_count": 0,
+            "completed_break_even_count": 0,
+            "realized_pnl": 0.0,
+            "unrealized_pnl": 0.0,
+            "roi": None,
+        }
         out["total_pnl"] = 0.0
         out["last_updated"] = ""
         return out
@@ -8345,6 +8527,18 @@ def compute_auto_trade_daily_stats(
     failed_trade_ids: Set[str] = set()
     failed_trade_ids_7d: Set[str] = set()
     failed_trade_ids_today: Set[str] = set()
+    successful_trade_count = 0
+    successful_trade_count_7d = 0
+    successful_trade_count_today = 0
+    successful_trade_ids: Set[str] = set()
+    successful_trade_ids_7d: Set[str] = set()
+    successful_trade_ids_today: Set[str] = set()
+    break_even_trade_count = 0
+    break_even_trade_count_7d = 0
+    break_even_trade_count_today = 0
+    break_even_trade_ids: Set[str] = set()
+    break_even_trade_ids_7d: Set[str] = set()
+    break_even_trade_ids_today: Set[str] = set()
     for key, (sell_proceeds, sell_qty) in sell_totals.items():
         buy_cost, buy_qty = buy_totals.get(key, (0.0, 0.0))
         if buy_qty <= 0 or sell_qty <= 0:
@@ -8368,16 +8562,39 @@ def compute_auto_trade_daily_stats(
         if size <= 0:
             continue
         realized = (price - avg_cost) * size
-        if realized < 0:
+        if realized < -TIME_EDGE_Q_EPS:
             failed_trade_ids.add(trade_id)
             trade_date = entry.get("date")
             if trade_date == today:
                 failed_trade_ids_today.add(trade_id)
             if trade_date and trade_date >= (today - timedelta(days=6)):
                 failed_trade_ids_7d.add(trade_id)
+        elif realized > TIME_EDGE_Q_EPS:
+            successful_trade_ids.add(trade_id)
+            trade_date = entry.get("date")
+            if trade_date == today:
+                successful_trade_ids_today.add(trade_id)
+            if trade_date and trade_date >= (today - timedelta(days=6)):
+                successful_trade_ids_7d.add(trade_id)
+        else:
+            break_even_trade_ids.add(trade_id)
+            trade_date = entry.get("date")
+            if trade_date == today:
+                break_even_trade_ids_today.add(trade_id)
+            if trade_date and trade_date >= (today - timedelta(days=6)):
+                break_even_trade_ids_7d.add(trade_id)
     failed_trade_count = len(failed_trade_ids)
     failed_trade_count_7d = len(failed_trade_ids_7d)
     failed_trade_count_today = len(failed_trade_ids_today)
+    successful_trade_count = len(successful_trade_ids)
+    successful_trade_count_7d = len(successful_trade_ids_7d)
+    successful_trade_count_today = len(successful_trade_ids_today)
+    break_even_trade_count = len(break_even_trade_ids)
+    break_even_trade_count_7d = len(break_even_trade_ids_7d)
+    break_even_trade_count_today = len(break_even_trade_ids_today)
+    completed_trade_count = successful_trade_count + failed_trade_count
+    completed_trade_count_7d = successful_trade_count_7d + failed_trade_count_7d
+    completed_trade_count_today = successful_trade_count_today + failed_trade_count_today
     for entry in sell_fills:
         key = entry.get("key")
         if not key:
@@ -9419,6 +9636,7 @@ def compute_auto_trade_daily_stats(
         "stats_today": today.isoformat(),
         "stats_today_source": today_source,
         "stats_scope": stats_scope,
+        "stats_start_date": cutoff_text,
         "today_buy_count": buy_count,
         "today_sell_count": sell_count,
         "buy_count_total": buy_count_total,
@@ -9455,6 +9673,15 @@ def compute_auto_trade_daily_stats(
         "failed_trade_count": failed_trade_count,
         "failed_trade_count_7d": failed_trade_count_7d,
         "failed_trade_count_today": failed_trade_count_today,
+        "successful_trade_count": successful_trade_count,
+        "successful_trade_count_7d": successful_trade_count_7d,
+        "successful_trade_count_today": successful_trade_count_today,
+        "break_even_trade_count": break_even_trade_count,
+        "break_even_trade_count_7d": break_even_trade_count_7d,
+        "break_even_trade_count_today": break_even_trade_count_today,
+        "completed_trade_count": completed_trade_count,
+        "completed_trade_count_7d": completed_trade_count_7d,
+        "completed_trade_count_today": completed_trade_count_today,
         "avg_odds": avg_odds_total,
         "avg_odds_7d": avg_odds_7d,
         "total_buy_amount": total_buy_amount,
@@ -9474,6 +9701,17 @@ def compute_auto_trade_daily_stats(
         "roi_7d": roi_7d,
         "today_filled_events": today_filled_events,
         "mirror_follow_today": mirror_follow_today,
+        "lcb_global_summary": {
+            "start_date": cutoff_text,
+            "open_position_count": open_position_count,
+            "completed_order_count": completed_trade_count,
+            "completed_success_count": successful_trade_count,
+            "completed_failed_count": failed_trade_count,
+            "completed_break_even_count": break_even_trade_count,
+            "realized_pnl": realized_total,
+            "unrealized_pnl": unrealized_total,
+            "roi": roi,
+        },
         "fills_incomplete": bool(missing_count),
         "fills_incomplete_count": missing_count,
         "fills_incomplete_examples": missing_examples,
@@ -9508,6 +9746,8 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
     now_local = datetime.now().astimezone()
     local_tz = now_local.tzinfo
     today = now_local.date()
+    cutoff = stats_cutoff_date()
+    cutoff_text = cutoff.isoformat() if cutoff else ""
     seven_start = today - timedelta(days=6)
     stats_scope = "mirror_follow_strict" if bool(STATS_STRICT_MIRROR_FOLLOW) else "auto_managed"
     position_sync_error_local = str(POSITIONS_CACHE.get("error") or "")
@@ -9532,6 +9772,7 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
         "stats_today": today.isoformat(),
         "stats_today_source": "local",
         "stats_scope": stats_scope,
+        "stats_start_date": cutoff_text,
         "today_buy_count": 0,
         "today_sell_count": 0,
         "buy_count_total": 0,
@@ -9558,8 +9799,34 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
         "position_truth_source": position_truth_source,
         "position_sync_error": position_sync_error_local,
         "position_sync_at": position_sync_at_local,
+        "successful_trade_count": 0,
+        "successful_trade_count_7d": 0,
+        "successful_trade_count_today": 0,
+        "failed_trade_count": 0,
+        "failed_trade_count_7d": 0,
+        "failed_trade_count_today": 0,
+        "break_even_trade_count": 0,
+        "break_even_trade_count_7d": 0,
+        "break_even_trade_count_today": 0,
+        "completed_trade_count": 0,
+        "completed_trade_count_7d": 0,
+        "completed_trade_count_today": 0,
+        "realized_pnl": 0.0,
+        "unrealized_pnl": 0.0,
+        "total_roi": None,
         "today_filled_events": [],
         "mirror_follow_today": {"count": 0, "placed": 0, "failed": 0, "skipped": 0, "rows": [], "sync": {}},
+        "lcb_global_summary": {
+            "start_date": cutoff_text,
+            "open_position_count": 0,
+            "completed_order_count": 0,
+            "completed_success_count": 0,
+            "completed_failed_count": 0,
+            "completed_break_even_count": 0,
+            "realized_pnl": 0.0,
+            "unrealized_pnl": 0.0,
+            "roi": None,
+        },
     }
     cur = conn.cursor()
 
@@ -9810,6 +10077,17 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
     except sqlite3.OperationalError:
         pass
 
+    out["lcb_global_summary"] = {
+        "start_date": cutoff_text,
+        "open_position_count": int(out.get("open_position_count") or 0),
+        "completed_order_count": int(out.get("completed_trade_count") or 0),
+        "completed_success_count": int(out.get("successful_trade_count") or 0),
+        "completed_failed_count": int(out.get("failed_trade_count") or 0),
+        "completed_break_even_count": int(out.get("break_even_trade_count") or 0),
+        "realized_pnl": float(out.get("realized_pnl") or 0.0),
+        "unrealized_pnl": float(out.get("unrealized_pnl") or 0.0),
+        "roi": to_float(out.get("total_roi")),
+    }
     return out
 
 
@@ -9921,6 +10199,13 @@ def _empty_strategy_entry() -> Dict[str, Any]:
 
 
 def strategy_stats_defaults() -> Dict[str, Dict[str, Any]]:
+    lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
+    if lcb_global_enabled:
+        return {
+            "lcb_global": _empty_strategy_entry(),
+            "mirror_follow": _empty_strategy_entry(),
+            "unknown": _empty_strategy_entry(),
+        }
     return {
         "main": _empty_strategy_entry(),
         "follow_copy": _empty_strategy_entry(),
@@ -9928,7 +10213,21 @@ def strategy_stats_defaults() -> Dict[str, Dict[str, Any]]:
         "hard_bound_no": _empty_strategy_entry(),
         "adj_pair": _empty_strategy_entry(),
         "mirror_follow": _empty_strategy_entry(),
+        "unknown": _empty_strategy_entry(),
     }
+
+
+def _normalize_strategy_key(raw_value: Any, *, fallback: str = "main") -> str:
+    strategy = str(raw_value or "").strip().lower()
+    if strategy in {"", "exit"}:
+        strategy = str(fallback or "main").strip().lower() or "main"
+    if _env_bool("PM_LCB_GLOBAL_ENABLED", True):
+        if strategy in {"mirror_follow", "mirror_follow_improve"}:
+            return "mirror_follow"
+        if strategy == "unknown":
+            return "unknown"
+        return "lcb_global"
+    return strategy or str(fallback or "main").strip().lower() or "main"
 
 
 def compute_strategy_stats_v1(conn: sqlite3.Connection, days: int, run_date: str = "") -> Dict[str, Dict[str, Any]]:
@@ -9965,14 +10264,7 @@ def compute_strategy_stats_v1(conn: sqlite3.Connection, days: int, run_date: str
         start_date, end_date = resolve_stats_range(conn, days, require_settlement=False)
     start_text = start_date.isoformat()
     end_text = end_date.isoformat()
-    stats: Dict[str, Dict[str, Any]] = {
-        "main": _empty_strategy_entry(),
-        "follow_copy": _empty_strategy_entry(),
-        "yes_top": _empty_strategy_entry(),
-        "hard_bound_no": _empty_strategy_entry(),
-        "adj_pair": _empty_strategy_entry(),
-        "mirror_follow": _empty_strategy_entry(),
-    }
+    stats: Dict[str, Dict[str, Any]] = strategy_stats_defaults()
     auto_orders = query_auto_orders(conn)
     for order in auto_orders.values():
         action = _row_text(order, "action").strip().lower()
@@ -14144,9 +14436,10 @@ def _latest_auto_trade_jobs_snapshot(run_date: str = "") -> Dict[str, Any]:
 def _auto_trade_cleanup_stale_runs(now_dt: Optional[datetime] = None) -> Dict[str, Any]:
     now_dt = now_dt or datetime.now().astimezone()
     now_str = now_text()
+    now_iso = utc_now_iso()
     stuck_sec = max(60, int(os.environ.get("PM_AUTO_TRADE_RUN_STUCK_SEC", "600") or 600))
     stuck_progress_sec = max(30, int(os.environ.get("PM_AUTO_TRADE_RUN_STUCK_PROGRESS_SEC", "120") or 120))
-    cleaned = {"state_reset": False, "db_rows": 0}
+    cleaned = {"state_reset": False, "db_rows": 0, "stuck_jobs": 0}
     run_id = None
     with AUTO_TRADE_RUN_LOCK:
         state = dict(AUTO_TRADE_RUN_STATE)
@@ -14191,16 +14484,108 @@ def _auto_trade_cleanup_stale_runs(now_dt: Optional[datetime] = None) -> Dict[st
                 cur = conn.cursor()
                 cur.execute(
                     "UPDATE auto_trade_runs SET ended_at=?, ok=0, error=? WHERE id=?",
-                    (now_str, AUTO_TRADE_RUN_STATE.get("error") or "stuck_timeout", int(run_id)),
+                    (now_iso, AUTO_TRADE_RUN_STATE.get("error") or "stuck_timeout", int(run_id)),
                 )
                 conn.commit()
         except Exception:
             pass
     if DB_PATH.exists():
         try:
-            cutoff = (datetime.now() - timedelta(seconds=stuck_sec)).strftime("%Y-%m-%d %H:%M:%S")
+            cutoff = (datetime.now(timezone.utc) - timedelta(seconds=stuck_sec)).isoformat(timespec="seconds")
             with open_db(timeout_sec=0.2, busy_timeout_ms=200) as conn:
                 cur = conn.cursor()
+                cur.execute(
+                    """
+                    UPDATE auto_trade_runs
+                    SET
+                      ended_at = COALESCE(
+                        (
+                          SELECT MAX(COALESCE(j.ended_at, j.updated_at, j.started_at, j.created_at))
+                          FROM auto_trade_jobs j
+                          WHERE (
+                            j.run_id = auto_trade_runs.id
+                            OR (
+                              j.run_id IS NULL
+                              AND j.run_date = auto_trade_runs.run_date
+                              AND auto_trade_runs.started_at != ''
+                              AND j.created_at >= auto_trade_runs.started_at
+                            )
+                          )
+                        ),
+                        ?
+                      ),
+                      ok = CASE
+                        WHEN EXISTS (
+                          SELECT 1
+                          FROM auto_trade_jobs j
+                          WHERE (
+                            j.run_id = auto_trade_runs.id
+                            OR (
+                              j.run_id IS NULL
+                              AND j.run_date = auto_trade_runs.run_date
+                              AND auto_trade_runs.started_at != ''
+                              AND j.created_at >= auto_trade_runs.started_at
+                            )
+                          )
+                            AND lower(COALESCE(j.state, '')) = 'stuck'
+                        ) THEN 0
+                        WHEN ok IS NULL THEN 1
+                        ELSE ok
+                      END,
+                      error = CASE
+                        WHEN EXISTS (
+                          SELECT 1
+                          FROM auto_trade_jobs j
+                          WHERE (
+                            j.run_id = auto_trade_runs.id
+                            OR (
+                              j.run_id IS NULL
+                              AND j.run_date = auto_trade_runs.run_date
+                              AND auto_trade_runs.started_at != ''
+                              AND j.created_at >= auto_trade_runs.started_at
+                            )
+                          )
+                            AND lower(COALESCE(j.state, '')) = 'stuck'
+                        ) THEN CASE
+                          WHEN TRIM(COALESCE(error, '')) != '' THEN error
+                          ELSE 'worker_stuck'
+                        END
+                        ELSE error
+                      END
+                    WHERE (ended_at IS NULL OR ended_at = '')
+                      AND started_at != ''
+                      AND started_at <= ?
+                      AND EXISTS (
+                        SELECT 1
+                        FROM auto_trade_jobs j
+                        WHERE (
+                          j.run_id = auto_trade_runs.id
+                          OR (
+                            j.run_id IS NULL
+                            AND j.run_date = auto_trade_runs.run_date
+                            AND auto_trade_runs.started_at != ''
+                            AND j.created_at >= auto_trade_runs.started_at
+                          )
+                        )
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM auto_trade_jobs j
+                        WHERE (
+                          j.run_id = auto_trade_runs.id
+                          OR (
+                            j.run_id IS NULL
+                            AND j.run_date = auto_trade_runs.run_date
+                            AND auto_trade_runs.started_at != ''
+                            AND j.created_at >= auto_trade_runs.started_at
+                          )
+                        )
+                          AND lower(COALESCE(j.state, '')) IN ('queued', 'running', 'retrying')
+                      )
+                    """,
+                    (now_iso, cutoff),
+                )
+                recovered_rows = int(cur.rowcount or 0)
                 cur.execute(
                     """
                     UPDATE auto_trade_runs
@@ -14208,11 +14593,65 @@ def _auto_trade_cleanup_stale_runs(now_dt: Optional[datetime] = None) -> Dict[st
                     WHERE (ended_at IS NULL OR ended_at = '')
                       AND started_at != ''
                       AND started_at <= ?
+                      AND (
+                        NOT EXISTS (
+                          SELECT 1
+                          FROM auto_trade_jobs j
+                          WHERE (
+                            j.run_id = auto_trade_runs.id
+                            OR (
+                              j.run_id IS NULL
+                              AND j.run_date = auto_trade_runs.run_date
+                              AND auto_trade_runs.started_at != ''
+                              AND j.created_at >= auto_trade_runs.started_at
+                            )
+                          )
+                        )
+                        OR EXISTS (
+                          SELECT 1
+                          FROM auto_trade_jobs j
+                          WHERE (
+                            j.run_id = auto_trade_runs.id
+                            OR (
+                              j.run_id IS NULL
+                              AND j.run_date = auto_trade_runs.run_date
+                              AND auto_trade_runs.started_at != ''
+                              AND j.created_at >= auto_trade_runs.started_at
+                            )
+                          )
+                            AND lower(COALESCE(j.state, '')) IN ('queued', 'running', 'retrying')
+                        )
+                      )
                     """,
-                    (now_str, f"stale_timeout age>={int(stuck_sec)}s", cutoff),
+                    (now_iso, f"stale_timeout age>={int(stuck_sec)}s", cutoff),
+                )
+                stale_rows = int(cur.rowcount or 0)
+                cur.execute(
+                    """
+                    UPDATE auto_trade_jobs
+                    SET state='stuck',
+                        lease_until='',
+                        ended_at=CASE
+                          WHEN COALESCE(ended_at, '') = '' THEN ?
+                          ELSE ended_at
+                        END,
+                        last_error=CASE
+                          WHEN TRIM(COALESCE(last_error, '')) = '' THEN 'worker_stuck_timeout'
+                          ELSE last_error
+                        END,
+                        updated_at=?
+                    WHERE lower(COALESCE(state, '')) IN ('queued', 'running', 'retrying')
+                      AND (
+                        (COALESCE(lease_until, '') <> '' AND lease_until <= ?)
+                        OR (COALESCE(started_at, '') <> '' AND started_at <= ?)
+                        OR (COALESCE(updated_at, '') <> '' AND updated_at <= ?)
+                      )
+                    """,
+                    (now_iso, now_iso, now_iso, cutoff, cutoff),
                 )
                 conn.commit()
-                cleaned["db_rows"] = int(cur.rowcount or 0)
+                cleaned["db_rows"] = recovered_rows + stale_rows
+                cleaned["stuck_jobs"] = int(cur.rowcount or 0)
         except Exception:
             pass
     return cleaned
@@ -16063,12 +16502,18 @@ def run_auto_trade_for_date(
             follow_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED", False)
             hard_bound_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_ENABLED", False)
             adj_pair_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_ADJ_PAIR_ENABLED", False)
+            lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
             yes_top_ok = (
                 yes_top_enabled
                 and isinstance(cand_yes_top, dict)
                 and bool(cand_yes_top.get("entry_ok"))
             )
-            runtime_strategy_enabled = follow_enabled or hard_bound_enabled or adj_pair_enabled
+            runtime_strategy_enabled = (
+                lcb_global_enabled
+                or follow_enabled
+                or hard_bound_enabled
+                or adj_pair_enabled
+            )
             event_entry_ok = yes_top_ok if yes_top_only else (main_ok or yes_top_ok or runtime_strategy_enabled)
             if not event_entry_ok:
                 skipped += 1
@@ -17247,6 +17692,8 @@ def _decorate_entry_execution(
                 strategy_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_ENABLED", False)
             elif strategy == "adj_pair":
                 strategy_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_ADJ_PAIR_ENABLED", False)
+            elif strategy == "lcb_global":
+                strategy_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
             if strategy and strategy != "main" and not strategy_enabled:
                 hint = (
                     f"决策未生成：{strategy} 候选仅用于追踪展示"
@@ -17412,6 +17859,88 @@ def _decorate_entry_execution(
     )
 
 
+def _filter_decision_rows_latest_run(
+    rows: List[sqlite3.Row],
+    run_date_key: str,
+    last_run_row: Optional[Dict[str, Any]],
+) -> List[sqlite3.Row]:
+    if not rows or not run_date_key:
+        return rows
+    run_id = 0
+    run_started = ""
+    run_ended = ""
+    if isinstance(last_run_row, dict) and str(last_run_row.get("run_date") or "").strip() == run_date_key:
+        try:
+            run_id = int(last_run_row.get("id") or 0)
+        except Exception:
+            run_id = 0
+        run_started = str(last_run_row.get("started_at") or "").strip()
+        run_ended = str(last_run_row.get("ended_at") or "").strip()
+    if run_id <= 0 and not run_started:
+        return rows
+
+    by_run_id: List[sqlite3.Row] = []
+    if run_id > 0:
+        for row in rows:
+            try:
+                row_run_id = int(row["run_id"] or 0)
+            except Exception:
+                row_run_id = 0
+            if row_run_id == run_id:
+                by_run_id.append(row)
+    if by_run_id:
+        return by_run_id
+
+    if not run_started:
+        return []
+    by_time_window: List[sqlite3.Row] = []
+    for row in rows:
+        created_at = str(row["created_at"] or "").strip()
+        if not created_at:
+            continue
+        if created_at < run_started:
+            continue
+        if run_ended and created_at > run_ended:
+            continue
+        by_time_window.append(row)
+    if by_time_window:
+        # Keep newest-window rows first, then backfill missing candidate keys from
+        # the broader run_date scope. This avoids null gate metrics on in-position
+        # events when the current inflight run hasn't revisited that key yet.
+        merged_rows: List[sqlite3.Row] = list(by_time_window)
+        seen_keys: Set[Tuple[str, str, str, str, str]] = set()
+
+        def _row_key(raw_row: sqlite3.Row) -> Tuple[str, str, str, str, str]:
+            try:
+                return (
+                    str(raw_row["slug"] or ""),
+                    str(raw_row["event_date"] or ""),
+                    str(raw_row["outcome"] or ""),
+                    str(raw_row["side"] or ""),
+                    str(raw_row["action"] or ""),
+                )
+            except Exception:
+                return ("", "", "", "", "")
+
+        for row in by_time_window:
+            key = _row_key(row)
+            if key[0] and key[1] and key[2]:
+                seen_keys.add(key)
+        for row in rows:
+            key = _row_key(row)
+            if not (key[0] and key[1] and key[2]):
+                continue
+            if key in seen_keys:
+                continue
+            merged_rows.append(row)
+            seen_keys.add(key)
+        return merged_rows
+    # When the latest run is inflight but hasn't written decisions yet, keep
+    # the run_date scope fallback so trace cards (especially live positions)
+    # still have the latest available gate metrics instead of all-null values.
+    return rows
+
+
 def auto_trade_digest(run_date: str, limit: int = 10) -> Dict[str, Any]:
     limit = max(1, min(int(limit or 10), 50))
     run_date_key = _normalize_date_key(run_date)
@@ -17446,11 +17975,23 @@ def auto_trade_digest(run_date: str, limit: int = 10) -> Dict[str, Any]:
                 """
                 SELECT id, run_date, started_at, ended_at, ok, error, processed, skipped
                 FROM auto_trade_runs
+                WHERE run_date = ?
                 ORDER BY started_at DESC, id DESC
                 LIMIT 1
-                """
+                """,
+                (run_date_key,),
                 )
                 r = cur.fetchone()
+                if not r:
+                    cur.execute(
+                    """
+                    SELECT id, run_date, started_at, ended_at, ok, error, processed, skipped
+                    FROM auto_trade_runs
+                    ORDER BY started_at DESC, id DESC
+                    LIMIT 1
+                    """
+                    )
+                    r = cur.fetchone()
                 if r:
                     last_run_row = {
                         "id": int(r["id"] or 0),
@@ -17496,6 +18037,11 @@ def auto_trade_digest(run_date: str, limit: int = 10) -> Dict[str, Any]:
                 auto_decisions_rows = cur.fetchall()
             except sqlite3.OperationalError:
                 auto_decisions_rows = []
+            auto_decisions_rows = _filter_decision_rows_latest_run(
+                auto_decisions_rows,
+                run_date_key,
+                last_run_row,
+            )
     except Exception as exc:
         return {"ok": False, "error": "db_unavailable", "detail": str(exc)}
     # "Currently running" must follow the in-memory state (the worker thread lives in-process).
@@ -18004,12 +18550,66 @@ def _trace_source_signature(
     except sqlite3.Error:
         pass
     try:
+        latest_run_id = 0
         cur.execute(
-            "SELECT MAX(created_at) AS ts FROM auto_trade_decisions WHERE run_date = ?",
+            """
+            SELECT id
+            FROM auto_trade_runs
+            WHERE run_date = ?
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """,
+            (run_date_key,),
+        )
+        run_row = cur.fetchone()
+        if run_row:
+            try:
+                latest_run_id = int(run_row["id"] or 0)
+            except Exception:
+                latest_run_id = 0
+        decision_ts = ""
+        if latest_run_id > 0:
+            cur.execute(
+                "SELECT MAX(created_at) AS ts FROM auto_trade_decisions WHERE run_id = ? AND action = 'entry'",
+                (latest_run_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                decision_ts = str(row["ts"] or "").strip()
+        if not decision_ts and latest_run_id <= 0:
+            cur.execute(
+                "SELECT MAX(created_at) AS ts FROM auto_trade_decisions WHERE run_date = ? AND action = 'entry'",
+                (run_date_key,),
+            )
+            row = cur.fetchone()
+            decision_ts = str(row["ts"] or "").strip() if row else ""
+        sig["decisions_at"] = decision_ts
+    except sqlite3.Error:
+        pass
+    try:
+        cur.execute(
+            """
+            SELECT MAX(COALESCE(ended_at, started_at, created_at)) AS ts
+            FROM auto_trade_runs
+            WHERE run_date = ?
+            """,
             (run_date_key,),
         )
         row = cur.fetchone()
-        sig["decisions_at"] = str(row["ts"] or "") if row else ""
+        sig["runs_at"] = str(row["ts"] or "") if row else ""
+    except sqlite3.Error:
+        pass
+    try:
+        cur.execute(
+            """
+            SELECT MAX(updated_at) AS ts
+            FROM auto_trade_jobs
+            WHERE run_date = ?
+            """,
+            (run_date_key,),
+        )
+        row = cur.fetchone()
+        sig["jobs_at"] = str(row["ts"] or "") if row else ""
     except sqlite3.Error:
         pass
     try:
@@ -18403,20 +19003,33 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 return float(fallback)
             return float(val)
 
+        lcb_global_enabled = _cfg_flag("lcb_global_enabled", _env_bool("PM_LCB_GLOBAL_ENABLED", True))
+        lcb_global_edge_lcb_min = min(0.10, max(-0.05, _cfg_float("lcb_global_edge_lcb_min", 0.0)))
+        lcb_global_max_spread = max(0.0, _cfg_float("lcb_global_max_spread", 0.08))
         entry_only_realizable = _cfg_flag("entry_only_realizable", False)
         entry_edge_realizable_min = _cfg_float("entry_edge_realizable_min", 0.0)
         entry_realizable_floor = max(0.0, float(entry_edge_realizable_min))
-        display_realizable_floor = max(entry_realizable_floor, 0.05)
+        if lcb_global_enabled:
+            display_realizable_floor = float(lcb_global_edge_lcb_min)
+        else:
+            display_realizable_floor = max(entry_realizable_floor, 0.05)
         exit_edge_headroom_min = _cfg_float("exit_edge_headroom_min", 0.02)
 
         def _market_sanity_reason(
             ask_val: Optional[float],
             spread_val: Optional[float],
+            bid_val: Optional[float] = None,
         ) -> List[str]:
             reasons: List[str] = []
             if ask_val is None or not math.isfinite(ask_val):
                 reasons.append("盘口ask缺失")
             else:
+                if (
+                    ask_val <= float(AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX) + TIME_EDGE_Q_EPS
+                    and (bid_val is None or not math.isfinite(bid_val))
+                ):
+                    reasons.append("单边薄簿/不可交易")
+                    return reasons
                 if ask_val < 0.02 - TIME_EDGE_Q_EPS:
                     reasons.append("盘口ask异常(<0.02)")
                 elif ask_val > 0.99 + TIME_EDGE_Q_EPS:
@@ -18431,8 +19044,9 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             edge_val: Optional[float],
             ask_val: Optional[float],
             spread_val: Optional[float],
+            bid_val: Optional[float] = None,
         ) -> List[str]:
-            market_reasons = _market_sanity_reason(ask_val, spread_val)
+            market_reasons = _market_sanity_reason(ask_val, spread_val, bid_val)
             if market_reasons:
                 return market_reasons
             if edge_val is None or not math.isfinite(edge_val):
@@ -18445,8 +19059,9 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             edge_val: Optional[float],
             ask_val: Optional[float],
             spread_val: Optional[float],
+            bid_val: Optional[float] = None,
         ) -> bool:
-            if _market_sanity_reason(ask_val, spread_val):
+            if _market_sanity_reason(ask_val, spread_val, bid_val):
                 return False
             if edge_val is None or not math.isfinite(edge_val):
                 return False
@@ -18459,16 +19074,19 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         adj_pair_enabled = _cfg_flag("entry_adj_pair_enabled", False)
         mirror_follow_enabled = _cfg_flag("mirror_follow_enabled", False)
         trace_enabled_strategies: List[str] = []
-        if main_enabled:
-            trace_enabled_strategies.append("main")
-        if yes_top_enabled:
-            trace_enabled_strategies.append("yes_top")
-        if follow_enabled:
-            trace_enabled_strategies.append("follow_copy")
-        if hard_bound_enabled:
-            trace_enabled_strategies.append("hard_bound_no")
-        if adj_pair_enabled:
-            trace_enabled_strategies.append("adj_pair")
+        if lcb_global_enabled:
+            trace_enabled_strategies.append("lcb_global")
+        else:
+            if main_enabled:
+                trace_enabled_strategies.append("main")
+            if yes_top_enabled:
+                trace_enabled_strategies.append("yes_top")
+            if follow_enabled:
+                trace_enabled_strategies.append("follow_copy")
+            if hard_bound_enabled:
+                trace_enabled_strategies.append("hard_bound_no")
+            if adj_pair_enabled:
+                trace_enabled_strategies.append("adj_pair")
         if mirror_follow_enabled:
             trace_enabled_strategies.append("mirror_follow")
 
@@ -18659,11 +19277,23 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                         """
                         SELECT id, run_date, started_at, ended_at, ok, error, processed, skipped
                         FROM auto_trade_runs
+                        WHERE run_date = ?
                         ORDER BY started_at DESC, id DESC
                         LIMIT 1
-                        """
+                        """,
+                        (run_date_key,),
                     )
                     r = cur.fetchone()
+                    if not r:
+                        cur.execute(
+                            """
+                            SELECT id, run_date, started_at, ended_at, ok, error, processed, skipped
+                            FROM auto_trade_runs
+                            ORDER BY started_at DESC, id DESC
+                            LIMIT 1
+                            """
+                        )
+                        r = cur.fetchone()
                     if r:
                         last_run_row = {
                             "id": int(r["id"] or 0),
@@ -18706,6 +19336,11 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     auto_decisions_rows = cur.fetchall()
                 except sqlite3.OperationalError:
                     auto_decisions_rows = []
+                auto_decisions_rows = _filter_decision_rows_latest_run(
+                    auto_decisions_rows,
+                    run_date_key,
+                    last_run_row,
+                )
                 for row in auto_orders_rows:
                     try:
                         slug_key = str(row["slug"] or "").strip()
@@ -18869,6 +19504,51 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                         row_payload=row_payload,
                         redeemable=False,
                     )
+
+        if live_positions_by_key:
+            existing_decision_keys: Set[Tuple[str, str, str, str]] = set()
+            for row in auto_decisions_rows:
+                try:
+                    key = (
+                        str(row["slug"] or "").strip(),
+                        str(row["event_date"] or "").strip(),
+                        str(row["outcome"] or "").strip(),
+                        str(row["side"] or "").strip().upper(),
+                    )
+                except Exception:
+                    continue
+                if key[0] and key[1] and key[2] and key[3] in {"YES", "NO"}:
+                    existing_decision_keys.add(key)
+            missing_live_keys = [
+                key
+                for key in live_positions_by_key.keys()
+                if key not in existing_decision_keys
+            ]
+            if missing_live_keys:
+                try:
+                    with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn_dec:
+                        cur_dec = conn_dec.cursor()
+                        for slug_key, event_date_key, outcome_key, side_key in missing_live_keys:
+                            cur_dec.execute(
+                                """
+                                SELECT run_id, run_date, slug, event_date, title, outcome, side, action,
+                                       decided_state, will_order, reason_codes_json, reasons_json, details_json, created_at
+                                FROM auto_trade_decisions
+                                WHERE action='entry'
+                                  AND slug=?
+                                  AND event_date=?
+                                  AND outcome=?
+                                  AND side=?
+                                ORDER BY created_at DESC, id DESC
+                                LIMIT 1
+                                """,
+                                (slug_key, event_date_key, outcome_key, side_key),
+                            )
+                            row = cur_dec.fetchone()
+                            if row is not None:
+                                auto_decisions_rows.append(row)
+                except Exception:
+                    pass
 
         entry_orders_by_key: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
         entry_orders_by_key_strategy: Dict[Tuple[str, str, str, str, str], Dict[str, Any]] = {}
@@ -19289,6 +19969,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "exec_fee_bps": cand.get("exec_fee_bps"),
                 "exec_fee_cost": cand.get("exec_fee_cost"),
                 "ask": cand.get("ask"),
+                "bid": cand.get("bid"),
                 "spread": cand.get("spread"),
                 "q_min_bound": cand.get("q_min_bound"),
                 "trade_info": cand.get("trade_info") if isinstance(cand.get("trade_info"), dict) else None,
@@ -19329,8 +20010,16 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 return None
             edge_val = to_float(cand_dict.get("edge_realizable"))
             ask_val = to_float(cand_dict.get("ask"))
+            bid_val = to_float(cand_dict.get("bid"))
             spread_val = to_float(cand_dict.get("spread"))
-            reasons = _realizable_reason(edge_val, ask_val, spread_val)
+            reasons_raw = (
+                cand_dict.get("entry_reasons")
+                if isinstance(cand_dict.get("entry_reasons"), list)
+                else []
+            )
+            reasons = [str(x or "").strip() for x in reasons_raw if str(x or "").strip()]
+            if not reasons:
+                reasons = _realizable_reason(edge_val, ask_val, spread_val, bid_val)
             entry = {
                 "slug": str(fact.get("slug") or ""),
                 "event_date": str(fact.get("event_date") or ""),
@@ -19372,6 +20061,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "exec_fee_bps": cand_dict.get("exec_fee_bps"),
                 "exec_fee_cost": cand_dict.get("exec_fee_cost"),
                 "ask": cand_dict.get("ask"),
+                "bid": cand_dict.get("bid"),
                 "spread": cand_dict.get("spread"),
                 "q_min_bound": cand_dict.get("q_min_bound"),
                 "trade_info": cand_dict.get("trade_info") if isinstance(cand_dict.get("trade_info"), dict) else None,
@@ -19620,9 +20310,34 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         for key_strategy, decision in decisions_by_key_strategy.items():
             slug, event_date, outcome, side, strategy = key_strategy
             strategy = str(strategy or "").strip().lower()
-            if strategy not in {"follow_copy", "hard_bound_no", "adj_pair", "mirror_follow"}:
+            if strategy in {"", "exit"}:
                 continue
-            entry_key = (slug, event_date, outcome, side, strategy)
+            if lcb_global_enabled:
+                allowed_strategies = {
+                    "lcb_global",
+                    "main",
+                    "yes_top",
+                    "follow_copy",
+                    "hard_bound_no",
+                    "adj_pair",
+                    "mirror_follow",
+                }
+            else:
+                allowed_strategies = {
+                    "main",
+                    "yes_top",
+                    "follow_copy",
+                    "hard_bound_no",
+                    "adj_pair",
+                    "mirror_follow",
+                }
+            if strategy not in allowed_strategies:
+                continue
+            strategy_view = _normalize_strategy_key(
+                strategy,
+                fallback="lcb_global" if lcb_global_enabled else "main",
+            )
+            entry_key = (slug, event_date, outcome, side, strategy_view)
             if entry_key in item_keys:
                 continue
             event_ctx = event_fact_ctx.get((slug, event_date))
@@ -19653,7 +20368,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             details = decision.get("details") if isinstance(decision.get("details"), dict) else {}
             cand["side"] = side
             cand["outcome"] = outcome
-            cand["strategy"] = strategy
+            cand["strategy"] = strategy_view
             ask_val = _coalesce_metric(details.get("ask"), cand.get("ask"))
             if ask_val is not None:
                 cand["ask"] = ask_val
@@ -19681,7 +20396,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "title": str(fact.get("title") or decision.get("title") or ""),
                 "event_url": str(fact.get("event_url") or ""),
                 "run_date": str(fact.get("run_date") or run_date_key or ""),
-                "strategy": strategy,
+                "strategy": strategy_view,
                 "side": side,
                 "outcome": outcome,
                 "entry_ok": True,
@@ -19730,25 +20445,29 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             if _realizable_ok(edge_val, ask_val, spread_val):
                 items.append(entry)
                 item_keys.add(entry_key)
-                if strategy == "hard_bound_no":
+                if strategy_view == "hard_bound_no":
                     entry_ok_hard_bound_count += 1
-                elif strategy == "adj_pair":
+                elif strategy_view == "adj_pair":
                     entry_ok_adj_pair_count += 1
-                elif strategy == "mirror_follow":
+                elif strategy_view == "mirror_follow":
                     entry_ok_mirror_follow_count += 1
-                elif strategy == "follow_copy":
+                elif strategy_view == "follow_copy":
                     entry_ok_follow_count += 1
+                else:
+                    entry_ok_main_count += 1
             else:
-                not_ok = _make_not_ok_entry(fact, entry, strategy)
+                not_ok = _make_not_ok_entry(fact, entry, strategy_view)
                 if _push_not_ok(not_ok):
-                    if strategy == "hard_bound_no":
+                    if strategy_view == "hard_bound_no":
                         not_ok_hard_bound_count += 1
-                    elif strategy == "adj_pair":
+                    elif strategy_view == "adj_pair":
                         not_ok_adj_pair_count += 1
-                    elif strategy == "mirror_follow":
+                    elif strategy_view == "mirror_follow":
                         not_ok_mirror_follow_count += 1
-                    elif strategy == "follow_copy":
+                    elif strategy_view == "follow_copy":
                         not_ok_follow_count += 1
+                    else:
+                        not_ok_main_count += 1
 
             will_order = int(decision.get("will_order") or 0)
             dec_state = str(decision.get("decided_state") or "").strip()
@@ -19785,19 +20504,22 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     "exec_fee_bps": exec_fee_bps_val,
                     "exec_fee_cost": exec_fee_cost_val,
                     "ask": ask_val,
+                    "spread": spread_val,
                     "q_min_bound": q_entry_val,
                     "trade_info": cand.get("trade_info") if isinstance(cand.get("trade_info"), dict) else None,
                 }
-                not_ok = _make_not_ok_entry(fact, cand_block, strategy)
+                not_ok = _make_not_ok_entry(fact, cand_block, strategy_view)
                 if _push_not_ok(not_ok):
-                    if strategy == "hard_bound_no":
+                    if strategy_view == "hard_bound_no":
                         not_ok_hard_bound_count += 1
-                    elif strategy == "adj_pair":
+                    elif strategy_view == "adj_pair":
                         not_ok_adj_pair_count += 1
-                    elif strategy == "mirror_follow":
+                    elif strategy_view == "mirror_follow":
                         not_ok_mirror_follow_count += 1
-                    elif strategy == "follow_copy":
+                    elif strategy_view == "follow_copy":
                         not_ok_follow_count += 1
+                    else:
+                        not_ok_main_count += 1
 
         def _rank(e: Dict[str, Any]) -> Tuple[int, float, float]:
             trade_info = e.get("trade_info") if isinstance(e.get("trade_info"), dict) else {}
@@ -19999,6 +20721,8 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 return "market_ask_missing"
             if text.startswith("盘口spread缺失"):
                 return "market_spread_missing"
+            if text.startswith("单边薄簿/不可交易"):
+                return "market_one_sided_thin_book"
             if text.startswith("盘口ask异常(<0.02)"):
                 return "market_ask_too_low"
             if text.startswith("盘口ask异常(>0.99)"):
@@ -20021,11 +20745,18 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             reason_text = ""
             if isinstance(decision, dict):
                 reason_codes = decision.get("reason_codes") if isinstance(decision.get("reason_codes"), list) else []
+                first_code = ""
                 for raw_code in reason_codes:
                     code_text = str(raw_code or "").strip()
                     if code_text:
+                        if not first_code:
+                            first_code = code_text
+                        if is_non_stat_blocker_code(code_text):
+                            continue
                         reason_code = code_text
                         break
+                if not reason_code and first_code:
+                    reason_code = first_code
                 reason_text = str(
                     decision.get("reason_text")
                     or decision.get("reason_detail")
@@ -20044,12 +20775,15 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
 
         def _build_entry_blocker_table(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             groups: Dict[str, Dict[str, Any]] = {}
-            total = len(entries)
+            total = 0
             for entry in entries:
                 if not isinstance(entry, dict):
                     continue
                 reason_code, reason_text = _entry_blocker_reason(entry)
                 code_key = str(reason_code or "unknown_blocker").strip() or "unknown_blocker"
+                if is_non_stat_blocker_code(code_key):
+                    continue
+                total += 1
                 payload = groups.get(code_key)
                 if payload is None:
                     payload = {
@@ -20358,6 +21092,43 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         for entry in not_ok_items:
             _hydrate_entry_from_decision(entry)
 
+        def _normalize_trace_strategy(raw_value: Any) -> str:
+            strategy_raw = str(raw_value or "").strip().lower()
+            if strategy_raw == "live_position":
+                return "live_position"
+            fallback = "lcb_global" if lcb_global_enabled else "main"
+            return _normalize_strategy_key(strategy_raw, fallback=fallback)
+
+        def _normalize_trace_entries(entries: List[Dict[str, Any]]) -> None:
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                strategy_norm = _normalize_trace_strategy(entry.get("strategy"))
+                entry["strategy"] = strategy_norm
+                decision = entry.get("entry_decision") if isinstance(entry.get("entry_decision"), dict) else None
+                if isinstance(decision, dict):
+                    detail_text = str(decision.get("reason_detail") or "").strip()
+                    if detail_text:
+                        detail_text = re.sub(r"strategy=[a-z0-9_]+", f"strategy={strategy_norm}", detail_text)
+                        decision["reason_detail"] = detail_text
+                entry_order = entry.get("entry_order") if isinstance(entry.get("entry_order"), dict) else None
+                if isinstance(entry_order, dict):
+                    order_strategy = str(entry_order.get("strategy") or "").strip()
+                    if order_strategy and strategy_norm != "live_position":
+                        entry_order["strategy"] = strategy_norm
+                group_vals = entry.get("strategy_group")
+                if not isinstance(group_vals, list):
+                    continue
+                normalized_group: List[str] = []
+                for raw in group_vals:
+                    key = _normalize_trace_strategy(raw)
+                    if key and key not in normalized_group:
+                        normalized_group.append(key)
+                entry["strategy_group"] = normalized_group
+
+        _normalize_trace_entries(items)
+        _normalize_trace_entries(not_ok_items)
+
         neg_hidden_items = sum(1 for e in items if _entry_should_hide_negative(e))
         neg_hidden_not_ok = sum(1 for e in not_ok_items if _entry_should_hide_negative(e))
         if neg_hidden_items:
@@ -20388,9 +21159,101 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 continue
             hidden_incomplete_not_ok_items += 1
         not_ok_items = filtered_not_ok_items
-        not_ok_items.sort(key=_rank, reverse=True)
 
-        items.sort(key=_rank, reverse=True)
+        def _is_entry_blocker_item(entry: Dict[str, Any]) -> bool:
+            if not isinstance(entry, dict):
+                return False
+            # "入场未达标" should only include candidates for NEW entry.
+            # If this key is already in live positions (positions-truth or local fallback),
+            # it belongs to in-position exit management and must not appear here.
+            if _entry_has_live_position(entry):
+                return False
+            trade_info = entry.get("trade_info") if isinstance(entry.get("trade_info"), dict) else {}
+            pos_val = to_float(trade_info.get("position_size"))
+            if pos_val is not None and math.isfinite(pos_val) and pos_val > TIME_EDGE_Q_EPS:
+                return False
+            state_text = str(trade_info.get("state") or "").strip().lower()
+            if state_text in {"entry", "redeemable"}:
+                return False
+            reasons = entry.get("entry_reasons") if isinstance(entry.get("entry_reasons"), list) else []
+            reason_text = " ".join(str(x or "").strip() for x in reasons if str(x or "").strip()).lower()
+            if "已在入场态" in reason_text or "already_in_entry" in reason_text:
+                return False
+            return True
+
+        def _is_new_open_candidate(entry: Dict[str, Any]) -> bool:
+            if not isinstance(entry, dict):
+                return False
+            if not bool(entry.get("entry_ok")):
+                return False
+            if _entry_has_live_position(entry):
+                return False
+            event_live_count = to_float(entry.get("event_live_position_count"))
+            if event_live_count is not None and math.isfinite(event_live_count) and event_live_count > 0:
+                return False
+            decision = entry.get("entry_decision") if isinstance(entry.get("entry_decision"), dict) else None
+            if isinstance(decision, dict):
+                reason_codes = decision.get("reason_codes") if isinstance(decision.get("reason_codes"), list) else []
+                normalized_codes = {
+                    str(code or "").strip().lower()
+                    for code in reason_codes
+                    if str(code or "").strip()
+                }
+                if "already_in_entry" in normalized_codes:
+                    return False
+                reason_text = str(
+                    decision.get("reason_text")
+                    or decision.get("reason_detail")
+                    or ""
+                ).strip()
+                if "已在入场态" in reason_text:
+                    return False
+            return True
+
+        non_stat_not_ok_items = 0
+        filtered_not_ok_for_stats: List[Dict[str, Any]] = []
+        for entry in not_ok_items:
+            if not _is_entry_blocker_item(entry):
+                continue
+            reason_code, _reason_text = _entry_blocker_reason(entry)
+            if is_non_stat_blocker_code(reason_code):
+                non_stat_not_ok_items += 1
+                continue
+            filtered_not_ok_for_stats.append(entry)
+        not_ok_items = filtered_not_ok_for_stats
+        def _rank_with_key(e: Dict[str, Any]) -> Tuple[int, float, float, float, str, str, str, str, str]:
+            base = _rank(e)
+            return (
+                int(base[0]),
+                float(base[1]),
+                float(base[2]),
+                float(base[3]),
+                str(e.get("slug") or ""),
+                str(e.get("event_date") or ""),
+                str(e.get("outcome") or ""),
+                str(e.get("side") or "").upper(),
+                str(e.get("strategy") or ""),
+            )
+
+        not_ok_items.sort(key=_rank_with_key, reverse=True)
+
+        items.sort(key=_rank_with_key, reverse=True)
+
+        # Recompute reason aggregates after all hide/filter steps so UI counters match the visible list.
+        not_ok_reason_counts = {}
+        for it in not_ok_items:
+            rs = it.get("entry_reasons") if isinstance(it.get("entry_reasons"), list) else []
+            if not rs:
+                continue
+            key = str(rs[0] or "").strip()
+            if not key:
+                continue
+            not_ok_reason_counts[key] = int(not_ok_reason_counts.get(key) or 0) + 1
+        not_ok_reason_top = [
+            {"reason": k, "count": v}
+            for k, v in sorted(not_ok_reason_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))[:12]
+        ]
+        entry_blocker_table = _build_entry_blocker_table(not_ok_items)
 
         def _live_event_rank(entry: Dict[str, Any]) -> Tuple[float, str, str]:
             updated_text = str(entry.get("updated_at") or "").strip()
@@ -20404,6 +21267,719 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
 
         live_position_events.sort(key=_live_event_rank, reverse=True)
         live_redeemable_events.sort(key=_live_event_rank, reverse=True)
+
+        shadow_band_enabled = str(
+            os.environ.get("PM_LCB_BAND_V1_SHADOW_ENABLED", "1") or "1"
+        ).strip().lower() not in {"", "0", "false", "off", "no"}
+        shadow_band_width_min = _ssot_env_int("PM_LCB_BAND_V1_WIDTH_MIN", 1)
+        shadow_band_width_max = _ssot_env_int("PM_LCB_BAND_V1_WIDTH_MAX", 2)
+        shadow_band_leg_lcb_min = _ssot_env_float("PM_LCB_BAND_V1_LEG_LCB_MIN", 0.003)
+        shadow_band_combo_lcb_min = _ssot_env_float("PM_LCB_BAND_V1_COMBO_LCB_MIN", 0.008)
+        shadow_band_tail_no_q_min = _ssot_env_float("PM_LCB_BAND_V1_TAIL_NO_Q_MIN", 0.75)
+        shadow_band_tail_no_weight = _ssot_env_float("PM_LCB_BAND_V1_TAIL_NO_WEIGHT", 0.60)
+        shadow_band_no_legs_max = _ssot_env_int("PM_LCB_BAND_V1_NO_LEGS_MAX", 2)
+        try:
+            shadow_band_width_min_i = int(shadow_band_width_min or 1)
+        except (TypeError, ValueError):
+            shadow_band_width_min_i = 1
+        try:
+            shadow_band_width_max_i = int(shadow_band_width_max or 2)
+        except (TypeError, ValueError):
+            shadow_band_width_max_i = 2
+        if shadow_band_width_min_i < 1:
+            shadow_band_width_min_i = 1
+        if shadow_band_width_max_i < shadow_band_width_min_i:
+            shadow_band_width_max_i = shadow_band_width_min_i
+        shadow_band_width_max_i = min(shadow_band_width_max_i, 8)
+        try:
+            shadow_band_no_legs_max_i = int(shadow_band_no_legs_max or 2)
+        except (TypeError, ValueError):
+            shadow_band_no_legs_max_i = 2
+        shadow_band_no_legs_max_i = max(0, min(4, shadow_band_no_legs_max_i))
+        if shadow_band_leg_lcb_min is None or not math.isfinite(shadow_band_leg_lcb_min):
+            shadow_band_leg_lcb_min = 0.003
+        if shadow_band_combo_lcb_min is None or not math.isfinite(shadow_band_combo_lcb_min):
+            shadow_band_combo_lcb_min = 0.008
+        if shadow_band_tail_no_q_min is None or not math.isfinite(shadow_band_tail_no_q_min):
+            shadow_band_tail_no_q_min = 0.75
+        shadow_band_tail_no_q_min = min(1.0, max(0.0, float(shadow_band_tail_no_q_min)))
+        if shadow_band_tail_no_weight is None or not math.isfinite(shadow_band_tail_no_weight):
+            shadow_band_tail_no_weight = 0.35
+        shadow_band_tail_no_weight = min(1.0, max(0.0, float(shadow_band_tail_no_weight)))
+
+        def _shadow_outcome_sort_key(label: str) -> Optional[Tuple[float, float]]:
+            label_text = str(label or "").strip()
+            if not label_text:
+                return None
+            parser = scan_parse_outcome_label if callable(scan_parse_outcome_label) else None
+            if parser is not None:
+                try:
+                    spec = parser(label_text)
+                except Exception:
+                    spec = None
+                if spec is not None:
+                    kind = str(getattr(spec, "kind", "") or "").strip().lower()
+                    k_val = to_float(getattr(spec, "k", None))
+                    k2_val = to_float(getattr(spec, "k2", None))
+                    if kind == "range" and k_val is not None and k2_val is not None:
+                        low_v = min(float(k_val), float(k2_val))
+                        high_v = max(float(k_val), float(k2_val))
+                        return (0.5 * (low_v + high_v), high_v - low_v)
+                    if kind == "eq" and k_val is not None:
+                        return (float(k_val), 0.0)
+                    if kind == "le" and k_val is not None:
+                        return (float(k_val) - 999.0, 999.0)
+                    if kind == "ge" and k_val is not None:
+                        return (float(k_val) + 999.0, 999.0)
+            nums = re.findall(r"-?\d+(?:\.\d+)?", label_text)
+            if not nums:
+                return None
+            vals = []
+            for raw in nums:
+                try:
+                    vals.append(float(raw))
+                except (TypeError, ValueError):
+                    continue
+            if not vals:
+                return None
+            if len(vals) >= 2:
+                low_v = min(vals[0], vals[1])
+                high_v = max(vals[0], vals[1])
+                return (0.5 * (low_v + high_v), high_v - low_v)
+            return (float(vals[0]), 0.0)
+
+        def _shadow_leg_lcb(
+            row_ref: Dict[str, Any],
+            side: str,
+        ) -> Optional[float]:
+            side_u = str(side or "").strip().upper()
+            if side_u == "YES":
+                ask_val = to_float(row_ref.get("best_ask"))
+                q_val = _coalesce_metric(row_ref.get("q_entry"), row_ref.get("q_round"))
+                fallback_edge = (
+                    float(q_val) - float(ask_val)
+                    if q_val is not None and ask_val is not None and math.isfinite(ask_val)
+                    else None
+                )
+                return _coalesce_metric(
+                    row_ref.get("edge_tradeability_edge_lcb_yes"),
+                    row_ref.get("edge_tradeability_edge_lcb"),
+                    row_ref.get("edge_realizable_yes"),
+                    row_ref.get("edge_realizable"),
+                    fallback_edge,
+                )
+            ask_no = to_float(row_ref.get("best_ask_no"))
+            q_no = _coalesce_metric(row_ref.get("q_entry_no"))
+            if q_no is None:
+                q_yes = _coalesce_metric(row_ref.get("q_entry"), row_ref.get("q_round"))
+                if q_yes is not None:
+                    q_no = max(0.0, min(1.0, 1.0 - float(q_yes)))
+            fallback_edge_no = (
+                float(q_no) - float(ask_no)
+                if q_no is not None and ask_no is not None and math.isfinite(ask_no)
+                else None
+            )
+            return _coalesce_metric(
+                row_ref.get("edge_tradeability_edge_lcb_no"),
+                row_ref.get("edge_realizable_no"),
+                fallback_edge_no,
+            )
+
+        lcb_event_best: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for entry in items:
+            if not _is_new_open_candidate(entry):
+                continue
+            strategy_key = str(entry.get("strategy") or "").strip().lower()
+            if strategy_key == "mirror_follow":
+                continue
+            slug_key = str(entry.get("slug") or "").strip()
+            event_date_key = date_only(str(entry.get("event_date") or "").strip())
+            if not slug_key or not event_date_key:
+                continue
+            leg_lcb = _coalesce_metric(
+                entry.get("edge_tradeability_edge_lcb"),
+                entry.get("edge_realizable"),
+                entry.get("edge_realizable_v2"),
+            )
+            if leg_lcb is None:
+                continue
+            event_key = (slug_key, event_date_key)
+            prev_payload = lcb_event_best.get(event_key) if isinstance(lcb_event_best.get(event_key), dict) else {}
+            prev_val = _coalesce_metric((prev_payload or {}).get("edge_lcb"))
+            if prev_val is None or float(leg_lcb) > float(prev_val):
+                lcb_event_best[event_key] = {
+                    "edge_lcb": float(leg_lcb),
+                    "ask": _coalesce_metric(entry.get("ask")),
+                    "outcome": str(entry.get("outcome") or ""),
+                    "side": str(entry.get("side") or "").strip().upper(),
+                    "title": str(entry.get("title") or ""),
+                    "event_url": str(entry.get("event_url") or ""),
+                }
+
+        shadow_band_entries: List[Dict[str, Any]] = []
+        shadow_band_blocked = 0
+        shadow_band_events_total = 0
+        if shadow_band_enabled:
+            for (slug_key, event_date_key), ctx_item in event_fact_ctx.items():
+                if not isinstance(ctx_item, dict):
+                    continue
+                fact_obj = ctx_item.get("fact") if isinstance(ctx_item.get("fact"), dict) else {}
+                if not isinstance(fact_obj, dict):
+                    continue
+                if bool(fact_obj.get("market_closed")):
+                    continue
+                row_by_outcome = (
+                    ctx_item.get("row_by_outcome")
+                    if isinstance(ctx_item.get("row_by_outcome"), dict)
+                    else {}
+                )
+                if not row_by_outcome:
+                    continue
+                shadow_band_events_total += 1
+                sortable_rows: List[Dict[str, Any]] = []
+                for outcome_label, row_ref in row_by_outcome.items():
+                    if not isinstance(row_ref, dict):
+                        continue
+                    sort_key = _shadow_outcome_sort_key(str(outcome_label or ""))
+                    if sort_key is None:
+                        continue
+                    ask_yes = to_float(row_ref.get("best_ask"))
+                    spread_yes = to_float(row_ref.get("spread"))
+                    bid_yes = to_float(row_ref.get("best_bid"))
+                    one_sided_yes = bool(
+                        ask_yes is not None
+                        and math.isfinite(ask_yes)
+                        and ask_yes <= float(AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX) + TIME_EDGE_Q_EPS
+                        and (bid_yes is None or not math.isfinite(bid_yes))
+                    )
+                    if (
+                        ask_yes is None
+                        or not math.isfinite(ask_yes)
+                        or ask_yes <= TIME_EDGE_Q_EPS
+                        or spread_yes is None
+                        or not math.isfinite(spread_yes)
+                        or spread_yes < -TIME_EDGE_Q_EPS
+                        or spread_yes > lcb_global_max_spread + TIME_EDGE_Q_EPS
+                        or one_sided_yes
+                    ):
+                        continue
+                    leg_lcb_yes = _shadow_leg_lcb(row_ref, "YES")
+                    if leg_lcb_yes is None or not math.isfinite(leg_lcb_yes):
+                        continue
+                    q_yes = _coalesce_metric(row_ref.get("q_entry"), row_ref.get("q_round"))
+                    sortable_rows.append(
+                        {
+                            "outcome": str(outcome_label or ""),
+                            "sort_key": sort_key,
+                            "row": row_ref,
+                            "yes_lcb": float(leg_lcb_yes),
+                            "q_yes": float(q_yes) if q_yes is not None and math.isfinite(q_yes) else None,
+                        }
+                    )
+                if len(sortable_rows) < shadow_band_width_min_i:
+                    shadow_band_blocked += 1
+                    continue
+                sortable_rows.sort(
+                    key=lambda row: (float((row.get("sort_key") or (0.0, 0.0))[0]), float((row.get("sort_key") or (0.0, 0.0))[1]))
+                )
+                best_window: Optional[Dict[str, Any]] = None
+                max_width = min(shadow_band_width_max_i, len(sortable_rows))
+                for width in range(shadow_band_width_min_i, max_width + 1):
+                    for start in range(0, len(sortable_rows) - width + 1):
+                        window = sortable_rows[start:start + width]
+                        leg_lcbs = [to_float(item.get("yes_lcb")) for item in window]
+                        if not leg_lcbs or any(v is None or not math.isfinite(v) for v in leg_lcbs):
+                            continue
+                        leg_lcbs_f = [float(v) for v in leg_lcbs if v is not None]
+                        if not leg_lcbs_f:
+                            continue
+                        if min(leg_lcbs_f) + TIME_EDGE_Q_EPS < float(shadow_band_leg_lcb_min):
+                            continue
+                        score = float(sum(leg_lcbs_f) / max(1, len(leg_lcbs_f)))
+                        candidate = {
+                            "start": start,
+                            "width": width,
+                            "score": score,
+                            "window": window,
+                        }
+                        if best_window is None:
+                            best_window = candidate
+                            continue
+                        best_score = float(best_window.get("score") or 0.0)
+                        best_width = int(best_window.get("width") or 0)
+                        if score > best_score + TIME_EDGE_Q_EPS or (
+                            abs(score - best_score) <= TIME_EDGE_Q_EPS and width > best_width
+                        ):
+                            best_window = candidate
+                if not best_window:
+                    shadow_band_blocked += 1
+                    continue
+                window_rows = best_window.get("window") if isinstance(best_window.get("window"), list) else []
+                if not window_rows:
+                    shadow_band_blocked += 1
+                    continue
+                used_idx = set()
+                for idx in range(int(best_window.get("start") or 0), int(best_window.get("start") or 0) + int(best_window.get("width") or 0)):
+                    used_idx.add(idx)
+                yes_lcbs = [float(to_float(item.get("yes_lcb")) or 0.0) for item in window_rows]
+                yes_lcb_mean = float(sum(yes_lcbs) / max(1, len(yes_lcbs)))
+                combo_lcb = float(yes_lcb_mean)
+                tail_no_legs: List[Dict[str, Any]] = []
+                if shadow_band_tail_no_weight > TIME_EDGE_Q_EPS and shadow_band_no_legs_max_i > 0:
+                    no_leg_pool: List[Dict[str, Any]] = []
+                    for idx, item in enumerate(sortable_rows):
+                        if idx in used_idx:
+                            continue
+                        row_ref = item.get("row") if isinstance(item.get("row"), dict) else {}
+                        ask_no = to_float(row_ref.get("best_ask_no"))
+                        bid_no = to_float(row_ref.get("best_bid_no"))
+                        spread_no = to_float(row_ref.get("spread_no"))
+                        one_sided_no = bool(
+                            ask_no is not None
+                            and math.isfinite(ask_no)
+                            and ask_no <= float(AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX) + TIME_EDGE_Q_EPS
+                            and (bid_no is None or not math.isfinite(bid_no))
+                        )
+                        if (
+                            ask_no is None
+                            or not math.isfinite(ask_no)
+                            or ask_no <= TIME_EDGE_Q_EPS
+                            or spread_no is None
+                            or not math.isfinite(spread_no)
+                            or spread_no < -TIME_EDGE_Q_EPS
+                            or spread_no > lcb_global_max_spread + TIME_EDGE_Q_EPS
+                            or one_sided_no
+                        ):
+                            continue
+                        lcb_no = _shadow_leg_lcb(row_ref, "NO")
+                        if lcb_no is None or not math.isfinite(lcb_no):
+                            continue
+                        if float(lcb_no) + TIME_EDGE_Q_EPS < float(shadow_band_leg_lcb_min):
+                            continue
+                        q_no = _coalesce_metric(row_ref.get("q_entry_no"))
+                        if q_no is None:
+                            q_yes = _coalesce_metric(row_ref.get("q_entry"), row_ref.get("q_round"))
+                            if q_yes is not None:
+                                q_no = max(0.0, min(1.0, 1.0 - float(q_yes)))
+                        if q_no is None or not math.isfinite(q_no) or float(q_no) + TIME_EDGE_Q_EPS < float(shadow_band_tail_no_q_min):
+                            continue
+                        no_leg_pool.append(
+                            {
+                                "outcome": str(item.get("outcome") or ""),
+                                "lcb": float(lcb_no),
+                                "q_no": float(q_no),
+                            }
+                        )
+                    no_leg_pool.sort(
+                        key=lambda row: (
+                            float(to_float(row.get("lcb")) or float("-inf")),
+                            float(to_float(row.get("q_no")) or float("-inf")),
+                        ),
+                        reverse=True,
+                    )
+                    if no_leg_pool:
+                        tail_no_legs = no_leg_pool[: shadow_band_no_legs_max_i]
+                if tail_no_legs:
+                    weight = float(shadow_band_tail_no_weight)
+                    no_lcb_sum = 0.0
+                    for leg in tail_no_legs:
+                        no_lcb_sum += float(to_float(leg.get("lcb")) or 0.0)
+                    combo_lcb = float(
+                        (
+                            float(yes_lcb_mean) * float(len(yes_lcbs))
+                            + float(no_lcb_sum) * weight
+                        )
+                        / max(1e-9, float(len(yes_lcbs)) + float(len(tail_no_legs)) * weight)
+                    )
+                entry_ok = bool(combo_lcb + TIME_EDGE_Q_EPS >= float(shadow_band_combo_lcb_min))
+                if not entry_ok:
+                    shadow_band_blocked += 1
+                leg_payload = []
+                for item in window_rows:
+                    leg_payload.append(
+                        {
+                            "outcome": str(item.get("outcome") or ""),
+                            "side": "YES",
+                            "lcb": float(to_float(item.get("yes_lcb")) or 0.0),
+                        }
+                    )
+                for tail_no_leg in tail_no_legs:
+                    leg_payload.append(
+                        {
+                            "outcome": str(tail_no_leg.get("outcome") or ""),
+                            "side": "NO",
+                            "lcb": float(to_float(tail_no_leg.get("lcb")) or 0.0),
+                        }
+                    )
+                band_start = str(window_rows[0].get("outcome") or "")
+                band_end = str(window_rows[-1].get("outcome") or "")
+                shadow_band_entries.append(
+                    {
+                        "slug": str(slug_key or ""),
+                        "event_date": date_only(str(event_date_key or "")),
+                        "title": str(fact_obj.get("title") or slug_key),
+                        "event_url": str(fact_obj.get("event_url") or ""),
+                        "combo_lcb": float(combo_lcb),
+                        "yes_lcb_mean": float(yes_lcb_mean),
+                        "yes_leg_count": int(len(yes_lcbs)),
+                        "no_lcb_mean": (
+                            float(
+                                sum(float(to_float(leg.get("lcb")) or 0.0) for leg in tail_no_legs)
+                                / max(1, len(tail_no_legs))
+                            )
+                            if tail_no_legs
+                            else None
+                        ),
+                        "no_leg_count": int(len(tail_no_legs)),
+                        "tail_no_added": bool(tail_no_legs),
+                        "entry_ok": bool(entry_ok),
+                        "band_start": band_start,
+                        "band_end": band_end,
+                        "legs": leg_payload,
+                    }
+                )
+
+        shadow_band_ok_entries = [e for e in shadow_band_entries if bool(e.get("entry_ok"))]
+        shadow_band_new_open_entries: List[Dict[str, Any]] = []
+        for entry in shadow_band_ok_entries:
+            key = (str(entry.get("slug") or ""), str(entry.get("event_date") or ""))
+            if key in live_positions_by_event:
+                continue
+            shadow_band_new_open_entries.append(entry)
+        shadow_event_key_set = {
+            (str(entry.get("slug") or ""), str(entry.get("event_date") or ""))
+            for entry in shadow_band_new_open_entries
+            if str(entry.get("slug") or "") and str(entry.get("event_date") or "")
+        }
+        lcb_event_key_set = set(lcb_event_best.keys())
+        overlap_keys = shadow_event_key_set & lcb_event_key_set
+        shadow_only_keys = shadow_event_key_set - lcb_event_key_set
+        lcb_only_keys = lcb_event_key_set - shadow_event_key_set
+        better_count = 0
+        worse_count = 0
+        equal_count = 0
+        for entry in shadow_band_new_open_entries:
+            key = (str(entry.get("slug") or ""), str(entry.get("event_date") or ""))
+            if key not in lcb_event_best:
+                continue
+            shadow_lcb = to_float(entry.get("combo_lcb"))
+            lcb_payload = lcb_event_best.get(key) if isinstance(lcb_event_best.get(key), dict) else {}
+            lcb_lcb = _coalesce_metric((lcb_payload or {}).get("edge_lcb"))
+            if shadow_lcb is None or lcb_lcb is None:
+                continue
+            if float(shadow_lcb) > float(lcb_lcb) + TIME_EDGE_Q_EPS:
+                better_count += 1
+            elif float(shadow_lcb) + TIME_EDGE_Q_EPS < float(lcb_lcb):
+                worse_count += 1
+            else:
+                equal_count += 1
+
+        def _mean_numeric(entries: List[Dict[str, Any]], key: str) -> Optional[float]:
+            vals: List[float] = []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                val = to_float(entry.get(key))
+                if val is None or not math.isfinite(val):
+                    continue
+                vals.append(float(val))
+            if not vals:
+                return None
+            return float(sum(vals) / len(vals))
+
+        event_fact_ctx_by_date: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for raw_key, ctx_item in event_fact_ctx.items():
+            if not isinstance(raw_key, tuple) or len(raw_key) != 2:
+                continue
+            slug_key = str(raw_key[0] or "").strip()
+            date_key = date_only(str(raw_key[1] or "").strip())
+            if not slug_key or not date_key or not isinstance(ctx_item, dict):
+                continue
+            event_fact_ctx_by_date[(slug_key, date_key)] = ctx_item
+
+        settlement_actual_by_event: Dict[Tuple[str, str], float] = {}
+        settlement_event_keys = shadow_event_key_set | lcb_event_key_set
+        if settlement_event_keys:
+            try:
+                with open_db_ro_fast(timeout_sec=0.25, busy_timeout_ms=200) as conn_settle:
+                    for slug_key, date_key in settlement_event_keys:
+                        if not slug_key or not date_key:
+                            continue
+                        actual_val = _settlement_actual_for_event(conn_settle, slug_key, date_key)
+                        if actual_val is None or not math.isfinite(actual_val):
+                            continue
+                        settlement_actual_by_event[(slug_key, date_key)] = float(actual_val)
+            except Exception:
+                settlement_actual_by_event = {}
+
+        settlement_label_by_event: Dict[Tuple[str, str], str] = {}
+
+        def _event_settlement_label(event_key: Tuple[str, str]) -> Optional[str]:
+            if event_key in settlement_label_by_event:
+                label_cached = str(settlement_label_by_event.get(event_key) or "").strip()
+                return label_cached or None
+            ctx_item = event_fact_ctx_by_date.get(event_key) if isinstance(event_fact_ctx_by_date, dict) else None
+            fact_obj = ctx_item.get("fact") if isinstance(ctx_item, dict) and isinstance(ctx_item.get("fact"), dict) else {}
+            actual_val = _coalesce_metric(
+                (fact_obj or {}).get("settlement_actual"),
+                settlement_actual_by_event.get(event_key),
+            )
+            if actual_val is None or not math.isfinite(actual_val):
+                settlement_label_by_event[event_key] = ""
+                return None
+            distribution = (
+                fact_obj.get("distribution")
+                if isinstance(fact_obj.get("distribution"), list)
+                else (fact_obj.get("rows") if isinstance(fact_obj.get("rows"), list) else [])
+            )
+            rounding_rule = str(fact_obj.get("rounding_rule") or "").strip()
+            market_var = str(fact_obj.get("market_var") or "").strip()
+            label = ""
+            if distribution:
+                try:
+                    label = str(
+                        bucket_label_for_value(
+                            distribution,
+                            float(actual_val),
+                            rounding_rule,
+                            market_var,
+                        )
+                        or ""
+                    ).strip()
+                except Exception:
+                    label = ""
+            if not label:
+                row_by_outcome = (
+                    ctx_item.get("row_by_outcome")
+                    if isinstance(ctx_item, dict) and isinstance(ctx_item.get("row_by_outcome"), dict)
+                    else {}
+                )
+                for outcome_label in row_by_outcome.keys():
+                    try:
+                        inside = bucket_contains(
+                            float(actual_val),
+                            str(outcome_label or ""),
+                            rounding_rule,
+                            market_var,
+                        )
+                    except Exception:
+                        inside = None
+                    if inside is True:
+                        label = str(outcome_label or "").strip()
+                        break
+            settlement_label_by_event[event_key] = str(label or "")
+            return str(label or "").strip() or None
+
+        def _aggregate_paper_roi(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+            est_values: List[float] = []
+            realized_values: List[float] = []
+            for row in entries:
+                if not isinstance(row, dict):
+                    continue
+                est_val = to_float(row.get("paper_roi_est"))
+                if est_val is not None and math.isfinite(est_val):
+                    est_values.append(float(est_val))
+                real_val = to_float(row.get("paper_roi_realized"))
+                if real_val is not None and math.isfinite(real_val):
+                    realized_values.append(float(real_val))
+            est_count = len(est_values)
+            realized_count = len(realized_values)
+            return {
+                "event_count": int(len(entries)),
+                "est_event_count": int(est_count),
+                "est_roi_mean": (
+                    float(sum(est_values) / est_count)
+                    if est_count > 0
+                    else None
+                ),
+                "est_positive_ratio": (
+                    float(sum(1 for v in est_values if v > 0) / est_count)
+                    if est_count > 0
+                    else None
+                ),
+                "realized_event_count": int(realized_count),
+                "realized_roi_mean": (
+                    float(sum(realized_values) / realized_count)
+                    if realized_count > 0
+                    else None
+                ),
+                "realized_positive_ratio": (
+                    float(sum(1 for v in realized_values if v > 0) / realized_count)
+                    if realized_count > 0
+                    else None
+                ),
+            }
+
+        for entry in shadow_band_new_open_entries:
+            if not isinstance(entry, dict):
+                continue
+            slug_key = str(entry.get("slug") or "").strip()
+            date_key = str(entry.get("event_date") or "").strip()
+            if not slug_key or not date_key:
+                continue
+            event_key = (slug_key, date_key)
+            ctx_item = event_fact_ctx_by_date.get(event_key)
+            row_by_outcome = (
+                ctx_item.get("row_by_outcome")
+                if isinstance(ctx_item, dict) and isinstance(ctx_item.get("row_by_outcome"), dict)
+                else {}
+            )
+            if not row_by_outcome:
+                continue
+            settlement_label = _event_settlement_label(event_key)
+            total_cost = 0.0
+            total_edge_lcb = 0.0
+            total_realized_pnl = 0.0
+            valid_leg_count = 0
+            for leg in (entry.get("legs") if isinstance(entry.get("legs"), list) else []):
+                if not isinstance(leg, dict):
+                    continue
+                outcome_label = str(leg.get("outcome") or "").strip()
+                side_label = str(leg.get("side") or "").strip().upper()
+                if not outcome_label or side_label not in {"YES", "NO"}:
+                    continue
+                row_ref = row_by_outcome.get(outcome_label)
+                if not isinstance(row_ref, dict):
+                    continue
+                ask_val = to_float(
+                    row_ref.get("best_ask")
+                    if side_label == "YES"
+                    else row_ref.get("best_ask_no")
+                )
+                leg_lcb = to_float(leg.get("lcb"))
+                if (
+                    ask_val is None
+                    or not math.isfinite(ask_val)
+                    or ask_val <= TIME_EDGE_Q_EPS
+                    or leg_lcb is None
+                    or not math.isfinite(leg_lcb)
+                ):
+                    continue
+                weight = float(shadow_band_tail_no_weight) if side_label == "NO" else 1.0
+                total_cost += float(ask_val) * float(weight)
+                total_edge_lcb += float(leg_lcb) * float(weight)
+                valid_leg_count += 1
+                if settlement_label:
+                    win = outcome_label == settlement_label
+                    payout = 1.0 if ((side_label == "YES" and win) or (side_label == "NO" and (not win))) else 0.0
+                    total_realized_pnl += (float(payout) - float(ask_val)) * float(weight)
+            if total_cost <= TIME_EDGE_Q_EPS:
+                continue
+            entry["paper_roi_est"] = float(total_edge_lcb / total_cost)
+            entry["paper_leg_count"] = int(valid_leg_count)
+            if settlement_label:
+                entry["paper_roi_realized"] = float(total_realized_pnl / total_cost)
+                entry["paper_settled"] = True
+            else:
+                entry["paper_settled"] = False
+
+        lcb_event_entries: List[Dict[str, Any]] = []
+        for event_key, payload in lcb_event_best.items():
+            if not isinstance(payload, dict):
+                continue
+            ask_val = to_float(payload.get("ask"))
+            lcb_val = to_float(payload.get("edge_lcb"))
+            if (
+                ask_val is None
+                or not math.isfinite(ask_val)
+                or ask_val <= TIME_EDGE_Q_EPS
+                or lcb_val is None
+                or not math.isfinite(lcb_val)
+            ):
+                continue
+            entry = dict(payload)
+            entry["slug"] = str(event_key[0] or "")
+            entry["event_date"] = str(event_key[1] or "")
+            entry["paper_roi_est"] = float(lcb_val / ask_val)
+            settlement_label = _event_settlement_label(event_key)
+            outcome_label = str(entry.get("outcome") or "").strip()
+            side_label = str(entry.get("side") or "").strip().upper()
+            if settlement_label and outcome_label and side_label in {"YES", "NO"}:
+                win = outcome_label == settlement_label
+                payout = 1.0 if ((side_label == "YES" and win) or (side_label == "NO" and (not win))) else 0.0
+                entry["paper_roi_realized"] = float((float(payout) - float(ask_val)) / float(ask_val))
+                entry["paper_settled"] = True
+            else:
+                entry["paper_settled"] = False
+            lcb_event_entries.append(entry)
+
+        lcb_event_lcb_mean = None
+        if lcb_event_best:
+            lcb_values: List[float] = []
+            for payload in lcb_event_best.values():
+                if not isinstance(payload, dict):
+                    continue
+                val = to_float(payload.get("edge_lcb"))
+                if val is None or not math.isfinite(val):
+                    continue
+                lcb_values.append(float(val))
+            if lcb_values:
+                lcb_event_lcb_mean = float(sum(lcb_values) / len(lcb_values))
+        shadow_paper_summary = _aggregate_paper_roi(shadow_band_new_open_entries)
+        lcb_paper_summary = _aggregate_paper_roi(lcb_event_entries)
+        shadow_top = sorted(
+            shadow_band_new_open_entries,
+            key=lambda entry: float(to_float(entry.get("combo_lcb")) or float("-inf")),
+            reverse=True,
+        )[:12]
+        shadow_band_summary = {
+            "enabled": bool(shadow_band_enabled),
+            "mode": "shadow_only",
+            "events_evaluated": int(shadow_band_events_total),
+            "events_blocked": int(shadow_band_blocked),
+            "events_candidate_total": int(len(shadow_band_ok_entries)),
+            "events_candidate_new_open": int(len(shadow_band_new_open_entries)),
+            "avg_combo_lcb": _mean_numeric(shadow_band_new_open_entries, "combo_lcb"),
+            "avg_yes_lcb": _mean_numeric(shadow_band_new_open_entries, "yes_lcb_mean"),
+            "avg_yes_leg_count": _mean_numeric(shadow_band_new_open_entries, "yes_leg_count"),
+            "avg_no_lcb": _mean_numeric(shadow_band_new_open_entries, "no_lcb_mean"),
+            "avg_no_leg_count": _mean_numeric(shadow_band_new_open_entries, "no_leg_count"),
+            "params": {
+                "width_min": int(shadow_band_width_min_i),
+                "width_max": int(shadow_band_width_max_i),
+                "leg_lcb_min": float(shadow_band_leg_lcb_min),
+                "combo_lcb_min": float(shadow_band_combo_lcb_min),
+                "tail_no_q_min": float(shadow_band_tail_no_q_min),
+                "tail_no_weight": float(shadow_band_tail_no_weight),
+                "no_legs_max": int(shadow_band_no_legs_max_i),
+            },
+            "lcb_baseline": {
+                "events_candidate_new_open": int(len(lcb_event_key_set)),
+                "avg_event_lcb": lcb_event_lcb_mean,
+            },
+            "comparison": {
+                "overlap_event_count": int(len(overlap_keys)),
+                "shadow_only_event_count": int(len(shadow_only_keys)),
+                "lcb_only_event_count": int(len(lcb_only_keys)),
+                "shadow_better_event_count": int(better_count),
+                "shadow_worse_event_count": int(worse_count),
+                "shadow_equal_event_count": int(equal_count),
+            },
+            "paper_compare": {
+                "shadow": shadow_paper_summary,
+                "lcb": lcb_paper_summary,
+                "delta": {
+                    "est_roi_mean_diff": (
+                        float(shadow_paper_summary.get("est_roi_mean") - lcb_paper_summary.get("est_roi_mean"))
+                        if to_float(shadow_paper_summary.get("est_roi_mean")) is not None
+                        and to_float(lcb_paper_summary.get("est_roi_mean")) is not None
+                        else None
+                    ),
+                    "realized_roi_mean_diff": (
+                        float(
+                            shadow_paper_summary.get("realized_roi_mean")
+                            - lcb_paper_summary.get("realized_roi_mean")
+                        )
+                        if to_float(shadow_paper_summary.get("realized_roi_mean")) is not None
+                        and to_float(lcb_paper_summary.get("realized_roi_mean")) is not None
+                        else None
+                    ),
+                },
+                "note": "paper_est=候选LCB按入场成本归一化；paper_realized=仅已结算事件",
+            },
+            "top_candidates": shadow_top,
+            "generated_at": now_text(),
+        }
         trace_event_keys: List[str] = []
         trace_event_seen: set[Tuple[str, str]] = set()
         for entry in items:
@@ -20467,14 +22043,57 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     source_signature = _trace_source_signature(sig_conn, run_date_key, trace_event_keys)
             except Exception:
                 source_signature = {}
-        entry_ok_total = (
-            entry_ok_main_count
-            + entry_ok_yes_top_count
-            + entry_ok_follow_count
-            + entry_ok_hard_bound_count
-            + entry_ok_adj_pair_count
-            + entry_ok_mirror_follow_count
-        )
+        def _visible_strategy_count(entries: List[Dict[str, Any]]) -> Dict[str, int]:
+            counts: Dict[str, int] = {}
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                key = _normalize_trace_strategy(entry.get("strategy"))
+                if key == "live_position":
+                    key = "lcb_global" if lcb_global_enabled else "main"
+                if lcb_global_enabled:
+                    key = "mirror_follow" if key == "mirror_follow" else "lcb_global"
+                elif key not in {"main", "yes_top", "follow_copy", "hard_bound_no", "adj_pair", "mirror_follow", "lcb_global"}:
+                    key = "main"
+                counts[key] = int(counts.get(key) or 0) + 1
+            counts["total"] = int(sum(v for k, v in counts.items() if k != "total"))
+            return counts
+
+        entry_ok_counts_payload = _visible_strategy_count(items)
+        not_ok_counts_payload = _visible_strategy_count(not_ok_items)
+        if lcb_global_enabled:
+            entry_ok_counts_payload = {
+                "lcb_global": int(entry_ok_counts_payload.get("lcb_global") or 0),
+                "mirror_follow": int(entry_ok_counts_payload.get("mirror_follow") or 0),
+                "total": int(entry_ok_counts_payload.get("total") or 0),
+            }
+            not_ok_counts_payload = {
+                "lcb_global": int(not_ok_counts_payload.get("lcb_global") or 0),
+                "mirror_follow": int(not_ok_counts_payload.get("mirror_follow") or 0),
+                "total": int(not_ok_counts_payload.get("total") or 0),
+            }
+        else:
+            entry_ok_counts_payload = {
+                "lcb_global": int(entry_ok_counts_payload.get("lcb_global") or 0),
+                "main": int(entry_ok_counts_payload.get("main") or 0),
+                "yes_top": int(entry_ok_counts_payload.get("yes_top") or 0),
+                "follow_copy": int(entry_ok_counts_payload.get("follow_copy") or 0),
+                "hard_bound_no": int(entry_ok_counts_payload.get("hard_bound_no") or 0),
+                "adj_pair": int(entry_ok_counts_payload.get("adj_pair") or 0),
+                "mirror_follow": int(entry_ok_counts_payload.get("mirror_follow") or 0),
+                "total": int(entry_ok_counts_payload.get("total") or 0),
+            }
+            not_ok_counts_payload = {
+                "lcb_global": int(not_ok_counts_payload.get("lcb_global") or 0),
+                "main": int(not_ok_counts_payload.get("main") or 0),
+                "yes_top": int(not_ok_counts_payload.get("yes_top") or 0),
+                "follow_copy": int(not_ok_counts_payload.get("follow_copy") or 0),
+                "hard_bound_no": int(not_ok_counts_payload.get("hard_bound_no") or 0),
+                "adj_pair": int(not_ok_counts_payload.get("adj_pair") or 0),
+                "mirror_follow": int(not_ok_counts_payload.get("mirror_follow") or 0),
+                "total": int(not_ok_counts_payload.get("total") or 0),
+            }
+        entry_ok_total = int(entry_ok_counts_payload.get("total") or 0)
         entry_blocker_table = _build_entry_blocker_table(not_ok_items)
         dedup_entry_keys: Set[Tuple[str, str, str, str, str]] = set()
         will_order_total = 0
@@ -20493,8 +22112,306 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             "entry_total": int(entry_ok_total + len(not_ok_items)),
             "blocked_total": int(len(not_ok_items)),
             "will_order_total": int(will_order_total),
+            "ignored_non_stat_total": int(non_stat_not_ok_items),
             "generated_at": now_text(),
         }
+        new_open_candidate_keys: Set[Tuple[str, str, str, str, str]] = set()
+        for entry in items:
+            if not _is_new_open_candidate(entry):
+                continue
+            dedup_key = _not_ok_key(entry)
+            if dedup_key is None:
+                continue
+            new_open_candidate_keys.add(dedup_key)
+        new_open_candidate_count = len(new_open_candidate_keys)
+        entry_blocker_meta["new_open_candidate_total"] = int(new_open_candidate_count)
+
+        def _build_entry_blocker_views() -> Dict[str, Any]:
+            default_meta = {
+                "entry_total": 0,
+                "blocked_total": 0,
+                "will_order_total": 0,
+                "ignored_non_stat_total": 0,
+                "run_count": 0,
+                "generated_at": now_text(),
+            }
+            out: Dict[str, Any] = {
+                "window_runs": int(AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS),
+                "last_completed": {
+                    "run_id": None,
+                    "run_date": "",
+                    "ended_at": "",
+                    "table": [],
+                    "meta": dict(default_meta),
+                },
+                "recent_agg": {
+                    "run_ids": [],
+                    "table": [],
+                    "meta": dict(default_meta),
+                },
+            }
+            max_runs = max(1, int(AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS))
+            run_rows: List[sqlite3.Row] = []
+            try:
+                with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn_hist:
+                    cur_hist = conn_hist.cursor()
+                    cur_hist.execute(
+                        """
+                        SELECT id, run_date, started_at, ended_at, ok
+                        FROM auto_trade_runs
+                        WHERE ended_at IS NOT NULL AND ended_at <> ''
+                        ORDER BY ended_at DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (max_runs * 3,),
+                    )
+                    run_rows = cur_hist.fetchall()
+            except Exception:
+                return out
+            if not run_rows:
+                return out
+
+            recent_ids: List[int] = []
+            run_meta: Dict[int, Dict[str, Any]] = {}
+            for row in run_rows:
+                try:
+                    run_id = int(row["id"] or 0)
+                except Exception:
+                    run_id = 0
+                if run_id <= 0 or run_id in run_meta:
+                    continue
+                run_meta[run_id] = {
+                    "run_id": run_id,
+                    "run_date": str(row["run_date"] or ""),
+                    "ended_at": str(row["ended_at"] or ""),
+                    "ok": bool(row["ok"]),
+                }
+                recent_ids.append(run_id)
+                if len(recent_ids) >= max_runs:
+                    break
+            if not recent_ids:
+                return out
+
+            placeholders = ",".join("?" for _ in recent_ids)
+            totals_by_run: Dict[int, Dict[str, int]] = {}
+            blocked_rows: List[sqlite3.Row] = []
+            try:
+                with open_db_ro_fast(timeout_sec=0.25, busy_timeout_ms=250) as conn_hist:
+                    cur_hist = conn_hist.cursor()
+                    cur_hist.execute(
+                        f"""
+                        SELECT run_id,
+                               COUNT(1) AS entry_total,
+                               SUM(CASE WHEN COALESCE(will_order,0) > 0 THEN 1 ELSE 0 END) AS will_order_total
+                        FROM auto_trade_decisions
+                        WHERE action='entry'
+                          AND run_id IN ({placeholders})
+                        GROUP BY run_id
+                        """,
+                        tuple(recent_ids),
+                    )
+                    for row in cur_hist.fetchall():
+                        try:
+                            run_id = int(row["run_id"] or 0)
+                        except Exception:
+                            continue
+                        totals_by_run[run_id] = {
+                            "entry_total": int(row["entry_total"] or 0),
+                            "will_order_total": int(row["will_order_total"] or 0),
+                        }
+                    cur_hist.execute(
+                        f"""
+                        SELECT run_id, slug, event_date, title, outcome, side,
+                               reason_codes_json, reasons_json, details_json, created_at, decided_state
+                        FROM auto_trade_decisions
+                        WHERE action='entry'
+                          AND COALESCE(will_order,0) <= 0
+                          AND run_id IN ({placeholders})
+                        ORDER BY created_at DESC, id DESC
+                        """,
+                        tuple(recent_ids),
+                    )
+                    blocked_rows = cur_hist.fetchall()
+            except Exception:
+                return out
+
+            grouped_by_run: Dict[int, Dict[str, Dict[str, Any]]] = {}
+            grouped_recent: Dict[str, Dict[str, Any]] = {}
+            ignored_non_stat_by_run: Dict[int, int] = {}
+            ignored_non_stat_recent = 0
+
+            def _upsert_blocker_group(
+                groups: Dict[str, Dict[str, Any]],
+                *,
+                reason_code: str,
+                reason_text: str,
+                slug: str,
+                event_date: str,
+                outcome: str,
+                side: str,
+                strategy: str,
+                title: str,
+            ) -> None:
+                key = str(reason_code or "").strip() or "unknown_blocker"
+                payload = groups.get(key)
+                if payload is None:
+                    payload = {
+                        "reason_code": key,
+                        "reason_text": str(reason_text or "").strip(),
+                        "count": 0,
+                        "share": 0.0,
+                        "sample_slug": "",
+                        "sample_event_date": "",
+                        "sample_outcome": "",
+                        "sample_side": "",
+                        "sample_strategy": "",
+                        "sample_title": "",
+                        "sample_event_url": "",
+                        "sample_reason_text": "",
+                    }
+                    groups[key] = payload
+                payload["count"] = int(payload.get("count") or 0) + 1
+                if (not payload.get("reason_text")) and reason_text:
+                    payload["reason_text"] = str(reason_text)
+                if not payload.get("sample_slug"):
+                    payload["sample_slug"] = str(slug or "")
+                    payload["sample_event_date"] = date_only(str(event_date or ""))
+                    payload["sample_outcome"] = str(outcome or "")
+                    payload["sample_side"] = str(side or "").upper()
+                    payload["sample_strategy"] = str(strategy or "")
+                    payload["sample_title"] = str(title or "")
+                    payload["sample_reason_text"] = str(reason_text or "")
+
+            for row in blocked_rows:
+                try:
+                    run_id = int(row["run_id"] or 0)
+                except Exception:
+                    continue
+                if run_id <= 0:
+                    continue
+                reason_codes = _safe_json_loads_any(row["reason_codes_json"])
+                reasons = _safe_json_loads_any(row["reasons_json"])
+                details = _safe_json_loads_any(row["details_json"])
+                details_dict = details if isinstance(details, dict) else {}
+                strategy = str(details_dict.get("strategy") or "").strip().lower() or "lcb_global"
+                reason_code = ""
+                if isinstance(reason_codes, list):
+                    first_code = ""
+                    for code in reason_codes:
+                        code_text = str(code or "").strip()
+                        if code_text:
+                            if not first_code:
+                                first_code = code_text
+                            if is_non_stat_blocker_code(code_text):
+                                continue
+                            reason_code = code_text
+                            break
+                    if not reason_code and first_code:
+                        reason_code = first_code
+                reason_text = ""
+                if isinstance(reasons, list):
+                    for reason in reasons:
+                        text = str(reason or "").strip()
+                        if text:
+                            reason_text = text
+                            break
+                if not reason_text:
+                    reason_text = str(row["decided_state"] or "").strip()
+                if not reason_code:
+                    reason_code = _normalize_blocker_reason_code(reason_text)
+                if str(reason_code or "").strip().lower() == "already_in_entry":
+                    continue
+                if is_non_stat_blocker_code(reason_code):
+                    ignored_non_stat_by_run[run_id] = int(ignored_non_stat_by_run.get(run_id) or 0) + 1
+                    ignored_non_stat_recent += 1
+                    continue
+                if "已在入场态" in str(reason_text or "").strip():
+                    continue
+                slug = str(row["slug"] or "").strip()
+                event_date = str(row["event_date"] or "").strip()
+                outcome = str(row["outcome"] or "").strip()
+                side = str(row["side"] or "").strip().upper()
+                title = str(row["title"] or "").strip()
+                run_groups = grouped_by_run.setdefault(run_id, {})
+                _upsert_blocker_group(
+                    run_groups,
+                    reason_code=reason_code,
+                    reason_text=reason_text,
+                    slug=slug,
+                    event_date=event_date,
+                    outcome=outcome,
+                    side=side,
+                    strategy=strategy,
+                    title=title,
+                )
+                _upsert_blocker_group(
+                    grouped_recent,
+                    reason_code=reason_code,
+                    reason_text=reason_text,
+                    slug=slug,
+                    event_date=event_date,
+                    outcome=outcome,
+                    side=side,
+                    strategy=strategy,
+                    title=title,
+                )
+
+            def _finalize_blocker_rows(groups: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+                rows = sorted(
+                    list(groups.values()),
+                    key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
+                )
+                total_count = int(sum(int(row.get("count") or 0) for row in rows))
+                for row in rows:
+                    count = int(row.get("count") or 0)
+                    row["share"] = float(count / total_count) if total_count > 0 else 0.0
+                return rows[:40]
+
+            last_run_id = int(recent_ids[0])
+            last_table = _finalize_blocker_rows(grouped_by_run.get(last_run_id, {}))
+            last_total = int(sum(int(row.get("count") or 0) for row in last_table))
+            last_totals = totals_by_run.get(last_run_id, {})
+            last_ignored_non_stat = int(ignored_non_stat_by_run.get(last_run_id) or 0)
+            last_entry_total_raw = int(last_totals.get("entry_total") or 0)
+            last_meta = {
+                "entry_total": int(max(last_entry_total_raw - last_ignored_non_stat, 0)),
+                "blocked_total": int(last_total),
+                "will_order_total": int(last_totals.get("will_order_total") or 0),
+                "ignored_non_stat_total": int(last_ignored_non_stat),
+                "run_count": 1,
+                "generated_at": now_text(),
+            }
+            out["last_completed"] = {
+                "run_id": last_run_id,
+                "run_date": str((run_meta.get(last_run_id) or {}).get("run_date") or ""),
+                "ended_at": str((run_meta.get(last_run_id) or {}).get("ended_at") or ""),
+                "table": last_table,
+                "meta": last_meta,
+            }
+
+            recent_table = _finalize_blocker_rows(grouped_recent)
+            recent_total = int(sum(int(row.get("count") or 0) for row in recent_table))
+            recent_entry_total_raw = int(
+                sum(int((totals_by_run.get(run_id) or {}).get("entry_total") or 0) for run_id in recent_ids)
+            )
+            recent_will_total = int(
+                sum(int((totals_by_run.get(run_id) or {}).get("will_order_total") or 0) for run_id in recent_ids)
+            )
+            out["recent_agg"] = {
+                "run_ids": list(recent_ids),
+                "table": recent_table,
+                "meta": {
+                    "entry_total": int(max(recent_entry_total_raw - int(ignored_non_stat_recent), 0)),
+                    "blocked_total": recent_total,
+                    "will_order_total": recent_will_total,
+                    "ignored_non_stat_total": int(ignored_non_stat_recent),
+                    "run_count": len(recent_ids),
+                    "generated_at": now_text(),
+                },
+            }
+            return out
+
+        entry_blocker_views = _build_entry_blocker_views()
         empty_reason = ""
         if not items:
             if not trace_enabled_strategies:
@@ -20502,7 +22419,9 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             elif total_facts <= 0:
                 empty_reason = "今日无事件"
             elif entry_ok_total <= 0:
-                if follow_enabled or hard_bound_enabled or adj_pair_enabled or mirror_follow_enabled:
+                if lcb_global_enabled:
+                    empty_reason = "今日无达标事件（LCB全市场 entry_ok=0）"
+                elif follow_enabled or hard_bound_enabled or adj_pair_enabled or mirror_follow_enabled:
                     empty_reason = "主策略/YES最高桶无达标事件；独立策略由执行层运行时判定"
                 else:
                     empty_reason = "今日无达标事件（entry_ok=0）"
@@ -20513,38 +22432,19 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             "run_date": run_date_key,
             "items": items if limit_val <= 0 else items[:limit_val],
             "not_ok_items": not_ok_items[:200],
-            "entry_ok_counts": {
-                "main": entry_ok_main_count,
-                "yes_top": entry_ok_yes_top_count,
-                "follow_copy": entry_ok_follow_count,
-                "hard_bound_no": entry_ok_hard_bound_count,
-                "adj_pair": entry_ok_adj_pair_count,
-                "mirror_follow": entry_ok_mirror_follow_count,
-                "total": entry_ok_total,
-            },
-            "not_ok_counts": {
-                "main": not_ok_main_count,
-                "yes_top": not_ok_yes_top_count,
-                "follow_copy": not_ok_follow_count,
-                "hard_bound_no": not_ok_hard_bound_count,
-                "adj_pair": not_ok_adj_pair_count,
-                "mirror_follow": not_ok_mirror_follow_count,
-                "total": (
-                    not_ok_main_count
-                    + not_ok_yes_top_count
-                    + not_ok_follow_count
-                    + not_ok_hard_bound_count
-                    + not_ok_adj_pair_count
-                    + not_ok_mirror_follow_count
-                ),
-            },
+            "entry_ok_counts": entry_ok_counts_payload,
+            "not_ok_counts": not_ok_counts_payload,
             "not_ok_reason_top": not_ok_reason_top,
             "entry_blocker_table": entry_blocker_table,
             "entry_blocker_meta": entry_blocker_meta,
+            "entry_blocker_views": entry_blocker_views,
+            "new_open_candidate_count": int(new_open_candidate_count),
+            "shadow_band_v1": shadow_band_summary,
             "strategy_stats": trace_strategy_stats,
             "trace_event_keys": trace_event_keys,
             "source_signature": source_signature,
             "runtime_strategy_flags": {
+                "lcb_global_enabled": lcb_global_enabled,
                 "entry_main_enabled": main_enabled,
                 "entry_yes_top_enabled": yes_top_enabled,
                 "follow_copy_enabled": follow_enabled,
@@ -20645,29 +22545,11 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     auto_enabled = bool(diag.get("enabled"))
                     auto_dry_run = bool(diag.get("dry_run"))
                     missing_env = diag.get("missing") if isinstance(diag.get("missing"), list) else []
-                    entry_counts = payload.get("entry_ok_counts") if isinstance(payload, dict) else None
-                    entry_ok_total = 0
-                    if isinstance(entry_counts, dict):
-                        try:
-                            entry_ok_total = int(entry_counts.get("total") or 0)
-                        except (TypeError, ValueError):
-                            entry_ok_total = 0
-                    runtime_flags = payload.get("runtime_strategy_flags") if isinstance(payload, dict) else None
-                    runtime_enabled = False
-                    if isinstance(runtime_flags, dict):
-                        runtime_enabled = bool(
-                            runtime_flags.get("follow_copy_enabled")
-                            or runtime_flags.get("follow_enabled")
-                            or runtime_flags.get("hard_bound_no_enabled")
-                            or runtime_flags.get("adj_pair_enabled")
-                        )
-                    facts_total = 0
-                    empty_detail = payload.get("empty_detail") if isinstance(payload, dict) else None
-                    if isinstance(empty_detail, dict):
-                        try:
-                            facts_total = int(empty_detail.get("facts_total") or 0)
-                        except (TypeError, ValueError):
-                            facts_total = 0
+                    new_open_candidate_count = 0
+                    try:
+                        new_open_candidate_count = int(payload.get("new_open_candidate_count") or 0)
+                    except (TypeError, ValueError):
+                        new_open_candidate_count = 0
                     throttle = payload.get("throttle") if isinstance(payload, dict) else None
                     wait_sec = 0
                     if isinstance(throttle, dict):
@@ -20676,7 +22558,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                         except (TypeError, ValueError):
                             wait_sec = 0
                     if (
-                        (entry_ok_total > 0 or (runtime_enabled and facts_total > 0))
+                        new_open_candidate_count > 0
                         and auto_enabled
                         and (not auto_dry_run)
                         and (not missing_env)
@@ -23318,6 +25200,13 @@ def _empty_strategy_entry() -> Dict[str, Any]:
 
 
 def strategy_stats_defaults() -> Dict[str, Dict[str, Any]]:
+    lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
+    if lcb_global_enabled:
+        return {
+            "lcb_global": _empty_strategy_entry(),
+            "mirror_follow": _empty_strategy_entry(),
+            "unknown": _empty_strategy_entry(),
+        }
     return {
         "main": _empty_strategy_entry(),
         "follow_copy": _empty_strategy_entry(),
@@ -23325,6 +25214,7 @@ def strategy_stats_defaults() -> Dict[str, Dict[str, Any]]:
         "hard_bound_no": _empty_strategy_entry(),
         "adj_pair": _empty_strategy_entry(),
         "mirror_follow": _empty_strategy_entry(),
+        "unknown": _empty_strategy_entry(),
     }
 
 
@@ -23362,14 +25252,7 @@ def compute_strategy_stats_v2(conn: sqlite3.Connection, days: int, run_date: str
         start_date, end_date = resolve_stats_range(conn, days, require_settlement=False)
     start_text = start_date.isoformat()
     end_text = end_date.isoformat()
-    stats: Dict[str, Dict[str, Any]] = {
-        "main": _empty_strategy_entry(),
-        "follow_copy": _empty_strategy_entry(),
-        "yes_top": _empty_strategy_entry(),
-        "hard_bound_no": _empty_strategy_entry(),
-        "adj_pair": _empty_strategy_entry(),
-        "mirror_follow": _empty_strategy_entry(),
-    }
+    stats: Dict[str, Dict[str, Any]] = strategy_stats_defaults()
     auto_orders = query_auto_orders(conn)
 
     def _order_key_from_fields(
@@ -23398,11 +25281,7 @@ def compute_strategy_stats_v2(conn: sqlite3.Connection, days: int, run_date: str
         action_norm = _row_text(order, "action").strip().lower()
         if action_norm != "entry":
             continue
-        strategy = _row_text(order, "strategy").strip().lower()
-        if strategy == "exit":
-            continue
-        if not strategy:
-            strategy = "main"
+        strategy = _normalize_strategy_key(_row_text(order, "strategy"), fallback="main")
         key = _order_key(order)
         if not all(key):
             continue
@@ -23444,15 +25323,21 @@ def compute_strategy_stats_v2(conn: sqlite3.Connection, days: int, run_date: str
         created_text = _row_text(row_obj, "created_at").strip()
         if action_norm == "entry":
             if strategy_raw and strategy_raw != "exit":
-                return strategy_raw
+                return _normalize_strategy_key(strategy_raw, fallback="main")
             if strategy_raw == "exit":
-                return _resolve_strategy_from_timeline(key, created_text)
-            return "main"
+                return _normalize_strategy_key(
+                    _resolve_strategy_from_timeline(key, created_text),
+                    fallback="main",
+                )
+            return _normalize_strategy_key("", fallback="main")
         if action_norm == "exit":
             if strategy_raw and strategy_raw != "exit":
-                return strategy_raw
-            return _resolve_strategy_from_timeline(key, created_text)
-        return strategy_raw
+                return _normalize_strategy_key(strategy_raw, fallback="main")
+            return _normalize_strategy_key(
+                _resolve_strategy_from_timeline(key, created_text),
+                fallback="unknown",
+            )
+        return _normalize_strategy_key(strategy_raw, fallback="main")
 
     price_acc: Dict[Tuple[str, str], Dict[str, float]] = {}
 
@@ -23783,8 +25668,7 @@ def compute_strategy_stats(conn: sqlite3.Connection, days: int, run_date: str = 
         if action_norm != "entry":
             continue
         strategy = _row_text(order, "strategy").strip().lower()
-        if not strategy or strategy == "exit":
-            strategy = "main"
+        strategy = _normalize_strategy_key(strategy, fallback="main")
         key = _order_key(order)
         if not all(key):
             continue
@@ -23821,15 +25705,15 @@ def compute_strategy_stats(conn: sqlite3.Connection, days: int, run_date: str = 
         strategy_raw = _row_text(row_obj, "strategy").strip().lower()
         if action_norm == "entry":
             if strategy_raw and strategy_raw != "exit":
-                return strategy_raw
-            return "main"
+                return _normalize_strategy_key(strategy_raw, fallback="main")
+            return _normalize_strategy_key("", fallback="main")
         if action_norm == "exit":
             if strategy_raw and strategy_raw != "exit":
-                return strategy_raw
+                return _normalize_strategy_key(strategy_raw, fallback="main")
             # Attribute system exits back to the originating entry strategy (event-level归类口径).
             inferred = _resolve_strategy_from_timeline(_order_key(row_obj), _row_text(row_obj, "created_at").strip())
-            return inferred or "unknown"
-        return strategy_raw or "main"
+            return _normalize_strategy_key(inferred, fallback="unknown")
+        return _normalize_strategy_key(strategy_raw, fallback="main")
 
     # Weighted price samples: (strategy, bucket) -> [notional, qty]
     price_samples: Dict[Tuple[str, str], List[float]] = {}
@@ -26095,6 +27979,9 @@ def compute_positive_exec_edge_blockers(
         reason_codes = safe_json_loads_any(row["reason_codes_json"])
         reason_codes = reason_codes if isinstance(reason_codes, list) else []
         reason_codes = [str(x or "").strip().lower() for x in reason_codes if str(x or "").strip()]
+        countable_reason_codes = [c for c in reason_codes if not is_non_stat_blocker_code(c)]
+        if reason_codes and not countable_reason_codes:
+            continue
         details = safe_json_loads(row["details_json"])
         strategy = _classify_strategy(details, reason_codes)
         if strategy in excluded:
@@ -26114,10 +28001,12 @@ def compute_positive_exec_edge_blockers(
         if isinstance(dist, dict):
             entry["pos_exec_edge_blocked_with_facts"] += 1
         code = "blocked"
-        if reason_codes:
-            code = reason_codes[0]
+        if countable_reason_codes:
+            code = countable_reason_codes[0]
             if code == "entry_gate_blocked" and len(reason_codes) > 1:
-                code = reason_codes[1]
+                fallback = next((c for c in countable_reason_codes[1:] if c), "")
+                if fallback:
+                    code = fallback
         counts = entry["reason_code_counts"]
         counts[code] = int(counts.get(code) or 0) + 1
 
@@ -27584,6 +29473,38 @@ def latest_run_date_fast(conn: sqlite3.Connection) -> str:
     return ""
 
 
+def latest_fact_run_date_with_rows(conn: sqlite3.Connection, max_scan: int = 14) -> str:
+    limit = max(1, int(max_scan or 1))
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT run_date
+            FROM event_fact_history
+            WHERE run_date IS NOT NULL AND run_date != ''
+            GROUP BY run_date
+            ORDER BY MAX(COALESCE(fact_as_of, created_at)) DESC, run_date DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+    except sqlite3.OperationalError:
+        return ""
+    for row in rows:
+        key = _normalize_date_key(str(row["run_date"] or "").strip())
+        parsed = parse_date(key)
+        if parsed is None:
+            continue
+        date_key = parsed.isoformat()
+        try:
+            if count_event_fact_rows(conn, date_key) > 0:
+                return date_key
+        except sqlite3.OperationalError:
+            continue
+    return ""
+
+
 def query_edge_trades(conn: sqlite3.Connection) -> Dict[Tuple[str, str], List[sqlite3.Row]]:
     cur = conn.cursor()
     try:
@@ -27847,6 +29768,7 @@ def _ssot_env_json_list(key: str) -> List[Dict[str, Any]]:
 
 def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
     # Keep this payload small and stable; UI uses it only for display/diagnostics.
+    lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
     follow_yes_aux_rank_mode = str(
         os.environ.get("PM_AUTO_TRADE_ENTRY_FOLLOW_YES_AUX_RANK_MODE", "q") or "q"
     ).strip().lower()
@@ -27952,6 +29874,10 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
             "PM_AUTO_TRADE_ENTRY_ADJ_PAIR_SIZE_RATIO",
             1.0,
         ),
+        "lcb_global_size_ratio": _ssot_env_float(
+            "PM_LCB_GLOBAL_SIZE_RATIO",
+            1.0,
+        ),
         "mirror_follow_size_ratio": _ssot_env_float(
             "PM_MIRROR_COPY_RATIO",
             1.0,
@@ -27998,6 +29924,25 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
             "PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_P_CONVERGE_MIN",
             0.0,
         ),
+        "lcb_global_signal_lcb_min": _ssot_env_float("PM_LCB_GLOBAL_SIGNAL_LCB_MIN", 0.0),
+        "lcb_global_path_lcb_min": _ssot_env_float("PM_LCB_GLOBAL_PATH_LCB_MIN", 0.10),
+        "lcb_global_edge_lcb_min": _ssot_env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN", 0.0),
+        "lcb_global_enabled": lcb_global_enabled,
+        "lcb_global_max_spread": _ssot_env_float("PM_LCB_GLOBAL_MAX_SPREAD", 0.08),
+        "lcb_global_min_depth_usdc": _ssot_env_float("PM_LCB_GLOBAL_MIN_DEPTH_USDC", 0.0),
+        "lcb_global_max_tick_age_sec": _ssot_env_float("PM_LCB_GLOBAL_MAX_TICK_AGE_SEC", 180.0),
+        "lcb_global_max_new_orders_per_run": _ssot_env_int("PM_LCB_GLOBAL_MAX_NEW_ORDERS_PER_RUN", 0),
+        "lcb_global_max_open_positions": _ssot_env_int("PM_LCB_GLOBAL_MAX_OPEN_POSITIONS", 0),
+        "lcb_global_signal_edge_min": _ssot_env_float("PM_LCB_GLOBAL_SIGNAL_EDGE_MIN"),
+        "order_usdc": _ssot_env_float("PM_ORDER_USDC", 10.0),
+        "kelly_enabled": _env_bool("PM_KELLY_ENABLED", True),
+        "kelly_fraction": _ssot_env_float("PM_KELLY_FRACTION", 0.25),
+        "kelly_ref_fraction": _ssot_env_float("PM_KELLY_REF_FRACTION", 0.05),
+        "kelly_min_scale": _ssot_env_float("PM_KELLY_MIN_SCALE", 0.5),
+        "kelly_max_scale": _ssot_env_float("PM_KELLY_MAX_SCALE", 2.0),
+        "kelly_min_notional_usdc": _ssot_env_float("PM_KELLY_MIN_NOTIONAL_USDC", 5.0),
+        "kelly_max_notional_usdc": _ssot_env_float("PM_KELLY_MAX_NOTIONAL_USDC", 20.0),
+        "kelly_block_nonpositive": _env_bool("PM_KELLY_BLOCK_NONPOSITIVE", False),
         "entry_only_realizable": entry_only_realizable,
         "entry_edge_realizable_aggressive_score": _ssot_env_float(
             "PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_AGGRESSIVE_SCORE"
@@ -28020,7 +29965,11 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
             "entry_skip_top_label": entry_skip_top_label,
             "entry_require_edge_score_range": _env_bool("PM_AUTO_TRADE_ENTRY_REQUIRE_EDGE_SCORE_RANGE", True),
             "entry_require_edge_score_buy_range": _env_bool("PM_AUTO_TRADE_ENTRY_REQUIRE_EDGE_SCORE_BUY_RANGE", True),
-            "entry_require_edge_realizable": _env_bool("PM_AUTO_TRADE_ENTRY_REQUIRE_EDGE_REALIZABLE", True),
+            "entry_require_edge_realizable": (
+                False
+                if lcb_global_enabled
+                else _env_bool("PM_AUTO_TRADE_ENTRY_REQUIRE_EDGE_REALIZABLE", True)
+            ),
             "entry_require_q_range": entry_require_q_range,
             "entry_require_ask_range": entry_require_ask_range,
             "entry_require_no_ask_range": entry_require_no_ask_range,
@@ -28083,6 +30032,18 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
             ),
             "entry_main_enabled": _env_bool(
                 "PM_AUTO_TRADE_ENTRY_MAIN_ENABLED",
+                True,
+            ),
+            "lcb_global_enabled": _env_bool(
+                "PM_LCB_GLOBAL_ENABLED",
+                True,
+            ),
+            "lcb_global_disable_location_block": _env_bool(
+                "PM_LCB_GLOBAL_DISABLE_LOCATION_BLOCK",
+                True,
+            ),
+            "lcb_global_require_nonnegative_signal_edge": _env_bool(
+                "PM_LCB_GLOBAL_REQUIRE_NONNEG_SIGNAL_EDGE",
                 True,
             ),
         },
@@ -28991,6 +30952,7 @@ def build_run_item(
     platt: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload = safe_json_loads(row["payload_json"])
+    _slim_fact_payload_for_ui(payload)
     cache_age_sec = payload.get("model_cache_age_sec")
     cache_freshness = payload.get("model_cache_freshness")
     suggestions: List[Any] = []
@@ -30702,6 +32664,7 @@ def query_facts(date: str, include_history: bool) -> List[Dict[str, Any]]:
             except Exception:
                 continue
             if isinstance(payload, dict):
+                _slim_fact_payload_for_ui(payload)
                 _hydrate_fact_market_updated_at(payload, market_tick_latest_map)
                 _hydrate_fact_market_top_label(payload)
                 try:
@@ -30808,6 +32771,7 @@ def query_facts_paged(
             except Exception:
                 continue
             if isinstance(payload, dict):
+                _slim_fact_payload_for_ui(payload)
                 _hydrate_fact_market_updated_at(payload, market_tick_latest_map)
                 _hydrate_fact_market_top_label(payload)
                 try:
@@ -30888,6 +32852,7 @@ def query_facts_range(days: int, end_date: str) -> List[Dict[str, Any]]:
             except Exception:
                 continue
             if isinstance(payload, dict):
+                _slim_fact_payload_for_ui(payload)
                 _hydrate_fact_market_updated_at(payload, market_tick_latest_map)
                 _hydrate_fact_market_top_label(payload)
                 try:
@@ -31712,6 +33677,358 @@ _HIGHEST_TEMPERATURE_SLUG_RE = re.compile(
     re.IGNORECASE,
 )
 _ET_TZ = ZoneInfo("America/New_York")
+
+
+def _iso_day_in_tz(ts: str, tz: ZoneInfo) -> str:
+    dt = parse_any_ts(str(ts or "").strip())
+    if dt is None:
+        dt = parse_iso_ts(str(ts or "").strip())
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        return dt.astimezone(tz).date().isoformat()
+    except Exception:
+        return dt.date().isoformat()
+
+
+def ui_snapshot(run_date: str = "", limit: int = 120) -> Dict[str, Any]:
+    run_date_key = _normalize_date_key(run_date)
+    if not run_date_key:
+        try:
+            with open_db_ro_fast(timeout_sec=0.25, busy_timeout_ms=200) as conn:
+                run_date_key = latest_run_date_fast(conn) or ""
+        except Exception:
+            run_date_key = ""
+        if not run_date_key:
+            try:
+                with open_db(timeout_sec=0.6, busy_timeout_ms=600) as conn:
+                    run_date_key = (
+                        latest_fact_run_date(conn)
+                        or latest_unsettled_run_date(conn)
+                        or latest_run_date(conn)
+                        or ""
+                    )
+            except Exception:
+                run_date_key = ""
+    if not run_date_key:
+        return {"ok": False, "error": "no_run_date"}
+    if not DB_PATH.exists():
+        return {"ok": False, "error": "db_missing"}
+
+    try:
+        limit_val = int(limit or 0)
+    except (TypeError, ValueError):
+        limit_val = 120
+    limit_val = max(10, min(limit_val, 2000))
+
+    cache_key = f"{run_date_key}:{limit_val}"
+    now_ts = time.time()
+    if UI_SNAPSHOT_CACHE_SEC > 0:
+        with _UI_SNAPSHOT_CACHE_LOCK:
+            cached = _UI_SNAPSHOT_CACHE.get(cache_key)
+            if cached and (now_ts - float(cached[0])) <= float(UI_SNAPSHOT_CACHE_SEC):
+                return cached[1]
+
+    diag = auto_trade_env_diagnostics()
+
+    def _compute(conn: sqlite3.Connection) -> Dict[str, Any]:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        run_row = None
+        try:
+            cur.execute(
+                """
+                SELECT id, run_date, started_at, ended_at, ok, error, processed, skipped, created_at
+                FROM auto_trade_runs
+                WHERE run_date = ?
+                ORDER BY datetime(started_at) DESC, id DESC
+                LIMIT 1
+                """,
+                (run_date_key,),
+            )
+            run_row = cur.fetchone()
+        except sqlite3.OperationalError:
+            run_row = None
+        if not run_row:
+            try:
+                cur.execute(
+                    """
+                    SELECT id, run_date, started_at, ended_at, ok, error, processed, skipped, created_at
+                    FROM auto_trade_runs
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                )
+                run_row = cur.fetchone()
+            except sqlite3.OperationalError:
+                run_row = None
+        run_id = int(run_row["id"]) if run_row else 0
+        run_meta = {
+            "id": run_id,
+            "run_date": str(run_row["run_date"] or "") if run_row else run_date_key,
+            "started_at": str(run_row["started_at"] or "") if run_row else "",
+            "ended_at": str(run_row["ended_at"] or "") if run_row else "",
+            "ok": int(run_row["ok"] or 0) if run_row else 0,
+            "error": str(run_row["error"] or "") if run_row else "",
+            "processed": int(run_row["processed"] or 0) if run_row else 0,
+            "skipped": int(run_row["skipped"] or 0) if run_row else 0,
+            "created_at": str(run_row["created_at"] or "") if run_row else "",
+        }
+
+        job_counts: Dict[str, int] = {}
+        jobs_updated_at = ""
+        try:
+            cur.execute(
+                """
+                SELECT state, COUNT(*) AS n, MAX(updated_at) AS updated_at_max
+                FROM auto_trade_jobs
+                WHERE run_date = ?
+                GROUP BY state
+                """,
+                (run_date_key,),
+            )
+            for row in cur.fetchall():
+                state = str(row["state"] or "")
+                if state:
+                    job_counts[state] = int(row["n"] or 0)
+                updated_at = str(row["updated_at_max"] or "")
+                if updated_at and updated_at > jobs_updated_at:
+                    jobs_updated_at = updated_at
+        except sqlite3.OperationalError:
+            job_counts = {}
+            jobs_updated_at = ""
+
+        entry_rows: List[Dict[str, Any]] = []
+        entry_counts: Dict[str, int] = {"total": 0, "blocked": 0, "will_order": 0}
+        reason_counts: Dict[str, int] = {}
+        reason_examples: Dict[str, Dict[str, Any]] = {}
+
+        def _parse_json_list(raw: Any) -> List[str]:
+            text = str(raw or "").strip()
+            if not text:
+                return []
+            try:
+                val = json.loads(text)
+            except Exception:
+                return []
+            if not isinstance(val, list):
+                return []
+            out: List[str] = []
+            for item in val:
+                if item is None:
+                    continue
+                tok = str(item).strip()
+                if tok:
+                    out.append(tok)
+            return out
+
+        if run_id:
+            try:
+                cur.execute(
+                    """
+                    SELECT slug, event_date, title, outcome, side, action, decided_state, will_order,
+                           reason_codes_json, reasons_json, details_json, created_at
+                    FROM auto_trade_decisions
+                    WHERE run_id = ?
+                      AND action = 'entry'
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (run_id, limit_val),
+                )
+                for row in cur.fetchall():
+                    entry_counts["total"] += 1
+                    decided_state = str(row["decided_state"] or "")
+                    will_order = int(row["will_order"] or 0)
+                    if decided_state == "blocked" or (will_order == 0 and decided_state):
+                        entry_counts["blocked"] += 1
+                    if will_order:
+                        entry_counts["will_order"] += 1
+                    reason_codes = _parse_json_list(row["reason_codes_json"])
+                    reasons = _parse_json_list(row["reasons_json"])
+                    details = {}
+                    try:
+                        details_text = str(row["details_json"] or "").strip()
+                        if details_text:
+                            details = json.loads(details_text)
+                    except Exception:
+                        details = {}
+                    payload = {
+                        "slug": str(row["slug"] or ""),
+                        "event_date": date_only(str(row["event_date"] or "")),
+                        "title": str(row["title"] or ""),
+                        "outcome": str(row["outcome"] or ""),
+                        "side": str(row["side"] or "").strip().upper(),
+                        "action": "entry",
+                        "decided_state": decided_state,
+                        "will_order": will_order,
+                        "reason_codes": reason_codes,
+                        "reasons": reasons,
+                        "details": details if isinstance(details, dict) else {},
+                        "created_at": str(row["created_at"] or ""),
+                    }
+                    entry_rows.append(payload)
+
+                    if decided_state == "blocked" and reason_codes:
+                        code0 = reason_codes[0]
+                        reason_counts[code0] = int(reason_counts.get(code0) or 0) + 1
+                        if code0 not in reason_examples:
+                            meta = _latest_event_meta_from_facts(
+                                conn, payload["slug"], payload["event_date"]
+                            ) if payload["slug"] and payload["event_date"] else {}
+                            reason_examples[code0] = {
+                                "slug": payload["slug"],
+                                "event_date": payload["event_date"],
+                                "title": str(meta.get("title") or payload["title"] or ""),
+                                "event_url": str(meta.get("event_url") or ""),
+                                "outcome": payload["outcome"],
+                                "side": payload["side"],
+                            }
+            except sqlite3.OperationalError:
+                entry_rows = []
+
+        reason_stats: List[Dict[str, Any]] = []
+        blocked_total = max(1, int(entry_counts.get("blocked") or 0))
+        for code, n in sorted(reason_counts.items(), key=lambda it: (-it[1], it[0])):
+            example = reason_examples.get(code) or {}
+            reason_stats.append(
+                {
+                    "code": code,
+                    "count": int(n),
+                    "share": float(n) / float(blocked_total) if blocked_total else 0.0,
+                    "example": example,
+                }
+            )
+
+        # Live positions (truth = positions api funder; fallback = local).
+        pos_overrides, pos_err, pos_updated = fetch_positions_cache(conn, force=False)
+        trading_open = 0
+        redeemable_open = 0
+        closed_nonredeemable = 0
+        closed_redeemable = 0
+        if isinstance(pos_overrides, dict):
+            event_status_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+            def _event_status(slug: str, event_date: str) -> Dict[str, Any]:
+                key = (str(slug or "").strip(), date_only(str(event_date or "")))
+                cached = event_status_cache.get(key)
+                if cached is not None:
+                    return cached
+                meta = _latest_event_meta_from_facts(conn, key[0], key[1]) if key[0] and key[1] else {}
+                status = {
+                    "settlement_actual": to_float(meta.get("settlement_actual")) if isinstance(meta, dict) else None,
+                    "market_closed": int((meta or {}).get("market_closed") or 0) if isinstance(meta, dict) else 0,
+                }
+                event_status_cache[key] = status
+                return status
+
+            for raw_key, entry in pos_overrides.items():
+                if not (isinstance(raw_key, tuple) and len(raw_key) == 4 and isinstance(entry, dict)):
+                    continue
+                slug = str(raw_key[0] or "").strip()
+                event_date = date_only(str(raw_key[1] or ""))
+                size = to_float(entry.get("position_size"))
+                if size is None:
+                    size = to_float(entry.get("size"))
+                if size is None or not math.isfinite(size) or size <= TIME_EDGE_Q_EPS:
+                    continue
+                redeemable = bool(entry.get("redeemable"))
+                status = _event_status(slug, event_date)
+                is_settled = status.get("settlement_actual") is not None
+                is_closed = int(status.get("market_closed") or 0) == 1
+                if is_settled or is_closed:
+                    if redeemable:
+                        closed_redeemable += 1
+                    else:
+                        closed_nonredeemable += 1
+                    continue
+                if redeemable:
+                    redeemable_open += 1
+                else:
+                    trading_open += 1
+
+        position_truth_source = "positions_api_funder"
+        if ACCOUNT_REQUESTS_DISABLED:
+            position_truth_source = "data_only_local"
+        elif not POSITIONS_SYNC_ENABLED:
+            position_truth_source = "edge_trades_local_sync_disabled"
+        elif not POSITIONS_API_URL:
+            position_truth_source = "edge_trades_local_missing_url"
+        elif pos_err:
+            position_truth_source = "edge_trades_local_sync_error"
+
+        # Filled orders today (ET): distinct order_ids with linked attributions.
+        filled_orders_today: Set[str] = set()
+        try:
+            lookback_days = 6
+            since_dt = datetime.now().astimezone() - timedelta(days=lookback_days)
+            since_key = since_dt.strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute(
+                """
+                SELECT a.order_id, f.trade_time, f.created_at
+                FROM trade_fill_attributions a
+                JOIN edge_trade_fills f ON f.id = a.fill_id
+                WHERE a.linked = 1
+                  AND a.attributed_at >= ?
+                  AND a.order_id IS NOT NULL
+                  AND a.order_id != ''
+                """,
+                (since_key,),
+            )
+            for row in cur.fetchall():
+                order_id = str(row["order_id"] or "").strip()
+                if not order_id:
+                    continue
+                day = _iso_day_in_tz(str(row["trade_time"] or row["created_at"] or ""), _ET_TZ)
+                if day == run_date_key:
+                    filled_orders_today.add(order_id)
+        except sqlite3.OperationalError:
+            filled_orders_today = set()
+        except Exception:
+            filled_orders_today = filled_orders_today
+
+        return {
+            "ok": True,
+            "as_of": now_text(),
+            "run_date": run_date_key,
+            "ui_html_mtime": html_mtime(),
+            "auto_trade_env": diag,
+            "positions": {
+                "trading_open_count": trading_open,
+                "redeemable_open_count": redeemable_open,
+                "closed_nonredeemable_count": closed_nonredeemable,
+                "closed_redeemable_count": closed_redeemable,
+                "truth_source": position_truth_source,
+                "sync_at": str(pos_updated or ""),
+                "sync_error": str(pos_err or ""),
+            },
+            "fills": {
+                "filled_order_count_today": len(filled_orders_today),
+            },
+            "lcb": {
+                "run": run_meta,
+                "jobs": {"counts": job_counts, "updated_at": jobs_updated_at},
+                "entry": {
+                    "counts": entry_counts,
+                    "blocked_reasons": reason_stats[:60],
+                    "latest": entry_rows[:limit_val],
+                },
+            },
+        }
+
+    try:
+        with open_db_ro_fast(timeout_sec=0.6, busy_timeout_ms=600) as conn:
+            payload = _compute(conn)
+    except Exception:
+        with open_db(timeout_sec=1.2, busy_timeout_ms=1200) as conn:
+            payload = _compute(conn)
+
+    if UI_SNAPSHOT_CACHE_SEC > 0:
+        with _UI_SNAPSHOT_CACHE_LOCK:
+            _UI_SNAPSHOT_CACHE[cache_key] = (now_ts, payload)
+    return payload
 
 
 def _read_weather_events_cached() -> List[Dict[str, Any]]:
@@ -33588,6 +35905,24 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, html, "text/html; charset=utf-8")
             return
 
+        if path in ("/lcb", "/lcb.html"):
+            try:
+                html = load_lcb_html().encode("utf-8")
+            except FileNotFoundError:
+                self._send(404, b"missing lcb.html", "text/plain; charset=utf-8")
+                return
+            self._send(200, html, "text/html; charset=utf-8")
+            return
+
+        if path == "/api/ui_snapshot":
+            try:
+                limit = int(params.get("limit", ["120"])[0])
+            except ValueError:
+                limit = 120
+            run_date = str(params.get("run_date", [""])[0] or "")
+            self._send_json(ui_snapshot(run_date=run_date, limit=limit))
+            return
+
         if path == "/api/london-follow-sim":
             try:
                 days = int(params.get("days", [str(LONDON_FOLLOW_SIM_LOOKBACK_DAYS)])[0])
@@ -33700,13 +36035,20 @@ class Handler(BaseHTTPRequestHandler):
             latest = ""
             try:
                 with open_db_ro_fast(timeout_sec=0.25, busy_timeout_ms=200) as conn:
-                    latest = latest_run_date_fast(conn)
+                    latest = latest_fact_run_date_with_rows(conn, max_scan=14)
+                    if not latest:
+                        latest = latest_run_date_fast(conn)
             except Exception:
                 latest = ""
             if not latest:
                 try:
                     with open_db(timeout_sec=0.6, busy_timeout_ms=600) as conn:
-                        latest = latest_fact_run_date(conn) or latest_unsettled_run_date(conn) or latest_run_date(conn)
+                        latest = (
+                            latest_fact_run_date_with_rows(conn, max_scan=21)
+                            or latest_fact_run_date(conn)
+                            or latest_unsettled_run_date(conn)
+                            or latest_run_date(conn)
+                        )
                 except Exception:
                     latest = ""
             if latest:

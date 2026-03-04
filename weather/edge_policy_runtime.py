@@ -84,9 +84,9 @@ def evaluate_tradeability(
             "shadow_block": False,
             "reasons": [],
         }
-    mode = str(cfg.get("mode") or "shadow").strip().lower()
+    mode = str(cfg.get("mode") or "enforced").strip().lower()
     if mode not in {"off", "shadow", "canary", "enforced"}:
-        mode = "shadow"
+        mode = "enforced"
     signal_lcb_f = _to_float(signal_lcb)
     path_lcb_f = _to_float(path_lcb)
     edge_lcb_f = _to_float(edge_lcb)

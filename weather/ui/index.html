@@ -1123,6 +1123,9 @@
       color:var(--muted);
       font-weight:700;
     }
+    .lcb-legacy {
+      display:none !important;
+    }
     .trade-config-row {
       display:flex;
       flex-wrap:wrap;
@@ -7520,6 +7523,129 @@
       gap:var(--space-2);
       box-shadow:none;
     }
+    .lcb-kpi-board {
+      display:grid;
+      gap:12px;
+    }
+    .lcb-kpi-time-axis {
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:8px;
+      align-items:center;
+    }
+    .lcb-kpi-time-pill {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:1px solid var(--border-soft);
+      background:var(--panel-3);
+      border-radius:999px;
+      padding:5px 12px;
+      font-family:"Source Sans 3", "Noto Sans SC", sans-serif;
+      font-size:11px;
+      font-weight:700;
+      color:var(--muted);
+      letter-spacing:.03em;
+    }
+    .lcb-kpi-time-pill.is-today {
+      border-color:var(--tone-info-border-soft);
+      background:var(--tone-info-bg-soft);
+      color:var(--text);
+      box-shadow:inset 0 0 0 1px var(--tone-info-border-soft);
+    }
+    .lcb-kpi-card-grid {
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+    }
+    .lcb-kpi-card {
+      border:1px solid var(--border-soft);
+      border-radius:14px;
+      background:linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.015) 100%);
+      padding:12px 12px 10px;
+      display:grid;
+      gap:9px;
+      min-width:0;
+    }
+    .lcb-kpi-card-title {
+      font-family:"Fraunces", "Noto Sans SC", serif;
+      font-size:14px;
+      font-weight:600;
+      color:var(--text);
+      letter-spacing:.01em;
+    }
+    .lcb-kpi-values {
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:8px;
+    }
+    .lcb-kpi-cell {
+      border:1px solid var(--border-soft);
+      border-radius:10px;
+      background:var(--panel-3);
+      padding:8px 7px;
+      display:grid;
+      gap:2px;
+      min-width:0;
+    }
+    .lcb-kpi-cell-label {
+      font-size:10px;
+      color:var(--muted);
+      font-weight:700;
+      letter-spacing:.03em;
+    }
+    .lcb-kpi-cell-main {
+      font-family:"Source Sans 3", "Noto Sans SC", sans-serif;
+      font-size:24px;
+      line-height:1.02;
+      font-weight:700;
+      color:var(--text);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .lcb-kpi-cell-main.is-pct {
+      font-size:21px;
+    }
+    .lcb-kpi-cell-main.is-positive {
+      color:var(--ok);
+    }
+    .lcb-kpi-cell-main.is-negative {
+      color:var(--danger);
+    }
+    .lcb-kpi-cell-sub {
+      font-size:11px;
+      color:var(--muted);
+      font-weight:600;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .lcb-kpi-card-foot {
+      font-size:11px;
+      color:var(--muted);
+      opacity:.9;
+    }
+    @media (max-width:900px) {
+      .lcb-kpi-card-grid {
+        grid-template-columns:1fr;
+      }
+    }
+    @media (max-width:640px) {
+      .lcb-kpi-time-pill {
+        padding:4px 8px;
+        font-size:10px;
+      }
+      .lcb-kpi-cell-main {
+        font-size:20px;
+      }
+      .lcb-kpi-cell-main.is-pct {
+        font-size:18px;
+      }
+      .lcb-kpi-card {
+        padding:10px 9px 8px;
+      }
+    }
     .manual-hit-grid {
       display:grid;
       /* Responsive: avoid horizontal overflow when the main column is narrow. */
@@ -9462,7 +9588,7 @@
       <div class="container section-body" data-anchor-key="section:strategyBody">
         <div class="card trade-config-card" id="autoTradeConfigCard">
             <div class="card-title" id="section-edge-config" data-nav-level="2" data-nav-emphasis="1">策略配置面板</div>
-            <div class="trade-preset-bar">
+            <div class="trade-preset-bar lcb-legacy">
               <div class="trade-preset-title">预设方案</div>
               <div class="trade-preset-current" id="autoTradePresetCurrent">当前：-</div>
               <div class="trade-preset-list" id="autoTradePresetList"></div>
@@ -9474,7 +9600,7 @@
               </div>
             </div>
             <div class="trade-config-toolbar">
-              <div class="trade-config-eligible" id="autoTradeEligibleCount">
+              <div class="trade-config-eligible lcb-legacy" id="autoTradeEligibleCount">
                 <span>当前符合的温度事件</span>
                 <strong>—</strong>
                 <span class="eligible-meta">/ —</span>
@@ -9484,48 +9610,28 @@
                   <span class="status-dot"></span>
                   <span class="status-text">已保存</span>
                 </div>
-                <button id="autoTradeConfigCheck" class="secondary" type="button">一键检测</button>
-                <button id="autoTradeConfigAutoFix" class="secondary" type="button">自动修复</button>
+                <button id="autoTradeConfigCheck" class="secondary lcb-legacy" type="button">一键检测</button>
+                <button id="autoTradeConfigAutoFix" class="secondary lcb-legacy" type="button">自动修复</button>
                 <button id="autoTradeConfigSave" class="scan" type="button" disabled>保存设置</button>
               </div>
             </div>
-            <div class="trade-config-sticky" id="autoTradeStickyAlerts"></div>
-            <div class="trade-config-conflicts" id="autoTradeConflictPanel"></div>
+            <div class="trade-config-sticky lcb-legacy" id="autoTradeStickyAlerts"></div>
+            <div class="trade-config-conflicts lcb-legacy" id="autoTradeConflictPanel"></div>
             <div class="trade-config-grid">
               <div class="trade-config-section span-full">
                 <div class="trade-config-section-title">策略开关 · 一键启停</div>
                 <div class="strategy-switch-panel">
                   <div class="strategy-switch-head">
-                    <div class="strategy-switch-title">入场策略总开关（主策略 + 独立策略）</div>
+                    <div class="strategy-switch-title">入场策略总开关（LCB全市场统一策略）</div>
                     <div class="strategy-switch-actions">
-                      <button id="strategyToggleEnableAll" class="secondary" type="button">一键启动全部策略</button>
-                      <button id="strategyToggleMainOnly" class="secondary" type="button">一键关闭到仅主策略</button>
+                      <button id="strategyToggleEnableAll" class="secondary" type="button">一键启用LCB策略</button>
+                      <button id="strategyToggleMainOnly" class="secondary" type="button">恢复仅LCB</button>
                     </div>
                   </div>
                   <div class="strategy-switch-row">
                     <label class="config-toggle">
-                      <input id="entryMainEnabled" data-config-key="entry_main_enabled" type="checkbox" />
-                      主策略
-                    </label>
-                    <label class="config-toggle">
-                      <input id="entryYesTopEnabled" data-config-key="entry_yes_top_enabled" type="checkbox" />
-                      YES最高桶
-                    </label>
-                    <label class="config-toggle">
-                      <input id="entryFollowEnabled" data-config-key="entry_follow_enabled" type="checkbox" />
-                      临结价差
-                    </label>
-                    <label class="config-toggle">
-                      <input id="mirrorFollowEnabled" data-config-key="mirror_follow_enabled" type="checkbox" />
-                      影子跟单
-                    </label>
-                    <label class="config-toggle">
-                      <input id="entryHardBoundNoEnabled" data-config-key="entry_hard_bound_no_enabled" type="checkbox" />
-                      物理边界 NO
-                    </label>
-                    <label class="config-toggle">
-                      <input id="entryAdjPairEnabled" data-config-key="entry_adj_pair_enabled" type="checkbox" />
-                      邻桶配对
+                      <input id="lcbGlobalEnabled" data-config-key="lcb_global_enabled" type="checkbox" />
+                      LCB全市场
                     </label>
                   </div>
                   <div class="strategy-switch-row">
@@ -9543,47 +9649,57 @@
                     </label>
                   </div>
                   <div class="strategy-switch-note">说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。</div>
-                  <div class="strategy-switch-note">上面的“一键按钮”会同时作用于全部策略开关（含 YES最高桶 / 临结价差 / 影子跟单）。</div>
+                  <div class="strategy-switch-note">上面的“一键按钮”仅作用于 LCB 全市场策略开关。</div>
                   <div class="strategy-switch-note warn">总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。</div>
                   <div class="trade-config-row">
                     <div class="config-group">
-                      <span class="trade-config-note">主策略仓位系数</span>
-                      <input id="entryMainSizeRatio" data-config-key="entry_main_size_ratio" type="number" step="0.05" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">LCB全市场仓位系数</span>
+                      <input id="lcbGlobalSizeRatio" data-config-key="lcb_global_size_ratio" type="number" step="0.05" min="0" inputmode="decimal" />
                     </div>
                     <div class="config-group">
-                      <span class="trade-config-note">YES最高桶仓位系数</span>
-                      <input id="entryYesTopSizeRatio" data-config-key="entry_yes_top_size_ratio" type="number" step="0.05" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">信号下界阈值（signal_lcb）</span>
+                      <input id="lcbGlobalSignalLcbMin" data-config-key="lcb_global_signal_lcb_min" type="number" step="0.001" min="0" inputmode="decimal" />
                     </div>
                     <div class="config-group">
-                      <span class="trade-config-note">临结价差仓位系数</span>
-                      <input id="entryFollowSizeRatio" data-config-key="entry_follow_size_ratio" type="number" step="0.05" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">路径下界阈值（path_lcb）</span>
+                      <input id="lcbGlobalPathLcbMin" data-config-key="lcb_global_path_lcb_min" type="number" step="0.001" min="0" max="1" inputmode="decimal" />
                     </div>
                   </div>
                   <div class="trade-config-row">
                     <div class="config-group">
-                      <span class="trade-config-note">物理边界NO仓位系数</span>
-                      <input id="entryHardBoundNoSizeRatio" data-config-key="entry_hard_bound_no_size_ratio" type="number" step="0.05" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">可交易下界阈值（edge_lcb）</span>
+                      <input id="lcbGlobalEdgeLcbMin" data-config-key="lcb_global_edge_lcb_min" type="number" step="0.001" min="0" inputmode="decimal" />
                     </div>
                     <div class="config-group">
-                      <span class="trade-config-note">邻桶配对仓位系数</span>
-                      <input id="entryAdjPairSizeRatio" data-config-key="entry_adj_pair_size_ratio" type="number" step="0.05" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">最大盘口价差（spread）</span>
+                      <input id="lcbGlobalMaxSpread" data-config-key="lcb_global_max_spread" type="number" step="0.001" min="0" inputmode="decimal" />
                     </div>
                     <div class="config-group">
-                      <span class="trade-config-note">影子跟单份数比例（1.00=100%，0.10=10%，0.08=8%）</span>
-                      <input id="mirrorFollowSizeRatio" data-config-key="mirror_follow_size_ratio" type="number" step="0.01" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">最小盘口深度（USDC）</span>
+                      <input id="lcbGlobalMinDepthUsdc" data-config-key="lcb_global_min_depth_usdc" type="number" step="0.1" min="0" inputmode="decimal" />
                     </div>
                     <div class="config-group">
-                      <span class="trade-config-note">影子跟单最小下单金额（USDC）</span>
-                      <input id="mirrorMinOrderUsdc" data-config-key="mirror_min_order_usdc" type="number" step="0.1" min="0" inputmode="decimal" />
+                      <span class="trade-config-note">最大盘口时延（秒）</span>
+                      <input id="lcbGlobalMaxTickAgeSec" data-config-key="lcb_global_max_tick_age_sec" type="number" step="1" min="0" inputmode="decimal" />
                     </div>
                   </div>
-                  <div class="strategy-switch-note">仓位系数基准为 1.00x；0 表示该策略当轮不下单。</div>
+                  <div class="trade-config-row">
+                    <div class="config-group">
+                      <span class="trade-config-note">每轮最多新开仓（0=不限制）</span>
+                      <input id="lcbGlobalMaxNewOrdersPerRun" data-config-key="lcb_global_max_new_orders_per_run" type="number" step="1" min="0" />
+                    </div>
+                    <div class="config-group">
+                      <span class="trade-config-note">全局最多活跃持仓（0=不限制）</span>
+                      <input id="lcbGlobalMaxOpenPositions" data-config-key="lcb_global_max_open_positions" type="number" step="1" min="0" />
+                    </div>
+                  </div>
+                  <div class="strategy-switch-note">仓位系数基准为 1.00x；0 表示本轮不新开仓。</div>
                   <div class="strategy-switch-current" id="strategySwitchCurrent"></div>
                 </div>
               </div>
               <div class="trade-config-section span-full">
-                <div class="trade-config-section-title">入场阈值 · EdgeScore</div>
-                <div class="trade-config-row">
+                <div class="trade-config-section-title">执行参数（LCB）</div>
+                <div class="trade-config-row lcb-legacy">
                   <div class="config-group">
                     <span class="trade-config-note">全局最低门槛</span>
                     <span class="info-tip" title="全局最低 有效优势分 门槛（edge_score_min），低于该值直接不进场。">i</span>
@@ -9595,8 +9711,8 @@
                     <input id="temperatureEventMinEdgeScoreDisplay" data-config-key="temperature_event_min_edge_score_display" type="number" step="0.1" min="0" />
                   </div>
                 </div>
-                <div class="trade-config-help">这是最硬的全局门槛，优先级高于其它区间控制。</div>
-                <div class="trade-config-row">
+                <div class="trade-config-help lcb-legacy">这是最硬的全局门槛，优先级高于其它区间控制。</div>
+                <div class="trade-config-row lcb-legacy">
                   <div class="config-group">
                     <label class="config-toggle">
                       <input id="edgeScoreRangeToggle" data-config-key="entry_require_edge_score_range" type="checkbox" />
@@ -9622,12 +9738,12 @@
                     </div>
                   </div>
                 </div>
-                <div class="trade-config-help">用于剔除过低/过高 有效优势分。调高下限或调低上限=更严格；调低下限或调高上限=放宽。</div>
-                  <div class="trade-config-help">
+                <div class="trade-config-help lcb-legacy">用于剔除过低/过高 有效优势分。调高下限或调低上限=更严格；调低下限或调高上限=放宽。</div>
+                  <div class="trade-config-help lcb-legacy">
                     有效优势分 可买区间以配置为准（edge_score_buy_min / edge_score_buy_max），只有落在这两个值之间的事件才会进入下一步筛选。
                     把下限调高或上限调低会更加严格地排除极端高/低预测；调低下限或抬上限则能在更宽的 有效优势分 带宽里试错。
                   </div>
-                <div class="trade-config-row">
+                <div class="trade-config-row lcb-legacy">
                   <div class="config-group">
                     <span class="trade-config-note">Time×Structure 最低值</span>
                     <span class="info-tip" title="time_factor × structure_factor 的最小乘积（time_structure_min / PM_TIME_STRUCTURE_MIN），决定 EdgeScore 的下限。调高可以让 time/structure 对 EdgeScore 的影响更大。">i</span>
@@ -9673,7 +9789,7 @@
                 <div class="trade-config-help">买价上限(ask)。调低=只买更便宜；调高=允许更贵的报价。</div>
                 <div class="trade-config-help">用于换算下单数量(预算/价格)。实际还会受“单笔上限”影响。</div>
               </div>
-              <div class="trade-config-section span-full">
+              <div class="trade-config-section span-full lcb-legacy">
                 <div class="trade-config-section-title">入场阈值 · 可兑现口径（不扣手续费）</div>
                 <div class="trade-config-row">
                   <div class="config-group">
@@ -9695,7 +9811,7 @@
                 </div>
                 <div class="trade-config-help">核心思路：只看执行成本后的可兑现边际为正才允许入场。</div>
               </div>
-              <div class="trade-config-section span-full">
+              <div class="trade-config-section span-full lcb-legacy">
                 <div class="trade-config-section-title">入场条件 · 概率与盘口</div>
                 <div class="trade-config-row">
                   <div class="config-group">
@@ -9927,7 +10043,7 @@
                 </div>
                 <div class="trade-config-help">YES高估(ask−q)。调高=需更明显高估才买NO；调低=更容易买NO。</div>
               </div>
-              <div class="trade-config-section span-full">
+              <div class="trade-config-section span-full lcb-legacy">
                 <div class="trade-config-section-title">独立策略 · YES最高桶策略</div>
                   <div class="trade-config-subpanel yes-top-panel">
                   <div class="yes-top-hero">
@@ -10047,7 +10163,7 @@
                   <div class="trade-config-help">价差比/追价信号/趋势强度用于 YES Top 入场执行节奏。YES Top 独立退出参数用于“最高桶反转”退出，不影响主策略退出参数。</div>
                 </div>
               </div>
-              <div class="trade-config-section span-full">
+              <div class="trade-config-section span-full lcb-legacy">
                 <div class="trade-config-section-title">独立策略 · 临结价差策略（临近结算分布）</div>
                 <div class="trade-config-subpanel follow-panel">
                   <div class="follow-hero">
@@ -10210,7 +10326,7 @@
                   <div class="trade-config-help">独立退出开启后，仅对临结价差持仓生效；默认“持有到结算优先”，在释放窗口外仅保留防守退出（止损/回撤/超时）与止盈重定价。</div>
                 </div>
               </div>
-              <div class="trade-config-section span-full">
+              <div class="trade-config-section span-full lcb-legacy">
                 <div class="trade-config-section-title">独立策略 · 物理边界NO（实况/规则触发）</div>
                 <div class="trade-config-subpanel">
                   <div class="trade-config-subpanel-row">
@@ -10241,7 +10357,7 @@
                   <div class="trade-config-help">触发逻辑：当实况/规则判定“已越过该桶上界”时买 NO（仅最高温事件，且通常 D0 更有效）。该策略仍受统一门禁（最高概率桶NO禁入等）约束。</div>
                 </div>
               </div>
-              <div class="trade-config-section span-full">
+              <div class="trade-config-section span-full lcb-legacy">
                 <div class="trade-config-section-title">独立策略 · 邻桶曲线套利（adj_pair）</div>
                 <div class="trade-config-subpanel">
                   <div class="trade-config-subpanel-row">
@@ -10268,7 +10384,7 @@
                   <div class="trade-config-help">逻辑：低桶买 YES + 高邻桶买 NO 形成“曲线套利”，执行层会择优只下单“可兑现边际更好”的那一腿；仍受统一门禁约束。</div>
                 </div>
               </div>
-              <div class="trade-config-section compact span-full">
+              <div class="trade-config-section compact span-full lcb-legacy">
                 <div class="trade-config-section-title">入场条件 · 深度与趋势</div>
                 <div class="trade-config-row">
                   <div class="config-group">
@@ -10485,7 +10601,7 @@
                   </div>
                 </div>
                 <div class="trade-config-help">止损%调高=允许更大回撤再止损；调低=更紧。回撤止盈%调高=更宽松；调低=更敏感。</div>
-                <div class="trade-config-row">
+                <div class="trade-config-row lcb-legacy">
                   <div class="config-group">
                     <label class="config-toggle">
                       <input id="exitTrendEnabled" data-config-key="exit_trend_enabled" type="checkbox" />
@@ -10506,8 +10622,8 @@
                     </div>
                   </div>
                 </div>
-                <div class="trade-config-help">调高最小跌幅/一致性=更严格；调低=更敏感。</div>
-                <div class="trade-config-row">
+                <div class="trade-config-help lcb-legacy">调高最小跌幅/一致性=更严格；调低=更敏感。</div>
+                <div class="trade-config-row lcb-legacy">
                   <div class="config-group">
                     <label class="config-toggle">
                       <input id="exitLagEnabled" data-config-key="exit_lag_enabled" type="checkbox" />
@@ -10535,7 +10651,7 @@
                     <input id="exitEdgeHeadroomMin" data-config-key="exit_edge_headroom_min" type="number" step="0.001" min="0" inputmode="decimal" />
                   </div>
                 </div>
-                <div class="trade-config-help">lag&gt;阈值连续触发退出。连续次数越高=更宽松；越低=更敏感。翻转阈值调高=需更强反向才能退出；调低=更容易退出。信号边际&lt;阈值越高=更容易视作弱势。</div>
+                <div class="trade-config-help lcb-legacy">lag&gt;阈值连续触发退出。连续次数越高=更宽松；越低=更敏感。翻转阈值调高=需更强反向才能退出；调低=更容易退出。信号边际&lt;阈值越高=更容易视作弱势。</div>
               </div>
             </div>
             <div class="trade-config-note">开关关闭时仅停用对应过滤，不清空阈值；点击保存后同步到自动交易进程。</div>
@@ -10847,12 +10963,7 @@
       syncAdjPairFields();
     }
     const STRATEGY_SWITCH_SUMMARY = [
-      ['entry_main_enabled', 'entry_main_size_ratio', '主策略'],
-      ['entry_yes_top_enabled', 'entry_yes_top_size_ratio', 'YES最高桶'],
-      ['entry_follow_enabled', 'entry_follow_size_ratio', '临结价差'],
-      ['entry_hard_bound_no_enabled', 'entry_hard_bound_no_size_ratio', '物理边界NO'],
-      ['entry_adj_pair_enabled', 'entry_adj_pair_size_ratio', '邻桶配对'],
-      ['mirror_follow_enabled', 'mirror_follow_size_ratio', '影子跟单'],
+      ['lcb_global_enabled', 'lcb_global_size_ratio', 'LCB全市场'],
     ];
     const MIRROR_ONLY_DISABLED_STRATEGY_KEYS = [
       'entry_main_enabled',
@@ -10860,6 +10971,7 @@
       'entry_yes_top_enabled',
       'entry_hard_bound_no_enabled',
       'entry_adj_pair_enabled',
+      'lcb_global_enabled',
     ];
     function getMonitorStrategyConfigSnapshot() {
       const health = window.__autoTradeHealth;
@@ -11399,23 +11511,13 @@
         errors.push('仅独立策略已开启但YES最高概率桶未启用');
       }
 	      const strategyEnabled = [
-	        Boolean(config.entry_main_enabled),
-	        Boolean(config.entry_follow_enabled),
-	        Boolean(config.entry_yes_top_enabled),
-	        Boolean(config.entry_hard_bound_no_enabled),
-	        Boolean(config.entry_adj_pair_enabled),
-	        Boolean(config.mirror_follow_enabled),
+	        Boolean(config.lcb_global_enabled),
 	      ];
 	      if (!strategyEnabled.some(Boolean)) {
-	        errors.push('主策略已关闭且无其他策略启用（含影子跟单）');
+	        errors.push('LCB全市场已关闭，当前无入场策略启用');
 	      }
       const strategyRatioSpecs = [
-        ['entry_main_size_ratio', '主策略'],
-        ['entry_yes_top_size_ratio', 'YES最高桶'],
-        ['entry_follow_size_ratio', '临结价差'],
-        ['entry_hard_bound_no_size_ratio', '物理边界NO'],
-        ['entry_adj_pair_size_ratio', '邻桶配对'],
-        ['mirror_follow_size_ratio', '影子跟单'],
+        ['lcb_global_size_ratio', 'LCB全市场'],
       ];
       for (const [key, label] of strategyRatioSpecs) {
         const val = getNum(key);
@@ -11423,23 +11525,8 @@
           errors.push(`${label}仓位系数不能为负`);
         }
       }
-      if (Boolean(config.entry_main_enabled) && getNum('entry_main_size_ratio') !== null && getNum('entry_main_size_ratio') <= 0) {
-        warnings.push('主策略已启用但仓位系数为0，本轮不会新开仓');
-      }
-      if (Boolean(config.entry_yes_top_enabled) && getNum('entry_yes_top_size_ratio') !== null && getNum('entry_yes_top_size_ratio') <= 0) {
-        warnings.push('YES最高桶已启用但仓位系数为0，本轮不会新开仓');
-      }
-      if (Boolean(config.entry_follow_enabled) && getNum('entry_follow_size_ratio') !== null && getNum('entry_follow_size_ratio') <= 0) {
-        warnings.push('临结价差已启用但仓位系数为0，本轮不会新开仓');
-      }
-      if (Boolean(config.entry_hard_bound_no_enabled) && getNum('entry_hard_bound_no_size_ratio') !== null && getNum('entry_hard_bound_no_size_ratio') <= 0) {
-        warnings.push('物理边界NO已启用但仓位系数为0，本轮不会新开仓');
-      }
-      if (Boolean(config.entry_adj_pair_enabled) && getNum('entry_adj_pair_size_ratio') !== null && getNum('entry_adj_pair_size_ratio') <= 0) {
-        warnings.push('邻桶配对已启用但仓位系数为0，本轮不会新开仓');
-      }
-      if (Boolean(config.mirror_follow_enabled) && getNum('mirror_follow_size_ratio') !== null && getNum('mirror_follow_size_ratio') <= 0) {
-        warnings.push('影子跟单已启用但仓位系数为0，不会跟随下单');
+      if (Boolean(config.lcb_global_enabled) && getNum('lcb_global_size_ratio') !== null && getNum('lcb_global_size_ratio') <= 0) {
+        warnings.push('LCB全市场已启用但仓位系数为0，本轮不会新开仓');
       }
       const mirrorMinOrderUsdc = getNum('mirror_min_order_usdc');
       if (mirrorMinOrderUsdc !== null && mirrorMinOrderUsdc < 0) {
@@ -12017,12 +12104,7 @@
         }
       }
 	      const strategyKeys = [
-	        'entry_main_enabled',
-	        'entry_follow_enabled',
-	        'entry_yes_top_enabled',
-	        'entry_hard_bound_no_enabled',
-	        'entry_adj_pair_enabled',
-	        'mirror_follow_enabled',
+	        'lcb_global_enabled',
 	      ];
 	      if (!strategyKeys.some((key) => getFlag(key))) {
 	        strategyKeys.forEach((key) => setHint(key, 'error', '至少启用一个策略'));
@@ -13025,17 +13107,12 @@
         setNum('follow_exit_reprice_min_hold_sec', 0, '临结价差策略止盈重定价最短持有修正为0');
       }
 	      const strategyEnabled = [
-	        Boolean(config.entry_main_enabled),
-	        Boolean(config.entry_follow_enabled),
-	        Boolean(config.entry_yes_top_enabled),
-	        Boolean(config.entry_hard_bound_no_enabled),
-	        Boolean(config.entry_adj_pair_enabled),
-	        Boolean(config.mirror_follow_enabled),
+	        Boolean(config.lcb_global_enabled),
 	      ];
 	      if (!strategyEnabled.some(Boolean)) {
-	        config.entry_main_enabled = true;
-	        changed.add('entry_main_enabled');
-	        addFix('至少保留一个策略：已启用主策略');
+	        config.lcb_global_enabled = true;
+	        changed.add('lcb_global_enabled');
+	        addFix('至少保留一个策略：已启用LCB全市场');
 	      }
       const yesTopExitStopLossPct = getNum('yes_top_exit_stop_loss_pct');
       if (yesTopExitStopLossPct !== null && yesTopExitStopLossPct < 0) {
@@ -13406,12 +13483,7 @@
     const strategyToggleEnableAllBtn = document.getElementById('strategyToggleEnableAll');
     const strategyToggleMainOnlyBtn = document.getElementById('strategyToggleMainOnly');
 	    const STRATEGY_ENABLE_KEYS = [
-	      'entry_main_enabled',
-	      'entry_follow_enabled',
-	      'entry_yes_top_enabled',
-	      'entry_hard_bound_no_enabled',
-	      'entry_adj_pair_enabled',
-	      'mirror_follow_enabled',
+	      'lcb_global_enabled',
 	    ];
     let autoTradePresetPayload = null;
     let autoTradePresetActiveId = '';
@@ -13528,7 +13600,7 @@
         return;
       }
       if (mode === 'main_only') {
-        const mainOnlyKeys = new Set(['entry_main_enabled']);
+        const mainOnlyKeys = new Set(['lcb_global_enabled']);
         STRATEGY_ENABLE_KEYS.forEach((key) => {
           if (setStrategyToggleValue(key, mainOnlyKeys.has(key))) changed += 1;
         });
@@ -13758,7 +13830,18 @@
         entry_yes_top_price_spread_ratio: 0.25,
         entry_yes_top_price_take_signal_edge_min: 0.02,
         entry_yes_top_trend_strength_min: 0.01,
-	        entry_main_enabled: true,
+	        lcb_global_enabled: true,
+	        lcb_global_size_ratio: 1.0,
+	        lcb_global_signal_lcb_min: 0.0,
+	        lcb_global_path_lcb_min: 0.10,
+	        lcb_global_edge_lcb_min: 0.0,
+	        lcb_global_max_spread: 0.08,
+	        lcb_global_min_depth_usdc: 0.0,
+	        lcb_global_max_tick_age_sec: 180,
+	        lcb_global_max_new_orders_per_run: 0,
+	        lcb_global_max_open_positions: 0,
+	        lcb_global_disable_location_block: true,
+	        entry_main_enabled: false,
 	        entry_follow_enabled: false,
 	        entry_hard_bound_no_enabled: false,
 	        entry_adj_pair_enabled: false,
@@ -13768,7 +13851,7 @@
 	        entry_follow_size_ratio: 1.0,
 	        entry_hard_bound_no_size_ratio: 1.0,
 	        entry_adj_pair_size_ratio: 1.0,
-	        mirror_follow_size_ratio: 1.0,
+	        mirror_follow_size_ratio: 0.0,
 	        mirror_min_order_usdc: 1.0,
 	        entry_follow_require_highest_temp: true,
         entry_follow_near_before_hours: 24,
@@ -14475,6 +14558,19 @@
       } = params || {};
       const historyFlag = includeHistory ? '&include_history=1' : '';
       const url = `/api/facts?date=${date}&mode=${mode}&weighting=${encodeURIComponent(weighting)}${historyFlag}&page=${page}&page_size=${pageSize}`;
+      if (typeof LCB_ONLY_UI !== 'undefined' && LCB_ONLY_UI) {
+        try {
+          const res = await fetchJSON(url, {
+            timeoutMs,
+            retryCount: 0,
+            retryOnAbort: false,
+          });
+          return normalizeRunsPage(res, pageSize);
+        } catch (err) {
+          const rangeItems = await fetchRunsRange(date, 1);
+          return normalizeRunsPage(rangeItems, pageSize);
+        }
+      }
       const res = await fetchJSON(url, {
         timeoutMs,
         retryCount: 0,
@@ -14483,7 +14579,7 @@
       return normalizeRunsPage(res, pageSize);
     }
     async function fetchRunsRange(date, days = 1) {
-      const url = `/api/facts-range?days=${days}&date=${encodeURIComponent(date || '')}`;
+      const url = `/api/runs-range?days=${days}&date=${encodeURIComponent(date || '')}`;
       const res = await fetchJSON(url, {
         timeoutMs: RUNS_RANGE_TIMEOUT_MS,
         retryCount: 0,
@@ -17851,6 +17947,8 @@
     function simplifyTraceErrorText(text) {
       let out = normalizeExecFailureText(text);
       if (!out) return '';
+      if (/^state=entry$/i.test(out)) return '持仓中（等待退出条件）';
+      if (/^state=redeemable$/i.test(out)) return '可赎回持仓（等待退出/赎回）';
       out = out.replace(/\b\d{12,}\b/g, '…');
       out = out.replace(/\bmarket_tick_age_sec=[^, ]+/gi, '');
       out = out.replace(/\bmarket_tick_stale_sec=[^, ]+/gi, '');
@@ -18429,7 +18527,7 @@
         : '<span class="reason-chip ok">无退出信号</span>';
       const exitBadgeClass = (exitTriggered || exitAttempted) ? 'exit' : 'none';
       const exitBadgeText = (exitTriggered || exitAttempted) ? '退出' : '未退出';
-      const exitLabelPrefix = (exitTriggered || exitAttempted) ? '主策略退出原因' : '主策略未退出原因';
+      const exitLabelPrefix = (exitTriggered || exitAttempted) ? 'LCB退出原因' : 'LCB未退出原因';
 
       const spreadKind = item.model_spread_kind || 'prob';
       const suggestionList = suggestionsRaw
@@ -18484,7 +18582,7 @@
       if (!entrySucceeded && !entryAttempted && !globalBlockReasons.length) {
         addGlobalBlockReason('未触发下单');
       }
-      const showGlobalBlock = yesTopOk && !entrySucceeded && globalBlockReasons.length;
+      const showGlobalBlock = !entrySucceeded && globalBlockReasons.length;
       const globalBlockHtml = showGlobalBlock
         ? formatAutoTradeReasonHtml(globalBlockReasons, { tone: 'fail', showFailLabel: false })
         : '';
@@ -18507,19 +18605,10 @@
           <div class="auto-trade-entry-grid">
             <div class="auto-trade-card main ${mainCardClass}">
               <div class="auto-trade-card-head">
-                <span class="strategy-chip main">主策略</span>
+                <span class="strategy-chip main">LCB全市场策略</span>
               </div>
               <div class="auto-trade-card-body">
                 <div class="reason-list">${mainReasonHtml}</div>
-              </div>
-            </div>
-            <div class="auto-trade-card yes-top ${yesTopCardClass}">
-              <div class="auto-trade-card-head">
-                <span class="strategy-chip yes-top">YES最高桶策略</span>
-              </div>
-              <div class="auto-trade-card-body">
-                ${yesTopNotApplicableLabel}
-                <div class="reason-list">${yesTopReasonHtml}</div>
                 ${globalBlockLine}
               </div>
             </div>
@@ -20262,157 +20351,232 @@
           refreshOpenOrders({ silent: true, force: true });
         }, intervalMs);
       };
-      const buildTripleValue = (todayText, sevenText, totalText, labels = null) => {
-        const mainLabel = labels && labels.main ? String(labels.main) : '今日';
-        const sevenLabel = labels && labels.seven ? String(labels.seven) : '7日';
-        const totalLabel = labels && labels.total ? String(labels.total) : '总计';
-        return `
-        <div class="manual-hit-card-value triple emphasis-today">
-          <div class="manual-hit-today-main">
-            <div class="manual-hit-today-label">${escapeHtml(mainLabel)}</div>
-            <div class="manual-hit-today-value">${escapeHtml(todayText)}</div>
-          </div>
-          <div class="manual-hit-secondary">
-            ${[
-              { label: sevenLabel, value: sevenText },
-              { label: totalLabel, value: totalText },
-            ].map((item) => `
-              <span class="manual-hit-secondary-item">
-                <span class="manual-hit-secondary-label">${escapeHtml(item.label)}</span>
-                <span class="manual-hit-secondary-value">${escapeHtml(item.value)}</span>
-              </span>
-            `).join('')}
-          </div>
-        </div>
-      `;
-      };
-      const formatTriple = (todayVal, sevenVal, totalVal, formatter, labels = null) => {
-        const fmt = (val) => (Number.isFinite(val) ? formatter(val) : '—');
-        return buildTripleValue(fmt(todayVal), fmt(sevenVal), fmt(totalVal), labels);
-      };
-      const formatCountValue = (value) => `${Number(value).toFixed(0)}`;
-      const openPositionToday = toCountOrZero(autoTradeStats && autoTradeStats.open_position_count_today);
+      const formatCountValue = (value) => `${toCountOrZero(value).toFixed(0)}`;
+      const lcbSummary = (
+        autoTradeStats
+        && typeof autoTradeStats === 'object'
+        && autoTradeStats.lcb_global_summary
+        && typeof autoTradeStats.lcb_global_summary === 'object'
+      ) ? autoTradeStats.lcb_global_summary : {};
+      const statsStartDate = String(
+        (autoTradeStats && autoTradeStats.stats_start_date)
+        || lcbSummary.start_date
+        || '2026-03-03'
+      ).trim();
+      const openPositionTotal = toCountOrZero(
+        lcbSummary.open_position_count
+        ?? (autoTradeStats && (autoTradeStats.open_position_count ?? autoTradeStats.active_positions))
+      );
       const openPosition7d = toCountOrZero(autoTradeStats && autoTradeStats.open_position_count_7d);
-      const openPositionActive = toCountOrZero(autoTradeStats && (autoTradeStats.open_position_count ?? autoTradeStats.active_positions));
-      const openPositionRedeemable = toCountOrZero(autoTradeStats && autoTradeStats.open_position_redeemable_count);
-      const openPositionAll = toCountOrZero(autoTradeStats && (autoTradeStats.open_position_total_count ?? autoTradeStats.open_position_count_all ?? autoTradeStats.open_position_count ?? autoTradeStats.active_positions));
-      const openPositionLegacy = toCountOrZero(autoTradeStats && autoTradeStats.open_position_legacy_count);
-      const filledOrderToday = toCountOrZero(autoTradeStats && autoTradeStats.filled_order_count_today);
-      const filledOrder7d = toCountOrZero(autoTradeStats && autoTradeStats.filled_order_count_7d);
-      const filledOrderTotal = toCountOrZero(autoTradeStats && (autoTradeStats.filled_order_count ?? autoTradeStats.order_filled_count ?? autoTradeStats.order_count ?? autoTradeStats.buy_count_total ?? autoTradeStats.fill_count));
-      const buyToday = toCountOrZero(autoTradeStats && autoTradeStats.today_buy_count);
-      const buy7d = toCountOrZero(autoTradeStats && autoTradeStats.buy_count_7d);
-      const buyTotal = toCountOrZero(autoTradeStats && autoTradeStats.buy_count_total);
-      const sellToday = toCountOrZero(autoTradeStats && autoTradeStats.today_sell_count);
-      const sell7d = toCountOrZero(autoTradeStats && autoTradeStats.sell_count_7d);
-      const sellTotal = toCountOrZero(autoTradeStats && autoTradeStats.sell_count_total);
-      const failedToday = toCountOrZero(autoTradeStats && autoTradeStats.failed_trade_count_today);
-      const failed7d = toCountOrZero(autoTradeStats && autoTradeStats.failed_trade_count_7d);
-      const failedTotal = toCountOrZero(autoTradeStats && autoTradeStats.failed_trade_count);
-      const realizedToday = toNumSafe(autoTradeStats && (autoTradeStats.realized_pnl_today ?? autoTradeStats.today_pnl ?? autoTradeStats.total_pnl_today));
-      const realized7d = toNumSafe(autoTradeStats && (autoTradeStats.realized_pnl_7d ?? autoTradeStats.total_pnl_7d));
-      const realizedTotal = toNumSafe(autoTradeStats && (autoTradeStats.realized_pnl ?? autoTradeStats.total_pnl));
-      const unrealizedToday = toNumSafe(autoTradeStats && autoTradeStats.unrealized_pnl_today);
+      const openPositionToday = toCountOrZero(autoTradeStats && autoTradeStats.open_position_count_today);
+      const completedSuccessTotal = toCountOrZero(
+        lcbSummary.completed_success_count
+        ?? (autoTradeStats && autoTradeStats.successful_trade_count)
+      );
+      const completedSuccess7d = toCountOrZero(autoTradeStats && autoTradeStats.successful_trade_count_7d);
+      const completedSuccessToday = toCountOrZero(autoTradeStats && autoTradeStats.successful_trade_count_today);
+      const completedFailedTotal = toCountOrZero(
+        lcbSummary.completed_failed_count
+        ?? (autoTradeStats && autoTradeStats.failed_trade_count)
+      );
+      const completedFailed7d = toCountOrZero(autoTradeStats && autoTradeStats.failed_trade_count_7d);
+      const completedFailedToday = toCountOrZero(autoTradeStats && autoTradeStats.failed_trade_count_today);
+      const completedBreakEvenTotal = toCountOrZero(
+        lcbSummary.completed_break_even_count
+        ?? (autoTradeStats && autoTradeStats.break_even_trade_count)
+      );
+      const completedBreakEven7d = toCountOrZero(autoTradeStats && autoTradeStats.break_even_trade_count_7d);
+      const completedBreakEvenToday = toCountOrZero(autoTradeStats && autoTradeStats.break_even_trade_count_today);
+      const completedTotal = toCountOrZero(
+        lcbSummary.completed_order_count
+        ?? (autoTradeStats && autoTradeStats.completed_trade_count)
+        ?? (completedSuccessTotal + completedFailedTotal)
+      );
+      const completed7d = toCountOrZero(
+        autoTradeStats && (
+          autoTradeStats.completed_trade_count_7d
+          ?? (completedSuccess7d + completedFailed7d)
+        )
+      );
+      const completedToday = toCountOrZero(
+        autoTradeStats && (
+          autoTradeStats.completed_trade_count_today
+          ?? (completedSuccessToday + completedFailedToday)
+        )
+      );
+      const realizedTotal = toNumSafe(
+        lcbSummary.realized_pnl
+        ?? (autoTradeStats && (autoTradeStats.realized_pnl ?? autoTradeStats.total_pnl))
+      );
+      const unrealizedTotal = toNumSafe(
+        lcbSummary.unrealized_pnl
+        ?? (autoTradeStats && autoTradeStats.unrealized_pnl)
+      );
+      const realized7d = toNumSafe(autoTradeStats && autoTradeStats.realized_pnl_7d);
+      const realizedToday = toNumSafe(
+        autoTradeStats && (autoTradeStats.realized_pnl_today ?? autoTradeStats.today_pnl)
+      );
       const unrealized7d = toNumSafe(autoTradeStats && autoTradeStats.unrealized_pnl_7d);
-      const unrealizedTotal = toNumSafe(autoTradeStats && autoTradeStats.unrealized_pnl);
-      const oddsToday = toNumSafe(autoTradeStats && autoTradeStats.today_avg_odds);
-      const odds7d = toNumSafe(autoTradeStats && autoTradeStats.avg_odds_7d);
-      const oddsTotal = toNumSafe(autoTradeStats && autoTradeStats.avg_odds);
-      const openOrders = stats && Array.isArray(stats.open_order_list) ? stats.open_order_list : [];
-      const openOrderMetaText = buildOpenOrdersMeta({
-        error: stats && stats.open_order_sync_error,
-        updated_at: stats && stats.open_order_sync_at,
-        count: openOrders.length,
-      });
-      const openOrdersHtml = `
-        <div class="open-order-board">
-          <div class="open-order-header">
-            <div class="open-order-title">Open Orders</div>
-            <div class="open-order-actions">
-              <button class="secondary" type="button" id="openOrdersRefreshBtn">手动刷新 open orders</button>
-              <label class="inline" title="自动刷新 open orders">
-                <input id="openOrdersAutoToggle" type="checkbox" />
-                自动刷新
-              </label>
-              <div class="open-order-interval">
-                <input id="openOrdersAutoInterval" type="number" min="${OPEN_ORDERS_MIN_INTERVAL}" max="${OPEN_ORDERS_MAX_INTERVAL}" step="5" />
-                <span>秒</span>
-              </div>
-            </div>
-          </div>
-          <div class="open-order-meta" id="openOrdersMeta">${escapeHtml(openOrderMetaText)}</div>
-          <div class="open-order-list" id="openOrdersList">${renderOpenOrdersList(openOrders)}</div>
-        </div>
-      `;
-      const metricItems = [
-        {
-          label: '目前持仓订单数',
-          valueHtml: formatTriple(
-            openPositionActive,
-            openPositionToday,
-            openPositionAll,
-            formatCountValue,
-            { main: '当前', seven: '今日新增', total: '全部' },
-          ),
-          sub: `交易中 ${openPositionActive} · 可赎回 ${openPositionRedeemable}${openPositionLegacy > 0 ? ` · 历史残余 ${openPositionLegacy}` : ''}${openPosition7d > 0 ? ` · 7日新增 ${openPosition7d}` : ''}`,
-        },
-        {
-          label: '成交订单数',
-          valueHtml: formatTriple(filledOrderToday, filledOrder7d, filledOrderTotal, formatCountValue),
-          sub: 'order_id 去重',
-        },
-        {
-          label: '总买入数（成功）',
-          valueHtml: formatTriple(buyToday, buy7d, buyTotal, formatCountValue),
-          sub: '买入成交笔数',
-        },
-        {
-          label: '总卖出数',
-          valueHtml: formatTriple(sellToday, sell7d, sellTotal, formatCountValue),
-          sub: '卖出成交笔数',
-        },
-        {
-          label: '失败订单数',
-          valueHtml: formatTriple(failedToday, failed7d, failedTotal, formatCountValue),
-          sub: '亏损成交笔数',
-        },
-        {
-          label: '已实现盈亏',
-          valueHtml: formatTriple(realizedToday, realized7d, realizedTotal, formatUsdCompact),
-          sub: '卖出结算',
-        },
-        {
-          label: '未实现盈亏',
-          valueHtml: formatTriple(
-            unrealizedTotal,
-            unrealizedToday,
-            unrealized7d,
-            formatUsdCompact,
-            { main: '当前', seven: '今日开仓', total: '7日开仓' },
-          ),
-          sub: '持仓浮动（主值=当前）',
-        },
-        {
-          label: '赔率',
-          valueHtml: formatTriple(oddsToday, odds7d, oddsTotal, formatOddsValue),
-          sub: '买入均价换算（非盈亏）',
-        },
+      const unrealizedToday = toNumSafe(autoTradeStats && autoTradeStats.unrealized_pnl_today);
+      const totalPnlRaw = toNumSafe(autoTradeStats && autoTradeStats.total_pnl);
+      const totalPnl7dRaw = toNumSafe(autoTradeStats && autoTradeStats.total_pnl_7d);
+      const totalPnlTodayRaw = toNumSafe(autoTradeStats && autoTradeStats.total_pnl_today);
+      const roiTotal = toNumSafe(
+        lcbSummary.roi
+        ?? (autoTradeStats && autoTradeStats.total_roi)
+      );
+      const roi7d = toNumSafe(autoTradeStats && autoTradeStats.roi_7d);
+      const roiToday = toNumSafe(autoTradeStats && autoTradeStats.today_roi);
+      const sumNullable = (...values) => {
+        let sum = 0;
+        let hit = false;
+        for (const value of values) {
+          if (!Number.isFinite(value)) continue;
+          sum += value;
+          hit = true;
+        }
+        return hit ? sum : null;
+      };
+      const totalPnl = Number.isFinite(totalPnlRaw) ? totalPnlRaw : sumNullable(realizedTotal, unrealizedTotal);
+      const totalPnl7d = Number.isFinite(totalPnl7dRaw) ? totalPnl7dRaw : sumNullable(realized7d, unrealized7d);
+      const totalPnlToday = Number.isFinite(totalPnlTodayRaw) ? totalPnlTodayRaw : sumNullable(realizedToday, unrealizedToday);
+      const periods = [
+        { key: 'today', label: '今日' },
+        { key: 'seven', label: '过去7天' },
+        { key: 'total', label: '总计' },
       ];
-      const metricHtml = metricItems.map((item) => `
-        <div class="manual-hit-metric">
-          <div class="manual-hit-metric-label subcard-title">${escapeHtml(item.label)}</div>
-          <div class="manual-hit-metric-value">${item.valueHtml || '—'}</div>
-          ${item.sub ? `<div class="manual-hit-metric-sub">${escapeHtml(item.sub)}</div>` : ''}
-        </div>
-      `).join('');
+      const toneClass = (value) => {
+        if (!Number.isFinite(value)) return '';
+        if (Math.abs(value) < 1e-9) return '';
+        return value > 0 ? 'is-positive' : 'is-negative';
+      };
+      const buildKpiCard = (options) => {
+        const opts = options && typeof options === 'object' ? options : {};
+        const title = String(opts.title || '').trim() || '—';
+        const values = opts.values && typeof opts.values === 'object' ? opts.values : {};
+        const sub = opts.sub && typeof opts.sub === 'object' ? opts.sub : {};
+        const valueFormatter = typeof opts.formatter === 'function' ? opts.formatter : (v) => String(v);
+        const valueClassFn = typeof opts.valueClass === 'function' ? opts.valueClass : (() => '');
+        const isPct = Boolean(opts.isPct);
+        const cells = periods.map((period) => {
+          const rawValue = values[period.key];
+          const main = Number.isFinite(rawValue) ? valueFormatter(rawValue) : '—';
+          const mainClass = ['lcb-kpi-cell-main'];
+          if (isPct) mainClass.push('is-pct');
+          const dynamicClass = String(valueClassFn(rawValue) || '').trim();
+          if (dynamicClass) mainClass.push(dynamicClass);
+          const subText = String(sub[period.key] || '').trim();
+          return `
+            <div class="lcb-kpi-cell">
+              <div class="lcb-kpi-cell-label">${escapeHtml(period.label)}</div>
+              <div class="${mainClass.join(' ')}">${escapeHtml(main)}</div>
+              <div class="lcb-kpi-cell-sub">${escapeHtml(subText || '—')}</div>
+            </div>
+          `;
+        }).join('');
+        const foot = String(opts.foot || '').trim();
+        return `
+          <div class="lcb-kpi-card">
+            <div class="lcb-kpi-card-title">${escapeHtml(title)}</div>
+            <div class="lcb-kpi-values">${cells}</div>
+            ${foot ? `<div class="lcb-kpi-card-foot">${escapeHtml(foot)}</div>` : ''}
+          </div>
+        `;
+      };
+      const metricHtml = [
+        buildKpiCard({
+          title: '持仓订单数量',
+          values: {
+            today: openPositionToday,
+            seven: openPosition7d,
+            total: openPositionTotal,
+          },
+          formatter: formatCountValue,
+          sub: {
+            today: '今日开仓且仍持仓',
+            seven: '7天开仓且仍持仓',
+            total: '当前交易中持仓',
+          },
+          foot: '口径: trading_open (不含可赎回)',
+        }),
+        buildKpiCard({
+          title: '已完成订单数量',
+          values: {
+            today: completedToday,
+            seven: completed7d,
+            total: completedTotal,
+          },
+          formatter: formatCountValue,
+          sub: {
+            today: `盈 ${formatCountValue(completedSuccessToday)} / 亏 ${formatCountValue(completedFailedToday)}`,
+            seven: `盈 ${formatCountValue(completedSuccess7d)} / 亏 ${formatCountValue(completedFailed7d)}`,
+            total: `盈 ${formatCountValue(completedSuccessTotal)} / 亏 ${formatCountValue(completedFailedTotal)}`,
+          },
+          foot: `打平(未计入完成): 今日 ${formatCountValue(completedBreakEvenToday)} · 7天 ${formatCountValue(completedBreakEven7d)} · 总计 ${formatCountValue(completedBreakEvenTotal)}`,
+        }),
+        buildKpiCard({
+          title: 'PnL',
+          values: {
+            today: totalPnlToday,
+            seven: totalPnl7d,
+            total: totalPnl,
+          },
+          formatter: formatUsdCompact,
+          valueClass: toneClass,
+          sub: {
+            today: `已实现 ${Number.isFinite(realizedToday) ? formatUsdCompact(realizedToday) : '—'} / 未实现 ${Number.isFinite(unrealizedToday) ? formatUsdCompact(unrealizedToday) : '—'}`,
+            seven: `已实现 ${Number.isFinite(realized7d) ? formatUsdCompact(realized7d) : '—'} / 未实现 ${Number.isFinite(unrealized7d) ? formatUsdCompact(unrealized7d) : '—'}`,
+            total: `已实现 ${Number.isFinite(realizedTotal) ? formatUsdCompact(realizedTotal) : '—'} / 未实现 ${Number.isFinite(unrealizedTotal) ? formatUsdCompact(unrealizedTotal) : '—'}`,
+          },
+          foot: '单位: USDC',
+        }),
+        buildKpiCard({
+          title: 'ROI',
+          values: {
+            today: roiToday,
+            seven: roi7d,
+            total: roiTotal,
+          },
+          formatter: (value) => formatPercentValue(value, 2),
+          valueClass: toneClass,
+          isPct: true,
+          sub: {
+            today: '已实现 ROI',
+            seven: '已实现 ROI',
+            total: '已实现 ROI',
+          },
+        }),
+      ].join('');
       const hitHighlightHtml = `
         <div class="manual-hit-highlight">
-          <div class="manual-hit-grid compact-nine">
-            ${metricHtml}
+          <div class="lcb-kpi-board">
+            <div class="lcb-kpi-time-axis">
+              ${periods.map((period) => `<div class="lcb-kpi-time-pill${period.key === 'today' ? ' is-today' : ''}">${escapeHtml(period.label)}</div>`).join('')}
+            </div>
+            <div class="lcb-kpi-card-grid">
+              ${metricHtml}
+            </div>
           </div>
-          ${autoHighlightHtml}
         </div>
       `;
+      const summaryMetaParts = [
+        statsStartDate ? `统计起点 ${statsStartDate}` : '',
+        positionTruthLabel || '',
+      ].filter(Boolean);
+      card.innerHTML = `
+        <div class="card-head auto-trade-head">
+          <div class="advantage-title">
+            <span>自动交易成交分析（LCB全市场）</span>
+          </div>
+        </div>
+        <div class="advantage-meta">${escapeHtml(summaryMetaParts.join(' · ') || '—')}</div>
+        ${hitHighlightHtml}
+      `;
+      if (window.__openOrdersAutoTimer) {
+        clearInterval(window.__openOrdersAutoTimer);
+        window.__openOrdersAutoTimer = null;
+      }
+      return card;
       const strategyStatsRaw = stats && stats.strategy_stats ? stats.strategy_stats : {};
       const strategyStatsTodayRaw = stats && stats.strategy_stats_today ? stats.strategy_stats_today : {};
       const strategyStatsTodayDate = String((stats && stats.strategy_stats_today_date) || '').trim();
@@ -20549,65 +20713,50 @@
         );
       };
       const strategyLabelMap = {
-        main: "主策略",
-        follow_copy: "临结价差策略",
-        yes_top: "YES最高桶策略",
-        hard_bound_no: "硬边界NO策略",
-        adj_pair: "邻桶配对策略",
-        mirror_follow: "影子跟单策略",
-        mirror_follow_improve: "影子跟单改进",
-        exit_topup: "退出补单",
+        lcb_global: "LCB全市场",
+        mirror_follow: "影子跟单",
         unknown: "未归属/手动",
       };
-      const strategyOrder = ["main", "follow_copy", "yes_top", "hard_bound_no", "adj_pair", "mirror_follow"];
-      const hiddenSystemStrategies = new Set(["exit", "smoke_test"]);
+      const strategyOrder = ["lcb_global"];
+      const hiddenSystemStrategies = new Set([
+        "exit",
+        "smoke_test",
+        "main",
+        "yes_top",
+        "follow_copy",
+        "hard_bound_no",
+        "adj_pair",
+        "mirror_follow_improve",
+        "exit_topup",
+      ]);
+      const legacyStrategyAlias = new Set(["main", "yes_top", "follow_copy", "hard_bound_no", "adj_pair"]);
       const strategyLabelForKey = (key) => {
         const normalized = String(key || "").trim().toLowerCase();
         if (!normalized) return "未知策略";
         if (strategyLabelMap[normalized]) return strategyLabelMap[normalized];
+        if (legacyStrategyAlias.has(normalized)) return strategyLabelMap.lcb_global;
         return `策略 ${normalized}`;
       };
       const buildStrategyCol = (key, entryRaw) => {
         const label = strategyLabelForKey(key);
         const entry = normalizeStrategyEntry(entryRaw);
         const entryToday = normalizeStrategyEntry(strategyStatsTodayRaw[key]);
-        const roiText = entry.roi !== null && entry.roi !== undefined ? formatPercentValue(entry.roi, 1) : "—";
-        const winRateText = entry.win_rate !== null && entry.win_rate !== undefined ? formatPercentValue(entry.win_rate, 1) : "—";
-        const winRateSideText = `${(entry.win_rate_no !== null && entry.win_rate_no !== undefined) ? formatPercentValue(entry.win_rate_no, 1) : "—"} / ${(entry.win_rate_yes !== null && entry.win_rate_yes !== undefined) ? formatPercentValue(entry.win_rate_yes, 1) : "—"}`;
-        const roiTodayText = entryToday.roi !== null && entryToday.roi !== undefined ? formatPercentValue(entryToday.roi, 1) : "—";
-        const winRateTodayText = entryToday.win_rate !== null && entryToday.win_rate !== undefined ? formatPercentValue(entryToday.win_rate, 1) : "—";
-        const oddsText = entry.buy_fill_odds !== null && entry.buy_fill_odds !== undefined ? formatOddsValue(entry.buy_fill_odds) : "—";
-        const profitFactorNum = toFiniteNumberOrNaN(entry.profit_factor);
-        const profitFactorText = Number.isFinite(profitFactorNum) ? profitFactorNum.toFixed(2) : "—";
-        const grossText = `${formatUsdCompact(entry.gross_profit)} / ${formatUsdCompact(entry.gross_loss)}`;
-        const todayDateLabel = strategyStatsTodayDate ? strategyStatsTodayDate : "—";
         return `
           <div class="manual-strategy-col">
             <div class="manual-strategy-title">${escapeHtml(label)}</div>
-            <div class="manual-strategy-today-block">
-              <div class="manual-strategy-today-head">
-                <span class="manual-strategy-today-label">今日</span>
-                <span class="manual-strategy-today-date">${escapeHtml(todayDateLabel)}</span>
-              </div>
-              ${renderStrategyRow("成单", `${formatInt(entryToday.filled_order_count)}`, null, { today: true })}
-              ${renderStrategyRow("盈亏", formatUsdCompact(entryToday.total_pnl), null, { today: true })}
-              ${renderStrategyRow("ROI/胜率", `${roiTodayText} / ${winRateTodayText}`, null, { today: true })}
-            </div>
             ${renderStrategyRow("总订单(成交)", entry.filled_order_count, formatInt)}
-            ${renderStrategyRow("胜/负/平", `${formatInt(entry.win_count)}/${formatInt(entry.loss_count)}/${formatInt(entry.break_even_count)}`)}
-            ${renderStrategyRow("盈亏", formatUsdCompact(entry.total_pnl))}
-            ${renderStrategyRow("ROI", roiText)}
-            ${renderStrategyRow("胜率", winRateText)}
-            ${renderStrategyRow("胜率(NO/YES)", winRateSideText)}
-            ${renderStrategyRow("赔率(买入)", oddsText)}
-            ${renderStrategyRow("盈利因子", profitFactorText)}
-            ${renderStrategyRow("正/负收益", grossText)}
+            ${renderStrategyRow("今日成交", entryToday.filled_order_count, formatInt, { today: true })}
           </div>
         `;
       };
       const extraStrategyKeys = Object.keys(strategyStatsRaw || {})
         .map((key) => String(key || "").trim().toLowerCase())
-        .filter((key) => key && !strategyOrder.includes(key) && !hiddenSystemStrategies.has(key));
+        .filter((key) => (
+          key
+          && !strategyOrder.includes(key)
+          && !hiddenSystemStrategies.has(key)
+          && (hasStrategyData(strategyStatsRaw[key]) || hasStrategyData(strategyStatsTodayRaw[key]))
+        ));
       const strategyKeys = [...strategyOrder, ...extraStrategyKeys];
       const hasAnyStrategyData = strategyKeys.some((key) => (
         hasStrategyData(strategyStatsRaw[key]) || hasStrategyData(strategyStatsTodayRaw[key])
@@ -21720,7 +21869,7 @@
       card.innerHTML = `
         <div class="card-head auto-trade-head">
           <div class="advantage-title">
-            <span>自动交易成交分析</span>
+            <span>自动交易成交分析（LCB全市场）</span>
             ${incompleteHtml}
           </div>
           ${tradeSyncFailureHtml}
@@ -21728,11 +21877,8 @@
         <div class="advantage-meta">${meta}</div>
         ${hitHighlightHtml}
         ${strategyStatsHtml}
-        ${orphanFillStatsHtml}
         ${edgeWaterfallHtml}
-        ${followStatsHtml}
         ${todayEventsHtml}
-        ${openOrdersHtml}
         ${hitMissHtml}
       `;
       const refreshBtn = card.querySelector('#openOrdersRefreshBtn');
@@ -21750,43 +21896,7 @@
           }
         });
       }
-      const autoToggle = card.querySelector('#openOrdersAutoToggle');
-      const autoInterval = card.querySelector('#openOrdersAutoInterval');
-      const openOrdersSettings = loadOpenOrdersSettings();
-      if (autoToggle) autoToggle.checked = openOrdersSettings.enabled;
-      if (autoInterval) {
-        autoInterval.value = String(openOrdersSettings.intervalSec);
-        autoInterval.disabled = !openOrdersSettings.enabled;
-      }
       stopOpenOrdersAutoTimer();
-      if (openOrdersSettings.enabled && !window.__systemPaused) {
-        startOpenOrdersAutoTimer(openOrdersSettings.intervalSec);
-      }
-      if (autoToggle && autoInterval) {
-        autoToggle.addEventListener('change', () => {
-          const enabled = autoToggle.checked;
-          const intervalSec = clampInterval(autoInterval.value);
-          autoInterval.value = String(intervalSec);
-          autoInterval.disabled = !enabled;
-          saveOpenOrdersSettings(enabled, intervalSec);
-          if (enabled) {
-            startOpenOrdersAutoTimer(intervalSec);
-            refreshOpenOrders({ silent: true, force: true });
-          } else {
-            stopOpenOrdersAutoTimer();
-          }
-        });
-        autoInterval.addEventListener('change', () => {
-          const intervalSec = clampInterval(autoInterval.value);
-          autoInterval.value = String(intervalSec);
-          const enabled = autoToggle.checked;
-          autoInterval.disabled = !enabled;
-          saveOpenOrdersSettings(enabled, intervalSec);
-          if (enabled) {
-            startOpenOrdersAutoTimer(intervalSec);
-          }
-        });
-      }
       return card;
     }
     function renderDecisionBoard(stats) {
@@ -23386,6 +23496,109 @@
         servicesHealthInFlight = false;
         refreshSystemPauseStatus({ force: false }).catch(() => {});
       }
+    }
+    function renderLcbRatingBoard(scoreStats, traceMeta, opts = {}) {
+      const embedded = Boolean(opts && opts.embedded);
+      const stats = scoreStats && typeof scoreStats === 'object' ? scoreStats : {};
+      const trace = traceMeta && typeof traceMeta === 'object' ? traceMeta : {};
+      const card = document.createElement('div');
+      card.className = embedded ? 'rating-bias-section' : 'card advantage-board';
+      card.id = 'section-lcb-rating';
+      card.dataset.navLevel = '2';
+      card.dataset.navLabel = 'LCB校正';
+      card.dataset.navSkip = '1';
+      const toNum = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+      };
+      const toInt = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? Math.max(0, Math.round(num)) : 0;
+      };
+      const fmtInt = (value) => String(toInt(value));
+      const fmtPct = (value, decimals = 1) => {
+        const num = toNum(value);
+        return Number.isFinite(num) ? formatPercentValue(num, decimals) : '—';
+      };
+      const fmtUsd = (value) => {
+        const num = toNum(value);
+        return Number.isFinite(num) ? formatUsdCompact(num) : '—';
+      };
+      const traceDate = String(trace.run_date || '').trim();
+      const generatedAt = String(trace.generated_at || '').trim();
+      const counts = getAutoTradeTraceCounts(traceDate);
+      const lcbPassRate = counts.candidate_lcb > 0 ? (counts.lcb / counts.candidate_lcb) : null;
+      const blockerRowsRaw = Array.isArray(trace.entry_blocker_table) ? trace.entry_blocker_table : [];
+      const blockerRows = blockerRowsRaw
+        .slice()
+        .sort((a, b) => toInt(b && b.count) - toInt(a && a.count))
+        .slice(0, 6);
+      const blockerHtml = blockerRows.length
+        ? blockerRows.map((row) => {
+          const code = String(row && row.reason_code || '').trim() || 'unknown';
+          const reason = String(row && row.reason_text || '').trim();
+          const cnt = toInt(row && row.count);
+          const share = toNum(row && row.share);
+          const shareText = Number.isFinite(share) ? formatPercentValue(share, 1) : '—';
+          const label = reason || code;
+          return `<div class="scoreboard-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(`${cnt} · ${shareText}`)}</strong></div>`;
+        }).join('')
+        : '<div class="scoreboard-row"><span>阻断Top</span><strong>暂无</strong></div>';
+      const strategyAll = (stats.strategy_stats && stats.strategy_stats.lcb_global && typeof stats.strategy_stats.lcb_global === 'object')
+        ? stats.strategy_stats.lcb_global
+        : {};
+      const strategyToday = (stats.strategy_stats_today && stats.strategy_stats_today.lcb_global && typeof stats.strategy_stats_today.lcb_global === 'object')
+        ? stats.strategy_stats_today.lcb_global
+        : {};
+      const strategyTodayDate = String(stats.strategy_stats_today_date || '').trim();
+      const autoTradeStats = (stats.auto_trade_stats && typeof stats.auto_trade_stats === 'object')
+        ? stats.auto_trade_stats
+        : {};
+      const truthSource = String(autoTradeStats.position_truth_source || '').trim() || 'local';
+      const truthAt = String(autoTradeStats.position_sync_at || stats.position_sync_at || '').trim();
+      const truthErr = normalizeExecFailureText(String(autoTradeStats.position_sync_error || stats.position_sync_error || '').trim());
+      const truthText = truthSource === 'positions_api_funder'
+        ? `Funder Positions API${truthAt ? ` · ${formatTime(truthAt)}` : ''}`
+        : `降级本地${truthErr ? ` · ${truthErr}` : ''}`;
+      card.innerHTML = `
+        <div class="advantage-title">评分与偏差校正（LCB最小监控）</div>
+        <div class="advantage-meta">仅保留 4 项：达标率、阻断Top、成交表现、持仓真值</div>
+        <div class="scoreboard-grid">
+          <div class="scoreboard-block span-3">
+            <div class="scoreboard-title">LCB门禁转化</div>
+            <div class="scoreboard-list">
+              <div class="scoreboard-row"><span>候选 / 达标 / 阻断</span><strong>${escapeHtml(`${fmtInt(counts.candidate_lcb)} / ${fmtInt(counts.lcb)} / ${fmtInt(counts.blocked_lcb)}`)}</strong></div>
+              <div class="scoreboard-row"><span>达标率</span><strong>${escapeHtml(fmtPct(lcbPassRate, 1))}</strong></div>
+              <div class="scoreboard-row"><span>run_date</span><strong>${escapeHtml(traceDate || '—')}</strong></div>
+              <div class="scoreboard-row"><span>trace更新时间</span><strong>${escapeHtml(generatedAt ? formatTime(generatedAt) : '—')}</strong></div>
+            </div>
+          </div>
+          <div class="scoreboard-block span-3">
+            <div class="scoreboard-title">LCB成交表现</div>
+            <div class="scoreboard-list">
+              <div class="scoreboard-row"><span>今日成交</span><strong>${escapeHtml(fmtInt(strategyToday.filled_order_count))}${strategyTodayDate ? ` · ${escapeHtml(strategyTodayDate)}` : ''}</strong></div>
+              <div class="scoreboard-row"><span>累计成交</span><strong>${escapeHtml(fmtInt(strategyAll.filled_order_count))}</strong></div>
+              <div class="scoreboard-row"><span>累计盈亏 / ROI</span><strong>${escapeHtml(`${fmtUsd(strategyAll.total_pnl)} / ${fmtPct(strategyAll.roi, 1)}`)}</strong></div>
+              <div class="scoreboard-row"><span>累计胜率</span><strong>${escapeHtml(fmtPct(strategyAll.win_rate, 1))}</strong></div>
+            </div>
+          </div>
+          <div class="scoreboard-block span-3">
+            <div class="scoreboard-title">LCB阻断Top（SSOT）</div>
+            <div class="scoreboard-list">
+              ${blockerHtml}
+            </div>
+          </div>
+          <div class="scoreboard-block span-3">
+            <div class="scoreboard-title">持仓真值口径</div>
+            <div class="scoreboard-list">
+              <div class="scoreboard-row"><span>真值来源</span><strong>${escapeHtml(truthText)}</strong></div>
+              <div class="scoreboard-row"><span>交易中 / 可赎回</span><strong>${escapeHtml(`${fmtInt(autoTradeStats.open_position_count)} / ${fmtInt(autoTradeStats.open_position_redeemable_count)}`)}</strong></div>
+              <div class="scoreboard-row"><span>总持仓</span><strong>${escapeHtml(fmtInt(autoTradeStats.open_position_total_count || autoTradeStats.open_position_count_all))}</strong></div>
+            </div>
+          </div>
+        </div>
+      `;
+      return card;
     }
 
     function render(data, skips, stationGapStats, modelHitStats, modelHit7, marketHit7, modelDailyStats, scoreStats, latestCityEvents, modelUpdateStats, edgeBiasStats, modelBiasStats, placeBiasStats, optimizerStatus, modelSpreadStats, qCalibrationStats, updatePolicy, reasonHistoryRuns) {
@@ -25461,6 +25674,8 @@
       function simplifyTraceErrorText(text) {
         let out = normalizeExecFailureText(text);
         if (!out) return '';
+        if (/^state=entry$/i.test(out)) return '持仓中（等待退出条件）';
+        if (/^state=redeemable$/i.test(out)) return '可赎回持仓（等待退出/赎回）';
         out = out.replace(/\b\d{12,}\b/g, '…');
         out = out.replace(/\bmarket_tick_age_sec=[^, ]+/gi, '');
         out = out.replace(/\bmarket_tick_stale_sec=[^, ]+/gi, '');
@@ -26625,17 +26840,9 @@
           const side = String(item.side || '').toUpperCase();
           const outcome = String(item.outcome || '');
           const strategy = String(item.strategy || '').toLowerCase();
-          const strategyLabel = strategy === 'yes_top'
-            ? 'YES最高桶'
-            : (strategy === 'follow_copy'
-              ? '临结价差'
-              : (strategy === 'hard_bound_no'
-                ? '物理边界NO'
-                : (strategy === 'adj_pair'
-                  ? '邻桶曲线套利'
-                  : (strategy === 'mirror_follow'
-                    ? '影子跟单'
-                    : (strategy === 'main' ? '主策略' : strategy)))));
+          const strategyLabel = strategy === 'mirror_follow'
+            ? '影子跟单'
+            : (strategy === 'live_position' ? '当前持仓' : 'LCB全市场');
           const meta = [side, outcome, strategyLabel].filter(Boolean).join(' · ');
           const reasonHtml = formatAutoTradeReasonHtml(reasons);
           rows.push(`
@@ -26729,13 +26936,10 @@
           const resolveStrategyLabel = (raw) => {
             const name = String(raw || '').toLowerCase();
             if (!name) return '';
-            if (name === 'yes_top') return 'YES最高桶';
-            if (name === 'follow_copy') return '临结价差';
-            if (name === 'hard_bound_no') return '物理边界NO';
-            if (name === 'adj_pair') return '邻桶曲线套利';
             if (name === 'mirror_follow') return '影子跟单';
-            if (name === 'main') return '主策略';
-            return name;
+            if (name === 'live_position') return '当前持仓';
+            if (name === 'unknown') return '未归属';
+            return 'LCB全市场';
           };
           const strategyGroupRaw = Array.isArray(item.strategy_group) ? item.strategy_group : [];
           const strategyGroupList = [];
@@ -26749,12 +26953,12 @@
           } else if (strategy) {
             pushStrategy(strategy);
           }
-          const hasFollowCopy = strategyGroupList.includes('follow_copy');
+          const hasFollowCopy = false;
           const sideMeta = [side, outcome].filter(Boolean).join(' · ');
           const strategyBadgeHtml = strategyGroupList.map((name) => {
             const label = resolveStrategyLabel(name);
             if (!label) return '';
-            const badgeClass = name === 'follow_copy' ? 'trace-strategy-badge follow-copy' : 'trace-strategy-badge';
+            const badgeClass = 'trace-strategy-badge';
             return `<span class="${badgeClass}">${escapeHtml(label)}</span>`;
           }).filter(Boolean).join('');
           const itemClass = hasFollowCopy ? 'trace-event-item strategy-follow-copy' : 'trace-event-item';
@@ -26884,13 +27088,22 @@
           const gateMetaHtml = gateChips.length
             ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
             : '';
+          const entryAtSourceRaw = String(
+            (tradeMeta && (tradeMeta.entry_at || tradeMeta.last_fill_at || tradeMeta.last_action_at))
+            || (item.entry_order && item.entry_order.created_at)
+            || ''
+          ).trim();
+          const entryAtLabel = entryAtSourceRaw ? formatTime(entryAtSourceRaw) : '';
+          const livePositionGateText = entryAtLabel
+            ? `门禁用于新开仓；当前为在仓实盘单（入场 ${entryAtLabel}），仅执行退出管理。`
+            : '门禁用于新开仓；当前为在仓实盘单，仅执行退出管理。';
           const gateContextHtml = (
             gateLegacyMode
             && gateRaw
             && gateRaw.overall
             && gateRaw.overall.pass === false
           )
-            ? `<div class="trace-bottleneck">${hasLivePosition ? '门禁用于新开仓；当前为历史持仓，仅执行退出管理。' : '门禁用于新开仓；该事件为历史成交，仅用于复盘。'}</div>`
+            ? `<div class="trace-bottleneck">${hasLivePosition ? livePositionGateText : '门禁用于新开仓；该事件为历史成交，仅用于复盘。'}</div>`
             : '';
           const trace = item.trace && typeof item.trace === 'object' ? item.trace : {};
           const decision = item.entry_decision && typeof item.entry_decision === 'object' ? item.entry_decision : null;
@@ -26905,7 +27118,12 @@
           const isTickGateDecision = decisionCodes.some((code) => code === 'market_tick_stale' || code === 'market_tick_missing');
           const flowStatusRaw = String(trace.flow_status || 'pending');
           const flowStatus = flowStatusRaw === 'ok' ? 'ok' : (flowStatusRaw === 'blocked' ? 'blocked' : 'pending');
-          const flowLabel = flowStatus === 'ok' ? '通畅' : (flowStatus === 'blocked' ? '阻断' : '待处理');
+          const flowIsHolding = flowStatus === 'pending'
+            && hasLivePosition
+            && String(trace.flow_step || '').trim() === '退出';
+          const flowLabel = flowStatus === 'ok'
+            ? '通畅'
+            : (flowStatus === 'blocked' ? '阻断' : (flowIsHolding ? '进行中' : '待处理'));
           const steps = Array.isArray(trace.steps) ? trace.steps : [];
           const flowStep = String(trace.flow_step || '');
           const statusToClass = (raw) => {
@@ -27077,120 +27295,187 @@
           const num = Number(value);
           return Number.isFinite(num) ? num.toFixed(0) : '0';
         };
-        const counts = meta && meta.not_ok_counts && typeof meta.not_ok_counts === 'object' ? meta.not_ok_counts : null;
-        const totalCount = counts ? Number(counts.total || 0) : total;
-        const top = meta && Array.isArray(meta.not_ok_reason_top) ? meta.not_ok_reason_top : [];
-        const topHtml = top.length
-          ? `<div class="follow-copy-reason-list">${top.slice(0, 8).map((it) => (
-            `<span class="follow-copy-reason-chip">${escapeHtml(String(it.reason || ''))} · ${fmtInt(it.count || 0)}</span>`
+        const top = meta && Array.isArray(meta.not_ok_reason_top)
+          ? meta.not_ok_reason_top.filter((row) => row && typeof row === 'object')
+          : [];
+
+        const normalizeMeta = (rawMeta) => {
+          const data = rawMeta && typeof rawMeta === 'object' ? rawMeta : {};
+          return {
+            entry_total: Number(data.entry_total || 0),
+            blocked_total: Number(data.blocked_total || 0),
+            will_order_total: Number(data.will_order_total || 0),
+            run_count: Number(data.run_count || 0),
+          };
+        };
+        const normalizeTable = (rows) => Array.isArray(rows)
+          ? rows.filter((row) => row && typeof row === 'object')
+          : [];
+        const viewRaw = meta && meta.entry_blocker_views && typeof meta.entry_blocker_views === 'object'
+          ? meta.entry_blocker_views
+          : null;
+        const currentMeta = normalizeMeta(meta && meta.entry_blocker_meta);
+        const currentTable = normalizeTable(meta && meta.entry_blocker_table);
+        const fallbackView = {
+          key: 'current',
+          label: '当前快照',
+          runHint: '',
+          table: currentTable,
+          meta: currentMeta,
+        };
+        const viewList = [];
+        if (viewRaw) {
+          const lastRaw = viewRaw.last_completed && typeof viewRaw.last_completed === 'object'
+            ? viewRaw.last_completed
+            : null;
+          if (lastRaw) {
+            const runId = Number(lastRaw.run_id || 0);
+            const runDateText = String(lastRaw.run_date || '').trim();
+            const runHint = [
+              Number.isFinite(runId) && runId > 0 ? `run#${fmtInt(runId)}` : '',
+              runDateText,
+            ].filter(Boolean).join(' · ');
+            viewList.push({
+              key: 'last_completed',
+              label: '最近完成轮次',
+              runHint,
+              table: normalizeTable(lastRaw.table),
+              meta: normalizeMeta(lastRaw.meta),
+            });
+          }
+          const aggRaw = viewRaw.recent_agg && typeof viewRaw.recent_agg === 'object'
+            ? viewRaw.recent_agg
+            : null;
+          if (aggRaw) {
+            const windowRuns = Number(viewRaw.window_runs || 0);
+            const runCount = Number((aggRaw.meta && aggRaw.meta.run_count) || 0);
+            const runHint = Number.isFinite(runCount) && runCount > 0
+              ? `${fmtInt(runCount)}轮${Number.isFinite(windowRuns) && windowRuns > 0 ? ` / 窗口${fmtInt(windowRuns)}轮` : ''}`
+              : (Number.isFinite(windowRuns) && windowRuns > 0 ? `窗口${fmtInt(windowRuns)}轮` : '');
+            viewList.push({
+              key: 'recent_agg',
+              label: '最近N轮聚合',
+              runHint,
+              table: normalizeTable(aggRaw.table),
+              meta: normalizeMeta(aggRaw.meta),
+            });
+          }
+        }
+        if (!viewList.length) {
+          viewList.push(fallbackView);
+        }
+        const firstView = viewList[0] || fallbackView;
+        const firstBlocked = Number(firstView.meta.blocked_total || 0);
+        const firstTableCount = firstView.table.reduce((sum, row) => sum + Number(row && row.count || 0), 0);
+        const totalCount = Number.isFinite(firstBlocked) && firstBlocked >= 0
+          ? firstBlocked
+          : (firstTableCount > 0 ? firstTableCount : total);
+        const topFromBlocker = firstView.table.slice(0, 8).map((row) => ({
+          reason: String(row && (row.reason_text || row.reason_code) || '').trim(),
+          count: Number(row && row.count || 0),
+        })).filter((it) => it.reason);
+        const topFallback = top.slice(0, 8).map((row) => ({
+          reason: String(row.reason || '').trim(),
+          count: Number(row.count || 0),
+        })).filter((it) => it.reason);
+        const topRows = topFromBlocker.length ? topFromBlocker : topFallback;
+        const topHtml = topRows.length
+          ? `<div class="follow-copy-reason-list">${topRows.map((it) => (
+            `<span class="follow-copy-reason-chip">${escapeHtml(it.reason)} · ${fmtInt(it.count || 0)}</span>`
           )).join('')}</div>`
           : '';
-        const blockerMeta = meta && meta.entry_blocker_meta && typeof meta.entry_blocker_meta === 'object'
-          ? meta.entry_blocker_meta
-          : null;
-        const blockerMetaBlocked = blockerMeta ? Number(blockerMeta.blocked_total || 0) : NaN;
-        const blockerTotalForShare = Number.isFinite(blockerMetaBlocked) && blockerMetaBlocked > 0 ? blockerMetaBlocked : total;
-        let blockerTable = meta && Array.isArray(meta.entry_blocker_table)
-          ? meta.entry_blocker_table.filter((row) => row && typeof row === 'object')
-          : [];
-        if (!blockerTable.length && top.length) {
-          blockerTable = top.slice(0, 8).map((row) => ({
-            reason_code: String(row.reason || '').trim() || 'unknown_blocker',
-            reason_text: String(row.reason || '').trim(),
-            count: Number(row.count || 0),
-            share: blockerTotalForShare > 0 ? Number(row.count || 0) / blockerTotalForShare : 0,
-            sample_slug: '',
-            sample_event_date: '',
-            sample_outcome: '',
-            sample_side: '',
-            sample_strategy: '',
-            sample_title: '',
-            sample_event_url: '',
-            sample_reason_text: String(row.reason || '').trim(),
-          }));
-        }
-        const blockerRowsHtml = blockerTable.slice(0, 10).map((row) => {
-          const countVal = Number(row.count || 0);
-          const ratioRaw = toFiniteNumberOrNaN(row.share);
-          const ratio = Number.isFinite(ratioRaw)
-            ? ratioRaw
-            : (blockerTotalForShare > 0 ? countVal / blockerTotalForShare : 0);
-          const shareText = Number.isFinite(ratio) ? `${(Math.max(0, ratio) * 100).toFixed(1)}%` : '—';
-          const reasonCode = String(row.reason_code || '').trim() || 'unknown_blocker';
-          const reasonText = String(row.reason_text || '').trim();
-          const sampleTitle = String(row.sample_title || row.sample_slug || '').trim() || '—';
-          const sampleUrl = String(row.sample_event_url || '').trim();
-          const sampleHead = sampleUrl
-            ? `<a href="${escapeHtml(sampleUrl)}" target="_blank" rel="noopener">${escapeHtml(sampleTitle)}</a>`
-            : escapeHtml(sampleTitle);
-          const sampleMeta = [
-            String(row.sample_event_date || '').trim(),
-            String(row.sample_side || '').trim(),
-            String(row.sample_outcome || '').trim(),
-            String(row.sample_strategy || '').trim(),
-          ].filter(Boolean).join(' · ');
-          const sampleReason = String(row.sample_reason_text || '').trim();
+
+        const renderBlockerView = (view) => {
+          const rows = Array.isArray(view.table) ? view.table.slice(0, 10) : [];
+          const metaObj = view.meta && typeof view.meta === 'object' ? view.meta : {};
+          const blockedTotal = Number(metaObj.blocked_total || 0);
+          const tableCount = rows.reduce((sum, row) => sum + Number(row && row.count || 0), 0);
+          const shareBase = Number.isFinite(blockedTotal) && blockedTotal > 0 ? blockedTotal : tableCount;
+          const rowHtml = rows.map((row) => {
+            const countVal = Number(row.count || 0);
+            const ratioRaw = toFiniteNumberOrNaN(row.share);
+            const ratio = Number.isFinite(ratioRaw)
+              ? ratioRaw
+              : (shareBase > 0 ? countVal / shareBase : 0);
+            const shareText = Number.isFinite(ratio) ? `${(Math.max(0, ratio) * 100).toFixed(1)}%` : '—';
+            const reasonCode = String(row.reason_code || '').trim() || 'unknown_blocker';
+            const reasonText = String(row.reason_text || '').trim();
+            const sampleTitle = String(row.sample_title || row.sample_slug || '').trim() || '—';
+            const sampleUrl = String(row.sample_event_url || '').trim();
+            const sampleHead = sampleUrl
+              ? `<a href="${escapeHtml(sampleUrl)}" target="_blank" rel="noopener">${escapeHtml(sampleTitle)}</a>`
+              : escapeHtml(sampleTitle);
+            const sampleMeta = [
+              String(row.sample_event_date || '').trim(),
+              String(row.sample_side || '').trim(),
+              String(row.sample_outcome || '').trim(),
+              String(row.sample_strategy || '').trim(),
+            ].filter(Boolean).join(' · ');
+            const sampleReason = String(row.sample_reason_text || '').trim();
+            return `
+              <tr>
+                <td>
+                  <div class="auto-trade-blocker-code">${escapeHtml(reasonCode)}</div>
+                  ${reasonText ? `<div class="auto-trade-blocker-reason">${escapeHtml(reasonText)}</div>` : ''}
+                </td>
+                <td class="num">${fmtInt(countVal)}</td>
+                <td class="num">${escapeHtml(shareText)}</td>
+                <td>
+                  <div class="auto-trade-blocker-sample">
+                    ${sampleHead}
+                    ${sampleMeta ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleMeta)}</div>` : ''}
+                    ${sampleReason ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleReason)}</div>` : ''}
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('');
+          const summaryParts = [];
+          const entryTotal = Number(metaObj.entry_total || 0);
+          const willOrderTotal = Number(metaObj.will_order_total || 0);
+          const runCount = Number(metaObj.run_count || 0);
+          if (Number.isFinite(entryTotal) && entryTotal > 0) summaryParts.push(`候选${fmtInt(entryTotal)}`);
+          if (Number.isFinite(blockedTotal) && blockedTotal >= 0) summaryParts.push(`阻断${fmtInt(blockedTotal)}`);
+          if (Number.isFinite(willOrderTotal) && willOrderTotal >= 0) summaryParts.push(`可下单${fmtInt(willOrderTotal)}`);
+          if (Number.isFinite(runCount) && runCount > 1) summaryParts.push(`样本${fmtInt(runCount)}轮`);
+          const title = [String(view.label || '').trim(), String(view.runHint || '').trim()].filter(Boolean).join(' · ');
+          if (!rowHtml) {
+            return `
+              <div style="margin:10px 0;">
+                <div class="auto-trade-blocker-code">${escapeHtml(title || '阻断视图')}</div>
+                <div class="meta">无阻断样本</div>
+              </div>
+            `;
+          }
           return `
-            <tr>
-              <td>
-                <div class="auto-trade-blocker-code">${escapeHtml(reasonCode)}</div>
-                ${reasonText ? `<div class="auto-trade-blocker-reason">${escapeHtml(reasonText)}</div>` : ''}
-              </td>
-              <td class="num">${fmtInt(countVal)}</td>
-              <td class="num">${escapeHtml(shareText)}</td>
-              <td>
-                <div class="auto-trade-blocker-sample">
-                  ${sampleHead}
-                  ${sampleMeta ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleMeta)}</div>` : ''}
-                  ${sampleReason ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleReason)}</div>` : ''}
-                </div>
-              </td>
-            </tr>
-          `;
-        }).join('');
-        const blockerSummaryParts = [];
-        if (blockerMeta) {
-          const entryTotal = Number(blockerMeta.entry_total || 0);
-          const blockedTotal = Number(blockerMeta.blocked_total || 0);
-          const willOrderTotal = Number(blockerMeta.will_order_total || 0);
-          if (Number.isFinite(entryTotal) && entryTotal > 0) blockerSummaryParts.push(`候选${fmtInt(entryTotal)}`);
-          if (Number.isFinite(blockedTotal) && blockedTotal >= 0) blockerSummaryParts.push(`阻断${fmtInt(blockedTotal)}`);
-          if (Number.isFinite(willOrderTotal) && willOrderTotal >= 0) blockerSummaryParts.push(`可下单${fmtInt(willOrderTotal)}`);
-        }
-        const blockerTableHtml = blockerRowsHtml
-          ? `
-            <div class="auto-trade-blocker-table-wrap">
-              <table class="auto-trade-blocker-table">
-                <thead>
-                  <tr>
-                    <th>原因码</th>
-                    <th>次数</th>
-                    <th>占比</th>
-                    <th>示例事件</th>
-                  </tr>
-                </thead>
-                <tbody>${blockerRowsHtml}</tbody>
-              </table>
+            <div style="margin:10px 0;">
+              <div class="auto-trade-blocker-code">${escapeHtml(title || '阻断视图')}</div>
+              <div class="auto-trade-blocker-table-wrap">
+                <table class="auto-trade-blocker-table">
+                  <thead>
+                    <tr>
+                      <th>原因码</th>
+                      <th>次数</th>
+                      <th>占比</th>
+                      <th>示例事件</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowHtml}</tbody>
+                </table>
+              </div>
+              ${summaryParts.length ? `<div class="auto-trade-blocker-summary">${escapeHtml(summaryParts.join(' · '))}</div>` : ''}
             </div>
-            ${blockerSummaryParts.length ? `<div class="auto-trade-blocker-summary">${escapeHtml(blockerSummaryParts.join(' · '))}</div>` : ''}
-          `
-          : '';
+          `;
+        };
+        const blockerViewHtml = viewList.slice(0, 2).map((view) => renderBlockerView(view)).join('');
         const rows = filtered.slice(0, maxItems).map((item) => {
           const titleHtml = titleLinkForItem(item);
           const side = String(item.side || '').toUpperCase();
           const outcome = String(item.outcome || '');
           const strategy = String(item.strategy || '').toLowerCase();
-          const strategyLabel = strategy === 'yes_top'
-            ? 'YES最高桶'
-            : (strategy === 'follow_copy'
-              ? '临结价差'
-              : (strategy === 'hard_bound_no'
-                ? '物理边界NO'
-                : (strategy === 'adj_pair'
-                  ? '邻桶曲线套利'
-                  : (strategy === 'mirror_follow'
-                    ? '影子跟单'
-                    : (strategy === 'main' ? '主策略' : strategy)))));
+          const strategyLabel = strategy === 'mirror_follow'
+            ? '影子跟单'
+            : (strategy === 'live_position' ? '当前持仓' : 'LCB全市场');
           const metaText = [side, outcome, strategyLabel].filter(Boolean).join(' · ');
           const reasons = Array.isArray(item.entry_reasons) ? item.entry_reasons : [];
           const reasonHtml = formatAutoTradeReasonHtml(reasons, { tone: 'fail', showFailLabel: true, failLabel: '未达标', emptyLabel: '未达标' });
@@ -27209,9 +27494,128 @@
           <details class="auto-trade-blockers" open>
             <summary>入场未达标 · 原因（SSOT）${Number.isFinite(totalCount) ? `（${fmtInt(totalCount)}）` : ''}</summary>
             ${topHtml}
-            ${blockerTableHtml}
+            ${blockerViewHtml}
             <div class="reason-event-list">${rows}</div>
             ${limitNote}
+          </details>
+        `;
+      }
+
+      function buildShadowBandCompareCard(meta) {
+        const shadow = meta && meta.shadow_band_v1 && typeof meta.shadow_band_v1 === 'object'
+          ? meta.shadow_band_v1
+          : null;
+        if (!shadow || !shadow.enabled) return '';
+        const fmtInt = (value) => {
+          const n = Number(value);
+          return Number.isFinite(n) ? n.toFixed(0) : '0';
+        };
+        const fmtPct = (num, den) => {
+          const n = Number(num);
+          const d = Number(den);
+          if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return '0.0%';
+          return `${((n / d) * 100).toFixed(1)}%`;
+        };
+        const fmt4 = (value) => {
+          const n = Number(value);
+          return Number.isFinite(n) ? n.toFixed(4) : '—';
+        };
+        const fmtRoi = (value) => {
+          const n = Number(value);
+          return Number.isFinite(n) ? `${(n * 100).toFixed(2)}%` : '—';
+        };
+        const fmtRoiSigned = (value) => {
+          const n = Number(value);
+          if (!Number.isFinite(n)) return '—';
+          const sign = n > 0 ? '+' : '';
+          return `${sign}${(n * 100).toFixed(2)}%`;
+        };
+        const baseline = shadow.lcb_baseline && typeof shadow.lcb_baseline === 'object'
+          ? shadow.lcb_baseline
+          : {};
+        const cmp = shadow.comparison && typeof shadow.comparison === 'object'
+          ? shadow.comparison
+          : {};
+        const params = shadow.params && typeof shadow.params === 'object'
+          ? shadow.params
+          : {};
+        const paper = shadow.paper_compare && typeof shadow.paper_compare === 'object'
+          ? shadow.paper_compare
+          : {};
+        const shadowPaper = paper.shadow && typeof paper.shadow === 'object'
+          ? paper.shadow
+          : {};
+        const lcbPaper = paper.lcb && typeof paper.lcb === 'object'
+          ? paper.lcb
+          : {};
+        const paperDelta = paper.delta && typeof paper.delta === 'object'
+          ? paper.delta
+          : {};
+        const top = Array.isArray(shadow.top_candidates) ? shadow.top_candidates : [];
+        const rowsHtml = top.slice(0, 6).map((row) => {
+          const title = escapeHtml(String(row.title || row.slug || '—'));
+          const url = String(row.event_url || '').trim();
+          const titleHtml = url
+            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${title}</a>`
+            : title;
+          const bandText = [String(row.band_start || '').trim(), String(row.band_end || '').trim()].filter(Boolean).join(' -> ');
+          return `
+            <tr>
+              <td>${titleHtml}</td>
+              <td class="num">${escapeHtml(fmt4(row.combo_lcb))}</td>
+              <td class="num">${escapeHtml(fmtRoi(row.paper_roi_est))}</td>
+              <td class="num">${escapeHtml(fmt4(row.yes_lcb_mean))}</td>
+              <td class="num">${escapeHtml(fmtInt(row.yes_leg_count))}</td>
+              <td class="num">${escapeHtml(fmtInt(row.no_leg_count))}</td>
+              <td>${escapeHtml(bandText || '—')}</td>
+            </tr>
+          `;
+        }).join('');
+        const tableHtml = rowsHtml
+          ? `
+            <div class="auto-trade-blocker-table-wrap">
+              <table class="auto-trade-blocker-table">
+                <thead>
+                <tr>
+                  <th>事件</th>
+                  <th>组合LCB</th>
+                  <th>Paper估计ROI</th>
+                  <th>YES均值LCB</th>
+                  <th>YES腿数</th>
+                  <th>NO腿数</th>
+                  <th>Band区间</th>
+                </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          `
+          : '<div class="meta">当前无影子候选事件</div>';
+        const shadowCount = Number(shadow.events_candidate_new_open || 0);
+        const lcbCount = Number(baseline.events_candidate_new_open || 0);
+        const overlap = Number(cmp.overlap_event_count || 0);
+        return `
+          <details class="auto-trade-blockers" open>
+            <summary>Band组合 V1（影子）vs LCB（对照）</summary>
+            <div class="auto-trade-blocker-summary">
+              影子候选 ${fmtInt(shadowCount)} · LCB候选 ${fmtInt(lcbCount)} · 重叠 ${fmtInt(overlap)} (${fmtPct(overlap, Math.max(1, shadowCount))})
+            </div>
+            <div class="auto-trade-blocker-summary">
+              影子均值LCB ${fmt4(shadow.avg_combo_lcb)} · LCB均值LCB ${fmt4(baseline.avg_event_lcb)} · YES腿均值 ${fmt4(shadow.avg_yes_leg_count)} · NO腿均值 ${fmt4(shadow.avg_no_leg_count)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              Paper估计ROI：影子 ${fmtRoi(shadowPaper.est_roi_mean)}（${fmtInt(shadowPaper.est_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.est_roi_mean)}（${fmtInt(lcbPaper.est_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.est_roi_mean_diff)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              Paper已结算ROI：影子 ${fmtRoi(shadowPaper.realized_roi_mean)}（${fmtInt(shadowPaper.realized_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.realized_roi_mean)}（${fmtInt(lcbPaper.realized_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.realized_roi_mean_diff)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              影子更优 ${fmtInt(cmp.shadow_better_event_count || 0)} / 更弱 ${fmtInt(cmp.shadow_worse_event_count || 0)} / 持平 ${fmtInt(cmp.shadow_equal_event_count || 0)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              参数：Band[${fmtInt(params.width_min || 0)},${fmtInt(params.width_max || 0)}] · NO最多${fmtInt(params.no_legs_max || 0)} · 单腿LCB≥${fmt4(params.leg_lcb_min)} · 组合LCB≥${fmt4(params.combo_lcb_min)}
+            </div>
+            ${tableHtml}
           </details>
         `;
       }
@@ -27219,14 +27623,19 @@
       function renderAutoTradeTraceMount(runDate) {
         const mount = document.getElementById('autoTradeTraceListMount');
         if (!mount) return;
-        const meta = window.__autoTradeTraceMeta && typeof window.__autoTradeTraceMeta === 'object'
-          ? window.__autoTradeTraceMeta
-          : null;
-        const effectiveDate = runDate || autoTradeTraceRunDate || String(window.__latestDate || '').trim();
-        const okHtml = buildAutoTradeTraceList(window.__autoTradeTraceItems, effectiveDate, { maxItems: 0, meta });
-        const notOkHtml = buildAutoTradeNotOkList(window.__autoTradeTraceNotOkItems, effectiveDate, { maxItems: 12, meta });
-        mount.innerHTML = `${okHtml}${notOkHtml}`;
-        const refreshEl = document.getElementById('autoTradeTraceRefreshStatus');
+      const meta = window.__autoTradeTraceMeta && typeof window.__autoTradeTraceMeta === 'object'
+        ? window.__autoTradeTraceMeta
+        : null;
+      const effectiveDate = runDate || autoTradeTraceRunDate || String(window.__latestDate || '').trim();
+      const shadowCompareHtml = buildShadowBandCompareCard(meta);
+      const okHtml = buildAutoTradeTraceList(window.__autoTradeTraceItems, effectiveDate, { maxItems: 0, meta });
+      const notOkHtml = buildAutoTradeNotOkList(window.__autoTradeTraceNotOkItems, effectiveDate, { maxItems: 12, meta });
+      const nextHtml = `${shadowCompareHtml}${okHtml}${notOkHtml}`;
+      if (mount.__traceHtmlCache !== nextHtml) {
+        mount.innerHTML = nextHtml;
+        mount.__traceHtmlCache = nextHtml;
+      }
+      const refreshEl = document.getElementById('autoTradeTraceRefreshStatus');
         if (refreshEl) {
           const refreshMeta = meta && meta.market_tick_refresh && typeof meta.market_tick_refresh === 'object'
             ? meta.market_tick_refresh
@@ -27791,75 +28200,37 @@
 	        reasonEventsToday,
 	        (item) => buildAutoTradeEntryReasonParts(item, { mode: 'main' }),
 	      );
-	      const recentReasonStatsMain = summarize有效优势分EntryReasonsLastNDays(
-	        reasonEventsRange,
-	        7,
-	        (item) => buildAutoTradeEntryReasonParts(item, { mode: 'main' }),
-	      );
-	      const entryReasonStatsYesTop = summarize有效优势分EntryReasons(
-	        yesTopEventsToday,
-	        (item) => buildAutoTradeEntryReasonParts(item, { mode: 'yes_top' }),
-	      );
-	      const recentReasonStatsYesTop = summarize有效优势分EntryReasonsLastNDays(
-	        yesTopEventsRange,
-	        7,
-	        (item) => buildAutoTradeEntryReasonParts(item, { mode: 'yes_top' }),
-	      );
-      const entryReasonStatsMerged = (() => {
-        const map = new Map();
-        const addStats = (stats) => {
-          if (!stats || !Array.isArray(stats.items)) return;
-          for (const item of stats.items) {
-            const reason = String(item && item.reason || '').trim();
-            const count = Number(item && item.count || 0);
-            if (!reason || !Number.isFinite(count) || count <= 0) continue;
-            map.set(reason, (map.get(reason) || 0) + count);
-          }
-        };
-        addStats(entryReasonStatsMain);
-        addStats(entryReasonStatsYesTop);
-        const total = Number(entryReasonStatsMain && entryReasonStatsMain.total || 0)
-          + Number(entryReasonStatsYesTop && entryReasonStatsYesTop.total || 0);
-        const items = Array.from(map.entries())
-          .map(([reason, count]) => ({
-            reason,
-            count,
-            ratio: total ? count / total : 0,
-          }))
-          .sort((a, b) => {
-            if (b.ratio !== a.ratio) return b.ratio - a.ratio;
-            if (b.count !== a.count) return b.count - a.count;
-            return a.reason.localeCompare(b.reason);
-          });
-        return { total, items };
-      })();
       const todayRunDate = resolveLatestRunDate(reasonEventsToday);
-      const traceCounts = getAutoTradeTraceCounts();
-      const todayEligibleCountMain = traceCounts.main;
-      const todayEligibleCountYesTop = traceCounts.yesTop;
-      const entryReasonSampleMain = Number(entryReasonStatsMain && entryReasonStatsMain.total || 0);
-      const entryReasonSampleYesTop = Number(entryReasonStatsYesTop && entryReasonStatsYesTop.total || 0);
-      const entryReasonMeta = `样本 主策略 ${entryReasonSampleMain} · YES最高桶 ${entryReasonSampleYesTop}${todayRunDate ? ` · ${todayRunDate}` : ''}`;
+      const traceCounts = getAutoTradeTraceCounts(todayRunDate);
+      const todayEligibleCountLCB = traceCounts.lcb;
+      const todayBlockedCountLCB = traceCounts.blocked_lcb;
+      const todayCandidateCountLCB = traceCounts.candidate_lcb;
+      const entryReasonSampleLCB = Number(entryReasonStatsMain && entryReasonStatsMain.total || 0);
+      const entryReasonMeta = `样本 LCB ${entryReasonSampleLCB}${todayRunDate ? ` · ${todayRunDate}` : ''}`;
       const entryReasonKpiHtml = `
         <div class="reason-kpi-group">
           <div class="reason-kpi">
-            <span>主策略达标</span>
-            <span class="reason-kpi-value" id="autoTradeEligibleMainCount">${todayEligibleCountMain}</span>
+            <span>LCB候选</span>
+            <span class="reason-kpi-value" id="autoTradeCandidateLcbCount">${todayCandidateCountLCB}</span>
             ${todayRunDate ? `<span class="reason-kpi-date">${todayRunDate}</span>` : ''}
           </div>
           <div class="reason-kpi">
-            <span>YES最高桶达标</span>
-            <span class="reason-kpi-value" id="autoTradeEligibleYesTopCount">${todayEligibleCountYesTop}</span>
+            <span>LCB达标</span>
+            <span class="reason-kpi-value" id="autoTradeEligibleLcbCount">${todayEligibleCountLCB}</span>
+            ${todayRunDate ? `<span class="reason-kpi-date">${todayRunDate}</span>` : ''}
+          </div>
+          <div class="reason-kpi">
+            <span>LCB阻断</span>
+            <span class="reason-kpi-value" id="autoTradeBlockedLcbCount">${todayBlockedCountLCB}</span>
             ${todayRunDate ? `<span class="reason-kpi-date">${todayRunDate}</span>` : ''}
           </div>
         </div>
       `;
 		      window.__autoTradeReasonEvents = reasonEventsToday;
-		      window.__autoTradeReasonEventsYesTop = yesTopEventsToday;
+		      window.__autoTradeReasonEventsYesTop = [];
 		      updateAutoTradeEligibleCount();
           const traceDate = todayRunDate || String(window.__latestDate || '').trim();
           refreshAutoTradeTrace({ date: traceDate }).catch(() => {});
-          renderAutoTradeTraceMount(traceDate);
       const askLeQMinBuffer = Number.isFinite(AUTO_TRADE_ENTRY_ASK_LE_Q_MIN_BUFFER)
         ? AUTO_TRADE_ENTRY_ASK_LE_Q_MIN_BUFFER
         : 0;
@@ -27969,12 +28340,12 @@
             <div class="adv-card adv-card-wide">
             <div class="adv-card-body">
               <div id="autoTradeOverviewMount"></div>
-              <div class="auto-trade-summary-block">${entryReasonKpiHtml}</div>
+              <div class="auto-trade-summary-block">${entryReasonKpiHtml}${entryReasonMeta ? `<div class="reason-panel-meta">${escapeHtml(entryReasonMeta)}</div>` : ''}</div>
               <div class="reason-panel secondary trace-panel">
                 <div class="reason-panel-head">
                   <div>
-                    <div class="reason-panel-title">自动交易追踪（全策略）</div>
-                    <div class="reason-panel-meta">主策略/YES最高桶/临结价差/物理边界NO/邻桶曲线套利/影子跟单 · 流程进度与卡点</div>
+                    <div class="reason-panel-title">自动交易追踪（LCB全市场）</div>
+                    <div class="reason-panel-meta">统一 LCB 决策链路 · 候选 -> 门禁 -> 下单 -> 成交 -> 退出</div>
                     <div class="reason-panel-meta trace-runstate" id="autoTradeTraceRunState"></div>
                     <div class="reason-panel-meta trace-strategy-summary" id="autoTradeTraceStrategySummary"></div>
                     <div class="reason-panel-meta trace-flow-summary" id="autoTradeTraceFlowSummary"></div>
@@ -27987,20 +28358,9 @@
                 </div>
                 <div class="reason-panel-body compact">
                   <div class="reason-detail" id="autoTradeTraceListMount">
-                    ${buildAutoTradeTraceList(window.__autoTradeTraceItems, todayRunDate, { maxItems: 0, meta: window.__autoTradeTraceMeta })}
+                    <div class="meta">加载中…</div>
                   </div>
-                  <div class="trace-extra-stack">
-                    <div>
-                      <div class="adv-card-title" id="section-mirror-follow" data-nav-level="2" data-nav-label="影子跟单" data-nav-skip="1">影子跟单（mirror_follow）</div>
-                      <div class="reason-grid">
-                        <div class="reason-column" style="grid-column:1 / -1;">
-                          <div class="reason-column-body">
-                            ${buildMirrorFollowBoardHtml((scoreStats && scoreStats.auto_trade_stats) ? scoreStats.auto_trade_stats : null, { maxRows: 8 })}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div class="trace-extra-stack"></div>
                 </div>
               </div>
             </div>
@@ -28170,13 +28530,9 @@
 	          const tradedBadge = item.auto_traded ? '<span class="badge traded">已交易</span>' : '';
 	          const displaySide = String(display.side || item.side || '').toUpperCase();
 	          const displayOutcome = String(display.outcome || item.outcome || '');
-	          const entryReasonLabel = AUTO_TRADE_ENTRY_ONLY_REALIZABLE
-              ? '主策略入场原因（可兑现口径）：'
-              : '主策略入场原因（标准）：';
-            const yesTopTitlePrefix = AUTO_TRADE_ENTRY_ONLY_REALIZABLE ? '可兑现口径' : '主策略口径';
-	          const yesTopTitle = yesTopLabel
-	            ? `YES最高桶（${escapeHtml(yesTopLabel)}）入场原因（${yesTopTitlePrefix}，SSOT）：`
-	            : `YES最高桶入场原因（${yesTopTitlePrefix}，SSOT）：`;
+          const entryReasonLabel = AUTO_TRADE_ENTRY_ONLY_REALIZABLE
+              ? 'LCB入场原因（可兑现口径）：'
+              : 'LCB入场原因（标准）：';
 	          row.innerHTML = `
 	            <div class="advantage-score"><span class="score-inline"><span class="score-exec">可兑现口径 ${edgeRealizableText}</span><span class="score-edge">可兑现分 ${realizableScoreText}</span></span> ${entryBadge} ${tradedBadge}</div>
 	            <div class="advantage-edge">${makeJumpLink(item)} ${displaySide} ${escapeHtml(displayOutcome)} ${consistentBadge}</div>
@@ -28186,9 +28542,8 @@
 	            <div class="advantage-meta">模型数 ${modelCount} · 缓存年龄 ${cacheAgeText}</div>
 	            ${freshnessMeta}
 	            <div class="advantage-meta"><span>${entryReasonLabel}</span><span class="reason-list">${mainEntryReasonHtml}</span></div>
-	            <div class="advantage-meta"><span>主策略退出原因：</span><span class="reason-list">${mainExitReasonHtml}</span></div>
-	            <div class="advantage-meta"><span>${yesTopTitle}</span><span class="reason-list">${yesTopEntryReasonHtml}</span></div>
-	          `;
+	            <div class="advantage-meta"><span>LCB退出原因：</span><span class="reason-list">${mainExitReasonHtml}</span></div>
+          `;
             list.appendChild(row);
         }
         if (!list.children.length) {
@@ -28238,29 +28593,7 @@
         }
       }
       // open orders / today events are no longer shown in the trace container
-      const scoreSection = renderScoreboard(scoreStats, { embedded: true });
-      const modelDailySection = renderModelDailyTable(modelDailyStats, stationGapStats, { embedded: true });
-      const modelBiasSection = renderModelBiasBoard(modelBiasStats, { embedded: true });
-      const placeBiasSection = renderPlaceBiasBoard(placeBiasStats, { embedded: true });
-      const optimizerSection = renderOptimizerBoard(optimizerStatus, { embedded: true });
-      const edgeBiasSection = renderEdgeBiasBoard(edgeBiasStats, { embedded: true });
-      const ratingSections = [scoreSection, modelDailySection, optimizerSection, modelBiasSection, placeBiasSection, edgeBiasSection].filter(Boolean);
-      let ratingBiasCard = null;
-      if (ratingSections.length) {
-        ratingBiasCard = document.createElement('div');
-        ratingBiasCard.className = 'card rating-bias-card';
-        ratingBiasCard.id = 'section-score';
-        ratingBiasCard.innerHTML = `
-          <div class="advantage-title">评分明细</div>
-          <div class="advantage-meta">模型与权重命中率评分、趋势与 Edge（原始信号边际）历史偏差校正</div>
-          <div class="rating-bias-stack"></div>
-        `;
-        const stack = ratingBiasCard.querySelector('.rating-bias-stack');
-        ratingSections.forEach((section) => {
-          if (section) stack.appendChild(section);
-        });
-      }
-      const modelSpreadSection = renderModelSpreadBoard(modelSpreadStats);
+      const ratingBiasCard = renderLcbRatingBoard(scoreStats, window.__autoTradeTraceMeta, { embedded: true });
       const updateSections = [];
       if (updatePolicyBoard) {
         updatePolicyBoard.classList.remove('card');
@@ -28288,14 +28621,8 @@
         if (mount) mount.appendChild(updateComboBoard);
         else advantageEl.appendChild(updateComboBoard);
       }
-      if (ratingBiasCard || modelSpreadSection) {
+      if (ratingBiasCard) {
         if (modelSection) modelSection.style.display = '';
-        const modelMount = document.getElementById('modelUpdateMount');
-        if (modelMount && modelSpreadSection) {
-          modelMount.appendChild(modelSpreadSection);
-        } else if (modelSpreadSection) {
-          advantageEl.appendChild(modelSpreadSection);
-        }
         const ratingMount = ratingBiasMount;
         if (ratingMount && ratingBiasCard) {
           ratingMount.appendChild(ratingBiasCard);
@@ -28842,8 +29169,9 @@
         // ignore cache write failures
       }
     }
-    const AUTO_TRADE_REFRESH_MS = 5000;
-    const AUTO_TRADE_TRACE_REFRESH_MS = 3000;
+    const AUTO_TRADE_REFRESH_MS = 6000;
+    const AUTO_TRADE_TRACE_REFRESH_MS = 10000;
+    const LCB_ONLY_UI = true;
     const HARD_ALERT_SCAN_TIMING_SEC = 45 * 60;
     const HARD_ALERT_MARKET_MEDIAN_SEC = 2 * 60 * 60;
     const HARD_ALERT_MARKET_MAX_SEC = 6 * 60 * 60;
@@ -30021,25 +30349,56 @@
         updateAutoTradeMonitor({ ok: false, error: e && e.message ? e.message : '请求失败' });
       }
     }
-    function getAutoTradeTraceCounts() {
+    function getAutoTradeTraceCounts(runDate = '') {
+      const targetDate = String(runDate || autoTradeTraceRunDate || window.__latestDate || '').trim();
       const items = Array.isArray(window.__autoTradeTraceItems) ? window.__autoTradeTraceItems : [];
-      let main = 0;
-      let follow = 0;
-      let yesTop = 0;
-      for (const item of items) {
+      const notOkItems = Array.isArray(window.__autoTradeTraceNotOkItems) ? window.__autoTradeTraceNotOkItems : [];
+      const matchDate = (item) => (
+        !targetDate || String(item && item.run_date || '').trim() === targetDate
+      );
+      const classifyStrategy = (item) => {
         const strategy = String(item && item.strategy || '').toLowerCase();
-        if (strategy === 'main') main += 1;
-        else if (strategy === 'follow_copy') follow += 1;
-        else if (strategy === 'yes_top') yesTop += 1;
+        if (strategy === 'mirror_follow') return 'mirror';
+        if (strategy === 'live_position') return 'live_position';
+        return 'lcb';
+      };
+      let total = 0;
+      let lcb = 0;
+      let mirror = 0;
+      let livePosition = 0;
+      for (const item of items) {
+        if (!matchDate(item)) continue;
+        total += 1;
+        const bucket = classifyStrategy(item);
+        if (bucket === 'mirror') mirror += 1;
+        else if (bucket === 'live_position') livePosition += 1;
+        else lcb += 1;
       }
-      return { total: items.length, main, follow, yesTop };
+      let blockedTotal = 0;
+      let blockedLcb = 0;
+      for (const item of notOkItems) {
+        if (!matchDate(item)) continue;
+        blockedTotal += 1;
+        if (classifyStrategy(item) === 'lcb') blockedLcb += 1;
+      }
+      return {
+        total,
+        lcb,
+        mirror,
+        live_position: livePosition,
+        blocked_total: blockedTotal,
+        blocked_lcb: blockedLcb,
+        candidate_lcb: lcb + blockedLcb,
+      };
     }
-    function updateAutoTradeTraceCounts() {
-      const counts = getAutoTradeTraceCounts();
-      const mainEl = document.getElementById('autoTradeEligibleMainCount');
-      const yesTopEl = document.getElementById('autoTradeEligibleYesTopCount');
-      if (mainEl) mainEl.textContent = String(counts.main);
-      if (yesTopEl) yesTopEl.textContent = String(counts.yesTop);
+    function updateAutoTradeTraceCounts(runDate = '') {
+      const counts = getAutoTradeTraceCounts(runDate);
+      const candidateLcbEl = document.getElementById('autoTradeCandidateLcbCount');
+      const eligibleLcbEl = document.getElementById('autoTradeEligibleLcbCount');
+      const blockedLcbEl = document.getElementById('autoTradeBlockedLcbCount');
+      if (candidateLcbEl) candidateLcbEl.textContent = String(counts.candidate_lcb);
+      if (eligibleLcbEl) eligibleLcbEl.textContent = String(counts.lcb);
+      if (blockedLcbEl) blockedLcbEl.textContent = String(counts.blocked_lcb);
     }
     function buildAutoTradeLivePositionEventsHtml(meta, options = {}) {
       const payload = (meta && typeof meta === 'object') ? meta : null;
@@ -30318,7 +30677,10 @@
     }
     function buildAutoTradeTraceList(items, runDate, options = {}) {
       const targetDate = runDate ? String(runDate) : '';
-      const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.floor(options.maxItems)) : 12;
+      const maxItemsRaw = options && typeof options === 'object' ? options.maxItems : null;
+      const maxItems = Number.isFinite(maxItemsRaw) && maxItemsRaw > 0
+        ? Math.max(1, Math.floor(maxItemsRaw))
+        : Infinity;
       const errorReasonCodes = new Set([
         'place_order_failed',
         'order_price_invalid',
@@ -30442,13 +30804,10 @@
         const resolveStrategyLabel = (raw) => {
           const name = String(raw || '').toLowerCase();
           if (!name) return '';
-          if (name === 'yes_top') return 'YES最高桶';
-          if (name === 'follow_copy') return '临结价差';
-          if (name === 'hard_bound_no') return '物理边界NO';
-          if (name === 'adj_pair') return '邻桶曲线套利';
           if (name === 'mirror_follow') return '影子跟单';
-          if (name === 'main') return '主策略';
-          return name;
+          if (name === 'live_position') return '当前持仓';
+          if (name === 'unknown') return '未归属';
+          return 'LCB全市场';
         };
         const strategyGroupRaw = Array.isArray(item.strategy_group) ? item.strategy_group : [];
         const strategyGroupList = [];
@@ -30462,7 +30821,7 @@
         } else if (strategy) {
           pushStrategy(strategy);
         }
-        const hasFollowCopy = strategyGroupList.includes('follow_copy');
+        const hasFollowCopy = false;
         const tradeMeta = item.trade_info && typeof item.trade_info === 'object' ? item.trade_info : {};
         const freshAt = (
           String(tradeMeta.updated_at || '').trim()
@@ -30476,7 +30835,7 @@
         const strategyBadgeHtml = strategyGroupList.map((name) => {
           const label = resolveStrategyLabel(name);
           if (!label) return '';
-          const badgeClass = name === 'follow_copy' ? 'trace-strategy-badge follow-copy' : 'trace-strategy-badge';
+          const badgeClass = 'trace-strategy-badge';
           return `<span class="${badgeClass}">${escapeHtml(label)}</span>`;
         }).filter(Boolean).join('');
         const itemClass = hasFollowCopy ? 'trace-event-item strategy-follow-copy' : 'trace-event-item';
@@ -30607,13 +30966,22 @@
         const gateMetaHtml = gateChips.length
           ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
           : '';
+        const entryAtSourceRaw = String(
+          (tradeMeta && (tradeMeta.entry_at || tradeMeta.last_fill_at || tradeMeta.last_action_at))
+          || (item.entry_order && item.entry_order.created_at)
+          || ''
+        ).trim();
+        const entryAtLabel = entryAtSourceRaw ? formatTime(entryAtSourceRaw) : '';
+        const livePositionGateText = entryAtLabel
+          ? `门禁用于新开仓；当前为在仓实盘单（入场 ${entryAtLabel}），仅执行退出管理。`
+          : '门禁用于新开仓；当前为在仓实盘单，仅执行退出管理。';
         const gateContextHtml = (
           gateLegacyMode
           && gateRaw
           && gateRaw.overall
           && gateRaw.overall.pass === false
         )
-          ? `<div class="trace-bottleneck">${hasLivePosition ? '门禁用于新开仓；当前为历史持仓，仅执行退出管理。' : '门禁用于新开仓；该事件为历史成交，仅用于复盘。'}</div>`
+          ? `<div class="trace-bottleneck">${hasLivePosition ? livePositionGateText : '门禁用于新开仓；该事件为历史成交，仅用于复盘。'}</div>`
           : '';
         const trace = item.trace && typeof item.trace === 'object' ? item.trace : {};
         const decision = item.entry_decision && typeof item.entry_decision === 'object' ? item.entry_decision : null;
@@ -30628,7 +30996,12 @@
         const isTickGateDecision = decisionCodes.some((code) => code === 'market_tick_stale' || code === 'market_tick_missing');
         const flowStatusRaw = String(trace.flow_status || 'pending');
         const flowStatus = flowStatusRaw === 'ok' ? 'ok' : (flowStatusRaw === 'blocked' ? 'blocked' : 'pending');
-        const flowLabel = flowStatus === 'ok' ? '通畅' : (flowStatus === 'blocked' ? '阻断' : '待处理');
+        const flowIsHolding = flowStatus === 'pending'
+          && hasLivePosition
+          && String(trace.flow_step || '').trim() === '退出';
+        const flowLabel = flowStatus === 'ok'
+          ? '通畅'
+          : (flowStatus === 'blocked' ? '阻断' : (flowIsHolding ? '进行中' : '待处理'));
         const steps = Array.isArray(trace.steps) ? trace.steps : [];
         const flowStep = String(trace.flow_step || '');
         const statusToClass = (raw) => {
@@ -30816,120 +31189,187 @@
         const num = Number(value);
         return Number.isFinite(num) ? num.toFixed(0) : '0';
       };
-      const counts = meta && meta.not_ok_counts && typeof meta.not_ok_counts === 'object' ? meta.not_ok_counts : null;
-      const totalCount = counts ? Number(counts.total || 0) : total;
-      const top = meta && Array.isArray(meta.not_ok_reason_top) ? meta.not_ok_reason_top : [];
-      const topHtml = top.length
-        ? `<div class="follow-copy-reason-list">${top.slice(0, 8).map((it) => (
-          `<span class="follow-copy-reason-chip">${escapeHtml(String(it.reason || ''))} · ${fmtInt(it.count || 0)}</span>`
+      const top = meta && Array.isArray(meta.not_ok_reason_top)
+        ? meta.not_ok_reason_top.filter((row) => row && typeof row === 'object')
+        : [];
+
+      const normalizeMeta = (rawMeta) => {
+        const data = rawMeta && typeof rawMeta === 'object' ? rawMeta : {};
+        return {
+          entry_total: Number(data.entry_total || 0),
+          blocked_total: Number(data.blocked_total || 0),
+          will_order_total: Number(data.will_order_total || 0),
+          run_count: Number(data.run_count || 0),
+        };
+      };
+      const normalizeTable = (rows) => Array.isArray(rows)
+        ? rows.filter((row) => row && typeof row === 'object')
+        : [];
+      const viewRaw = meta && meta.entry_blocker_views && typeof meta.entry_blocker_views === 'object'
+        ? meta.entry_blocker_views
+        : null;
+      const currentMeta = normalizeMeta(meta && meta.entry_blocker_meta);
+      const currentTable = normalizeTable(meta && meta.entry_blocker_table);
+      const fallbackView = {
+        key: 'current',
+        label: '当前快照',
+        runHint: '',
+        table: currentTable,
+        meta: currentMeta,
+      };
+      const viewList = [];
+      if (viewRaw) {
+        const lastRaw = viewRaw.last_completed && typeof viewRaw.last_completed === 'object'
+          ? viewRaw.last_completed
+          : null;
+        if (lastRaw) {
+          const runId = Number(lastRaw.run_id || 0);
+          const runDateText = String(lastRaw.run_date || '').trim();
+          const runHint = [
+            Number.isFinite(runId) && runId > 0 ? `run#${fmtInt(runId)}` : '',
+            runDateText,
+          ].filter(Boolean).join(' · ');
+          viewList.push({
+            key: 'last_completed',
+            label: '最近完成轮次',
+            runHint,
+            table: normalizeTable(lastRaw.table),
+            meta: normalizeMeta(lastRaw.meta),
+          });
+        }
+        const aggRaw = viewRaw.recent_agg && typeof viewRaw.recent_agg === 'object'
+          ? viewRaw.recent_agg
+          : null;
+        if (aggRaw) {
+          const windowRuns = Number(viewRaw.window_runs || 0);
+          const runCount = Number((aggRaw.meta && aggRaw.meta.run_count) || 0);
+          const runHint = Number.isFinite(runCount) && runCount > 0
+            ? `${fmtInt(runCount)}轮${Number.isFinite(windowRuns) && windowRuns > 0 ? ` / 窗口${fmtInt(windowRuns)}轮` : ''}`
+            : (Number.isFinite(windowRuns) && windowRuns > 0 ? `窗口${fmtInt(windowRuns)}轮` : '');
+          viewList.push({
+            key: 'recent_agg',
+            label: '最近N轮聚合',
+            runHint,
+            table: normalizeTable(aggRaw.table),
+            meta: normalizeMeta(aggRaw.meta),
+          });
+        }
+      }
+      if (!viewList.length) {
+        viewList.push(fallbackView);
+      }
+      const firstView = viewList[0] || fallbackView;
+      const firstBlocked = Number(firstView.meta.blocked_total || 0);
+      const firstTableCount = firstView.table.reduce((sum, row) => sum + Number(row && row.count || 0), 0);
+      const totalCount = Number.isFinite(firstBlocked) && firstBlocked >= 0
+        ? firstBlocked
+        : (firstTableCount > 0 ? firstTableCount : total);
+      const topFromBlocker = firstView.table.slice(0, 8).map((row) => ({
+        reason: String(row && (row.reason_text || row.reason_code) || '').trim(),
+        count: Number(row && row.count || 0),
+      })).filter((it) => it.reason);
+      const topFallback = top.slice(0, 8).map((row) => ({
+        reason: String(row.reason || '').trim(),
+        count: Number(row.count || 0),
+      })).filter((it) => it.reason);
+      const topRows = topFromBlocker.length ? topFromBlocker : topFallback;
+      const topHtml = topRows.length
+        ? `<div class="follow-copy-reason-list">${topRows.map((it) => (
+          `<span class="follow-copy-reason-chip">${escapeHtml(it.reason)} · ${fmtInt(it.count || 0)}</span>`
         )).join('')}</div>`
         : '';
-      const blockerMeta = meta && meta.entry_blocker_meta && typeof meta.entry_blocker_meta === 'object'
-        ? meta.entry_blocker_meta
-        : null;
-      const blockerMetaBlocked = blockerMeta ? Number(blockerMeta.blocked_total || 0) : NaN;
-      const blockerTotalForShare = Number.isFinite(blockerMetaBlocked) && blockerMetaBlocked > 0 ? blockerMetaBlocked : total;
-      let blockerTable = meta && Array.isArray(meta.entry_blocker_table)
-        ? meta.entry_blocker_table.filter((row) => row && typeof row === 'object')
-        : [];
-      if (!blockerTable.length && top.length) {
-        blockerTable = top.slice(0, 8).map((row) => ({
-          reason_code: String(row.reason || '').trim() || 'unknown_blocker',
-          reason_text: String(row.reason || '').trim(),
-          count: Number(row.count || 0),
-          share: blockerTotalForShare > 0 ? Number(row.count || 0) / blockerTotalForShare : 0,
-          sample_slug: '',
-          sample_event_date: '',
-          sample_outcome: '',
-          sample_side: '',
-          sample_strategy: '',
-          sample_title: '',
-          sample_event_url: '',
-          sample_reason_text: String(row.reason || '').trim(),
-        }));
-      }
-      const blockerRowsHtml = blockerTable.slice(0, 10).map((row) => {
-        const countVal = Number(row.count || 0);
-        const ratioRaw = toFiniteNumberOrNaN(row.share);
-        const ratio = Number.isFinite(ratioRaw)
-          ? ratioRaw
-          : (blockerTotalForShare > 0 ? countVal / blockerTotalForShare : 0);
-        const shareText = Number.isFinite(ratio) ? `${(Math.max(0, ratio) * 100).toFixed(1)}%` : '—';
-        const reasonCode = String(row.reason_code || '').trim() || 'unknown_blocker';
-        const reasonText = String(row.reason_text || '').trim();
-        const sampleTitle = String(row.sample_title || row.sample_slug || '').trim() || '—';
-        const sampleUrl = String(row.sample_event_url || '').trim();
-        const sampleHead = sampleUrl
-          ? `<a href="${escapeHtml(sampleUrl)}" target="_blank" rel="noopener">${escapeHtml(sampleTitle)}</a>`
-          : escapeHtml(sampleTitle);
-        const sampleMeta = [
-          String(row.sample_event_date || '').trim(),
-          String(row.sample_side || '').trim(),
-          String(row.sample_outcome || '').trim(),
-          String(row.sample_strategy || '').trim(),
-        ].filter(Boolean).join(' · ');
-        const sampleReason = String(row.sample_reason_text || '').trim();
+
+      const renderBlockerView = (view) => {
+        const rows = Array.isArray(view.table) ? view.table.slice(0, 10) : [];
+        const metaObj = view.meta && typeof view.meta === 'object' ? view.meta : {};
+        const blockedTotal = Number(metaObj.blocked_total || 0);
+        const tableCount = rows.reduce((sum, row) => sum + Number(row && row.count || 0), 0);
+        const shareBase = Number.isFinite(blockedTotal) && blockedTotal > 0 ? blockedTotal : tableCount;
+        const rowHtml = rows.map((row) => {
+          const countVal = Number(row.count || 0);
+          const ratioRaw = toFiniteNumberOrNaN(row.share);
+          const ratio = Number.isFinite(ratioRaw)
+            ? ratioRaw
+            : (shareBase > 0 ? countVal / shareBase : 0);
+          const shareText = Number.isFinite(ratio) ? `${(Math.max(0, ratio) * 100).toFixed(1)}%` : '—';
+          const reasonCode = String(row.reason_code || '').trim() || 'unknown_blocker';
+          const reasonText = String(row.reason_text || '').trim();
+          const sampleTitle = String(row.sample_title || row.sample_slug || '').trim() || '—';
+          const sampleUrl = String(row.sample_event_url || '').trim();
+          const sampleHead = sampleUrl
+            ? `<a href="${escapeHtml(sampleUrl)}" target="_blank" rel="noopener">${escapeHtml(sampleTitle)}</a>`
+            : escapeHtml(sampleTitle);
+          const sampleMeta = [
+            String(row.sample_event_date || '').trim(),
+            String(row.sample_side || '').trim(),
+            String(row.sample_outcome || '').trim(),
+            String(row.sample_strategy || '').trim(),
+          ].filter(Boolean).join(' · ');
+          const sampleReason = String(row.sample_reason_text || '').trim();
+          return `
+            <tr>
+              <td>
+                <div class="auto-trade-blocker-code">${escapeHtml(reasonCode)}</div>
+                ${reasonText ? `<div class="auto-trade-blocker-reason">${escapeHtml(reasonText)}</div>` : ''}
+              </td>
+              <td class="num">${fmtInt(countVal)}</td>
+              <td class="num">${escapeHtml(shareText)}</td>
+              <td>
+                <div class="auto-trade-blocker-sample">
+                  ${sampleHead}
+                  ${sampleMeta ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleMeta)}</div>` : ''}
+                  ${sampleReason ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleReason)}</div>` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        const summaryParts = [];
+        const entryTotal = Number(metaObj.entry_total || 0);
+        const willOrderTotal = Number(metaObj.will_order_total || 0);
+        const runCount = Number(metaObj.run_count || 0);
+        if (Number.isFinite(entryTotal) && entryTotal > 0) summaryParts.push(`候选${fmtInt(entryTotal)}`);
+        if (Number.isFinite(blockedTotal) && blockedTotal >= 0) summaryParts.push(`阻断${fmtInt(blockedTotal)}`);
+        if (Number.isFinite(willOrderTotal) && willOrderTotal >= 0) summaryParts.push(`可下单${fmtInt(willOrderTotal)}`);
+        if (Number.isFinite(runCount) && runCount > 1) summaryParts.push(`样本${fmtInt(runCount)}轮`);
+        const title = [String(view.label || '').trim(), String(view.runHint || '').trim()].filter(Boolean).join(' · ');
+        if (!rowHtml) {
+          return `
+            <div style="margin:10px 0;">
+              <div class="auto-trade-blocker-code">${escapeHtml(title || '阻断视图')}</div>
+              <div class="meta">无阻断样本</div>
+            </div>
+          `;
+        }
         return `
-          <tr>
-            <td>
-              <div class="auto-trade-blocker-code">${escapeHtml(reasonCode)}</div>
-              ${reasonText ? `<div class="auto-trade-blocker-reason">${escapeHtml(reasonText)}</div>` : ''}
-            </td>
-            <td class="num">${fmtInt(countVal)}</td>
-            <td class="num">${escapeHtml(shareText)}</td>
-            <td>
-              <div class="auto-trade-blocker-sample">
-                ${sampleHead}
-                ${sampleMeta ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleMeta)}</div>` : ''}
-                ${sampleReason ? `<div class="auto-trade-blocker-reason">${escapeHtml(sampleReason)}</div>` : ''}
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
-      const blockerSummaryParts = [];
-      if (blockerMeta) {
-        const entryTotal = Number(blockerMeta.entry_total || 0);
-        const blockedTotal = Number(blockerMeta.blocked_total || 0);
-        const willOrderTotal = Number(blockerMeta.will_order_total || 0);
-        if (Number.isFinite(entryTotal) && entryTotal > 0) blockerSummaryParts.push(`候选${fmtInt(entryTotal)}`);
-        if (Number.isFinite(blockedTotal) && blockedTotal >= 0) blockerSummaryParts.push(`阻断${fmtInt(blockedTotal)}`);
-        if (Number.isFinite(willOrderTotal) && willOrderTotal >= 0) blockerSummaryParts.push(`可下单${fmtInt(willOrderTotal)}`);
-      }
-      const blockerTableHtml = blockerRowsHtml
-        ? `
-          <div class="auto-trade-blocker-table-wrap">
-            <table class="auto-trade-blocker-table">
-              <thead>
-                <tr>
-                  <th>原因码</th>
-                  <th>次数</th>
-                  <th>占比</th>
-                  <th>示例事件</th>
-                </tr>
-              </thead>
-              <tbody>${blockerRowsHtml}</tbody>
-            </table>
+          <div style="margin:10px 0;">
+            <div class="auto-trade-blocker-code">${escapeHtml(title || '阻断视图')}</div>
+            <div class="auto-trade-blocker-table-wrap">
+              <table class="auto-trade-blocker-table">
+                <thead>
+                  <tr>
+                    <th>原因码</th>
+                    <th>次数</th>
+                    <th>占比</th>
+                    <th>示例事件</th>
+                  </tr>
+                </thead>
+                <tbody>${rowHtml}</tbody>
+              </table>
+            </div>
+            ${summaryParts.length ? `<div class="auto-trade-blocker-summary">${escapeHtml(summaryParts.join(' · '))}</div>` : ''}
           </div>
-          ${blockerSummaryParts.length ? `<div class="auto-trade-blocker-summary">${escapeHtml(blockerSummaryParts.join(' · '))}</div>` : ''}
-        `
-        : '';
+        `;
+      };
+      const blockerViewHtml = viewList.slice(0, 2).map((view) => renderBlockerView(view)).join('');
       const rows = filtered.slice(0, maxItems).map((item) => {
         const titleHtml = titleLinkForItem(item);
         const side = String(item.side || '').toUpperCase();
         const outcome = String(item.outcome || '');
         const strategy = String(item.strategy || '').toLowerCase();
-        const strategyLabel = strategy === 'yes_top'
-          ? 'YES最高桶'
-          : (strategy === 'follow_copy'
-            ? '临结价差'
-            : (strategy === 'hard_bound_no'
-              ? '物理边界NO'
-              : (strategy === 'adj_pair'
-                ? '邻桶曲线套利'
-                : (strategy === 'mirror_follow'
-                  ? '影子跟单'
-                  : (strategy === 'main' ? '主策略' : strategy)))));
+        const strategyLabel = strategy === 'mirror_follow'
+          ? '影子跟单'
+          : (strategy === 'live_position' ? '当前持仓' : 'LCB全市场');
         const metaText = [side, outcome, strategyLabel].filter(Boolean).join(' · ');
         const reasons = Array.isArray(item.entry_reasons) ? item.entry_reasons : [];
         const reasonHtml = formatAutoTradeReasonHtml(reasons, { tone: 'fail', showFailLabel: true, failLabel: '未达标', emptyLabel: '未达标' });
@@ -30948,7 +31388,7 @@
         <details class="auto-trade-blockers" open>
           <summary>入场未达标 · 原因（SSOT）${Number.isFinite(totalCount) ? `（${fmtInt(totalCount)}）` : ''}</summary>
           ${topHtml}
-          ${blockerTableHtml}
+          ${blockerViewHtml}
           <div class="reason-event-list">${rows}</div>
           ${limitNote}
         </details>
@@ -31144,12 +31584,7 @@
           ? meta.not_ok_counts
           : {};
         const specs = [
-          { key: 'main', label: '主策略', flag: 'entry_main_enabled' },
-          { key: 'yes_top', label: 'YES最高桶', flag: 'entry_yes_top_enabled' },
-          { key: 'follow_copy', label: '临结价差', flag: 'follow_copy_enabled' },
-          { key: 'hard_bound_no', label: '物理边界NO', flag: 'hard_bound_no_enabled' },
-          { key: 'adj_pair', label: '邻桶曲线套利', flag: 'adj_pair_enabled' },
-          { key: 'mirror_follow', label: '影子跟单', flag: 'mirror_follow_enabled' },
+          { key: 'lcb_global', label: 'LCB全市场', flag: 'lcb_global_enabled' },
         ];
         const chips = specs.map((spec) => {
           const enabled = flags ? Boolean(flags[spec.flag]) : false;
@@ -31181,6 +31616,125 @@
       updateAutoTradeTraceKickState(meta);
     }
 
+    function buildShadowBandCompareCard(meta) {
+      const shadow = meta && meta.shadow_band_v1 && typeof meta.shadow_band_v1 === 'object'
+        ? meta.shadow_band_v1
+        : null;
+      if (!shadow || !shadow.enabled) return '';
+      const fmtInt = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toFixed(0) : '0';
+      };
+      const fmtPct = (num, den) => {
+        const n = Number(num);
+        const d = Number(den);
+        if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return '0.0%';
+        return `${((n / d) * 100).toFixed(1)}%`;
+      };
+      const fmt4 = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toFixed(4) : '—';
+      };
+      const fmtRoi = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? `${(n * 100).toFixed(2)}%` : '—';
+      };
+      const fmtRoiSigned = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '—';
+        const sign = n > 0 ? '+' : '';
+        return `${sign}${(n * 100).toFixed(2)}%`;
+      };
+      const baseline = shadow.lcb_baseline && typeof shadow.lcb_baseline === 'object'
+        ? shadow.lcb_baseline
+        : {};
+      const cmp = shadow.comparison && typeof shadow.comparison === 'object'
+        ? shadow.comparison
+        : {};
+      const params = shadow.params && typeof shadow.params === 'object'
+        ? shadow.params
+        : {};
+      const paper = shadow.paper_compare && typeof shadow.paper_compare === 'object'
+        ? shadow.paper_compare
+        : {};
+      const shadowPaper = paper.shadow && typeof paper.shadow === 'object'
+        ? paper.shadow
+        : {};
+      const lcbPaper = paper.lcb && typeof paper.lcb === 'object'
+        ? paper.lcb
+        : {};
+      const paperDelta = paper.delta && typeof paper.delta === 'object'
+        ? paper.delta
+        : {};
+      const top = Array.isArray(shadow.top_candidates) ? shadow.top_candidates : [];
+      const rowsHtml = top.slice(0, 6).map((row) => {
+        const title = escapeHtml(String(row.title || row.slug || '—'));
+        const url = String(row.event_url || '').trim();
+        const titleHtml = url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${title}</a>`
+          : title;
+        const bandText = [String(row.band_start || '').trim(), String(row.band_end || '').trim()].filter(Boolean).join(' -> ');
+        return `
+          <tr>
+            <td>${titleHtml}</td>
+            <td class="num">${escapeHtml(fmt4(row.combo_lcb))}</td>
+            <td class="num">${escapeHtml(fmtRoi(row.paper_roi_est))}</td>
+            <td class="num">${escapeHtml(fmt4(row.yes_lcb_mean))}</td>
+            <td class="num">${escapeHtml(fmtInt(row.yes_leg_count))}</td>
+            <td class="num">${escapeHtml(fmtInt(row.no_leg_count))}</td>
+            <td>${escapeHtml(bandText || '—')}</td>
+          </tr>
+        `;
+      }).join('');
+      const tableHtml = rowsHtml
+        ? `
+          <div class="auto-trade-blocker-table-wrap">
+            <table class="auto-trade-blocker-table">
+              <thead>
+              <tr>
+                <th>事件</th>
+                <th>组合LCB</th>
+                <th>Paper估计ROI</th>
+                <th>YES均值LCB</th>
+                <th>YES腿数</th>
+                <th>NO腿数</th>
+                <th>Band区间</th>
+              </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        `
+        : '<div class="meta">当前无影子候选事件</div>';
+      const shadowCount = Number(shadow.events_candidate_new_open || 0);
+      const lcbCount = Number(baseline.events_candidate_new_open || 0);
+      const overlap = Number(cmp.overlap_event_count || 0);
+      return `
+        <details class="auto-trade-blockers" open>
+          <summary>Band组合 V1（影子）vs LCB（对照）</summary>
+          <div class="auto-trade-blocker-summary">
+            影子候选 ${fmtInt(shadowCount)} · LCB候选 ${fmtInt(lcbCount)} · 重叠 ${fmtInt(overlap)} (${fmtPct(overlap, Math.max(1, shadowCount))})
+          </div>
+          <div class="auto-trade-blocker-summary">
+            影子均值LCB ${fmt4(shadow.avg_combo_lcb)} · LCB均值LCB ${fmt4(baseline.avg_event_lcb)} · YES腿均值 ${fmt4(shadow.avg_yes_leg_count)} · NO腿均值 ${fmt4(shadow.avg_no_leg_count)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            Paper估计ROI：影子 ${fmtRoi(shadowPaper.est_roi_mean)}（${fmtInt(shadowPaper.est_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.est_roi_mean)}（${fmtInt(lcbPaper.est_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.est_roi_mean_diff)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            Paper已结算ROI：影子 ${fmtRoi(shadowPaper.realized_roi_mean)}（${fmtInt(shadowPaper.realized_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.realized_roi_mean)}（${fmtInt(lcbPaper.realized_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.realized_roi_mean_diff)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            影子更优 ${fmtInt(cmp.shadow_better_event_count || 0)} / 更弱 ${fmtInt(cmp.shadow_worse_event_count || 0)} / 持平 ${fmtInt(cmp.shadow_equal_event_count || 0)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            参数：Band[${fmtInt(params.width_min || 0)},${fmtInt(params.width_max || 0)}] · NO最多${fmtInt(params.no_legs_max || 0)} · 单腿LCB≥${fmt4(params.leg_lcb_min)} · 组合LCB≥${fmt4(params.combo_lcb_min)}
+          </div>
+          ${tableHtml}
+        </details>
+      `;
+    }
+
     function renderAutoTradeTraceMount(runDate) {
       const mount = document.getElementById('autoTradeTraceListMount');
       if (!mount) return;
@@ -31188,9 +31742,14 @@
         ? window.__autoTradeTraceMeta
         : null;
       const effectiveDate = runDate || autoTradeTraceRunDate || String(window.__latestDate || '').trim();
+      const shadowCompareHtml = buildShadowBandCompareCard(meta);
       const okHtml = buildAutoTradeTraceList(window.__autoTradeTraceItems, effectiveDate, { maxItems: 0, meta });
       const notOkHtml = buildAutoTradeNotOkList(window.__autoTradeTraceNotOkItems, effectiveDate, { maxItems: 12, meta });
-      mount.innerHTML = `${okHtml}${notOkHtml}`;
+      const nextHtml = `${shadowCompareHtml}${okHtml}${notOkHtml}`;
+      if (mount.__traceHtmlCache !== nextHtml) {
+        mount.innerHTML = nextHtml;
+        mount.__traceHtmlCache = nextHtml;
+      }
       updateAutoTradeTraceMetaElements(meta);
     }
     function updateAutoTradeTraceCountdown() {
@@ -31272,9 +31831,8 @@
           const throttle = res && typeof res === 'object' ? res.throttle : null;
           const waitSec = throttle && Number.isFinite(Number(throttle.wait_sec)) ? Number(throttle.wait_sec) : 0;
           const generatedAt = res && typeof res.generated_at === 'string' ? String(res.generated_at || '').trim() : '';
-          const sameGenerated = generatedAt === autoTradeTraceLastGeneratedAt;
           const sameSignature = signature === autoTradeTraceLastSignature;
-          shouldRender = !(sameGenerated && sameSignature);
+          shouldRender = !sameSignature;
           if (waitSec > 0) {
             const nextWaitUntil = Date.now() + waitSec * 1000;
             if (!autoTradeTraceWaitUntil) {
@@ -31310,7 +31868,7 @@
           autoTradeTraceLastSignature = '';
           shouldRender = true;
         }
-        updateAutoTradeTraceCounts();
+        updateAutoTradeTraceCounts(runDate);
         if (shouldRender) {
           renderAutoTradeTraceMount(runDate);
         } else {
@@ -31354,7 +31912,7 @@
         window.__autoTradeTraceNotOkItems = Array.isArray(window.__autoTradeTraceNotOkItems)
           ? window.__autoTradeTraceNotOkItems
           : [];
-        updateAutoTradeTraceCounts();
+        updateAutoTradeTraceCounts(runDate);
         renderAutoTradeTraceMount(runDate);
       } finally {
         autoTradeTraceInFlight = false;
@@ -32084,6 +32642,7 @@
       const silent = opts && opts.silent;
       const preserveScroll = opts && opts.preserveScroll;
       const skipTradeSync = opts && opts.skipTradeSync;
+      const useProvidedDate = Boolean(opts && opts.useProvidedDate);
       const incremental = Object.prototype.hasOwnProperty.call(opts || {}, 'incremental')
         ? Boolean(opts.incremental)
         : Boolean(silent);
@@ -32112,29 +32671,33 @@
       }
       try {
         let latest = null;
-        try {
-          latest = await fetchJSON('/api/latest', {
-            timeoutMs: 8000,
-            retryCount: 0,
-            retryDelayMs: 500,
-            retryOnAbort: false,
-          });
-        } catch (latestErr) {
-          latest = { date: window.__effectiveDate || window.__latestDate || date || '' };
+        if (useProvidedDate) {
+          latest = { date: date || window.__effectiveDate || window.__latestDate || '' };
+        } else {
+          try {
+            latest = await fetchJSON('/api/latest', {
+              timeoutMs: 8000,
+              retryCount: 0,
+              retryDelayMs: 500,
+              retryOnAbort: false,
+            });
+          } catch (latestErr) {
+            latest = { date: window.__effectiveDate || window.__latestDate || date || '' };
+          }
         }
         const latestDate = latest.date || date || '';
         const dateEl = document.getElementById('date');
         const prevLatest = window.__latestDate || '';
         const currentDate = dateEl && dateEl.value ? dateEl.value : date || '';
         const useLatest = !currentDate || currentDate === prevLatest;
-        const effectiveDate = useLatest ? latestDate : currentDate;
+        let effectiveDate = useLatest ? latestDate : currentDate;
         if (dateEl && useLatest && latestDate) {
           dateEl.value = latestDate;
         }
         window.__latestDate = latestDate;
         window.__effectiveDate = effectiveDate;
         const historyFlag = showHistory ? '&include_history=1' : '';
-        const pagingKey = `${effectiveDate}|${mode}|${weighting}|${showHistory ? '1' : '0'}`;
+        let pagingKey = `${effectiveDate}|${mode}|${weighting}|${showHistory ? '1' : '0'}`;
         let data = [];
         let runsPaging = null;
         const existingRuns = Array.isArray(window.__runsLoaded) ? window.__runsLoaded : [];
@@ -32219,6 +32782,45 @@
             };
           }
         }
+        if (!canIncremental && useLatest && (!Array.isArray(data) || data.length === 0)) {
+          try {
+            const lookbackItems = await fetchRunsRange(effectiveDate, 3);
+            const grouped = new Map();
+            for (const item of (Array.isArray(lookbackItems) ? lookbackItems : [])) {
+              const runKey = normalizeRunDate(item && (item.run_date || item.runDate || ''));
+              if (!runKey) continue;
+              if (!grouped.has(runKey)) grouped.set(runKey, []);
+              grouped.get(runKey).push(item);
+            }
+            const currentKey = String(effectiveDate || '');
+            const fallbackDate = Array.from(grouped.keys())
+              .filter((key) => key && key !== currentKey && (grouped.get(key) || []).length > 0)
+              .sort()
+              .pop();
+            if (fallbackDate) {
+              const fallbackItems = grouped.get(fallbackDate) || [];
+              if (fallbackItems.length > 0) {
+                effectiveDate = fallbackDate;
+                pagingKey = `${effectiveDate}|${mode}|${weighting}|${showHistory ? '1' : '0'}`;
+                if (dateEl) dateEl.value = effectiveDate;
+                window.__effectiveDate = effectiveDate;
+                data = fallbackItems;
+                runsPaging = {
+                  key: pagingKey,
+                  date: effectiveDate,
+                  mode,
+                  weighting,
+                  includeHistory: showHistory,
+                  page: 1,
+                  page_size: data.length || RUNS_PAGE_SIZE,
+                  has_more: false,
+                  total: data.length,
+                };
+                window.__runsFetchMode = 'range';
+              }
+            }
+          } catch (_) {}
+        }
         if (!runsPaging) {
           runsPaging = existingPaging || {
             key: pagingKey,
@@ -32276,51 +32878,90 @@
             retryCount: 0,
             retryOnAbort: false,
           }).catch(() => fallback);
-        const [
-          stationGapStats,
-          modelHitStats,
-          modelHit7,
-          marketHit7,
-          modelDailyStats,
-          scoreStats,
-          autoTradeDailySnapshot,
-          autoTradeStatusSnapshot,
-          skips,
-          knownCities,
-          latestCityEvents,
-          modelUpdateStats,
-          edgeBiasStats,
-          modelBiasSnapshot,
-          placeBiasSnapshot,
-          optimizerStatusSnapshot,
-          qCalibrationStats,
-          modelSpreadStats,
-          updatePolicy,
-          reasonHistoryRuns,
-          londonFollowSimSnapshot,
-        ] = await Promise.all([
-          safeFetch('/api/station-pred-gap-stats?days=7', {}),
-          safeFetch('/api/model-hit-stats?days=30&weighting=equal', {}),
-          safeFetch('/api/station-forecast-hit-stats?days=7', {}),
-          safeFetch('/api/market-hit-stats?days=7', {}),
-          safeFetch('/api/model-daily-stats?days=30', {}),
-          safeFetch('/api/scoreboard?days=30', { __error: true }, 30000),
-          safeFetch('/api/auto-trade-daily-stats', null, 12000),
-          safeFetch('/api/auto-trade-status', null, 25000),
-          safeFetch(`/api/skips?date=${effectiveDate}&mode=${mode}`, []),
-          safeFetch('/api/cities', { cities: [] }),
-          safeFetch('/api/city-latest?days=0&limit=0', { cities: [] }, 7000),
-          safeFetch('/api/model-update-stats', { models: [] }),
-          safeFetch('/api/edge-bias?days=30', { ok: false }, 7000),
-          safeFetch('/api/model-bias?days=7', { ok: false }, 7000),
-          safeFetch('/api/place-bias?days=7', { ok: false }, 7000),
-          safeFetch('/api/optimizer-status?days=30', { ok: false }, 7000),
-          safeFetch('/api/q-calibration', { ok: false }),
-	          safeFetch('/api/model-spread?days=7', { ok: false }, 7000),
-	          safeFetch('/api/update-policy', updatePolicyFallback, 7000),
-	          safeFetch(`/api/facts-range?days=7&date=${effectiveDate}`, [], 7000),
+        let stationGapStats = {};
+        let modelHitStats = {};
+        let modelHit7 = {};
+        let marketHit7 = {};
+        let modelDailyStats = {};
+        let scoreStats = { __error: true };
+        let autoTradeDailySnapshot = null;
+        let autoTradeStatusSnapshot = null;
+        let skips = [];
+        let knownCities = { cities: [] };
+        let latestCityEvents = { cities: [] };
+        let modelUpdateStats = { models: [] };
+        let edgeBiasStats = { ok: false };
+        let modelBiasSnapshot = { ok: false };
+        let placeBiasSnapshot = { ok: false };
+        let optimizerStatusSnapshot = { ok: false };
+        let qCalibrationStats = { ok: false };
+        let modelSpreadStats = { ok: false };
+        let updatePolicy = updatePolicyFallback;
+        let reasonHistoryRuns = [];
+        let londonFollowSimSnapshot = null;
+        if (typeof LCB_ONLY_UI !== 'undefined' && LCB_ONLY_UI) {
+          [
+            scoreStats,
+            autoTradeDailySnapshot,
+            autoTradeStatusSnapshot,
+            skips,
+            reasonHistoryRuns,
+            londonFollowSimSnapshot,
+          ] = await Promise.all([
+            safeFetch('/api/scoreboard?days=30', { __error: true }, 30000),
+            safeFetch('/api/auto-trade-daily-stats', null, 12000),
+            safeFetch('/api/auto-trade-status', null, 25000),
+            safeFetch(`/api/skips?date=${effectiveDate}&mode=${mode}`, []),
+            safeFetch(`/api/facts-range?days=7&date=${effectiveDate}`, [], 7000),
             safeFetch('/api/london-follow-sim?days=153&page=1&limit=8&quick=1', null, 6500),
-	        ]);
+          ]);
+        } else {
+          [
+            stationGapStats,
+            modelHitStats,
+            modelHit7,
+            marketHit7,
+            modelDailyStats,
+            scoreStats,
+            autoTradeDailySnapshot,
+            autoTradeStatusSnapshot,
+            skips,
+            knownCities,
+            latestCityEvents,
+            modelUpdateStats,
+            edgeBiasStats,
+            modelBiasSnapshot,
+            placeBiasSnapshot,
+            optimizerStatusSnapshot,
+            qCalibrationStats,
+            modelSpreadStats,
+            updatePolicy,
+            reasonHistoryRuns,
+            londonFollowSimSnapshot,
+          ] = await Promise.all([
+            safeFetch('/api/station-pred-gap-stats?days=7', {}),
+            safeFetch('/api/model-hit-stats?days=30&weighting=equal', {}),
+            safeFetch('/api/station-forecast-hit-stats?days=7', {}),
+            safeFetch('/api/market-hit-stats?days=7', {}),
+            safeFetch('/api/model-daily-stats?days=30', {}),
+            safeFetch('/api/scoreboard?days=30', { __error: true }, 30000),
+            safeFetch('/api/auto-trade-daily-stats', null, 12000),
+            safeFetch('/api/auto-trade-status', null, 25000),
+            safeFetch(`/api/skips?date=${effectiveDate}&mode=${mode}`, []),
+            safeFetch('/api/cities', { cities: [] }),
+            safeFetch('/api/city-latest?days=0&limit=0', { cities: [] }, 7000),
+            safeFetch('/api/model-update-stats', { models: [] }),
+            safeFetch('/api/edge-bias?days=30', { ok: false }, 7000),
+            safeFetch('/api/model-bias?days=7', { ok: false }, 7000),
+            safeFetch('/api/place-bias?days=7', { ok: false }, 7000),
+            safeFetch('/api/optimizer-status?days=30', { ok: false }, 7000),
+            safeFetch('/api/q-calibration', { ok: false }),
+            safeFetch('/api/model-spread?days=7', { ok: false }, 7000),
+            safeFetch('/api/update-policy', updatePolicyFallback, 7000),
+            safeFetch(`/api/facts-range?days=7&date=${effectiveDate}`, [], 7000),
+            safeFetch('/api/london-follow-sim?days=153&page=1&limit=8&quick=1', null, 6500),
+          ]);
+        }
         const stickyScoreStats = hasScoreboardAutoTradeData(window.__lastGoodScoreStats)
           ? window.__lastGoodScoreStats
           : null;
@@ -32672,33 +33313,32 @@
       }
       document.getElementById('date').value = date;
       syncDateDisplay();
-      try {
-        const dailyPrime = await fetchJSON('/api/auto-trade-daily-stats', {
-          timeoutMs: 20000,
-          retryCount: 0,
-          retryOnAbort: false,
-        });
-        if (
-          dailyPrime
-          && typeof dailyPrime === 'object'
-          && dailyPrime.daily_stats
-          && typeof dailyPrime.daily_stats === 'object'
-        ) {
-          window.__autoTradeStatusSnapshot = {
-            ...(window.__autoTradeStatusSnapshot && typeof window.__autoTradeStatusSnapshot === 'object'
-              ? window.__autoTradeStatusSnapshot
-              : {}),
-            daily_stats: dailyPrime.daily_stats,
-          };
-        }
-      } catch (e) {
-        // ignore bootstrap daily-stats failures
-      }
+      fetchJSON('/api/auto-trade-daily-stats', {
+        timeoutMs: 20000,
+        retryCount: 0,
+        retryOnAbort: false,
+      })
+        .then((dailyPrime) => {
+          if (
+            dailyPrime
+            && typeof dailyPrime === 'object'
+            && dailyPrime.daily_stats
+            && typeof dailyPrime.daily_stats === 'object'
+          ) {
+            window.__autoTradeStatusSnapshot = {
+              ...(window.__autoTradeStatusSnapshot && typeof window.__autoTradeStatusSnapshot === 'object'
+                ? window.__autoTradeStatusSnapshot
+                : {}),
+              daily_stats: dailyPrime.daily_stats,
+            };
+          }
+        })
+        .catch(() => {});
       if (cached && Array.isArray(cached.data) && cached.data.length) {
         applyDashboardCache(cached, { silent: true });
       }
       try {
-        await load(date, getModeValue());
+        await load(date, getModeValue(), { useProvidedDate: true });
       } catch (e) {
         document.getElementById('status').textContent = '没有归档数据';
         setSyncIndicator('stale', '无数据', '—');
@@ -33467,20 +34107,22 @@
     (async () => {
       await wire有效优势分Controls();
       await init();
-      startAutoRefresh();
       startAutoTradeMonitor();
-      refreshScanStatus();
-      setInterval(refreshScanStatus, 1500);
-      document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) refreshScanStatus();
-      });
-      window.addEventListener('focus', () => {
+      if (!LCB_ONLY_UI) {
+        startAutoRefresh();
         refreshScanStatus();
-      });
-      setInterval(() => {
-        refreshSyncState();
-        updateStatusLine();
-      }, 1000);
+        setInterval(refreshScanStatus, 1500);
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) refreshScanStatus();
+        });
+        window.addEventListener('focus', () => {
+          refreshScanStatus();
+        });
+        setInterval(() => {
+          refreshSyncState();
+          updateStatusLine();
+        }, 1000);
+      }
     })();
   </script>
   <script type="module">

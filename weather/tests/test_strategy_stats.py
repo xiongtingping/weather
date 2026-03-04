@@ -142,32 +142,20 @@ class TestStrategyStats(unittest.TestCase):
         conn.commit()
 
         stats = compute_strategy_stats(conn, days=1, run_date=event_date)
-        main = stats["main"]
-        yes_top = stats["yes_top"]
-        hard_no = stats["hard_bound_no"]
+        lcb_global = stats["lcb_global"]
 
-        # main: net BUY = 0.4 + 0.1/10 = 0.41, net SELL = 0.6 - 0.1/10 = 0.59 -> pnl=0.18*10=1.8
-        self.assertAlmostEqual(float(main["total_pnl"] or 0.0), 1.8, places=6)
-        self.assertAlmostEqual(float(main["total_cost"] or 0.0), 4.1, places=6)
-        self.assertEqual(int(main["closed_trade_count"] or 0), 1)
-        self.assertEqual(int(main["win_count"] or 0), 1)
-        # In this fixture, the same contract key has a later YES entry (yes_top),
-        # so exit fill attribution follows the latest entry timeline instead of main.
-        self.assertEqual(int(main["filled_order_count"] or 0), 1)
-        self.assertAlmostEqual(float(main["total_fees"] or 0.0), 0.2, places=6)
-
-        # yes_top: settlement pnl = (1 - 0.2)*5 = 4.0
-        self.assertAlmostEqual(float(yes_top["total_pnl"] or 0.0), 4.0, places=6)
-        self.assertAlmostEqual(float(yes_top["total_cost"] or 0.0), 1.0, places=6)
-        self.assertEqual(int(yes_top["closed_trade_count"] or 0), 1)
-        self.assertEqual(int(yes_top["win_count"] or 0), 1)
-        self.assertAlmostEqual(float(yes_top["total_pnl_settlement"] or 0.0), 4.0, places=6)
-
-        # hard_bound_no: settlement pnl = (0 - 0.7)*4 = -2.8
-        self.assertAlmostEqual(float(hard_no["total_pnl"] or 0.0), -2.8, places=6)
-        self.assertAlmostEqual(float(hard_no["total_cost"] or 0.0), 2.8, places=6)
-        self.assertEqual(int(hard_no["closed_trade_count"] or 0), 1)
-        self.assertEqual(int(hard_no["loss_count"] or 0), 1)
+        # Unified LCB strategy aggregation:
+        # main round-trip +1.8, yes_top settlement +4.0, hard_bound_no settlement -2.8 => +3.0
+        self.assertAlmostEqual(float(lcb_global["total_pnl"] or 0.0), 3.0, places=6)
+        self.assertAlmostEqual(float(lcb_global["total_cost"] or 0.0), 7.9, places=6)
+        self.assertEqual(int(lcb_global["closed_trade_count"] or 0), 2)
+        self.assertEqual(int(lcb_global["win_count"] or 0), 1)
+        self.assertEqual(int(lcb_global["loss_count"] or 0), 1)
+        self.assertEqual(int(lcb_global["filled_order_count"] or 0), 4)
+        self.assertEqual(int(lcb_global["filled_entry_order_count"] or 0), 3)
+        self.assertEqual(int(lcb_global["filled_exit_order_count"] or 0), 1)
+        self.assertAlmostEqual(float(lcb_global["total_fees"] or 0.0), 0.2, places=6)
+        self.assertAlmostEqual(float(lcb_global["total_pnl_settlement"] or 0.0), 1.2, places=6)
 
     def test_strategy_stats_excludes_fills_without_auto_orders(self) -> None:
         from ui.server import compute_strategy_stats
@@ -190,8 +178,8 @@ class TestStrategyStats(unittest.TestCase):
 
         stats = compute_strategy_stats(conn, days=1, run_date=event_date)
         # SSOT policy: do not create/accumulate "unknown" from fills missing auto_orders provenance.
-        self.assertNotIn("unknown", stats)
-        self.assertEqual(int(stats["main"]["buy_fill_count"] or 0), 0)
+        self.assertEqual(int(stats["lcb_global"]["buy_fill_count"] or 0), 0)
+        self.assertEqual(int(stats["unknown"]["buy_fill_count"] or 0), 0)
 
     def test_strategy_stats_run_date_uses_activity_day(self) -> None:
         from ui.server import compute_strategy_stats
@@ -238,8 +226,8 @@ class TestStrategyStats(unittest.TestCase):
         conn.commit()
 
         stats = compute_strategy_stats(conn, days=1, run_date="2026-03-03")
-        self.assertEqual(int(stats["adj_pair"]["filled_order_count"] or 0), 1)
-        self.assertEqual(int(stats["adj_pair"]["order_count"] or 0), 1)
+        self.assertEqual(int(stats["lcb_global"]["filled_order_count"] or 0), 1)
+        self.assertEqual(int(stats["lcb_global"]["order_count"] or 0), 1)
 
 
 if __name__ == "__main__":
