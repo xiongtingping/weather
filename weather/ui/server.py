@@ -947,12 +947,33 @@ AUTO_TRADE_IGNORED_ERRORS = {
 }
 AUTO_TRADE_NON_STAT_BLOCKER_CODES = {
     "market_ask_missing",
+    "market_ask_missing_bid_only",
+    "market_ask_missing_no_bid",
     "market_one_sided_thin_book",
+}
+AUTO_TRADE_UNTRADABLE_PREFILTER_CODES = {
+    "token_missing",
+    "orderbook_missing_recent",
+    "market_ask_missing",
+    "market_ask_missing_bid_only",
+    "market_ask_missing_no_bid",
+    "market_one_sided_thin_book",
+    "market_spread_missing",
+    "orderbook_missing",
+    "market_tick_missing",
+    "market_tick_stale",
+    "spread_too_wide",
+    "depth_missing",
+    "depth_below_min",
 }
 
 
 def is_non_stat_blocker_code(code: Any) -> bool:
     return str(code or "").strip().lower() in AUTO_TRADE_NON_STAT_BLOCKER_CODES
+
+
+def is_untradable_prefilter_code(code: Any) -> bool:
+    return str(code or "").strip().lower() in AUTO_TRADE_UNTRADABLE_PREFILTER_CODES
 
 
 SIGNER_ADDRESS_CACHE: Dict[str, str] = {"private_key": "", "address": ""}
@@ -8174,6 +8195,9 @@ def compute_auto_trade_daily_stats(
         out["completed_trade_count_7d"] = 0
         out["completed_trade_count_today"] = 0
         out["total_roi"] = None
+        out["net_roi"] = None
+        out["net_roi_7d"] = None
+        out["net_roi_today"] = None
         out["lcb_global_summary"] = {
             "start_date": cutoff_text,
             "open_position_count": open_count,
@@ -8184,6 +8208,7 @@ def compute_auto_trade_daily_stats(
             "realized_pnl": 0.0,
             "unrealized_pnl": 0.0,
             "roi": None,
+            "net_roi": None,
         }
         out["total_pnl"] = 0.0
         out["last_updated"] = ""
@@ -8621,6 +8646,9 @@ def compute_auto_trade_daily_stats(
     unrealized_total = 0.0
     unrealized_7d = 0.0
     unrealized_today = 0.0
+    open_cost_total = 0.0
+    open_cost_7d = 0.0
+    open_cost_today = 0.0
     open_position_count = 0
     open_position_count_all = 0
     open_position_total_count = 0
@@ -8842,6 +8870,9 @@ def compute_auto_trade_daily_stats(
                 avg_cost = buy_cost / buy_qty if buy_qty > 0 else 0.0
                 if avg_cost <= 0 and avg_override is not None and math.isfinite(avg_override):
                     avg_cost = float(avg_override)
+                position_cost = (avg_cost * float(pos)) if (avg_cost > 0 and math.isfinite(avg_cost)) else 0.0
+                if position_cost > 0:
+                    open_cost_total += position_cost
                 mark = to_float(row["mark_price"]) if row is not None else None
                 if mark is None:
                     mark = avg_override
@@ -8867,8 +8898,12 @@ def compute_auto_trade_daily_stats(
                     entry_date = entry_local.date()
                     if entry_date == today:
                         open_position_count_today += 1
+                        if position_cost > 0:
+                            open_cost_today += position_cost
                     if entry_date >= (today - timedelta(days=6)):
                         open_position_count_7d += 1
+                        if position_cost > 0:
+                            open_cost_7d += position_cost
                 avg_cost_bucket = avg_override
                 if avg_cost_bucket is None and row is not None:
                     avg_cost_bucket = to_float(row["avg_price"])
@@ -8925,6 +8960,9 @@ def compute_auto_trade_daily_stats(
                 avg_cost = buy_cost / buy_qty if buy_qty > 0 else 0.0
                 if avg_cost <= 0:
                     avg_cost = 0.0
+                position_cost = (avg_cost * pos) if (avg_cost > 0 and math.isfinite(avg_cost)) else 0.0
+                if position_cost > 0:
+                    open_cost_total += position_cost
                 mark = to_float(row["mark_price"])
                 if mark is None:
                     mark = to_float(row["avg_price"])
@@ -8946,8 +8984,12 @@ def compute_auto_trade_daily_stats(
                     entry_date = entry_local.date()
                     if entry_date == today:
                         open_position_count_today += 1
+                        if position_cost > 0:
+                            open_cost_today += position_cost
                     if entry_date >= (today - timedelta(days=6)):
                         open_position_count_7d += 1
+                        if position_cost > 0:
+                            open_cost_7d += position_cost
                 avg_cost_bucket = to_float(row["avg_price"])
                 if avg_cost_bucket is None:
                     avg_cost_bucket = to_float(row["entry_price"])
@@ -9526,12 +9568,18 @@ def compute_auto_trade_daily_stats(
     sell_count_total = len(sell_trade_ids)
     sell_count_7d = len(sell_trade_ids_7d)
     sell_count = len(sell_trade_ids_today)
-    total_pnl = realized_total
-    total_pnl_7d = realized_7d
-    total_pnl_today = realized_today
+    total_pnl = realized_total + unrealized_total
+    total_pnl_7d = realized_7d + unrealized_7d
+    total_pnl_today = realized_today + unrealized_today
     roi = realized_total / cost_total if cost_total > 0 else None
     roi_7d = realized_7d / cost_7d if cost_7d > 0 else None
     roi_today = realized_today / cost_today if cost_today > 0 else None
+    net_cost_total = cost_total + open_cost_total
+    net_cost_7d = cost_7d + open_cost_7d
+    net_cost_today = cost_today + open_cost_today
+    net_roi = total_pnl / net_cost_total if net_cost_total > 0 else None
+    net_roi_7d = total_pnl_7d / net_cost_7d if net_cost_7d > 0 else None
+    net_roi_today = total_pnl_today / net_cost_today if net_cost_today > 0 else None
     order_count = buy_count_total
     order_count_7d = buy_count_7d
     order_count_today = buy_count
@@ -9700,6 +9748,12 @@ def compute_auto_trade_daily_stats(
         "total_roi": roi,
         "roi_7d": roi_7d,
         "today_filled_events": today_filled_events,
+        "net_roi": net_roi,
+        "net_roi_7d": net_roi_7d,
+        "net_roi_today": net_roi_today,
+        "open_cost_total": open_cost_total,
+        "open_cost_7d": open_cost_7d,
+        "open_cost_today": open_cost_today,
         "mirror_follow_today": mirror_follow_today,
         "lcb_global_summary": {
             "start_date": cutoff_text,
@@ -9711,6 +9765,7 @@ def compute_auto_trade_daily_stats(
             "realized_pnl": realized_total,
             "unrealized_pnl": unrealized_total,
             "roi": roi,
+            "net_roi": net_roi,
         },
         "fills_incomplete": bool(missing_count),
         "fills_incomplete_count": missing_count,
@@ -9814,6 +9869,9 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
         "realized_pnl": 0.0,
         "unrealized_pnl": 0.0,
         "total_roi": None,
+        "net_roi": None,
+        "net_roi_7d": None,
+        "net_roi_today": None,
         "today_filled_events": [],
         "mirror_follow_today": {"count": 0, "placed": 0, "failed": 0, "skipped": 0, "rows": [], "sync": {}},
         "lcb_global_summary": {
@@ -9826,6 +9884,7 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
             "realized_pnl": 0.0,
             "unrealized_pnl": 0.0,
             "roi": None,
+            "net_roi": None,
         },
     }
     cur = conn.cursor()
@@ -14029,6 +14088,147 @@ def _load_platt_calibration_ro(conn: sqlite3.Connection, days: int) -> Optional[
         "generated_at": str(row[11] or ""),
         "updated_at": str(row[12] or ""),
     }
+
+
+def _load_json_file(path: Path) -> Dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def load_q_calibration_health(
+    conn: sqlite3.Connection,
+    *,
+    days: int = 30,
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "source": "platt",
+        "active_version": "",
+        "candidate_version": "",
+        "bundle_path": str(DATA_DIR / "q_calibration_bundle.json"),
+        "candidate_bundle_path": str(DATA_DIR / "q_calibration_bundle.candidate.json"),
+        "sample_n": 0,
+        "label_n": 0,
+        "sample_n_30d": 0,
+        "label_n_30d": 0,
+        "ece": None,
+        "brier": None,
+        "logloss": None,
+        "psi": None,
+        "roi_lcb": None,
+        "status": "",
+        "promote_recommended": False,
+        "last_train_at": "",
+        "last_eval_at": "",
+    }
+    try:
+        days_int = max(1, int(days))
+    except Exception:
+        days_int = 30
+    champion_path = Path(out["bundle_path"])
+    candidate_path = Path(out["candidate_bundle_path"])
+    champion_bundle = _load_json_file(champion_path) if champion_path.exists() else {}
+    candidate_bundle = _load_json_file(candidate_path) if candidate_path.exists() else {}
+    if champion_bundle:
+        out["source"] = "q_calibration_bundle"
+        out["active_version"] = str(champion_bundle.get("version") or "")
+        out["last_train_at"] = str(champion_bundle.get("generated_at") or "")
+        out["sample_n"] = _to_int(champion_bundle.get("sample_n"))
+        out["label_n"] = _to_int(champion_bundle.get("label_n"))
+        metrics = champion_bundle.get("metrics")
+        if isinstance(metrics, dict):
+            out["ece"] = to_float(metrics.get("ece"))
+            out["brier"] = to_float(metrics.get("brier"))
+            out["logloss"] = to_float(metrics.get("logloss"))
+    if candidate_bundle:
+        out["candidate_version"] = str(candidate_bundle.get("version") or "")
+        out["candidate_generated_at"] = str(candidate_bundle.get("generated_at") or "")
+
+    try:
+        since_iso = (datetime.now(timezone.utc) - timedelta(days=days_int)).isoformat(timespec="seconds")
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(1), SUM(CASE WHEN label IN (0, 1) THEN 1 ELSE 0 END)
+            FROM calibration_labels
+            WHERE datetime(created_at) >= datetime(?)
+            """,
+            (since_iso,),
+        )
+        row = cur.fetchone()
+        if row:
+            out["label_n_30d"] = _to_int(row[0])
+    except sqlite3.Error:
+        pass
+    try:
+        since_iso = (datetime.now(timezone.utc) - timedelta(days=days_int)).isoformat(timespec="seconds")
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(1)
+            FROM calibration_samples
+            WHERE datetime(created_at) >= datetime(?)
+            """,
+            (since_iso,),
+        )
+        row = cur.fetchone()
+        if row:
+            out["sample_n_30d"] = _to_int(row[0])
+    except sqlite3.Error:
+        pass
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, status, ece, brier, logloss, psi, roi_lcb, created_at, notes_json
+            FROM calibration_eval_runs
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if row:
+            out["eval_id"] = _to_int(row[0])
+            out["status"] = str(row[1] or "")
+            out["last_eval_at"] = str(row[7] or "")
+            out["ece"] = to_float(row[2]) if row[2] is not None else out.get("ece")
+            out["brier"] = to_float(row[3]) if row[3] is not None else out.get("brier")
+            out["logloss"] = to_float(row[4]) if row[4] is not None else out.get("logloss")
+            out["psi"] = to_float(row[5])
+            out["roi_lcb"] = to_float(row[6])
+            notes_raw = str(row[8] or "")
+            if notes_raw:
+                try:
+                    notes = json.loads(notes_raw)
+                except Exception:
+                    notes = {}
+                if isinstance(notes, dict):
+                    out["promote_recommended"] = bool(notes.get("recommend_promote"))
+            if not out.get("promote_recommended"):
+                out["promote_recommended"] = str(out.get("status") or "") == "promote_recommended"
+    except sqlite3.Error:
+        pass
+
+    platt_days = 30
+    try:
+        platt_days = int(os.environ.get("PM_Q_PLATT_DAYS", "30") or 30)
+    except Exception:
+        platt_days = 30
+    platt = _load_platt_calibration_ro(conn, platt_days)
+    if not out.get("active_version") and isinstance(platt, dict):
+        out["source"] = "platt"
+        out["active_version"] = f"platt_days_{int(platt.get('days') or platt_days)}"
+        out["sample_n"] = _to_int(platt.get("sample_count"))
+        out["label_n"] = _to_int(platt.get("sample_count"))
+        out["last_train_at"] = str(platt.get("generated_at") or "")
+        if out.get("brier") is None:
+            out["brier"] = to_float(platt.get("brier"))
+        if out.get("logloss") is None:
+            out["logloss"] = to_float(platt.get("logloss"))
+    out["days_window"] = days_int
+    return out
 
 
 def _platt_predict(q_val: float, a: float, b: float, eps: float = 1e-4) -> Optional[float]:
@@ -18688,12 +18888,47 @@ def _trace_refresh_market_ticks_for_blocked(
         meta["na_reason"] = "refresh_market_ticks_unavailable"
         return meta
     items = payload.get("items")
-    if not isinstance(items, list) or not items:
-        meta["na_reason"] = "no_trace_items"
-        return meta
+    if not isinstance(items, list):
+        items = []
+    not_ok_items = payload.get("not_ok_items")
+    if not isinstance(not_ok_items, list):
+        not_ok_items = []
 
     blocked_events: List[Dict[str, Any]] = []
     blocked_seen: set[Tuple[str, str]] = set()
+    refreshable_codes = {
+        "market_tick_stale",
+        "market_tick_missing",
+        "market_ask_missing",
+        "market_ask_missing_bid_only",
+        "market_ask_missing_no_bid",
+        "market_spread_missing",
+        "orderbook_missing",
+    }
+
+    def _add_blocked_event(
+        slug: str,
+        event_date: str,
+        reason_codes: List[str],
+        target_type: str,
+    ) -> None:
+        slug_key = str(slug or "").strip()
+        date_key = date_only(str(event_date or ""))
+        if not slug_key or not date_key:
+            return
+        event_key = (slug_key, date_key)
+        if event_key in blocked_seen:
+            return
+        blocked_seen.add(event_key)
+        blocked_events.append(
+            {
+                "slug": slug_key,
+                "event_date": date_key,
+                "reason_codes": [str(code or "").strip() for code in reason_codes if str(code or "").strip()],
+                "target_type": target_type,
+            }
+        )
+
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -18707,22 +18942,78 @@ def _trace_refresh_market_ticks_for_blocked(
         stale_codes = [code for code in codes if code in {"market_tick_stale", "market_tick_missing"}]
         if not stale_codes:
             continue
-        slug = str(item.get("slug") or "").strip()
-        event_date = str(item.get("event_date") or "").strip()
-        if not slug or not event_date:
-            continue
-        event_key = (slug, event_date)
-        if event_key in blocked_seen:
-            continue
-        blocked_seen.add(event_key)
-        blocked_events.append(
-            {
-                "slug": slug,
-                "event_date": event_date,
-                "reason_codes": stale_codes,
-                "target_type": "blocked",
-            }
+        _add_blocked_event(
+            str(item.get("slug") or ""),
+            str(item.get("event_date") or ""),
+            stale_codes,
+            "blocked",
         )
+    for item in not_ok_items:
+        if not isinstance(item, dict):
+            continue
+        decision = item.get("entry_decision")
+        if not isinstance(decision, dict):
+            continue
+        reason_codes = decision.get("reason_codes")
+        codes = [str(code or "").strip() for code in reason_codes] if isinstance(reason_codes, list) else []
+        target_codes = [code for code in codes if code in refreshable_codes]
+        if not target_codes:
+            continue
+        _add_blocked_event(
+            str(item.get("slug") or ""),
+            str(item.get("event_date") or ""),
+            target_codes,
+            "blocked_not_ok",
+        )
+
+    # Fallback: payload may hide non-stat blockers; query latest completed run directly.
+    try:
+        with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id
+                FROM auto_trade_runs
+                WHERE run_date = ? AND ended_at IS NOT NULL AND ended_at <> ''
+                ORDER BY ended_at DESC, id DESC
+                LIMIT 1
+                """,
+                (run_date_key,),
+            )
+            row = cur.fetchone()
+            run_id = int(row["id"] or 0) if row else 0
+            if run_id > 0:
+                cur.execute(
+                    """
+                    SELECT slug, event_date, reason_codes_json
+                    FROM auto_trade_decisions
+                    WHERE run_id = ?
+                      AND action = 'entry'
+                      AND COALESCE(will_order, 0) <= 0
+                    ORDER BY id DESC
+                    LIMIT 800
+                    """,
+                    (run_id,),
+                )
+                for drow in cur.fetchall():
+                    reason_codes = _safe_json_loads_any(drow["reason_codes_json"])
+                    codes = (
+                        [str(code or "").strip() for code in reason_codes]
+                        if isinstance(reason_codes, list)
+                        else []
+                    )
+                    target_codes = [code for code in codes if code in refreshable_codes]
+                    if not target_codes:
+                        continue
+                    _add_blocked_event(
+                        str(drow["slug"] or ""),
+                        str(drow["event_date"] or ""),
+                        target_codes,
+                        "blocked_run_latest",
+                    )
+    except Exception:
+        pass
+
     meta["eligible_blocked"] = len(blocked_events)
 
     entry_events: List[Dict[str, Any]] = []
@@ -18795,6 +19086,9 @@ def _trace_refresh_market_ticks_for_blocked(
         + int(meta["eligible_blocked"] or 0)
         + int(meta["eligible_live"] or 0)
     )
+    if not items and not not_ok_items and not blocked_events and not live_events:
+        meta["na_reason"] = "no_trace_items"
+        return meta
     if not entry_events and not blocked_events and not live_events:
         meta["na_reason"] = "no_market_tick_targets"
         return meta
@@ -20717,6 +21011,10 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 return "edge_realizable_missing"
             if text.startswith("可兑现口径="):
                 return "edge_realizable_below_floor"
+            if text.startswith("盘口ask缺失（仅bid侧挂单"):
+                return "market_ask_missing_bid_only"
+            if text.startswith("盘口ask缺失（双侧不可用"):
+                return "market_ask_missing_no_bid"
             if text.startswith("盘口ask缺失"):
                 return "market_ask_missing"
             if text.startswith("盘口spread缺失"):
@@ -21154,10 +21452,10 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         items = filtered_items
         filtered_not_ok_items: List[Dict[str, Any]] = []
         for e in not_ok_items:
-            if _entry_has_required_metrics(e):
-                filtered_not_ok_items.append(e)
-                continue
-            hidden_incomplete_not_ok_items += 1
+            if not _entry_has_required_metrics(e):
+                e["metrics_incomplete"] = True
+                hidden_incomplete_not_ok_items += 1
+            filtered_not_ok_items.append(e)
         not_ok_items = filtered_not_ok_items
 
         def _is_entry_blocker_item(entry: Dict[str, Any]) -> bool:
@@ -22132,6 +22430,11 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "blocked_total": 0,
                 "will_order_total": 0,
                 "ignored_non_stat_total": 0,
+                "all_candidate_total": 0,
+                "untradable_drop_total": 0,
+                "tradable_candidate_total": 0,
+                "lcb_pass_total": 0,
+                "lcb_blocked_total": 0,
                 "run_count": 0,
                 "generated_at": now_text(),
             }
@@ -22239,6 +22542,8 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             grouped_recent: Dict[str, Dict[str, Any]] = {}
             ignored_non_stat_by_run: Dict[int, int] = {}
             ignored_non_stat_recent = 0
+            untradable_by_run: Dict[int, int] = {}
+            untradable_recent = 0
 
             def _upsert_blocker_group(
                 groups: Dict[str, Dict[str, Any]],
@@ -22294,6 +22599,16 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 details = _safe_json_loads_any(row["details_json"])
                 details_dict = details if isinstance(details, dict) else {}
                 strategy = str(details_dict.get("strategy") or "").strip().lower() or "lcb_global"
+                normalized_codes: List[str] = []
+                if isinstance(reason_codes, list):
+                    normalized_codes = [
+                        str(code or "").strip().lower()
+                        for code in reason_codes
+                        if str(code or "").strip()
+                    ]
+                if any(is_untradable_prefilter_code(code) for code in normalized_codes):
+                    untradable_by_run[run_id] = int(untradable_by_run.get(run_id) or 0) + 1
+                    untradable_recent += 1
                 reason_code = ""
                 if isinstance(reason_codes, list):
                     first_code = ""
@@ -22373,11 +22688,20 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             last_totals = totals_by_run.get(last_run_id, {})
             last_ignored_non_stat = int(ignored_non_stat_by_run.get(last_run_id) or 0)
             last_entry_total_raw = int(last_totals.get("entry_total") or 0)
+            last_untradable = int(untradable_by_run.get(last_run_id) or 0)
+            last_tradable = int(max(last_entry_total_raw - last_untradable, 0))
+            last_lcb_pass = int(last_totals.get("will_order_total") or 0)
+            last_lcb_blocked = int(max(last_tradable - last_lcb_pass, 0))
             last_meta = {
                 "entry_total": int(max(last_entry_total_raw - last_ignored_non_stat, 0)),
                 "blocked_total": int(last_total),
-                "will_order_total": int(last_totals.get("will_order_total") or 0),
+                "will_order_total": int(last_lcb_pass),
                 "ignored_non_stat_total": int(last_ignored_non_stat),
+                "all_candidate_total": int(last_entry_total_raw),
+                "untradable_drop_total": int(last_untradable),
+                "tradable_candidate_total": int(last_tradable),
+                "lcb_pass_total": int(last_lcb_pass),
+                "lcb_blocked_total": int(last_lcb_blocked),
                 "run_count": 1,
                 "generated_at": now_text(),
             }
@@ -22397,6 +22721,8 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             recent_will_total = int(
                 sum(int((totals_by_run.get(run_id) or {}).get("will_order_total") or 0) for run_id in recent_ids)
             )
+            recent_tradable = int(max(recent_entry_total_raw - int(untradable_recent), 0))
+            recent_lcb_blocked = int(max(recent_tradable - recent_will_total, 0))
             out["recent_agg"] = {
                 "run_ids": list(recent_ids),
                 "table": recent_table,
@@ -22405,6 +22731,11 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     "blocked_total": recent_total,
                     "will_order_total": recent_will_total,
                     "ignored_non_stat_total": int(ignored_non_stat_recent),
+                    "all_candidate_total": int(recent_entry_total_raw),
+                    "untradable_drop_total": int(untradable_recent),
+                    "tradable_candidate_total": int(recent_tradable),
+                    "lcb_pass_total": int(recent_will_total),
+                    "lcb_blocked_total": int(recent_lcb_blocked),
                     "run_count": len(recent_ids),
                     "generated_at": now_text(),
                 },
@@ -22412,6 +22743,48 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             return out
 
         entry_blocker_views = _build_entry_blocker_views()
+        last_completed_view = (
+            entry_blocker_views.get("last_completed")
+            if isinstance(entry_blocker_views.get("last_completed"), dict)
+            else {}
+        )
+        latest_completed_run_id = (
+            int(last_completed_view.get("run_id"))
+            if str(last_completed_view.get("run_id") or "").strip().isdigit()
+            else None
+        )
+        latest_completed_run_time = str(last_completed_view.get("ended_at") or "").strip()
+        last_completed_meta = (
+            last_completed_view.get("meta")
+            if isinstance(last_completed_view.get("meta"), dict)
+            else {}
+        )
+        if latest_completed_run_id and isinstance(last_completed_meta, dict):
+            for key in (
+                "entry_total",
+                "blocked_total",
+                "will_order_total",
+                "ignored_non_stat_total",
+                "all_candidate_total",
+                "untradable_drop_total",
+                "tradable_candidate_total",
+                "lcb_pass_total",
+                "lcb_blocked_total",
+            ):
+                if key in last_completed_meta:
+                    try:
+                        entry_blocker_meta[key] = int(last_completed_meta.get(key) or 0)
+                    except Exception:
+                        pass
+        entry_funnel = {
+            "all_candidates": int(entry_blocker_meta.get("all_candidate_total") or 0),
+            "untradable_drops": int(entry_blocker_meta.get("untradable_drop_total") or 0),
+            "tradable_candidates": int(entry_blocker_meta.get("tradable_candidate_total") or 0),
+            "lcb_pass_candidates": int(entry_blocker_meta.get("lcb_pass_total") or 0),
+            "lcb_blocked_candidates": int(entry_blocker_meta.get("lcb_blocked_total") or 0),
+            "source_run_id": latest_completed_run_id,
+            "source_run_time": latest_completed_run_time,
+        }
         empty_reason = ""
         if not items:
             if not trace_enabled_strategies:
@@ -22437,7 +22810,10 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             "not_ok_reason_top": not_ok_reason_top,
             "entry_blocker_table": entry_blocker_table,
             "entry_blocker_meta": entry_blocker_meta,
+            "entry_funnel": entry_funnel,
             "entry_blocker_views": entry_blocker_views,
+            "latest_completed_run_id": latest_completed_run_id,
+            "latest_completed_run_time": latest_completed_run_time,
             "new_open_candidate_count": int(new_open_candidate_count),
             "shadow_band_v1": shadow_band_summary,
             "strategy_stats": trace_strategy_stats,
@@ -22498,7 +22874,14 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
 
     def _refresh_async(seed_payload: Optional[Dict[str, Any]] = None) -> None:
         try:
-            payload = seed_payload if isinstance(seed_payload, dict) else _compute_payload()
+            payload = seed_payload if isinstance(seed_payload, dict) else None
+            if not isinstance(payload, dict):
+                payload = _compute_payload()
+            else:
+                seed_items = payload.get("items") if isinstance(payload.get("items"), list) else []
+                seed_not_ok = payload.get("not_ok_items") if isinstance(payload.get("not_ok_items"), list) else []
+                if bool(payload.get("warming")) or (not seed_items and not seed_not_ok):
+                    payload = _compute_payload()
             refresh_meta: Dict[str, Any] = {}
             if isinstance(payload, dict) and payload.get("ok"):
                 # Publish base payload first so trace panel doesn't stay in "warming" while
@@ -28556,6 +28939,7 @@ def _scoreboard_stats_uncached(days: int, lightweight: bool = False) -> Dict[str
             "auto_weight_rows": [],
             "auto_weight_label": "\u52a8\u6001\u6743\u91cd\u5206\u5e03",
             "auto_trade_stats": {},
+            "q_calibration_health": {},
             "trade_sync_status": load_trade_sync_status(),
         }
     with open_db(timeout_sec=SCOREBOARD_DB_TIMEOUT_SEC, busy_timeout_ms=SCOREBOARD_DB_BUSY_TIMEOUT_MS) as conn:
@@ -28962,6 +29346,7 @@ def _scoreboard_stats_uncached(days: int, lightweight: bool = False) -> Dict[str
             "open_order_sync_at": open_order_sync_at,
             "position_sync_error": position_sync_error,
             "position_sync_at": position_sync_at,
+            "q_calibration_health": load_q_calibration_health(conn, days=max(30, int(days or 30))),
             "trade_sync_status": load_trade_sync_status(),
         }
 
@@ -28993,6 +29378,7 @@ def _scoreboard_base_payload() -> Dict[str, Any]:
         "open_order_sync_at": str(OPEN_ORDER_CACHE.get("updated_at") or ""),
         "position_sync_error": str(POSITIONS_CACHE.get("error") or ""),
         "position_sync_at": str(POSITIONS_CACHE.get("updated_at") or ""),
+        "q_calibration_health": {},
         "trade_sync_status": load_trade_sync_status(),
     }
 
@@ -29204,6 +29590,7 @@ def _scoreboard_stats_lightweight(days: int) -> Dict[str, Any]:
                 pass
             payload["strategy_stats"] = strategy_stats
             payload["strategy_stats_today"] = strategy_stats_today
+            payload["q_calibration_health"] = load_q_calibration_health(conn, days=max(30, int(stats_days)))
     except Exception:
         return payload
     return payload
@@ -34007,6 +34394,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120) -> Dict[str, Any]:
             "fills": {
                 "filled_order_count_today": len(filled_orders_today),
             },
+            "q_calibration_health": load_q_calibration_health(conn, days=30),
             "lcb": {
                 "run": run_meta,
                 "jobs": {"counts": job_counts, "updated_at": jobs_updated_at},
@@ -36681,6 +37069,25 @@ class Handler(BaseHTTPRequestHandler):
             if not bool(out.get("ok")) and platt_ok:
                 out["ok"] = True
             self._send_json(out)
+            return
+
+        if path == "/api/q-calibration-health":
+            try:
+                days = int(params.get("days", ["30"])[0])
+            except ValueError:
+                days = 30
+            if not DB_PATH.exists():
+                self._send_json({"ok": False, "error": "db_missing"})
+                return
+            try:
+                with open_db_ro_fast(timeout_sec=0.6, busy_timeout_ms=600) as conn:
+                    payload = load_q_calibration_health(conn, days=max(1, int(days)))
+            except Exception:
+                with open_db(timeout_sec=1.0, busy_timeout_ms=1000) as conn:
+                    payload = load_q_calibration_health(conn, days=max(1, int(days)))
+            payload["ok"] = True
+            payload["generated_at"] = now_text()
+            self._send_json(payload)
             return
 
         if path == "/api/model-spread":

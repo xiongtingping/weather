@@ -34,6 +34,7 @@ from edge_signal_runtime import compute_signal_advantage
 from edge_path_runtime import estimate_path_probability
 from edge_exec_runtime import estimate_tradeable_edge_floor
 from edge_policy_runtime import load_edge_policy_from_env, evaluate_tradeability
+from edge_calibration_runtime import build_segment_key, load_q_calibration_bundle, predict_q_calibrated
 
 try:
     from eth_account import Account as EthAccount  # type: ignore
@@ -1284,8 +1285,32 @@ def _refresh_auto_trade_config() -> None:
         0,
     )
     _apply_float(
+        "lcb_global_edge_lcb_min_d0",
+        "PM_LCB_GLOBAL_EDGE_LCB_MIN_D0",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_edge_lcb_min_d1",
+        "PM_LCB_GLOBAL_EDGE_LCB_MIN_D1",
+        None,
+        0,
+    )
+    _apply_float(
         "lcb_global_max_spread",
         "PM_LCB_GLOBAL_MAX_SPREAD",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_spread_hard_cap",
+        "PM_LCB_GLOBAL_SPREAD_HARD_CAP",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_spread_relax_exec_edge_min",
+        "PM_LCB_GLOBAL_SPREAD_RELAX_EXEC_EDGE_MIN",
         None,
         0,
     )
@@ -1314,6 +1339,34 @@ def _refresh_auto_trade_config() -> None:
     _apply_float(
         "lcb_global_signal_edge_min",
         "PM_LCB_GLOBAL_SIGNAL_EDGE_MIN",
+        None,
+        0,
+    )
+    _apply_bool(
+        "lcb_global_near_miss_enabled",
+        "PM_LCB_GLOBAL_NEAR_MISS_ENABLED",
+    )
+    _apply_float(
+        "lcb_global_near_miss_edge_lcb_tol",
+        "PM_LCB_GLOBAL_NEAR_MISS_EDGE_LCB_TOL",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_near_miss_size_ratio",
+        "PM_LCB_GLOBAL_NEAR_MISS_SIZE_RATIO",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_near_miss_signal_lcb_min",
+        "PM_LCB_GLOBAL_NEAR_MISS_SIGNAL_LCB_MIN",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_near_miss_path_lcb_min",
+        "PM_LCB_GLOBAL_NEAR_MISS_PATH_LCB_MIN",
         None,
         0,
     )
@@ -1704,6 +1757,10 @@ def _refresh_auto_trade_config() -> None:
     _apply_bool("entry_require_q_range", "PM_AUTO_TRADE_ENTRY_REQUIRE_Q_RANGE")
     _apply_bool("market_tick_require_present", "PM_AUTO_TRADE_MARKET_TICK_REQUIRE_PRESENT")
     _apply_bool("stop_loss_require_edge_confirm", "PM_AUTO_TRADE_STOP_LOSS_REQUIRE_EDGE_CONFIRM")
+    _apply_bool(
+        "stop_loss_edge_confirm_fail_open_on_missing",
+        "PM_AUTO_TRADE_STOP_LOSS_EDGE_CONFIRM_FAIL_OPEN_ON_MISSING",
+    )
     _apply_bool("entry_hard_bound_no_enabled", "PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_ENABLED")
     _apply_bool("entry_adj_pair_enabled", "PM_AUTO_TRADE_ENTRY_ADJ_PAIR_ENABLED")
     _apply_bool("entry_require_ask_range", "PM_AUTO_TRADE_ENTRY_REQUIRE_ASK_RANGE")
@@ -1713,6 +1770,7 @@ def _refresh_auto_trade_config() -> None:
     _apply_bool("entry_follow_enabled", "PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED")
     _apply_bool("lcb_global_enabled", "PM_LCB_GLOBAL_ENABLED")
     _apply_bool("lcb_global_disable_location_block", "PM_LCB_GLOBAL_DISABLE_LOCATION_BLOCK")
+    _apply_bool("lcb_global_block_d2_plus", "PM_LCB_GLOBAL_BLOCK_D2_PLUS")
     _apply_bool(
         "lcb_global_require_nonnegative_signal_edge",
         "PM_LCB_GLOBAL_REQUIRE_NONNEG_SIGNAL_EDGE",
@@ -3917,9 +3975,28 @@ def _lookup_token_from_fills(
         )
         row = cur.fetchone()
     except sqlite3.OperationalError:
-        return ""
+        row = None
     if not row:
-        return ""
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT yes_token, no_token
+                FROM market_tokens
+                WHERE slug = ? AND event_date = ? AND outcome = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (slug, event_date, outcome),
+            )
+            row = cur.fetchone()
+            if not row:
+                return ""
+            if str(side or "").upper() == "YES":
+                return str(row[0] or "")
+            return str(row[1] or "")
+        except sqlite3.OperationalError:
+            return ""
     return str(row[0] or "")
 
 
@@ -3992,7 +4069,15 @@ def _augment_rows_with_positions(
             SELECT outcome, side
             FROM edge_trades
             WHERE slug = ? AND event_date = ?
-              AND position_size IS NOT NULL AND position_size > 0
+              AND (
+                (position_size IS NOT NULL AND position_size > 0)
+                OR state IN ('entry', 'entry_pending')
+                OR (
+                    state = 'exit'
+                    AND COALESCE(last_order_id, '') != ''
+                    AND COALESCE(last_status, '') NOT IN ('no_position', 'exit_size_too_small')
+                )
+              )
             """,
             (slug, event_date),
         )
@@ -7615,15 +7700,27 @@ def execute_auto_trades(
         spread_key = "spread" if sd == "YES" else "spread_no"
         q_entry_key = "q_entry" if sd == "YES" else "q_entry_no"
         q_round_key = "q_round" if sd == "YES" else "q_round_no"
+        q_cal_key = "q_calibrated" if sd == "YES" else "q_calibrated_no"
+        q_cal_lcb_key = "q_calibrated_lcb" if sd == "YES" else "q_calibrated_lcb_no"
+        q_cal_ucb_key = "q_calibrated_ucb" if sd == "YES" else "q_calibrated_ucb_no"
         time_factor_key = "time_factor_yes" if sd == "YES" else "time_factor_no"
         penalty_key = "penalty_yes" if sd == "YES" else "penalty_no"
         _detail_put_float(out, "ask", row.get(ask_key))
         _detail_put_float(out, "spread", row.get(spread_key))
         _detail_put_float(out, "q_entry", row.get(q_entry_key))
         _detail_put_float(out, "q_round", row.get(q_round_key))
+        _detail_put_float(out, "q_calibrated", row.get(q_cal_key))
+        _detail_put_float(out, "q_calibrated_lcb", row.get(q_cal_lcb_key))
+        _detail_put_float(out, "q_calibrated_ucb", row.get(q_cal_ucb_key))
+        _detail_put_float(out, "q_calibrated_sigma", row.get("q_calibrated_sigma"))
         _detail_put_float(out, "time_factor", row.get(time_factor_key))
         _detail_put_float(out, "structure_factor", row.get("structure_factor"))
         _detail_put_float(out, "penalty", row.get(penalty_key))
+        _detail_put_str(out, "q_entry_mode", row.get("q_entry_mode"))
+        _detail_put_str(out, "q_calibration_version", row.get("q_calibration_version"))
+        _detail_put_str(out, "q_calibration_source", row.get("q_calibration_source"))
+        _detail_put_str(out, "q_calibration_segment_key", row.get("q_calibration_segment_key"))
+        _detail_put_str(out, "q_calibration_segment_used", row.get("q_calibration_segment_used"))
         _detail_put_str(out, "token_id", row.get("yes_token") if sd == "YES" else row.get("no_token"))
         return out
 
@@ -7796,7 +7893,15 @@ def execute_auto_trades(
         _detail_put_float(out, "trend_consistency_up", candidate.get("trend_consistency_up"))
         _detail_put_float(out, "q_raw", candidate.get("q_raw"))
         _detail_put_float(out, "q_calibrated", candidate.get("q_calibrated"))
+        _detail_put_float(out, "q_calibrated_lcb", candidate.get("q_calibrated_lcb"))
+        _detail_put_float(out, "q_calibrated_ucb", candidate.get("q_calibrated_ucb"))
+        _detail_put_float(out, "q_calibrated_sigma", candidate.get("q_calibrated_sigma"))
         _detail_put_float(out, "q_edge", candidate.get("q_edge"))
+        _detail_put_str(out, "q_entry_mode", candidate.get("q_entry_mode"))
+        _detail_put_str(out, "q_calibration_version", candidate.get("q_calibration_version"))
+        _detail_put_str(out, "q_calibration_source", candidate.get("q_calibration_source"))
+        _detail_put_str(out, "q_calibration_segment_key", candidate.get("q_calibration_segment_key"))
+        _detail_put_str(out, "q_calibration_segment_used", candidate.get("q_calibration_segment_used"))
         _detail_put_str(out, "token_id", candidate.get("token_id"))
         if isinstance(candidate.get("trend_penalty_reasons"), list):
             out["trend_penalty_reasons"] = [str(x) for x in candidate.get("trend_penalty_reasons") if str(x).strip()]
@@ -7882,6 +7987,172 @@ def execute_auto_trades(
         }
         decision_buffer[key] = payload
 
+    def _write_calibration_sample_from_decision(
+        payload: Dict[str, Any],
+        decision_id: Optional[int],
+        *,
+        attempts: int,
+        sleep_base_sec: float,
+    ) -> None:
+        if not isinstance(payload, dict):
+            return
+        if str(payload.get("action") or "").strip().lower() != "entry":
+            return
+        if int(payload.get("will_order") or 0) != 1:
+            return
+        try:
+            did = int(decision_id or 0)
+        except Exception:
+            did = 0
+        if did <= 0:
+            return
+        details_text = str(payload.get("details_json") or "").strip()
+        if not details_text:
+            return
+        try:
+            details_obj = json.loads(details_text)
+        except Exception:
+            details_obj = {}
+        if not isinstance(details_obj, dict):
+            details_obj = {}
+        q_raw_val = to_float(details_obj.get("q_raw"))
+        if q_raw_val is None:
+            q_raw_val = to_float(details_obj.get("q_entry"))
+        if q_raw_val is None or not math.isfinite(q_raw_val):
+            return
+        spread_val = to_float(details_obj.get("spread"))
+        depth_ratio_val = to_float(details_obj.get("depth_ratio"))
+        tick_age_val = to_float(details_obj.get("tick_age_sec"))
+        days_to_event_val = to_float(details_obj.get("days_to_event"))
+        segment_key = str(details_obj.get("q_calibration_segment_key") or "").strip()
+        if not segment_key:
+            seg_key, _seg_ctx = build_segment_key(
+                days_to_event=days_to_event_val,
+                spread=spread_val,
+                depth_ratio=depth_ratio_val,
+                tick_age_sec=tick_age_val,
+                decision_ts=payload.get("created_at"),
+            )
+            segment_key = seg_key
+        _sqlite_execute_with_retry(
+            cur,
+            "DELETE FROM calibration_samples WHERE decision_id = ?",
+            (did,),
+            attempts=max(1, int(attempts)),
+            sleep_base_sec=float(sleep_base_sec),
+        )
+        _sqlite_execute_with_retry(
+            cur,
+            """
+            INSERT INTO calibration_samples(
+                run_id, decision_id, run_date, slug, event_date, outcome, side, strategy,
+                q_raw, q_calibrated, q_calibrated_lcb, q_calibrated_ucb, q_calibrated_sigma,
+                spread, depth_ratio, tick_age_sec, days_to_event, segment_key, bundle_version, details_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                payload.get("run_id"),
+                did,
+                payload.get("run_date"),
+                payload.get("slug"),
+                payload.get("event_date"),
+                payload.get("outcome"),
+                payload.get("side"),
+                str(details_obj.get("strategy") or ""),
+                q_raw_val,
+                to_float(details_obj.get("q_calibrated")),
+                to_float(details_obj.get("q_calibrated_lcb")),
+                to_float(details_obj.get("q_calibrated_ucb")),
+                to_float(details_obj.get("q_calibrated_sigma")),
+                spread_val,
+                depth_ratio_val,
+                tick_age_val,
+                days_to_event_val,
+                segment_key,
+                str(details_obj.get("q_calibration_version") or ""),
+                details_text,
+                payload.get("created_at"),
+            ),
+            attempts=max(1, int(attempts)),
+            sleep_base_sec=float(sleep_base_sec),
+        )
+        try:
+            cur.execute(
+                """
+                SELECT state, position_size, realized_pnl, updated_at
+                FROM edge_trades
+                WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
+                LIMIT 1
+                """,
+                (
+                    str(payload.get("slug") or ""),
+                    str(payload.get("event_date") or ""),
+                    str(payload.get("outcome") or ""),
+                    str(payload.get("side") or ""),
+                ),
+            )
+            trade_row = cur.fetchone()
+        except Exception:
+            trade_row = None
+        if trade_row:
+            state_text = str(trade_row[0] or "").strip().lower()
+            pos_size = to_float(trade_row[1])
+            realized_pnl = to_float(trade_row[2])
+            resolved_at = str(trade_row[3] or "")
+            closed = state_text in {"exit", "closed", "settled", "resolved", "no_position", "pos_sync_clear"}
+            if pos_size is not None and pos_size <= TIME_EDGE_Q_EPS:
+                closed = True
+            label_val: Optional[int] = None
+            label_source = ""
+            if closed and realized_pnl is not None and math.isfinite(realized_pnl):
+                if realized_pnl > TIME_EDGE_Q_EPS:
+                    label_val = 1
+                    label_source = "realized_pnl_positive"
+                elif realized_pnl < -TIME_EDGE_Q_EPS:
+                    label_val = 0
+                    label_source = "realized_pnl_negative"
+            _sqlite_execute_with_retry(
+                cur,
+                "DELETE FROM calibration_labels WHERE decision_id = ?",
+                (did,),
+                attempts=max(1, int(attempts)),
+                sleep_base_sec=float(sleep_base_sec),
+            )
+            if label_val in {0, 1}:
+                _sqlite_execute_with_retry(
+                    cur,
+                    """
+                    INSERT INTO calibration_labels(
+                        sample_id, decision_id, slug, event_date, outcome, side, label, label_source,
+                        realized_pnl, path_hit, path_timeout, path_adverse, state, resolved_at, created_at
+                    )
+                    VALUES(
+                        (SELECT id FROM calibration_samples WHERE decision_id = ?),
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    (
+                        did,
+                        did,
+                        str(payload.get("slug") or ""),
+                        str(payload.get("event_date") or ""),
+                        str(payload.get("outcome") or ""),
+                        str(payload.get("side") or ""),
+                        int(label_val),
+                        label_source,
+                        realized_pnl,
+                        1 if label_val == 1 else 0,
+                        0,
+                        1 if label_val == 0 else 0,
+                        state_text,
+                        resolved_at,
+                        str(payload.get("created_at") or ""),
+                    ),
+                    attempts=max(1, int(attempts)),
+                    sleep_base_sec=float(sleep_base_sec),
+                )
+
     def _flush_decisions() -> None:
         if not decision_buffer:
             return
@@ -7926,6 +8197,16 @@ def execute_auto_trades(
                     attempts=int(retry_attempts),
                     sleep_base_sec=float(retry_sleep),
                 )
+                decision_id = int(cur.lastrowid or 0)
+                try:
+                    _write_calibration_sample_from_decision(
+                        payload,
+                        decision_id,
+                        attempts=max(2, int(retry_attempts)),
+                        sleep_base_sec=float(retry_sleep),
+                    )
+                except Exception:
+                    pass
             except Exception as exc:
                 print(f"[auto-trade] decision insert failed {slug} {event_date_key}: {exc}")
 
@@ -9715,8 +9996,26 @@ def execute_auto_trades(
                 str(candidate.get("strategy") or "").strip().lower() or "main",
             ]
         )
+        policy_eval = dict(edge_tradeability_policy) if isinstance(edge_tradeability_policy, dict) else {}
+        strategy_name_eval = str(candidate.get("strategy") or "").strip().lower() or "main"
+        if strategy_name_eval == "lcb_global":
+            signal_lcb_min_override = to_float(candidate.get("lcb_global_signal_lcb_min"))
+            if signal_lcb_min_override is None:
+                signal_lcb_min_override = to_float(lcb_global_signal_lcb_min)
+            if signal_lcb_min_override is not None and math.isfinite(signal_lcb_min_override):
+                policy_eval["signal_lcb_min"] = max(0.0, float(signal_lcb_min_override))
+            path_lcb_min_override = to_float(candidate.get("lcb_global_path_lcb_min"))
+            if path_lcb_min_override is None:
+                path_lcb_min_override = to_float(lcb_global_path_lcb_min)
+            if path_lcb_min_override is not None and math.isfinite(path_lcb_min_override):
+                policy_eval["path_lcb_min"] = min(1.0, max(0.0, float(path_lcb_min_override)))
+            edge_lcb_min_override = to_float(candidate.get("lcb_global_edge_lcb_min"))
+            if edge_lcb_min_override is not None and math.isfinite(edge_lcb_min_override):
+                policy_eval["edge_lcb_min"] = float(edge_lcb_min_override)
+        if not policy_eval:
+            policy_eval = edge_tradeability_policy
         policy_meta = evaluate_tradeability(
-            policy=edge_tradeability_policy,
+            policy=policy_eval,
             key=policy_key,
             signal_lcb=signal_lcb_val,
             path_lcb=path_meta.get("p_reach_lcb"),
@@ -9803,12 +10102,79 @@ def execute_auto_trades(
     if lcb_global_edge_lcb_min is None or not math.isfinite(lcb_global_edge_lcb_min):
         lcb_global_edge_lcb_min = 0.0
     lcb_global_edge_lcb_min = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min)))
+    lcb_global_edge_lcb_min_d0 = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN_D0")
+    if lcb_global_edge_lcb_min_d0 is None or not math.isfinite(lcb_global_edge_lcb_min_d0):
+        lcb_global_edge_lcb_min_d0 = lcb_global_edge_lcb_min
+    lcb_global_edge_lcb_min_d0 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d0)))
+    lcb_global_edge_lcb_min_d1 = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN_D1")
+    if lcb_global_edge_lcb_min_d1 is None or not math.isfinite(lcb_global_edge_lcb_min_d1):
+        lcb_global_edge_lcb_min_d1 = max(float(lcb_global_edge_lcb_min), -0.001)
+    lcb_global_edge_lcb_min_d1 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d1)))
+    lcb_global_block_d2_plus = _env_bool("PM_LCB_GLOBAL_BLOCK_D2_PLUS", True)
+
+    def _resolve_lcb_global_edge_lcb_min(days_to_event_local: Optional[int]) -> Optional[float]:
+        if days_to_event_local is None:
+            return float(lcb_global_edge_lcb_min)
+        if days_to_event_local <= 0:
+            return float(lcb_global_edge_lcb_min_d0)
+        if days_to_event_local == 1:
+            return float(lcb_global_edge_lcb_min_d1)
+        if lcb_global_block_d2_plus:
+            return None
+        return float(lcb_global_edge_lcb_min)
+
     lcb_global_max_spread = _env_float("PM_LCB_GLOBAL_MAX_SPREAD")
     if lcb_global_max_spread is None or not math.isfinite(lcb_global_max_spread):
         lcb_global_max_spread = MINUTE_EDGE_ENTRY_SPREAD_MAX
     if lcb_global_max_spread is None or not math.isfinite(lcb_global_max_spread) or lcb_global_max_spread <= 0:
         lcb_global_max_spread = 0.08
     lcb_global_max_spread = max(0.0, float(lcb_global_max_spread))
+    lcb_global_spread_hard_cap = _env_float("PM_LCB_GLOBAL_SPREAD_HARD_CAP")
+    if (
+        lcb_global_spread_hard_cap is None
+        or not math.isfinite(lcb_global_spread_hard_cap)
+        or lcb_global_spread_hard_cap <= 0
+    ):
+        lcb_global_spread_hard_cap = max(float(lcb_global_max_spread), 0.16)
+    lcb_global_spread_hard_cap = max(float(lcb_global_max_spread), float(lcb_global_spread_hard_cap))
+    lcb_global_spread_relax_exec_edge_min = _env_float("PM_LCB_GLOBAL_SPREAD_RELAX_EXEC_EDGE_MIN")
+    if (
+        lcb_global_spread_relax_exec_edge_min is None
+        or not math.isfinite(lcb_global_spread_relax_exec_edge_min)
+    ):
+        lcb_global_spread_relax_exec_edge_min = 0.12
+    lcb_global_spread_relax_exec_edge_min = max(0.0, float(lcb_global_spread_relax_exec_edge_min))
+    lcb_global_near_miss_enabled = _env_bool("PM_LCB_GLOBAL_NEAR_MISS_ENABLED", True)
+    lcb_global_near_miss_edge_lcb_tol = _env_float("PM_LCB_GLOBAL_NEAR_MISS_EDGE_LCB_TOL")
+    if (
+        lcb_global_near_miss_edge_lcb_tol is None
+        or not math.isfinite(lcb_global_near_miss_edge_lcb_tol)
+        or lcb_global_near_miss_edge_lcb_tol < 0
+    ):
+        lcb_global_near_miss_edge_lcb_tol = 0.0006
+    lcb_global_near_miss_edge_lcb_tol = min(0.01, max(0.0, float(lcb_global_near_miss_edge_lcb_tol)))
+    lcb_global_near_miss_size_ratio = _env_float("PM_LCB_GLOBAL_NEAR_MISS_SIZE_RATIO")
+    if (
+        lcb_global_near_miss_size_ratio is None
+        or not math.isfinite(lcb_global_near_miss_size_ratio)
+        or lcb_global_near_miss_size_ratio <= 0
+    ):
+        lcb_global_near_miss_size_ratio = 0.35
+    lcb_global_near_miss_size_ratio = min(1.0, max(0.05, float(lcb_global_near_miss_size_ratio)))
+    lcb_global_near_miss_signal_lcb_min = _env_float("PM_LCB_GLOBAL_NEAR_MISS_SIGNAL_LCB_MIN")
+    if (
+        lcb_global_near_miss_signal_lcb_min is None
+        or not math.isfinite(lcb_global_near_miss_signal_lcb_min)
+    ):
+        lcb_global_near_miss_signal_lcb_min = 0.15
+    lcb_global_near_miss_signal_lcb_min = min(1.0, max(0.0, float(lcb_global_near_miss_signal_lcb_min)))
+    lcb_global_near_miss_path_lcb_min = _env_float("PM_LCB_GLOBAL_NEAR_MISS_PATH_LCB_MIN")
+    if (
+        lcb_global_near_miss_path_lcb_min is None
+        or not math.isfinite(lcb_global_near_miss_path_lcb_min)
+    ):
+        lcb_global_near_miss_path_lcb_min = 0.35
+    lcb_global_near_miss_path_lcb_min = min(1.0, max(0.0, float(lcb_global_near_miss_path_lcb_min)))
     lcb_global_min_depth_usdc = _env_float("PM_LCB_GLOBAL_MIN_DEPTH_USDC")
     if lcb_global_min_depth_usdc is None or not math.isfinite(lcb_global_min_depth_usdc):
         lcb_global_min_depth_usdc = 0.0
@@ -10649,6 +11015,10 @@ def execute_auto_trades(
         stop_loss_edge_confirm_max = stop_loss_edge_confirm_max / 100.0
     if stop_loss_edge_confirm_max < 0:
         stop_loss_edge_confirm_max = 0.0
+    stop_loss_edge_confirm_fail_open_on_missing = _env_bool(
+        "PM_AUTO_TRADE_STOP_LOSS_EDGE_CONFIRM_FAIL_OPEN_ON_MISSING",
+        True,
+    )
     trail_stop_pct = _env_float("PM_AUTO_TRADE_EXIT_TRAIL_PCT")
     if trail_stop_pct is None or not math.isfinite(trail_stop_pct):
         trail_stop_pct = 0.01
@@ -11039,6 +11409,10 @@ def execute_auto_trades(
         q_calibrated: Optional[float] = None,
         q_edge: Optional[float] = None,
         strategy: Optional[str] = None,
+        q_calibrated_lcb: Optional[float] = None,
+        q_calibrated_ucb: Optional[float] = None,
+        q_calibrated_sigma: Optional[float] = None,
+        q_calibration_version: Optional[str] = None,
     ) -> None:
         nonlocal event_active_entry, location_active_entry, location_blocking_trade
         nonlocal lcb_global_entry_orders_submitted
@@ -11049,8 +11423,9 @@ def execute_auto_trades(
             """
             INSERT OR IGNORE INTO auto_orders (
                 order_id, slug, event_date, outcome, side, action, price, size, order_type,
-                q_raw, q_calibrated, q_edge, strategy, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                q_raw, q_calibrated, q_calibrated_lcb, q_calibrated_ucb, q_calibrated_sigma, q_calibration_version,
+                q_edge, strategy, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 order_id,
@@ -11064,6 +11439,10 @@ def execute_auto_trades(
                 order_type,
                 q_raw,
                 q_calibrated,
+                q_calibrated_lcb,
+                q_calibrated_ucb,
+                q_calibrated_sigma,
+                str(q_calibration_version or ""),
                 q_edge,
                 strategy,
                 now_iso,
@@ -11187,6 +11566,7 @@ def execute_auto_trades(
     )
 
     rows = _augment_rows_with_positions(rows, conn, slug, event_date_key)
+    _fill_rows_with_latest_ticks(rows, conn, slug, event_date_key)
 
     def _resolve_mid_price(
         ask_val: Optional[float],
@@ -12650,6 +13030,32 @@ def execute_auto_trades(
         outcome_label = str(row_ref.get("outcome") or "").strip()
         if not outcome_label:
             return []
+        lcb_global_edge_lcb_min_runtime = _resolve_lcb_global_edge_lcb_min(days_to_event)
+        if lcb_global_edge_lcb_min_runtime is None:
+            reason_text = "事件日距>1天(D2+)按风控禁入"
+            if days_to_event is not None and math.isfinite(days_to_event):
+                reason_text = f"事件日距={int(days_to_event)}天(D2+)按风控禁入"
+            for sd in ("YES", "NO"):
+                _buffer_decision(
+                    outcome_label,
+                    sd,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["event_timing_out_of_scope"],
+                    reasons=[reason_text],
+                    details={
+                        "strategy": "lcb_global",
+                        "run_date": run_date,
+                        "event_date": event_date_key,
+                        "days_to_event": days_to_event,
+                        "lcb_global_block_d2_plus": bool(lcb_global_block_d2_plus),
+                        "lcb_global_edge_lcb_min_d0": float(lcb_global_edge_lcb_min_d0),
+                        "lcb_global_edge_lcb_min_d1": float(lcb_global_edge_lcb_min_d1),
+                        "lcb_global_edge_lcb_min_base": float(lcb_global_edge_lcb_min),
+                    },
+                )
+            return []
 
         candidates: List[Dict[str, Any]] = []
         for side in ("YES", "NO"):
@@ -12719,8 +13125,14 @@ def execute_auto_trades(
                 "exec_edge_entry": exec_edge_entry_val,
                 "exec_edge_exit": exec_edge_exit_val,
                 "exec_edge_score": exec_edge_score_val,
+                "run_date": run_date,
+                "event_date": event_date_key,
+                "days_to_event": days_to_event,
                 "lcb_global_max_spread": float(lcb_global_max_spread),
+                "lcb_global_spread_hard_cap": float(lcb_global_spread_hard_cap),
+                "lcb_global_spread_relax_exec_edge_min": float(lcb_global_spread_relax_exec_edge_min),
                 "lcb_global_min_depth_usdc": float(lcb_global_min_depth_usdc),
+                "lcb_global_edge_lcb_min": float(lcb_global_edge_lcb_min_runtime),
             }
 
             refreshed_quotes_once = False
@@ -12799,17 +13211,26 @@ def execute_auto_trades(
                 )
                 continue
             if token_id in recent_orderbook_missing_tokens:
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["orderbook_missing_recent"],
-                    reasons=["近期订单簿缺失(orderbook_missing)"],
-                    details=base_detail,
-                )
-                continue
+                # Give "recent missing" tokens one lightweight retry chance, so stale
+                # missing cache does not zero out today's tradable coverage.
+                _refresh_quotes_once("orderbook_missing_recent")
+                if not (
+                    ask_val is not None
+                    and math.isfinite(ask_val)
+                    and ask_val > TIME_EDGE_Q_EPS
+                ):
+                    _sync_quote_detail_fields()
+                    _buffer_decision(
+                        outcome_label,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=["orderbook_missing_recent"],
+                        reasons=["近期订单簿缺失(orderbook_missing)"],
+                        details=base_detail,
+                    )
+                    continue
             if (
                 ask_val is None
                 or not math.isfinite(ask_val)
@@ -12823,14 +13244,23 @@ def execute_auto_trades(
                     pass
                 else:
                     _sync_quote_detail_fields()
+                    ask_missing_bid_only = bool(bid_val is not None and math.isfinite(bid_val))
+                    ask_missing_reason_code = (
+                        "market_ask_missing_bid_only" if ask_missing_bid_only else "market_ask_missing_no_bid"
+                    )
+                    ask_missing_reason_text = (
+                        "盘口ask缺失（仅bid侧挂单，单边薄簿）"
+                        if ask_missing_bid_only
+                        else "盘口ask缺失（双侧不可用）"
+                    )
                     _buffer_decision(
                         outcome_label,
                         side,
                         "entry",
                         decided_state="blocked",
                         will_order=False,
-                        reason_codes=["market_ask_missing"],
-                        reasons=["盘口ask缺失"],
+                        reason_codes=[ask_missing_reason_code],
+                        reasons=[ask_missing_reason_text],
                         details=base_detail,
                     )
                     continue
@@ -12942,20 +13372,42 @@ def execute_auto_trades(
                         reasons=["单边薄簿/不可交易" if one_sided_thin else "盘口spread缺失"],
                         details=base_detail,
                     )
+                    continue
                 else:
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["spread_too_wide"],
-                        reasons=[
-                            f"spread={float(spread_val):.4f}>{float(lcb_global_max_spread):.4f}，禁止入场"
-                        ],
-                        details=base_detail,
-                    )
-                continue
+                    spread_now = float(spread_val)
+                    spread_relaxed = False
+                    spread_relax_reason = ""
+                    if spread_now <= float(lcb_global_spread_hard_cap) + TIME_EDGE_Q_EPS:
+                        if (
+                            exec_edge_entry_val is not None
+                            and math.isfinite(exec_edge_entry_val)
+                            and exec_edge_entry_val + TIME_EDGE_Q_EPS
+                            >= float(lcb_global_spread_relax_exec_edge_min)
+                        ):
+                            spread_relaxed = True
+                            spread_relax_reason = (
+                                f"exec_edge_entry={float(exec_edge_entry_val):.4f}"
+                                f">={float(lcb_global_spread_relax_exec_edge_min):.4f}"
+                            )
+                    if spread_relaxed:
+                        base_detail["spread_relaxed"] = True
+                        base_detail["spread_relax_reason"] = spread_relax_reason
+                        base_detail["spread_relax_from"] = spread_now
+                    else:
+                        _buffer_decision(
+                            outcome_label,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["spread_too_wide"],
+                            reasons=[
+                                f"spread={spread_now:.4f}>{float(lcb_global_max_spread):.4f}，禁止入场"
+                            ],
+                            details=base_detail,
+                        )
+                if not spread_relaxed:
+                    continue
             if lcb_global_min_depth_usdc > TIME_EDGE_Q_EPS:
                 if (
                     depth_val is None
@@ -13051,10 +13503,11 @@ def execute_auto_trades(
                 "priority": 1000,
                 "lcb_global_signal_lcb_min": float(lcb_global_signal_lcb_min),
                 "lcb_global_path_lcb_min": float(lcb_global_path_lcb_min),
-                "lcb_global_edge_lcb_min": float(lcb_global_edge_lcb_min),
+                "lcb_global_edge_lcb_min": float(lcb_global_edge_lcb_min_runtime),
                 "lcb_global_max_spread": float(lcb_global_max_spread),
                 "lcb_global_min_depth_usdc": float(lcb_global_min_depth_usdc),
                 "lcb_global_depth_usdc": float(depth_val) if depth_val is not None and math.isfinite(depth_val) else None,
+                "days_to_event": days_to_event,
             }
             sort_val = _candidate_realizable_sort_score(cand, row_ref)
             if sort_val is None or not math.isfinite(sort_val):
@@ -14152,7 +14605,10 @@ def execute_auto_trades(
             edge_lcb_val = to_float(cand.get("edge_tradeability_edge_lcb"))
             if edge_lcb_val is None or not math.isfinite(edge_lcb_val):
                 return False
-            if edge_lcb_val + TIME_EDGE_Q_EPS < float(lcb_global_edge_lcb_min):
+            edge_lcb_min_req = to_float(cand.get("lcb_global_edge_lcb_min"))
+            if edge_lcb_min_req is None or not math.isfinite(edge_lcb_min_req):
+                edge_lcb_min_req = float(lcb_global_edge_lcb_min)
+            if edge_lcb_val + TIME_EDGE_Q_EPS < float(edge_lcb_min_req):
                 return False
             return True
         gate_cfg = _edge_realizable_gates_for_strategy(strategy_name)
@@ -15557,15 +16013,27 @@ def execute_auto_trades(
                         stop_loss_edge_for_confirm = to_float(
                             row.get("signal_edge_min") if side == "YES" else row.get("signal_edge_min_no")
                         )
-                    stop_loss_confirmed_by_edge = (
-                        (not stop_loss_edge_confirm_enabled)
-                        or (
-                            stop_loss_edge_for_confirm is not None
-                            and math.isfinite(stop_loss_edge_for_confirm)
-                            and stop_loss_edge_for_confirm
-                            <= stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
-                        )
+                    stop_loss_metric_missing = not (
+                        stop_loss_edge_for_confirm is not None
+                        and math.isfinite(stop_loss_edge_for_confirm)
                     )
+                    if (
+                        stop_loss_edge_confirm_enabled
+                        and stop_loss_metric_missing
+                        and stop_loss_edge_confirm_fail_open_on_missing
+                    ):
+                        stop_loss_confirmed_by_edge = True
+                        row["stop_loss_edge_confirm_fallback"] = "missing_metric_fail_open"
+                    else:
+                        stop_loss_confirmed_by_edge = (
+                            (not stop_loss_edge_confirm_enabled)
+                            or (
+                                stop_loss_edge_for_confirm is not None
+                                and math.isfinite(stop_loss_edge_for_confirm)
+                                and stop_loss_edge_for_confirm
+                                <= stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
+                            )
+                        )
                     stop_loss_trigger = (
                         (stop_loss_confirmed_by_tick or stop_loss_confirmed_by_time)
                         and stop_loss_confirmed_by_edge
@@ -16370,6 +16838,10 @@ def execute_auto_trades(
                                         candidate.get("q_calibrated"),
                                         candidate.get("q_edge"),
                                         candidate.get("strategy"),
+                                        candidate.get("q_calibrated_lcb"),
+                                        candidate.get("q_calibrated_ucb"),
+                                        candidate.get("q_calibrated_sigma"),
+                                        candidate.get("q_calibration_version"),
                                     )
                                     best_bid = to_float(
                                         row.get("best_bid") if side == "YES" else row.get("best_bid_no")
@@ -16587,6 +17059,10 @@ def execute_auto_trades(
                                 cand.get("q_calibrated") if cand else None,
                                 cand.get("q_edge") if cand else None,
                                 cand.get("strategy") if cand else None,
+                                cand.get("q_calibrated_lcb") if cand else None,
+                                cand.get("q_calibrated_ucb") if cand else None,
+                                cand.get("q_calibrated_sigma") if cand else None,
+                                cand.get("q_calibration_version") if cand else None,
                             )
                             pending_block = True
                             continue
@@ -16645,6 +17121,10 @@ def execute_auto_trades(
                                     cand.get("q_calibrated") if cand else None,
                                     cand.get("q_edge") if cand else None,
                                     cand.get("strategy") if cand else None,
+                                    cand.get("q_calibrated_lcb") if cand else None,
+                                    cand.get("q_calibrated_ucb") if cand else None,
+                                    cand.get("q_calibrated_sigma") if cand else None,
+                                    cand.get("q_calibration_version") if cand else None,
                                 )
                         else:
                             now_iso = utc_now_iso()
@@ -18590,6 +19070,36 @@ def execute_auto_trades(
                 is_new_entry = (not is_topup) and (position_size <= TIME_EDGE_Q_EPS)
                 strategy_name = str(candidate.get("strategy") or "main").strip().lower() or "main"
                 lcb_global_candidate = bool(strategy_name == "lcb_global")
+                if lcb_global_candidate and bool(candidate.get("edge_tradeability_blocked")):
+                    defer_to_near_miss = bool(
+                        is_new_entry and edge_realizable_v2_gate_entry and lcb_global_near_miss_enabled
+                    )
+                    if defer_to_near_miss:
+                        candidate["edge_tradeability_deferred_to_near_miss"] = True
+                    else:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["edge_tradeability_pass_false"],
+                            reasons=["LCB可交易门禁未通过(edge_tradeability_pass=false)，禁止入场"],
+                            details={
+                                "strategy": strategy_name,
+                                "is_new_entry": bool(is_new_entry),
+                                "is_topup": bool(is_topup),
+                                "edge_tradeability_mode": str(candidate.get("edge_tradeability_mode") or ""),
+                                "edge_tradeability_policy_enforce": bool(candidate.get("edge_tradeability_policy_enforce")),
+                                "edge_tradeability_reasons": str(candidate.get("edge_tradeability_reasons") or ""),
+                                "edge_signal_lcb": to_float(candidate.get("edge_signal_lcb")),
+                                "edge_path_p_reach_lcb": to_float(candidate.get("edge_path_p_reach_lcb")),
+                                "edge_tradeability_edge_lcb": to_float(candidate.get("edge_tradeability_edge_lcb")),
+                                "edge_tradeability_edge_lcb_min": to_float(candidate.get("edge_tradeability_edge_lcb_min")),
+                                "lcb_global_edge_lcb_min": to_float(candidate.get("lcb_global_edge_lcb_min")),
+                            },
+                        )
+                        continue
                 legacy_entry_gate_enforced = bool(
                     (not edge_lcb_single_judge_mode) and (not lcb_global_candidate)
                 )
@@ -18838,29 +19348,76 @@ def execute_auto_trades(
                         )
                         continue
                     if candidate.get("edge_tradeability_blocked"):
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["edge_tradeability_blocked"],
-                            reasons=["可交易正edge下界未达标，禁止入场"],
-                            details={
-                                "edge_realizable_v2_raw": to_float(candidate.get("edge_realizable_v2_raw")),
-                                "edge_tradeability_mode": str(candidate.get("edge_tradeability_mode") or ""),
-                                "edge_tradeability_policy_enforce": bool(candidate.get("edge_tradeability_policy_enforce")),
-                                "edge_tradeability_reasons": str(candidate.get("edge_tradeability_reasons") or ""),
-                                "edge_signal_lcb": to_float(candidate.get("edge_signal_lcb")),
-                                "edge_path_p_reach_lcb": to_float(candidate.get("edge_path_p_reach_lcb")),
-                                "edge_tradeability_edge_lcb": to_float(candidate.get("edge_tradeability_edge_lcb")),
-                                "edge_tradeability_signal_lcb_min": to_float(candidate.get("edge_tradeability_signal_lcb_min")),
-                                "edge_tradeability_path_lcb_min": to_float(candidate.get("edge_tradeability_path_lcb_min")),
-                                "edge_tradeability_edge_lcb_min": to_float(candidate.get("edge_tradeability_edge_lcb_min")),
-                                "strategy": str(candidate.get("strategy") or ""),
-                            },
-                        )
-                        continue
+                        near_miss_overridden = False
+                        strategy_name_near = str(candidate.get("strategy") or "").strip().lower()
+                        edge_lcb_now = to_float(candidate.get("edge_tradeability_edge_lcb"))
+                        edge_lcb_min_now = to_float(candidate.get("edge_tradeability_edge_lcb_min"))
+                        signal_lcb_now = to_float(candidate.get("edge_signal_lcb"))
+                        path_lcb_now = to_float(candidate.get("edge_path_p_reach_lcb"))
+                        near_miss_gap = None
+                        if (
+                            lcb_global_near_miss_enabled
+                            and strategy_name_near == "lcb_global"
+                            and edge_lcb_now is not None
+                            and math.isfinite(edge_lcb_now)
+                            and edge_lcb_min_now is not None
+                            and math.isfinite(edge_lcb_min_now)
+                            and signal_lcb_now is not None
+                            and math.isfinite(signal_lcb_now)
+                            and path_lcb_now is not None
+                            and math.isfinite(path_lcb_now)
+                        ):
+                            near_miss_gap = float(edge_lcb_min_now) - float(edge_lcb_now)
+                            if (
+                                near_miss_gap >= -TIME_EDGE_Q_EPS
+                                and near_miss_gap <= float(lcb_global_near_miss_edge_lcb_tol) + TIME_EDGE_Q_EPS
+                                and signal_lcb_now + TIME_EDGE_Q_EPS >= float(lcb_global_near_miss_signal_lcb_min)
+                                and path_lcb_now + TIME_EDGE_Q_EPS >= float(lcb_global_near_miss_path_lcb_min)
+                            ):
+                                original_size = to_float(candidate.get("size"))
+                                if (
+                                    original_size is not None
+                                    and math.isfinite(original_size)
+                                    and original_size > TIME_EDGE_Q_EPS
+                                ):
+                                    scaled_size = float(original_size) * float(lcb_global_near_miss_size_ratio)
+                                    if min_entry_size_val > 0:
+                                        scaled_size = max(float(min_entry_size_val), scaled_size)
+                                    candidate["size"] = round(max(scaled_size, 0.0), 4)
+                                candidate["edge_tradeability_blocked"] = False
+                                candidate["edge_tradeability_near_miss_override"] = True
+                                candidate["edge_tradeability_near_miss_gap"] = near_miss_gap
+                                candidate["edge_tradeability_near_miss_size_ratio"] = float(
+                                    lcb_global_near_miss_size_ratio
+                                )
+                                near_miss_overridden = True
+                        if not near_miss_overridden:
+                            _buffer_decision(
+                                outcome,
+                                side,
+                                "entry",
+                                decided_state="blocked",
+                                will_order=False,
+                                reason_codes=["edge_tradeability_blocked"],
+                                reasons=["可交易正edge下界未达标，禁止入场"],
+                                details={
+                                    "edge_realizable_v2_raw": to_float(candidate.get("edge_realizable_v2_raw")),
+                                    "edge_tradeability_mode": str(candidate.get("edge_tradeability_mode") or ""),
+                                    "edge_tradeability_policy_enforce": bool(candidate.get("edge_tradeability_policy_enforce")),
+                                    "edge_tradeability_reasons": str(candidate.get("edge_tradeability_reasons") or ""),
+                                    "edge_signal_lcb": signal_lcb_now,
+                                    "edge_path_p_reach_lcb": path_lcb_now,
+                                    "edge_tradeability_edge_lcb": edge_lcb_now,
+                                    "edge_tradeability_signal_lcb_min": to_float(candidate.get("edge_tradeability_signal_lcb_min")),
+                                    "edge_tradeability_path_lcb_min": to_float(candidate.get("edge_tradeability_path_lcb_min")),
+                                    "edge_tradeability_edge_lcb_min": edge_lcb_min_now,
+                                    "edge_tradeability_near_miss_enabled": bool(lcb_global_near_miss_enabled),
+                                    "edge_tradeability_near_miss_tol": float(lcb_global_near_miss_edge_lcb_tol),
+                                    "edge_tradeability_near_miss_gap": near_miss_gap,
+                                    "strategy": strategy_name_near,
+                                },
+                            )
+                            continue
                     v2_val = to_float(candidate.get("edge_realizable_v2"))
                     if legacy_entry_gate_enforced and (v2_val is None or not math.isfinite(v2_val)):
                         p_fill_entry_val = to_float(candidate.get("edge_realizable_p_fill_entry"))
@@ -19671,6 +20228,10 @@ def execute_auto_trades(
                                 cand.get("q_calibrated") if cand else None,
                                 cand.get("q_edge") if cand else None,
                                 cand.get("strategy") if cand else None,
+                                cand.get("q_calibrated_lcb") if cand else None,
+                                cand.get("q_calibrated_ucb") if cand else None,
+                                cand.get("q_calibrated_sigma") if cand else None,
+                                cand.get("q_calibration_version") if cand else None,
                             )
                             pending_block = True
                             continue
@@ -19758,6 +20319,10 @@ def execute_auto_trades(
                                     cand.get("q_calibrated") if cand else None,
                                     cand.get("q_edge") if cand else None,
                                     cand.get("strategy") if cand else None,
+                                    cand.get("q_calibrated_lcb") if cand else None,
+                                    cand.get("q_calibrated_ucb") if cand else None,
+                                    cand.get("q_calibrated_sigma") if cand else None,
+                                    cand.get("q_calibration_version") if cand else None,
                                 )
                         else:
                             now_iso = utc_now_iso()
@@ -20167,6 +20732,10 @@ def execute_auto_trades(
                                 cand.get("q_calibrated") if cand else None,
                                 cand.get("q_edge") if cand else None,
                                 cand.get("strategy") if cand else None,
+                                cand.get("q_calibrated_lcb") if cand else None,
+                                cand.get("q_calibrated_ucb") if cand else None,
+                                cand.get("q_calibrated_sigma") if cand else None,
+                                cand.get("q_calibration_version") if cand else None,
                             )
                             pending_block = True
                             continue
@@ -20248,6 +20817,10 @@ def execute_auto_trades(
                                     cand.get("q_calibrated") if cand else None,
                                     cand.get("q_edge") if cand else None,
                                     cand.get("strategy") if cand else None,
+                                    cand.get("q_calibrated_lcb") if cand else None,
+                                    cand.get("q_calibrated_ucb") if cand else None,
+                                    cand.get("q_calibrated_sigma") if cand else None,
+                                    cand.get("q_calibration_version") if cand else None,
                                 )
                             if SMS_ENABLED and SMS_RECIPIENT and order_id and next_state == "entry" and not SMS_FILL_ONLY:
                                 when = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -20873,8 +21446,12 @@ def execute_auto_trades(
                             and bid_size_val >= min_exit_size
                         )
                         stop_loss_edge_for_confirm = to_float(
-                            row.get("exec_edge_exit_yes") if side == "YES" else row.get("exec_edge_exit_no")
+                            row.get("hold_edge_realizable_yes") if side == "YES" else row.get("hold_edge_realizable_no")
                         )
+                        if stop_loss_edge_for_confirm is None:
+                            stop_loss_edge_for_confirm = to_float(
+                            row.get("exec_edge_exit_yes") if side == "YES" else row.get("exec_edge_exit_no")
+                            )
                         if stop_loss_edge_for_confirm is None:
                             stop_loss_edge_for_confirm = to_float(
                                 row.get("exit_edge_min_yes") if side == "YES" else row.get("exit_edge_min_no")
@@ -20883,15 +21460,26 @@ def execute_auto_trades(
                             stop_loss_edge_for_confirm = to_float(
                                 row.get("signal_edge_min") if side == "YES" else row.get("signal_edge_min_no")
                             )
-                        stop_loss_edge_confirm_ok = (
-                            (not stop_loss_edge_confirm_enabled)
-                            or (
-                                stop_loss_edge_for_confirm is not None
-                                and math.isfinite(stop_loss_edge_for_confirm)
-                                and stop_loss_edge_for_confirm
-                                <= stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
-                            )
+                        stop_loss_metric_missing = not (
+                            stop_loss_edge_for_confirm is not None
+                            and math.isfinite(stop_loss_edge_for_confirm)
                         )
+                        if (
+                            stop_loss_edge_confirm_enabled
+                            and stop_loss_metric_missing
+                            and stop_loss_edge_confirm_fail_open_on_missing
+                        ):
+                            stop_loss_edge_confirm_ok = True
+                        else:
+                            stop_loss_edge_confirm_ok = (
+                                (not stop_loss_edge_confirm_enabled)
+                                or (
+                                    stop_loss_edge_for_confirm is not None
+                                    and math.isfinite(stop_loss_edge_for_confirm)
+                                    and stop_loss_edge_for_confirm
+                                    <= stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
+                                )
+                            )
                         stop_loss_trigger = (depth_ok or prev_hit) and stop_loss_edge_confirm_ok
                 depth_block_since = _parse_depth_block_since(
                     str(prev_last_status or ""),
@@ -24658,13 +25246,49 @@ def build_token_map_latest_runs(conn: sqlite3.Connection) -> Dict[str, Dict[str,
     return token_map
 
 
+def _force_clear_expired_positions(conn: sqlite3.Connection, *, now_iso: Optional[str] = None) -> int:
+    if not _env_bool("PM_AUTO_TRADE_EXPIRED_FORCE_CLEAR_ENABLED", True):
+        return 0
+    now_iso_final = str(now_iso or utc_now_iso())
+    today_utc = datetime.now(timezone.utc).date().isoformat()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE edge_trades
+            SET position_size = 0,
+                state = 'exit',
+                last_order_id = '',
+                last_action = ?,
+                last_action_at = ?,
+                last_status = 'no_position',
+                last_error = '',
+                exit_skip_reason = NULL,
+                exit_skip_detail = NULL,
+                exit_skip_at = NULL,
+                updated_at = ?
+            WHERE COALESCE(position_size, 0) > ?
+              AND COALESCE(event_date, '') <> ''
+              AND substr(event_date, 1, 10) < ?
+            """,
+            (
+                "expired_force_clear",
+                now_iso_final,
+                now_iso_final,
+                TIME_EDGE_Q_EPS,
+                today_utc,
+            ),
+        )
+    except sqlite3.OperationalError:
+        return 0
+    return int(cur.rowcount or 0)
+
+
 def sync_positions_to_db(
     conn: sqlite3.Connection,
     positions_by_token: Dict[str, Dict[str, Optional[float]]],
 ) -> int:
     token_map = build_token_map_latest_runs(conn)
-    if not token_map:
-        return 0
     key_to_token = {
         (meta["slug"], meta["event_date"], meta["outcome"], meta["side"]): token
         for token, meta in token_map.items()
@@ -24688,13 +25312,20 @@ def sync_positions_to_db(
                     last_action = ?,
                     last_action_at = ?,
                     last_status = 'no_position',
-                    last_error = ''
-                WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ? AND position_size > 0
+                    last_error = '',
+                    updated_at = ?
+                WHERE slug = ?
+                  AND (event_date = ? OR substr(event_date, 1, 10) = ?)
+                  AND outcome = ?
+                  AND side = ?
+                  AND position_size > 0
                 """,
                 (
                     "pos_sync_clear",
                     now_iso,
+                    now_iso,
                     mapping["slug"],
+                    mapping["event_date"],
                     mapping["event_date"],
                     mapping["outcome"],
                     mapping["side"],
@@ -24713,8 +25344,12 @@ def sync_positions_to_db(
                 last_action = ?,
                 last_action_at = ?,
                 last_status = ?,
-                last_error = ''
-            WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
+                last_error = '',
+                updated_at = ?
+            WHERE slug = ?
+              AND (event_date = ? OR substr(event_date, 1, 10) = ?)
+              AND outcome = ?
+              AND side = ?
             """,
             (
                 size,
@@ -24723,7 +25358,9 @@ def sync_positions_to_db(
                 "pos_sync",
                 now_iso,
                 "pos_sync",
+                now_iso,
                 mapping["slug"],
+                mapping["event_date"],
                 mapping["event_date"],
                 mapping["outcome"],
                 mapping["side"],
@@ -24742,19 +25379,27 @@ def sync_positions_to_db(
                     last_action = ?,
                     last_action_at = ?,
                     last_status = 'no_position',
-                    last_error = ''
-                WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ? AND position_size > 0
+                    last_error = '',
+                    updated_at = ?
+                WHERE slug = ?
+                  AND (event_date = ? OR substr(event_date, 1, 10) = ?)
+                  AND outcome = ?
+                  AND side = ?
+                  AND position_size > 0
                 """,
                 (
                     "pos_sync_clear",
                     now_iso,
+                    now_iso,
                     slug,
+                    event_date,
                     event_date,
                     outcome,
                     side,
                 ),
             )
             updated += cur.rowcount
+    updated += _force_clear_expired_positions(conn, now_iso=now_iso)
     conn.commit()
     return updated
 
@@ -31585,8 +32230,17 @@ def run_trade_sync_for_date(
     if POSITIONS_SYNC_ENABLED:
         with open_db() as conn:
             positions_by_token, pos_error = fetch_positions_by_token(force=True)
-            if positions_by_token:
+            if not pos_error or positions_by_token:
                 pos_updated = sync_positions_to_db(conn, positions_by_token)
+            else:
+                pos_updated = _force_clear_expired_positions(conn)
+                if pos_updated > 0:
+                    conn.commit()
+    else:
+        with open_db() as conn:
+            pos_updated = _force_clear_expired_positions(conn)
+            if pos_updated > 0:
+                conn.commit()
     try:
         mirror_summary = run_mirror_follow_trades_with_auto_refresh(run_date)
     except Exception as exc:
@@ -35098,6 +35752,114 @@ def init_db() -> None:
     )
     cur.execute(
         """
+        CREATE TABLE IF NOT EXISTS calibration_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER,
+            decision_id INTEGER,
+            run_date TEXT,
+            slug TEXT,
+            event_date TEXT,
+            outcome TEXT,
+            side TEXT,
+            strategy TEXT,
+            q_raw REAL,
+            q_calibrated REAL,
+            q_calibrated_lcb REAL,
+            q_calibrated_ucb REAL,
+            q_calibrated_sigma REAL,
+            spread REAL,
+            depth_ratio REAL,
+            tick_age_sec REAL,
+            days_to_event REAL,
+            segment_key TEXT,
+            bundle_version TEXT,
+            details_json TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_samples_decision
+        ON calibration_samples(decision_id)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_calibration_samples_key_created
+        ON calibration_samples(slug, event_date, outcome, side, created_at DESC)
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS calibration_labels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sample_id INTEGER,
+            decision_id INTEGER,
+            slug TEXT,
+            event_date TEXT,
+            outcome TEXT,
+            side TEXT,
+            label INTEGER,
+            label_source TEXT,
+            realized_pnl REAL,
+            path_hit INTEGER,
+            path_timeout INTEGER,
+            path_adverse INTEGER,
+            state TEXT,
+            resolved_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_labels_sample
+        ON calibration_labels(sample_id)
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_labels_decision
+        ON calibration_labels(decision_id)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_calibration_labels_key
+        ON calibration_labels(slug, event_date, outcome, side, resolved_at DESC)
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS calibration_eval_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_version TEXT,
+            bundle_path TEXT,
+            sample_n INTEGER,
+            label_n INTEGER,
+            ece REAL,
+            brier REAL,
+            logloss REAL,
+            psi REAL,
+            roi_mean REAL,
+            roi_lcb REAL,
+            champion INTEGER,
+            promoted INTEGER,
+            status TEXT,
+            notes_json TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_calibration_eval_runs_created
+        ON calibration_eval_runs(created_at DESC)
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS feedback_snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             kind TEXT NOT NULL,
@@ -35315,6 +36077,10 @@ def init_db() -> None:
     ensure_column(conn, "edge_trades", "last_fill_at", "TEXT")
     ensure_column(conn, "auto_orders", "q_raw", "REAL")
     ensure_column(conn, "auto_orders", "q_calibrated", "REAL")
+    ensure_column(conn, "auto_orders", "q_calibrated_lcb", "REAL")
+    ensure_column(conn, "auto_orders", "q_calibrated_ucb", "REAL")
+    ensure_column(conn, "auto_orders", "q_calibrated_sigma", "REAL")
+    ensure_column(conn, "auto_orders", "q_calibration_version", "TEXT")
     ensure_column(conn, "auto_orders", "q_edge", "REAL")
     ensure_column(conn, "auto_orders", "order_type", "TEXT")
     ensure_column(conn, "auto_orders", "order_status", "TEXT")
@@ -40583,21 +41349,102 @@ def analyze_event(
     platt_enabled = bool(isinstance(q_platt, dict) and q_platt.get("enabled"))
     if platt_a is None or platt_b is None or not math.isfinite(platt_a) or not math.isfinite(platt_b):
         platt_enabled = False
+    q_cal_runtime_enabled = _env_bool("PM_Q_CALIBRATION_RUNTIME_ENABLED", True)
+    q_cal_use_lcb_for_entry = _env_bool("PM_Q_CALIB_USE_LCB_FOR_ENTRY", False)
+    q_calibration_bundle_path = str(
+        os.environ.get("PM_Q_CALIBRATION_BUNDLE_PATH")
+        or (DATA_DIR / "q_calibration_bundle.json")
+    ).strip()
+    q_calibration_z = _env_float("PM_Q_CALIBRATION_Z")
+    if q_calibration_z is not None and (not math.isfinite(q_calibration_z) or q_calibration_z <= 0):
+        q_calibration_z = None
+    q_cal_runtime_bundle: Dict[str, Any] = {}
+    q_cal_runtime_bundle_ready = False
+    if q_cal_runtime_enabled and q_calibration_bundle_path:
+        q_cal_runtime_bundle = load_q_calibration_bundle(q_calibration_bundle_path)
+        q_cal_runtime_bundle_ready = bool(
+            isinstance(q_cal_runtime_bundle, dict)
+            and q_cal_runtime_bundle
+            and q_cal_runtime_bundle.get("enabled", True)
+        )
+
     cal_sum = 0.0
-    if platt_enabled and pre_items:
+    cal_sum_lcb = 0.0
+    cal_sum_ucb = 0.0
+    runtime_days_to_event = float(days_to_event) if days_to_event is not None and math.isfinite(days_to_event) else None
+    runtime_decision_ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if pre_items:
         for pre in pre_items:
             q_raw_val = to_float((pre.get("q") or {}).get("q_raw"))
-            cal_unnorm = _platt_predict(q_raw_val, platt_a, platt_b) if q_raw_val is not None else None
-            pre["q_cal_unnorm"] = cal_unnorm
+            runtime_meta: Dict[str, Any] = {}
+            if q_cal_runtime_bundle_ready and q_raw_val is not None:
+                runtime_meta = predict_q_calibrated(
+                    q_raw=q_raw_val,
+                    bundle=q_cal_runtime_bundle,
+                    days_to_event=runtime_days_to_event,
+                    decision_ts=runtime_decision_ts,
+                    z_value=q_calibration_z,
+                )
+            if runtime_meta:
+                pre["q_cal_unnorm"] = to_float(runtime_meta.get("q_calibrated_mean"))
+                pre["q_cal_lcb_unnorm"] = to_float(runtime_meta.get("q_calibrated_lcb"))
+                pre["q_cal_ucb_unnorm"] = to_float(runtime_meta.get("q_calibrated_ucb"))
+                pre["q_calibrated_sigma"] = to_float(runtime_meta.get("q_calibrated_sigma"))
+                pre["q_calibration_version"] = str(runtime_meta.get("q_calibration_version") or "")
+                pre["q_calibration_segment_key"] = str(runtime_meta.get("q_calibration_segment_key") or "")
+                pre["q_calibration_segment_used"] = str(runtime_meta.get("q_calibration_segment_used") or "")
+                pre["q_calibration_source"] = str(runtime_meta.get("q_calibrated_source") or "")
+            else:
+                cal_unnorm = _platt_predict(q_raw_val, platt_a, platt_b) if (platt_enabled and q_raw_val is not None) else None
+                pre["q_cal_unnorm"] = cal_unnorm
+                pre["q_cal_lcb_unnorm"] = None
+                pre["q_cal_ucb_unnorm"] = None
+                pre["q_calibrated_sigma"] = None
+                pre["q_calibration_version"] = ""
+                pre["q_calibration_segment_key"] = ""
+                pre["q_calibration_segment_used"] = ""
+                pre["q_calibration_source"] = "platt" if cal_unnorm is not None else ""
+            cal_unnorm = to_float(pre.get("q_cal_unnorm"))
             if cal_unnorm is not None and math.isfinite(cal_unnorm) and cal_unnorm > 0:
                 cal_sum += float(cal_unnorm)
-    if platt_enabled and cal_sum > 0:
+            cal_lcb_unnorm = to_float(pre.get("q_cal_lcb_unnorm"))
+            if cal_lcb_unnorm is not None and math.isfinite(cal_lcb_unnorm) and cal_lcb_unnorm > 0:
+                cal_sum_lcb += float(cal_lcb_unnorm)
+            cal_ucb_unnorm = to_float(pre.get("q_cal_ucb_unnorm"))
+            if cal_ucb_unnorm is not None and math.isfinite(cal_ucb_unnorm) and cal_ucb_unnorm > 0:
+                cal_sum_ucb += float(cal_ucb_unnorm)
+    if cal_sum > 0:
         for pre in pre_items:
             cal_unnorm = to_float(pre.get("q_cal_unnorm"))
             pre["q_calibrated"] = (float(cal_unnorm) / cal_sum) if cal_unnorm is not None and math.isfinite(cal_unnorm) else None
+            cal_lcb_unnorm = to_float(pre.get("q_cal_lcb_unnorm"))
+            if cal_lcb_unnorm is not None and cal_sum_lcb > 0:
+                pre["q_calibrated_lcb"] = float(cal_lcb_unnorm) / float(cal_sum_lcb)
+            else:
+                pre["q_calibrated_lcb"] = None
+            cal_ucb_unnorm = to_float(pre.get("q_cal_ucb_unnorm"))
+            if cal_ucb_unnorm is not None and cal_sum_ucb > 0:
+                pre["q_calibrated_ucb"] = float(cal_ucb_unnorm) / float(cal_sum_ucb)
+            else:
+                pre["q_calibrated_ucb"] = None
+            q_mean = to_float(pre.get("q_calibrated"))
+            q_lcb = to_float(pre.get("q_calibrated_lcb"))
+            q_ucb = to_float(pre.get("q_calibrated_ucb"))
+            if q_mean is not None and q_lcb is not None and q_lcb > q_mean:
+                pre["q_calibrated_lcb"] = q_mean
+                q_lcb = q_mean
+            if q_mean is not None and q_ucb is not None and q_ucb < q_mean:
+                pre["q_calibrated_ucb"] = q_mean
+                q_ucb = q_mean
+            if q_lcb is not None and q_ucb is not None and q_lcb > q_ucb:
+                mid = q_mean if q_mean is not None else max(0.0, min(1.0, (q_lcb + q_ucb) / 2.0))
+                pre["q_calibrated_lcb"] = mid
+                pre["q_calibrated_ucb"] = mid
     else:
         for pre in pre_items:
             pre["q_calibrated"] = None
+            pre["q_calibrated_lcb"] = None
+            pre["q_calibrated_ucb"] = None
 
     exec_spread_weight = _env_float("PM_EXEC_EDGE_SPREAD_WEIGHT")
     if exec_spread_weight is None or not math.isfinite(exec_spread_weight):
@@ -40647,11 +41494,31 @@ def analyze_event(
         q_round_model_spread = pre["q_round_model_spread"]
         q_round_raw = float(q.get("q_raw") or 0.0)
         q_calibrated = to_float(pre.get("q_calibrated"))
+        q_calibrated_lcb = to_float(pre.get("q_calibrated_lcb"))
+        q_calibrated_ucb = to_float(pre.get("q_calibrated_ucb"))
+        q_calibrated_sigma = to_float(pre.get("q_calibrated_sigma"))
+        q_calibration_version = str(pre.get("q_calibration_version") or "")
+        q_calibration_source = str(pre.get("q_calibration_source") or "")
+        q_calibration_segment_key = str(pre.get("q_calibration_segment_key") or "")
+        q_calibration_segment_used = str(pre.get("q_calibration_segment_used") or "")
         q_round_no = 1.0 - q_round_raw
         q_raw_no = 1.0 - q_round_raw
-        q_entry_yes = q_calibrated if q_calibrated is not None else q_round_raw
+        q_entry_yes = (
+            q_calibrated_lcb
+            if q_cal_use_lcb_for_entry and q_calibrated_lcb is not None
+            else q_calibrated
+        )
+        if q_entry_yes is None:
+            q_entry_yes = q_round_raw
         q_calibrated_no = (1.0 - q_calibrated) if q_calibrated is not None else None
-        q_entry_no = q_calibrated_no if q_calibrated_no is not None else q_round_no
+        q_calibrated_lcb_no = (1.0 - q_calibrated_ucb) if q_calibrated_ucb is not None else None
+        q_calibrated_ucb_no = (1.0 - q_calibrated_lcb) if q_calibrated_lcb is not None else None
+        q_entry_no_base = (
+            q_calibrated_lcb_no
+            if q_cal_use_lcb_for_entry and q_calibrated_lcb_no is not None
+            else q_calibrated_no
+        )
+        q_entry_no = q_entry_no_base if q_entry_no_base is not None else q_round_no
         # "q_edge" is the raw signal probability used for edge_points / edge_score.
         q_edge = q_round_raw
         q_edge_no = q_round_no
@@ -42120,9 +42987,19 @@ def analyze_event(
                 "q_round": q["q_round"],
                 "q_raw": q["q_raw"],
                 "q_calibrated": q_calibrated,
+                "q_calibrated_lcb": q_calibrated_lcb,
+                "q_calibrated_ucb": q_calibrated_ucb,
+                "q_calibrated_sigma": q_calibrated_sigma,
+                "q_calibration_version": q_calibration_version,
+                "q_calibration_source": q_calibration_source,
+                "q_calibration_segment_key": q_calibration_segment_key,
+                "q_calibration_segment_used": q_calibration_segment_used,
                 "q_calibrated_no": q_calibrated_no,
+                "q_calibrated_lcb_no": q_calibrated_lcb_no,
+                "q_calibrated_ucb_no": q_calibrated_ucb_no,
                 "q_entry": q_entry_yes,
                 "q_entry_no": q_entry_no,
+                "q_entry_mode": "q_calibrated_lcb" if q_cal_use_lcb_for_entry else "q_calibrated_mean",
                 "q_edge": q_edge,
                 "q_edge_no": q_edge_no,
                 "q_floor": q["q_floor"],
@@ -42301,7 +43178,11 @@ def analyze_event(
         "model_cache_freshness": model_cache_freshness,
         "weights": weights,
         "q_calibration": {
-            "method": "platt",
+            "method": (
+                "runtime_segmented_platt"
+                if q_cal_runtime_bundle_ready
+                else "platt"
+            ),
             "days": int(q_platt.get("days") or Q_PLATT_DAYS) if isinstance(q_platt, dict) else Q_PLATT_DAYS,
             "enabled": bool(q_platt.get("enabled")) if isinstance(q_platt, dict) else False,
             "stable_ok": bool(q_platt.get("stable_ok")) if isinstance(q_platt, dict) else False,
@@ -42311,6 +43192,21 @@ def analyze_event(
             "event_count": int(q_platt.get("event_count") or 0) if isinstance(q_platt, dict) else 0,
             "sample_count": int(q_platt.get("sample_count") or 0) if isinstance(q_platt, dict) else 0,
             "generated_at": str(q_platt.get("generated_at") or "") if isinstance(q_platt, dict) else "",
+            "runtime_enabled": bool(q_cal_runtime_enabled),
+            "runtime_ready": bool(q_cal_runtime_bundle_ready),
+            "runtime_bundle_path": q_calibration_bundle_path,
+            "runtime_bundle_version": (
+                str(q_cal_runtime_bundle.get("version") or "")
+                if isinstance(q_cal_runtime_bundle, dict)
+                else ""
+            ),
+            "runtime_bundle_generated_at": (
+                str(q_cal_runtime_bundle.get("generated_at") or "")
+                if isinstance(q_cal_runtime_bundle, dict)
+                else ""
+            ),
+            "entry_use_lcb": bool(q_cal_use_lcb_for_entry),
+            "entry_mode": "q_calibrated_lcb" if q_cal_use_lcb_for_entry else "q_calibrated_mean",
         },
         "rows": rows,
         "city_most_likely_label": city_most_likely_label,

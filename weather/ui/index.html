@@ -7567,6 +7567,12 @@
       gap:9px;
       min-width:0;
     }
+    .lcb-kpi-card.is-emphasis {
+      border-color:color-mix(in srgb, var(--tone-info-border-soft) 75%, var(--border-soft));
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--tone-info-bg-soft) 46%, transparent) 0%, rgba(255,255,255,.015) 100%);
+      box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--tone-info-border-soft) 45%, transparent);
+    }
     .lcb-kpi-card-title {
       font-family:"Fraunces", "Noto Sans SC", serif;
       font-size:14px;
@@ -7621,6 +7627,20 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
+    .lcb-kpi-card.is-emphasis .lcb-kpi-cell-main {
+      font-size:28px;
+      font-weight:800;
+    }
+    .lcb-kpi-card.is-emphasis .lcb-kpi-cell-main.is-pct {
+      font-size:24px;
+    }
+    .lcb-kpi-card.is-emphasis .lcb-kpi-cell-sub {
+      white-space:normal;
+      line-height:1.22;
+      min-height:2.25em;
+      overflow:visible;
+      text-overflow:clip;
+    }
     .lcb-kpi-card-foot {
       font-size:11px;
       color:var(--muted);
@@ -7641,6 +7661,12 @@
       }
       .lcb-kpi-cell-main.is-pct {
         font-size:18px;
+      }
+      .lcb-kpi-card.is-emphasis .lcb-kpi-cell-main {
+        font-size:23px;
+      }
+      .lcb-kpi-card.is-emphasis .lcb-kpi-cell-main.is-pct {
+        font-size:20px;
       }
       .lcb-kpi-card {
         padding:10px 9px 8px;
@@ -20427,6 +20453,15 @@
       );
       const roi7d = toNumSafe(autoTradeStats && autoTradeStats.roi_7d);
       const roiToday = toNumSafe(autoTradeStats && autoTradeStats.today_roi);
+      const netRoiTotalRaw = toNumSafe(
+        lcbSummary.net_roi
+        ?? (autoTradeStats && autoTradeStats.net_roi)
+      );
+      const netRoi7dRaw = toNumSafe(autoTradeStats && autoTradeStats.net_roi_7d);
+      const netRoiTodayRaw = toNumSafe(autoTradeStats && autoTradeStats.net_roi_today);
+      const roiTotalDisplay = Number.isFinite(netRoiTotalRaw) ? netRoiTotalRaw : roiTotal;
+      const roi7dDisplay = Number.isFinite(netRoi7dRaw) ? netRoi7dRaw : roi7d;
+      const roiTodayDisplay = Number.isFinite(netRoiTodayRaw) ? netRoiTodayRaw : roiToday;
       const sumNullable = (...values) => {
         let sum = 0;
         let hit = false;
@@ -20458,6 +20493,8 @@
         const valueFormatter = typeof opts.formatter === 'function' ? opts.formatter : (v) => String(v);
         const valueClassFn = typeof opts.valueClass === 'function' ? opts.valueClass : (() => '');
         const isPct = Boolean(opts.isPct);
+        const cardClass = String(opts.cardClass || '').trim();
+        const cardClassAttr = cardClass ? `lcb-kpi-card ${cardClass}` : 'lcb-kpi-card';
         const cells = periods.map((period) => {
           const rawValue = values[period.key];
           const main = Number.isFinite(rawValue) ? valueFormatter(rawValue) : '—';
@@ -20476,7 +20513,7 @@
         }).join('');
         const foot = String(opts.foot || '').trim();
         return `
-          <div class="lcb-kpi-card">
+          <div class="${cardClassAttr}">
             <div class="lcb-kpi-card-title">${escapeHtml(title)}</div>
             <div class="lcb-kpi-values">${cells}</div>
             ${foot ? `<div class="lcb-kpi-card-foot">${escapeHtml(foot)}</div>` : ''}
@@ -20515,7 +20552,8 @@
           foot: `打平(未计入完成): 今日 ${formatCountValue(completedBreakEvenToday)} · 7天 ${formatCountValue(completedBreakEven7d)} · 总计 ${formatCountValue(completedBreakEvenTotal)}`,
         }),
         buildKpiCard({
-          title: 'PnL',
+          title: '净PnL',
+          cardClass: 'is-emphasis',
           values: {
             today: totalPnlToday,
             seven: totalPnl7d,
@@ -20524,27 +20562,29 @@
           formatter: formatUsdCompact,
           valueClass: toneClass,
           sub: {
-            today: `已实现 ${Number.isFinite(realizedToday) ? formatUsdCompact(realizedToday) : '—'} / 未实现 ${Number.isFinite(unrealizedToday) ? formatUsdCompact(unrealizedToday) : '—'}`,
-            seven: `已实现 ${Number.isFinite(realized7d) ? formatUsdCompact(realized7d) : '—'} / 未实现 ${Number.isFinite(unrealized7d) ? formatUsdCompact(unrealized7d) : '—'}`,
-            total: `已实现 ${Number.isFinite(realizedTotal) ? formatUsdCompact(realizedTotal) : '—'} / 未实现 ${Number.isFinite(unrealizedTotal) ? formatUsdCompact(unrealizedTotal) : '—'}`,
+            today: `已实现 ${Number.isFinite(realizedToday) ? formatUsdCompact(realizedToday) : '—'} · 浮动 ${Number.isFinite(unrealizedToday) ? formatUsdCompact(unrealizedToday) : '—'}`,
+            seven: `已实现 ${Number.isFinite(realized7d) ? formatUsdCompact(realized7d) : '—'} · 浮动 ${Number.isFinite(unrealized7d) ? formatUsdCompact(unrealized7d) : '—'}`,
+            total: `已实现 ${Number.isFinite(realizedTotal) ? formatUsdCompact(realizedTotal) : '—'} · 浮动 ${Number.isFinite(unrealizedTotal) ? formatUsdCompact(unrealizedTotal) : '—'}`,
           },
-          foot: '单位: USDC',
+          foot: '净PnL = 正PnL - 负PnL = 已实现净 + 未实现(浮动) · 单位: USDC',
         }),
         buildKpiCard({
-          title: 'ROI',
+          title: '净ROI',
+          cardClass: 'is-emphasis',
           values: {
-            today: roiToday,
-            seven: roi7d,
-            total: roiTotal,
+            today: roiTodayDisplay,
+            seven: roi7dDisplay,
+            total: roiTotalDisplay,
           },
           formatter: (value) => formatPercentValue(value, 2),
           valueClass: toneClass,
           isPct: true,
           sub: {
-            today: '已实现 ROI',
-            seven: '已实现 ROI',
-            total: '已实现 ROI',
+            today: '净ROI(含浮动)',
+            seven: '净ROI(含浮动)',
+            total: '净ROI(含浮动)',
           },
+          foot: '净ROI = 净PnL / (已实现成本 + 在仓成本)',
         }),
       ].join('');
       const hitHighlightHtml = `
@@ -23524,6 +23564,10 @@
         const num = toNum(value);
         return Number.isFinite(num) ? formatUsdCompact(num) : '—';
       };
+      const fmtNum = (value, decimals = 4) => {
+        const num = toNum(value);
+        return Number.isFinite(num) ? num.toFixed(decimals) : '—';
+      };
       const traceDate = String(trace.run_date || '').trim();
       const generatedAt = String(trace.generated_at || '').trim();
       const counts = getAutoTradeTraceCounts(traceDate);
@@ -23560,9 +23604,20 @@
       const truthText = truthSource === 'positions_api_funder'
         ? `Funder Positions API${truthAt ? ` · ${formatTime(truthAt)}` : ''}`
         : `降级本地${truthErr ? ` · ${truthErr}` : ''}`;
+      const qCalHealth = (stats.q_calibration_health && typeof stats.q_calibration_health === 'object')
+        ? stats.q_calibration_health
+        : {};
+      const qCalVersion = String(qCalHealth.active_version || '').trim();
+      const qCalSource = String(qCalHealth.source || '').trim() || 'unknown';
+      const qCalStatus = String(qCalHealth.status || '').trim();
+      const qCalTrainAt = String(qCalHealth.last_train_at || '').trim();
+      const qCalEvalAt = String(qCalHealth.last_eval_at || '').trim();
+      const qCalSample = Number(qCalHealth.sample_n_30d || 0);
+      const qCalLabel = Number(qCalHealth.label_n_30d || 0);
+      const qCalPromote = Boolean(qCalHealth.promote_recommended);
       card.innerHTML = `
         <div class="advantage-title">评分与偏差校正（LCB最小监控）</div>
-        <div class="advantage-meta">仅保留 4 项：达标率、阻断Top、成交表现、持仓真值</div>
+        <div class="advantage-meta">仅保留 5 项：达标率、阻断Top、成交表现、持仓真值、校准健康</div>
         <div class="scoreboard-grid">
           <div class="scoreboard-block span-3">
             <div class="scoreboard-title">LCB门禁转化</div>
@@ -23594,6 +23649,16 @@
               <div class="scoreboard-row"><span>真值来源</span><strong>${escapeHtml(truthText)}</strong></div>
               <div class="scoreboard-row"><span>交易中 / 可赎回</span><strong>${escapeHtml(`${fmtInt(autoTradeStats.open_position_count)} / ${fmtInt(autoTradeStats.open_position_redeemable_count)}`)}</strong></div>
               <div class="scoreboard-row"><span>总持仓</span><strong>${escapeHtml(fmtInt(autoTradeStats.open_position_total_count || autoTradeStats.open_position_count_all))}</strong></div>
+            </div>
+          </div>
+          <div class="scoreboard-block span-3">
+            <div class="scoreboard-title">校准健康</div>
+            <div class="scoreboard-list">
+              <div class="scoreboard-row"><span>版本 / 来源</span><strong>${escapeHtml(`${qCalVersion || '—'} / ${qCalSource}`)}</strong></div>
+              <div class="scoreboard-row"><span>近30天样本 / 标签</span><strong>${escapeHtml(`${fmtInt(qCalSample)} / ${fmtInt(qCalLabel)}`)}</strong></div>
+              <div class="scoreboard-row"><span>Brier / ECE</span><strong>${escapeHtml(`${fmtNum(qCalHealth.brier, 4)} / ${fmtNum(qCalHealth.ece, 4)}`)}</strong></div>
+              <div class="scoreboard-row"><span>最近训练 / 评估</span><strong>${escapeHtml(`${qCalTrainAt ? formatTime(qCalTrainAt) : '—'} / ${qCalEvalAt ? formatTime(qCalEvalAt) : '—'}`)}</strong></div>
+              <div class="scoreboard-row"><span>晋升建议</span><strong>${escapeHtml(qCalPromote ? `建议晋升${qCalStatus ? ` · ${qCalStatus}` : ''}` : (qCalStatus || '保持'))}</strong></div>
             </div>
           </div>
         </div>
