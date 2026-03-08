@@ -19299,6 +19299,10 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
 
         lcb_global_enabled = _cfg_flag("lcb_global_enabled", _env_bool("PM_LCB_GLOBAL_ENABLED", True))
         lcb_global_edge_lcb_min = min(0.10, max(-0.05, _cfg_float("lcb_global_edge_lcb_min", 0.0)))
+        lcb_global_block_d2_plus = _cfg_flag(
+            "lcb_global_block_d2_plus",
+            _env_bool("PM_LCB_GLOBAL_BLOCK_D2_PLUS", True),
+        )
         lcb_global_max_spread = max(0.0, _cfg_float("lcb_global_max_spread", 0.08))
         entry_only_realizable = _cfg_flag("entry_only_realizable", False)
         entry_edge_realizable_min = _cfg_float("entry_edge_realizable_min", 0.0)
@@ -21576,6 +21580,8 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         shadow_band_tail_no_q_min = _ssot_env_float("PM_LCB_BAND_V1_TAIL_NO_Q_MIN", 0.75)
         shadow_band_tail_no_weight = _ssot_env_float("PM_LCB_BAND_V1_TAIL_NO_WEIGHT", 0.60)
         shadow_band_no_legs_max = _ssot_env_int("PM_LCB_BAND_V1_NO_LEGS_MAX", 2)
+        shadow_band_min_settled_events = _ssot_env_int("PM_LCB_BAND_V1_MIN_SETTLED_EVENTS", 30)
+        shadow_band_min_paired_events = _ssot_env_int("PM_LCB_BAND_V1_MIN_PAIRED_SETTLED_EVENTS", 20)
         try:
             shadow_band_width_min_i = int(shadow_band_width_min or 1)
         except (TypeError, ValueError):
@@ -21593,7 +21599,17 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             shadow_band_no_legs_max_i = int(shadow_band_no_legs_max or 2)
         except (TypeError, ValueError):
             shadow_band_no_legs_max_i = 2
+        try:
+            shadow_band_min_settled_events_i = int(shadow_band_min_settled_events or 30)
+        except (TypeError, ValueError):
+            shadow_band_min_settled_events_i = 30
+        try:
+            shadow_band_min_paired_events_i = int(shadow_band_min_paired_events or 20)
+        except (TypeError, ValueError):
+            shadow_band_min_paired_events_i = 20
         shadow_band_no_legs_max_i = max(0, min(4, shadow_band_no_legs_max_i))
+        shadow_band_min_settled_events_i = max(1, min(500, shadow_band_min_settled_events_i))
+        shadow_band_min_paired_events_i = max(1, min(500, shadow_band_min_paired_events_i))
         if shadow_band_leg_lcb_min is None or not math.isfinite(shadow_band_leg_lcb_min):
             shadow_band_leg_lcb_min = 0.003
         if shadow_band_combo_lcb_min is None or not math.isfinite(shadow_band_combo_lcb_min):
@@ -21604,6 +21620,13 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         if shadow_band_tail_no_weight is None or not math.isfinite(shadow_band_tail_no_weight):
             shadow_band_tail_no_weight = 0.35
         shadow_band_tail_no_weight = min(1.0, max(0.0, float(shadow_band_tail_no_weight)))
+        shadow_band_scope_max_days = 1 if lcb_global_block_d2_plus else None
+        run_date_obj = parse_date(run_date_key)
+        shadow_band_timing_filtered = {
+            "past": 0,
+            "d2_plus": 0,
+            "unknown": 0,
+        }
 
         def _shadow_outcome_sort_key(label: str) -> Optional[Tuple[float, float]]:
             label_text = str(label or "").strip()
@@ -21718,7 +21741,36 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         shadow_band_blocked = 0
         shadow_band_events_total = 0
         if shadow_band_enabled:
-            for (slug_key, event_date_key), ctx_item in event_fact_ctx.items():
+            for raw_key, ctx_item in event_fact_ctx.items():
+                if not isinstance(raw_key, tuple) or len(raw_key) != 2:
+                    continue
+                slug_key = str(raw_key[0] or "").strip()
+                event_date_key = date_only(str(raw_key[1] or "").strip())
+                if not slug_key or not event_date_key:
+                    shadow_band_timing_filtered["unknown"] = int(
+                        shadow_band_timing_filtered.get("unknown") or 0
+                    ) + 1
+                    continue
+                event_date_obj = parse_date(event_date_key)
+                if run_date_obj is None or event_date_obj is None:
+                    shadow_band_timing_filtered["unknown"] = int(
+                        shadow_band_timing_filtered.get("unknown") or 0
+                    ) + 1
+                    continue
+                days_to_event = (event_date_obj - run_date_obj).days
+                if days_to_event < 0:
+                    shadow_band_timing_filtered["past"] = int(
+                        shadow_band_timing_filtered.get("past") or 0
+                    ) + 1
+                    continue
+                if (
+                    shadow_band_scope_max_days is not None
+                    and days_to_event > int(shadow_band_scope_max_days)
+                ):
+                    shadow_band_timing_filtered["d2_plus"] = int(
+                        shadow_band_timing_filtered.get("d2_plus") or 0
+                    ) + 1
+                    continue
                 if not isinstance(ctx_item, dict):
                     continue
                 fact_obj = ctx_item.get("fact") if isinstance(ctx_item.get("fact"), dict) else {}
@@ -21915,6 +21967,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     {
                         "slug": str(slug_key or ""),
                         "event_date": date_only(str(event_date_key or "")),
+                        "days_to_event": int(days_to_event),
                         "title": str(fact_obj.get("title") or slug_key),
                         "event_url": str(fact_obj.get("event_url") or ""),
                         "combo_lcb": float(combo_lcb),
@@ -22071,15 +22124,40 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         def _aggregate_paper_roi(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
             est_values: List[float] = []
             realized_values: List[float] = []
+            est_cost_total = 0.0
+            est_pnl_total = 0.0
+            realized_cost_total = 0.0
+            realized_pnl_total = 0.0
             for row in entries:
                 if not isinstance(row, dict):
                     continue
                 est_val = to_float(row.get("paper_roi_est"))
                 if est_val is not None and math.isfinite(est_val):
                     est_values.append(float(est_val))
+                cost_val = to_float(row.get("paper_cost"))
+                est_pnl_val = to_float(row.get("paper_est_pnl"))
+                if (
+                    cost_val is not None
+                    and math.isfinite(cost_val)
+                    and cost_val > TIME_EDGE_Q_EPS
+                    and est_pnl_val is not None
+                    and math.isfinite(est_pnl_val)
+                ):
+                    est_cost_total += float(cost_val)
+                    est_pnl_total += float(est_pnl_val)
                 real_val = to_float(row.get("paper_roi_realized"))
                 if real_val is not None and math.isfinite(real_val):
                     realized_values.append(float(real_val))
+                real_pnl_val = to_float(row.get("paper_realized_pnl"))
+                if (
+                    cost_val is not None
+                    and math.isfinite(cost_val)
+                    and cost_val > TIME_EDGE_Q_EPS
+                    and real_pnl_val is not None
+                    and math.isfinite(real_pnl_val)
+                ):
+                    realized_cost_total += float(cost_val)
+                    realized_pnl_total += float(real_pnl_val)
             est_count = len(est_values)
             realized_count = len(realized_values)
             return {
@@ -22104,6 +22182,36 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "realized_positive_ratio": (
                     float(sum(1 for v in realized_values if v > 0) / realized_count)
                     if realized_count > 0
+                    else None
+                ),
+                "est_cost_total": (
+                    float(est_cost_total)
+                    if est_cost_total > TIME_EDGE_Q_EPS
+                    else None
+                ),
+                "est_pnl_total": (
+                    float(est_pnl_total)
+                    if est_cost_total > TIME_EDGE_Q_EPS
+                    else None
+                ),
+                "est_roi_weighted": (
+                    float(est_pnl_total / est_cost_total)
+                    if est_cost_total > TIME_EDGE_Q_EPS
+                    else None
+                ),
+                "realized_cost_total": (
+                    float(realized_cost_total)
+                    if realized_cost_total > TIME_EDGE_Q_EPS
+                    else None
+                ),
+                "realized_pnl_total": (
+                    float(realized_pnl_total)
+                    if realized_cost_total > TIME_EDGE_Q_EPS
+                    else None
+                ),
+                "realized_roi_weighted": (
+                    float(realized_pnl_total / realized_cost_total)
+                    if realized_cost_total > TIME_EDGE_Q_EPS
                     else None
                 ),
             }
@@ -22163,9 +22271,12 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     total_realized_pnl += (float(payout) - float(ask_val)) * float(weight)
             if total_cost <= TIME_EDGE_Q_EPS:
                 continue
+            entry["paper_cost"] = float(total_cost)
+            entry["paper_est_pnl"] = float(total_edge_lcb)
             entry["paper_roi_est"] = float(total_edge_lcb / total_cost)
             entry["paper_leg_count"] = int(valid_leg_count)
             if settlement_label:
+                entry["paper_realized_pnl"] = float(total_realized_pnl)
                 entry["paper_roi_realized"] = float(total_realized_pnl / total_cost)
                 entry["paper_settled"] = True
             else:
@@ -22188,6 +22299,8 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             entry = dict(payload)
             entry["slug"] = str(event_key[0] or "")
             entry["event_date"] = str(event_key[1] or "")
+            entry["paper_cost"] = float(ask_val)
+            entry["paper_est_pnl"] = float(lcb_val)
             entry["paper_roi_est"] = float(lcb_val / ask_val)
             settlement_label = _event_settlement_label(event_key)
             outcome_label = str(entry.get("outcome") or "").strip()
@@ -22195,6 +22308,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             if settlement_label and outcome_label and side_label in {"YES", "NO"}:
                 win = outcome_label == settlement_label
                 payout = 1.0 if ((side_label == "YES" and win) or (side_label == "NO" and (not win))) else 0.0
+                entry["paper_realized_pnl"] = float(float(payout) - float(ask_val))
                 entry["paper_roi_realized"] = float((float(payout) - float(ask_val)) / float(ask_val))
                 entry["paper_settled"] = True
             else:
@@ -22215,6 +22329,201 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 lcb_event_lcb_mean = float(sum(lcb_values) / len(lcb_values))
         shadow_paper_summary = _aggregate_paper_roi(shadow_band_new_open_entries)
         lcb_paper_summary = _aggregate_paper_roi(lcb_event_entries)
+        shadow_realized_map: Dict[Tuple[str, str], Dict[str, float]] = {}
+        for row in shadow_band_new_open_entries:
+            if not isinstance(row, dict):
+                continue
+            key = (str(row.get("slug") or ""), str(row.get("event_date") or ""))
+            if not key[0] or not key[1]:
+                continue
+            cost_val = to_float(row.get("paper_cost"))
+            pnl_val = to_float(row.get("paper_realized_pnl"))
+            if (
+                cost_val is None
+                or not math.isfinite(cost_val)
+                or cost_val <= TIME_EDGE_Q_EPS
+                or pnl_val is None
+                or not math.isfinite(pnl_val)
+            ):
+                continue
+            shadow_realized_map[key] = {
+                "cost": float(cost_val),
+                "pnl": float(pnl_val),
+                "roi": float(pnl_val) / float(cost_val),
+            }
+        lcb_realized_map: Dict[Tuple[str, str], Dict[str, float]] = {}
+        for row in lcb_event_entries:
+            if not isinstance(row, dict):
+                continue
+            key = (str(row.get("slug") or ""), str(row.get("event_date") or ""))
+            if not key[0] or not key[1]:
+                continue
+            cost_val = to_float(row.get("paper_cost"))
+            pnl_val = to_float(row.get("paper_realized_pnl"))
+            if (
+                cost_val is None
+                or not math.isfinite(cost_val)
+                or cost_val <= TIME_EDGE_Q_EPS
+                or pnl_val is None
+                or not math.isfinite(pnl_val)
+            ):
+                continue
+            lcb_realized_map[key] = {
+                "cost": float(cost_val),
+                "pnl": float(pnl_val),
+                "roi": float(pnl_val) / float(cost_val),
+            }
+
+        paired_realized_keys = set(shadow_realized_map.keys()) & set(lcb_realized_map.keys())
+        paired_shadow_better = 0
+        paired_shadow_worse = 0
+        paired_equal = 0
+        paired_shadow_cost = 0.0
+        paired_shadow_pnl = 0.0
+        paired_lcb_cost = 0.0
+        paired_lcb_pnl = 0.0
+        for key in paired_realized_keys:
+            shadow_row = shadow_realized_map.get(key) or {}
+            lcb_row = lcb_realized_map.get(key) or {}
+            shadow_roi = to_float(shadow_row.get("roi"))
+            lcb_roi = to_float(lcb_row.get("roi"))
+            if shadow_roi is not None and lcb_roi is not None:
+                if float(shadow_roi) > float(lcb_roi) + TIME_EDGE_Q_EPS:
+                    paired_shadow_better += 1
+                elif float(shadow_roi) + TIME_EDGE_Q_EPS < float(lcb_roi):
+                    paired_shadow_worse += 1
+                else:
+                    paired_equal += 1
+            cost_shadow = to_float(shadow_row.get("cost"))
+            pnl_shadow = to_float(shadow_row.get("pnl"))
+            cost_lcb = to_float(lcb_row.get("cost"))
+            pnl_lcb = to_float(lcb_row.get("pnl"))
+            if cost_shadow is not None and math.isfinite(cost_shadow) and cost_shadow > TIME_EDGE_Q_EPS:
+                paired_shadow_cost += float(cost_shadow)
+            if pnl_shadow is not None and math.isfinite(pnl_shadow):
+                paired_shadow_pnl += float(pnl_shadow)
+            if cost_lcb is not None and math.isfinite(cost_lcb) and cost_lcb > TIME_EDGE_Q_EPS:
+                paired_lcb_cost += float(cost_lcb)
+            if pnl_lcb is not None and math.isfinite(pnl_lcb):
+                paired_lcb_pnl += float(pnl_lcb)
+        paired_realized_summary = {
+            "paired_event_count": int(len(paired_realized_keys)),
+            "shadow_better_count": int(paired_shadow_better),
+            "shadow_worse_count": int(paired_shadow_worse),
+            "equal_count": int(paired_equal),
+            "shadow_cost_total": (
+                float(paired_shadow_cost)
+                if paired_shadow_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+            "shadow_pnl_total": (
+                float(paired_shadow_pnl)
+                if paired_shadow_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+            "shadow_roi_weighted": (
+                float(paired_shadow_pnl / paired_shadow_cost)
+                if paired_shadow_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+            "lcb_cost_total": (
+                float(paired_lcb_cost)
+                if paired_lcb_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+            "lcb_pnl_total": (
+                float(paired_lcb_pnl)
+                if paired_lcb_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+            "lcb_roi_weighted": (
+                float(paired_lcb_pnl / paired_lcb_cost)
+                if paired_lcb_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+            "delta_pnl_total": (
+                float(paired_shadow_pnl - paired_lcb_pnl)
+                if (paired_shadow_cost > TIME_EDGE_Q_EPS or paired_lcb_cost > TIME_EDGE_Q_EPS)
+                else None
+            ),
+            "delta_roi_weighted": (
+                float((paired_shadow_pnl / paired_shadow_cost) - (paired_lcb_pnl / paired_lcb_cost))
+                if paired_shadow_cost > TIME_EDGE_Q_EPS and paired_lcb_cost > TIME_EDGE_Q_EPS
+                else None
+            ),
+        }
+        shadow_realized_count = int(shadow_paper_summary.get("realized_event_count") or 0)
+        lcb_realized_count = int(lcb_paper_summary.get("realized_event_count") or 0)
+        paired_realized_count = int(paired_realized_summary.get("paired_event_count") or 0)
+        conclusion_metric_source = ""
+        conclusion_metric_value: Optional[float] = None
+        conclusion_verdict = "insufficient_sample"
+        if (
+            paired_realized_count >= shadow_band_min_paired_events_i
+            and to_float(paired_realized_summary.get("delta_roi_weighted")) is not None
+        ):
+            conclusion_metric_source = "paired_realized_roi_weighted"
+            conclusion_metric_value = float(
+                to_float(paired_realized_summary.get("delta_roi_weighted")) or 0.0
+            )
+        elif (
+            shadow_realized_count >= shadow_band_min_settled_events_i
+            and lcb_realized_count >= shadow_band_min_settled_events_i
+            and to_float((shadow_paper_summary or {}).get("realized_roi_weighted")) is not None
+            and to_float((lcb_paper_summary or {}).get("realized_roi_weighted")) is not None
+        ):
+            conclusion_metric_source = "realized_roi_weighted"
+            conclusion_metric_value = float(
+                to_float(shadow_paper_summary.get("realized_roi_weighted"))
+                - to_float(lcb_paper_summary.get("realized_roi_weighted"))
+            )
+        elif (
+            shadow_realized_count >= shadow_band_min_settled_events_i
+            and lcb_realized_count >= shadow_band_min_settled_events_i
+            and to_float((shadow_paper_summary or {}).get("realized_pnl_total")) is not None
+            and to_float((lcb_paper_summary or {}).get("realized_pnl_total")) is not None
+        ):
+            conclusion_metric_source = "realized_pnl_total"
+            conclusion_metric_value = float(
+                to_float(shadow_paper_summary.get("realized_pnl_total"))
+                - to_float(lcb_paper_summary.get("realized_pnl_total"))
+            )
+        if conclusion_metric_value is not None and math.isfinite(conclusion_metric_value):
+            if conclusion_metric_value > TIME_EDGE_Q_EPS:
+                conclusion_verdict = "shadow_better"
+            elif conclusion_metric_value < -TIME_EDGE_Q_EPS:
+                conclusion_verdict = "shadow_worse"
+            else:
+                conclusion_verdict = "no_diff"
+        conclusion_ready = bool(
+            conclusion_metric_value is not None
+            and math.isfinite(conclusion_metric_value)
+            and conclusion_metric_source
+        )
+        if conclusion_ready:
+            conclusion_reason = "样本达标，可做可比结论"
+        elif paired_realized_count < shadow_band_min_paired_events_i:
+            conclusion_reason = (
+                f"配对已结算样本不足({paired_realized_count}/{shadow_band_min_paired_events_i})"
+            )
+        else:
+            conclusion_reason = (
+                f"已结算样本不足(影子{shadow_realized_count}/{shadow_band_min_settled_events_i},"
+                f" LCB{lcb_realized_count}/{shadow_band_min_settled_events_i})"
+            )
+        shadow_conclusion = {
+            "ready": bool(conclusion_ready),
+            "status": "ready" if conclusion_ready else "pending",
+            "verdict": str(conclusion_verdict),
+            "reason": str(conclusion_reason),
+            "metric_source": str(conclusion_metric_source),
+            "metric_value": float(conclusion_metric_value) if conclusion_metric_value is not None else None,
+            "min_settled_events": int(shadow_band_min_settled_events_i),
+            "min_paired_events": int(shadow_band_min_paired_events_i),
+            "shadow_realized_event_count": int(shadow_realized_count),
+            "lcb_realized_event_count": int(lcb_realized_count),
+            "paired_event_count": int(paired_realized_count),
+        }
         shadow_top = sorted(
             shadow_band_new_open_entries,
             key=lambda entry: float(to_float(entry.get("combo_lcb")) or float("-inf")),
@@ -22232,6 +22541,18 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             "avg_yes_leg_count": _mean_numeric(shadow_band_new_open_entries, "yes_leg_count"),
             "avg_no_lcb": _mean_numeric(shadow_band_new_open_entries, "no_lcb_mean"),
             "avg_no_leg_count": _mean_numeric(shadow_band_new_open_entries, "no_leg_count"),
+            "eligibility": {
+                "run_date": str(run_date_key or ""),
+                "d0_d1_only": bool(lcb_global_block_d2_plus),
+                "max_days_to_event": (
+                    int(shadow_band_scope_max_days)
+                    if shadow_band_scope_max_days is not None
+                    else None
+                ),
+                "filtered_past_total": int(shadow_band_timing_filtered.get("past") or 0),
+                "filtered_d2_plus_total": int(shadow_band_timing_filtered.get("d2_plus") or 0),
+                "filtered_unknown_total": int(shadow_band_timing_filtered.get("unknown") or 0),
+            },
             "params": {
                 "width_min": int(shadow_band_width_min_i),
                 "width_max": int(shadow_band_width_max_i),
@@ -22272,9 +22593,38 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                         and to_float(lcb_paper_summary.get("realized_roi_mean")) is not None
                         else None
                     ),
+                    "est_roi_weighted_diff": (
+                        float(
+                            shadow_paper_summary.get("est_roi_weighted")
+                            - lcb_paper_summary.get("est_roi_weighted")
+                        )
+                        if to_float(shadow_paper_summary.get("est_roi_weighted")) is not None
+                        and to_float(lcb_paper_summary.get("est_roi_weighted")) is not None
+                        else None
+                    ),
+                    "realized_roi_weighted_diff": (
+                        float(
+                            shadow_paper_summary.get("realized_roi_weighted")
+                            - lcb_paper_summary.get("realized_roi_weighted")
+                        )
+                        if to_float(shadow_paper_summary.get("realized_roi_weighted")) is not None
+                        and to_float(lcb_paper_summary.get("realized_roi_weighted")) is not None
+                        else None
+                    ),
+                    "realized_pnl_total_diff": (
+                        float(
+                            shadow_paper_summary.get("realized_pnl_total")
+                            - lcb_paper_summary.get("realized_pnl_total")
+                        )
+                        if to_float(shadow_paper_summary.get("realized_pnl_total")) is not None
+                        and to_float(lcb_paper_summary.get("realized_pnl_total")) is not None
+                        else None
+                    ),
                 },
-                "note": "paper_est=候选LCB按入场成本归一化；paper_realized=仅已结算事件",
+                "note": "paper_est=候选LCB按入场成本归一化；paper_realized=仅已结算事件（建议优先看weighted/paired）",
             },
+            "paired_realized_compare": paired_realized_summary,
+            "conclusion": shadow_conclusion,
             "top_candidates": shadow_top,
             "generated_at": now_text(),
         }

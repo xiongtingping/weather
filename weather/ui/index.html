@@ -27595,12 +27595,42 @@
           const sign = n > 0 ? '+' : '';
           return `${sign}${(n * 100).toFixed(2)}%`;
         };
+        const fmtUsd = (value) => {
+          const n = Number(value);
+          return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—';
+        };
+        const fmtUsdSigned = (value) => {
+          const n = Number(value);
+          if (!Number.isFinite(n)) return '—';
+          const sign = n > 0 ? '+' : '';
+          return `${sign}$${n.toFixed(2)}`;
+        };
         const baseline = shadow.lcb_baseline && typeof shadow.lcb_baseline === 'object'
           ? shadow.lcb_baseline
           : {};
         const cmp = shadow.comparison && typeof shadow.comparison === 'object'
           ? shadow.comparison
           : {};
+        const eligibility = shadow.eligibility && typeof shadow.eligibility === 'object'
+          ? shadow.eligibility
+          : {};
+        const paired = shadow.paired_realized_compare && typeof shadow.paired_realized_compare === 'object'
+          ? shadow.paired_realized_compare
+          : {};
+        const conclusion = shadow.conclusion && typeof shadow.conclusion === 'object'
+          ? shadow.conclusion
+          : {};
+        const verdictLabelMap = {
+          shadow_better: '影子更优',
+          shadow_worse: '影子更弱',
+          no_diff: '效果持平',
+          insufficient_sample: '样本不足',
+        };
+        const metricSourceLabelMap = {
+          paired_realized_roi_weighted: '配对已结算ROI(加权)',
+          realized_roi_weighted: '已结算ROI(加权)',
+          realized_pnl_total: '已结算净PnL',
+        };
         const params = shadow.params && typeof shadow.params === 'object'
           ? shadow.params
           : {};
@@ -27669,13 +27699,25 @@
               影子均值LCB ${fmt4(shadow.avg_combo_lcb)} · LCB均值LCB ${fmt4(baseline.avg_event_lcb)} · YES腿均值 ${fmt4(shadow.avg_yes_leg_count)} · NO腿均值 ${fmt4(shadow.avg_no_leg_count)}
             </div>
             <div class="auto-trade-blocker-summary">
-              Paper估计ROI：影子 ${fmtRoi(shadowPaper.est_roi_mean)}（${fmtInt(shadowPaper.est_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.est_roi_mean)}（${fmtInt(lcbPaper.est_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.est_roi_mean_diff)}
+              口径：${eligibility.d0_d1_only ? '仅D0/D1' : '包含D2+'} · 过滤 past ${fmtInt(eligibility.filtered_past_total || 0)} / D2+ ${fmtInt(eligibility.filtered_d2_plus_total || 0)} / 日期异常 ${fmtInt(eligibility.filtered_unknown_total || 0)}
             </div>
             <div class="auto-trade-blocker-summary">
-              Paper已结算ROI：影子 ${fmtRoi(shadowPaper.realized_roi_mean)}（${fmtInt(shadowPaper.realized_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.realized_roi_mean)}（${fmtInt(lcbPaper.realized_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.realized_roi_mean_diff)}
+              Paper估计ROI（加权）：影子 ${fmtRoi(shadowPaper.est_roi_weighted)} · LCB ${fmtRoi(lcbPaper.est_roi_weighted)} · 差值 ${fmtRoiSigned(paperDelta.est_roi_weighted_diff)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              Paper已结算ROI（加权）：影子 ${fmtRoi(shadowPaper.realized_roi_weighted)}（${fmtInt(shadowPaper.realized_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.realized_roi_weighted)}（${fmtInt(lcbPaper.realized_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.realized_roi_weighted_diff)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              已结算净PnL：影子 ${fmtUsd(shadowPaper.realized_pnl_total)} · LCB ${fmtUsd(lcbPaper.realized_pnl_total)} · 差值 ${fmtUsdSigned(paperDelta.realized_pnl_total_diff)}
             </div>
             <div class="auto-trade-blocker-summary">
               影子更优 ${fmtInt(cmp.shadow_better_event_count || 0)} / 更弱 ${fmtInt(cmp.shadow_worse_event_count || 0)} / 持平 ${fmtInt(cmp.shadow_equal_event_count || 0)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              配对已结算（同事件）：${fmtInt(paired.paired_event_count || 0)} · 影子更优 ${fmtInt(paired.shadow_better_count || 0)} / 更弱 ${fmtInt(paired.shadow_worse_count || 0)} / 持平 ${fmtInt(paired.equal_count || 0)} · ROI差 ${fmtRoiSigned(paired.delta_roi_weighted)} · 净PnL差 ${fmtUsdSigned(paired.delta_pnl_total)}
+            </div>
+            <div class="auto-trade-blocker-summary">
+              结论门槛：配对≥${fmtInt(conclusion.min_paired_events || 0)} / 双侧已结算≥${fmtInt(conclusion.min_settled_events || 0)} · 当前：配对${fmtInt(conclusion.paired_event_count || 0)} / 影子${fmtInt(conclusion.shadow_realized_event_count || 0)} / LCB${fmtInt(conclusion.lcb_realized_event_count || 0)} · 结论：${escapeHtml(verdictLabelMap[String(conclusion.verdict || '')] || '待判定')}（${escapeHtml(String(conclusion.reason || ''))}${conclusion.metric_value !== undefined && conclusion.metric_value !== null ? `；${escapeHtml(metricSourceLabelMap[String(conclusion.metric_source || '')] || String(conclusion.metric_source || ''))}=${escapeHtml(fmtRoiSigned(conclusion.metric_value))}` : ''}）
             </div>
             <div class="auto-trade-blocker-summary">
               参数：Band[${fmtInt(params.width_min || 0)},${fmtInt(params.width_max || 0)}] · NO最多${fmtInt(params.no_legs_max || 0)} · 单腿LCB≥${fmt4(params.leg_lcb_min)} · 组合LCB≥${fmt4(params.combo_lcb_min)}
@@ -31710,12 +31752,42 @@
         const sign = n > 0 ? '+' : '';
         return `${sign}${(n * 100).toFixed(2)}%`;
       };
+      const fmtUsd = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—';
+      };
+      const fmtUsdSigned = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '—';
+        const sign = n > 0 ? '+' : '';
+        return `${sign}$${n.toFixed(2)}`;
+      };
       const baseline = shadow.lcb_baseline && typeof shadow.lcb_baseline === 'object'
         ? shadow.lcb_baseline
         : {};
       const cmp = shadow.comparison && typeof shadow.comparison === 'object'
         ? shadow.comparison
         : {};
+      const eligibility = shadow.eligibility && typeof shadow.eligibility === 'object'
+        ? shadow.eligibility
+        : {};
+      const paired = shadow.paired_realized_compare && typeof shadow.paired_realized_compare === 'object'
+        ? shadow.paired_realized_compare
+        : {};
+      const conclusion = shadow.conclusion && typeof shadow.conclusion === 'object'
+        ? shadow.conclusion
+        : {};
+      const verdictLabelMap = {
+        shadow_better: '影子更优',
+        shadow_worse: '影子更弱',
+        no_diff: '效果持平',
+        insufficient_sample: '样本不足',
+      };
+      const metricSourceLabelMap = {
+        paired_realized_roi_weighted: '配对已结算ROI(加权)',
+        realized_roi_weighted: '已结算ROI(加权)',
+        realized_pnl_total: '已结算净PnL',
+      };
       const params = shadow.params && typeof shadow.params === 'object'
         ? shadow.params
         : {};
@@ -31784,13 +31856,25 @@
             影子均值LCB ${fmt4(shadow.avg_combo_lcb)} · LCB均值LCB ${fmt4(baseline.avg_event_lcb)} · YES腿均值 ${fmt4(shadow.avg_yes_leg_count)} · NO腿均值 ${fmt4(shadow.avg_no_leg_count)}
           </div>
           <div class="auto-trade-blocker-summary">
-            Paper估计ROI：影子 ${fmtRoi(shadowPaper.est_roi_mean)}（${fmtInt(shadowPaper.est_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.est_roi_mean)}（${fmtInt(lcbPaper.est_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.est_roi_mean_diff)}
+            口径：${eligibility.d0_d1_only ? '仅D0/D1' : '包含D2+'} · 过滤 past ${fmtInt(eligibility.filtered_past_total || 0)} / D2+ ${fmtInt(eligibility.filtered_d2_plus_total || 0)} / 日期异常 ${fmtInt(eligibility.filtered_unknown_total || 0)}
           </div>
           <div class="auto-trade-blocker-summary">
-            Paper已结算ROI：影子 ${fmtRoi(shadowPaper.realized_roi_mean)}（${fmtInt(shadowPaper.realized_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.realized_roi_mean)}（${fmtInt(lcbPaper.realized_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.realized_roi_mean_diff)}
+            Paper估计ROI（加权）：影子 ${fmtRoi(shadowPaper.est_roi_weighted)} · LCB ${fmtRoi(lcbPaper.est_roi_weighted)} · 差值 ${fmtRoiSigned(paperDelta.est_roi_weighted_diff)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            Paper已结算ROI（加权）：影子 ${fmtRoi(shadowPaper.realized_roi_weighted)}（${fmtInt(shadowPaper.realized_event_count || 0)}） · LCB ${fmtRoi(lcbPaper.realized_roi_weighted)}（${fmtInt(lcbPaper.realized_event_count || 0)}） · 差值 ${fmtRoiSigned(paperDelta.realized_roi_weighted_diff)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            已结算净PnL：影子 ${fmtUsd(shadowPaper.realized_pnl_total)} · LCB ${fmtUsd(lcbPaper.realized_pnl_total)} · 差值 ${fmtUsdSigned(paperDelta.realized_pnl_total_diff)}
           </div>
           <div class="auto-trade-blocker-summary">
             影子更优 ${fmtInt(cmp.shadow_better_event_count || 0)} / 更弱 ${fmtInt(cmp.shadow_worse_event_count || 0)} / 持平 ${fmtInt(cmp.shadow_equal_event_count || 0)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            配对已结算（同事件）：${fmtInt(paired.paired_event_count || 0)} · 影子更优 ${fmtInt(paired.shadow_better_count || 0)} / 更弱 ${fmtInt(paired.shadow_worse_count || 0)} / 持平 ${fmtInt(paired.equal_count || 0)} · ROI差 ${fmtRoiSigned(paired.delta_roi_weighted)} · 净PnL差 ${fmtUsdSigned(paired.delta_pnl_total)}
+          </div>
+          <div class="auto-trade-blocker-summary">
+            结论门槛：配对≥${fmtInt(conclusion.min_paired_events || 0)} / 双侧已结算≥${fmtInt(conclusion.min_settled_events || 0)} · 当前：配对${fmtInt(conclusion.paired_event_count || 0)} / 影子${fmtInt(conclusion.shadow_realized_event_count || 0)} / LCB${fmtInt(conclusion.lcb_realized_event_count || 0)} · 结论：${escapeHtml(verdictLabelMap[String(conclusion.verdict || '')] || '待判定')}（${escapeHtml(String(conclusion.reason || ''))}${conclusion.metric_value !== undefined && conclusion.metric_value !== null ? `；${escapeHtml(metricSourceLabelMap[String(conclusion.metric_source || '')] || String(conclusion.metric_source || ''))}=${escapeHtml(fmtRoiSigned(conclusion.metric_value))}` : ''}）
           </div>
           <div class="auto-trade-blocker-summary">
             参数：Band[${fmtInt(params.width_min || 0)},${fmtInt(params.width_max || 0)}] · NO最多${fmtInt(params.no_legs_max || 0)} · 单腿LCB≥${fmt4(params.leg_lcb_min)} · 组合LCB≥${fmt4(params.combo_lcb_min)}
