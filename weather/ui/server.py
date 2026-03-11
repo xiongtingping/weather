@@ -958,6 +958,7 @@ AUTO_TRADE_UNTRADABLE_PREFILTER_CODES = {
     "market_ask_missing_bid_only",
     "market_ask_missing_no_bid",
     "market_one_sided_thin_book",
+    "market_snapshot_inconsistent",
     "market_spread_missing",
     "orderbook_missing",
     "market_tick_missing",
@@ -2512,6 +2513,12 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         "entry_main_enabled": env_bool("PM_AUTO_TRADE_ENTRY_MAIN_ENABLED", True),
         "entry_follow_enabled": env_bool("PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED", False),
         "lcb_global_enabled": env_bool("PM_LCB_GLOBAL_ENABLED", True),
+        "lcb_global_yes_top_enabled": env_bool("PM_LCB_GLOBAL_YES_TOP_ENABLED", True),
+        "lcb_global_yes_top_budget_ratio": env_float("PM_LCB_GLOBAL_YES_TOP_BUDGET_RATIO", 0.30),
+        "lcb_global_yes_top_market_consist_eps": env_float(
+            "PM_LCB_GLOBAL_YES_TOP_MARKET_CONSIST_EPS",
+            0.02,
+        ),
         "mirror_follow_enabled": env_bool("PM_MIRROR_TRADING_ENABLED", False),
         "entry_main_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_MAIN_SIZE_RATIO", 1.0),
         "entry_yes_top_size_ratio": env_float("PM_AUTO_TRADE_ENTRY_YES_TOP_SIZE_RATIO", 1.0),
@@ -3188,6 +3195,19 @@ def validate_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
             errors.append(f"{label}仓位系数不能为负")
     if flag("lcb_global_enabled") and (num("lcb_global_size_ratio") is not None) and num("lcb_global_size_ratio") <= 0:
         warnings.append("LCB全市场已启用但仓位系数为0，本轮不会新开仓")
+    lcb_yes_top_budget_ratio = num("lcb_global_yes_top_budget_ratio")
+    if lcb_yes_top_budget_ratio is not None:
+        if lcb_yes_top_budget_ratio < 0 or lcb_yes_top_budget_ratio > 1:
+            errors.append("LCB+YES Top 预算占比需在[0,1]")
+    lcb_yes_top_market_consist_eps = num("lcb_global_yes_top_market_consist_eps")
+    if lcb_yes_top_market_consist_eps is not None:
+        if lcb_yes_top_market_consist_eps < 0 or lcb_yes_top_market_consist_eps > 1:
+            errors.append("LCB+YES Top 盘口一致阈值需在[0,1]")
+    if flag("lcb_global_enabled") and flag("lcb_global_yes_top_enabled"):
+        if lcb_yes_top_budget_ratio is not None and lcb_yes_top_budget_ratio <= 0:
+            warnings.append("LCB+YES Top 已启用但预算占比为0，YES Top腿不会分配预算")
+        if lcb_yes_top_budget_ratio is not None and lcb_yes_top_budget_ratio >= 1:
+            warnings.append("LCB+YES Top 预算占比为1，LCB腿不会分配预算")
     if flag("entry_main_enabled") and (num("entry_main_size_ratio") is not None) and num("entry_main_size_ratio") <= 0:
         warnings.append("主策略已启用但仓位系数为0，本轮不会新开仓")
     if flag("entry_yes_top_enabled") and (num("entry_yes_top_size_ratio") is not None) and num("entry_yes_top_size_ratio") <= 0:
@@ -4520,6 +4540,13 @@ def apply_auto_trade_config(payload: Dict[str, Any]) -> None:
     apply_float("lcb_global_signal_lcb_min", "PM_LCB_GLOBAL_SIGNAL_LCB_MIN", 0)
     apply_float("lcb_global_path_lcb_min", "PM_LCB_GLOBAL_PATH_LCB_MIN", 0)
     apply_float("lcb_global_edge_lcb_min", "PM_LCB_GLOBAL_EDGE_LCB_MIN", -0.05)
+    apply_bool("lcb_global_yes_top_enabled", "PM_LCB_GLOBAL_YES_TOP_ENABLED")
+    apply_float("lcb_global_yes_top_budget_ratio", "PM_LCB_GLOBAL_YES_TOP_BUDGET_RATIO", 0)
+    apply_float(
+        "lcb_global_yes_top_market_consist_eps",
+        "PM_LCB_GLOBAL_YES_TOP_MARKET_CONSIST_EPS",
+        0,
+    )
     apply_float("lcb_global_max_spread", "PM_LCB_GLOBAL_MAX_SPREAD", 0)
     apply_float("lcb_global_min_depth_usdc", "PM_LCB_GLOBAL_MIN_DEPTH_USDC", 0)
     apply_float("lcb_global_max_tick_age_sec", "PM_LCB_GLOBAL_MAX_TICK_AGE_SEC", 0)
@@ -8103,6 +8130,10 @@ def compute_auto_trade_daily_stats(
     mirror_follow_keys: Set[Tuple[str, str, str, str]] = set()
     buy_totals: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
     sell_totals: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
+    key_first_buy_date: Dict[Tuple[str, str, str, str], date] = {}
+    key_entry_date_hint: Dict[Tuple[str, str, str, str], date] = {}
+    key_open_cost: Dict[Tuple[str, str, str, str], float] = {}
+    key_unrealized_pnl: Dict[Tuple[str, str, str, str], float] = {}
     sell_today_qty: Dict[Tuple[str, str, str, str], float] = {}
     sell_last_date: Dict[Tuple[str, str, str, str], date] = {}
     sell_fills: List[Dict[str, Any]] = []
@@ -8198,6 +8229,16 @@ def compute_auto_trade_daily_stats(
         out["net_roi"] = None
         out["net_roi_7d"] = None
         out["net_roi_today"] = None
+        out["marginal_roi_curve_7d"] = []
+        out["marginal_roi_latest_7d"] = None
+        out["marginal_roi_median_7d"] = None
+        out["marginal_balance_day_7d"] = ""
+        out["marginal_balance_cost_7d"] = None
+        out["marginal_balance_pnl_7d"] = None
+        out["marginal_balance_key_count_7d"] = 0
+        out["marginal_avg_buy_usdc_7d"] = None
+        out["marginal_recommended_order_usdc_7d"] = None
+        out["marginal_recommended_order_basis_7d"] = ""
         out["lcb_global_summary"] = {
             "start_date": cutoff_text,
             "open_position_count": open_count,
@@ -8483,6 +8524,10 @@ def compute_auto_trade_daily_stats(
                         buy_trade_ids_7d.add(trade_id)
                 cost, qty = buy_totals.get(key, (0.0, 0.0))
                 buy_totals[key] = (cost + price * size, qty + size)
+                buy_date = dt_local.date()
+                first_buy = key_first_buy_date.get(key)
+                if first_buy is None or buy_date < first_buy:
+                    key_first_buy_date[key] = buy_date
                 total_buy_amount += price * size
                 if 0 < price < 1:
                     odds_sum_total += (1 - price) / price
@@ -8819,13 +8864,14 @@ def compute_auto_trade_daily_stats(
                 event_date = date_only(str(event_date_raw or ""))
                 if not slug or not event_date or not outcome or side not in {"YES", "NO"}:
                     continue
+                key_norm = (slug, event_date, outcome, side)
                 pos = to_float(pos_entry.get("position_size"))
                 if pos is None:
                     pos = to_float(pos_entry.get("size"))
                 if pos is None or not math.isfinite(pos) or pos <= TIME_EDGE_Q_EPS:
                     continue
-                row = edge_rows_by_key.get((slug, event_date, outcome, side))
-                if not _is_auto_position_key((slug, event_date, outcome, side), row):
+                row = edge_rows_by_key.get(key_norm)
+                if not _is_auto_position_key(key_norm, row):
                     continue
                 redeemable = bool(_parse_bool(pos_entry.get("redeemable")))
                 avg_override = to_float(pos_entry.get("avg_price"))
@@ -8837,7 +8883,7 @@ def compute_auto_trade_daily_stats(
                 event_date_obj = parse_date(event_date)
                 legacy_cutoff = today - timedelta(days=STATS_OPEN_POSITION_LEGACY_GRACE_DAYS)
                 legacy_by_date = bool(event_date_obj and event_date_obj <= legacy_cutoff)
-                bucket = today_filled_events_map.get((slug, event_date, outcome, side))
+                bucket = today_filled_events_map.get(key_norm)
                 if redeemable:
                     open_position_redeemable_count += 1
                     open_position_total_count += 1
@@ -8863,16 +8909,17 @@ def compute_auto_trade_daily_stats(
                         bucket["position_active"] = False
                     continue
                 if not isinstance(bucket, dict):
-                    bucket = _today_bucket_for_key((slug, event_date, outcome, side))
+                    bucket = _today_bucket_for_key(key_norm)
                 open_position_count += 1
                 open_position_total_count += 1
-                buy_cost, buy_qty = buy_totals.get((slug, event_date, outcome, side), (0.0, 0.0))
+                buy_cost, buy_qty = buy_totals.get(key_norm, (0.0, 0.0))
                 avg_cost = buy_cost / buy_qty if buy_qty > 0 else 0.0
                 if avg_cost <= 0 and avg_override is not None and math.isfinite(avg_override):
                     avg_cost = float(avg_override)
                 position_cost = (avg_cost * float(pos)) if (avg_cost > 0 and math.isfinite(avg_cost)) else 0.0
                 if position_cost > 0:
                     open_cost_total += position_cost
+                    key_open_cost[key_norm] = float(key_open_cost.get(key_norm) or 0.0) + float(position_cost)
                 mark = to_float(row["mark_price"]) if row is not None else None
                 if mark is None:
                     mark = avg_override
@@ -8884,6 +8931,7 @@ def compute_auto_trade_daily_stats(
                 if mark is not None and avg_cost > 0:
                     pnl = (mark - avg_cost) * float(pos)
                     unrealized_total += pnl
+                    key_unrealized_pnl[key_norm] = float(pnl)
                 entry_at_raw = str((row["entry_at"] if row is not None else "") or "")
                 entry_at = parse_iso_ts(entry_at_raw) if entry_at_raw else None
                 if entry_at is not None:
@@ -8896,6 +8944,7 @@ def compute_auto_trade_daily_stats(
                         if entry_local.date() >= (today - timedelta(days=6)):
                             unrealized_7d += pnl
                     entry_date = entry_local.date()
+                    key_entry_date_hint[key_norm] = entry_date
                     if entry_date == today:
                         open_position_count_today += 1
                         if position_cost > 0:
@@ -8963,6 +9012,7 @@ def compute_auto_trade_daily_stats(
                 position_cost = (avg_cost * pos) if (avg_cost > 0 and math.isfinite(avg_cost)) else 0.0
                 if position_cost > 0:
                     open_cost_total += position_cost
+                    key_open_cost[key] = float(key_open_cost.get(key) or 0.0) + float(position_cost)
                 mark = to_float(row["mark_price"])
                 if mark is None:
                     mark = to_float(row["avg_price"])
@@ -8971,6 +9021,7 @@ def compute_auto_trade_daily_stats(
                 if mark is not None and avg_cost > 0:
                     pnl = (mark - avg_cost) * pos
                     unrealized_total += pnl
+                    key_unrealized_pnl[key] = float(pnl)
                 entry_at = parse_iso_ts(str(row["entry_at"] or "")) if "entry_at" in row.keys() else None
                 if entry_at is not None:
                     if entry_at.tzinfo is None:
@@ -8982,6 +9033,7 @@ def compute_auto_trade_daily_stats(
                         if entry_local.date() >= (today - timedelta(days=6)):
                             unrealized_7d += pnl
                     entry_date = entry_local.date()
+                    key_entry_date_hint[key] = entry_date
                     if entry_date == today:
                         open_position_count_today += 1
                         if position_cost > 0:
@@ -9539,6 +9591,96 @@ def compute_auto_trade_daily_stats(
             pass
     except sqlite3.OperationalError:
         pass
+    marginal_roi_curve_7d: List[Dict[str, Any]] = []
+    marginal_roi_latest_7d: Optional[float] = None
+    marginal_roi_median_7d: Optional[float] = None
+    marginal_balance_day_7d = ""
+    marginal_balance_cost_7d: Optional[float] = None
+    marginal_balance_pnl_7d: Optional[float] = None
+    marginal_balance_key_count_7d = 0
+    seven_start = today - timedelta(days=6)
+    seven_dates = [seven_start + timedelta(days=offset) for offset in range(7)]
+    marginal_day_cost: Dict[date, float] = {day: 0.0 for day in seven_dates}
+    marginal_day_pnl: Dict[date, float] = {day: 0.0 for day in seven_dates}
+    marginal_day_keys: Dict[date, int] = {day: 0 for day in seven_dates}
+    tracked_keys = (
+        set(buy_totals.keys())
+        | set(sell_totals.keys())
+        | set(key_open_cost.keys())
+        | set(key_unrealized_pnl.keys())
+    )
+    for key in tracked_keys:
+        buy_cost, buy_qty = buy_totals.get(key, (0.0, 0.0))
+        sell_proceeds, sell_qty = sell_totals.get(key, (0.0, 0.0))
+        realized_cost_key = 0.0
+        realized_pnl_key = 0.0
+        if buy_qty > TIME_EDGE_Q_EPS and sell_qty > TIME_EDGE_Q_EPS:
+            avg_cost = buy_cost / buy_qty if buy_qty > 0 else 0.0
+            matched_qty = min(sell_qty, buy_qty)
+            if matched_qty > TIME_EDGE_Q_EPS:
+                realized_cost_key = avg_cost * matched_qty
+                realized_pnl_key = sell_proceeds - realized_cost_key
+        open_cost_key = float(key_open_cost.get(key) or 0.0)
+        unrealized_pnl_key = float(key_unrealized_pnl.get(key) or 0.0)
+        net_cost_key = realized_cost_key + open_cost_key
+        if net_cost_key <= TIME_EDGE_Q_EPS:
+            continue
+        entry_day = key_first_buy_date.get(key)
+        if entry_day is None:
+            entry_day = key_entry_date_hint.get(key)
+        if entry_day is None or entry_day < seven_start or entry_day > today:
+            continue
+        marginal_day_cost[entry_day] = float(marginal_day_cost.get(entry_day) or 0.0) + float(net_cost_key)
+        marginal_day_pnl[entry_day] = float(marginal_day_pnl.get(entry_day) or 0.0) + float(
+            realized_pnl_key + unrealized_pnl_key
+        )
+        marginal_day_keys[entry_day] = int(marginal_day_keys.get(entry_day) or 0) + 1
+    cumulative_cost = 0.0
+    cumulative_pnl = 0.0
+    cumulative_key_count = 0
+    best_balance_pnl = -float("inf")
+    roi_points: List[float] = []
+    for day in seven_dates:
+        day_cost = float(marginal_day_cost.get(day) or 0.0)
+        day_pnl = float(marginal_day_pnl.get(day) or 0.0)
+        day_key_count = int(marginal_day_keys.get(day) or 0)
+        day_roi = (day_pnl / day_cost) if day_cost > TIME_EDGE_Q_EPS else None
+        cumulative_cost += day_cost
+        cumulative_pnl += day_pnl
+        cumulative_key_count += day_key_count
+        cumulative_roi = (cumulative_pnl / cumulative_cost) if cumulative_cost > TIME_EDGE_Q_EPS else None
+        if day_roi is not None and math.isfinite(day_roi):
+            roi_points.append(float(day_roi))
+            marginal_roi_latest_7d = float(day_roi)
+        curve_row = {
+            "date": day.isoformat(),
+            "day_cost": day_cost,
+            "day_pnl": day_pnl,
+            "day_roi": day_roi,
+            "cumulative_cost": cumulative_cost,
+            "cumulative_pnl": cumulative_pnl,
+            "cumulative_roi": cumulative_roi,
+            "key_count": day_key_count,
+            "cumulative_key_count": cumulative_key_count,
+        }
+        marginal_roi_curve_7d.append(curve_row)
+        if cumulative_cost > TIME_EDGE_Q_EPS and cumulative_key_count > 0 and cumulative_pnl > best_balance_pnl + TIME_EDGE_Q_EPS:
+            best_balance_pnl = cumulative_pnl
+            marginal_balance_day_7d = str(curve_row.get("date") or "")
+            marginal_balance_cost_7d = float(curve_row.get("cumulative_cost") or 0.0)
+            marginal_balance_pnl_7d = float(curve_row.get("cumulative_pnl") or 0.0)
+            marginal_balance_key_count_7d = int(curve_row.get("cumulative_key_count") or 0)
+    if roi_points:
+        sorted_points = sorted(float(v) for v in roi_points if math.isfinite(v))
+        n_points = len(sorted_points)
+        mid = n_points // 2
+        if n_points % 2 == 1:
+            marginal_roi_median_7d = float(sorted_points[mid])
+        else:
+            marginal_roi_median_7d = float((sorted_points[mid - 1] + sorted_points[mid]) / 2.0)
+    marginal_avg_buy_usdc_7d: Optional[float] = None
+    marginal_recommended_order_usdc_7d: Optional[float] = None
+    marginal_recommended_order_basis_7d = ""
     avg_odds_total = odds_sum_total / odds_count_total if odds_count_total else None
     avg_odds_7d = odds_sum_7d / odds_count_7d if odds_count_7d else None
     avg_odds_today = odds_sum_today / odds_count_today if odds_count_today else None
@@ -9583,6 +9725,19 @@ def compute_auto_trade_daily_stats(
     order_count = buy_count_total
     order_count_7d = buy_count_7d
     order_count_today = buy_count
+    if buy_count_7d > 0 and buy_amount_7d > TIME_EDGE_Q_EPS:
+        marginal_avg_buy_usdc_7d = float(buy_amount_7d / float(buy_count_7d))
+    if (
+        marginal_balance_key_count_7d > 0
+        and marginal_balance_cost_7d is not None
+        and math.isfinite(marginal_balance_cost_7d)
+        and marginal_balance_cost_7d > TIME_EDGE_Q_EPS
+    ):
+        marginal_recommended_order_usdc_7d = float(marginal_balance_cost_7d / float(marginal_balance_key_count_7d))
+        marginal_recommended_order_basis_7d = "balance_point_7d"
+    elif marginal_avg_buy_usdc_7d is not None and marginal_avg_buy_usdc_7d > TIME_EDGE_Q_EPS:
+        marginal_recommended_order_usdc_7d = float(marginal_avg_buy_usdc_7d)
+        marginal_recommended_order_basis_7d = "avg_buy_7d"
     missing_count = 0
     missing_examples: List[Dict[str, Any]] = []
     if not strict_mirror_follow:
@@ -9751,6 +9906,16 @@ def compute_auto_trade_daily_stats(
         "net_roi": net_roi,
         "net_roi_7d": net_roi_7d,
         "net_roi_today": net_roi_today,
+        "marginal_roi_curve_7d": marginal_roi_curve_7d,
+        "marginal_roi_latest_7d": marginal_roi_latest_7d,
+        "marginal_roi_median_7d": marginal_roi_median_7d,
+        "marginal_balance_day_7d": marginal_balance_day_7d,
+        "marginal_balance_cost_7d": marginal_balance_cost_7d,
+        "marginal_balance_pnl_7d": marginal_balance_pnl_7d,
+        "marginal_balance_key_count_7d": marginal_balance_key_count_7d,
+        "marginal_avg_buy_usdc_7d": marginal_avg_buy_usdc_7d,
+        "marginal_recommended_order_usdc_7d": marginal_recommended_order_usdc_7d,
+        "marginal_recommended_order_basis_7d": marginal_recommended_order_basis_7d,
         "open_cost_total": open_cost_total,
         "open_cost_7d": open_cost_7d,
         "open_cost_today": open_cost_today,
@@ -9872,6 +10037,16 @@ def compute_auto_trade_daily_stats_fast(conn: sqlite3.Connection) -> Dict[str, A
         "net_roi": None,
         "net_roi_7d": None,
         "net_roi_today": None,
+        "marginal_roi_curve_7d": [],
+        "marginal_roi_latest_7d": None,
+        "marginal_roi_median_7d": None,
+        "marginal_balance_day_7d": "",
+        "marginal_balance_cost_7d": None,
+        "marginal_balance_pnl_7d": None,
+        "marginal_balance_key_count_7d": 0,
+        "marginal_avg_buy_usdc_7d": None,
+        "marginal_recommended_order_usdc_7d": None,
+        "marginal_recommended_order_basis_7d": "",
         "today_filled_events": [],
         "mirror_follow_today": {"count": 0, "placed": 0, "failed": 0, "skipped": 0, "rows": [], "sync": {}},
         "lcb_global_summary": {
@@ -17583,30 +17758,15 @@ def _build_tradeability_gate_snapshot(
                 return float(val)
         return None
 
-    def _b(*vals: Any) -> bool:
-        for raw in vals:
-            if isinstance(raw, bool):
-                return raw
-            if raw is None:
-                continue
-            if isinstance(raw, (int, float)):
-                return bool(raw)
-            txt = str(raw).strip().lower()
-            if txt in {"1", "true", "yes", "on"}:
-                return True
-            if txt in {"0", "false", "no", "off"}:
-                return False
-        return False
-
     eps = float(TIME_EDGE_Q_EPS)
-    p_realize_min_env = _env_float("PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_P_REALIZE_MIN", 0.0)
-    if p_realize_min_env is None or not math.isfinite(p_realize_min_env):
-        p_realize_min_env = 0.0
-    p_realize_min_env = max(0.0, min(1.0, float(p_realize_min_env)))
-    p_converge_min_env = _env_float("PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_P_CONVERGE_MIN", 0.0)
-    if p_converge_min_env is None or not math.isfinite(p_converge_min_env):
-        p_converge_min_env = 0.0
-    p_converge_min_env = max(0.0, min(1.0, float(p_converge_min_env)))
+    signal_lcb_min_env = _env_float("PM_LCB_GLOBAL_SIGNAL_LCB_MIN", 0.0)
+    if signal_lcb_min_env is None or not math.isfinite(signal_lcb_min_env):
+        signal_lcb_min_env = 0.0
+    signal_lcb_min_env = float(signal_lcb_min_env)
+    path_lcb_min_env = _env_float("PM_LCB_GLOBAL_PATH_LCB_MIN", 0.0)
+    if path_lcb_min_env is None or not math.isfinite(path_lcb_min_env):
+        path_lcb_min_env = 0.0
+    path_lcb_min_env = max(0.0, min(1.0, float(path_lcb_min_env)))
 
     edge_lcb_val = _v(
         details.get("edge_tradeability_edge_lcb"),
@@ -17623,74 +17783,60 @@ def _build_tradeability_gate_snapshot(
     )
     if edge_lcb_min is None:
         edge_lcb_min = 0.0
-    edge_lcb_min = max(0.0, float(edge_lcb_min))
+    edge_lcb_min = float(edge_lcb_min)
     edge_lcb_pass = bool(
         edge_lcb_val is not None and math.isfinite(edge_lcb_val) and edge_lcb_val + eps >= edge_lcb_min
     )
     edge_lcb_status = "pass" if edge_lcb_pass else ("missing" if edge_lcb_val is None else "fail")
 
-    p_realize_val = _v(details.get("edge_realizable_p_realize"), entry.get("edge_realizable_p_realize"))
-    p_realize_min = _v(
-        details.get("edge_realizable_p_realize_min"),
-        entry.get("edge_realizable_p_realize_min"),
-        p_realize_min_env,
+    signal_lcb_val = _v(details.get("edge_signal_lcb"), entry.get("edge_signal_lcb"))
+    signal_lcb_min = _v(
+        details.get("edge_tradeability_signal_lcb_min"),
+        entry.get("edge_tradeability_signal_lcb_min"),
+        signal_lcb_min_env,
     )
-    if p_realize_min is None:
-        p_realize_min = 0.0
-    p_realize_min = max(0.0, min(1.0, float(p_realize_min)))
-    p_realize_bypass = _b(
-        details.get("edge_realizable_hq_bypassed_p_realize_min"),
-        details.get("edge_realizable_hq_bypass_p_realize_min"),
-        entry.get("edge_realizable_hq_bypassed_p_realize_min"),
-        entry.get("edge_realizable_hq_bypass_p_realize_min"),
-    )
-    p_realize_enabled = bool(p_realize_min > eps)
-    if p_realize_bypass:
-        p_realize_pass = True
-        p_realize_status = "bypass"
-    elif not p_realize_enabled:
-        p_realize_pass = True
-        p_realize_status = "off"
-    elif p_realize_val is None:
-        p_realize_pass = False
-        p_realize_status = "missing"
+    if signal_lcb_min is None:
+        signal_lcb_min = 0.0
+    signal_lcb_min = float(signal_lcb_min)
+    signal_lcb_enabled = bool(signal_lcb_min > eps)
+    if not signal_lcb_enabled:
+        signal_lcb_pass = True
+        signal_lcb_status = "off"
+    elif signal_lcb_val is None:
+        signal_lcb_pass = False
+        signal_lcb_status = "missing"
     else:
-        p_realize_pass = bool(p_realize_val + eps >= p_realize_min)
-        p_realize_status = "pass" if p_realize_pass else "fail"
+        signal_lcb_pass = bool(signal_lcb_val + eps >= signal_lcb_min)
+        signal_lcb_status = "pass" if signal_lcb_pass else "fail"
 
-    p_converge_val = _v(details.get("edge_realizable_p_converge"), entry.get("edge_realizable_p_converge"))
-    p_converge_min = _v(
-        details.get("edge_realizable_p_converge_min"),
-        entry.get("edge_realizable_p_converge_min"),
-        p_converge_min_env,
+    path_lcb_val = _v(details.get("edge_path_p_reach_lcb"), entry.get("edge_path_p_reach_lcb"))
+    path_lcb_min = _v(
+        details.get("edge_tradeability_path_lcb_min"),
+        entry.get("edge_tradeability_path_lcb_min"),
+        path_lcb_min_env,
     )
-    if p_converge_min is None:
-        p_converge_min = 0.0
-    p_converge_min = max(0.0, min(1.0, float(p_converge_min)))
-    p_converge_bypass = _b(
-        details.get("edge_realizable_hq_bypassed_p_converge_min"),
-        details.get("edge_realizable_hq_bypass_p_converge_min"),
-        entry.get("edge_realizable_hq_bypassed_p_converge_min"),
-        entry.get("edge_realizable_hq_bypass_p_converge_min"),
-    )
-    p_converge_enabled = bool(p_converge_min > eps)
-    if p_converge_bypass:
-        p_converge_pass = True
-        p_converge_status = "bypass"
-    elif not p_converge_enabled:
-        p_converge_pass = True
-        p_converge_status = "off"
-    elif p_converge_val is None:
-        p_converge_pass = False
-        p_converge_status = "missing"
+    if path_lcb_min is None:
+        path_lcb_min = 0.0
+    path_lcb_min = max(0.0, min(1.0, float(path_lcb_min)))
+    path_lcb_enabled = bool(path_lcb_min > eps)
+    if not path_lcb_enabled:
+        path_lcb_pass = True
+        path_lcb_status = "off"
+    elif path_lcb_val is None:
+        path_lcb_pass = False
+        path_lcb_status = "missing"
     else:
-        p_converge_pass = bool(p_converge_val + eps >= p_converge_min)
-        p_converge_status = "pass" if p_converge_pass else "fail"
+        path_lcb_pass = bool(path_lcb_val + eps >= path_lcb_min)
+        path_lcb_status = "pass" if path_lcb_pass else "fail"
 
-    overall_pass = bool(edge_lcb_pass and p_realize_pass and p_converge_pass)
+    overall_pass = bool(edge_lcb_pass and signal_lcb_pass and path_lcb_pass)
     if overall_pass:
         overall_status = "pass"
-    elif edge_lcb_status == "missing" and p_realize_status in {"missing", "off"} and p_converge_status in {"missing", "off"}:
+    elif (
+        edge_lcb_status == "missing"
+        and signal_lcb_status in {"missing", "off"}
+        and path_lcb_status in {"missing", "off"}
+    ):
         overall_status = "missing"
     else:
         overall_status = "fail"
@@ -17703,21 +17849,19 @@ def _build_tradeability_gate_snapshot(
             "pass": edge_lcb_pass,
             "status": edge_lcb_status,
         },
-        "p_realize": {
-            "value": p_realize_val,
-            "min": p_realize_min,
-            "enabled": p_realize_enabled,
-            "bypass": p_realize_bypass,
-            "pass": p_realize_pass,
-            "status": p_realize_status,
+        "signal_lcb": {
+            "value": signal_lcb_val,
+            "min": signal_lcb_min,
+            "enabled": signal_lcb_enabled,
+            "pass": signal_lcb_pass,
+            "status": signal_lcb_status,
         },
-        "p_converge": {
-            "value": p_converge_val,
-            "min": p_converge_min,
-            "enabled": p_converge_enabled,
-            "bypass": p_converge_bypass,
-            "pass": p_converge_pass,
-            "status": p_converge_status,
+        "path_lcb": {
+            "value": path_lcb_val,
+            "min": path_lcb_min,
+            "enabled": path_lcb_enabled,
+            "pass": path_lcb_pass,
+            "status": path_lcb_status,
         },
     }
 
@@ -30665,6 +30809,15 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
         "lcb_global_path_lcb_min": _ssot_env_float("PM_LCB_GLOBAL_PATH_LCB_MIN", 0.10),
         "lcb_global_edge_lcb_min": _ssot_env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN", 0.0),
         "lcb_global_enabled": lcb_global_enabled,
+        "lcb_global_yes_top_enabled": _env_bool("PM_LCB_GLOBAL_YES_TOP_ENABLED", True),
+        "lcb_global_yes_top_budget_ratio": _ssot_env_float(
+            "PM_LCB_GLOBAL_YES_TOP_BUDGET_RATIO",
+            0.30,
+        ),
+        "lcb_global_yes_top_market_consist_eps": _ssot_env_float(
+            "PM_LCB_GLOBAL_YES_TOP_MARKET_CONSIST_EPS",
+            0.02,
+        ),
         "lcb_global_max_spread": _ssot_env_float("PM_LCB_GLOBAL_MAX_SPREAD", 0.08),
         "lcb_global_min_depth_usdc": _ssot_env_float("PM_LCB_GLOBAL_MIN_DEPTH_USDC", 0.0),
         "lcb_global_max_tick_age_sec": _ssot_env_float("PM_LCB_GLOBAL_MAX_TICK_AGE_SEC", 180.0),

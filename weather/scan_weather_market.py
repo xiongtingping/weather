@@ -228,14 +228,90 @@ if os.environ.get("PM_DISABLE_OPEN_METEO_GEOCODE", "1").strip().lower() in {
     OPEN_METEO_GEOCODE_ENABLED = False
 STATION_FORECAST_TTL_SEC = int(os.environ.get("PM_STATION_FORECAST_TTL_SEC", "21600"))
 MODEL_WEIGHT_DAYS = int(os.environ.get("PM_WEIGHT_DAYS", "7"))
+if MODEL_WEIGHT_DAYS < 1:
+    MODEL_WEIGHT_DAYS = 7
+MODEL_BIAS_DAYS = int(os.environ.get("PM_MODEL_BIAS_DAYS", str(MODEL_WEIGHT_DAYS)))
+if MODEL_BIAS_DAYS < 1:
+    MODEL_BIAS_DAYS = MODEL_WEIGHT_DAYS
 WEIGHT_ERROR_SCALE = float(os.environ.get("PM_WEIGHT_ERROR_SCALE", "1.5"))
 WEIGHT_ERROR_MIN_COUNT = int(os.environ.get("PM_WEIGHT_ERROR_MIN_COUNT", "3"))
 WEIGHT_BIAS_SCALE = float(os.environ.get("PM_WEIGHT_BIAS_SCALE", "2.0"))
 WEIGHT_BIAS_MIN_COUNT = int(os.environ.get("PM_WEIGHT_BIAS_MIN_COUNT", str(WEIGHT_ERROR_MIN_COUNT)))
 MODEL_BIAS_MIN_COUNT = int(os.environ.get("PM_MODEL_BIAS_MIN_COUNT", str(WEIGHT_BIAS_MIN_COUNT)))
-PLACE_BIAS_MIN_COUNT = int(os.environ.get("PM_PLACE_BIAS_MIN_COUNT", "7"))
+if MODEL_BIAS_MIN_COUNT < 1:
+    MODEL_BIAS_MIN_COUNT = 1
+PLACE_BIAS_DAYS = int(os.environ.get("PM_PLACE_BIAS_DAYS", "30"))
+if PLACE_BIAS_DAYS < 1:
+    PLACE_BIAS_DAYS = 30
+PLACE_BIAS_MIN_COUNT = int(os.environ.get("PM_PLACE_BIAS_MIN_COUNT", "3"))
+if PLACE_BIAS_MIN_COUNT < 1:
+    PLACE_BIAS_MIN_COUNT = 1
+PLACE_BIAS_APPLY_MIN_COUNT = int(
+    os.environ.get("PM_PLACE_BIAS_APPLY_MIN_COUNT", "2")
+)
+if PLACE_BIAS_APPLY_MIN_COUNT < 1:
+    PLACE_BIAS_APPLY_MIN_COUNT = 1
 PLACE_BIAS_SHRINK_K = float(os.environ.get("PM_PLACE_BIAS_SHRINK_K", "3.0"))
 PLACE_BIAS_CLAMP_C = float(os.environ.get("PM_PLACE_BIAS_CLAMP_C", "3.0"))
+if not math.isfinite(PLACE_BIAS_SHRINK_K) or PLACE_BIAS_SHRINK_K < 0:
+    PLACE_BIAS_SHRINK_K = 3.0
+if not math.isfinite(PLACE_BIAS_CLAMP_C) or PLACE_BIAS_CLAMP_C < 0:
+    PLACE_BIAS_CLAMP_C = 3.0
+BUCKET_AUTO_APPLY_BIAS = os.environ.get("PM_BUCKET_AUTO_APPLY_BIAS", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+BUCKET_VOTE_WEIGHT_EQUAL = float(os.environ.get("PM_BUCKET_VOTE_WEIGHT_EQUAL", "0.0"))
+if not math.isfinite(BUCKET_VOTE_WEIGHT_EQUAL) or BUCKET_VOTE_WEIGHT_EQUAL < 0:
+    BUCKET_VOTE_WEIGHT_EQUAL = 0.0
+BUCKET_VOTE_WEIGHT_AUTO = float(os.environ.get("PM_BUCKET_VOTE_WEIGHT_AUTO", "0.3"))
+if not math.isfinite(BUCKET_VOTE_WEIGHT_AUTO) or BUCKET_VOTE_WEIGHT_AUTO < 0:
+    BUCKET_VOTE_WEIGHT_AUTO = 0.3
+BUCKET_VOTE_WEIGHT_SCENARIO = float(os.environ.get("PM_BUCKET_VOTE_WEIGHT_SCENARIO", "0.7"))
+if not math.isfinite(BUCKET_VOTE_WEIGHT_SCENARIO) or BUCKET_VOTE_WEIGHT_SCENARIO < 0:
+    BUCKET_VOTE_WEIGHT_SCENARIO = 0.7
+BUCKET_VOTE_CONSISTENT_SHARE_MIN = float(
+    os.environ.get("PM_BUCKET_VOTE_CONSISTENT_SHARE_MIN", "0.67")
+)
+if not math.isfinite(BUCKET_VOTE_CONSISTENT_SHARE_MIN):
+    BUCKET_VOTE_CONSISTENT_SHARE_MIN = 0.67
+BUCKET_VOTE_CONSISTENT_SHARE_MIN = max(0.0, min(1.0, BUCKET_VOTE_CONSISTENT_SHARE_MIN))
+BUCKET_MODE_SWITCH_ENABLED = os.environ.get("PM_BUCKET_MODE_SWITCH_ENABLED", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+BUCKET_MODE_SWITCH_DAYS = int(os.environ.get("PM_BUCKET_MODE_SWITCH_DAYS", "30"))
+if BUCKET_MODE_SWITCH_DAYS < 1:
+    BUCKET_MODE_SWITCH_DAYS = 30
+BUCKET_MODE_SWITCH_MIN_SAMPLES = int(os.environ.get("PM_BUCKET_MODE_SWITCH_MIN_SAMPLES", "80"))
+if BUCKET_MODE_SWITCH_MIN_SAMPLES < 1:
+    BUCKET_MODE_SWITCH_MIN_SAMPLES = 80
+BUCKET_MODE_SWITCH_DISABLE_DELTA = float(os.environ.get("PM_BUCKET_MODE_SWITCH_DISABLE_DELTA", "-0.003"))
+if not math.isfinite(BUCKET_MODE_SWITCH_DISABLE_DELTA):
+    BUCKET_MODE_SWITCH_DISABLE_DELTA = -0.003
+BUCKET_MODE_SWITCH_BOOST_DELTA = float(os.environ.get("PM_BUCKET_MODE_SWITCH_BOOST_DELTA", "0.006"))
+if not math.isfinite(BUCKET_MODE_SWITCH_BOOST_DELTA):
+    BUCKET_MODE_SWITCH_BOOST_DELTA = 0.006
+BUCKET_MODE_SWITCH_BOOST_MULT = float(os.environ.get("PM_BUCKET_MODE_SWITCH_BOOST_MULT", "1.2"))
+if not math.isfinite(BUCKET_MODE_SWITCH_BOOST_MULT) or BUCKET_MODE_SWITCH_BOOST_MULT < 0:
+    BUCKET_MODE_SWITCH_BOOST_MULT = 1.2
+BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC = float(
+    os.environ.get("PM_BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC", "2.0")
+)
+if not math.isfinite(BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC) or BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC <= 0:
+    BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC = 2.0
+BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC = float(
+    os.environ.get("PM_BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC", "3600")
+)
+if not math.isfinite(BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC) or BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC < 0:
+    BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC = 3600.0
+BUCKET_MODE_SWITCH_MAX_EVENTS = int(os.environ.get("PM_BUCKET_MODE_SWITCH_MAX_EVENTS", "600"))
+if BUCKET_MODE_SWITCH_MAX_EVENTS < 1:
+    BUCKET_MODE_SWITCH_MAX_EVENTS = 600
 BIAS_SHIFT_CLAMP_RATIO = float(os.environ.get("PM_BIAS_SHIFT_CLAMP_RATIO", "0.2"))
 MAX_TOP_BUCKET_JUMP_RATIO = float(os.environ.get("PM_MAX_TOP_BUCKET_JUMP_RATIO", "1.0"))
 SAVE_MODEL_PROVENANCE = os.environ.get("PM_SAVE_MODEL_PROVENANCE", "1").strip().lower() not in {
@@ -284,6 +360,7 @@ MODEL_CYCLE_DEFAULTS = {
 MODEL_BIAS_CACHE: Dict[str, Dict] = {}
 PLACE_BIAS_CACHE: Dict[str, Dict] = {}
 AUTO_WEIGHT_CACHE: Dict[str, Dict] = {}
+BUCKET_MODE_PERF_CACHE: Dict[str, Dict] = {}
 MODEL_UPDATE_INTERVAL_CACHE: Dict[str, Dict] = {}
 Q_CALIBRATION_BINS = [
     (0.0, 0.02),
@@ -1267,6 +1344,18 @@ def _refresh_auto_trade_config() -> None:
         0,
     )
     _apply_float(
+        "lcb_global_yes_top_budget_ratio",
+        "PM_LCB_GLOBAL_YES_TOP_BUDGET_RATIO",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_yes_top_market_consist_eps",
+        "PM_LCB_GLOBAL_YES_TOP_MARKET_CONSIST_EPS",
+        None,
+        0,
+    )
+    _apply_float(
         "lcb_global_signal_lcb_min",
         "PM_LCB_GLOBAL_SIGNAL_LCB_MIN",
         None,
@@ -1334,6 +1423,12 @@ def _refresh_auto_trade_config() -> None:
     _apply_int(
         "lcb_global_max_open_positions",
         "PM_LCB_GLOBAL_MAX_OPEN_POSITIONS",
+        0,
+    )
+    _apply_float(
+        "lcb_global_daily_loss_stop_usdc",
+        "PM_LCB_GLOBAL_DAILY_LOSS_STOP_USDC",
+        None,
         0,
     )
     _apply_float(
@@ -1476,6 +1571,12 @@ def _refresh_auto_trade_config() -> None:
     _apply_float(
         "stop_loss_edge_confirm_max",
         "PM_AUTO_TRADE_STOP_LOSS_EDGE_CONFIRM_MAX",
+        None,
+        0,
+    )
+    _apply_float(
+        "exit_stop_loss_force_after_sec",
+        "PM_AUTO_TRADE_EXIT_STOP_LOSS_FORCE_AFTER_SEC",
         None,
         0,
     )
@@ -1740,6 +1841,91 @@ def _refresh_auto_trade_config() -> None:
     _apply_float("yes_top_exit_min_hold_sec", "PM_AUTO_TRADE_YES_TOP_EXIT_MIN_HOLD_SEC", None, 0)
     _apply_int("yes_top_exit_model_consensus_min", "PM_AUTO_TRADE_YES_TOP_EXIT_MODEL_CONSENSUS_MIN", 1)
     _apply_int("bucket_loss_streak_block_n", "PM_AUTO_TRADE_BUCKET_LOSS_STREAK_BLOCK_N", 1)
+    _apply_int("weight_days", "PM_WEIGHT_DAYS", 1, "MODEL_WEIGHT_DAYS")
+    _apply_int("model_bias_days", "PM_MODEL_BIAS_DAYS", 1, "MODEL_BIAS_DAYS")
+    _apply_int("model_bias_min_count", "PM_MODEL_BIAS_MIN_COUNT", 1, "MODEL_BIAS_MIN_COUNT")
+    _apply_int("place_bias_days", "PM_PLACE_BIAS_DAYS", 1, "PLACE_BIAS_DAYS")
+    _apply_int("place_bias_min_count", "PM_PLACE_BIAS_MIN_COUNT", 1, "PLACE_BIAS_MIN_COUNT")
+    _apply_int(
+        "place_bias_apply_min_count",
+        "PM_PLACE_BIAS_APPLY_MIN_COUNT",
+        1,
+        "PLACE_BIAS_APPLY_MIN_COUNT",
+    )
+    _apply_float("place_bias_shrink_k", "PM_PLACE_BIAS_SHRINK_K", "PLACE_BIAS_SHRINK_K", 0)
+    _apply_float("place_bias_clamp_c", "PM_PLACE_BIAS_CLAMP_C", "PLACE_BIAS_CLAMP_C", 0)
+    _apply_bool("bucket_auto_apply_bias", "PM_BUCKET_AUTO_APPLY_BIAS")
+    _apply_float(
+        "bucket_vote_weight_equal",
+        "PM_BUCKET_VOTE_WEIGHT_EQUAL",
+        "BUCKET_VOTE_WEIGHT_EQUAL",
+        0,
+    )
+    _apply_float(
+        "bucket_vote_weight_auto",
+        "PM_BUCKET_VOTE_WEIGHT_AUTO",
+        "BUCKET_VOTE_WEIGHT_AUTO",
+        0,
+    )
+    _apply_float(
+        "bucket_vote_weight_scenario",
+        "PM_BUCKET_VOTE_WEIGHT_SCENARIO",
+        "BUCKET_VOTE_WEIGHT_SCENARIO",
+        0,
+    )
+    _apply_float(
+        "bucket_vote_consistent_share_min",
+        "PM_BUCKET_VOTE_CONSISTENT_SHARE_MIN",
+        "BUCKET_VOTE_CONSISTENT_SHARE_MIN",
+        0,
+    )
+    _apply_bool("bucket_mode_switch_enabled", "PM_BUCKET_MODE_SWITCH_ENABLED")
+    _apply_int(
+        "bucket_mode_switch_days",
+        "PM_BUCKET_MODE_SWITCH_DAYS",
+        1,
+        "BUCKET_MODE_SWITCH_DAYS",
+    )
+    _apply_int(
+        "bucket_mode_switch_min_samples",
+        "PM_BUCKET_MODE_SWITCH_MIN_SAMPLES",
+        1,
+        "BUCKET_MODE_SWITCH_MIN_SAMPLES",
+    )
+    _apply_float(
+        "bucket_mode_switch_disable_delta",
+        "PM_BUCKET_MODE_SWITCH_DISABLE_DELTA",
+        "BUCKET_MODE_SWITCH_DISABLE_DELTA",
+    )
+    _apply_float(
+        "bucket_mode_switch_boost_delta",
+        "PM_BUCKET_MODE_SWITCH_BOOST_DELTA",
+        "BUCKET_MODE_SWITCH_BOOST_DELTA",
+    )
+    _apply_float(
+        "bucket_mode_switch_boost_mult",
+        "PM_BUCKET_MODE_SWITCH_BOOST_MULT",
+        "BUCKET_MODE_SWITCH_BOOST_MULT",
+        0,
+    )
+    _apply_float(
+        "bucket_mode_switch_compute_budget_sec",
+        "PM_BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC",
+        "BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC",
+        0,
+    )
+    _apply_float(
+        "bucket_mode_switch_stale_max_age_sec",
+        "PM_BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC",
+        "BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC",
+        0,
+    )
+    _apply_int(
+        "bucket_mode_switch_max_events",
+        "PM_BUCKET_MODE_SWITCH_MAX_EVENTS",
+        1,
+        "BUCKET_MODE_SWITCH_MAX_EVENTS",
+    )
     _apply_float("exit_trend_min_move", "PM_TREND_EXIT_MIN_MOVE", None, 0)
     _apply_float("exit_trend_consist", "PM_TREND_EXIT_CONSIST", None, 0)
     _apply_float("price_trend_min_span_sec", "PM_PRICE_TREND_MIN_SPAN_SEC", None, 0)
@@ -1769,6 +1955,7 @@ def _refresh_auto_trade_config() -> None:
     _apply_bool("entry_main_enabled", "PM_AUTO_TRADE_ENTRY_MAIN_ENABLED")
     _apply_bool("entry_follow_enabled", "PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED")
     _apply_bool("lcb_global_enabled", "PM_LCB_GLOBAL_ENABLED")
+    _apply_bool("lcb_global_yes_top_enabled", "PM_LCB_GLOBAL_YES_TOP_ENABLED")
     _apply_bool("lcb_global_disable_location_block", "PM_LCB_GLOBAL_DISABLE_LOCATION_BLOCK")
     _apply_bool("lcb_global_block_d2_plus", "PM_LCB_GLOBAL_BLOCK_D2_PLUS")
     _apply_bool(
@@ -1833,10 +2020,31 @@ def _refresh_auto_trade_config() -> None:
     _apply_bool("entry_require_edge_score_buy_range", "PM_AUTO_TRADE_ENTRY_REQUIRE_EDGE_SCORE_BUY_RANGE")
     _apply_bool("entry_require_edge_realizable", "PM_AUTO_TRADE_ENTRY_REQUIRE_EDGE_REALIZABLE")
     _apply_bool("entry_require_auto_max_ask", "PM_AUTO_TRADE_ENTRY_REQUIRE_AUTO_MAX_ASK")
+    _apply_bool("edge_lcb_single_judge_mode", "PM_EDGE_LCB_SINGLE_JUDGE_MODE")
     _apply_float("entry_edge_realizable_min", "PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_MIN", None, 0)
     _apply_json(
         "entry_edge_realizable_strategy_overrides",
         "PM_AUTO_TRADE_ENTRY_EDGE_REALIZABLE_STRATEGY_OVERRIDES",
+    )
+    _apply_bool(
+        "confirm_not_found_pending_risk_enabled",
+        "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_RISK_ENABLED",
+    )
+    _apply_json(
+        "confirm_not_found_pending_risk_strategies",
+        "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_RISK_STRATEGIES",
+    )
+    _apply_float(
+        "confirm_not_found_pending_exec_edge_score_max",
+        "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_EXEC_EDGE_SCORE_MAX",
+        None,
+        0,
+    )
+    _apply_float(
+        "confirm_not_found_pending_spread_min",
+        "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_SPREAD_MIN",
+        None,
+        0,
     )
     _apply_json(
         "strategy_realized_edge_strategy_overrides",
@@ -4517,6 +4725,17 @@ def _apply_kelly_size_in_place(
     if not allow_apply:
         candidate["kelly_reason"] = "topup_skip"
         return
+    combo_fixed_size = to_float(candidate.get("lcb_q_combo_fixed_size"))
+    if (
+        bool(candidate.get("lcb_q_combo_enabled"))
+        and bool(candidate.get("lcb_q_combo_selected"))
+        and combo_fixed_size is not None
+        and math.isfinite(combo_fixed_size)
+        and combo_fixed_size > TIME_EDGE_Q_EPS
+    ):
+        candidate["size"] = round(float(combo_fixed_size), 4)
+        candidate["kelly_reason"] = "lcb_q_combo_fixed_size"
+        return
 
     price = to_float(candidate.get("price") or candidate.get("order_price"))
     if price is None or not math.isfinite(price) or price <= TIME_EDGE_Q_EPS:
@@ -6811,6 +7030,79 @@ def _resolve_entry_drawdown_block() -> Tuple[bool, Dict[str, Any]]:
     return entry_drawdown_blocked, entry_drawdown_detail
 
 
+def _resolve_lcb_global_daily_loss_block(run_date: str) -> Tuple[bool, Dict[str, Any]]:
+    blocked = False
+    detail: Dict[str, Any] = {}
+    run_date_key = str(run_date or "").strip().split("T", 1)[0]
+    if not run_date_key:
+        return blocked, detail
+    loss_stop_usdc = _env_float("PM_LCB_GLOBAL_DAILY_LOSS_STOP_USDC")
+    if (
+        loss_stop_usdc is None
+        or not math.isfinite(loss_stop_usdc)
+        or float(loss_stop_usdc) <= 0
+    ):
+        return blocked, detail
+    loss_stop_usdc = float(loss_stop_usdc)
+    daily_realized_pnl: Optional[float] = None
+    closed_count = 0
+    pnl_conn: Optional[sqlite3.Connection] = None
+    try:
+        pnl_conn = open_db()
+        pnl_conn.row_factory = sqlite3.Row
+        pnl_cur = pnl_conn.cursor()
+        day_start = f"{run_date_key} 00:00:00"
+        pnl_cur.execute(
+            """
+            SELECT
+              SUM(COALESCE(t.realized_pnl, 0.0)) AS pnl_sum,
+              COUNT(*) AS trade_count
+            FROM edge_trades t
+            WHERE t.state = 'exit'
+              AND t.realized_pnl IS NOT NULL
+              AND datetime(substr(t.updated_at, 1, 19)) >= datetime(?)
+              AND datetime(substr(t.updated_at, 1, 19)) < datetime(?, '+1 day')
+              AND EXISTS (
+                    SELECT 1
+                    FROM auto_orders ao
+                    WHERE ao.slug = t.slug
+                      AND ao.event_date = t.event_date
+                      AND ao.outcome = t.outcome
+                      AND ao.side = t.side
+                      AND lower(COALESCE(ao.action, '')) = 'entry'
+                      AND lower(COALESCE(ao.strategy, '')) = 'lcb_global'
+              )
+            """,
+            (day_start, day_start),
+        )
+        row = pnl_cur.fetchone()
+        if row:
+            daily_realized_pnl = to_float(row["pnl_sum"])
+            try:
+                closed_count = int(row["trade_count"] or 0)
+            except Exception:
+                closed_count = 0
+    except Exception:
+        daily_realized_pnl = None
+        closed_count = 0
+    finally:
+        try:
+            if pnl_conn is not None:
+                pnl_conn.close()
+        except Exception:
+            pass
+    if daily_realized_pnl is None or not math.isfinite(daily_realized_pnl):
+        daily_realized_pnl = 0.0
+    blocked = float(daily_realized_pnl) <= -float(loss_stop_usdc) + TIME_EDGE_Q_EPS
+    detail = {
+        "run_date": run_date_key,
+        "daily_realized_pnl": float(daily_realized_pnl),
+        "daily_loss_stop_usdc": float(loss_stop_usdc),
+        "closed_count": int(closed_count),
+    }
+    return blocked, detail
+
+
 def notify_edge_signals(
     run_date: str,
     event_date: str,
@@ -7266,6 +7558,16 @@ def execute_auto_trades(
         return f"{float(price_val):.3f}"
 
     entry_drawdown_blocked, entry_drawdown_detail = _resolve_entry_drawdown_block()
+    lcb_global_daily_loss_blocked = False
+    lcb_global_daily_loss_detail: Dict[str, Any] = {}
+    try:
+        lcb_global_daily_loss_blocked, lcb_global_daily_loss_detail = _resolve_lcb_global_daily_loss_block(
+            run_date
+        )
+    except Exception as exc:
+        lcb_global_daily_loss_blocked = False
+        lcb_global_daily_loss_detail = {}
+        print(f"[auto-trade] lcb_global daily-loss check failed {slug} {event_date}: {exc}")
 
     # --- Executable-edge runtime repricing (SSOT for decision-time gates) ---
     # We reprice exec_edge_entry/edge_realizable_score using the *actual order semantics* we will submit:
@@ -7537,6 +7839,93 @@ def execute_auto_trades(
             days_to_event = None
     if days_to_event is not None and days_to_event < 0:
         days_to_event = 0
+    def _hydrate_row_tokens_from_market_cache(rows_ref: List[Dict[str, Any]]) -> None:
+        if not rows_ref or not slug or not event_date_key:
+            return
+        outcome_exact: Dict[str, List[Dict[str, Any]]] = {}
+        outcome_norm: Dict[str, List[Dict[str, Any]]] = {}
+        for row_ref in rows_ref:
+            if not isinstance(row_ref, dict):
+                continue
+            outcome_label = str(row_ref.get("outcome") or "").strip()
+            if not outcome_label:
+                continue
+            outcome_exact.setdefault(outcome_label, []).append(row_ref)
+            outcome_norm_key = _normalize_outcome_key(outcome_label)
+            if outcome_norm_key:
+                outcome_norm.setdefault(outcome_norm_key, []).append(row_ref)
+
+        if not outcome_exact:
+            return
+
+        missing_before = 0
+        for row_ref in rows_ref:
+            if not isinstance(row_ref, dict):
+                continue
+            if not str(row_ref.get("yes_token") or "").strip() or not str(
+                row_ref.get("no_token") or ""
+            ).strip():
+                missing_before += 1
+        if missing_before <= 0:
+            return
+
+        token_rows: List[sqlite3.Row] = []
+        try:
+            init_db()
+            with open_db() as conn_token:
+                conn_token.row_factory = sqlite3.Row
+                cur_token = conn_token.cursor()
+                cur_token.execute(
+                    """
+                    SELECT outcome, yes_token, no_token
+                    FROM market_tokens
+                    WHERE slug = ? AND event_date = ?
+                    """,
+                    (slug, event_date_key),
+                )
+                token_rows = cur_token.fetchall() or []
+        except Exception:
+            token_rows = []
+
+        if not token_rows:
+            return
+
+        for token_row in token_rows:
+            outcome_label = str(token_row["outcome"] or "").strip()
+            if not outcome_label:
+                continue
+            yes_token = str(token_row["yes_token"] or "").strip()
+            no_token = str(token_row["no_token"] or "").strip()
+            matched_rows = outcome_exact.get(outcome_label) or []
+            if not matched_rows:
+                outcome_norm_key = _normalize_outcome_key(outcome_label)
+                if outcome_norm_key:
+                    matched_rows = outcome_norm.get(outcome_norm_key) or []
+            if not matched_rows:
+                continue
+            for row_ref in matched_rows:
+                if yes_token and not str(row_ref.get("yes_token") or "").strip():
+                    row_ref["yes_token"] = yes_token
+                if no_token and not str(row_ref.get("no_token") or "").strip():
+                    row_ref["no_token"] = no_token
+
+        missing_after = 0
+        for row_ref in rows_ref:
+            if not isinstance(row_ref, dict):
+                continue
+            if not str(row_ref.get("yes_token") or "").strip() or not str(
+                row_ref.get("no_token") or ""
+            ).strip():
+                missing_after += 1
+        recovered = max(0, missing_before - missing_after)
+        if recovered > 0:
+            print(
+                "[auto-trade] token hydration "
+                f"slug={slug} event_date={event_date_key} recovered={recovered} "
+                f"missing_after={missing_after}"
+            )
+
+    _hydrate_row_tokens_from_market_cache(rows)
     slug_lc = slug.strip().lower()
     title_lc = title.strip().lower()
     is_highest_temperature_event = (
@@ -7786,6 +8175,32 @@ def execute_auto_trades(
             "edge_realizable_hq_signal_lcb_min",
             "edge_realizable_hq_path_lcb_min",
             "edge_realizable_hq_edge_lcb_min",
+            "lcb_yes_top_budget_ratio",
+            "lcb_yes_top_market_consist_eps",
+            "lcb_yes_top_q_market_gap",
+            "lcb_q_combo_weight",
+            "lcb_q_combo_weight_exec",
+            "lcb_q_combo_event_budget_usdc",
+            "lcb_q_combo_existing_notional_usdc",
+            "lcb_q_combo_available_notional_usdc",
+            "lcb_q_combo_target_notional",
+            "lcb_q_combo_target_notional_theoretical",
+            "lcb_q_combo_fixed_notional",
+            "lcb_q_combo_fixed_size",
+            "lcb_q_combo_yes_peak_ratio",
+            "lcb_q_combo_no_near_ratio",
+            "lcb_q_combo_no_far_ratio",
+            "lcb_q_combo_yes_peak_count",
+            "lcb_q_combo_no_near_count",
+            "lcb_q_combo_no_far_count",
+            "lcb_q_combo_edge_lcb_floor",
+            "lcb_q_combo_q_peak_q",
+            "lcb_q_peak_switch_min_delta_q",
+            "lcb_q_peak_switch_delta_q",
+            "lcb_q_peak_switch_cooldown_sec",
+            "lcb_q_peak_switch_cooldown_left_sec",
+            "lcb_q_peak_switch_prev_confirm_count",
+            "lcb_q_peak_switch_required_confirm_runs",
             "strategy_realized_edge",
             "strategy_realized_edge_min",
             "strategy_realized_edge_sample_n",
@@ -7811,6 +8226,11 @@ def execute_auto_trades(
             "kelly_base_notional",
             "kelly_target_notional",
             "kelly_size_before",
+            "strategy_size_ratio_base",
+            "strategy_size_ratio_extra",
+            "strategy_size_ratio",
+            "size_base",
+            "size_scaled",
         ):
             _detail_put_float(out, key, candidate.get(key))
         _detail_put_str(out, "exec_entry_method", candidate.get("exec_entry_method"))
@@ -7903,8 +8323,71 @@ def execute_auto_trades(
         _detail_put_str(out, "q_calibration_segment_key", candidate.get("q_calibration_segment_key"))
         _detail_put_str(out, "q_calibration_segment_used", candidate.get("q_calibration_segment_used"))
         _detail_put_str(out, "token_id", candidate.get("token_id"))
+        _detail_put_str(out, "lcb_combo_leg", candidate.get("lcb_combo_leg"))
+        _detail_put_str(out, "lcb_q_combo_role", candidate.get("lcb_q_combo_role"))
+        _detail_put_str(out, "lcb_q_combo_anchor_outcome", candidate.get("lcb_q_combo_anchor_outcome"))
+        _detail_put_str(out, "lcb_q_combo_anchor_side", candidate.get("lcb_q_combo_anchor_side"))
+        _detail_put_str(out, "lcb_q_combo_anchor_mode", candidate.get("lcb_q_combo_anchor_mode"))
+        _detail_put_str(out, "lcb_q_combo_q_peak_outcome", candidate.get("lcb_q_combo_q_peak_outcome"))
+        _detail_put_str(out, "lcb_q_combo_q_peak_source", candidate.get("lcb_q_combo_q_peak_source"))
+        _detail_put_str(out, "lcb_q_peak_switch_target_yes_outcome", candidate.get("lcb_q_peak_switch_target_yes_outcome"))
+        _detail_put_str(out, "lcb_q_peak_switch_old_yes_outcome", candidate.get("lcb_q_peak_switch_old_yes_outcome"))
+        _detail_put_str(out, "lcb_q_peak_switch_block_reason", candidate.get("lcb_q_peak_switch_block_reason"))
         if isinstance(candidate.get("trend_penalty_reasons"), list):
             out["trend_penalty_reasons"] = [str(x) for x in candidate.get("trend_penalty_reasons") if str(x).strip()]
+        _detail_put_bool(out, "lcb_combo_match", candidate.get("lcb_combo_match"))
+        _detail_put_bool(out, "lcb_q_combo_enabled", candidate.get("lcb_q_combo_enabled"))
+        _detail_put_bool(out, "lcb_q_combo_selected", candidate.get("lcb_q_combo_selected"))
+        _detail_put_bool(
+            out,
+            "lcb_q_combo_selected_theoretical",
+            candidate.get("lcb_q_combo_selected_theoretical"),
+        )
+        _detail_put_bool(
+            out,
+            "lcb_q_combo_exec_eligible",
+            candidate.get("lcb_q_combo_exec_eligible"),
+        )
+        _detail_put_bool(
+            out,
+            "lcb_q_combo_selection_active",
+            candidate.get("lcb_q_combo_selection_active"),
+        )
+        _detail_put_bool(
+            out,
+            "lcb_q_combo_selection_theoretical_active",
+            candidate.get("lcb_q_combo_selection_theoretical_active"),
+        )
+        _detail_put_bool(
+            out,
+            "lcb_q_combo_anchor_exec_eligible",
+            candidate.get("lcb_q_combo_anchor_exec_eligible"),
+        )
+        _detail_put_bool(out, "lcb_q_peak_switch_enabled", candidate.get("lcb_q_peak_switch_enabled"))
+        _detail_put_bool(out, "lcb_q_peak_switch_triggered", candidate.get("lcb_q_peak_switch_triggered"))
+        _detail_put_bool(out, "lcb_q_peak_switch_confirm_pass", candidate.get("lcb_q_peak_switch_confirm_pass"))
+        _detail_put_bool(out, "lcb_q_peak_switch_delta_pass", candidate.get("lcb_q_peak_switch_delta_pass"))
+        _detail_put_bool(out, "lcb_q_peak_switch_cooldown_pass", candidate.get("lcb_q_peak_switch_cooldown_pass"))
+        _detail_put_bool(out, "lcb_q_peak_switch_force_exit_old_yes", candidate.get("lcb_q_peak_switch_force_exit_old_yes"))
+        _detail_put_bool(out, "lcb_q_peak_switch_wait_old_exit", candidate.get("lcb_q_peak_switch_wait_old_exit"))
+        _detail_put_bool(
+            out,
+            "lcb_q_combo_relax_tradeability",
+            candidate.get("lcb_q_combo_relax_tradeability"),
+        )
+        _detail_put_bool(
+            out,
+            "edge_tradeability_q_combo_relaxed",
+            candidate.get("edge_tradeability_q_combo_relaxed"),
+        )
+        _detail_put_bool(out, "lcb_yes_top_enabled", candidate.get("lcb_yes_top_enabled"))
+        _detail_put_bool(out, "lcb_yes_top_label_match", candidate.get("lcb_yes_top_label_match"))
+        _detail_put_bool(
+            out,
+            "lcb_yes_top_q_market_consistent",
+            candidate.get("lcb_yes_top_q_market_consistent"),
+        )
+        _detail_put_bool(out, "lcb_yes_top_event_match", candidate.get("lcb_yes_top_event_match"))
         return out
 
     def _seed_decision_context(
@@ -10192,6 +10675,42 @@ def execute_auto_trades(
     lcb_global_max_open_positions = _env_int("PM_LCB_GLOBAL_MAX_OPEN_POSITIONS")
     if lcb_global_max_open_positions is None or lcb_global_max_open_positions < 0:
         lcb_global_max_open_positions = 0
+    lcb_global_yes_top_enabled = _env_bool("PM_LCB_GLOBAL_YES_TOP_ENABLED", True)
+    lcb_global_yes_top_budget_ratio = _env_float("PM_LCB_GLOBAL_YES_TOP_BUDGET_RATIO")
+    if (
+        lcb_global_yes_top_budget_ratio is None
+        or not math.isfinite(lcb_global_yes_top_budget_ratio)
+    ):
+        lcb_global_yes_top_budget_ratio = 0.30
+    lcb_global_yes_top_budget_ratio = min(
+        1.0, max(0.0, float(lcb_global_yes_top_budget_ratio))
+    )
+    lcb_global_yes_top_market_consist_eps = _env_float(
+        "PM_LCB_GLOBAL_YES_TOP_MARKET_CONSIST_EPS"
+    )
+    if (
+        lcb_global_yes_top_market_consist_eps is None
+        or not math.isfinite(lcb_global_yes_top_market_consist_eps)
+    ):
+        lcb_global_yes_top_market_consist_eps = _env_float(
+            "PM_AUTO_TRADE_ENTRY_YES_TOP_MARKET_CONSIST_EPS"
+        )
+    if (
+        lcb_global_yes_top_market_consist_eps is None
+        or not math.isfinite(lcb_global_yes_top_market_consist_eps)
+    ):
+        lcb_global_yes_top_market_consist_eps = 0.02
+    if lcb_global_yes_top_market_consist_eps < 0:
+        lcb_global_yes_top_market_consist_eps = abs(
+            float(lcb_global_yes_top_market_consist_eps)
+        )
+    if lcb_global_yes_top_market_consist_eps > 1:
+        lcb_global_yes_top_market_consist_eps = (
+            float(lcb_global_yes_top_market_consist_eps) / 100.0
+        )
+    lcb_global_yes_top_market_consist_eps = min(
+        1.0, float(lcb_global_yes_top_market_consist_eps)
+    )
     lcb_global_disable_location_block = _env_bool(
         "PM_LCB_GLOBAL_DISABLE_LOCATION_BLOCK",
         True,
@@ -10247,11 +10766,479 @@ def execute_auto_trades(
     ):
         lcb_global_one_sided_ask_max = 0.0015
     lcb_global_one_sided_ask_max = min(0.01, max(0.0005, float(lcb_global_one_sided_ask_max)))
+    lcb_global_one_sided_bid_min = max(0.0, min(1.0, 1.0 - float(lcb_global_one_sided_ask_max)))
+    lcb_global_q_combo_enabled = _env_bool("PM_LCB_GLOBAL_Q_COMBO_ENABLED", True)
+    lcb_global_q_combo_event_budget_usdc = _env_float("PM_LCB_GLOBAL_Q_COMBO_EVENT_BUDGET_USDC")
+    if (
+        lcb_global_q_combo_event_budget_usdc is None
+        or not math.isfinite(lcb_global_q_combo_event_budget_usdc)
+        or lcb_global_q_combo_event_budget_usdc <= 0
+    ):
+        lcb_global_q_combo_event_budget_usdc = 20.0
+    lcb_global_q_combo_event_budget_usdc = max(0.0, float(lcb_global_q_combo_event_budget_usdc))
+    lcb_global_q_combo_main_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_MAIN_RATIO")
+    if (
+        lcb_global_q_combo_main_ratio is None
+        or not math.isfinite(lcb_global_q_combo_main_ratio)
+        or lcb_global_q_combo_main_ratio <= 0
+    ):
+        lcb_global_q_combo_main_ratio = 0.80
+    lcb_global_q_combo_same_far_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_SAME_FAR_RATIO")
+    if (
+        lcb_global_q_combo_same_far_ratio is None
+        or not math.isfinite(lcb_global_q_combo_same_far_ratio)
+        or lcb_global_q_combo_same_far_ratio < 0
+    ):
+        lcb_global_q_combo_same_far_ratio = 0.13
+    lcb_global_q_combo_same_near_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_SAME_NEAR_RATIO")
+    if (
+        lcb_global_q_combo_same_near_ratio is None
+        or not math.isfinite(lcb_global_q_combo_same_near_ratio)
+        or lcb_global_q_combo_same_near_ratio < 0
+    ):
+        lcb_global_q_combo_same_near_ratio = 0.05
+    lcb_global_q_combo_hedge_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_HEDGE_RATIO")
+    if (
+        lcb_global_q_combo_hedge_ratio is None
+        or not math.isfinite(lcb_global_q_combo_hedge_ratio)
+        or lcb_global_q_combo_hedge_ratio < 0
+    ):
+        lcb_global_q_combo_hedge_ratio = 0.02
+    lcb_global_q_combo_yes_peak_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_YES_PEAK_RATIO")
+    if (
+        lcb_global_q_combo_yes_peak_ratio is None
+        or not math.isfinite(lcb_global_q_combo_yes_peak_ratio)
+        or lcb_global_q_combo_yes_peak_ratio < 0
+    ):
+        lcb_global_q_combo_yes_peak_ratio = float(lcb_global_q_combo_hedge_ratio)
+    lcb_global_q_combo_no_near_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_NO_NEAR_RATIO")
+    if (
+        lcb_global_q_combo_no_near_ratio is None
+        or not math.isfinite(lcb_global_q_combo_no_near_ratio)
+        or lcb_global_q_combo_no_near_ratio < 0
+    ):
+        lcb_global_q_combo_no_near_ratio = float(lcb_global_q_combo_same_near_ratio)
+    lcb_global_q_combo_no_far_ratio = _env_float("PM_LCB_GLOBAL_Q_COMBO_NO_FAR_RATIO")
+    if (
+        lcb_global_q_combo_no_far_ratio is None
+        or not math.isfinite(lcb_global_q_combo_no_far_ratio)
+        or lcb_global_q_combo_no_far_ratio < 0
+    ):
+        lcb_global_q_combo_no_far_ratio = float(lcb_global_q_combo_same_far_ratio)
+    lcb_global_q_combo_yes_peak_count = _env_int("PM_LCB_GLOBAL_Q_COMBO_YES_PEAK_COUNT")
+    if (
+        lcb_global_q_combo_yes_peak_count is None
+        or int(lcb_global_q_combo_yes_peak_count) < 0
+    ):
+        lcb_global_q_combo_yes_peak_count = 1
+    lcb_global_q_combo_yes_peak_count = max(0, min(int(lcb_global_q_combo_yes_peak_count), 4))
+    lcb_global_q_combo_no_near_count = _env_int("PM_LCB_GLOBAL_Q_COMBO_NO_NEAR_COUNT")
+    if (
+        lcb_global_q_combo_no_near_count is None
+        or int(lcb_global_q_combo_no_near_count) < 0
+    ):
+        lcb_global_q_combo_no_near_count = 2
+    lcb_global_q_combo_no_near_count = max(0, min(int(lcb_global_q_combo_no_near_count), 6))
+    lcb_global_q_combo_no_far_count = _env_int("PM_LCB_GLOBAL_Q_COMBO_NO_FAR_COUNT")
+    if (
+        lcb_global_q_combo_no_far_count is None
+        or int(lcb_global_q_combo_no_far_count) < 0
+    ):
+        lcb_global_q_combo_no_far_count = 4
+    lcb_global_q_combo_no_far_count = max(0, min(int(lcb_global_q_combo_no_far_count), 6))
+    lcb_global_q_combo_edge_lcb_floor = _env_float("PM_LCB_GLOBAL_Q_COMBO_EDGE_LCB_FLOOR")
+    if (
+        lcb_global_q_combo_edge_lcb_floor is None
+        or not math.isfinite(lcb_global_q_combo_edge_lcb_floor)
+    ):
+        lcb_global_q_combo_edge_lcb_floor = -0.01
+    lcb_global_q_combo_edge_lcb_floor = min(0.05, max(-0.05, float(lcb_global_q_combo_edge_lcb_floor)))
+    lcb_global_q_combo_anchor_mode = str(
+        os.environ.get("PM_LCB_GLOBAL_Q_COMBO_ANCHOR_MODE") or "edge_max"
+    ).strip().lower()
+    if lcb_global_q_combo_anchor_mode not in {"peak_neighbor", "edge_max"}:
+        lcb_global_q_combo_anchor_mode = "edge_max"
+    lcb_global_q_peak_switch_enabled = _env_bool("PM_LCB_GLOBAL_Q_PEAK_SWITCH_ENABLED", True)
+    lcb_global_q_peak_switch_confirm_runs = _env_int("PM_LCB_GLOBAL_Q_PEAK_SWITCH_CONFIRM_RUNS")
+    if lcb_global_q_peak_switch_confirm_runs is None or int(lcb_global_q_peak_switch_confirm_runs) < 1:
+        lcb_global_q_peak_switch_confirm_runs = 2
+    lcb_global_q_peak_switch_confirm_runs = min(10, max(1, int(lcb_global_q_peak_switch_confirm_runs)))
+    lcb_global_q_peak_switch_min_delta_q = _env_float("PM_LCB_GLOBAL_Q_PEAK_SWITCH_MIN_DELTA_Q")
+    if (
+        lcb_global_q_peak_switch_min_delta_q is None
+        or not math.isfinite(lcb_global_q_peak_switch_min_delta_q)
+        or lcb_global_q_peak_switch_min_delta_q < 0
+    ):
+        lcb_global_q_peak_switch_min_delta_q = 0.03
+    lcb_global_q_peak_switch_min_delta_q = min(0.50, max(0.0, float(lcb_global_q_peak_switch_min_delta_q)))
+    lcb_global_q_peak_switch_cooldown_sec = _env_float("PM_LCB_GLOBAL_Q_PEAK_SWITCH_COOLDOWN_SEC")
+    if (
+        lcb_global_q_peak_switch_cooldown_sec is None
+        or not math.isfinite(lcb_global_q_peak_switch_cooldown_sec)
+        or lcb_global_q_peak_switch_cooldown_sec < 0
+    ):
+        lcb_global_q_peak_switch_cooldown_sec = 900.0
+    lcb_global_q_peak_switch_cooldown_sec = min(
+        86400.0,
+        max(0.0, float(lcb_global_q_peak_switch_cooldown_sec)),
+    )
+    lcb_global_snapshot_consistency_enabled = _env_bool(
+        "PM_LCB_GLOBAL_SNAPSHOT_CONSISTENCY_ENABLED",
+        True,
+    )
+    lcb_global_snapshot_consistency_window = _env_int("PM_LCB_GLOBAL_SNAPSHOT_CONSISTENCY_WINDOW")
+    if (
+        lcb_global_snapshot_consistency_window is None
+        or int(lcb_global_snapshot_consistency_window) <= 0
+    ):
+        lcb_global_snapshot_consistency_window = 3
+    lcb_global_snapshot_consistency_window = max(
+        2, min(int(lcb_global_snapshot_consistency_window), 8)
+    )
+    lcb_global_snapshot_consistency_min_pass = _env_int(
+        "PM_LCB_GLOBAL_SNAPSHOT_CONSISTENCY_MIN_PASS"
+    )
+    if (
+        lcb_global_snapshot_consistency_min_pass is None
+        or int(lcb_global_snapshot_consistency_min_pass) <= 0
+    ):
+        lcb_global_snapshot_consistency_min_pass = 2
+    lcb_global_snapshot_consistency_min_pass = max(
+        1,
+        min(
+            int(lcb_global_snapshot_consistency_min_pass),
+            int(lcb_global_snapshot_consistency_window),
+        ),
+    )
+    lcb_global_snapshot_consistency_min_obs = _env_int("PM_LCB_GLOBAL_SNAPSHOT_CONSISTENCY_MIN_OBS")
+    if lcb_global_snapshot_consistency_min_obs is None or int(lcb_global_snapshot_consistency_min_obs) <= 0:
+        lcb_global_snapshot_consistency_min_obs = 2
+    lcb_global_snapshot_consistency_min_obs = max(
+        1, min(int(lcb_global_snapshot_consistency_min_obs), int(lcb_global_snapshot_consistency_window))
+    )
+    lcb_global_snapshot_consistency_max_age_sec = _env_float(
+        "PM_LCB_GLOBAL_SNAPSHOT_CONSISTENCY_MAX_AGE_SEC"
+    )
+    if (
+        lcb_global_snapshot_consistency_max_age_sec is None
+        or not math.isfinite(lcb_global_snapshot_consistency_max_age_sec)
+        or lcb_global_snapshot_consistency_max_age_sec <= 0
+    ):
+        lcb_global_snapshot_consistency_max_age_sec = 2 * 3600.0
+    lcb_global_snapshot_consistency_max_age_sec = max(
+        300.0, min(float(lcb_global_snapshot_consistency_max_age_sec), 12 * 3600.0)
+    )
     lcb_global_ob_cache: Dict[str, Dict[str, Any]] = {}
     lcb_global_ob_refresh_used = 0
     lcb_global_ob_missing_local: Set[str] = set()
+    lcb_global_ob_refresh_allow_token_remap = _env_bool(
+        "PM_LCB_GLOBAL_OB_REFRESH_ALLOW_TOKEN_REMAP",
+        _env_bool("PM_AUTO_TRADE_ENTRY_REFRESH_ALLOW_TOKEN_REMAP", True),
+    )
+    lcb_global_ob_remap_timeout_sec = _env_float("PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_TIMEOUT_SEC")
+    if (
+        lcb_global_ob_remap_timeout_sec is None
+        or not math.isfinite(lcb_global_ob_remap_timeout_sec)
+        or lcb_global_ob_remap_timeout_sec <= 0
+    ):
+        lcb_global_ob_remap_timeout_sec = min(float(GAMMA_TIMEOUT), 3.0)
+    lcb_global_ob_remap_timeout_sec = max(0.5, min(float(lcb_global_ob_remap_timeout_sec), 8.0))
+    lcb_global_ob_remap_retries = _env_int("PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_RETRIES")
+    if lcb_global_ob_remap_retries is None or lcb_global_ob_remap_retries <= 0:
+        lcb_global_ob_remap_retries = 1
+    lcb_global_ob_remap_retries = max(1, min(int(lcb_global_ob_remap_retries), 3))
+    lcb_global_ob_remap_backoff = _env_float("PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_BACKOFF_SEC")
+    if (
+        lcb_global_ob_remap_backoff is None
+        or not math.isfinite(lcb_global_ob_remap_backoff)
+        or lcb_global_ob_remap_backoff < 0
+    ):
+        lcb_global_ob_remap_backoff = 0.1
+    lcb_global_ob_remap_backoff = max(0.0, min(float(lcb_global_ob_remap_backoff), 1.0))
+    lcb_global_ob_remap_bypass_proxy = _env_bool(
+        "PM_AUTO_TRADE_ENTRY_TOKEN_REMAP_GAMMA_BYPASS_PROXY",
+        False,
+    )
+    lcb_global_ob_outcome_tokens_cache: Dict[str, Dict[str, str]] = {}
+    lcb_global_ob_outcome_tokens_loaded = False
+    lcb_global_snapshot_consistency_loaded = False
+    lcb_global_snapshot_consistency_stats: Dict[Tuple[str, str], List[str]] = {}
+    lcb_global_snapshot_consistency_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
-    def _lcb_global_refresh_orderbook(token_id: str) -> Dict[str, Any]:
+    def _lcb_global_fetch_orderbook(token_id_local: str) -> Dict[str, Any]:
+        key_local = str(token_id_local or "").strip()
+        if not key_local:
+            return {"ok": False, "error": "token_missing", "token_id_used": ""}
+        try:
+            book = fetch_orderbook(
+                key_local,
+                retries=1,
+                backoff=0.0,
+                timeout_sec=float(lcb_global_ob_refresh_timeout_sec),
+            )
+            (
+                best_bid,
+                best_ask,
+                spread,
+                bid_depth,
+                ask_depth,
+                best_bid_size,
+                best_ask_size,
+            ) = best_bid_ask_and_depth(book, levels=int(lcb_global_ob_refresh_levels))
+            return {
+                "ok": True,
+                "best_bid": best_bid,
+                "best_ask": best_ask,
+                "spread": spread,
+                "bid_depth": bid_depth,
+                "ask_depth": ask_depth,
+                "best_bid_size": best_bid_size,
+                "best_ask_size": best_ask_size,
+                "token_id_used": key_local,
+            }
+        except Exception as exc:
+            lcb_global_ob_missing_local.add(key_local)
+            return {
+                "ok": False,
+                "error": str(exc) or exc.__class__.__name__,
+                "token_id_used": key_local,
+            }
+
+    def _lcb_global_ob_quality(payload: Mapping[str, Any]) -> int:
+        if not isinstance(payload, Mapping):
+            return -100
+        if not payload.get("ok"):
+            return -20
+        ask_val = to_float(payload.get("best_ask"))
+        bid_val = to_float(payload.get("best_bid"))
+        spread_val = to_float(payload.get("spread"))
+        score = 0
+        if ask_val is not None and math.isfinite(ask_val) and ask_val > TIME_EDGE_Q_EPS:
+            score += 2
+        if bid_val is not None and math.isfinite(bid_val):
+            score += 2
+        if spread_val is not None and math.isfinite(spread_val) and spread_val >= -TIME_EDGE_Q_EPS:
+            score += 1
+        if (
+            ask_val is not None
+            and math.isfinite(ask_val)
+            and ask_val <= lcb_global_one_sided_ask_max + TIME_EDGE_Q_EPS
+            and (bid_val is None or not math.isfinite(bid_val))
+        ):
+            score -= 2
+        return score
+
+    def _lcb_market_structure_state(
+        ask_val: Optional[float],
+        bid_val: Optional[float],
+        spread_val: Optional[float],
+    ) -> str:
+        ask_ok = ask_val is not None and math.isfinite(ask_val) and ask_val > TIME_EDGE_Q_EPS
+        bid_ok = bid_val is not None and math.isfinite(bid_val)
+        if ask_ok and (not bid_ok) and float(ask_val) <= float(lcb_global_one_sided_ask_max) + TIME_EDGE_Q_EPS:
+            return "one_sided_ask_only"
+        if (not ask_ok) and bid_ok and float(bid_val) >= float(lcb_global_one_sided_bid_min) - TIME_EDGE_Q_EPS:
+            return "one_sided_bid_only"
+        if (not ask_ok) and (not bid_ok):
+            return "missing"
+        if (not ask_ok) or (not bid_ok):
+            return "one_sided_partial"
+        spread_eff = spread_val
+        if spread_eff is None or not math.isfinite(spread_eff):
+            spread_eff = max(float(ask_val) - float(bid_val), 0.0)
+        if spread_eff < -TIME_EDGE_Q_EPS:
+            return "spread_invalid"
+        if spread_eff > float(lcb_global_max_spread) + TIME_EDGE_Q_EPS:
+            return "spread_too_wide"
+        return "tradable"
+
+    def _load_lcb_global_snapshot_consistency_stats() -> None:
+        nonlocal lcb_global_snapshot_consistency_loaded
+        if lcb_global_snapshot_consistency_loaded:
+            return
+        lcb_global_snapshot_consistency_loaded = True
+        lcb_global_snapshot_consistency_stats.clear()
+        if (not lcb_global_snapshot_consistency_enabled) or (not slug) or (not event_date_key):
+            return
+        limit_rows = max(
+            int(lcb_global_snapshot_consistency_window) * 3,
+            int(lcb_global_snapshot_consistency_window) + 2,
+        )
+        now_utc = datetime.now(timezone.utc)
+        max_age_sec = float(lcb_global_snapshot_consistency_max_age_sec)
+        try:
+            cur_snap = conn.cursor()
+            cur_snap.execute(
+                """
+                SELECT payload_json, created_at
+                FROM market_snapshots
+                WHERE slug = ? AND event_date = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (slug, event_date_key, limit_rows),
+            )
+            snap_rows = cur_snap.fetchall()
+        except Exception:
+            snap_rows = []
+        for row in snap_rows:
+            created_raw = str((row["created_at"] if isinstance(row, sqlite3.Row) else row[1]) or "").strip()
+            if created_raw:
+                created_dt = _parse_iso_dt(created_raw)
+                if created_dt is not None:
+                    if created_dt.tzinfo is None:
+                        created_dt = created_dt.replace(tzinfo=timezone.utc)
+                    age_sec = (now_utc - created_dt).total_seconds()
+                    if age_sec > max_age_sec:
+                        continue
+            payload_raw = row["payload_json"] if isinstance(row, sqlite3.Row) else row[0]
+            try:
+                payload = json.loads(payload_raw) if payload_raw else {}
+            except Exception:
+                payload = {}
+            rows_payload = payload.get("rows") if isinstance(payload, dict) else None
+            if not isinstance(rows_payload, list):
+                continue
+            for item in rows_payload:
+                if not isinstance(item, dict):
+                    continue
+                outcome_text = str(item.get("outcome") or "").strip()
+                outcome_key = _normalize_outcome_key(outcome_text)
+                if not outcome_key:
+                    continue
+                yes_state = _lcb_market_structure_state(
+                    to_float(item.get("best_ask")),
+                    to_float(item.get("best_bid")),
+                    to_float(item.get("spread")),
+                )
+                no_state = _lcb_market_structure_state(
+                    to_float(item.get("best_ask_no")),
+                    to_float(item.get("best_bid_no")),
+                    to_float(item.get("spread_no")),
+                )
+                key_yes = (outcome_key, "YES")
+                key_no = (outcome_key, "NO")
+                seq_yes = lcb_global_snapshot_consistency_stats.setdefault(key_yes, [])
+                seq_no = lcb_global_snapshot_consistency_stats.setdefault(key_no, [])
+                if len(seq_yes) < int(lcb_global_snapshot_consistency_window):
+                    seq_yes.append(yes_state)
+                if len(seq_no) < int(lcb_global_snapshot_consistency_window):
+                    seq_no.append(no_state)
+
+    def _lcb_global_snapshot_consistency_eval(outcome_label: str, side: str) -> Dict[str, Any]:
+        key = (
+            _normalize_outcome_key(outcome_label),
+            str(side or "").strip().upper(),
+        )
+        cached = lcb_global_snapshot_consistency_cache.get(key)
+        if isinstance(cached, dict):
+            return cached
+        out: Dict[str, Any] = {
+            "enabled": bool(lcb_global_snapshot_consistency_enabled),
+            "window": int(lcb_global_snapshot_consistency_window),
+            "min_pass": int(lcb_global_snapshot_consistency_min_pass),
+            "min_obs": int(lcb_global_snapshot_consistency_min_obs),
+            "pass": True,
+            "enforced": False,
+            "available": 0,
+            "pass_count": 0,
+            "fail_count": 0,
+            "required": 0,
+            "states": [],
+            "reason": "disabled",
+        }
+        if not lcb_global_snapshot_consistency_enabled:
+            lcb_global_snapshot_consistency_cache[key] = out
+            return out
+        outcome_key, side_key = key
+        if not outcome_key or side_key not in {"YES", "NO"}:
+            out["reason"] = "invalid_key"
+            lcb_global_snapshot_consistency_cache[key] = out
+            return out
+        _load_lcb_global_snapshot_consistency_stats()
+        states_all = list(lcb_global_snapshot_consistency_stats.get((outcome_key, side_key)) or [])
+        states = states_all[: int(lcb_global_snapshot_consistency_window)]
+        available = len(states)
+        pass_count = sum(1 for state in states if state == "tradable")
+        required = min(int(lcb_global_snapshot_consistency_min_pass), available)
+        out["states"] = list(states)
+        out["available"] = int(available)
+        out["pass_count"] = int(pass_count)
+        out["fail_count"] = int(max(available - pass_count, 0))
+        out["required"] = int(max(required, 0))
+        if available < int(lcb_global_snapshot_consistency_min_obs):
+            out["reason"] = "insufficient_obs"
+            out["pass"] = True
+            out["enforced"] = False
+            lcb_global_snapshot_consistency_cache[key] = out
+            return out
+        out["enforced"] = True
+        out["pass"] = bool(pass_count >= required)
+        out["reason"] = "pass" if out["pass"] else "unstable"
+        lcb_global_snapshot_consistency_cache[key] = out
+        return out
+
+    def _load_lcb_global_outcome_tokens() -> Dict[str, Dict[str, str]]:
+        nonlocal lcb_global_ob_outcome_tokens_loaded
+        if lcb_global_ob_outcome_tokens_loaded:
+            return lcb_global_ob_outcome_tokens_cache
+        lcb_global_ob_outcome_tokens_loaded = True
+        outcome_tokens: List[Dict[str, Any]] = []
+        event_detail = None
+        try:
+            event_detail = fetch_gamma_event_by_slug(
+                slug,
+                timeout=float(lcb_global_ob_remap_timeout_sec),
+                retries=int(lcb_global_ob_remap_retries),
+                backoff=float(lcb_global_ob_remap_backoff),
+                bypass_proxy=bool(lcb_global_ob_remap_bypass_proxy),
+            )
+        except Exception:
+            event_detail = None
+        if event_detail is not None:
+            try:
+                outcome_tokens = parse_outcomes_and_tokens_from_event(event_detail)
+            except Exception:
+                outcome_tokens = []
+        if not outcome_tokens:
+            market = None
+            try:
+                market = fetch_gamma_market_by_slug(
+                    slug,
+                    timeout=float(lcb_global_ob_remap_timeout_sec),
+                    retries=int(lcb_global_ob_remap_retries),
+                    backoff=float(lcb_global_ob_remap_backoff),
+                    bypass_proxy=bool(lcb_global_ob_remap_bypass_proxy),
+                )
+            except Exception:
+                market = None
+            if market is not None:
+                try:
+                    outcome_tokens = parse_outcomes_and_tokens(market)
+                except Exception:
+                    outcome_tokens = []
+        for item in outcome_tokens:
+            if not isinstance(item, dict):
+                continue
+            label_key = _normalize_outcome_key(item.get("label"))
+            if not label_key:
+                continue
+            yes_token = str(item.get("yes_token") or "").strip()
+            no_token = str(item.get("no_token") or "").strip()
+            if not yes_token and not no_token:
+                continue
+            lcb_global_ob_outcome_tokens_cache[label_key] = {
+                "yes_token": yes_token,
+                "no_token": no_token,
+            }
+        return lcb_global_ob_outcome_tokens_cache
+
+    def _lcb_global_refresh_orderbook(
+        token_id: str,
+        *,
+        outcome_label: str = "",
+        side: str = "",
+    ) -> Dict[str, Any]:
         nonlocal lcb_global_ob_refresh_used
         key = str(token_id or "").strip()
         if not key:
@@ -10264,23 +11251,42 @@ def execute_auto_trades(
             lcb_global_ob_cache[key] = payload
             return payload
         lcb_global_ob_refresh_used += 1
-        try:
-            book = fetch_orderbook(key, retries=1, backoff=0.0, timeout_sec=float(lcb_global_ob_refresh_timeout_sec))
-            best_bid, best_ask, spread, bid_depth, ask_depth, best_bid_size, best_ask_size = best_bid_ask_and_depth(
-                book, levels=int(lcb_global_ob_refresh_levels)
-            )
-            payload = {
-                "ok": True,
-                "best_bid": best_bid,
-                "best_ask": best_ask,
-                "spread": spread,
-                "bid_depth": bid_depth,
-                "ask_depth": ask_depth,
-                "best_bid_size": best_bid_size,
-                "best_ask_size": best_ask_size,
-            }
-        except Exception as exc:
-            payload = {"ok": False, "error": str(exc) or exc.__class__.__name__}
+        payload = _lcb_global_fetch_orderbook(key)
+        payload["source"] = "orderbook"
+        payload["token_id_original"] = key
+        side_u = str(side or "").strip().upper()
+        outcome_u = str(outcome_label or "").strip()
+        remap_attempted = False
+        remap_token = ""
+        if lcb_global_ob_refresh_allow_token_remap and outcome_u and side_u in {"YES", "NO"}:
+            quality_now = _lcb_global_ob_quality(payload)
+            if quality_now < 3:
+                token_map = _load_lcb_global_outcome_tokens()
+                token_entry = token_map.get(_normalize_outcome_key(outcome_u)) or {}
+                remap_token = str(
+                    token_entry.get("yes_token") if side_u == "YES" else token_entry.get("no_token")
+                ).strip()
+                if remap_token and remap_token != key:
+                    remap_attempted = True
+                    remap_payload = _lcb_global_fetch_orderbook(remap_token)
+                    remap_payload["source"] = "orderbook_remap"
+                    remap_payload["token_id_original"] = key
+                    remap_payload["token_id_remapped"] = remap_token
+                    quality_remap = _lcb_global_ob_quality(remap_payload)
+                    if quality_remap > quality_now:
+                        payload = remap_payload
+        payload["remap_attempted"] = remap_attempted
+        if remap_attempted and remap_token:
+            payload["token_id_remapped"] = remap_token
+        if remap_attempted and payload.get("source") != "orderbook_remap":
+            payload["remap_selected"] = False
+        elif payload.get("source") == "orderbook_remap":
+            payload["remap_selected"] = True
+        if payload.get("source") == "orderbook_remap":
+            remap_used = str(payload.get("token_id_used") or "").strip()
+            if remap_used and remap_used != key:
+                lcb_global_ob_cache[remap_used] = payload
+        if not payload.get("ok"):
             lcb_global_ob_missing_local.add(key)
         lcb_global_ob_cache[key] = payload
         return payload
@@ -10341,11 +11347,31 @@ def execute_auto_trades(
             size_base_existing = to_float(candidate_ref.get("size_base"))
             return size_existing, ratio_existing, size_base_existing
         strategy_name = str(candidate_ref.get("strategy") or "main").strip().lower()
-        ratio_val = _strategy_entry_size_ratio(strategy_name)
+        ratio_base = _strategy_entry_size_ratio(strategy_name)
+        ratio_extra = _normalize_nonnegative_ratio(
+            to_float(candidate_ref.get("strategy_size_ratio_extra")),
+            1.0,
+        )
+        ratio_val = max(float(ratio_base) * float(ratio_extra), 0.0)
         size_base = to_float(candidate_ref.get("size"))
+        candidate_ref["strategy_size_ratio_base"] = ratio_base
+        candidate_ref["strategy_size_ratio_extra"] = ratio_extra
         candidate_ref["strategy_size_ratio"] = ratio_val
         candidate_ref["size_base"] = size_base
         candidate_ref["_strategy_size_ratio_applied"] = True
+        combo_fixed_size = to_float(candidate_ref.get("lcb_q_combo_fixed_size"))
+        if (
+            bool(candidate_ref.get("lcb_q_combo_enabled"))
+            and bool(candidate_ref.get("lcb_q_combo_selected"))
+            and combo_fixed_size is not None
+            and math.isfinite(combo_fixed_size)
+            and combo_fixed_size > TIME_EDGE_Q_EPS
+        ):
+            fixed_scaled = round(float(combo_fixed_size), 4)
+            candidate_ref["size_scaled"] = fixed_scaled
+            candidate_ref["size"] = fixed_scaled
+            candidate_ref["strategy_size_ratio_fixed"] = True
+            return fixed_scaled, ratio_val, size_base
         if size_base is None or not math.isfinite(size_base):
             candidate_ref["size_scaled"] = None
             candidate_ref["size"] = None
@@ -11007,6 +12033,14 @@ def execute_auto_trades(
         exit_stop_loss_confirm_sec = 20.0
     if exit_stop_loss_confirm_sec < 0:
         exit_stop_loss_confirm_sec = 0.0
+    exit_stop_loss_force_after_sec = _env_float("PM_AUTO_TRADE_EXIT_STOP_LOSS_FORCE_AFTER_SEC")
+    if (
+        exit_stop_loss_force_after_sec is None
+        or not math.isfinite(exit_stop_loss_force_after_sec)
+    ):
+        exit_stop_loss_force_after_sec = 0.0
+    if exit_stop_loss_force_after_sec < 0:
+        exit_stop_loss_force_after_sec = 0.0
     stop_loss_edge_confirm_enabled = _env_bool("PM_AUTO_TRADE_STOP_LOSS_REQUIRE_EDGE_CONFIRM", True)
     stop_loss_edge_confirm_max = _env_float("PM_AUTO_TRADE_STOP_LOSS_EDGE_CONFIRM_MAX")
     if stop_loss_edge_confirm_max is None or not math.isfinite(stop_loss_edge_confirm_max):
@@ -11074,6 +12108,60 @@ def execute_auto_trades(
         bucket_loss_streak_loss_eps = 0.0
     if bucket_loss_streak_loss_eps < 0:
         bucket_loss_streak_loss_eps = 0.0
+    bucket_vote_weight_equal = _env_float("PM_BUCKET_VOTE_WEIGHT_EQUAL")
+    if (
+        bucket_vote_weight_equal is None
+        or not math.isfinite(bucket_vote_weight_equal)
+        or bucket_vote_weight_equal < 0
+    ):
+        bucket_vote_weight_equal = float(BUCKET_VOTE_WEIGHT_EQUAL)
+    bucket_vote_weight_auto = _env_float("PM_BUCKET_VOTE_WEIGHT_AUTO")
+    if (
+        bucket_vote_weight_auto is None
+        or not math.isfinite(bucket_vote_weight_auto)
+        or bucket_vote_weight_auto < 0
+    ):
+        bucket_vote_weight_auto = float(BUCKET_VOTE_WEIGHT_AUTO)
+    bucket_vote_weight_scenario = _env_float("PM_BUCKET_VOTE_WEIGHT_SCENARIO")
+    if (
+        bucket_vote_weight_scenario is None
+        or not math.isfinite(bucket_vote_weight_scenario)
+        or bucket_vote_weight_scenario < 0
+    ):
+        bucket_vote_weight_scenario = float(BUCKET_VOTE_WEIGHT_SCENARIO)
+    bucket_vote_consistent_share_min = _env_float("PM_BUCKET_VOTE_CONSISTENT_SHARE_MIN")
+    if (
+        bucket_vote_consistent_share_min is None
+        or not math.isfinite(bucket_vote_consistent_share_min)
+    ):
+        bucket_vote_consistent_share_min = float(BUCKET_VOTE_CONSISTENT_SHARE_MIN)
+    bucket_vote_consistent_share_min = max(0.0, min(1.0, float(bucket_vote_consistent_share_min)))
+    bucket_mode_switch_enabled = _env_bool("PM_BUCKET_MODE_SWITCH_ENABLED", BUCKET_MODE_SWITCH_ENABLED)
+    bucket_mode_switch_days = _env_int("PM_BUCKET_MODE_SWITCH_DAYS")
+    if bucket_mode_switch_days is None or bucket_mode_switch_days < 1:
+        bucket_mode_switch_days = int(BUCKET_MODE_SWITCH_DAYS)
+    bucket_mode_switch_min_samples = _env_int("PM_BUCKET_MODE_SWITCH_MIN_SAMPLES")
+    if bucket_mode_switch_min_samples is None or bucket_mode_switch_min_samples < 1:
+        bucket_mode_switch_min_samples = int(BUCKET_MODE_SWITCH_MIN_SAMPLES)
+    bucket_mode_switch_disable_delta = _env_float("PM_BUCKET_MODE_SWITCH_DISABLE_DELTA")
+    if (
+        bucket_mode_switch_disable_delta is None
+        or not math.isfinite(bucket_mode_switch_disable_delta)
+    ):
+        bucket_mode_switch_disable_delta = float(BUCKET_MODE_SWITCH_DISABLE_DELTA)
+    bucket_mode_switch_boost_delta = _env_float("PM_BUCKET_MODE_SWITCH_BOOST_DELTA")
+    if (
+        bucket_mode_switch_boost_delta is None
+        or not math.isfinite(bucket_mode_switch_boost_delta)
+    ):
+        bucket_mode_switch_boost_delta = float(BUCKET_MODE_SWITCH_BOOST_DELTA)
+    bucket_mode_switch_boost_mult = _env_float("PM_BUCKET_MODE_SWITCH_BOOST_MULT")
+    if (
+        bucket_mode_switch_boost_mult is None
+        or not math.isfinite(bucket_mode_switch_boost_mult)
+        or bucket_mode_switch_boost_mult < 0
+    ):
+        bucket_mode_switch_boost_mult = float(BUCKET_MODE_SWITCH_BOOST_MULT)
     yes_top_exit_stop_loss_pct = _env_float("PM_AUTO_TRADE_YES_TOP_EXIT_STOP_LOSS_PCT")
     if yes_top_exit_stop_loss_pct is not None and math.isfinite(yes_top_exit_stop_loss_pct):
         if yes_top_exit_stop_loss_pct > 1:
@@ -11380,6 +12468,216 @@ def execute_auto_trades(
                 time.sleep(AUTO_TRADE_CONFIRM_DELAY_SEC)
         return "error", "", _format_order_error_short(last_payload), None
 
+    def _confirm_entry_not_found_recheck(
+        token_id: Optional[str],
+        order_id: str,
+        *,
+        cancel_side: str = "BUY",
+    ) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            "confirm_state": "not_found",
+            "confirm_status": "confirm_not_found",
+            "confirm_error": "order_not_found",
+            "rechecked": False,
+            "recheck_state": "",
+            "recheck_status": "",
+            "recheck_error": "",
+            "recheck_delay_sec": 0.0,
+            "open_order_seen": False,
+            "open_order_ids": [],
+            "refresh_open_orders": False,
+            "cancel_attempted": False,
+            "cancel_ok": False,
+            "cancel_error": "",
+        }
+        if not order_id:
+            return out
+        recheck_delay = _env_float("PM_AUTO_TRADE_CONFIRM_NOT_FOUND_RECHECK_DELAY_SEC")
+        if recheck_delay is None or not math.isfinite(recheck_delay):
+            recheck_delay = AUTO_TRADE_CONFIRM_DELAY_SEC
+        recheck_delay = min(max(float(recheck_delay), 0.0), 5.0)
+        out["recheck_delay_sec"] = recheck_delay
+        if recheck_delay > TIME_EDGE_Q_EPS:
+            time.sleep(recheck_delay)
+        re_state, re_status, re_error, _ = _confirm_order(order_id)
+        out["rechecked"] = True
+        out["recheck_state"] = str(re_state or "")
+        out["recheck_status"] = str(re_status or "")
+        out["recheck_error"] = str(re_error or "")
+        if re_state != "not_found":
+            out["confirm_state"] = str(re_state or "")
+            out["confirm_status"] = str(re_status or "")
+            out["confirm_error"] = str(re_error or "")
+            return out
+
+        token_id_s = str(token_id or "").strip()
+        if not token_id_s:
+            return out
+        refresh_open_orders = _env_bool(
+            "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_REFRESH_OPEN_ORDERS",
+            True,
+        )
+        open_orders_for_token = open_orders_by_token.get(token_id_s) or []
+        if refresh_open_orders and open_order_sync_enabled:
+            allow_fetch = open_order_has_creds
+            if positions_priority_fast_loop and not positions_priority_allow_slow:
+                allow_fetch = False
+            refreshed_by_token = _auto_trade_cached_open_orders_by_token(allow_fetch=allow_fetch)
+            if allow_fetch:
+                _mark_slow_request_used()
+            if isinstance(refreshed_by_token, dict):
+                open_orders_for_token = refreshed_by_token.get(token_id_s) or []
+                open_orders_by_token[token_id_s] = list(open_orders_for_token)
+                out["refresh_open_orders"] = True
+        cancel_side_u = str(cancel_side or "BUY").upper()
+        open_orders_for_side = [
+            od
+            for od in (open_orders_for_token or [])
+            if str(od.get("side") or "").upper() == cancel_side_u
+        ]
+        open_order_ids = [
+            str(od.get("order_id") or "")
+            for od in open_orders_for_side
+            if str(od.get("order_id") or "")
+        ]
+        out["open_order_ids"] = open_order_ids
+        has_open_exact = order_id in open_order_ids
+        has_open_any = bool(open_orders_for_side)
+        out["open_order_seen"] = bool(has_open_exact or has_open_any)
+        cancel_if_open = _env_bool("PM_AUTO_TRADE_CONFIRM_NOT_FOUND_CANCEL_IF_OPEN", True)
+        if not out["open_order_seen"] or not cancel_if_open:
+            return out
+        out["cancel_attempted"] = True
+        cancel_ok, cancel_payload = _run_node_order("cancel-orders", token_id_s, cancel_side_u)
+        cancel_count = int(to_float(cancel_payload.get("count")) or 0)
+        if cancel_ok and not cancel_payload.get("dry_run") and cancel_count <= 0:
+            cancel_ok = False
+            cancel_payload = {
+                "error": "confirm_not_found_open_cancel_empty",
+                "stdout": cancel_payload,
+            }
+        out["cancel_ok"] = bool(cancel_ok)
+        if cancel_ok:
+            out["confirm_state"] = "canceled"
+            out["confirm_status"] = "confirm_not_found_open_cancelled"
+            out["confirm_error"] = ""
+            return out
+        cancel_err = str(
+            _format_order_error_short(cancel_payload)
+            or cancel_payload.get("error")
+            or "confirm_not_found_open_cancel_failed"
+        )
+        out["cancel_error"] = cancel_err
+        out["confirm_state"] = "not_found"
+        out["confirm_status"] = "confirm_not_found_open_cancel_failed"
+        out["confirm_error"] = cancel_err
+        return out
+
+    def _confirm_not_found_pending_risk_assess(
+        *,
+        side: str,
+        candidate: Optional[Dict[str, Any]],
+        row_ref: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        strategy = str((candidate or {}).get("strategy") or "main").strip().lower() or "main"
+        out: Dict[str, Any] = {
+            "block": False,
+            "enabled": False,
+            "strategy": strategy,
+            "reason_codes": [],
+            "reasons": [],
+            "exec_edge_score": None,
+            "spread": None,
+            "exec_edge_score_max": None,
+            "spread_min": None,
+            "strategies": [],
+        }
+        enabled = _env_bool("PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_RISK_ENABLED", True)
+        out["enabled"] = bool(enabled)
+        if not enabled:
+            return out
+
+        raw = str(
+            os.environ.get(
+                "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_RISK_STRATEGIES",
+                "lcb_global",
+            )
+            or ""
+        ).strip()
+        strategy_allow: Set[str] = set()
+        if raw:
+            parsed_json: Any = None
+            if raw.startswith("["):
+                try:
+                    parsed_json = json.loads(raw)
+                except Exception:
+                    parsed_json = None
+            if isinstance(parsed_json, list):
+                for item in parsed_json:
+                    text = str(item or "").strip().lower()
+                    if text:
+                        strategy_allow.add(text)
+            else:
+                for token in re.split(r"[,\s]+", raw):
+                    text = str(token or "").strip().lower()
+                    if text:
+                        strategy_allow.add(text)
+        if not strategy_allow:
+            strategy_allow = {"lcb_global"}
+        out["strategies"] = sorted(strategy_allow)
+        if "*" not in strategy_allow and strategy not in strategy_allow:
+            return out
+
+        exec_edge_score_max = _env_float(
+            "PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_EXEC_EDGE_SCORE_MAX"
+        )
+        if exec_edge_score_max is None or not math.isfinite(exec_edge_score_max):
+            exec_edge_score_max = 1.0
+        spread_min = _env_float("PM_AUTO_TRADE_CONFIRM_NOT_FOUND_PENDING_SPREAD_MIN")
+        if spread_min is None or not math.isfinite(spread_min):
+            spread_min = 0.02
+        if spread_min < 0:
+            spread_min = 0.0
+
+        exec_edge_score = to_float((candidate or {}).get("exec_edge_score"))
+        spread_val = to_float((candidate or {}).get("spread"))
+        if (spread_val is None or not math.isfinite(spread_val)) and isinstance(row_ref, Mapping):
+            spread_val = to_float(
+                row_ref.get("spread") if side == "YES" else row_ref.get("spread_no")
+            )
+
+        out["exec_edge_score"] = exec_edge_score
+        out["spread"] = spread_val
+        out["exec_edge_score_max"] = float(exec_edge_score_max)
+        out["spread_min"] = float(spread_min)
+
+        reason_codes: List[str] = []
+        reasons: List[str] = []
+        if (
+            exec_edge_score is not None
+            and math.isfinite(exec_edge_score)
+            and exec_edge_score <= float(exec_edge_score_max) + TIME_EDGE_Q_EPS
+        ):
+            reason_codes.append("confirm_not_found_exec_edge_score_low")
+            reasons.append(
+                f"exec_edge_score={float(exec_edge_score):.3f}<= {float(exec_edge_score_max):.3f}"
+            )
+        if (
+            spread_val is not None
+            and math.isfinite(spread_val)
+            and spread_val + TIME_EDGE_Q_EPS >= float(spread_min)
+        ):
+            reason_codes.append("confirm_not_found_spread_high")
+            reasons.append(
+                f"spread={float(spread_val):.3f}>= {float(spread_min):.3f}"
+            )
+
+        if reason_codes:
+            out["block"] = True
+        out["reason_codes"] = reason_codes
+        out["reasons"] = reasons
+        return out
+
     def _extract_order_match(order: Optional[Dict[str, Any]]) -> Tuple[Optional[float], Optional[float], str]:
         if not isinstance(order, dict):
             return None, None, ""
@@ -11521,18 +12819,88 @@ def execute_auto_trades(
     weight_top_equal = _top_label_from_diag("equal") or _top_label_for_weights(rows, models, weights_equal)
     weight_top_auto = _top_label_from_diag("auto") or _top_label_for_weights(rows, models, weights_auto)
     weight_top_scenario = _top_label_from_diag("scenario") or _top_label_for_weights(rows, models, weights_scenario)
-    weight_label_counts: Dict[str, int] = {}
-    for label in (weight_top_equal, weight_top_auto, weight_top_scenario):
-        if label:
-            weight_label_counts[label] = weight_label_counts.get(label, 0) + 1
+    mode_top_labels: Dict[str, str] = {
+        "equal": weight_top_equal,
+        "auto": weight_top_auto,
+        "scenario": weight_top_scenario,
+    }
+    mode_vote_weights: Dict[str, float] = {
+        "equal": max(0.0, float(bucket_vote_weight_equal)),
+        "auto": max(0.0, float(bucket_vote_weight_auto)),
+        "scenario": max(0.0, float(bucket_vote_weight_scenario)),
+    }
+    mode_vote_multipliers: Dict[str, float] = {mode: 1.0 for mode in mode_vote_weights.keys()}
+    if bucket_mode_switch_enabled:
+        mode_perf = get_recent_bucket_mode_performance(
+            bucket_mode_switch_days,
+            end_date=run_date,
+        )
+        for mode in mode_vote_weights.keys():
+            perf_entry = mode_perf.get(mode) if isinstance(mode_perf, dict) else None
+            if not isinstance(perf_entry, dict):
+                continue
+            n = to_float(perf_entry.get("n")) or 0.0
+            delta = to_float(perf_entry.get("delta"))
+            if (
+                n + TIME_EDGE_Q_EPS < float(bucket_mode_switch_min_samples)
+                or delta is None
+                or not math.isfinite(delta)
+            ):
+                continue
+            if delta <= float(bucket_mode_switch_disable_delta) + TIME_EDGE_Q_EPS:
+                mode_vote_multipliers[mode] = 0.0
+            elif delta >= float(bucket_mode_switch_boost_delta) - TIME_EDGE_Q_EPS:
+                mode_vote_multipliers[mode] = float(bucket_mode_switch_boost_mult)
+    for mode in mode_vote_weights.keys():
+        mode_vote_weights[mode] = max(
+            0.0,
+            float(mode_vote_weights.get(mode, 0.0) or 0.0)
+            * max(0.0, float(mode_vote_multipliers.get(mode, 1.0) or 0.0)),
+        )
+
+    weight_label_scores: Dict[str, float] = {}
+    weight_label_modes: Dict[str, int] = {}
+    for mode, label in mode_top_labels.items():
+        vote_weight = float(mode_vote_weights.get(mode, 0.0) or 0.0)
+        if not label or vote_weight <= 0:
+            continue
+        weight_label_scores[label] = weight_label_scores.get(label, 0.0) + vote_weight
+        weight_label_modes[label] = weight_label_modes.get(label, 0) + 1
+
+    used_fallback_vote = False
+    if not weight_label_scores:
+        used_fallback_vote = True
+        for label in mode_top_labels.values():
+            if not label:
+                continue
+            weight_label_scores[label] = weight_label_scores.get(label, 0.0) + 1.0
+            weight_label_modes[label] = weight_label_modes.get(label, 0) + 1
+
     weight_top_label = ""
     weight_top_consistent = False
-    if weight_label_counts:
-        weight_top_label, weight_top_hits = max(
-            weight_label_counts.items(),
+    if weight_label_scores:
+        weight_top_label, weight_top_score = max(
+            weight_label_scores.items(),
             key=lambda item: (item[1], item[0]),
         )
-        weight_top_consistent = weight_top_hits >= 2
+        total_score = sum(weight_label_scores.values())
+        weight_top_share = (float(weight_top_score) / total_score) if total_score > 0 else 0.0
+        if used_fallback_vote:
+            active_modes = sum(1 for label in mode_top_labels.values() if label)
+        else:
+            active_modes = sum(
+                1
+                for mode, label in mode_top_labels.items()
+                if label and float(mode_vote_weights.get(mode, 0.0) or 0.0) > 0
+            )
+        mode_hits = int(weight_label_modes.get(weight_top_label) or 0)
+        if active_modes <= 1:
+            weight_top_consistent = weight_top_share + TIME_EDGE_Q_EPS >= bucket_vote_consistent_share_min
+        else:
+            weight_top_consistent = (
+                weight_top_share + TIME_EDGE_Q_EPS >= bucket_vote_consistent_share_min
+                and mode_hits >= 2
+            )
     weight_top_match = bool(top_model_label) and bool(weight_top_label) and top_model_label == weight_top_label
     mean_bucket_equal = _mean_bucket_label(
         rows, models, weights_equal, rounding_rule, None, event_date
@@ -12731,23 +14099,32 @@ def execute_auto_trades(
                 edge_val, exec_audit_meta = _edge_realizable_exec_audit_adjust(edge_val)
                 if exec_audit_meta:
                     cand.update(exec_audit_meta)
-            edge_val, tradeability_meta = _edge_tradeability_adjust(
-                edge_val=edge_val,
-                candidate=cand,
-                row_ref=row_ref,
-                outcome=str(row_ref.get("outcome") or "").strip(),
-                side=side,
-                spread_val=spread_val,
-                depth_ratio_val=depth_ratio_val,
-                days_to_event_val=float(days_to_event) if days_to_event is not None else None,
-                bucket_key=bucket_key,
-            )
-            if tradeability_meta:
-                cand.update(tradeability_meta)
-            if edge_val is None and edge_realizable_v2_gate_entry:
-                return None
         if edge_val is None:
             edge_val, _ = edge_realizable(exec_edge_entry_val, order_price_val, exec_fee_bps)
+        edge_val_raw_for_tradeability = (
+            float(edge_val) if edge_val is not None and math.isfinite(edge_val) else None
+        )
+        edge_val_tradeable, tradeability_meta = _edge_tradeability_adjust(
+            edge_val=edge_val_raw_for_tradeability,
+            candidate=cand,
+            row_ref=row_ref,
+            outcome=str(row_ref.get("outcome") or "").strip(),
+            side=side,
+            spread_val=spread_val,
+            depth_ratio_val=depth_ratio_val,
+            days_to_event_val=float(days_to_event) if days_to_event is not None else None,
+            bucket_key=bucket_key,
+        )
+        if tradeability_meta:
+            cand.update(tradeability_meta)
+        if edge_val_tradeable is None and edge_realizable_v2_gate_entry:
+            return None
+        if edge_val_tradeable is not None and math.isfinite(edge_val_tradeable):
+            edge_val = float(edge_val_tradeable)
+        else:
+            edge_val = edge_val_raw_for_tradeability
+        if edge_val is None or not math.isfinite(edge_val):
+            edge_val = to_float(cand.get("edge_realizable"))
         if edge_val is None or not math.isfinite(edge_val):
             return None
         time_factor_val = to_float(
@@ -13030,6 +14407,33 @@ def execute_auto_trades(
         outcome_label = str(row_ref.get("outcome") or "").strip()
         if not outcome_label:
             return []
+        yes_top_label_match = bool(
+            lcb_global_yes_top_enabled
+            and top_cal_label
+            and top_market_label
+            and outcome_label == top_cal_label
+            and outcome_label == top_market_label
+        )
+        yes_top_q_cal = to_float(row_ref.get("q_calibrated"))
+        yes_top_market_ask = to_float(row_ref.get("best_ask"))
+        yes_top_q_market_gap: Optional[float] = None
+        if (
+            yes_top_q_cal is not None
+            and math.isfinite(yes_top_q_cal)
+            and yes_top_market_ask is not None
+            and math.isfinite(yes_top_market_ask)
+            and yes_top_market_ask > TIME_EDGE_Q_EPS
+        ):
+            yes_top_q_market_gap = abs(float(yes_top_q_cal) - float(yes_top_market_ask))
+        yes_top_q_market_consistent = bool(
+            yes_top_q_market_gap is not None
+            and yes_top_q_market_gap
+            <= float(lcb_global_yes_top_market_consist_eps) + TIME_EDGE_Q_EPS
+        )
+        # User-defined YES top: top q_calibrated label must equal top market label.
+        yes_top_event_match = bool(yes_top_label_match)
+        yes_top_budget_ratio = float(lcb_global_yes_top_budget_ratio)
+        lcb_budget_ratio = max(0.0, 1.0 - yes_top_budget_ratio)
         lcb_global_edge_lcb_min_runtime = _resolve_lcb_global_edge_lcb_min(days_to_event)
         if lcb_global_edge_lcb_min_runtime is None:
             reason_text = "事件日距>1天(D2+)按风控禁入"
@@ -13059,6 +14463,9 @@ def execute_auto_trades(
 
         candidates: List[Dict[str, Any]] = []
         for side in ("YES", "NO"):
+            combo_leg = "lcb"
+            combo_match = False
+            combo_size_ratio_extra = 1.0
             if side == "YES":
                 ask_val = to_float(row_ref.get("best_ask"))
                 bid_val = to_float(row_ref.get("best_bid"))
@@ -13082,6 +14489,10 @@ def execute_auto_trades(
                     or to_float(row_ref.get("ask_depth_topN"))
                     or to_float(row_ref.get("best_ask_size"))
                 )
+                if yes_top_event_match:
+                    combo_leg = "yes_top"
+                    combo_match = True
+                    combo_size_ratio_extra = float(yes_top_budget_ratio)
             else:
                 ask_val = to_float(row_ref.get("best_ask_no"))
                 bid_val = to_float(row_ref.get("best_bid_no"))
@@ -13109,8 +14520,13 @@ def execute_auto_trades(
                     or to_float(row_ref.get("ask_depth_topN_no"))
                     or to_float(row_ref.get("best_ask_size_no"))
                 )
+                if yes_top_event_match:
+                    combo_size_ratio_extra = float(lcb_budget_ratio)
             base_detail = {
                 "strategy": "lcb_global",
+                "lcb_combo_leg": combo_leg,
+                "lcb_combo_match": bool(combo_match),
+                "lcb_combo_size_ratio_extra": float(combo_size_ratio_extra),
                 "side": side,
                 "outcome": outcome_label,
                 "token_id": token_id,
@@ -13133,6 +14549,17 @@ def execute_auto_trades(
                 "lcb_global_spread_relax_exec_edge_min": float(lcb_global_spread_relax_exec_edge_min),
                 "lcb_global_min_depth_usdc": float(lcb_global_min_depth_usdc),
                 "lcb_global_edge_lcb_min": float(lcb_global_edge_lcb_min_runtime),
+                "lcb_global_yes_top_enabled": bool(lcb_global_yes_top_enabled),
+                "lcb_global_yes_top_budget_ratio": float(yes_top_budget_ratio),
+                "lcb_global_yes_top_market_consist_eps": float(lcb_global_yes_top_market_consist_eps),
+                "lcb_yes_top_label_match": bool(yes_top_label_match),
+                "lcb_yes_top_q_market_consistent": bool(yes_top_q_market_consistent),
+                "lcb_yes_top_event_match": bool(yes_top_event_match),
+                "lcb_yes_top_q_market_gap": (
+                    float(yes_top_q_market_gap)
+                    if yes_top_q_market_gap is not None and math.isfinite(yes_top_q_market_gap)
+                    else None
+                ),
             }
 
             refreshed_quotes_once = False
@@ -13160,16 +14587,30 @@ def execute_auto_trades(
                 )
 
             def _refresh_quotes_once(trigger: str) -> None:
-                nonlocal ask_val, bid_val, spread_val, depth_val, refreshed_quotes_once
+                nonlocal ask_val, bid_val, spread_val, depth_val, refreshed_quotes_once, token_id
                 if refreshed_quotes_once or not token_id:
                     return
                 refreshed_quotes_once = True
-                refreshed = _lcb_global_refresh_orderbook(token_id)
+                refreshed = _lcb_global_refresh_orderbook(
+                    token_id,
+                    outcome_label=outcome_label,
+                    side=side,
+                )
                 if isinstance(refreshed, dict) and refreshed.get("ok"):
                     ask_ref = to_float(refreshed.get("best_ask"))
                     bid_ref = to_float(refreshed.get("best_bid"))
                     spread_ref = to_float(refreshed.get("spread"))
                     depth_ref = to_float(refreshed.get("ask_depth"))
+                    token_used = str(refreshed.get("token_id_used") or "").strip()
+                    if token_used and token_used != token_id:
+                        token_id_prev = token_id
+                        token_id = token_used
+                        if side == "YES":
+                            row_ref["yes_token"] = token_used
+                        else:
+                            row_ref["no_token"] = token_used
+                        base_detail["ob_token_before"] = token_id_prev
+                        base_detail["ob_token_after"] = token_used
                     if ask_ref is not None and math.isfinite(ask_ref) and ask_ref > TIME_EDGE_Q_EPS:
                         ask_val = ask_ref
                     if bid_ref is not None and math.isfinite(bid_ref):
@@ -13186,6 +14627,10 @@ def execute_auto_trades(
                             "ob_best_bid": bid_ref,
                             "ob_spread": spread_ref,
                             "ob_ask_depth": depth_ref,
+                            "ob_refresh_source": str(refreshed.get("source") or "orderbook"),
+                            "ob_remap_attempted": bool(refreshed.get("remap_attempted")),
+                            "ob_remap_selected": bool(refreshed.get("remap_selected")),
+                            "ob_remap_token": str(refreshed.get("token_id_remapped") or ""),
                         }
                     )
                 else:
@@ -13194,6 +14639,10 @@ def execute_auto_trades(
                             "ob_refresh_ok": False,
                             "ob_refresh_trigger": str(trigger or ""),
                             "ob_refresh_error": str((refreshed or {}).get("error") or ""),
+                            "ob_refresh_source": str((refreshed or {}).get("source") or ""),
+                            "ob_remap_attempted": bool((refreshed or {}).get("remap_attempted")),
+                            "ob_remap_selected": bool((refreshed or {}).get("remap_selected")),
+                            "ob_remap_token": str((refreshed or {}).get("token_id_remapped") or ""),
                         }
                     )
                 _sync_quote_detail_fields()
@@ -13231,6 +14680,26 @@ def execute_auto_trades(
                         details=base_detail,
                     )
                     continue
+            structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
+            if structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}:
+                # Fast pre-filter for clearly untradable one-sided books.
+                _sync_quote_detail_fields()
+                base_detail["market_structure_state"] = structure_state_now
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["market_one_sided_thin_book"],
+                    reasons=[
+                        "单边薄簿/不可交易(ask=0.001且bid缺失)"
+                        if structure_state_now == "one_sided_ask_only"
+                        else "单边薄簿/不可交易(仅bid挂单,ask缺失)"
+                    ],
+                    details=base_detail,
+                )
+                continue
             if (
                 ask_val is None
                 or not math.isfinite(ask_val)
@@ -13245,11 +14714,13 @@ def execute_auto_trades(
                 else:
                     _sync_quote_detail_fields()
                     ask_missing_bid_only = bool(bid_val is not None and math.isfinite(bid_val))
+                    structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
+                    base_detail["market_structure_state"] = structure_state_now
                     ask_missing_reason_code = (
-                        "market_ask_missing_bid_only" if ask_missing_bid_only else "market_ask_missing_no_bid"
+                        "market_one_sided_thin_book" if ask_missing_bid_only else "market_ask_missing_no_bid"
                     )
                     ask_missing_reason_text = (
-                        "盘口ask缺失（仅bid侧挂单，单边薄簿）"
+                        "单边薄簿/不可交易(仅bid挂单,ask缺失)"
                         if ask_missing_bid_only
                         else "盘口ask缺失（双侧不可用）"
                     )
@@ -13332,13 +14803,9 @@ def execute_auto_trades(
                 continue
             if entry_require_nonneg_spread:
                 if spread_val is None or not math.isfinite(spread_val) or spread_val < -TIME_EDGE_Q_EPS:
-                    one_sided_thin = (
-                        spread_val is None
-                        and ask_val is not None
-                        and math.isfinite(ask_val)
-                        and ask_val <= lcb_global_one_sided_ask_max + TIME_EDGE_Q_EPS
-                        and (bid_val is None or not math.isfinite(bid_val))
-                    )
+                    structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
+                    one_sided_thin = structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}
+                    base_detail["market_structure_state"] = structure_state_now
                     _buffer_decision(
                         outcome_label,
                         side,
@@ -13346,7 +14813,11 @@ def execute_auto_trades(
                         decided_state="blocked",
                         will_order=False,
                         reason_codes=["market_one_sided_thin_book" if one_sided_thin else "market_spread_missing"],
-                        reasons=["单边薄簿/不可交易" if one_sided_thin else "盘口spread缺失"],
+                        reasons=[
+                            "单边薄簿/不可交易"
+                            if one_sided_thin
+                            else "盘口spread缺失"
+                        ],
                         details=base_detail,
                     )
                     continue
@@ -13356,12 +14827,9 @@ def execute_auto_trades(
                 or spread_val > lcb_global_max_spread + TIME_EDGE_Q_EPS
             ):
                 if spread_val is None or not math.isfinite(spread_val):
-                    one_sided_thin = (
-                        ask_val is not None
-                        and math.isfinite(ask_val)
-                        and ask_val <= lcb_global_one_sided_ask_max + TIME_EDGE_Q_EPS
-                        and (bid_val is None or not math.isfinite(bid_val))
-                    )
+                    structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
+                    one_sided_thin = structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}
+                    base_detail["market_structure_state"] = structure_state_now
                     _buffer_decision(
                         outcome_label,
                         side,
@@ -13439,6 +14907,32 @@ def execute_auto_trades(
                             details=base_detail,
                         )
                     continue
+            consistency_meta = _lcb_global_snapshot_consistency_eval(outcome_label, side)
+            base_detail["snapshot_consistency_enabled"] = bool(consistency_meta.get("enabled"))
+            base_detail["snapshot_consistency_enforced"] = bool(consistency_meta.get("enforced"))
+            base_detail["snapshot_consistency_pass"] = bool(consistency_meta.get("pass"))
+            base_detail["snapshot_consistency_reason"] = str(consistency_meta.get("reason") or "")
+            base_detail["snapshot_consistency_available"] = int(consistency_meta.get("available") or 0)
+            base_detail["snapshot_consistency_pass_count"] = int(consistency_meta.get("pass_count") or 0)
+            base_detail["snapshot_consistency_required"] = int(consistency_meta.get("required") or 0)
+            base_detail["snapshot_consistency_states"] = list(consistency_meta.get("states") or [])
+            if consistency_meta.get("enforced") and (not consistency_meta.get("pass")):
+                available = int(consistency_meta.get("available") or 0)
+                pass_count = int(consistency_meta.get("pass_count") or 0)
+                required = int(consistency_meta.get("required") or 0)
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["market_snapshot_inconsistent"],
+                    reasons=[
+                        f"盘口快照一致性不足(近{available}次可交易={pass_count} < 要求{required})"
+                    ],
+                    details=base_detail,
+                )
+                continue
             order_price = _resolve_mid_price(ask_val, bid_val, spread_val)
             if order_price is None or not math.isfinite(order_price) or order_price <= TIME_EDGE_Q_EPS:
                 order_price = ask_val
@@ -13500,6 +14994,20 @@ def execute_auto_trades(
                 "q_calibrated": q_cal_val,
                 "q_edge": q_edge_val,
                 "strategy": "lcb_global",
+                "lcb_combo_leg": combo_leg,
+                "lcb_combo_match": bool(combo_match),
+                "lcb_yes_top_enabled": bool(lcb_global_yes_top_enabled),
+                "lcb_yes_top_budget_ratio": float(yes_top_budget_ratio),
+                "lcb_yes_top_market_consist_eps": float(lcb_global_yes_top_market_consist_eps),
+                "lcb_yes_top_label_match": bool(yes_top_label_match),
+                "lcb_yes_top_q_market_consistent": bool(yes_top_q_market_consistent),
+                "lcb_yes_top_event_match": bool(yes_top_event_match),
+                "lcb_yes_top_q_market_gap": (
+                    float(yes_top_q_market_gap)
+                    if yes_top_q_market_gap is not None and math.isfinite(yes_top_q_market_gap)
+                    else None
+                ),
+                "strategy_size_ratio_extra": float(combo_size_ratio_extra),
                 "priority": 1000,
                 "lcb_global_signal_lcb_min": float(lcb_global_signal_lcb_min),
                 "lcb_global_path_lcb_min": float(lcb_global_path_lcb_min),
@@ -13508,6 +15016,14 @@ def execute_auto_trades(
                 "lcb_global_min_depth_usdc": float(lcb_global_min_depth_usdc),
                 "lcb_global_depth_usdc": float(depth_val) if depth_val is not None and math.isfinite(depth_val) else None,
                 "days_to_event": days_to_event,
+                "snapshot_consistency_enabled": bool(consistency_meta.get("enabled")),
+                "snapshot_consistency_enforced": bool(consistency_meta.get("enforced")),
+                "snapshot_consistency_pass": bool(consistency_meta.get("pass")),
+                "snapshot_consistency_reason": str(consistency_meta.get("reason") or ""),
+                "snapshot_consistency_available": int(consistency_meta.get("available") or 0),
+                "snapshot_consistency_pass_count": int(consistency_meta.get("pass_count") or 0),
+                "snapshot_consistency_required": int(consistency_meta.get("required") or 0),
+                "snapshot_consistency_states": list(consistency_meta.get("states") or []),
             }
             sort_val = _candidate_realizable_sort_score(cand, row_ref)
             if sort_val is None or not math.isfinite(sort_val):
@@ -14592,6 +16108,13 @@ def execute_auto_trades(
     def _location_candidate_entry_eligible(cand: Mapping[str, Any]) -> bool:
         strategy_name = str(cand.get("strategy") or "").strip().lower() or "main"
         if lcb_global_enabled and strategy_name == "lcb_global":
+            side_name = str(cand.get("side") or "").strip().upper()
+            if side_name == "YES" and (
+                bool(cand.get("lcb_q_combo_yes_market_consistent"))
+                or bool(cand.get("lcb_yes_top_label_match"))
+            ):
+                # User-defined YES leg: top q_calibrated label == top YES market label.
+                return True
             signal_lcb_val = to_float(cand.get("edge_signal_lcb"))
             if signal_lcb_val is None or not math.isfinite(signal_lcb_val):
                 return False
@@ -15363,6 +16886,937 @@ def execute_auto_trades(
         if key not in base_active_keys:
             follow_runtime_new_legs.add(key)
 
+    def _parse_lcb_outcome_center(outcome_label: str) -> Optional[float]:
+        text = str(outcome_label or "").strip().lower()
+        if not text:
+            return None
+        nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", text)]
+        if not nums:
+            return None
+        if len(nums) >= 2 and (
+            "-" in text
+            or " to " in text
+            or "～" in text
+            or "—" in text
+            or "–" in text
+        ):
+            lo = float(nums[0])
+            hi = float(nums[1])
+            if hi < lo:
+                lo, hi = hi, lo
+            return (lo + hi) / 2.0
+        return float(nums[0])
+
+    def _estimate_state_notional(entry_ref: Mapping[str, Any], side_label: str, outcome_label: str) -> float:
+        pos_val = to_float(entry_ref.get("position_size")) or 0.0
+        if pos_val <= TIME_EDGE_Q_EPS:
+            return 0.0
+        price_val = to_float(entry_ref.get("avg_price"))
+        if price_val is None or not math.isfinite(price_val) or price_val <= TIME_EDGE_Q_EPS:
+            price_val = to_float(entry_ref.get("entry_price"))
+        if price_val is None or not math.isfinite(price_val) or price_val <= TIME_EDGE_Q_EPS:
+            row_ref = outcome_row_by_label.get(str(outcome_label or "").strip())
+            if isinstance(row_ref, Mapping):
+                if str(side_label or "").strip().upper() == "YES":
+                    price_val = to_float(row_ref.get("best_ask")) or to_float(row_ref.get("best_bid"))
+                else:
+                    price_val = to_float(row_ref.get("best_ask_no")) or to_float(row_ref.get("best_bid_no"))
+        if price_val is None or not math.isfinite(price_val) or price_val <= TIME_EDGE_Q_EPS:
+            return 0.0
+        return max(float(pos_val) * float(price_val), 0.0)
+
+    lcb_q_combo_selection_active = False
+    lcb_q_combo_selection_theoretical_active = False
+    lcb_q_combo_anchor_outcome_current = ""
+    lcb_q_combo_anchor_side_current = ""
+    lcb_q_combo_anchor_exec_eligible_current = False
+    lcb_q_combo_anchor_mode_current = str(lcb_global_q_combo_anchor_mode)
+    lcb_q_combo_q_peak_outcome_current = ""
+    lcb_q_combo_q_peak_value_current = None
+    lcb_q_combo_q_peak_source_current = ""
+    lcb_q_combo_yes_q_by_outcome: Dict[str, float] = {}
+    lcb_q_peak_switch_triggered = False
+    lcb_q_peak_switch_old_yes_outcomes: Set[str] = set()
+    lcb_q_peak_switch_new_yes_outcome = ""
+    lcb_q_peak_switch_delta_q = None
+    lcb_q_peak_switch_confirm_count = 0
+    lcb_q_peak_switch_confirm_pass = False
+    lcb_q_peak_switch_delta_pass = False
+    lcb_q_peak_switch_cooldown_pass = True
+    lcb_q_peak_switch_cooldown_left_sec = 0.0
+    lcb_q_peak_switch_block_reason = ""
+    lcb_q_peak_switch_old_yes_outcome_primary = ""
+    lcb_infos: List[Dict[str, Any]] = []
+    if lcb_global_enabled and lcb_global_q_combo_enabled:
+        combo_budget_raw = float(lcb_global_q_combo_event_budget_usdc)
+        combo_existing_notional = 0.0
+        for (outcome_key, side_key), entry_ref in prev_states.items():
+            if not isinstance(entry_ref, Mapping):
+                continue
+            state_name = str(entry_ref.get("state") or "").strip().lower()
+            pos_size = to_float(entry_ref.get("position_size")) or 0.0
+            if pos_size <= TIME_EDGE_Q_EPS and state_name not in {"entry", "entry_pending"}:
+                continue
+            combo_existing_notional += _estimate_state_notional(entry_ref, side_key, outcome_key)
+        combo_available_notional = max(combo_budget_raw - combo_existing_notional, 0.0)
+        lcb_infos = []
+        cand_ref_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        q_yes_consistent_by_outcome: Dict[str, float] = {}
+        q_yes_row_by_outcome: Dict[str, float] = {}
+        market_yes_top_outcome = ""
+        market_yes_top_ask = -1.0
+        outcome_rank_index: Dict[str, int] = {}
+        sortable_outcomes: List[Tuple[float, float, str]] = []
+        for row_ref in rows:
+            outcome_row = str((row_ref or {}).get("outcome") or "").strip()
+            if not outcome_row:
+                continue
+            rank_tuple = _bucket_sort_tuple(outcome_row)
+            if rank_tuple is not None:
+                sortable_outcomes.append((float(rank_tuple[0]), float(rank_tuple[1]), outcome_row))
+            q_row = to_float((row_ref or {}).get("q_calibrated"))
+            if q_row is None or not math.isfinite(q_row):
+                q_row = to_float((row_ref or {}).get("q_entry"))
+            ask_row = to_float((row_ref or {}).get("best_ask"))
+            if q_row is not None and math.isfinite(q_row):
+                q_prev_row = q_yes_row_by_outcome.get(outcome_row)
+                if q_prev_row is None or float(q_row) > float(q_prev_row):
+                    q_yes_row_by_outcome[outcome_row] = float(q_row)
+            if (
+                ask_row is not None
+                and math.isfinite(ask_row)
+                and ask_row > TIME_EDGE_Q_EPS
+                and ask_row > market_yes_top_ask + TIME_EDGE_Q_EPS
+            ):
+                market_yes_top_outcome = str(outcome_row)
+                market_yes_top_ask = float(ask_row)
+            if (
+                q_row is None
+                or not math.isfinite(q_row)
+                or ask_row is None
+                or not math.isfinite(ask_row)
+                or ask_row <= TIME_EDGE_Q_EPS
+                or float(q_row) <= TIME_EDGE_Q_EPS
+            ):
+                continue
+            gap_row = abs(float(q_row) - float(ask_row))
+            if gap_row > float(lcb_global_yes_top_market_consist_eps) + TIME_EDGE_Q_EPS:
+                continue
+            q_prev = q_yes_consistent_by_outcome.get(outcome_row)
+            if q_prev is None or float(q_row) > float(q_prev):
+                q_yes_consistent_by_outcome[outcome_row] = float(q_row)
+        if sortable_outcomes:
+            sortable_outcomes.sort(key=lambda item: (item[0], item[1], str(item[2])))
+            for _low_val, _high_val, outcome_row in sortable_outcomes:
+                if outcome_row in outcome_rank_index:
+                    continue
+                outcome_rank_index[outcome_row] = len(outcome_rank_index)
+        for outcome_key, cand_list in entry_candidates_by_outcome.items():
+            for cand in cand_list or []:
+                if not isinstance(cand, dict):
+                    continue
+                if str(cand.get("strategy") or "").strip().lower() != "lcb_global":
+                    continue
+                side_key = str(cand.get("side") or "").strip().upper()
+                if side_key not in {"YES", "NO"}:
+                    continue
+                key = (str(outcome_key or ""), side_key)
+                if key in cand_ref_by_key:
+                    continue
+                cand_ref_by_key[key] = cand
+                score_val = _candidate_sort_score(cand)
+                edge_lcb_val = to_float(cand.get("edge_tradeability_edge_lcb"))
+                if edge_lcb_val is None or not math.isfinite(edge_lcb_val):
+                    edge_lcb_val = -1e9
+                gap_val = to_float(cand.get("edge_min"))
+                if gap_val is None or not math.isfinite(gap_val):
+                    gap_val = 0.0
+                q_val = to_float(cand.get("q_calibrated"))
+                if q_val is None or not math.isfinite(q_val):
+                    q_val = to_float(cand.get("q_entry"))
+                if (
+                    side_key == "YES"
+                    and q_val is not None
+                    and math.isfinite(q_val)
+                ):
+                    q_prev = lcb_q_combo_yes_q_by_outcome.get(str(outcome_key or ""))
+                    if q_prev is None or float(q_val) > float(q_prev):
+                        lcb_q_combo_yes_q_by_outcome[str(outcome_key or "")] = float(q_val)
+                center_val = _parse_lcb_outcome_center(outcome_key)
+                lcb_infos.append(
+                    {
+                        "key": key,
+                        "outcome": str(outcome_key or ""),
+                        "side": side_key,
+                        "cand": cand,
+                        "score": float(score_val),
+                        "edge_lcb": float(edge_lcb_val),
+                        "gap": float(gap_val),
+                        "q": float(q_val) if q_val is not None and math.isfinite(q_val) else None,
+                        "center": float(center_val) if center_val is not None and math.isfinite(center_val) else None,
+                        "eligible": bool(_location_candidate_entry_eligible(cand)),
+                    }
+                )
+
+        selected_roles: List[Tuple[Dict[str, Any], str, float]] = []
+        anchor_info: Optional[Dict[str, Any]] = None
+        if lcb_infos:
+            yes_infos = [info for info in lcb_infos if str(info.get("side") or "") == "YES"]
+            q_peak_info = None
+            strict_yes_top_outcome = ""
+            if (
+                lcb_global_yes_top_enabled
+                and top_cal_label
+                and top_market_label
+                and str(top_cal_label).strip() == str(top_market_label).strip()
+            ):
+                strict_yes_top_outcome = str(top_cal_label).strip()
+            if strict_yes_top_outcome:
+                q_peak_center_fallback = _parse_lcb_outcome_center(strict_yes_top_outcome)
+                q_peak_q_fallback = q_yes_row_by_outcome.get(strict_yes_top_outcome)
+                if q_peak_q_fallback is None:
+                    for info_ref in yes_infos:
+                        if str(info_ref.get("outcome") or "").strip() != strict_yes_top_outcome:
+                            continue
+                        q_ref = to_float(info_ref.get("q"))
+                        if q_ref is not None and math.isfinite(q_ref):
+                            q_peak_q_fallback = float(q_ref)
+                            break
+                q_peak_info = {
+                    "outcome": str(strict_yes_top_outcome),
+                    "q": (
+                        float(q_peak_q_fallback)
+                        if q_peak_q_fallback is not None and math.isfinite(q_peak_q_fallback)
+                        else 0.0
+                    ),
+                    "center": (
+                        float(q_peak_center_fallback)
+                        if q_peak_center_fallback is not None and math.isfinite(q_peak_center_fallback)
+                        else None
+                    ),
+                }
+                lcb_q_combo_q_peak_source_current = "top_label_match"
+            elif market_yes_top_outcome:
+                q_peak_center_fallback = _parse_lcb_outcome_center(market_yes_top_outcome)
+                q_peak_q_fallback = q_yes_row_by_outcome.get(market_yes_top_outcome)
+                q_peak_info = {
+                    "outcome": str(market_yes_top_outcome),
+                    "q": (
+                        float(q_peak_q_fallback)
+                        if q_peak_q_fallback is not None and math.isfinite(q_peak_q_fallback)
+                        else 0.0
+                    ),
+                    "center": (
+                        float(q_peak_center_fallback)
+                        if q_peak_center_fallback is not None and math.isfinite(q_peak_center_fallback)
+                        else None
+                    ),
+                }
+                lcb_q_combo_q_peak_source_current = "market_yes_top_fallback"
+            if isinstance(q_peak_info, dict):
+                lcb_q_combo_q_peak_outcome_current = str(q_peak_info.get("outcome") or "")
+                q_peak_q_now = to_float(q_peak_info.get("q"))
+                if q_peak_q_now is not None and math.isfinite(q_peak_q_now):
+                    lcb_q_combo_q_peak_value_current = float(q_peak_q_now)
+            elif not lcb_q_combo_q_peak_source_current:
+                lcb_q_combo_q_peak_source_current = "none_top_label_mismatch"
+            eligible_infos = [info for info in lcb_infos if bool(info.get("eligible"))]
+            anchor_pool = list(eligible_infos) if eligible_infos else list(lcb_infos)
+            if anchor_pool:
+                anchor_pool.sort(
+                    key=lambda info: (
+                        float(info.get("edge_lcb") or -1e9),
+                        float(info.get("score") or -1e9),
+                        float(info.get("gap") or -1e9),
+                    ),
+                    reverse=True,
+                )
+
+                def _prefer_no_main_pool(pool_ref: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                    no_only = [
+                        info
+                        for info in pool_ref
+                        if str(info.get("side") or "").upper() == "NO"
+                    ]
+                    return no_only if no_only else list(pool_ref)
+
+                if lcb_global_q_combo_anchor_mode == "peak_neighbor" and isinstance(q_peak_info, dict):
+                    q_peak_center_pref = to_float(q_peak_info.get("center"))
+                    q_peak_outcome_pref = str(q_peak_info.get("outcome") or "").strip()
+                    if q_peak_center_pref is not None and math.isfinite(q_peak_center_pref):
+                        no_pool = [
+                            info
+                            for info in _prefer_no_main_pool(anchor_pool)
+                            if str(info.get("outcome") or "") != q_peak_outcome_pref
+                        ]
+                        no_pool_center = [
+                            info
+                            for info in no_pool
+                            if to_float(info.get("center")) is not None
+                        ]
+                        below_pool = [
+                            info
+                            for info in no_pool_center
+                            if float(to_float(info.get("center")) or 0.0)
+                            < float(q_peak_center_pref) - TIME_EDGE_Q_EPS
+                        ]
+                        pick_pool = below_pool if below_pool else no_pool_center
+                        if pick_pool:
+                            anchor_info = min(
+                                pick_pool,
+                                key=lambda info: (
+                                    abs(float(to_float(info.get("center")) or 0.0) - float(q_peak_center_pref)),
+                                    -float(info.get("edge_lcb") or -1e9),
+                                    -float(info.get("score") or -1e9),
+                                ),
+                            )
+                if anchor_info is None:
+                    main_pool = _prefer_no_main_pool(anchor_pool)
+                    if main_pool:
+                        anchor_info = main_pool[0]
+            if anchor_info is not None:
+                selected_key_set: Set[Tuple[str, str]] = set()
+
+                def _add_role(
+                    info_ref: Optional[Dict[str, Any]],
+                    role_name: str,
+                    weight_val: float,
+                    *,
+                    allow_zero_weight: bool = False,
+                ) -> None:
+                    if info_ref is None:
+                        return
+                    if (not allow_zero_weight) and weight_val <= TIME_EDGE_Q_EPS:
+                        return
+                    key_ref = info_ref.get("key")
+                    if not isinstance(key_ref, tuple):
+                        return
+                    if key_ref in selected_key_set:
+                        return
+                    selected_key_set.add(key_ref)
+                    selected_roles.append(
+                        (info_ref, str(role_name), max(float(weight_val), 0.0))
+                    )
+
+                anchor_side = str(anchor_info.get("side") or "").upper()
+                anchor_outcome = str(anchor_info.get("outcome") or "")
+                lcb_q_combo_anchor_outcome_current = anchor_outcome
+                lcb_q_combo_anchor_side_current = anchor_side
+                lcb_q_combo_anchor_exec_eligible_current = bool(anchor_info.get("eligible"))
+                q_peak_outcome = str((q_peak_info or {}).get("outcome") or "")
+                q_peak_center = (
+                    to_float((q_peak_info or {}).get("center"))
+                    if isinstance(q_peak_info, dict)
+                    else None
+                )
+                near_far_anchor_outcome = str(q_peak_outcome or "").strip()
+                if (not near_far_anchor_outcome) and top_cal_label:
+                    near_far_anchor_outcome = str(top_cal_label).strip()
+                near_far_anchor_center = _parse_lcb_outcome_center(near_far_anchor_outcome)
+                anchor_center = to_float(anchor_info.get("center"))
+                ref_center = (
+                    float(near_far_anchor_center)
+                    if near_far_anchor_center is not None and math.isfinite(near_far_anchor_center)
+                    else q_peak_center
+                )
+                if ref_center is None or not math.isfinite(ref_center):
+                    ref_center = anchor_center
+
+                _add_role(
+                    anchor_info,
+                    "main",
+                    float(lcb_global_q_combo_main_ratio),
+                    allow_zero_weight=True,
+                )
+                def _add_role_group(
+                    pool: List[Dict[str, Any]],
+                    *,
+                    role_name: str,
+                    ratio_total: float,
+                    max_count: int,
+                ) -> None:
+                    if ratio_total <= TIME_EDGE_Q_EPS or max_count <= 0:
+                        return
+                    picked: List[Dict[str, Any]] = []
+                    for info_ref in pool:
+                        key_ref = info_ref.get("key")
+                        if not isinstance(key_ref, tuple):
+                            continue
+                        if key_ref in selected_key_set:
+                            continue
+                        picked.append(info_ref)
+                        if len(picked) >= int(max_count):
+                            break
+                    if not picked:
+                        return
+                    each_weight = float(ratio_total) / float(len(picked))
+                    for info_ref in picked:
+                        _add_role(info_ref, role_name, each_weight)
+
+                def _yes_market_consistent(info_ref: Dict[str, Any]) -> bool:
+                    if str(info_ref.get("side") or "").upper() != "YES":
+                        return False
+                    if not lcb_global_yes_top_enabled:
+                        return False
+                    target_yes_outcome = str(q_peak_outcome or "").strip()
+                    if not target_yes_outcome and market_yes_top_outcome:
+                        target_yes_outcome = str(market_yes_top_outcome).strip()
+                    if not target_yes_outcome:
+                        return False
+                    outcome_val = str(info_ref.get("outcome") or "").strip()
+                    return bool(outcome_val and outcome_val == target_yes_outcome)
+
+                def _combo_exec_eligible(info_ref: Dict[str, Any], role_name: str) -> bool:
+                    role_norm = str(role_name or "").strip().lower()
+                    if role_norm == "yes_top":
+                        # User-defined YES leg: only require top-label match (q_calibrated vs market).
+                        return bool(_yes_market_consistent(info_ref))
+                    return bool(info_ref.get("eligible"))
+
+                yes_peak_pool: List[Dict[str, Any]] = []
+                if q_peak_outcome:
+                    yes_peak_pool = [
+                        info
+                        for info in yes_infos
+                        if str(info.get("outcome") or "") == q_peak_outcome
+                        and _yes_market_consistent(info)
+                    ]
+                if not yes_peak_pool and not q_peak_outcome:
+                    yes_peak_pool = [
+                        info
+                        for info in yes_infos
+                        if _yes_market_consistent(info)
+                    ]
+                if yes_peak_pool:
+                    _add_role_group(
+                        yes_peak_pool,
+                        role_name="yes_top",
+                        ratio_total=float(lcb_global_q_combo_yes_peak_ratio),
+                        max_count=int(lcb_global_q_combo_yes_peak_count),
+                    )
+
+                no_pool = [
+                    info
+                    for info in lcb_infos
+                    if str(info.get("side") or "").upper() == "NO"
+                    and (
+                        not near_far_anchor_outcome
+                        or str(info.get("outcome") or "") != near_far_anchor_outcome
+                    )
+                ]
+                no_pool_rank: List[Dict[str, Any]] = list(no_pool)
+                if ref_center is not None and math.isfinite(ref_center):
+                    with_center = [
+                        info
+                        for info in no_pool
+                        if to_float(info.get("center")) is not None
+                    ]
+                    if with_center:
+                        no_pool_rank = with_center
+                if ref_center is not None and math.isfinite(ref_center):
+                    fallback_no_near_pool = sorted(
+                        no_pool_rank,
+                        key=lambda info: (
+                            abs(float(to_float(info.get("center")) or 0.0) - float(ref_center)),
+                            -float(info.get("edge_lcb") or -1e9),
+                            -float(info.get("score") or -1e9),
+                        ),
+                    )
+                    fallback_no_far_pool = sorted(
+                        no_pool_rank,
+                        key=lambda info: (
+                            abs(float(to_float(info.get("center")) or 0.0) - float(ref_center)),
+                            float(info.get("edge_lcb") or -1e9),
+                            float(info.get("score") or -1e9),
+                        ),
+                        reverse=True,
+                    )
+                else:
+                    fallback_no_near_pool = sorted(
+                        no_pool_rank,
+                        key=lambda info: (
+                            float(info.get("edge_lcb") or -1e9),
+                            float(info.get("score") or -1e9),
+                        ),
+                        reverse=True,
+                    )
+                    fallback_no_far_pool = sorted(
+                        no_pool_rank,
+                        key=lambda info: (
+                            float(info.get("edge_lcb") or -1e9),
+                            float(info.get("score") or -1e9),
+                        ),
+                        reverse=True,
+                    )
+                no_near_pool: List[Dict[str, Any]] = []
+                no_far_pool: List[Dict[str, Any]] = []
+                near_far_anchor_rank = (
+                    outcome_rank_index.get(near_far_anchor_outcome)
+                    if near_far_anchor_outcome
+                    else None
+                )
+                rank_gap_by_key: Dict[Tuple[str, str], int] = {}
+                rank_delta_by_key: Dict[Tuple[str, str], int] = {}
+                if near_far_anchor_rank is not None:
+                    for info_ref in no_pool_rank:
+                        key_ref = info_ref.get("key")
+                        if not isinstance(key_ref, tuple):
+                            continue
+                        rank_val = outcome_rank_index.get(str(info_ref.get("outcome") or ""))
+                        if rank_val is None:
+                            continue
+                        delta_val = int(rank_val) - int(near_far_anchor_rank)
+                        gap_val = abs(delta_val)
+                        if gap_val <= 0:
+                            continue
+                        rank_gap_by_key[key_ref] = int(gap_val)
+                        rank_delta_by_key[key_ref] = int(delta_val)
+                    # User-defined NO near legs: YES-bucket ±1 (dual-side).
+                    no_near_rank_pool = [
+                        info_ref
+                        for info_ref in no_pool_rank
+                        if isinstance(info_ref.get("key"), tuple)
+                        and rank_gap_by_key.get(info_ref.get("key")) == 1
+                    ]
+                    if no_near_rank_pool:
+                        no_near_pool = sorted(
+                            no_near_rank_pool,
+                            key=lambda info_ref: (
+                                -float(info_ref.get("edge_lcb") or -1e9),
+                                -float(info_ref.get("score") or -1e9),
+                                str(info_ref.get("outcome") or ""),
+                            ),
+                        )
+                    # User-defined NO far legs: YES-bucket ±2/±3 (dual-side).
+                    no_far_rank_pool = [
+                        info_ref
+                        for info_ref in no_pool_rank
+                        if isinstance(info_ref.get("key"), tuple)
+                        and rank_gap_by_key.get(info_ref.get("key"), 0) in {2, 3}
+                    ]
+                    if not no_far_rank_pool:
+                        no_far_rank_pool = [
+                            info_ref
+                            for info_ref in no_pool_rank
+                            if isinstance(info_ref.get("key"), tuple)
+                            and rank_gap_by_key.get(info_ref.get("key"), 0) >= 2
+                        ]
+                    if no_far_rank_pool:
+                        no_far_pool = sorted(
+                            no_far_rank_pool,
+                            key=lambda info_ref: (
+                                rank_delta_by_key.get(info_ref.get("key"), 999),
+                                -float(info_ref.get("edge_lcb") or -1e9),
+                                -float(info_ref.get("score") or -1e9),
+                                str(info_ref.get("outcome") or ""),
+                            ),
+                        )
+                if near_far_anchor_rank is not None:
+                    if not no_near_pool:
+                        no_near_pool = list(fallback_no_near_pool)
+                    if not no_far_pool:
+                        no_far_pool = list(fallback_no_far_pool)
+                _add_role_group(
+                    no_near_pool,
+                    role_name="no_near",
+                    ratio_total=float(lcb_global_q_combo_no_near_ratio),
+                    max_count=int(lcb_global_q_combo_no_near_count),
+                )
+                _add_role_group(
+                    no_far_pool,
+                    role_name="no_far",
+                    ratio_total=float(lcb_global_q_combo_no_far_ratio),
+                    max_count=int(lcb_global_q_combo_no_far_count),
+                )
+
+                selected_total_weight = sum(weight for _info, _role, weight in selected_roles)
+                selected_exec_weight = sum(
+                    weight
+                    for info_ref, role_name, weight in selected_roles
+                    if _combo_exec_eligible(info_ref, role_name)
+                )
+                if selected_total_weight > TIME_EDGE_Q_EPS:
+                    lcb_q_combo_selection_theoretical_active = True
+                    lcb_q_combo_selection_active = bool(
+                        combo_available_notional > TIME_EDGE_Q_EPS
+                        and selected_exec_weight > TIME_EDGE_Q_EPS
+                    )
+                    for info_ref, role_name, weight_val in selected_roles:
+                        key_ref = info_ref.get("key")
+                        cand_ref = cand_ref_by_key.get(key_ref) if isinstance(key_ref, tuple) else None
+                        if not isinstance(cand_ref, dict):
+                            continue
+                        norm_weight = float(weight_val) / float(selected_total_weight)
+                        exec_eligible_now = _combo_exec_eligible(info_ref, role_name)
+                        exec_weight = (
+                            float(weight_val) / float(selected_exec_weight)
+                            if exec_eligible_now and selected_exec_weight > TIME_EDGE_Q_EPS
+                            else 0.0
+                        )
+                        selected_exec_now = bool(
+                            combo_available_notional > TIME_EDGE_Q_EPS
+                            and exec_weight > TIME_EDGE_Q_EPS
+                        )
+                        target_notional = (
+                            float(combo_available_notional) * float(exec_weight)
+                            if selected_exec_now
+                            else 0.0
+                        )
+                        target_notional_theoretical = float(combo_budget_raw) * float(norm_weight)
+                        cand_ref["lcb_q_combo_enabled"] = True
+                        cand_ref["lcb_q_combo_selected"] = bool(selected_exec_now)
+                        cand_ref["lcb_q_combo_selected_theoretical"] = True
+                        cand_ref["lcb_q_combo_exec_eligible"] = bool(exec_eligible_now)
+                        cand_ref["lcb_q_combo_yes_market_consistent"] = bool(
+                            _yes_market_consistent(info_ref)
+                        )
+                        cand_ref["lcb_q_combo_role"] = str(role_name)
+                        cand_ref["lcb_q_combo_weight"] = float(norm_weight)
+                        cand_ref["lcb_q_combo_weight_exec"] = float(exec_weight)
+                        cand_ref["lcb_q_combo_yes_peak_ratio"] = float(lcb_global_q_combo_yes_peak_ratio)
+                        cand_ref["lcb_q_combo_no_near_ratio"] = float(lcb_global_q_combo_no_near_ratio)
+                        cand_ref["lcb_q_combo_no_far_ratio"] = float(lcb_global_q_combo_no_far_ratio)
+                        cand_ref["lcb_q_combo_yes_peak_count"] = float(lcb_global_q_combo_yes_peak_count)
+                        cand_ref["lcb_q_combo_no_near_count"] = float(lcb_global_q_combo_no_near_count)
+                        cand_ref["lcb_q_combo_no_far_count"] = float(lcb_global_q_combo_no_far_count)
+                        cand_ref["lcb_q_combo_event_budget_usdc"] = float(combo_budget_raw)
+                        cand_ref["lcb_q_combo_existing_notional_usdc"] = float(combo_existing_notional)
+                        cand_ref["lcb_q_combo_available_notional_usdc"] = float(combo_available_notional)
+                        cand_ref["lcb_q_combo_target_notional"] = float(target_notional)
+                        cand_ref["lcb_q_combo_target_notional_theoretical"] = float(
+                            target_notional_theoretical
+                        )
+                        cand_ref["lcb_q_combo_anchor_outcome"] = str(anchor_outcome)
+                        cand_ref["lcb_q_combo_anchor_side"] = str(anchor_side)
+                        cand_ref["lcb_q_combo_anchor_exec_eligible"] = bool(
+                            lcb_q_combo_anchor_exec_eligible_current
+                        )
+                        cand_ref["lcb_q_combo_anchor_mode"] = str(lcb_q_combo_anchor_mode_current)
+                        cand_ref["lcb_q_combo_q_peak_outcome"] = str(q_peak_outcome)
+                        if lcb_q_combo_q_peak_source_current:
+                            cand_ref["lcb_q_combo_q_peak_source"] = str(
+                                lcb_q_combo_q_peak_source_current
+                            )
+                        if (
+                            lcb_q_combo_q_peak_value_current is not None
+                            and math.isfinite(lcb_q_combo_q_peak_value_current)
+                        ):
+                            cand_ref["lcb_q_combo_q_peak_q"] = float(lcb_q_combo_q_peak_value_current)
+                        cand_ref["lcb_q_combo_q_peak_center"] = (
+                            float(q_peak_center)
+                            if q_peak_center is not None and math.isfinite(q_peak_center)
+                            else None
+                        )
+                        cand_ref["lcb_q_combo_selection_active"] = bool(lcb_q_combo_selection_active)
+                        cand_ref["lcb_q_combo_selection_theoretical_active"] = bool(
+                            lcb_q_combo_selection_theoretical_active
+                        )
+                        cand_ref["lcb_q_combo_relax_tradeability"] = bool(role_name != "main")
+                        ratio_base = _strategy_entry_size_ratio("lcb_global")
+                        if ratio_base > TIME_EDGE_Q_EPS:
+                            cand_ref["strategy_size_ratio_extra"] = float(1.0 / ratio_base)
+                        price_val = to_float(cand_ref.get("price"))
+                        if (
+                            target_notional > TIME_EDGE_Q_EPS
+                            and price_val is not None
+                            and math.isfinite(price_val)
+                            and price_val > TIME_EDGE_Q_EPS
+                        ):
+                            size_fixed = round(float(target_notional) / float(price_val), 4)
+                            cand_ref["size"] = size_fixed
+                            cand_ref["lcb_q_combo_fixed_notional"] = float(target_notional)
+                            cand_ref["lcb_q_combo_fixed_size"] = float(size_fixed)
+                            cand_ref["kelly_block_nonpositive"] = False
+
+        if lcb_infos:
+            for info_ref in lcb_infos:
+                cand_ref = info_ref.get("cand")
+                if not isinstance(cand_ref, dict):
+                    continue
+                if cand_ref.get("lcb_q_combo_enabled"):
+                    continue
+                cand_ref["lcb_q_combo_enabled"] = True
+                cand_ref["lcb_q_combo_selected"] = False
+                cand_ref["lcb_q_combo_selected_theoretical"] = False
+                cand_ref["lcb_q_combo_exec_eligible"] = bool(info_ref.get("eligible"))
+                cand_ref["lcb_q_combo_yes_market_consistent"] = bool(
+                    str(info_ref.get("side") or "").upper() == "YES"
+                    and _yes_market_consistent(info_ref)
+                )
+                cand_ref["lcb_q_combo_role"] = ""
+                cand_ref["lcb_q_combo_weight"] = 0.0
+                cand_ref["lcb_q_combo_weight_exec"] = 0.0
+                cand_ref["lcb_q_combo_yes_peak_ratio"] = float(lcb_global_q_combo_yes_peak_ratio)
+                cand_ref["lcb_q_combo_no_near_ratio"] = float(lcb_global_q_combo_no_near_ratio)
+                cand_ref["lcb_q_combo_no_far_ratio"] = float(lcb_global_q_combo_no_far_ratio)
+                cand_ref["lcb_q_combo_yes_peak_count"] = float(lcb_global_q_combo_yes_peak_count)
+                cand_ref["lcb_q_combo_no_near_count"] = float(lcb_global_q_combo_no_near_count)
+                cand_ref["lcb_q_combo_no_far_count"] = float(lcb_global_q_combo_no_far_count)
+                cand_ref["lcb_q_combo_event_budget_usdc"] = float(combo_budget_raw)
+                cand_ref["lcb_q_combo_existing_notional_usdc"] = float(combo_existing_notional)
+                cand_ref["lcb_q_combo_available_notional_usdc"] = float(combo_available_notional)
+                cand_ref["lcb_q_combo_target_notional"] = 0.0
+                cand_ref["lcb_q_combo_target_notional_theoretical"] = 0.0
+                if lcb_q_combo_anchor_outcome_current:
+                    cand_ref["lcb_q_combo_anchor_outcome"] = str(lcb_q_combo_anchor_outcome_current)
+                if lcb_q_combo_anchor_side_current:
+                    cand_ref["lcb_q_combo_anchor_side"] = str(lcb_q_combo_anchor_side_current)
+                cand_ref["lcb_q_combo_anchor_exec_eligible"] = bool(
+                    lcb_q_combo_anchor_exec_eligible_current
+                )
+                cand_ref["lcb_q_combo_anchor_mode"] = str(lcb_q_combo_anchor_mode_current)
+                if lcb_q_combo_q_peak_outcome_current:
+                    cand_ref["lcb_q_combo_q_peak_outcome"] = str(lcb_q_combo_q_peak_outcome_current)
+                if lcb_q_combo_q_peak_source_current:
+                    cand_ref["lcb_q_combo_q_peak_source"] = str(lcb_q_combo_q_peak_source_current)
+                if (
+                    lcb_q_combo_q_peak_value_current is not None
+                    and math.isfinite(lcb_q_combo_q_peak_value_current)
+                ):
+                    cand_ref["lcb_q_combo_q_peak_q"] = float(lcb_q_combo_q_peak_value_current)
+                cand_ref["lcb_q_combo_selection_active"] = bool(lcb_q_combo_selection_active)
+                cand_ref["lcb_q_combo_selection_theoretical_active"] = bool(
+                    lcb_q_combo_selection_theoretical_active
+                )
+
+    def _resolve_prev_entry_strategy_runtime(
+        outcome_label: str,
+        side_label: str,
+        entry_ref: Mapping[str, Any],
+    ) -> str:
+        strategy_name = str(entry_ref.get("entry_strategy") or "").strip().lower()
+        if not strategy_name:
+            strategy_name = str(
+                entry_strategy_by_key.get((outcome_label, side_label)) or ""
+            ).strip().lower()
+        if not strategy_name:
+            strategy_name = str(
+                expected_entry_strategy.get((outcome_label, side_label)) or ""
+            ).strip().lower()
+        return strategy_name
+
+    def _collect_lcb_yes_open_notional() -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        for (outcome_key, side_key), entry_ref in prev_states.items():
+            side_u = str(side_key or "").strip().upper()
+            outcome_u = str(outcome_key or "").strip()
+            if side_u != "YES" or not outcome_u or not isinstance(entry_ref, Mapping):
+                continue
+            strategy_name = _resolve_prev_entry_strategy_runtime(
+                outcome_u,
+                side_u,
+                entry_ref,
+            )
+            if strategy_name != "lcb_global":
+                continue
+            state_name = str(entry_ref.get("state") or "").strip().lower()
+            pos_size = to_float(entry_ref.get("position_size")) or 0.0
+            is_active = state_name in {"entry", "entry_pending"} or pos_size > TIME_EDGE_Q_EPS
+            if not is_active:
+                continue
+            notional = _estimate_state_notional(entry_ref, side_u, outcome_u)
+            out[outcome_u] = max(float(notional), 0.0)
+        return out
+
+    def _load_recent_q_peak_outcomes(limit_runs: int) -> List[str]:
+        if limit_runs <= 0:
+            return []
+        try:
+            cur.execute(
+                """
+                SELECT run_id,
+                       MAX(COALESCE(json_extract(details_json, '$.lcb_q_combo_q_peak_outcome'), '')) AS q_peak_outcome
+                FROM auto_trade_decisions
+                WHERE slug = ? AND event_date = ? AND action = 'entry'
+                GROUP BY run_id
+                ORDER BY run_id DESC
+                LIMIT ?
+                """,
+                (slug, event_date_key, int(limit_runs)),
+            )
+            rows_q = cur.fetchall() or []
+        except sqlite3.OperationalError:
+            return []
+        outcomes: List[str] = []
+        for row_q in rows_q:
+            q_outcome = ""
+            if isinstance(row_q, sqlite3.Row):
+                q_outcome = str(row_q["q_peak_outcome"] or "").strip()
+            elif isinstance(row_q, tuple) and len(row_q) >= 2:
+                q_outcome = str(row_q[1] or "").strip()
+            if q_outcome:
+                outcomes.append(q_outcome)
+        return outcomes
+
+    def _load_latest_q_peak_switch_exit_at() -> Optional[datetime]:
+        try:
+            cur.execute(
+                """
+                SELECT d.created_at
+                FROM auto_trade_decisions d
+                JOIN json_each(d.reason_codes_json) rc
+                  ON 1 = 1
+                WHERE d.slug = ?
+                  AND d.event_date = ?
+                  AND d.action = 'exit'
+                  AND rc.value = 'lcb_q_peak_switch'
+                ORDER BY d.id DESC
+                LIMIT 1
+                """,
+                (slug, event_date_key),
+            )
+            row_ts = cur.fetchone()
+        except sqlite3.OperationalError:
+            return None
+        if row_ts is None:
+            return None
+        created_val = ""
+        if isinstance(row_ts, sqlite3.Row):
+            created_val = str(row_ts["created_at"] or "")
+        elif isinstance(row_ts, tuple) and row_ts:
+            created_val = str(row_ts[0] or "")
+        ts = _parse_iso_dt(created_val)
+        if ts is not None and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
+
+    if lcb_global_enabled and lcb_global_q_combo_enabled:
+        open_yes_notional_map = _collect_lcb_yes_open_notional()
+        target_yes_outcome = str(lcb_q_combo_q_peak_outcome_current or "").strip()
+        if target_yes_outcome and open_yes_notional_map:
+            old_yes_candidates = set(open_yes_notional_map.keys())
+            old_yes_candidates.discard(target_yes_outcome)
+            if (
+                lcb_q_combo_anchor_side_current == "YES"
+                and lcb_q_combo_anchor_outcome_current
+            ):
+                old_yes_candidates.discard(str(lcb_q_combo_anchor_outcome_current))
+            if old_yes_candidates:
+                lcb_q_peak_switch_old_yes_outcome_primary = max(
+                    old_yes_candidates,
+                    key=lambda out_key: float(open_yes_notional_map.get(out_key) or 0.0),
+                )
+                old_q_now = lcb_q_combo_yes_q_by_outcome.get(
+                    lcb_q_peak_switch_old_yes_outcome_primary
+                )
+                target_q_now = lcb_q_combo_q_peak_value_current
+                if target_q_now is None or not math.isfinite(target_q_now):
+                    target_q_now = lcb_q_combo_yes_q_by_outcome.get(target_yes_outcome)
+                if (
+                    target_q_now is not None
+                    and math.isfinite(target_q_now)
+                    and old_q_now is not None
+                    and math.isfinite(old_q_now)
+                ):
+                    lcb_q_peak_switch_delta_q = abs(float(target_q_now) - float(old_q_now))
+                    lcb_q_peak_switch_delta_pass = (
+                        lcb_q_peak_switch_delta_q + TIME_EDGE_Q_EPS
+                        >= float(lcb_global_q_peak_switch_min_delta_q)
+                    )
+                else:
+                    lcb_q_peak_switch_delta_pass = False
+                need_prev = max(int(lcb_global_q_peak_switch_confirm_runs) - 1, 0)
+                if need_prev <= 0:
+                    lcb_q_peak_switch_confirm_count = 0
+                    lcb_q_peak_switch_confirm_pass = True
+                else:
+                    recent_outcomes = _load_recent_q_peak_outcomes(max(need_prev + 4, need_prev))
+                    same_count = 0
+                    for out_key in recent_outcomes:
+                        if str(out_key or "").strip() == target_yes_outcome:
+                            same_count += 1
+                        else:
+                            break
+                    lcb_q_peak_switch_confirm_count = int(same_count)
+                    lcb_q_peak_switch_confirm_pass = same_count >= need_prev
+                latest_switch_dt = _load_latest_q_peak_switch_exit_at()
+                if (
+                    latest_switch_dt is not None
+                    and lcb_global_q_peak_switch_cooldown_sec > 0
+                ):
+                    cooldown_age_sec = (now_utc - latest_switch_dt).total_seconds()
+                    if cooldown_age_sec + TIME_EDGE_Q_EPS < float(lcb_global_q_peak_switch_cooldown_sec):
+                        lcb_q_peak_switch_cooldown_pass = False
+                        lcb_q_peak_switch_cooldown_left_sec = max(
+                            float(lcb_global_q_peak_switch_cooldown_sec) - float(cooldown_age_sec),
+                            0.0,
+                        )
+                if (
+                    lcb_global_q_peak_switch_enabled
+                    and lcb_q_peak_switch_delta_pass
+                    and lcb_q_peak_switch_confirm_pass
+                    and lcb_q_peak_switch_cooldown_pass
+                ):
+                    lcb_q_peak_switch_triggered = True
+                    lcb_q_peak_switch_old_yes_outcomes = set(old_yes_candidates)
+                    lcb_q_peak_switch_new_yes_outcome = target_yes_outcome
+                else:
+                    if not lcb_global_q_peak_switch_enabled:
+                        lcb_q_peak_switch_block_reason = "switch_disabled"
+                    elif not lcb_q_peak_switch_confirm_pass:
+                        lcb_q_peak_switch_block_reason = "confirm_not_enough"
+                    elif not lcb_q_peak_switch_delta_pass:
+                        lcb_q_peak_switch_block_reason = "delta_below_min"
+                    elif not lcb_q_peak_switch_cooldown_pass:
+                        lcb_q_peak_switch_block_reason = "cooldown_active"
+        for info_ref in lcb_infos:
+            cand_ref = info_ref.get("cand")
+            if not isinstance(cand_ref, dict):
+                continue
+            outcome_now = str(info_ref.get("outcome") or "")
+            side_now = str(info_ref.get("side") or "").upper()
+            cand_ref["lcb_q_peak_switch_enabled"] = bool(lcb_global_q_peak_switch_enabled)
+            cand_ref["lcb_q_peak_switch_required_confirm_runs"] = float(
+                lcb_global_q_peak_switch_confirm_runs
+            )
+            cand_ref["lcb_q_peak_switch_prev_confirm_count"] = float(
+                lcb_q_peak_switch_confirm_count
+            )
+            cand_ref["lcb_q_peak_switch_confirm_pass"] = bool(lcb_q_peak_switch_confirm_pass)
+            cand_ref["lcb_q_peak_switch_min_delta_q"] = float(lcb_global_q_peak_switch_min_delta_q)
+            if lcb_q_peak_switch_delta_q is not None and math.isfinite(lcb_q_peak_switch_delta_q):
+                cand_ref["lcb_q_peak_switch_delta_q"] = float(lcb_q_peak_switch_delta_q)
+            cand_ref["lcb_q_peak_switch_delta_pass"] = bool(lcb_q_peak_switch_delta_pass)
+            cand_ref["lcb_q_peak_switch_cooldown_sec"] = float(lcb_global_q_peak_switch_cooldown_sec)
+            cand_ref["lcb_q_peak_switch_cooldown_pass"] = bool(lcb_q_peak_switch_cooldown_pass)
+            if lcb_q_peak_switch_cooldown_left_sec > TIME_EDGE_Q_EPS:
+                cand_ref["lcb_q_peak_switch_cooldown_left_sec"] = float(
+                    lcb_q_peak_switch_cooldown_left_sec
+                )
+            cand_ref["lcb_q_peak_switch_triggered"] = bool(lcb_q_peak_switch_triggered)
+            if lcb_q_peak_switch_new_yes_outcome:
+                cand_ref["lcb_q_peak_switch_target_yes_outcome"] = str(
+                    lcb_q_peak_switch_new_yes_outcome
+                )
+            if lcb_q_peak_switch_old_yes_outcome_primary:
+                cand_ref["lcb_q_peak_switch_old_yes_outcome"] = str(
+                    lcb_q_peak_switch_old_yes_outcome_primary
+                )
+            if lcb_q_peak_switch_block_reason:
+                cand_ref["lcb_q_peak_switch_block_reason"] = str(
+                    lcb_q_peak_switch_block_reason
+                )
+            if (
+                lcb_q_peak_switch_triggered
+                and side_now == "YES"
+                and outcome_now in lcb_q_peak_switch_old_yes_outcomes
+            ):
+                cand_ref["lcb_q_peak_switch_force_exit_old_yes"] = True
+
+    def _lcb_q_peak_old_yes_pending_outcomes_runtime() -> Set[str]:
+        pending: Set[str] = set()
+        if not lcb_q_peak_switch_triggered:
+            return pending
+        for outcome_old in lcb_q_peak_switch_old_yes_outcomes:
+            entry_old = prev_states.get((outcome_old, "YES"), {})
+            state_old = str((entry_old or {}).get("state") or "").strip().lower()
+            pos_old = to_float((entry_old or {}).get("position_size")) or 0.0
+            if state_old in {"entry", "entry_pending"} and (
+                pos_old > TIME_EDGE_Q_EPS or state_old == "entry_pending"
+            ):
+                pending.add(outcome_old)
+        return pending
+
     for row in rows:
         outcome = str(row.get("outcome") or "")
         if not outcome:
@@ -15932,6 +18386,42 @@ def execute_auto_trades(
                 row["follow_exit_independent"] = True
                 if prev_exit_triggered_at is not None and prev_state == "entry":
                     prev_exit_triggered_at = None
+            if (
+                lcb_q_peak_switch_triggered
+                and side == "YES"
+                and outcome in lcb_q_peak_switch_old_yes_outcomes
+            ):
+                pos_switch = to_float(prev_entry.get("position_size")) or 0.0
+                if pos_switch > TIME_EDGE_Q_EPS or prev_state in {"entry", "entry_pending"}:
+                    if "lcb_q_peak_switch" not in exit_reason_codes:
+                        exit_reason_codes = list(exit_reason_codes) + ["lcb_q_peak_switch"]
+                    switch_reason_text = (
+                        "Q峰值切换，旧YES对冲腿退出"
+                        f"({outcome}->{lcb_q_peak_switch_new_yes_outcome or 'N/A'})"
+                    )
+                    if switch_reason_text not in exit_reasons:
+                        exit_reasons = list(exit_reasons) + [switch_reason_text]
+                    exit_flag = True
+                    row["lcb_q_peak_switch_force_exit_old_yes"] = True
+                    row["lcb_q_peak_switch_target_yes_outcome"] = (
+                        lcb_q_peak_switch_new_yes_outcome
+                    )
+                    row["lcb_q_peak_switch_prev_confirm_count"] = (
+                        lcb_q_peak_switch_confirm_count
+                    )
+                    row["lcb_q_peak_switch_required_confirm_runs"] = (
+                        lcb_global_q_peak_switch_confirm_runs
+                    )
+                    row["lcb_q_peak_switch_min_delta_q"] = (
+                        lcb_global_q_peak_switch_min_delta_q
+                    )
+                    row["lcb_q_peak_switch_delta_q"] = lcb_q_peak_switch_delta_q
+                    if side == "YES":
+                        row["edge_min_exit_reasons_yes"] = exit_reasons
+                        row["edge_min_exit_codes_yes"] = exit_reason_codes
+                    else:
+                        row["edge_min_exit_reasons_no"] = exit_reasons
+                        row["edge_min_exit_codes_no"] = exit_reason_codes
             mirror_exit_follow_source_only = (
                 str(entry_strategy or "").strip().lower() == "mirror_follow"
                 and _env_bool("PM_MIRROR_EXIT_FOLLOW_SOURCE_ONLY", True)
@@ -15959,6 +18449,7 @@ def execute_auto_trades(
             stop_loss_confirmed_by_tick = False
             stop_loss_confirmed_by_time = False
             stop_loss_confirmed_by_edge = not stop_loss_edge_confirm_enabled
+            stop_loss_forced_by_probe_age = False
             stop_loss_edge_for_confirm = None
             if (
                 active_exit_stop_loss_pct is not None
@@ -15997,6 +18488,13 @@ def execute_auto_trades(
                     stop_loss_confirmed_by_time = (
                         exit_stop_loss_confirm_sec <= 0
                         or probe_age_sec >= float(exit_stop_loss_confirm_sec)
+                    )
+                    stop_loss_forced_by_probe_age = (
+                        exit_stop_loss_force_after_sec is not None
+                        and math.isfinite(exit_stop_loss_force_after_sec)
+                        and exit_stop_loss_force_after_sec > 0
+                        and stop_loss_probe_at is not None
+                        and probe_age_sec >= float(exit_stop_loss_force_after_sec)
                     )
                     stop_loss_edge_for_confirm = to_float(
                         row.get("hold_edge_realizable_yes") if side == "YES" else row.get("hold_edge_realizable_no")
@@ -16037,16 +18535,18 @@ def execute_auto_trades(
                     stop_loss_trigger = (
                         (stop_loss_confirmed_by_tick or stop_loss_confirmed_by_time)
                         and stop_loss_confirmed_by_edge
-                    )
+                    ) or stop_loss_forced_by_probe_age
                     row["stop_loss_line"] = stop_loss_line
                     row["stop_loss_probe_age_sec"] = probe_age_sec
                     row["stop_loss_confirmed_by_tick"] = stop_loss_confirmed_by_tick
                     row["stop_loss_confirmed_by_time"] = stop_loss_confirmed_by_time
                     row["stop_loss_confirmed_by_edge"] = stop_loss_confirmed_by_edge
+                    row["stop_loss_forced_by_probe_age"] = stop_loss_forced_by_probe_age
                     row["stop_loss_edge_for_confirm"] = stop_loss_edge_for_confirm
                     row["stop_loss_edge_confirm_max"] = stop_loss_edge_confirm_max
                     row["stop_loss_confirm_ticks"] = int(exit_stop_loss_confirm_ticks)
                     row["stop_loss_confirm_sec"] = float(exit_stop_loss_confirm_sec)
+                    row["stop_loss_force_after_sec"] = float(exit_stop_loss_force_after_sec)
                 elif stop_loss_probe_at is not None:
                     stop_loss_probe_at = None
                     prev_entry["stop_loss_probe_at"] = ""
@@ -17009,16 +19509,38 @@ def execute_auto_trades(
                         confirm_state = ""
                         confirm_status = ""
                         confirm_error = ""
+                        confirm_meta: Dict[str, Any] = {}
                         if ok and order_id and not payload.get("dry_run"):
                             confirm_state, confirm_status, confirm_error, _ = _confirm_order(order_id)
-                        if ok and not payload.get("dry_run") and confirm_state == "not_found":
+                            if confirm_state == "not_found":
+                                confirm_meta = _confirm_entry_not_found_recheck(
+                                    token_id,
+                                    order_id,
+                                    cancel_side="BUY",
+                                )
+                                confirm_state = str(confirm_meta.get("confirm_state") or confirm_state)
+                                confirm_status = str(confirm_meta.get("confirm_status") or confirm_status)
+                                confirm_error = str(confirm_meta.get("confirm_error") or confirm_error)
+                        if ok and not payload.get("dry_run") and confirm_state in {"not_found", "canceled"}:
                             now_iso = utc_now_iso()
+                            confirm_canceled = confirm_state == "canceled"
+                            confirm_pending_risk = (
+                                _confirm_not_found_pending_risk_assess(
+                                    side=side,
+                                    candidate=candidate,
+                                    row_ref=row,
+                                )
+                                if not confirm_canceled
+                                else {}
+                            )
+                            confirm_risk_blocked = bool(confirm_pending_risk.get("block"))
+                            confirm_failed_fast = bool(confirm_canceled or confirm_risk_blocked)
                             _update_trade_state(
                                 outcome,
                                 side,
-                                "entry_pending",
+                                "entry_failed" if confirm_failed_fast else "entry_pending",
                                 now_iso,
-                                order_id,
+                                "" if confirm_failed_fast else order_id,
                                 entry_price=order_price,
                                 entry_size=candidate.get("size"),
                                 last_action="entry_reprice",
@@ -17026,9 +19548,31 @@ def execute_auto_trades(
                                 last_action_size=candidate.get("size"),
                                 last_action_order_type=effective_order_type,
                                 last_action_at=now_iso,
-                                last_status=confirm_status or "confirm_not_found",
-                                last_error=confirm_error or "order_not_found",
-                                entry_retry_count=0,
+                                last_status=(
+                                    confirm_status
+                                    or (
+                                        "confirm_not_found_open_cancelled"
+                                        if confirm_canceled
+                                        else (
+                                            "confirm_not_found_risk_blocked"
+                                            if confirm_risk_blocked
+                                            else "confirm_not_found"
+                                        )
+                                    )
+                                ),
+                                last_error=(
+                                    confirm_error
+                                    or (
+                                        "confirm_not_found_open_cancelled"
+                                        if confirm_canceled
+                                        else (
+                                            "confirm_not_found_risk_blocked"
+                                            if confirm_risk_blocked
+                                            else "order_not_found"
+                                        )
+                                    )
+                                ),
+                                entry_retry_count=(prev_retry_count + 1) if confirm_failed_fast else 0,
                                 trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
                                 peak_price=order_price,
                             )
@@ -17040,12 +19584,27 @@ def execute_auto_trades(
                             )
                             bid_text = f"{best_bid:.2f}" if best_bid is not None and math.isfinite(best_bid) else "—"
                             ask_text = f"{best_ask:.2f}" if best_ask is not None and math.isfinite(best_ask) else "—"
-                            print(
-                                f"[auto-trade] entry pending {title} {side} {outcome} "
-                                f"price={order_price} size={candidate.get('size')} "
-                                f"order={order_id or '—'} state=entry_pending "
-                                f"bid={bid_text} ask={ask_text}"
-                            )
+                            if confirm_canceled:
+                                print(
+                                    f"[auto-trade] entry reprice confirm_not_found_cancelled {title} {side} {outcome} "
+                                    f"price={order_price} size={candidate.get('size')} "
+                                    f"order={order_id or '—'} bid={bid_text} ask={ask_text}"
+                                )
+                            elif confirm_risk_blocked:
+                                print(
+                                    f"[auto-trade] entry reprice confirm_not_found_risk_blocked {title} {side} {outcome} "
+                                    f"price={order_price} size={candidate.get('size')} "
+                                    f"order={order_id or '—'} bid={bid_text} ask={ask_text} "
+                                    f"exec_edge_score={to_float(confirm_pending_risk.get('exec_edge_score'))} "
+                                    f"spread={to_float(confirm_pending_risk.get('spread'))}"
+                                )
+                            else:
+                                print(
+                                    f"[auto-trade] entry pending {title} {side} {outcome} "
+                                    f"price={order_price} size={candidate.get('size')} "
+                                    f"order={order_id or '—'} state=entry_pending "
+                                    f"bid={bid_text} ask={ask_text}"
+                                )
                             cand = candidate_map.get(side) if candidate_map else None
                             _record_auto_order(
                                 order_id,
@@ -17064,7 +19623,8 @@ def execute_auto_trades(
                                 cand.get("q_calibrated_sigma") if cand else None,
                                 cand.get("q_calibration_version") if cand else None,
                             )
-                            pending_block = True
+                            if not confirm_failed_fast:
+                                pending_block = True
                             continue
                         if _should_block_for_volume_check(side):
                             continue
@@ -17390,6 +19950,121 @@ def execute_auto_trades(
                     )
                     continue
                 candidate_strategy = str(candidate.get("strategy") or "").strip().lower()
+                is_new_entry_pre = (
+                    position_size <= TIME_EDGE_Q_EPS and not allow_topup
+                )
+                if (
+                    lcb_q_peak_switch_triggered
+                    and candidate_strategy == "lcb_global"
+                    and side == "YES"
+                    and is_new_entry_pre
+                ):
+                    if outcome in lcb_q_peak_switch_old_yes_outcomes:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_peak_switch_old_outcome_blocked"],
+                            reasons=["Q峰值切换中：旧YES对冲桶禁止再开仓"],
+                            details={
+                                "strategy": candidate_strategy,
+                                "lcb_q_peak_switch_target_yes_outcome": lcb_q_peak_switch_new_yes_outcome,
+                                "lcb_q_peak_switch_old_yes_outcome": outcome,
+                                "lcb_q_peak_switch_prev_confirm_count": lcb_q_peak_switch_confirm_count,
+                                "lcb_q_peak_switch_required_confirm_runs": lcb_global_q_peak_switch_confirm_runs,
+                                "lcb_q_peak_switch_min_delta_q": lcb_global_q_peak_switch_min_delta_q,
+                                "lcb_q_peak_switch_delta_q": lcb_q_peak_switch_delta_q,
+                            },
+                        )
+                        continue
+                    pending_old_yes = _lcb_q_peak_old_yes_pending_outcomes_runtime()
+                    if (
+                        lcb_q_peak_switch_new_yes_outcome
+                        and outcome == lcb_q_peak_switch_new_yes_outcome
+                        and pending_old_yes
+                    ):
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_peak_switch_wait_old_exit"],
+                            reasons=["Q峰值切换中：先平旧YES对冲腿，再开新YES对冲腿"],
+                            details={
+                                "strategy": candidate_strategy,
+                                "lcb_q_peak_switch_target_yes_outcome": lcb_q_peak_switch_new_yes_outcome,
+                                "lcb_q_peak_switch_old_yes_pending_outcomes": sorted(pending_old_yes),
+                                "lcb_q_peak_switch_prev_confirm_count": lcb_q_peak_switch_confirm_count,
+                                "lcb_q_peak_switch_required_confirm_runs": lcb_global_q_peak_switch_confirm_runs,
+                                "lcb_q_peak_switch_min_delta_q": lcb_global_q_peak_switch_min_delta_q,
+                                "lcb_q_peak_switch_delta_q": lcb_q_peak_switch_delta_q,
+                            },
+                        )
+                        continue
+                if (
+                    lcb_global_enabled
+                    and candidate_strategy == "lcb_global"
+                    and is_new_entry_pre
+                    and bool(candidate.get("lcb_q_combo_enabled"))
+                    and not bool(candidate.get("lcb_q_combo_selected"))
+                ):
+                    combo_available_notional_now = to_float(
+                        candidate.get("lcb_q_combo_available_notional_usdc")
+                    )
+                    combo_existing_notional_now = to_float(
+                        candidate.get("lcb_q_combo_existing_notional_usdc")
+                    )
+                    combo_budget_now = to_float(candidate.get("lcb_q_combo_event_budget_usdc"))
+                    combo_selected_theoretical_now = bool(
+                        candidate.get("lcb_q_combo_selected_theoretical")
+                    )
+                    combo_exec_eligible_now = bool(candidate.get("lcb_q_combo_exec_eligible"))
+                    budget_exhausted = (
+                        combo_available_notional_now is not None
+                        and math.isfinite(combo_available_notional_now)
+                        and combo_available_notional_now <= TIME_EDGE_Q_EPS
+                    )
+                    reason_code = "lcb_q_combo_not_selected"
+                    reason_text = "非LCB温度组合入选腿，本轮不下单"
+                    if combo_selected_theoretical_now and not combo_exec_eligible_now:
+                        reason_code = "lcb_q_combo_theoretical_only_not_entry_eligible"
+                        reason_text = "入选温度组合(理论)但未通过LCB硬门槛，本轮不下单"
+                    elif budget_exhausted:
+                        reason_code = "lcb_q_combo_event_budget_exhausted"
+                        reason_text = "LCB温度组合预算已用尽，本轮不再新开仓"
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=[reason_code],
+                        reasons=[reason_text],
+                        details={
+                            "strategy": candidate_strategy,
+                            "lcb_q_combo_selected": bool(candidate.get("lcb_q_combo_selected")),
+                            "lcb_q_combo_selected_theoretical": combo_selected_theoretical_now,
+                            "lcb_q_combo_exec_eligible": combo_exec_eligible_now,
+                            "lcb_q_combo_role": str(candidate.get("lcb_q_combo_role") or ""),
+                            "lcb_q_combo_event_budget_usdc": combo_budget_now,
+                            "lcb_q_combo_existing_notional_usdc": combo_existing_notional_now,
+                            "lcb_q_combo_available_notional_usdc": combo_available_notional_now,
+                            "lcb_q_combo_target_notional": to_float(
+                                candidate.get("lcb_q_combo_target_notional")
+                            ),
+                            "lcb_q_combo_target_notional_theoretical": to_float(
+                                candidate.get("lcb_q_combo_target_notional_theoretical")
+                            ),
+                            "lcb_q_combo_selection_active": bool(lcb_q_combo_selection_active),
+                            "lcb_q_combo_selection_theoretical_active": bool(
+                                lcb_q_combo_selection_theoretical_active
+                            ),
+                        },
+                    )
+                    continue
                 _apply_kelly_size_in_place(
                     candidate,
                     allow_apply=bool(position_size <= TIME_EDGE_Q_EPS),
@@ -18431,6 +21106,121 @@ def execute_auto_trades(
                         )
                     candidate = refreshed_candidate
                     candidate_strategy = "follow_copy"
+                is_new_entry_pre = (
+                    position_size <= TIME_EDGE_Q_EPS and not allow_topup
+                )
+                if (
+                    lcb_q_peak_switch_triggered
+                    and candidate_strategy == "lcb_global"
+                    and side == "YES"
+                    and is_new_entry_pre
+                ):
+                    if outcome in lcb_q_peak_switch_old_yes_outcomes:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_peak_switch_old_outcome_blocked"],
+                            reasons=["Q峰值切换中：旧YES对冲桶禁止再开仓"],
+                            details={
+                                "strategy": candidate_strategy,
+                                "lcb_q_peak_switch_target_yes_outcome": lcb_q_peak_switch_new_yes_outcome,
+                                "lcb_q_peak_switch_old_yes_outcome": outcome,
+                                "lcb_q_peak_switch_prev_confirm_count": lcb_q_peak_switch_confirm_count,
+                                "lcb_q_peak_switch_required_confirm_runs": lcb_global_q_peak_switch_confirm_runs,
+                                "lcb_q_peak_switch_min_delta_q": lcb_global_q_peak_switch_min_delta_q,
+                                "lcb_q_peak_switch_delta_q": lcb_q_peak_switch_delta_q,
+                            },
+                        )
+                        continue
+                    pending_old_yes = _lcb_q_peak_old_yes_pending_outcomes_runtime()
+                    if (
+                        lcb_q_peak_switch_new_yes_outcome
+                        and outcome == lcb_q_peak_switch_new_yes_outcome
+                        and pending_old_yes
+                    ):
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_peak_switch_wait_old_exit"],
+                            reasons=["Q峰值切换中：先平旧YES对冲腿，再开新YES对冲腿"],
+                            details={
+                                "strategy": candidate_strategy,
+                                "lcb_q_peak_switch_target_yes_outcome": lcb_q_peak_switch_new_yes_outcome,
+                                "lcb_q_peak_switch_old_yes_pending_outcomes": sorted(pending_old_yes),
+                                "lcb_q_peak_switch_prev_confirm_count": lcb_q_peak_switch_confirm_count,
+                                "lcb_q_peak_switch_required_confirm_runs": lcb_global_q_peak_switch_confirm_runs,
+                                "lcb_q_peak_switch_min_delta_q": lcb_global_q_peak_switch_min_delta_q,
+                                "lcb_q_peak_switch_delta_q": lcb_q_peak_switch_delta_q,
+                            },
+                        )
+                        continue
+                if (
+                    lcb_global_enabled
+                    and candidate_strategy == "lcb_global"
+                    and is_new_entry_pre
+                    and bool(candidate.get("lcb_q_combo_enabled"))
+                    and not bool(candidate.get("lcb_q_combo_selected"))
+                ):
+                    combo_available_notional_now = to_float(
+                        candidate.get("lcb_q_combo_available_notional_usdc")
+                    )
+                    combo_existing_notional_now = to_float(
+                        candidate.get("lcb_q_combo_existing_notional_usdc")
+                    )
+                    combo_budget_now = to_float(candidate.get("lcb_q_combo_event_budget_usdc"))
+                    combo_selected_theoretical_now = bool(
+                        candidate.get("lcb_q_combo_selected_theoretical")
+                    )
+                    combo_exec_eligible_now = bool(candidate.get("lcb_q_combo_exec_eligible"))
+                    budget_exhausted = (
+                        combo_available_notional_now is not None
+                        and math.isfinite(combo_available_notional_now)
+                        and combo_available_notional_now <= TIME_EDGE_Q_EPS
+                    )
+                    reason_code = "lcb_q_combo_not_selected"
+                    reason_text = "非LCB温度组合入选腿，本轮不下单"
+                    if combo_selected_theoretical_now and not combo_exec_eligible_now:
+                        reason_code = "lcb_q_combo_theoretical_only_not_entry_eligible"
+                        reason_text = "入选温度组合(理论)但未通过LCB硬门槛，本轮不下单"
+                    elif budget_exhausted:
+                        reason_code = "lcb_q_combo_event_budget_exhausted"
+                        reason_text = "LCB温度组合预算已用尽，本轮不再新开仓"
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=[reason_code],
+                        reasons=[reason_text],
+                        details={
+                            "strategy": candidate_strategy,
+                            "lcb_q_combo_selected": bool(candidate.get("lcb_q_combo_selected")),
+                            "lcb_q_combo_selected_theoretical": combo_selected_theoretical_now,
+                            "lcb_q_combo_exec_eligible": combo_exec_eligible_now,
+                            "lcb_q_combo_role": str(candidate.get("lcb_q_combo_role") or ""),
+                            "lcb_q_combo_event_budget_usdc": combo_budget_now,
+                            "lcb_q_combo_existing_notional_usdc": combo_existing_notional_now,
+                            "lcb_q_combo_available_notional_usdc": combo_available_notional_now,
+                            "lcb_q_combo_target_notional": to_float(
+                                candidate.get("lcb_q_combo_target_notional")
+                            ),
+                            "lcb_q_combo_target_notional_theoretical": to_float(
+                                candidate.get("lcb_q_combo_target_notional_theoretical")
+                            ),
+                            "lcb_q_combo_selection_active": bool(lcb_q_combo_selection_active),
+                            "lcb_q_combo_selection_theoretical_active": bool(
+                                lcb_q_combo_selection_theoretical_active
+                            ),
+                        },
+                    )
+                    continue
                 _apply_kelly_size_in_place(
                     candidate,
                     allow_apply=bool(position_size <= TIME_EDGE_Q_EPS),
@@ -18541,6 +21331,46 @@ def execute_auto_trades(
                     and candidate_strategy == "lcb_global"
                     and is_new_entry_local
                 ):
+                    if lcb_global_daily_loss_blocked:
+                        daily_pnl_val = to_float(
+                            lcb_global_daily_loss_detail.get("daily_realized_pnl")
+                        )
+                        daily_limit_val = to_float(
+                            lcb_global_daily_loss_detail.get("daily_loss_stop_usdc")
+                        )
+                        if daily_limit_val is None or not math.isfinite(daily_limit_val):
+                            daily_limit_val = to_float(
+                                lcb_global_daily_loss_detail.get("daily_loss_stop")
+                            )
+                        if daily_pnl_val is None or not math.isfinite(daily_pnl_val):
+                            daily_pnl_val = 0.0
+                        if daily_limit_val is None or not math.isfinite(daily_limit_val):
+                            daily_limit_val = 0.0
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_global_daily_loss_stop"],
+                            reasons=[
+                                (
+                                    "LCB当日亏损触发熔断"
+                                    f"(pnl={float(daily_pnl_val):.2f}usdc, "
+                                    f"limit=-{float(daily_limit_val):.2f}usdc)"
+                                )
+                            ],
+                            details={
+                                "strategy": "lcb_global",
+                                "run_date": str(lcb_global_daily_loss_detail.get("run_date") or run_date),
+                                "daily_realized_pnl": float(daily_pnl_val),
+                                "daily_loss_stop_usdc": float(daily_limit_val),
+                                "closed_count": int(
+                                    to_float(lcb_global_daily_loss_detail.get("closed_count")) or 0
+                                ),
+                            },
+                        )
+                        continue
                     if (
                         lcb_global_max_new_orders_per_run > 0
                         and lcb_global_entry_orders_submitted >= int(lcb_global_max_new_orders_per_run)
@@ -19071,6 +21901,46 @@ def execute_auto_trades(
                 strategy_name = str(candidate.get("strategy") or "main").strip().lower() or "main"
                 lcb_global_candidate = bool(strategy_name == "lcb_global")
                 if lcb_global_candidate and bool(candidate.get("edge_tradeability_blocked")):
+                    combo_role_now = str(candidate.get("lcb_q_combo_role") or "").strip().lower()
+                    combo_relax_enabled = bool(candidate.get("lcb_q_combo_relax_tradeability"))
+                    combo_selected_now = bool(candidate.get("lcb_q_combo_selected"))
+                    edge_lcb_now = to_float(candidate.get("edge_tradeability_edge_lcb"))
+                    yes_market_consistent_now = bool(
+                        candidate.get("lcb_q_combo_yes_market_consistent")
+                    ) or bool(candidate.get("lcb_yes_top_label_match"))
+                    relaxed_by_yes_top = bool(
+                        combo_relax_enabled
+                        and combo_selected_now
+                        and combo_role_now == "yes_top"
+                        and yes_market_consistent_now
+                    )
+                    if (
+                        relaxed_by_yes_top
+                        or (
+                            combo_relax_enabled
+                            and combo_selected_now
+                            and combo_role_now
+                            and combo_role_now != "main"
+                            and edge_lcb_now is not None
+                            and math.isfinite(edge_lcb_now)
+                            and edge_lcb_now + TIME_EDGE_Q_EPS
+                            >= float(lcb_global_q_combo_edge_lcb_floor)
+                        )
+                    ):
+                        candidate["edge_tradeability_blocked"] = False
+                        candidate["edge_tradeability_pass"] = True
+                        candidate["edge_tradeability_q_combo_relaxed"] = True
+                        candidate["edge_tradeability_q_combo_relax_reason"] = (
+                            "yes_top_label_match_only"
+                            if relaxed_by_yes_top
+                            else "non_main_edge_lcb_floor"
+                        )
+                        candidate["lcb_q_combo_edge_lcb_floor"] = float(
+                            lcb_global_q_combo_edge_lcb_floor
+                        )
+                    else:
+                        candidate["edge_tradeability_q_combo_relaxed"] = False
+                if lcb_global_candidate and bool(candidate.get("edge_tradeability_blocked")):
                     defer_to_near_miss = bool(
                         is_new_entry and edge_realizable_v2_gate_entry and lcb_global_near_miss_enabled
                     )
@@ -19347,6 +22217,49 @@ def execute_auto_trades(
                             },
                         )
                         continue
+                    if candidate.get("edge_tradeability_blocked"):
+                        combo_role_now = str(candidate.get("lcb_q_combo_role") or "").strip().lower()
+                        combo_relax_enabled = bool(candidate.get("lcb_q_combo_relax_tradeability"))
+                        combo_selected_now = bool(candidate.get("lcb_q_combo_selected"))
+                        edge_lcb_now_combo = to_float(candidate.get("edge_tradeability_edge_lcb"))
+                        yes_market_consistent_now = bool(
+                            candidate.get("lcb_q_combo_yes_market_consistent")
+                        ) or bool(candidate.get("lcb_yes_top_label_match"))
+                        relaxed_by_yes_top = bool(
+                            combo_relax_enabled
+                            and combo_selected_now
+                            and combo_role_now == "yes_top"
+                            and yes_market_consistent_now
+                        )
+                        if (
+                            strategy_name == "lcb_global"
+                            and (
+                                relaxed_by_yes_top
+                                or (
+                                    combo_relax_enabled
+                                    and combo_selected_now
+                                    and combo_role_now
+                                    and combo_role_now != "main"
+                                    and edge_lcb_now_combo is not None
+                                    and math.isfinite(edge_lcb_now_combo)
+                                    and edge_lcb_now_combo + TIME_EDGE_Q_EPS
+                                    >= float(lcb_global_q_combo_edge_lcb_floor)
+                                )
+                            )
+                        ):
+                            candidate["edge_tradeability_blocked"] = False
+                            candidate["edge_tradeability_pass"] = True
+                            candidate["edge_tradeability_q_combo_relaxed"] = True
+                            candidate["edge_tradeability_q_combo_relax_reason"] = (
+                                "yes_top_label_match_only"
+                                if relaxed_by_yes_top
+                                else "non_main_edge_lcb_floor"
+                            )
+                            candidate["lcb_q_combo_edge_lcb_floor"] = float(
+                                lcb_global_q_combo_edge_lcb_floor
+                            )
+                        else:
+                            candidate["edge_tradeability_q_combo_relaxed"] = False
                     if candidate.get("edge_tradeability_blocked"):
                         near_miss_overridden = False
                         strategy_name_near = str(candidate.get("strategy") or "").strip().lower()
@@ -20159,16 +23072,38 @@ def execute_auto_trades(
                         confirm_state = ""
                         confirm_status = ""
                         confirm_error = ""
+                        confirm_meta: Dict[str, Any] = {}
                         if ok and order_id and not payload.get("dry_run"):
                             confirm_state, confirm_status, confirm_error, _ = _confirm_order(order_id)
-                        if ok and not payload.get("dry_run") and confirm_state == "not_found":
+                            if confirm_state == "not_found":
+                                confirm_meta = _confirm_entry_not_found_recheck(
+                                    token_id,
+                                    order_id,
+                                    cancel_side="BUY",
+                                )
+                                confirm_state = str(confirm_meta.get("confirm_state") or confirm_state)
+                                confirm_status = str(confirm_meta.get("confirm_status") or confirm_status)
+                                confirm_error = str(confirm_meta.get("confirm_error") or confirm_error)
+                        if ok and not payload.get("dry_run") and confirm_state in {"not_found", "canceled"}:
                             now_iso = utc_now_iso()
+                            confirm_canceled = confirm_state == "canceled"
+                            confirm_pending_risk = (
+                                _confirm_not_found_pending_risk_assess(
+                                    side=side,
+                                    candidate=candidate,
+                                    row_ref=row,
+                                )
+                                if not confirm_canceled
+                                else {}
+                            )
+                            confirm_risk_blocked = bool(confirm_pending_risk.get("block"))
+                            confirm_failed_fast = bool(confirm_canceled or confirm_risk_blocked)
                             _update_trade_state(
                                 outcome,
                                 side,
-                                "entry_pending",
+                                "entry_failed" if confirm_failed_fast else "entry_pending",
                                 now_iso,
-                                order_id,
+                                "" if confirm_failed_fast else order_id,
                                 entry_price=price_for_amount,
                                 entry_size=entry_target_size,
                                 last_action="entry_market_rise",
@@ -20176,34 +23111,93 @@ def execute_auto_trades(
                                 last_action_size=order_size,
                                 last_action_order_type="FAK",
                                 last_action_at=now_iso,
-                                last_status=confirm_status or "confirm_not_found",
-                                last_error=confirm_error or "order_not_found",
+                                last_status=(
+                                    confirm_status
+                                    or (
+                                        "confirm_not_found_open_cancelled"
+                                        if confirm_canceled
+                                        else (
+                                            "confirm_not_found_risk_blocked"
+                                            if confirm_risk_blocked
+                                            else "confirm_not_found"
+                                        )
+                                    )
+                                ),
+                                last_error=(
+                                    confirm_error
+                                    or (
+                                        "confirm_not_found_open_cancelled"
+                                        if confirm_canceled
+                                        else (
+                                            "confirm_not_found_risk_blocked"
+                                            if confirm_risk_blocked
+                                            else "order_not_found"
+                                        )
+                                    )
+                                ),
                                 exit_triggered_at=exit_triggered_reset,
-                                entry_retry_count=0,
+                                entry_retry_count=(prev_retry_count + 1) if confirm_failed_fast else 0,
                                 trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
                                 peak_price=price_for_amount,
                             )
-                            _register_follow_runtime_entry(
-                                outcome,
-                                side,
-                                strategy=candidate_strategy,
-                                price=price_for_amount,
-                                size=order_size,
-                            )
-                            print(
-                                f"[auto-trade] entry market rising-ask {title} {side} {outcome} "
-                                f"amount={order_amount or order_size} order={order_id or '—'} "
-                                f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
-                                f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'}"
-                            )
+                            if not confirm_failed_fast:
+                                _register_follow_runtime_entry(
+                                    outcome,
+                                    side,
+                                    strategy=candidate_strategy,
+                                    price=price_for_amount,
+                                    size=order_size,
+                                )
+                                print(
+                                    f"[auto-trade] entry market rising-ask {title} {side} {outcome} "
+                                    f"amount={order_amount or order_size} order={order_id or '—'} "
+                                    f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
+                                    f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'}"
+                                )
+                            else:
+                                if confirm_canceled:
+                                    print(
+                                        f"[auto-trade] entry market rising-ask confirm_not_found_cancelled {title} {side} {outcome} "
+                                        f"amount={order_amount or order_size} order={order_id or '—'} "
+                                        f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
+                                        f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'}"
+                                    )
+                                else:
+                                    print(
+                                        f"[auto-trade] entry market rising-ask confirm_not_found_risk_blocked {title} {side} {outcome} "
+                                        f"amount={order_amount or order_size} order={order_id or '—'} "
+                                        f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
+                                        f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'} "
+                                        f"exec_edge_score={to_float(confirm_pending_risk.get('exec_edge_score'))} "
+                                        f"spread={to_float(confirm_pending_risk.get('spread'))}"
+                                    )
                             _buffer_decision(
                                 outcome,
                                 side,
                                 "entry",
-                                decided_state="entry_pending",
-                                will_order=True,
-                                reason_codes=["confirm_not_found"],
-                                reasons=["下单已提交但确认未找到(进入 entry_pending)"],
+                                decided_state="entry_failed" if confirm_failed_fast else "entry_pending",
+                                will_order=False if confirm_failed_fast else True,
+                                reason_codes=(
+                                    ["confirm_not_found_open_cancelled"]
+                                    if confirm_canceled
+                                    else (
+                                        ["confirm_not_found_risk_blocked"]
+                                        + list(confirm_pending_risk.get("reason_codes") or [])
+                                        if confirm_risk_blocked
+                                        else ["confirm_not_found"]
+                                    )
+                                ),
+                                reasons=(
+                                    ["二次确认仍未找到且检测到挂单，已撤单并转入重评估"]
+                                    if confirm_canceled
+                                    else (
+                                        [
+                                            "下单确认未找到且执行质量偏弱，转入重评估(不进入 entry_pending)"
+                                        ]
+                                        if confirm_risk_blocked
+                                        else ["下单已提交但确认未找到(进入 entry_pending)"]
+                                    )
+                                ),
                                 details={
                                     **entry_chase_details,
                                     "rising_ask_market": True,
@@ -20213,6 +23207,38 @@ def execute_auto_trades(
                                     "prev_ask": prev_ask,
                                     "order_id": order_id,
                                     "status": confirm_status or status_text,
+                                    "confirm_not_found_rechecked": bool(confirm_meta.get("rechecked")),
+                                    "confirm_not_found_recheck_state": str(confirm_meta.get("recheck_state") or ""),
+                                    "confirm_not_found_recheck_status": str(confirm_meta.get("recheck_status") or ""),
+                                    "confirm_not_found_recheck_error": str(confirm_meta.get("recheck_error") or ""),
+                                    "confirm_not_found_recheck_delay_sec": to_float(confirm_meta.get("recheck_delay_sec")),
+                                    "confirm_not_found_open_order_seen": bool(confirm_meta.get("open_order_seen")),
+                                    "confirm_not_found_open_order_ids": confirm_meta.get("open_order_ids") or [],
+                                    "confirm_not_found_cancel_attempted": bool(confirm_meta.get("cancel_attempted")),
+                                    "confirm_not_found_cancel_ok": bool(confirm_meta.get("cancel_ok")),
+                                    "confirm_not_found_cancel_error": str(confirm_meta.get("cancel_error") or ""),
+                                    "confirm_not_found_pending_risk_blocked": bool(confirm_risk_blocked),
+                                    "confirm_not_found_pending_risk_reason_codes": list(
+                                        confirm_pending_risk.get("reason_codes") or []
+                                    ),
+                                    "confirm_not_found_pending_risk_reasons": list(
+                                        confirm_pending_risk.get("reasons") or []
+                                    ),
+                                    "confirm_not_found_pending_exec_edge_score": to_float(
+                                        confirm_pending_risk.get("exec_edge_score")
+                                    ),
+                                    "confirm_not_found_pending_spread": to_float(
+                                        confirm_pending_risk.get("spread")
+                                    ),
+                                    "confirm_not_found_pending_exec_edge_score_max": to_float(
+                                        confirm_pending_risk.get("exec_edge_score_max")
+                                    ),
+                                    "confirm_not_found_pending_spread_min": to_float(
+                                        confirm_pending_risk.get("spread_min")
+                                    ),
+                                    "confirm_not_found_pending_risk_strategies": list(
+                                        confirm_pending_risk.get("strategies") or []
+                                    ),
                                 },
                             )
                             cand = candidate_map.get(side) if candidate_map else None
@@ -20233,7 +23259,8 @@ def execute_auto_trades(
                                 cand.get("q_calibrated_sigma") if cand else None,
                                 cand.get("q_calibration_version") if cand else None,
                             )
-                            pending_block = True
+                            if not confirm_failed_fast:
+                                pending_block = True
                             continue
                         if ok:
                             now_iso = utc_now_iso()
@@ -20660,16 +23687,38 @@ def execute_auto_trades(
                         confirm_state = ""
                         confirm_status = ""
                         confirm_error = ""
+                        confirm_meta: Dict[str, Any] = {}
                         if ok and order_id and not payload.get("dry_run"):
                             confirm_state, confirm_status, confirm_error, _ = _confirm_order(order_id)
-                        if ok and not payload.get("dry_run") and confirm_state == "not_found":
+                            if confirm_state == "not_found":
+                                confirm_meta = _confirm_entry_not_found_recheck(
+                                    token_id,
+                                    order_id,
+                                    cancel_side="BUY",
+                                )
+                                confirm_state = str(confirm_meta.get("confirm_state") or confirm_state)
+                                confirm_status = str(confirm_meta.get("confirm_status") or confirm_status)
+                                confirm_error = str(confirm_meta.get("confirm_error") or confirm_error)
+                        if ok and not payload.get("dry_run") and confirm_state in {"not_found", "canceled"}:
                             now_iso = utc_now_iso()
+                            confirm_canceled = confirm_state == "canceled"
+                            confirm_pending_risk = (
+                                _confirm_not_found_pending_risk_assess(
+                                    side=side,
+                                    candidate=candidate,
+                                    row_ref=row,
+                                )
+                                if not confirm_canceled
+                                else {}
+                            )
+                            confirm_risk_blocked = bool(confirm_pending_risk.get("block"))
+                            confirm_failed_fast = bool(confirm_canceled or confirm_risk_blocked)
                             _update_trade_state(
                                 outcome,
                                 side,
-                                "entry_pending",
+                                "entry_failed" if confirm_failed_fast else "entry_pending",
                                 now_iso,
-                                order_id,
+                                "" if confirm_failed_fast else order_id,
                                 entry_price=order_price,
                                 entry_size=entry_target_size,
                                 last_action="entry_topup" if is_topup else "entry",
@@ -20677,20 +23726,43 @@ def execute_auto_trades(
                                 last_action_size=order_size,
                                 last_action_order_type=effective_order_type,
                                 last_action_at=now_iso,
-                                last_status=confirm_status or "confirm_not_found",
-                                last_error=confirm_error or "order_not_found",
+                                last_status=(
+                                    confirm_status
+                                    or (
+                                        "confirm_not_found_open_cancelled"
+                                        if confirm_canceled
+                                        else (
+                                            "confirm_not_found_risk_blocked"
+                                            if confirm_risk_blocked
+                                            else "confirm_not_found"
+                                        )
+                                    )
+                                ),
+                                last_error=(
+                                    confirm_error
+                                    or (
+                                        "confirm_not_found_open_cancelled"
+                                        if confirm_canceled
+                                        else (
+                                            "confirm_not_found_risk_blocked"
+                                            if confirm_risk_blocked
+                                            else "order_not_found"
+                                        )
+                                    )
+                                ),
                                 exit_triggered_at=exit_triggered_reset,
-                                entry_retry_count=0,
+                                entry_retry_count=(prev_retry_count + 1) if confirm_failed_fast else 0,
                                 trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
                                 peak_price=order_price,
                             )
-                            _register_follow_runtime_entry(
-                                outcome,
-                                side,
-                                strategy=candidate_strategy,
-                                price=order_price,
-                                size=order_size,
-                            )
+                            if not confirm_failed_fast:
+                                _register_follow_runtime_entry(
+                                    outcome,
+                                    side,
+                                    strategy=candidate_strategy,
+                                    price=order_price,
+                                    size=order_size,
+                                )
                             best_bid = to_float(
                                 row.get("best_bid") if side == "YES" else row.get("best_bid_no")
                             )
@@ -20699,24 +23771,90 @@ def execute_auto_trades(
                             )
                             bid_text = f"{best_bid:.2f}" if best_bid is not None and math.isfinite(best_bid) else "—"
                             ask_text = f"{best_ask:.2f}" if best_ask is not None and math.isfinite(best_ask) else "—"
-                            print(
-                                f"[auto-trade] entry pending {title} {side} {outcome} "
-                                f"price={order_price} size={order_size} "
-                                f"order={order_id or '—'} state=entry_pending "
-                                f"bid={bid_text} ask={ask_text}"
-                            )
+                            if confirm_canceled:
+                                print(
+                                    f"[auto-trade] entry confirm_not_found_cancelled {title} {side} {outcome} "
+                                    f"price={order_price} size={order_size} "
+                                    f"order={order_id or '—'} bid={bid_text} ask={ask_text}"
+                                )
+                            elif confirm_risk_blocked:
+                                print(
+                                    f"[auto-trade] entry confirm_not_found_risk_blocked {title} {side} {outcome} "
+                                    f"price={order_price} size={order_size} "
+                                    f"order={order_id or '—'} bid={bid_text} ask={ask_text} "
+                                    f"exec_edge_score={to_float(confirm_pending_risk.get('exec_edge_score'))} "
+                                    f"spread={to_float(confirm_pending_risk.get('spread'))}"
+                                )
+                            else:
+                                print(
+                                    f"[auto-trade] entry pending {title} {side} {outcome} "
+                                    f"price={order_price} size={order_size} "
+                                    f"order={order_id or '—'} state=entry_pending "
+                                    f"bid={bid_text} ask={ask_text}"
+                                )
                             _buffer_decision(
                                 outcome,
                                 side,
                                 "entry",
-                                decided_state="entry_pending",
-                                will_order=True,
-                                reason_codes=["confirm_not_found"],
-                                reasons=["下单已提交但确认未找到(进入 entry_pending)"],
+                                decided_state="entry_failed" if confirm_failed_fast else "entry_pending",
+                                will_order=False if confirm_failed_fast else True,
+                                reason_codes=(
+                                    ["confirm_not_found_open_cancelled"]
+                                    if confirm_canceled
+                                    else (
+                                        ["confirm_not_found_risk_blocked"]
+                                        + list(confirm_pending_risk.get("reason_codes") or [])
+                                        if confirm_risk_blocked
+                                        else ["confirm_not_found"]
+                                    )
+                                ),
+                                reasons=(
+                                    ["二次确认仍未找到且检测到挂单，已撤单并转入重评估"]
+                                    if confirm_canceled
+                                    else (
+                                        [
+                                            "下单确认未找到且执行质量偏弱，转入重评估(不进入 entry_pending)"
+                                        ]
+                                        if confirm_risk_blocked
+                                        else ["下单已提交但确认未找到(进入 entry_pending)"]
+                                    )
+                                ),
                                 details={
                                     **entry_chase_details,
                                     "order_id": order_id,
                                     "status": confirm_status or status_text,
+                                    "confirm_not_found_rechecked": bool(confirm_meta.get("rechecked")),
+                                    "confirm_not_found_recheck_state": str(confirm_meta.get("recheck_state") or ""),
+                                    "confirm_not_found_recheck_status": str(confirm_meta.get("recheck_status") or ""),
+                                    "confirm_not_found_recheck_error": str(confirm_meta.get("recheck_error") or ""),
+                                    "confirm_not_found_recheck_delay_sec": to_float(confirm_meta.get("recheck_delay_sec")),
+                                    "confirm_not_found_open_order_seen": bool(confirm_meta.get("open_order_seen")),
+                                    "confirm_not_found_open_order_ids": confirm_meta.get("open_order_ids") or [],
+                                    "confirm_not_found_cancel_attempted": bool(confirm_meta.get("cancel_attempted")),
+                                    "confirm_not_found_cancel_ok": bool(confirm_meta.get("cancel_ok")),
+                                    "confirm_not_found_cancel_error": str(confirm_meta.get("cancel_error") or ""),
+                                    "confirm_not_found_pending_risk_blocked": bool(confirm_risk_blocked),
+                                    "confirm_not_found_pending_risk_reason_codes": list(
+                                        confirm_pending_risk.get("reason_codes") or []
+                                    ),
+                                    "confirm_not_found_pending_risk_reasons": list(
+                                        confirm_pending_risk.get("reasons") or []
+                                    ),
+                                    "confirm_not_found_pending_exec_edge_score": to_float(
+                                        confirm_pending_risk.get("exec_edge_score")
+                                    ),
+                                    "confirm_not_found_pending_spread": to_float(
+                                        confirm_pending_risk.get("spread")
+                                    ),
+                                    "confirm_not_found_pending_exec_edge_score_max": to_float(
+                                        confirm_pending_risk.get("exec_edge_score_max")
+                                    ),
+                                    "confirm_not_found_pending_spread_min": to_float(
+                                        confirm_pending_risk.get("spread_min")
+                                    ),
+                                    "confirm_not_found_pending_risk_strategies": list(
+                                        confirm_pending_risk.get("strategies") or []
+                                    ),
                                 },
                             )
                             cand = candidate_map.get(side) if candidate_map else None
@@ -20737,7 +23875,8 @@ def execute_auto_trades(
                                 cand.get("q_calibrated_sigma") if cand else None,
                                 cand.get("q_calibration_version") if cand else None,
                             )
-                            pending_block = True
+                            if not confirm_failed_fast:
+                                pending_block = True
                             continue
                         if ok:
                             now_iso = utc_now_iso()
@@ -21415,8 +24554,16 @@ def execute_auto_trades(
                 avg_cost = to_float(prev_entry.get("avg_price"))
                 if avg_cost is None:
                     avg_cost = to_float(prev_entry.get("entry_price"))
+                exit_reason_code_set = {
+                    str(code or "").strip().lower()
+                    for code in (exit_reason_codes or [])
+                    if str(code or "").strip()
+                }
+                stop_loss_reason_active = "stop_loss" in exit_reason_code_set
                 stop_loss_trigger = False
                 stop_loss_edge_confirm_ok = not stop_loss_edge_confirm_enabled
+                stop_loss_forced_by_probe_age = False
+                stop_loss_probe_age_sec = None
                 if (
                     active_exit_stop_loss_pct is not None
                     and active_exit_stop_loss_pct > 0
@@ -21444,6 +24591,18 @@ def execute_auto_trades(
                             and math.isfinite(min_exit_size)
                             and min_exit_size > 0
                             and bid_size_val >= min_exit_size
+                        )
+                        if stop_loss_probe_at is not None:
+                            stop_loss_probe_age_sec = max(
+                                0.0, (now_utc - stop_loss_probe_at).total_seconds()
+                            )
+                        stop_loss_forced_by_probe_age = (
+                            exit_stop_loss_force_after_sec is not None
+                            and math.isfinite(exit_stop_loss_force_after_sec)
+                            and exit_stop_loss_force_after_sec > 0
+                            and stop_loss_probe_at is not None
+                            and stop_loss_probe_age_sec is not None
+                            and stop_loss_probe_age_sec >= float(exit_stop_loss_force_after_sec)
                         )
                         stop_loss_edge_for_confirm = to_float(
                             row.get("hold_edge_realizable_yes") if side == "YES" else row.get("hold_edge_realizable_no")
@@ -21480,7 +24639,12 @@ def execute_auto_trades(
                                     <= stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
                                 )
                             )
-                        stop_loss_trigger = (depth_ok or prev_hit) and stop_loss_edge_confirm_ok
+                        stop_loss_trigger = (
+                            (depth_ok or prev_hit) and stop_loss_edge_confirm_ok
+                        ) or stop_loss_forced_by_probe_age
+                        row["stop_loss_force_after_sec"] = float(exit_stop_loss_force_after_sec)
+                        row["stop_loss_forced_by_probe_age"] = stop_loss_forced_by_probe_age
+                        row["stop_loss_probe_age_sec"] = stop_loss_probe_age_sec
                 depth_block_since = _parse_depth_block_since(
                     str(prev_last_status or ""),
                     str(prev_last_error or ""),
@@ -21494,7 +24658,18 @@ def execute_auto_trades(
                     and exit_relax_after_min > 0
                 ):
                     relax_trigger = (now_utc - depth_block_since).total_seconds() >= exit_relax_after_min * 60
-                forced_exit = stop_loss_trigger or relax_trigger or force_exit_timeout
+                q_peak_switch_reason_active = "lcb_q_peak_switch" in {
+                    str(code or "").strip().lower()
+                    for code in (exit_reason_codes or [])
+                    if str(code or "").strip()
+                }
+                forced_exit = (
+                    stop_loss_trigger
+                    or stop_loss_reason_active
+                    or relax_trigger
+                    or force_exit_timeout
+                    or q_peak_switch_reason_active
+                )
                 exit_grad_switch = False
                 if (
                     forced_exit
@@ -22296,24 +25471,40 @@ def _mark_no_orderbook_skips(
     cur = conn.cursor()
     retry_attempts = _env_int("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_RETRY_ATTEMPTS")
     if retry_attempts is None or retry_attempts <= 0:
-        retry_attempts = 10
+        retry_attempts = 2
     retry_sleep = _env_float("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_RETRY_SLEEP_SEC", 0.4)
     if retry_sleep is None or not math.isfinite(retry_sleep) or retry_sleep < 0:
-        retry_sleep = 0.4
-    _sqlite_execute_with_retry(
-        cur,
-        f"""
+        retry_sleep = 0.12
+    max_wait_sec = _env_float("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_MAX_WAIT_SEC", 0.8)
+    if max_wait_sec is None or not math.isfinite(max_wait_sec) or max_wait_sec <= 0:
+        max_wait_sec = 0.8
+    deadline = time.time() + max(0.05, float(max_wait_sec))
+    sql_text = f"""
         UPDATE edge_trades
         SET exit_skip_reason = 'no_orderbook',
             exit_skip_detail = COALESCE(exit_skip_detail, last_error),
             exit_skip_at = COALESCE(exit_skip_at, last_action_at, ?)
         WHERE {where_sql}
-        """,
-        tuple(params),
-        attempts=int(retry_attempts),
-        sleep_base_sec=float(retry_sleep),
-    )
-    return int(cur.rowcount or 0)
+        """
+    updated = False
+    for attempt in range(max(1, int(retry_attempts))):
+        try:
+            cur.execute(sql_text, tuple(params))
+            updated = True
+            break
+        except sqlite3.OperationalError as exc:
+            if (not _sqlite_locked_error(exc)) or attempt >= int(retry_attempts) - 1:
+                raise
+            remain = deadline - time.time()
+            if remain <= 0:
+                break
+            sleep_for = min(float(retry_sleep) * float(attempt + 1), max(0.0, remain))
+            if sleep_for <= 0:
+                break
+            time.sleep(sleep_for)
+    if not updated:
+        return 0
+    return max(0, int(cur.rowcount or 0))
 
 
 def _load_trade_sync_status() -> Dict[str, Any]:
@@ -35964,6 +39155,10 @@ def init_db() -> None:
         ON event_runs(slug, event_date, settlement_actual, market_closed)
         """,
         """
+        CREATE INDEX IF NOT EXISTS idx_event_runs_event_date_settlement_run_date
+        ON event_runs(event_date, settlement_actual, run_date, id)
+        """,
+        """
         CREATE INDEX IF NOT EXISTS idx_edge_trades_active_updated
         ON edge_trades(updated_at DESC)
         WHERE state IN ('entry', 'entry_pending')
@@ -37542,6 +40737,7 @@ def archive_run(
     lat = meta.get("lat")
     model_members = result.get("model_members") or {}
     if rows_all and models:
+        bucket_auto_apply_bias = _env_bool("PM_BUCKET_AUTO_APPLY_BIAS", BUCKET_AUTO_APPLY_BIAS)
         bucket_labels = [bucket.get("outcome") for bucket in rows_all]
         scenario_override = scenario_weights(
             models,
@@ -37556,10 +40752,15 @@ def archive_run(
         weights_scenario = resolve_weights(
             models, "scenario", weights_override=scenario_override, weight_date=run_date
         )
-        bias_map = get_recent_model_bias(7, end_date=run_date)
+        bias_map = get_recent_model_bias(MODEL_BIAS_DAYS, end_date=run_date)
+        result["model_bias_days"] = int(MODEL_BIAS_DAYS)
+        result["model_bias_min_count"] = int(MODEL_BIAS_MIN_COUNT)
         equal_models = _models_with_complete_rows(rows_all, models)
         weights_equal_bias = resolve_weights(
             equal_models or models, "equal", weight_date=run_date
+        )
+        weights_auto_bias = resolve_weights(
+            models, "auto", weight_date=run_date
         )
         weights_scenario_bias = resolve_weights(
             models, "scenario", weights_override=scenario_override, weight_date=run_date
@@ -37588,31 +40789,75 @@ def archive_run(
             return acc / total
 
         bias_equal_c = _weighted_bias(weights_equal_bias)
+        bias_auto_c = _weighted_bias(weights_auto_bias)
         bias_scenario_c = _weighted_bias(weights_scenario_bias)
         bias_equal_base = _bias_to_unit(bias_equal_c, market_unit)
+        bias_auto_base = _bias_to_unit(bias_auto_c, market_unit)
         bias_scenario_base = _bias_to_unit(bias_scenario_c, market_unit)
         bias_equal = bias_equal_base
+        bias_auto = bias_auto_base
         bias_scenario = bias_scenario_base
-        place_bias_map = get_recent_place_bias(7, end_date=run_date)
+        place_bias_map = get_recent_place_bias(PLACE_BIAS_DAYS, end_date=run_date)
         place_bias_entry = None
+        place_bias_source = ""
+        place_bias_station_support = 0.0
+        place_bias_city_support = 0.0
         station_key = (meta.get("station_id") or "").strip()
         city_key = (meta.get("city") or "").strip()
+        station_bias_entry = None
+        city_bias_entry = None
         if station_key:
-            place_bias_entry = (place_bias_map.get("station") or {}).get(station_key)
-        if place_bias_entry is None and city_key:
-            place_bias_entry = (place_bias_map.get("city") or {}).get(city_key)
+            station_bias_entry = (place_bias_map.get("station") or {}).get(station_key)
+        if city_key:
+            city_bias_entry = (place_bias_map.get("city") or {}).get(city_key)
+
+        def _place_bias_support(entry: Any) -> float:
+            if not isinstance(entry, dict):
+                return 0.0
+            max_count = 0.0
+            for key in ("equal_count", "auto_count", "scenario_count"):
+                val = to_float(entry.get(key))
+                if val is None or not math.isfinite(val) or val <= 0:
+                    continue
+                if val > max_count:
+                    max_count = float(val)
+            return max_count
+
+        place_bias_station_support = _place_bias_support(station_bias_entry)
+        place_bias_city_support = _place_bias_support(city_bias_entry)
+        if station_bias_entry is not None:
+            place_bias_entry = station_bias_entry
+            place_bias_source = "station"
+        elif city_bias_entry is not None:
+            place_bias_entry = city_bias_entry
+            place_bias_source = "city"
+        if (
+            station_bias_entry is not None
+            and city_bias_entry is not None
+            and place_bias_station_support + TIME_EDGE_Q_EPS < float(PLACE_BIAS_APPLY_MIN_COUNT)
+            and place_bias_city_support + TIME_EDGE_Q_EPS >= float(PLACE_BIAS_APPLY_MIN_COUNT)
+        ):
+            place_bias_entry = city_bias_entry
+            place_bias_source = "city_fallback"
+        result["place_bias_source"] = place_bias_source
+        result["place_bias_station_support"] = place_bias_station_support
+        result["place_bias_city_support"] = place_bias_city_support
+        result["place_bias_days"] = int(PLACE_BIAS_DAYS)
         if place_bias_entry:
             def _apply_place_bias(base_bias: Optional[float], field: str) -> Optional[float]:
                 if base_bias is None:
                     return None
-                count = place_bias_entry.get(f"{field}_count") or 0.0
-                if count < PLACE_BIAS_MIN_COUNT:
+                count = to_float(place_bias_entry.get(f"{field}_count")) or 0.0
+                if count + TIME_EDGE_Q_EPS < float(PLACE_BIAS_APPLY_MIN_COUNT):
                     return base_bias
                 raw = place_bias_entry.get(field)
                 place_val = _bias_to_unit(raw, market_unit) if raw is not None else None
                 if place_val is None:
                     return base_bias
                 alpha = float(count) / (float(count) + PLACE_BIAS_SHRINK_K)
+                warmup_denom = max(float(PLACE_BIAS_MIN_COUNT), 1.0)
+                warmup = min(1.0, float(count) / warmup_denom)
+                alpha *= warmup
                 mixed = alpha * place_val + (1.0 - alpha) * float(base_bias)
                 clamp = PLACE_BIAS_CLAMP_C
                 if mixed > clamp:
@@ -37621,6 +40866,7 @@ def archive_run(
                     mixed = -clamp
                 return mixed
             bias_equal = _apply_place_bias(bias_equal_base, "equal")
+            bias_auto = _apply_place_bias(bias_auto_base, "auto")
             bias_scenario = _apply_place_bias(bias_scenario_base, "scenario")
         market_label = _top_market_bucket(rows_all)
         shift_cap = None
@@ -37761,10 +41007,14 @@ def archive_run(
         if str(market_var or "").startswith("temperature"):
             max_jump = _estimate_bucket_width(rows_all, rounding_rule, market_unit) * MAX_TOP_BUCKET_JUMP_RATIO
         residual_equal = _bias_residual(bias_equal, bias_equal_base)
+        residual_auto = _bias_residual(bias_auto, bias_auto_base)
         residual_scenario = _bias_residual(bias_scenario, bias_scenario_base)
         shifts_equal = _build_shift_map(residual_equal, True)
         shifts_scenario = _build_shift_map(residual_scenario, True)
-        shifts_auto = _build_shift_map(0.0, False)
+        shifts_auto = _build_shift_map(
+            residual_auto if bucket_auto_apply_bias else 0.0,
+            bool(bucket_auto_apply_bias),
+        )
         raw_top3_equal = _top_n_buckets(weights_equal, members_raw, shifts_equal, 0.0)
         raw_top3_auto = _top_n_buckets(weights_auto, members_raw, shifts_auto, 0.0)
         raw_top3_scenario = _top_n_buckets(weights_scenario, members_raw, shifts_scenario, 0.0)
@@ -38381,12 +41631,15 @@ def resolve_weights(
         stored_latest = _normalize_weights_partial(load_latest_weights(), models)
         if stored_latest:
             return stored_latest
-        recent = _normalize_weights_partial(get_recent_hit_weights(7, end_date=weight_date), models)
+        recent = _normalize_weights_partial(
+            get_recent_hit_weights(MODEL_WEIGHT_DAYS, end_date=weight_date),
+            models,
+        )
         if recent:
-            bias = get_recent_model_bias(7, end_date=weight_date)
+            bias = get_recent_model_bias(MODEL_BIAS_DAYS, end_date=weight_date)
             return _apply_bias_penalty(recent, bias)
         w = 1.0 / len(models)
-        bias = get_recent_model_bias(7, end_date=weight_date)
+        bias = get_recent_model_bias(MODEL_BIAS_DAYS, end_date=weight_date)
         return _apply_bias_penalty({m: w for m in models}, bias)
     w = 1.0 / len(models)
     return {m: w for m in models}
@@ -39204,17 +42457,22 @@ def compute_model_hit_weights(days: int = 7, end_date: Optional[str] = None) -> 
     return {m: (rates[m] / total) for m in rates.keys()}
 
 
-def compute_model_bias_stats(days: int = 7, end_date: Optional[str] = None) -> Dict[str, Dict[str, float]]:
+def compute_model_bias_stats(
+    days: Optional[int] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Dict[str, float]]:
     if not DB_PATH.exists():
         return {}
     try:
         init_db()
     except Exception:
         pass
+    if days is None:
+        days = MODEL_BIAS_DAYS
     try:
         days = int(days)
     except Exception:
-        days = 7
+        days = MODEL_BIAS_DAYS
     if days <= 0:
         return {}
     end_dt = _parse_date(end_date) or datetime.today().date()
@@ -39329,17 +42587,22 @@ def compute_model_bias_stats(days: int = 7, end_date: Optional[str] = None) -> D
     return out
 
 
-def compute_place_bias_stats(days: int = 7, end_date: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, float]]]:
+def compute_place_bias_stats(
+    days: Optional[int] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Dict[str, Dict[str, float]]]:
     if not DB_PATH.exists():
         return {"station": {}, "city": {}}
     try:
         init_db()
     except Exception:
         pass
+    if days is None:
+        days = PLACE_BIAS_DAYS
     try:
         days = int(days)
     except Exception:
-        days = 7
+        days = PLACE_BIAS_DAYS
     if days <= 0:
         return {"station": {}, "city": {}}
     end_dt = _parse_date(end_date) or datetime.today().date()
@@ -39488,10 +42751,18 @@ def compute_place_bias_stats(days: int = 7, end_date: Optional[str] = None) -> D
 
 
 def get_recent_place_bias(
-    days: int = 7,
+    days: Optional[int] = None,
     end_date: Optional[str] = None,
     ttl: int = 300,
 ) -> Dict[str, Dict[str, Dict[str, float]]]:
+    if days is None:
+        days = PLACE_BIAS_DAYS
+    try:
+        days = int(days)
+    except Exception:
+        days = PLACE_BIAS_DAYS
+    if days <= 0:
+        days = PLACE_BIAS_DAYS
     now = time.time()
     key = f"{end_date or 'today'}|{days}"
     entry = PLACE_BIAS_CACHE.get(key)
@@ -39503,10 +42774,18 @@ def get_recent_place_bias(
 
 
 def get_recent_model_bias(
-    days: int = 7,
+    days: Optional[int] = None,
     end_date: Optional[str] = None,
     ttl: int = 300,
 ) -> Dict[str, Dict[str, float]]:
+    if days is None:
+        days = MODEL_BIAS_DAYS
+    try:
+        days = int(days)
+    except Exception:
+        days = MODEL_BIAS_DAYS
+    if days <= 0:
+        days = MODEL_BIAS_DAYS
     now = time.time()
     key = f"{end_date or 'today'}|{days}"
     entry = MODEL_BIAS_CACHE.get(key)
@@ -39518,10 +42797,18 @@ def get_recent_model_bias(
 
 
 def get_recent_hit_weights(
-    days: int = 7,
+    days: Optional[int] = None,
     end_date: Optional[str] = None,
     ttl: int = 300,
 ) -> Dict[str, float]:
+    if days is None:
+        days = MODEL_WEIGHT_DAYS
+    try:
+        days = int(days)
+    except Exception:
+        days = MODEL_WEIGHT_DAYS
+    if days <= 0:
+        days = MODEL_WEIGHT_DAYS
     now = time.time()
     key = f"{end_date or 'today'}|{days}"
     entry = AUTO_WEIGHT_CACHE.get(key)
@@ -39532,6 +42819,260 @@ def get_recent_hit_weights(
     weights = _apply_error_penalty(weights, bias_map)
     AUTO_WEIGHT_CACHE[key] = {"ts": now, "weights": weights}
     return weights
+
+
+def compute_bucket_mode_performance(
+    days: Optional[int] = None,
+    end_date: Optional[str] = None,
+    *,
+    compute_budget_sec: Optional[float] = None,
+    max_events: Optional[int] = None,
+) -> Dict[str, Dict[str, float]]:
+    if not DB_PATH.exists():
+        return {}
+    try:
+        init_db()
+    except Exception:
+        pass
+    if days is None:
+        days = BUCKET_MODE_SWITCH_DAYS
+    try:
+        days = int(days)
+    except Exception:
+        days = BUCKET_MODE_SWITCH_DAYS
+    if days <= 0:
+        return {}
+    if compute_budget_sec is None:
+        compute_budget_sec = _env_float("PM_BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC")
+    if (
+        compute_budget_sec is None
+        or not math.isfinite(compute_budget_sec)
+        or compute_budget_sec <= 0
+    ):
+        compute_budget_sec = float(BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC)
+    compute_budget_sec = max(0.05, float(compute_budget_sec))
+    if max_events is None:
+        max_events = _env_int("PM_BUCKET_MODE_SWITCH_MAX_EVENTS")
+    if max_events is None or max_events < 1:
+        max_events = int(BUCKET_MODE_SWITCH_MAX_EVENTS)
+    max_events = max(1, int(max_events))
+    end_dt = _parse_date(end_date) or datetime.today().date()
+    start = (end_dt - timedelta(days=days)).isoformat()
+    end = end_dt.isoformat()
+    deadline = time.monotonic() + float(compute_budget_sec)
+    conn: Optional[sqlite3.Connection] = None
+    try:
+        conn = open_db()
+        conn.row_factory = sqlite3.Row
+        conn.set_progress_handler(
+            lambda: 1 if time.monotonic() >= deadline else 0,
+            20000,
+        )
+        cur = conn.cursor()
+        cur.execute(
+            """
+            WITH latest_slug AS (
+                SELECT slug, event_date, MAX(id) AS max_id
+                FROM event_runs
+                WHERE slug IS NOT NULL
+                  AND slug <> ''
+                  AND event_date >= ?
+                  AND event_date <= ?
+                  AND settlement_actual IS NOT NULL
+                  AND (run_date <= ? OR run_date IS NULL OR run_date = '')
+                GROUP BY slug, event_date
+            ),
+            latest_empty_slug AS (
+                SELECT title, event_date, MAX(id) AS max_id
+                FROM event_runs
+                WHERE (slug IS NULL OR slug = '')
+                  AND event_date >= ?
+                  AND event_date <= ?
+                  AND settlement_actual IS NOT NULL
+                  AND (run_date <= ? OR run_date IS NULL OR run_date = '')
+                GROUP BY title, event_date
+            ),
+            latest_ids AS (
+                SELECT max_id AS id FROM latest_slug
+                UNION ALL
+                SELECT max_id AS id FROM latest_empty_slug
+            )
+            SELECT
+                e.market_var,
+                e.payload_json,
+                e.settlement_actual,
+                e.rounding_rule
+            FROM event_runs e
+            JOIN latest_ids li ON li.id = e.id
+            ORDER BY COALESCE(e.created_at, '') DESC
+            LIMIT ?
+            """,
+            (start, end, end, start, end, end, int(max_events)),
+        )
+        rows = cur.fetchall()
+    except sqlite3.OperationalError as exc:
+        if "interrupted" in str(exc).lower():
+            raise TimeoutError("bucket_mode_switch_query_budget_exceeded") from exc
+        return {}
+    except TimeoutError:
+        raise
+    except Exception:
+        return {}
+    finally:
+        if conn is not None:
+            try:
+                conn.set_progress_handler(None, 0)
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    if time.monotonic() >= deadline:
+        raise TimeoutError("bucket_mode_switch_query_budget_exceeded")
+    if not rows:
+        return {}
+
+    def _diag_top_label(diag_top3: Any, mode: str) -> str:
+        if not isinstance(diag_top3, dict):
+            return ""
+        entries = diag_top3.get(mode)
+        if isinstance(entries, list) and entries:
+            top = entries[0]
+            if isinstance(top, dict):
+                return str(top.get("label") or "")
+        return ""
+
+    modes = ("equal", "auto", "scenario")
+    stats: Dict[str, Dict[str, float]] = {
+        mode: {"n": 0.0, "raw_hit": 0.0, "corr_hit": 0.0}
+        for mode in modes
+    }
+    for r in rows:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("bucket_mode_switch_parse_budget_exceeded")
+        market_var = str(r["market_var"] or "")
+        if not market_var.startswith("temperature"):
+            continue
+        payload_raw = r["payload_json"]
+        if not payload_raw:
+            continue
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            continue
+        if payload.get("index_source"):
+            continue
+        rows_all = payload.get("rows") or []
+        if not rows_all:
+            continue
+        actual_label = _bucket_label_for_value(
+            rows_all,
+            r["settlement_actual"],
+            r["rounding_rule"],
+        )
+        if not actual_label:
+            continue
+        bucket_diag = payload.get("bucket_diag")
+        raw_top3 = bucket_diag.get("raw_top3") if isinstance(bucket_diag, dict) else {}
+        corrected_top3 = bucket_diag.get("corrected_top3") if isinstance(bucket_diag, dict) else {}
+        for mode in modes:
+            raw_label = _diag_top_label(raw_top3, mode)
+            corrected_label = _diag_top_label(corrected_top3, mode) or raw_label
+            if not raw_label and not corrected_label:
+                continue
+            entry = stats[mode]
+            entry["n"] += 1.0
+            if raw_label and raw_label == actual_label:
+                entry["raw_hit"] += 1.0
+            if corrected_label and corrected_label == actual_label:
+                entry["corr_hit"] += 1.0
+
+    out: Dict[str, Dict[str, float]] = {}
+    for mode in modes:
+        n = stats[mode].get("n") or 0.0
+        if n <= 0:
+            continue
+        raw_acc = (stats[mode].get("raw_hit") or 0.0) / n
+        corr_acc = (stats[mode].get("corr_hit") or 0.0) / n
+        out[mode] = {
+            "n": n,
+            "raw_acc": raw_acc,
+            "corr_acc": corr_acc,
+            "delta": corr_acc - raw_acc,
+        }
+    return out
+
+
+def get_recent_bucket_mode_performance(
+    days: Optional[int] = None,
+    end_date: Optional[str] = None,
+    ttl: int = 300,
+) -> Dict[str, Dict[str, float]]:
+    if days is None:
+        days = BUCKET_MODE_SWITCH_DAYS
+    try:
+        days = int(days)
+    except Exception:
+        days = BUCKET_MODE_SWITCH_DAYS
+    if days <= 0:
+        days = BUCKET_MODE_SWITCH_DAYS
+    now = time.time()
+    key = f"{end_date or 'today'}|{days}"
+    entry = BUCKET_MODE_PERF_CACHE.get(key)
+    entry_age = float("inf")
+    if entry:
+        entry_age = max(0.0, now - float(entry.get("ts") or 0.0))
+    if entry and entry_age < ttl:
+        return entry.get("perf") or {}
+    compute_budget_sec = _env_float("PM_BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC")
+    if compute_budget_sec is None or not math.isfinite(compute_budget_sec) or compute_budget_sec <= 0:
+        compute_budget_sec = float(BUCKET_MODE_SWITCH_COMPUTE_BUDGET_SEC)
+    stale_max_age_sec = _env_float("PM_BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC")
+    if stale_max_age_sec is None or not math.isfinite(stale_max_age_sec) or stale_max_age_sec < 0:
+        stale_max_age_sec = float(BUCKET_MODE_SWITCH_STALE_MAX_AGE_SEC)
+    stale_max_age_sec = max(float(ttl), float(stale_max_age_sec))
+    max_events = _env_int("PM_BUCKET_MODE_SWITCH_MAX_EVENTS")
+    if max_events is None or max_events < 1:
+        max_events = int(BUCKET_MODE_SWITCH_MAX_EVENTS)
+    error_text = ""
+    perf: Dict[str, Dict[str, float]] = {}
+    try:
+        perf = compute_bucket_mode_performance(
+            days,
+            end_date=end_date,
+            compute_budget_sec=float(compute_budget_sec),
+            max_events=int(max_events),
+        )
+    except TimeoutError as exc:
+        error_text = str(exc)
+    except Exception as exc:
+        error_text = str(exc)
+    if perf:
+        BUCKET_MODE_PERF_CACHE[key] = {"ts": now, "perf": perf}
+        return perf
+    if (
+        entry
+        and isinstance(entry.get("perf"), dict)
+        and entry.get("perf")
+        and entry_age <= stale_max_age_sec
+    ):
+        if error_text:
+            BUCKET_MODE_PERF_CACHE[key] = {
+                "ts": float(entry.get("ts") or 0.0),
+                "perf": entry.get("perf") or {},
+                "stale": True,
+                "last_error": error_text,
+                "last_attempt_ts": now,
+            }
+        return entry.get("perf") or {}
+    BUCKET_MODE_PERF_CACHE[key] = {
+        "ts": now,
+        "perf": perf or {},
+        "last_error": error_text,
+    }
+    return perf or {}
 
 
 def _resolve_q_calibration_range(conn: sqlite3.Connection, days: int) -> Tuple[datetime.date, datetime.date]:

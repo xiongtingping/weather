@@ -7646,6 +7646,64 @@
       color:var(--muted);
       opacity:.9;
     }
+    .lcb-marginal-wrap {
+      border:1px solid var(--border-soft);
+      border-radius:12px;
+      background:var(--panel-3);
+      padding:10px 10px 8px;
+      display:grid;
+      gap:8px;
+    }
+    .lcb-marginal-head {
+      font-size:12px;
+      font-weight:700;
+      color:var(--text);
+      letter-spacing:.02em;
+    }
+    .lcb-marginal-head-sub {
+      font-size:11px;
+      color:var(--muted);
+      font-weight:600;
+      letter-spacing:.01em;
+    }
+    .lcb-marginal-table-wrap {
+      overflow:auto;
+      border:1px solid var(--border-soft);
+      border-radius:10px;
+      background:var(--panel-2);
+    }
+    .lcb-marginal-table {
+      width:100%;
+      border-collapse:collapse;
+      min-width:560px;
+    }
+    .lcb-marginal-table th,
+    .lcb-marginal-table td {
+      font-size:11px;
+      line-height:1.35;
+      padding:6px 8px;
+      border-bottom:1px solid color-mix(in srgb, var(--border-soft) 75%, transparent);
+      white-space:nowrap;
+      text-align:right;
+    }
+    .lcb-marginal-table th {
+      font-weight:700;
+      color:var(--muted);
+      background:var(--panel-3);
+    }
+    .lcb-marginal-table th:first-child,
+    .lcb-marginal-table td:first-child {
+      text-align:left;
+    }
+    .lcb-marginal-table tbody tr:last-child td {
+      border-bottom:none;
+    }
+    .lcb-marginal-table .is-positive {
+      color:var(--ok);
+    }
+    .lcb-marginal-table .is-negative {
+      color:var(--danger);
+    }
     @media (max-width:900px) {
       .lcb-kpi-card-grid {
         grid-template-columns:1fr;
@@ -20462,6 +20520,82 @@
       const roiTotalDisplay = Number.isFinite(netRoiTotalRaw) ? netRoiTotalRaw : roiTotal;
       const roi7dDisplay = Number.isFinite(netRoi7dRaw) ? netRoi7dRaw : roi7d;
       const roiTodayDisplay = Number.isFinite(netRoiTodayRaw) ? netRoiTodayRaw : roiToday;
+      const marginalRoiLatestRaw = toNumSafe(autoTradeStats && autoTradeStats.marginal_roi_latest_7d);
+      const marginalRoiMedianRaw = toNumSafe(autoTradeStats && autoTradeStats.marginal_roi_median_7d);
+      const marginalBalanceDayRaw = String((autoTradeStats && autoTradeStats.marginal_balance_day_7d) || '').trim();
+      const marginalBalanceCostRaw = toNumSafe(autoTradeStats && autoTradeStats.marginal_balance_cost_7d);
+      const marginalBalancePnlRaw = toNumSafe(autoTradeStats && autoTradeStats.marginal_balance_pnl_7d);
+      const marginalCurveRaw = Array.isArray(autoTradeStats && autoTradeStats.marginal_roi_curve_7d)
+        ? autoTradeStats.marginal_roi_curve_7d
+        : [];
+      const marginalCurve = marginalCurveRaw.map((item) => {
+        const row = item && typeof item === 'object' ? item : {};
+        const day = String(row.date || '').trim();
+        if (!day) return null;
+        return {
+          date: day,
+          dayCost: toNumSafe(row.day_cost),
+          dayPnl: toNumSafe(row.day_pnl),
+          dayRoi: toNumSafe(row.day_roi),
+          cumCost: toNumSafe(row.cumulative_cost),
+          cumPnl: toNumSafe(row.cumulative_pnl),
+          cumRoi: toNumSafe(row.cumulative_roi),
+          keyCount: toCountOrZero(row.key_count),
+        };
+      }).filter(Boolean).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      const marginalMedianFromCurve = (() => {
+        const values = marginalCurve
+          .map((item) => toNumSafe(item && item.dayRoi))
+          .filter((v) => Number.isFinite(v))
+          .sort((a, b) => a - b);
+        if (!values.length) return null;
+        const mid = Math.floor(values.length / 2);
+        return (values.length % 2 === 1) ? values[mid] : ((values[mid - 1] + values[mid]) / 2);
+      })();
+      const marginalLatestPoint = [...marginalCurve]
+        .reverse()
+        .find((item) => Number.isFinite(toNumSafe(item && item.dayRoi)));
+      const marginalTodayPoint = (() => {
+        const statsToday = String((autoTradeStats && autoTradeStats.stats_today) || '').trim();
+        if (!statsToday) return null;
+        return marginalCurve.find((item) => String(item && item.date || '') === statsToday) || null;
+      })();
+      const marginalLatestDisplay = Number.isFinite(marginalRoiLatestRaw)
+        ? marginalRoiLatestRaw
+        : (marginalLatestPoint ? toNumSafe(marginalLatestPoint.dayRoi) : null);
+      const marginalMedianDisplay = Number.isFinite(marginalRoiMedianRaw) ? marginalRoiMedianRaw : marginalMedianFromCurve;
+      const marginalTodayDisplay = marginalTodayPoint ? toNumSafe(marginalTodayPoint.dayRoi) : marginalLatestDisplay;
+      const marginalCumulativeRoi7d = marginalCurve.length
+        ? toNumSafe(marginalCurve[marginalCurve.length - 1].cumRoi)
+        : null;
+      const marginalBalanceDay = marginalBalanceDayRaw;
+      const marginalBalancePoint = marginalBalanceDay
+        ? (marginalCurve.find((item) => String(item && item.date || '') === marginalBalanceDay) || null)
+        : null;
+      const marginalBalanceCost = Number.isFinite(marginalBalanceCostRaw)
+        ? marginalBalanceCostRaw
+        : (marginalBalancePoint ? toNumSafe(marginalBalancePoint.cumCost) : null);
+      const marginalBalancePnl = Number.isFinite(marginalBalancePnlRaw)
+        ? marginalBalancePnlRaw
+        : (marginalBalancePoint ? toNumSafe(marginalBalancePoint.cumPnl) : null);
+      const marginalBalanceKeyCount = toCountOrZero(
+        autoTradeStats && autoTradeStats.marginal_balance_key_count_7d
+      );
+      const marginalAvgBuyUsdc = toNumSafe(autoTradeStats && autoTradeStats.marginal_avg_buy_usdc_7d);
+      const marginalRecommendedOrderRaw = toNumSafe(
+        autoTradeStats && autoTradeStats.marginal_recommended_order_usdc_7d
+      );
+      const marginalRecommendedBasisRaw = String(
+        (autoTradeStats && autoTradeStats.marginal_recommended_order_basis_7d) || ''
+      ).trim();
+      const marginalRecommendedOrder = Number.isFinite(marginalRecommendedOrderRaw)
+        ? marginalRecommendedOrderRaw
+        : null;
+      const marginalRecommendedBasisText = (() => {
+        if (marginalRecommendedBasisRaw === 'balance_point_7d') return '基于7天平衡点';
+        if (marginalRecommendedBasisRaw === 'avg_buy_7d') return '基于7天成交均值';
+        return '';
+      })();
       const sumNullable = (...values) => {
         let sum = 0;
         let hit = false;
@@ -20586,7 +20720,77 @@
           },
           foot: '净ROI = 净PnL / (已实现成本 + 在仓成本)',
         }),
+        buildKpiCard({
+          title: '边际ROI(7天)',
+          cardClass: 'is-emphasis',
+          values: {
+            today: marginalTodayDisplay,
+            seven: marginalMedianDisplay,
+            total: marginalCumulativeRoi7d,
+          },
+          formatter: (value) => formatPercentValue(value, 2),
+          valueClass: toneClass,
+          isPct: true,
+          sub: {
+            today: `最新日 ${marginalLatestPoint ? String(marginalLatestPoint.date || '') : '—'}`,
+            seven: '7天中位边际ROI',
+            total: '7天累计净ROI(新增资金)',
+          },
+          foot: `平衡点 ${marginalBalanceDay || '—'} · 累计成本 ${Number.isFinite(marginalBalanceCost) ? formatUsdCompact(marginalBalanceCost) : '—'} · 累计净PnL ${Number.isFinite(marginalBalancePnl) ? formatUsdCompact(marginalBalancePnl) : '—'} · 建议单笔 ${Number.isFinite(marginalRecommendedOrder) ? formatUsdCompact(marginalRecommendedOrder) : '—'}`,
+        }),
       ].join('');
+      const marginalCurveRows = marginalCurve
+        .slice()
+        .reverse()
+        .map((item) => {
+          const dayCost = toNumSafe(item && item.dayCost);
+          const dayPnl = toNumSafe(item && item.dayPnl);
+          const dayRoi = toNumSafe(item && item.dayRoi);
+          const cumRoi = toNumSafe(item && item.cumRoi);
+          const dateLabel = String(item && item.date || '');
+          const showDate = marginalBalanceDay && dateLabel === marginalBalanceDay
+            ? `${dateLabel} (平衡点)`
+            : dateLabel;
+          return `
+            <tr>
+              <td>${escapeHtml(showDate || '—')}</td>
+              <td>${Number.isFinite(dayCost) ? escapeHtml(formatUsdCompact(dayCost)) : '—'}</td>
+              <td class="${escapeHtml(toneClass(dayPnl))}">${Number.isFinite(dayPnl) ? escapeHtml(formatUsdCompact(dayPnl)) : '—'}</td>
+              <td class="${escapeHtml(toneClass(dayRoi))}">${Number.isFinite(dayRoi) ? escapeHtml(formatPercentValue(dayRoi, 2)) : '—'}</td>
+              <td class="${escapeHtml(toneClass(cumRoi))}">${Number.isFinite(cumRoi) ? escapeHtml(formatPercentValue(cumRoi, 2)) : '—'}</td>
+              <td>${escapeHtml(formatCountValue(item && item.keyCount))}</td>
+            </tr>
+          `;
+        })
+        .join('');
+      const marginalCurveHtml = marginalCurveRows
+        ? `
+          <div class="lcb-marginal-wrap">
+            <div class="lcb-marginal-head">边际ROI曲线（按首买入日归因）</div>
+            <div class="lcb-marginal-head-sub">
+              建议单笔投入 ${Number.isFinite(marginalRecommendedOrder) ? escapeHtml(formatUsdCompact(marginalRecommendedOrder)) : '—'}
+              ${marginalRecommendedBasisText ? ` · ${escapeHtml(marginalRecommendedBasisText)}` : ''}
+              ${Number.isFinite(marginalAvgBuyUsdc) ? ` · 7天成交均值 ${escapeHtml(formatUsdCompact(marginalAvgBuyUsdc))}` : ''}
+              ${marginalBalanceKeyCount > 0 ? ` · 平衡点样本 ${escapeHtml(formatCountValue(marginalBalanceKeyCount))}` : ''}
+            </div>
+            <div class="lcb-marginal-table-wrap">
+              <table class="lcb-marginal-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>当日新增资金</th>
+                    <th>当日净PnL</th>
+                    <th>当日边际ROI</th>
+                    <th>累计净ROI</th>
+                    <th>样本(单)</th>
+                  </tr>
+                </thead>
+                <tbody>${marginalCurveRows}</tbody>
+              </table>
+            </div>
+          </div>
+        `
+        : '';
       const hitHighlightHtml = `
         <div class="manual-hit-highlight">
           <div class="lcb-kpi-board">
@@ -20596,6 +20800,7 @@
             <div class="lcb-kpi-card-grid">
               ${metricHtml}
             </div>
+            ${marginalCurveHtml}
           </div>
         </div>
       `;
@@ -27083,15 +27288,34 @@
           if (Number.isFinite(askVal) || Number.isFinite(bidVal)) {
             marketParts.push(`盘口 ${bidText}~${askText}`);
           }
-          if (Number.isFinite(edgeDisplayVal)) {
-            marketParts.push(`Edge ${edgeDisplayText}`);
+          const comboLegRaw = String(
+            item.lcb_combo_leg
+            || (
+              item.entry_decision
+              && item.entry_decision.details
+              && item.entry_decision.details.lcb_combo_leg
+            )
+            || ''
+          ).trim().toLowerCase();
+          const comboRatioVal = toFiniteNumberOrNaN(
+            item.strategy_size_ratio_extra
+            || (
+              item.entry_decision
+              && item.entry_decision.details
+              && item.entry_decision.details.strategy_size_ratio_extra
+            )
+          );
+          const comboPctText = Number.isFinite(comboRatioVal)
+            ? `(${(comboRatioVal * 100).toFixed(0)}%)`
+            : '';
+          if (comboLegRaw === 'yes_top') {
+            marketParts.push(`组合腿 YES_TOP${comboPctText}`);
+          } else if (comboLegRaw === 'lcb') {
+            marketParts.push(`组合腿 LCB${comboPctText}`);
           }
-          if (Number.isFinite(edgeRealizableV2Val)) {
-            const v2Inline = [`${edgeRealizableV2Val.toFixed(4)}`];
-            if (Number.isFinite(edgeRealizableHoldCostVal) && edgeRealizableHoldCostVal > 0) {
-              v2Inline.push(`持有 ${edgeRealizableHoldCostVal.toFixed(4)}`);
-            }
-            marketParts.push(`可兑现V2 ${v2Inline.join(' / ')}`);
+          const lcbEdgeVal = toFiniteNumberOrNaN(item.edge_tradeability_edge_lcb);
+          if (Number.isFinite(lcbEdgeVal)) {
+            marketParts.push(`LCB ${lcbEdgeVal.toFixed(4)}`);
           }
           const exitHeadroomMin = toFiniteNumberOrNaN(meta && meta.exit_edge_headroom_min);
           const execExitPriceVal = toFiniteNumberOrNaN(item.exec_exit_price);
@@ -27103,11 +27327,7 @@
               && Number.isFinite(exitEdgeVal)
               && Number.isFinite(exitHeadroomMin)
             ) ? (execExitPriceVal + exitEdgeVal - exitHeadroomMin) : NaN;
-          const marketPartsHtml = marketParts.map((part) => {
-            const highlight = part.startsWith('可兑现V2');
-            const cls = highlight ? ' class="trace-meta-highlight"' : '';
-            return `<span${cls}>${escapeHtml(part)}</span>`;
-          });
+          const marketPartsHtml = marketParts.map((part) => `<span>${escapeHtml(part)}</span>`);
           if (Number.isFinite(triggerExitPrice) && triggerExitPrice > 0) {
             marketPartsHtml.push(`<span class="trace-meta-highlight">触发退出价(估) ${escapeHtml(triggerExitPrice.toFixed(4))}</span>`);
           }
@@ -27146,9 +27366,9 @@
           };
           const gateChips = [];
           if (gateRaw) {
+            gateChips.push(buildGateChip('信号下界', gateRaw.signal_lcb, false, gateLegacyMode));
+            gateChips.push(buildGateChip('路径下界', gateRaw.path_lcb, true, gateLegacyMode));
             gateChips.push(buildGateChip('可交易下界', gateRaw.edge_lcb, false, gateLegacyMode));
-            gateChips.push(buildGateChip('兑现概率', gateRaw.p_realize, true, gateLegacyMode));
-            gateChips.push(buildGateChip('路径概率', gateRaw.p_converge, true, gateLegacyMode));
           }
           const gateMetaHtml = gateChips.length
             ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
@@ -31003,15 +31223,34 @@
         if (Number.isFinite(askVal) || Number.isFinite(bidVal)) {
           marketParts.push(`盘口 ${bidText}~${askText}`);
         }
-        if (Number.isFinite(edgeDisplayVal)) {
-          marketParts.push(`Edge ${edgeDisplayText}`);
+        const comboLegRaw = String(
+          item.lcb_combo_leg
+          || (
+            item.entry_decision
+            && item.entry_decision.details
+            && item.entry_decision.details.lcb_combo_leg
+          )
+          || ''
+        ).trim().toLowerCase();
+        const comboRatioVal = toFiniteNumberOrNaN(
+          item.strategy_size_ratio_extra
+          || (
+            item.entry_decision
+            && item.entry_decision.details
+            && item.entry_decision.details.strategy_size_ratio_extra
+          )
+        );
+        const comboPctText = Number.isFinite(comboRatioVal)
+          ? `(${(comboRatioVal * 100).toFixed(0)}%)`
+          : '';
+        if (comboLegRaw === 'yes_top') {
+          marketParts.push(`组合腿 YES_TOP${comboPctText}`);
+        } else if (comboLegRaw === 'lcb') {
+          marketParts.push(`组合腿 LCB${comboPctText}`);
         }
-        if (Number.isFinite(edgeRealizableV2Val)) {
-          const v2Inline = [`${edgeRealizableV2Val.toFixed(4)}`];
-          if (Number.isFinite(edgeRealizableHoldCostVal) && edgeRealizableHoldCostVal > 0) {
-            v2Inline.push(`持有 ${edgeRealizableHoldCostVal.toFixed(4)}`);
-          }
-          marketParts.push(`可兑现V2 ${v2Inline.join(' / ')}`);
+        const lcbEdgeVal = toFiniteNumberOrNaN(item.edge_tradeability_edge_lcb);
+        if (Number.isFinite(lcbEdgeVal)) {
+          marketParts.push(`LCB ${lcbEdgeVal.toFixed(4)}`);
         }
         const exitHeadroomMin = toFiniteNumberOrNaN(meta && meta.exit_edge_headroom_min);
         const execExitPriceVal = toFiniteNumberOrNaN(item.exec_exit_price);
@@ -31023,11 +31262,7 @@
             && Number.isFinite(exitEdgeVal)
             && Number.isFinite(exitHeadroomMin)
           ) ? (execExitPriceVal + exitEdgeVal - exitHeadroomMin) : NaN;
-        const marketPartsHtml = marketParts.map((part) => {
-          const highlight = part.startsWith('可兑现V2');
-          const cls = highlight ? ' class="trace-meta-highlight"' : '';
-          return `<span${cls}>${escapeHtml(part)}</span>`;
-        });
+        const marketPartsHtml = marketParts.map((part) => `<span>${escapeHtml(part)}</span>`);
         if (Number.isFinite(triggerExitPrice) && triggerExitPrice > 0) {
           marketPartsHtml.push(`<span class="trace-meta-highlight">触发退出价(估) ${escapeHtml(triggerExitPrice.toFixed(4))}</span>`);
         }
@@ -31066,9 +31301,9 @@
         };
         const gateChips = [];
         if (gateRaw) {
+          gateChips.push(buildGateChip('信号下界', gateRaw.signal_lcb, false, gateLegacyMode));
+          gateChips.push(buildGateChip('路径下界', gateRaw.path_lcb, true, gateLegacyMode));
           gateChips.push(buildGateChip('可交易下界', gateRaw.edge_lcb, false, gateLegacyMode));
-          gateChips.push(buildGateChip('兑现概率', gateRaw.p_realize, true, gateLegacyMode));
-          gateChips.push(buildGateChip('路径概率', gateRaw.p_converge, true, gateLegacyMode));
         }
         const gateMetaHtml = gateChips.length
           ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
