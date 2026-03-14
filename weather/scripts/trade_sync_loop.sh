@@ -72,8 +72,15 @@ fi
 
 FACTS_LOCK_DIR="$ROOT/data/facts_materialize.lock"
 if [ -d "$FACTS_LOCK_DIR" ]; then
-  echo "[trade_sync_loop] prefetch skipped (facts materialize running)"
-  should_prefetch=0
+  FACTS_LOCK_PID_FILE="$FACTS_LOCK_DIR/pid"
+  FACTS_LOCK_PID="$(cat "$FACTS_LOCK_PID_FILE" 2>/dev/null || true)"
+  if [ -n "${FACTS_LOCK_PID:-}" ] && [[ "$FACTS_LOCK_PID" =~ ^[0-9]+$ ]] && kill -0 "$FACTS_LOCK_PID" 2>/dev/null; then
+    echo "[trade_sync_loop] prefetch skipped (facts materialize running pid=$FACTS_LOCK_PID)"
+    should_prefetch=0
+  else
+    rm -rf "$FACTS_LOCK_DIR" 2>/dev/null || true
+    echo "[trade_sync_loop] cleared stale facts lock, continue prefetch check"
+  fi
 fi
 
 if [ "$should_prefetch" = "1" ]; then

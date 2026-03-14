@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.weather.daily_trade_sms_summary</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>-lc</string>
+      <string>/Users/xiong/weather/weather/.venv/bin/python /Users/xiong/weather/weather/scripts/daily_trade_sms_summary.py</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>
+      <integer>9</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>SoftResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/xiong/weather/weather/data/logs/daily_trade_sms_summary.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/xiong/weather/weather/data/logs/daily_trade_sms_summary.err.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/xiong/weather/weather</string>
+  </dict>
+</plist>

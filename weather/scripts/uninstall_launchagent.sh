@@ -16,6 +16,8 @@ PLISTS=(
   com.weather.auto_trade_worker.plist
   com.weather.trade_sync_loop.plist
   com.weather.q_calibrated_writeback_hourly.plist
+  com.weather.feedback_loop_hourly.plist
+  com.weather.daily_trade_sms_summary.plist
 )
 
 for name in "${PLISTS[@]}"; do

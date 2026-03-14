@@ -27,6 +27,7 @@ PLISTS=(
   com.weather.trade_sync_loop.plist
   com.weather.q_calibrated_writeback_hourly.plist
   com.weather.feedback_loop_hourly.plist
+  com.weather.daily_trade_sms_summary.plist
 )
 
 /usr/bin/python3 - "$USER_NAME" "$GROUP_NAME" "$ROOT" "$DST_DIR" "${PLISTS[@]}" >"$ROOT/data/.launchd_entries.tmp" <<'PY'

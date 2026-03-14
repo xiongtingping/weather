@@ -50,12 +50,22 @@ def _latest_eval(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     row = cur.fetchone()
     if not row:
         return None
+    notes_raw = str(row[4] or "")
+    notes_obj: Dict[str, Any] = {}
+    if notes_raw:
+        try:
+            parsed = json.loads(notes_raw)
+            if isinstance(parsed, dict):
+                notes_obj = parsed
+        except Exception:
+            notes_obj = {}
     return {
         "id": int(row[0] or 0),
         "status": str(row[1] or ""),
         "champion": int(row[2] or 0),
         "promoted": int(row[3] or 0),
-        "notes_json": str(row[4] or ""),
+        "notes_json": notes_raw,
+        "notes": notes_obj,
     }
 
 
@@ -85,6 +95,8 @@ def main() -> None:
     allow = bool(args.force)
     eval_id = None
     status_text = "force"
+    strict_top1_ok = False
+    strict_dataset_ok = False
 
     if db_path.exists():
         conn = sqlite3.connect(str(db_path))
@@ -93,8 +105,17 @@ def main() -> None:
         if latest:
             eval_id = int(latest.get("id") or 0)
             status_text = str(latest.get("status") or "")
+            notes = latest.get("notes") if isinstance(latest.get("notes"), dict) else {}
+            rules = notes.get("rules") if isinstance(notes, dict) and isinstance(notes.get("rules"), dict) else {}
+            datasets = notes.get("datasets") if isinstance(notes, dict) and isinstance(notes.get("datasets"), dict) else {}
+            strict_top1_ok = bool(rules.get("top1_open_ok"))
+            try:
+                strict_dataset_ok = int(datasets.get("open_first_snapshot_n") or 0) > 0
+            except Exception:
+                strict_dataset_ok = False
             if not allow:
-                allow = status_text == "promote_recommended" or int(latest.get("champion") or 0) == 1
+                recommend_ok = status_text == "promote_recommended" or int(latest.get("champion") or 0) == 1
+                allow = bool(recommend_ok and strict_top1_ok and strict_dataset_ok)
             if allow:
                 cur = conn.cursor()
                 cur.execute(
@@ -115,6 +136,8 @@ def main() -> None:
                     "ok": False,
                     "error": "promotion_blocked",
                     "reason": status_text or "no_recommended_eval",
+                    "strict_top1_ok": bool(strict_top1_ok),
+                    "strict_dataset_ok": bool(strict_dataset_ok),
                     "eval_id": eval_id,
                 },
                 ensure_ascii=False,

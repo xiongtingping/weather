@@ -64,7 +64,9 @@ fi
 
 echo "$(now_text) [auto_worker] start poll_sec=${POLL_SEC} once_timeout=${ONCE_TIMEOUT_SEC}" >> "$LOG"
 while true; do
-  if ! run_with_timeout "$ONCE_TIMEOUT_SEC" "$LOG" "$PY" "$ROOT/scan_weather_market.py" --auto-trade-job-worker --once; then
+  if run_with_timeout "$ONCE_TIMEOUT_SEC" "$LOG" "$PY" "$ROOT/scan_weather_market.py" --auto-trade-job-worker --once; then
+    :
+  else
     rc=$?
     if [ "$rc" = "124" ]; then
       echo "$(now_text) [auto_worker] worker_once_timeout" >> "$LOG"

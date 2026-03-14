@@ -27308,8 +27308,17 @@
           const comboPctText = Number.isFinite(comboRatioVal)
             ? `(${(comboRatioVal * 100).toFixed(0)}%)`
             : '';
-          if (comboLegRaw === 'yes_top') {
-            marketParts.push(`组合腿 YES_TOP${comboPctText}`);
+          const comboLegLabelMap = {
+            yes_top: 'COMBO_YES_PEAK',
+            combo_yes_peak: 'COMBO_YES_PEAK',
+            no_near: 'COMBO_NO_ADJACENT',
+            combo_no_adjacent: 'COMBO_NO_ADJACENT',
+            no_far: 'COMBO_NO_REMOTE',
+            combo_no_remote: 'COMBO_NO_REMOTE',
+          };
+          const comboLegLabel = comboLegLabelMap[comboLegRaw] || '';
+          if (comboLegLabel) {
+            marketParts.push(`组合腿 ${comboLegLabel}${comboPctText}`);
           } else if (comboLegRaw === 'lcb') {
             marketParts.push(`组合腿 LCB${comboPctText}`);
           }
@@ -31243,8 +31252,17 @@
         const comboPctText = Number.isFinite(comboRatioVal)
           ? `(${(comboRatioVal * 100).toFixed(0)}%)`
           : '';
-        if (comboLegRaw === 'yes_top') {
-          marketParts.push(`组合腿 YES_TOP${comboPctText}`);
+        const comboLegLabelMap = {
+          yes_top: 'COMBO_YES_PEAK',
+          combo_yes_peak: 'COMBO_YES_PEAK',
+          no_near: 'COMBO_NO_ADJACENT',
+          combo_no_adjacent: 'COMBO_NO_ADJACENT',
+          no_far: 'COMBO_NO_REMOTE',
+          combo_no_remote: 'COMBO_NO_REMOTE',
+        };
+        const comboLegLabel = comboLegLabelMap[comboLegRaw] || '';
+        if (comboLegLabel) {
+          marketParts.push(`组合腿 ${comboLegLabel}${comboPctText}`);
         } else if (comboLegRaw === 'lcb') {
           marketParts.push(`组合腿 LCB${comboPctText}`);
         }

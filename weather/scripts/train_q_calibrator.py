@@ -4,9 +4,11 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
+import re
 import sqlite3
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,6 +18,16 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from edge_calibration_runtime import build_segment_key
+
+
+@dataclass
+class OutcomeSpec:
+    raw: str
+    kind: str
+    k: float
+    k2: Optional[float]
+    unit: Optional[str]
+    precision: int
 
 
 def _to_float(value: Any) -> Optional[float]:
@@ -46,6 +58,118 @@ def _parse_ts(value: Any) -> Optional[datetime]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _normalize_unit(unit: Optional[str]) -> Optional[str]:
+    if not unit:
+        return None
+    text = str(unit).strip().lower().replace("°", "")
+    if text in {"c", "celsius"}:
+        return "C"
+    if text in {"f", "fahrenheit"}:
+        return "F"
+    return str(unit).strip()
+
+
+def _decimal_places(text: str) -> int:
+    if "." in text:
+        return len(text.split(".")[1])
+    return 0
+
+
+def _parse_outcome_label(label: str) -> OutcomeSpec:
+    raw = str(label or "").strip()
+    if not raw:
+        raise ValueError("empty_label")
+    normalized = raw.replace("–", "-")
+    num = r"(-?\d+(?:\.\d+)?)"
+    unit = r"([A-Za-z°/%]+)?"
+
+    m = re.match(rf"^{num}\s*-\s*{num}\s*{unit}$", normalized)
+    if m:
+        p1 = _decimal_places(m.group(1))
+        p2 = _decimal_places(m.group(2))
+        return OutcomeSpec(
+            raw=raw,
+            kind="range",
+            k=float(m.group(1)),
+            k2=float(m.group(2)),
+            unit=_normalize_unit(m.group(3)),
+            precision=max(p1, p2),
+        )
+
+    m = re.match(rf"^{num}\s+to\s+{num}\s*{unit}$", normalized, flags=re.I)
+    if m:
+        p1 = _decimal_places(m.group(1))
+        p2 = _decimal_places(m.group(2))
+        return OutcomeSpec(
+            raw=raw,
+            kind="range",
+            k=float(m.group(1)),
+            k2=float(m.group(2)),
+            unit=_normalize_unit(m.group(3)),
+            precision=max(p1, p2),
+        )
+
+    m = re.match(rf"^{num}\s*{unit}\s+or\s+below$", normalized, flags=re.I)
+    if m:
+        return OutcomeSpec(
+            raw=raw,
+            kind="le",
+            k=float(m.group(1)),
+            k2=None,
+            unit=_normalize_unit(m.group(2)),
+            precision=_decimal_places(m.group(1)),
+        )
+
+    m = re.match(rf"^{num}\s*{unit}\s+or\s+(higher|above|more)$", normalized, flags=re.I)
+    if m:
+        return OutcomeSpec(
+            raw=raw,
+            kind="ge",
+            k=float(m.group(1)),
+            k2=None,
+            unit=_normalize_unit(m.group(2)),
+            precision=_decimal_places(m.group(1)),
+        )
+
+    m = re.match(rf"^{num}\s*{unit}$", normalized)
+    if m:
+        return OutcomeSpec(
+            raw=raw,
+            kind="eq",
+            k=float(m.group(1)),
+            k2=None,
+            unit=_normalize_unit(m.group(2)),
+            precision=_decimal_places(m.group(1)),
+        )
+
+    raise ValueError(f"unsupported_outcome_label:{label}")
+
+
+def _apply_rounding(actual: float, rounding_rule: Optional[str], unit: Optional[str]) -> float:
+    if str(rounding_rule or "").strip().lower() == "whole_degrees" and str(unit or "").upper() in {"C", "F"}:
+        return float(math.floor(float(actual)))
+    return float(actual)
+
+
+def _bucket_hit(actual: float, label: str, rounding_rule: Optional[str]) -> Optional[bool]:
+    try:
+        spec = _parse_outcome_label(label)
+    except Exception:
+        return None
+    value = _apply_rounding(float(actual), rounding_rule, spec.unit)
+    if spec.kind == "eq":
+        return abs(value - spec.k) <= 1e-9
+    if spec.kind == "le":
+        return value <= spec.k
+    if spec.kind == "ge":
+        return value >= spec.k
+    if spec.kind == "range" and spec.k2 is not None:
+        low = min(float(spec.k), float(spec.k2))
+        high = max(float(spec.k), float(spec.k2))
+        return low <= value <= high
+    return None
 
 
 def _safe_logit(prob: float, eps: float = 1e-6) -> float:
@@ -242,6 +366,41 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
 
 def _load_rows(conn: sqlite3.Connection, since_iso: str) -> List[Dict[str, Any]]:
     cur = conn.cursor()
+    trade_by_key: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+    cur.execute(
+        """
+        SELECT
+            t.slug,
+            t.event_date,
+            t.outcome,
+            t.side,
+            t.state,
+            t.position_size,
+            t.realized_pnl,
+            t.updated_at
+        FROM edge_trades t
+        JOIN (
+            SELECT slug, event_date, outcome, side, MAX(id) AS max_id
+            FROM edge_trades
+            GROUP BY slug, event_date, outcome, side
+        ) latest
+          ON latest.max_id = t.id
+        """
+    )
+    for row in cur.fetchall():
+        key = (
+            str(row[0] or ""),
+            str(row[1] or ""),
+            str(row[2] or ""),
+            str(row[3] or "").upper(),
+        )
+        trade_by_key[key] = {
+            "state": str(row[4] or ""),
+            "position_size": _to_float(row[5]),
+            "realized_pnl": _to_float(row[6]),
+            "resolved_at": str(row[7] or ""),
+        }
+
     cur.execute(
         """
         SELECT
@@ -253,17 +412,8 @@ def _load_rows(conn: sqlite3.Connection, since_iso: str) -> List[Dict[str, Any]]
             d.outcome,
             d.side,
             d.created_at,
-            d.details_json,
-            t.state,
-            t.position_size,
-            t.realized_pnl,
-            t.updated_at
+            d.details_json
         FROM auto_trade_decisions d
-        LEFT JOIN edge_trades t
-          ON t.slug = d.slug
-         AND t.event_date = d.event_date
-         AND t.outcome = d.outcome
-         AND t.side = d.side
         WHERE d.action = 'entry'
           AND d.will_order = 1
           AND datetime(d.created_at) >= datetime(?)
@@ -273,41 +423,116 @@ def _load_rows(conn: sqlite3.Connection, since_iso: str) -> List[Dict[str, Any]]
     )
     out: List[Dict[str, Any]] = []
     for row in cur.fetchall():
-        out.append(
-            {
-                "decision_id": row[0],
-                "run_id": row[1],
-                "run_date": str(row[2] or ""),
-                "slug": str(row[3] or ""),
-                "event_date": str(row[4] or ""),
-                "outcome": str(row[5] or ""),
-                "side": str(row[6] or ""),
-                "created_at": str(row[7] or ""),
-                "details_json": str(row[8] or ""),
-                "state": str(row[9] or ""),
-                "position_size": _to_float(row[10]),
-                "realized_pnl": _to_float(row[11]),
-                "resolved_at": str(row[12] or ""),
-            }
+        item = {
+            "decision_id": row[0],
+            "run_id": row[1],
+            "run_date": str(row[2] or ""),
+            "slug": str(row[3] or ""),
+            "event_date": str(row[4] or ""),
+            "outcome": str(row[5] or ""),
+            "side": str(row[6] or ""),
+            "created_at": str(row[7] or ""),
+            "details_json": str(row[8] or ""),
+        }
+        trade_key = (
+            item["slug"],
+            item["event_date"],
+            item["outcome"],
+            str(item["side"] or "").upper(),
         )
+        trade = trade_by_key.get(trade_key) or {}
+        item["state"] = str(trade.get("state") or "")
+        item["position_size"] = _to_float(trade.get("position_size"))
+        item["realized_pnl"] = _to_float(trade.get("realized_pnl"))
+        item["resolved_at"] = str(trade.get("resolved_at") or "")
+        out.append(item)
     return out
 
 
-def _label_from_trade(state: str, position_size: Optional[float], realized_pnl: Optional[float]) -> Tuple[Optional[int], str]:
-    st = str(state or "").strip().lower()
-    pos = position_size if position_size is not None else None
-    closed = st in {"exit", "closed", "settled", "resolved", "no_position", "pos_sync_clear"}
-    if pos is not None and pos <= 1e-9:
-        closed = True
-    if not closed:
-        return None, "open_position"
-    if realized_pnl is None:
-        return None, "closed_no_realized_pnl"
-    if realized_pnl > 1e-9:
-        return 1, "realized_pnl_positive"
-    if realized_pnl < -1e-9:
-        return 0, "realized_pnl_negative"
-    return None, "realized_pnl_zero"
+def _load_settlement_map(conn: sqlite3.Connection) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT
+            e.slug,
+            e.event_date,
+            e.settlement_actual,
+            e.rounding_rule,
+            e.market_unit,
+            e.created_at
+        FROM event_runs e
+        JOIN (
+            SELECT slug, event_date, MAX(id) AS max_id
+            FROM event_runs
+            WHERE settlement_actual IS NOT NULL
+            GROUP BY slug, event_date
+        ) latest
+          ON latest.max_id = e.id
+        WHERE e.settlement_actual IS NOT NULL
+        """
+    )
+    mapping: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in cur.fetchall():
+        key = (str(row[0] or ""), str(row[1] or ""))
+        mapping[key] = {
+            "settlement_actual": _to_float(row[2]),
+            "rounding_rule": str(row[3] or ""),
+            "market_unit": str(row[4] or ""),
+            "resolved_at": str(row[5] or ""),
+        }
+    return mapping
+
+
+def _label_from_settlement(
+    *,
+    side: str,
+    outcome: str,
+    settlement_actual: Optional[float],
+    rounding_rule: Optional[str],
+) -> Tuple[Optional[int], str]:
+    if settlement_actual is None or not math.isfinite(settlement_actual):
+        return None, "settlement_missing"
+    side_u = str(side or "").strip().upper()
+    if side_u not in {"YES", "NO"}:
+        return None, "side_invalid"
+    hit = _bucket_hit(float(settlement_actual), str(outcome or ""), rounding_rule)
+    if hit is None:
+        return None, "outcome_parse_failed"
+    if side_u == "YES":
+        return (1 if hit else 0), "settlement_actual_yes_hit"
+    return (0 if hit else 1), "settlement_actual_no_hit"
+
+
+def _dte_bucket(days_to_event: Optional[float]) -> str:
+    if days_to_event is None or not math.isfinite(days_to_event):
+        return "du"
+    d = int(math.floor(float(days_to_event)))
+    if d <= 0:
+        return "d0"
+    if d == 1:
+        return "d1"
+    return "d2p"
+
+
+def _dte_bucket_key(regime: str, days_to_event: Optional[float]) -> str:
+    bucket = _dte_bucket(days_to_event)
+    d_part = {"d0": "d:0", "d1": "d:1", "d2p": "d:2p", "du": "d:u"}.get(bucket, "d:u")
+    reg = str(regime or "").strip().lower() or "default"
+    return f"reg:{reg}|{d_part}|s:u|r:u|t:u|sess:u"
+
+
+def _select_platt_by_bucket(
+    platt_by_dte: Dict[str, Dict[str, Any]],
+    bucket: str,
+    fallback: Tuple[float, float],
+) -> Tuple[float, float, str]:
+    info = platt_by_dte.get(bucket) if isinstance(platt_by_dte, dict) else None
+    if isinstance(info, dict):
+        a_val = _to_float(info.get("a"))
+        b_val = _to_float(info.get("b"))
+        if a_val is not None and b_val is not None:
+            return float(a_val), float(b_val), str(bucket)
+    return float(fallback[0]), float(fallback[1]), "global"
 
 
 def _metrics(samples: List[Tuple[float, int]]) -> Dict[str, Any]:
@@ -354,12 +579,13 @@ def _days_to_event(event_date: str, created_at: str) -> Optional[float]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train q_raw->q_calibrated bundle (V1 segmented residual).")
+    parser = argparse.ArgumentParser(description="Train q_raw->q_calibrated bundle (D0/D1/D2+ segmented platt).")
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "archive.db"))
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--l2", type=float, default=0.2)
     parser.add_argument("--z", type=float, default=1.64)
     parser.add_argument("--min-label-samples", type=int, default=30)
+    parser.add_argument("--min-dte-label-samples", type=int, default=20)
     parser.add_argument("--min-segment-samples", type=int, default=20)
     parser.add_argument("--out", default=str(Path(__file__).resolve().parents[1] / "data" / "q_calibration_bundle.candidate.json"))
     parser.add_argument("--write-ssot", action="store_true", default=False)
@@ -374,8 +600,10 @@ def main() -> None:
     conn = sqlite3.connect(str(db_path))
     _ensure_tables(conn)
     rows = _load_rows(conn, since_iso)
+    settlement_map = _load_settlement_map(conn)
     samples: List[Dict[str, Any]] = []
     labeled_platt: List[Tuple[float, int, float]] = []
+    labeled_platt_by_dte: Dict[str, List[Tuple[float, int, float]]] = defaultdict(list)
 
     for row in rows:
         details: Dict[str, Any] = {}
@@ -395,17 +623,29 @@ def main() -> None:
         depth_ratio = _to_float(details.get("depth_ratio"))
         tick_age = _to_float(details.get("tick_age_sec"))
         days_to_event = _days_to_event(str(row.get("event_date") or ""), str(row.get("created_at") or ""))
-        segment_key, _ = build_segment_key(
+        segment_key_full, seg_ctx = build_segment_key(
             days_to_event=days_to_event,
             spread=spread,
             depth_ratio=depth_ratio,
             tick_age_sec=tick_age,
             decision_ts=row.get("created_at"),
         )
-        label, label_source = _label_from_trade(
-            str(row.get("state") or ""),
-            _to_float(row.get("position_size")),
-            _to_float(row.get("realized_pnl")),
+        dte_bucket = _dte_bucket(days_to_event)
+        segment_key = _dte_bucket_key(seg_ctx.regime, days_to_event)
+        settlement_info = settlement_map.get(
+            (str(row.get("slug") or ""), str(row.get("event_date") or ""))
+        ) or {}
+        settlement_actual = _to_float(settlement_info.get("settlement_actual"))
+        rounding_rule = str(
+            settlement_info.get("rounding_rule")
+            or details.get("rounding_rule")
+            or ""
+        )
+        label, label_source = _label_from_settlement(
+            side=str(row.get("side") or ""),
+            outcome=str(row.get("outcome") or ""),
+            settlement_actual=settlement_actual,
+            rounding_rule=rounding_rule,
         )
         sample = {
             "decision_id": _to_int(row.get("decision_id")),
@@ -425,17 +665,27 @@ def main() -> None:
             "depth_ratio": depth_ratio,
             "tick_age_sec": tick_age,
             "days_to_event": days_to_event,
+            "dte_bucket": dte_bucket,
             "segment_key": segment_key,
+            "segment_key_full": segment_key_full,
             "created_at": str(row.get("created_at") or ""),
             "label": label,
             "label_source": label_source,
+            "settlement_actual": settlement_actual,
+            "rounding_rule": rounding_rule,
             "realized_pnl": _to_float(row.get("realized_pnl")),
-            "resolved_at": str(row.get("resolved_at") or ""),
+            "resolved_at": str(
+                settlement_info.get("resolved_at")
+                or row.get("resolved_at")
+                or ""
+            ),
             "details_json": details,
         }
         samples.append(sample)
         if label in {0, 1}:
-            labeled_platt.append((float(q_raw), int(label), 1.0))
+            item = (float(q_raw), int(label), 1.0)
+            labeled_platt.append(item)
+            labeled_platt_by_dte[dte_bucket].append(item)
 
     label_n = len(labeled_platt)
     if label_n < max(1, int(args.min_label_samples)):
@@ -454,20 +704,45 @@ def main() -> None:
     if fit is None:
         print(json.dumps({"ok": False, "error": "platt_fit_failed", "label_n": label_n}, ensure_ascii=False))
         raise SystemExit(3)
-    a, b = fit
+    a_global, b_global = fit
+    min_dte_label_samples = max(1, int(args.min_dte_label_samples))
+    platt_by_dte: Dict[str, Dict[str, Any]] = {}
+    for bucket_key, bucket_samples in labeled_platt_by_dte.items():
+        if len(bucket_samples) < min_dte_label_samples:
+            continue
+        fit_bucket = _fit_platt(bucket_samples, l2=float(args.l2))
+        if fit_bucket is None:
+            continue
+        a_bucket, b_bucket = fit_bucket
+        platt_by_dte[str(bucket_key)] = {
+            "a": float(a_bucket),
+            "b": float(b_bucket),
+            "sample_n": int(len(bucket_samples)),
+        }
 
     metrics_rows: List[Tuple[float, int]] = []
+    metrics_rows_by_dte: Dict[str, List[Tuple[float, int]]] = defaultdict(list)
     residuals: List[float] = []
+    residual_by_dte: Dict[str, List[float]] = defaultdict(list)
     residual_by_segment: Dict[str, List[float]] = defaultdict(list)
     for sample in samples:
         label = sample.get("label")
         if label not in {0, 1}:
             continue
         q_raw = float(sample["q_raw"])
-        p = _platt_predict(q_raw, a, b)
+        dte_bucket = str(sample.get("dte_bucket") or "du")
+        a_use, b_use, platt_source = _select_platt_by_bucket(
+            platt_by_dte,
+            dte_bucket,
+            (a_global, b_global),
+        )
+        p = _platt_predict(q_raw, a_use, b_use)
+        sample["platt_source"] = platt_source
         metrics_rows.append((p, int(label)))
+        metrics_rows_by_dte[dte_bucket].append((p, int(label)))
         residual = float(label) - p
         residuals.append(residual)
+        residual_by_dte[dte_bucket].append(residual)
         residual_by_segment[str(sample.get("segment_key") or "default")].append(residual)
 
     if not residuals:
@@ -477,6 +752,19 @@ def main() -> None:
     global_residual_mean = sum(residuals) / float(len(residuals))
     global_residual_var = sum((x - global_residual_mean) ** 2 for x in residuals) / float(max(1, len(residuals) - 1))
     global_sigma = math.sqrt(max(1e-9, global_residual_var))
+
+    dte_segment_payload: Dict[str, Dict[str, Any]] = {}
+    for bucket_key, vals in residual_by_dte.items():
+        n = len(vals)
+        if n < max(1, int(args.min_segment_samples)):
+            continue
+        mean = sum(vals) / float(n)
+        var = sum((x - mean) ** 2 for x in vals) / float(max(1, n - 1))
+        dte_segment_payload[str(bucket_key)] = {
+            "sample_n": int(n),
+            "residual_mean": float(mean),
+            "residual_sigma": float(math.sqrt(max(1e-9, var))),
+        }
 
     segment_payload: Dict[str, Dict[str, Any]] = {}
     for key, vals in residual_by_segment.items():
@@ -492,6 +780,11 @@ def main() -> None:
         }
 
     metrics = _metrics(metrics_rows)
+    metrics_by_dte = {
+        str(bucket_key): _metrics(bucket_rows)
+        for bucket_key, bucket_rows in metrics_rows_by_dte.items()
+        if bucket_rows
+    }
     ts_now = datetime.now(timezone.utc).replace(microsecond=0)
     version = f"qcal_v1_{ts_now.strftime('%Y%m%dT%H%M%SZ')}"
     bundle = {
@@ -505,17 +798,23 @@ def main() -> None:
         },
         "sample_n": len(samples),
         "label_n": label_n,
+        "label_definition": "settlement_actual_bucket_hit",
         "z": float(args.z),
         "min_segment_n": int(args.min_segment_samples),
+        "min_dte_label_samples": int(min_dte_label_samples),
+        "segment_mode": "dte_d0_d1_d2p",
         "global_platt": {
-            "a": float(a),
-            "b": float(b),
+            "a": float(a_global),
+            "b": float(b_global),
             "sample_n": label_n,
         },
+        "platt_by_dte": platt_by_dte,
         "global_residual_mean": float(global_residual_mean),
         "global_sigma": float(global_sigma),
+        "dte_segments": dte_segment_payload,
         "segments": segment_payload,
         "metrics": metrics,
+        "metrics_by_dte": metrics_by_dte,
     }
 
     out_path = Path(args.out).expanduser().resolve()
@@ -607,7 +906,10 @@ def main() -> None:
                 "sample_n": len(samples),
                 "label_n": label_n,
                 "segment_n": len(segment_payload),
+                "dte_segment_n": len(dte_segment_payload),
+                "platt_by_dte_n": len(platt_by_dte),
                 "metrics": metrics,
+                "metrics_by_dte": metrics_by_dte,
                 "write_ssot": bool(args.write_ssot),
             },
             ensure_ascii=False,

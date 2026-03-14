@@ -160,9 +160,10 @@ PY
   echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] auto_trade running, prioritize Top OK (others=${PM_SCAN_PRIORITY_OTHERS_PER_RUN}, max_events=${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN})" >> "$ROOT/data/model_scan.log"
 fi
 
-# When auto-trade jobs are queued/running, let entry worker clear the queue first.
-# This avoids model_scan holding db_writer.lock back-to-back and starving auto-trade.
+# When auto-trade queue is heavily backlogged, let entry worker clear first.
+# Avoid pausing model_scan for a single long-running/rolling job, which can starve q updates.
 if [ "${PM_MODEL_SCAN_PAUSE_WHEN_AUTO_JOB_ACTIVE:-1}" = "1" ] && [ -f "$ROOT/data/archive.db" ]; then
+  : "${PM_MODEL_SCAN_PAUSE_AUTO_JOB_MIN_ACTIVE:=3}"
   auto_job_active="$(python3 - "$ROOT/data/archive.db" "$(TZ=America/New_York date '+%Y-%m-%d')" <<'PY' 2>/dev/null || true
 import sqlite3
 import sys
@@ -190,8 +191,11 @@ finally:
         pass
 PY
 )"
-  if [[ "${auto_job_active:-}" =~ ^[0-9]+$ ]] && [ "${auto_job_active}" -gt 0 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] paused for auto_trade queue active_jobs=${auto_job_active}" >> "$ROOT/data/model_scan.log"
+  if ! [[ "${PM_MODEL_SCAN_PAUSE_AUTO_JOB_MIN_ACTIVE:-}" =~ ^[0-9]+$ ]]; then
+    PM_MODEL_SCAN_PAUSE_AUTO_JOB_MIN_ACTIVE=3
+  fi
+  if [[ "${auto_job_active:-}" =~ ^[0-9]+$ ]] && [ "${auto_job_active}" -ge "${PM_MODEL_SCAN_PAUSE_AUTO_JOB_MIN_ACTIVE}" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] paused for auto_trade queue active_jobs=${auto_job_active} threshold=${PM_MODEL_SCAN_PAUSE_AUTO_JOB_MIN_ACTIVE}" >> "$ROOT/data/model_scan.log"
     exit 0
   fi
 fi
@@ -391,45 +395,60 @@ fi
 echo "$$" > "$LOCK_PID_FILE"
 : "${PM_DB_WRITER_LOCK_WAIT_SEC:=90}"
 : "${PM_DB_WRITER_LOCK_POLL_SEC:=1}"
+: "${PM_MODEL_SCAN_DB_LOCK_ENABLED:=0}"
 if ! [[ "${PM_DB_WRITER_LOCK_WAIT_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_WAIT_SEC}" -lt 0 ]; then
   PM_DB_WRITER_LOCK_WAIT_SEC=90
 fi
 if ! [[ "${PM_DB_WRITER_LOCK_POLL_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_POLL_SEC}" -lt 1 ]; then
   PM_DB_WRITER_LOCK_POLL_SEC=1
 fi
-db_waited=0
-db_wait_logged=0
-while ! mkdir "$DB_LOCK_DIR" 2>/dev/null; do
-  db_pid=""
-  db_owner=""
-  if [ -f "$DB_LOCK_PID_FILE" ]; then
-    db_pid="$(cat "$DB_LOCK_PID_FILE" 2>/dev/null || true)"
-  fi
-  if [ -f "$DB_LOCK_OWNER_FILE" ]; then
-    db_owner="$(cat "$DB_LOCK_OWNER_FILE" 2>/dev/null || true)"
-  fi
-  if _pid_running "$db_pid"; then
-    if [ "$db_wait_logged" -eq 0 ]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer busy, wait (owner=${db_owner:-unknown} pid=$db_pid max=${PM_DB_WRITER_LOCK_WAIT_SEC}s)" >> "$ROOT/data/model_scan.log"
-      db_wait_logged=1
-    fi
-    if [ "$db_waited" -ge "$PM_DB_WRITER_LOCK_WAIT_SEC" ]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock timeout, skip (owner=${db_owner:-unknown} pid=$db_pid waited=${db_waited}s)" >> "$ROOT/data/model_scan.log"
-      rm -rf "$LOCK_DIR" 2>/dev/null || true
-      exit 0
-    fi
-    sleep "$PM_DB_WRITER_LOCK_POLL_SEC"
-    db_waited=$((db_waited + PM_DB_WRITER_LOCK_POLL_SEC))
-    continue
-  fi
-  rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
-done
-if [ "$db_waited" -gt 0 ]; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock acquired after ${db_waited}s wait" >> "$ROOT/data/model_scan.log"
+if [ "${PM_MODEL_SCAN_DB_LOCK_ENABLED}" != "1" ]; then
+  PM_MODEL_SCAN_DB_LOCK_ENABLED=0
 fi
-echo "$$" > "$DB_LOCK_PID_FILE"
-echo "model_scan" > "$DB_LOCK_OWNER_FILE" 2>/dev/null || true
-trap 'rm -rf "$LOCK_DIR" "$DB_LOCK_DIR" 2>/dev/null || true' EXIT
+db_lock_acquired=0
+cleanup_locks() {
+  rm -rf "$LOCK_DIR" 2>/dev/null || true
+  if [ "$db_lock_acquired" -eq 1 ]; then
+    rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
+  fi
+}
+trap cleanup_locks EXIT
+if [ "${PM_MODEL_SCAN_DB_LOCK_ENABLED}" = "1" ]; then
+  db_waited=0
+  db_wait_logged=0
+  while ! mkdir "$DB_LOCK_DIR" 2>/dev/null; do
+    db_pid=""
+    db_owner=""
+    if [ -f "$DB_LOCK_PID_FILE" ]; then
+      db_pid="$(cat "$DB_LOCK_PID_FILE" 2>/dev/null || true)"
+    fi
+    if [ -f "$DB_LOCK_OWNER_FILE" ]; then
+      db_owner="$(cat "$DB_LOCK_OWNER_FILE" 2>/dev/null || true)"
+    fi
+    if _pid_running "$db_pid"; then
+      if [ "$db_wait_logged" -eq 0 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer busy, wait (owner=${db_owner:-unknown} pid=$db_pid max=${PM_DB_WRITER_LOCK_WAIT_SEC}s)" >> "$ROOT/data/model_scan.log"
+        db_wait_logged=1
+      fi
+      if [ "$db_waited" -ge "$PM_DB_WRITER_LOCK_WAIT_SEC" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock timeout, skip (owner=${db_owner:-unknown} pid=$db_pid waited=${db_waited}s)" >> "$ROOT/data/model_scan.log"
+        exit 0
+      fi
+      sleep "$PM_DB_WRITER_LOCK_POLL_SEC"
+      db_waited=$((db_waited + PM_DB_WRITER_LOCK_POLL_SEC))
+      continue
+    fi
+    rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
+  done
+  if [ "$db_waited" -gt 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock acquired after ${db_waited}s wait" >> "$ROOT/data/model_scan.log"
+  fi
+  echo "$$" > "$DB_LOCK_PID_FILE"
+  echo "model_scan" > "$DB_LOCK_OWNER_FILE" 2>/dev/null || true
+  db_lock_acquired=1
+else
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock disabled (PM_MODEL_SCAN_DB_LOCK_ENABLED=0)" >> "$ROOT/data/model_scan.log"
+fi
 
 # Low-latency mode: prioritize fast updates (30s target) over full-scope refresh.
 : "${PM_LOW_LATENCY_MODE:=0}"

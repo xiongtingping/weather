@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
 import math
 from pathlib import Path
+import re
 import sqlite3
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -17,6 +19,16 @@ if str(ROOT_DIR) not in sys.path:
 from edge_calibration_runtime import predict_q_calibrated
 
 
+@dataclass
+class OutcomeSpec:
+    raw: str
+    kind: str
+    k: float
+    k2: Optional[float]
+    unit: Optional[str]
+    precision: int
+
+
 def _to_float(value: Any) -> Optional[float]:
     try:
         num = float(value)
@@ -25,6 +37,141 @@ def _to_float(value: Any) -> Optional[float]:
     if not math.isfinite(num):
         return None
     return float(num)
+
+
+def _parse_ts(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _days_to_event(event_date: str, created_at: str) -> Optional[float]:
+    ts = _parse_ts(created_at)
+    if ts is None:
+        return None
+    try:
+        ev_day = datetime.strptime(str(event_date or "")[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+    return float((ev_day - ts.date()).days)
+
+
+def _normalize_unit(unit: Optional[str]) -> Optional[str]:
+    if not unit:
+        return None
+    text = str(unit).strip().lower().replace("°", "")
+    if text in {"c", "celsius"}:
+        return "C"
+    if text in {"f", "fahrenheit"}:
+        return "F"
+    return str(unit).strip()
+
+
+def _decimal_places(text: str) -> int:
+    if "." in text:
+        return len(text.split(".")[1])
+    return 0
+
+
+def _parse_outcome_label(label: str) -> OutcomeSpec:
+    raw = str(label or "").strip()
+    if not raw:
+        raise ValueError("empty_label")
+    normalized = raw.replace("–", "-")
+    num = r"(-?\d+(?:\.\d+)?)"
+    unit = r"([A-Za-z°/%]+)?"
+
+    m = re.match(rf"^{num}\s*-\s*{num}\s*{unit}$", normalized)
+    if m:
+        p1 = _decimal_places(m.group(1))
+        p2 = _decimal_places(m.group(2))
+        return OutcomeSpec(
+            raw=raw,
+            kind="range",
+            k=float(m.group(1)),
+            k2=float(m.group(2)),
+            unit=_normalize_unit(m.group(3)),
+            precision=max(p1, p2),
+        )
+
+    m = re.match(rf"^{num}\s+to\s+{num}\s*{unit}$", normalized, flags=re.I)
+    if m:
+        p1 = _decimal_places(m.group(1))
+        p2 = _decimal_places(m.group(2))
+        return OutcomeSpec(
+            raw=raw,
+            kind="range",
+            k=float(m.group(1)),
+            k2=float(m.group(2)),
+            unit=_normalize_unit(m.group(3)),
+            precision=max(p1, p2),
+        )
+
+    m = re.match(rf"^{num}\s*{unit}\s+or\s+below$", normalized, flags=re.I)
+    if m:
+        return OutcomeSpec(
+            raw=raw,
+            kind="le",
+            k=float(m.group(1)),
+            k2=None,
+            unit=_normalize_unit(m.group(2)),
+            precision=_decimal_places(m.group(1)),
+        )
+
+    m = re.match(rf"^{num}\s*{unit}\s+or\s+(higher|above|more)$", normalized, flags=re.I)
+    if m:
+        return OutcomeSpec(
+            raw=raw,
+            kind="ge",
+            k=float(m.group(1)),
+            k2=None,
+            unit=_normalize_unit(m.group(2)),
+            precision=_decimal_places(m.group(1)),
+        )
+
+    m = re.match(rf"^{num}\s*{unit}$", normalized)
+    if m:
+        return OutcomeSpec(
+            raw=raw,
+            kind="eq",
+            k=float(m.group(1)),
+            k2=None,
+            unit=_normalize_unit(m.group(2)),
+            precision=_decimal_places(m.group(1)),
+        )
+    raise ValueError(f"unsupported_outcome_label:{label}")
+
+
+def _apply_rounding(actual: float, rounding_rule: Optional[str], unit: Optional[str]) -> float:
+    if str(rounding_rule or "").strip().lower() == "whole_degrees" and str(unit or "").upper() in {"C", "F"}:
+        return float(math.floor(float(actual)))
+    return float(actual)
+
+
+def _bucket_hit(actual: float, label: str, rounding_rule: Optional[str]) -> Optional[bool]:
+    try:
+        spec = _parse_outcome_label(label)
+    except Exception:
+        return None
+    value = _apply_rounding(float(actual), rounding_rule, spec.unit)
+    if spec.kind == "eq":
+        return abs(value - spec.k) <= 1e-9
+    if spec.kind == "le":
+        return value <= spec.k
+    if spec.kind == "ge":
+        return value >= spec.k
+    if spec.kind == "range" and spec.k2 is not None:
+        lo = min(float(spec.k), float(spec.k2))
+        hi = max(float(spec.k), float(spec.k2))
+        return lo <= value <= hi
+    return None
 
 
 def _safe_logloss(p: float, y: int) -> float:
@@ -180,11 +327,156 @@ def _load_labeled_samples(conn: sqlite3.Connection, since_iso: str, limit: int) 
     return out
 
 
+def _load_open_first_snapshots(conn: sqlite3.Connection, since_iso: str, limit_events: int) -> List[Dict[str, Any]]:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT
+            id,
+            slug,
+            event_date,
+            created_at,
+            settlement_actual,
+            rounding_rule,
+            payload_json
+        FROM event_runs
+        WHERE settlement_actual IS NOT NULL
+          AND payload_json IS NOT NULL
+          AND payload_json != ''
+          AND datetime(created_at) >= datetime(?)
+        ORDER BY datetime(created_at) ASC, id ASC
+        """,
+        (since_iso,),
+    )
+    first_by_event: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in cur.fetchall():
+        slug = str(row[1] or "")
+        event_date = str(row[2] or "")
+        if not slug or not event_date:
+            continue
+        key = (slug, event_date)
+        if key in first_by_event:
+            continue
+        payload_text = str(row[6] or "")
+        try:
+            payload = json.loads(payload_text)
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        rows = payload.get("rows") or payload.get("distribution") or []
+        if not isinstance(rows, list) or not rows:
+            continue
+        first_by_event[key] = {
+            "id": int(row[0] or 0),
+            "slug": slug,
+            "event_date": event_date,
+            "created_at": str(row[3] or ""),
+            "settlement_actual": _to_float(row[4]),
+            "rounding_rule": str(row[5] or ""),
+            "rows": rows,
+        }
+        if len(first_by_event) >= max(1, int(limit_events)):
+            break
+    events = list(first_by_event.values())
+    events.sort(key=lambda x: (str(x.get("event_date") or ""), str(x.get("slug") or "")))
+    return events
+
+
+def _resolve_actual_label(
+    rows: List[Dict[str, Any]],
+    actual: Optional[float],
+    rounding_rule: Optional[str],
+) -> Optional[str]:
+    if actual is None or not math.isfinite(actual):
+        return None
+    hits: List[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        outcome = str(row.get("outcome") or "").strip()
+        if not outcome:
+            continue
+        hit = _bucket_hit(float(actual), outcome, rounding_rule)
+        if hit is True:
+            hits.append(outcome)
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return hits[0]
+    hits.sort()
+    return hits[0]
+
+
+def _top1_from_open_snapshot(
+    rows: List[Dict[str, Any]],
+    *,
+    bundle: Dict[str, Any],
+    created_at: str,
+    event_date: str,
+) -> Optional[str]:
+    best_label: Optional[str] = None
+    best_prob = -1.0
+    dte = _days_to_event(event_date, created_at)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        outcome = str(row.get("outcome") or "").strip()
+        if not outcome:
+            continue
+        q_raw = _to_float(row.get("q_raw"))
+        if q_raw is None:
+            q_raw = _to_float(row.get("q_round"))
+        if q_raw is None:
+            continue
+        pred = predict_q_calibrated(
+            bundle=bundle,
+            q_raw=q_raw,
+            spread=_to_float(row.get("spread")),
+            depth_ratio=_to_float(row.get("depth_ratio_yes")) or _to_float(row.get("depth_ratio")),
+            tick_age_sec=_to_float(row.get("tick_age_sec")),
+            days_to_event=dte,
+            decision_ts=created_at,
+        )
+        p = _to_float(pred.get("q_calibrated_mean"))
+        if p is None:
+            p = q_raw
+        if p > best_prob:
+            best_prob = float(p)
+            best_label = outcome
+    return best_label
+
+
+def _market_top1_from_open_snapshot(rows: List[Dict[str, Any]]) -> Optional[str]:
+    best_label: Optional[str] = None
+    best_ask = -1.0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        outcome = str(row.get("outcome") or "").strip()
+        ask = _to_float(row.get("best_ask"))
+        if not outcome or ask is None or not math.isfinite(ask):
+            continue
+        if ask > best_ask:
+            best_ask = float(ask)
+            best_label = outcome
+    return best_label
+
+
+def _top1_metric_summary(hits: List[int]) -> Dict[str, Any]:
+    n = len(hits)
+    if n <= 0:
+        return {"n": 0, "hit_rate": None}
+    hit_rate = sum(1 for v in hits if int(v) == 1) / float(n)
+    return {"n": int(n), "hit_rate": float(hit_rate)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate q calibration candidate bundle vs champion.")
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "archive.db"))
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--limit", type=int, default=5000)
+    parser.add_argument("--open-limit-events", type=int, default=2000)
     parser.add_argument("--candidate", default=str(Path(__file__).resolve().parents[1] / "data" / "q_calibration_bundle.candidate.json"))
     parser.add_argument("--champion", default=str(Path(__file__).resolve().parents[1] / "data" / "q_calibration_bundle.json"))
     parser.add_argument("--write-db", action="store_true", default=False)
@@ -255,10 +547,71 @@ def main() -> None:
     champ_roi = _roi_stats(champ_roi_pairs)
     psi = _population_stability_index(champ_probs, cand_probs, bins=10)
 
+    open_events = _load_open_first_snapshots(conn, since_iso, int(args.open_limit_events))
+    if not open_events:
+        out = {"ok": False, "error": "no_open_first_snapshot_dataset", "since": since_iso}
+        print(json.dumps(out, ensure_ascii=False))
+        raise SystemExit(4)
+    cand_top1_hits: List[int] = []
+    champ_top1_hits: List[int] = []
+    market_top1_hits: List[int] = []
+    top1_event_n = 0
+    top1_skipped = 0
+    for event in open_events:
+        rows_event = event.get("rows")
+        if not isinstance(rows_event, list) or not rows_event:
+            top1_skipped += 1
+            continue
+        actual_label = _resolve_actual_label(
+            rows_event,
+            _to_float(event.get("settlement_actual")),
+            str(event.get("rounding_rule") or ""),
+        )
+        if not actual_label:
+            top1_skipped += 1
+            continue
+        created_at = str(event.get("created_at") or "")
+        event_date = str(event.get("event_date") or "")
+        cand_top = _top1_from_open_snapshot(
+            rows_event,
+            bundle=candidate_bundle,
+            created_at=created_at,
+            event_date=event_date,
+        )
+        champ_top = _top1_from_open_snapshot(
+            rows_event,
+            bundle=champion_bundle,
+            created_at=created_at,
+            event_date=event_date,
+        )
+        market_top = _market_top1_from_open_snapshot(rows_event)
+        if not cand_top or not champ_top:
+            top1_skipped += 1
+            continue
+        cand_top1_hits.append(1 if cand_top == actual_label else 0)
+        champ_top1_hits.append(1 if champ_top == actual_label else 0)
+        if market_top:
+            market_top1_hits.append(1 if market_top == actual_label else 0)
+        top1_event_n += 1
+
+    if top1_event_n <= 0:
+        out = {"ok": False, "error": "open_top1_dataset_empty", "since": since_iso}
+        print(json.dumps(out, ensure_ascii=False))
+        raise SystemExit(5)
+
+    cand_top1 = _top1_metric_summary(cand_top1_hits)
+    champ_top1 = _top1_metric_summary(champ_top1_hits)
+    market_top1 = _top1_metric_summary(market_top1_hits)
+
     brier_ok = (
         cand_metrics.get("brier") is not None
         and champ_metrics.get("brier") is not None
         and float(cand_metrics["brier"]) <= float(champ_metrics["brier"]) + 1e-12
+    )
+    logloss_ok = (
+        cand_metrics.get("logloss") is not None
+        and champ_metrics.get("logloss") is not None
+        and float(cand_metrics["logloss"]) <= float(champ_metrics["logloss"]) + 1e-12
     )
     ece_ok = (
         cand_metrics.get("ece") is not None
@@ -270,19 +623,35 @@ def main() -> None:
         and champ_roi.get("roi_lcb") is not None
         and float(cand_roi["roi_lcb"]) >= float(champ_roi["roi_lcb"]) - 1e-12
     ) or (champ_roi.get("roi_lcb") is None and cand_roi.get("roi_lcb") is not None)
-    recommend_promote = bool(brier_ok and ece_ok and roi_ok)
+    top1_open_ok = (
+        cand_top1.get("hit_rate") is not None
+        and champ_top1.get("hit_rate") is not None
+        and float(cand_top1["hit_rate"]) > float(champ_top1["hit_rate"]) + 1e-12
+    )
+    recommend_promote = bool(brier_ok and logloss_ok and top1_open_ok)
 
     notes = {
         "candidate_bundle": str(cand_path),
         "champion_bundle": str(champ_path) if champ_path.exists() else "",
         "candidate_metrics": cand_metrics,
         "champion_metrics": champ_metrics,
+        "candidate_top1_open": cand_top1,
+        "champion_top1_open": champ_top1,
+        "market_top1_open": market_top1,
         "candidate_roi": cand_roi,
         "champion_roi": champ_roi,
+        "datasets": {
+            "labeled_sample_n": int(cand_metrics.get("n") or 0),
+            "open_first_snapshot_n": int(top1_event_n),
+            "open_first_snapshot_skipped": int(top1_skipped),
+            "since": since_iso,
+        },
         "rules": {
             "brier_ok": bool(brier_ok),
+            "logloss_ok": bool(logloss_ok),
             "ece_ok": bool(ece_ok),
             "roi_ok": bool(roi_ok),
+            "top1_open_ok": bool(top1_open_ok),
         },
         "recommend_promote": bool(recommend_promote),
         "sample_n": int(cand_metrics.get("n") or 0),
@@ -327,8 +696,12 @@ def main() -> None:
         "recommend_promote": bool(recommend_promote),
         "candidate": cand_metrics,
         "champion": champ_metrics,
+        "candidate_top1_open": cand_top1,
+        "champion_top1_open": champ_top1,
+        "market_top1_open": market_top1,
         "candidate_roi": cand_roi,
         "champion_roi": champ_roi,
+        "rules": notes.get("rules"),
         "psi": psi,
         "eval_id": eval_id,
     }

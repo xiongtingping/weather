@@ -73,6 +73,7 @@ def evaluate_tradeability(
     edge_lcb: Any,
     v2_value: Any = None,
     exec_audit_gate_pass: Optional[bool] = None,
+    enforce_path_gate: bool = True,
 ) -> Dict[str, Any]:
     cfg = policy if isinstance(policy, dict) else {}
     if not bool(cfg.get("enabled", True)):
@@ -83,6 +84,7 @@ def evaluate_tradeability(
             "blocked": False,
             "shadow_block": False,
             "reasons": [],
+            "path_gate_enforced": bool(enforce_path_gate),
         }
     mode = str(cfg.get("mode") or "enforced").strip().lower()
     if mode not in {"off", "shadow", "canary", "enforced"}:
@@ -105,10 +107,11 @@ def evaluate_tradeability(
         reasons.append("signal_lcb_missing")
     elif signal_lcb_f < signal_lcb_min:
         reasons.append("signal_lcb_below_min")
-    if path_lcb_f is None:
-        reasons.append("path_lcb_missing")
-    elif path_lcb_f < path_lcb_min:
-        reasons.append("path_lcb_below_min")
+    if enforce_path_gate:
+        if path_lcb_f is None:
+            reasons.append("path_lcb_missing")
+        elif path_lcb_f < path_lcb_min:
+            reasons.append("path_lcb_below_min")
     if edge_lcb_f is None:
         reasons.append("edge_lcb_missing")
     elif edge_lcb_f < edge_lcb_min:
@@ -141,4 +144,5 @@ def evaluate_tradeability(
         "signal_lcb_min": float(signal_lcb_min),
         "path_lcb_min": float(path_lcb_min),
         "edge_lcb_min": float(edge_lcb_min),
+        "path_gate_enforced": bool(enforce_path_gate),
     }

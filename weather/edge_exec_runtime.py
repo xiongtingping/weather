@@ -24,12 +24,29 @@ def estimate_tradeable_edge_floor(
     fee_cost: Any = None,
     hold_cost: Any = None,
     slippage_buffer: Any = None,
+    edge_semantics: str = "raw_exec",
 ) -> Dict[str, Any]:
     edge_raw_f = _to_float(edge_raw)
+    semantics = str(edge_semantics or "raw_exec").strip().lower() or "raw_exec"
+    if edge_raw_f is None:
+        return {}
+    if semantics in {"realized_v2", "v2_realized", "realized"}:
+        # edge_realizable_v2 already includes execution/realization effects.
+        # Do not multiply by path probability or subtract miss cost again.
+        return {
+            "edge_expected_tradeable": float(edge_raw_f),
+            "edge_lcb_tradeable": float(edge_raw_f),
+            "edge_ucb_tradeable": float(edge_raw_f),
+            "edge_miss_cost": 0.0,
+            "edge_slippage_buffer": 0.0,
+            "edge_floor_mode": "realized_v2_passthrough",
+            "path_gate_enforced": False,
+        }
+
     p_reach_f = _to_float(p_reach)
     p_lcb_f = _to_float(p_reach_lcb)
     p_ucb_f = _to_float(p_reach_ucb)
-    if edge_raw_f is None or p_reach_f is None:
+    if p_reach_f is None:
         return {}
     if p_lcb_f is None:
         p_lcb_f = max(0.0, p_reach_f - 0.20)
@@ -67,5 +84,6 @@ def estimate_tradeable_edge_floor(
         "edge_ucb_tradeable": float(edge_ucb),
         "edge_miss_cost": float(miss_cost),
         "edge_slippage_buffer": float(slip_buf_f),
+        "edge_floor_mode": "raw_exec_path_floor",
+        "path_gate_enforced": True,
     }
-

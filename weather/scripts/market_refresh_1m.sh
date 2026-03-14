@@ -198,47 +198,67 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   }
 fi
 echo "$$" > "$LOCK_PID_FILE"
-: "${PM_DB_WRITER_LOCK_WAIT_SEC:=150}"
-: "${PM_DB_WRITER_LOCK_POLL_SEC:=1}"
-if ! [[ "${PM_DB_WRITER_LOCK_WAIT_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_WAIT_SEC}" -lt 0 ]; then
-  PM_DB_WRITER_LOCK_WAIT_SEC=150
-fi
-if ! [[ "${PM_DB_WRITER_LOCK_POLL_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_POLL_SEC}" -lt 1 ]; then
-  PM_DB_WRITER_LOCK_POLL_SEC=1
-fi
-db_waited=0
-db_wait_logged=0
-while ! mkdir "$DB_LOCK_DIR" 2>/dev/null; do
-  db_pid=""
-  db_owner=""
-  if [ -f "$DB_LOCK_PID_FILE" ]; then
-    db_pid="$(cat "$DB_LOCK_PID_FILE" 2>/dev/null || true)"
-  fi
-  if [ -f "$DB_LOCK_OWNER_FILE" ]; then
-    db_owner="$(cat "$DB_LOCK_OWNER_FILE" 2>/dev/null || true)"
-  fi
-  if _pid_running "$db_pid"; then
-    if [ "$db_wait_logged" -eq 0 ]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] db_writer busy, wait (owner=${db_owner:-unknown} pid=$db_pid max=${PM_DB_WRITER_LOCK_WAIT_SEC}s)" >> "$ROOT/data/market_refresh.log"
-      db_wait_logged=1
+DB_LOCK_HELD=0
+cleanup_locks() {
+  rm -rf "$LOCK_DIR" 2>/dev/null || true
+  if [ "$DB_LOCK_HELD" = "1" ]; then
+    cur_pid=""
+    if [ -f "$DB_LOCK_PID_FILE" ]; then
+      cur_pid="$(cat "$DB_LOCK_PID_FILE" 2>/dev/null || true)"
     fi
-    if [ "$db_waited" -ge "$PM_DB_WRITER_LOCK_WAIT_SEC" ]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] db_writer lock timeout, skip (owner=${db_owner:-unknown} pid=$db_pid waited=${db_waited}s)" >> "$ROOT/data/market_refresh.log"
-      rm -rf "$LOCK_DIR" 2>/dev/null || true
-      exit 0
+    if [ -z "${cur_pid:-}" ] || [ "${cur_pid}" = "$$" ]; then
+      rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
     fi
-    sleep "$PM_DB_WRITER_LOCK_POLL_SEC"
-    db_waited=$((db_waited + PM_DB_WRITER_LOCK_POLL_SEC))
-    continue
   fi
-  rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
-done
-if [ "$db_waited" -gt 0 ]; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] db_writer lock acquired after ${db_waited}s wait" >> "$ROOT/data/market_refresh.log"
+}
+trap cleanup_locks EXIT
+
+# Do not hold global db_writer lock for the whole 1m refresh by default.
+# Otherwise auto-trade worker may starve and never claim queued jobs.
+: "${PM_MARKET_REFRESH_DB_LOCK_ENABLED:=0}"
+if [ "${PM_MARKET_REFRESH_DB_LOCK_ENABLED}" = "1" ]; then
+  : "${PM_DB_WRITER_LOCK_WAIT_SEC:=150}"
+  : "${PM_DB_WRITER_LOCK_POLL_SEC:=1}"
+  if ! [[ "${PM_DB_WRITER_LOCK_WAIT_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_WAIT_SEC}" -lt 0 ]; then
+    PM_DB_WRITER_LOCK_WAIT_SEC=150
+  fi
+  if ! [[ "${PM_DB_WRITER_LOCK_POLL_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_POLL_SEC}" -lt 1 ]; then
+    PM_DB_WRITER_LOCK_POLL_SEC=1
+  fi
+  db_waited=0
+  db_wait_logged=0
+  while ! mkdir "$DB_LOCK_DIR" 2>/dev/null; do
+    db_pid=""
+    db_owner=""
+    if [ -f "$DB_LOCK_PID_FILE" ]; then
+      db_pid="$(cat "$DB_LOCK_PID_FILE" 2>/dev/null || true)"
+    fi
+    if [ -f "$DB_LOCK_OWNER_FILE" ]; then
+      db_owner="$(cat "$DB_LOCK_OWNER_FILE" 2>/dev/null || true)"
+    fi
+    if _pid_running "$db_pid"; then
+      if [ "$db_wait_logged" -eq 0 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] db_writer busy, wait (owner=${db_owner:-unknown} pid=$db_pid max=${PM_DB_WRITER_LOCK_WAIT_SEC}s)" >> "$ROOT/data/market_refresh.log"
+        db_wait_logged=1
+      fi
+      if [ "$db_waited" -ge "$PM_DB_WRITER_LOCK_WAIT_SEC" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] db_writer lock timeout, skip (owner=${db_owner:-unknown} pid=$db_pid waited=${db_waited}s)" >> "$ROOT/data/market_refresh.log"
+        rm -rf "$LOCK_DIR" 2>/dev/null || true
+        exit 0
+      fi
+      sleep "$PM_DB_WRITER_LOCK_POLL_SEC"
+      db_waited=$((db_waited + PM_DB_WRITER_LOCK_POLL_SEC))
+      continue
+    fi
+    rm -rf "$DB_LOCK_DIR" 2>/dev/null || true
+  done
+  if [ "$db_waited" -gt 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] db_writer lock acquired after ${db_waited}s wait" >> "$ROOT/data/market_refresh.log"
+  fi
+  echo "$$" > "$DB_LOCK_PID_FILE"
+  echo "market_refresh" > "$DB_LOCK_OWNER_FILE" 2>/dev/null || true
+  DB_LOCK_HELD=1
 fi
-echo "$$" > "$DB_LOCK_PID_FILE"
-echo "market_refresh" > "$DB_LOCK_OWNER_FILE" 2>/dev/null || true
-trap 'rm -rf "$LOCK_DIR" "$DB_LOCK_DIR" 2>/dev/null || true' EXIT
 
 mkdir -p "$ROOT/data"
 LOG="$ROOT/data/market_refresh.log"

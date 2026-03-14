@@ -16105,7 +16105,23 @@ def materialize_facts_http(run_date: str, days: int = 1) -> Dict[str, Any]:
         lock_dir.mkdir(parents=True, exist_ok=False)
         pid_path.write_text(str(os.getpid()), encoding="utf-8")
     except FileExistsError:
-        return {"ok": False, "error": "materialize_running"}
+        old_pid = ""
+        try:
+            old_pid = pid_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            old_pid = ""
+        if old_pid.isdigit():
+            try:
+                os.kill(int(old_pid), 0)
+                return {"ok": False, "error": "materialize_running"}
+            except OSError:
+                pass
+        try:
+            shutil.rmtree(lock_dir)
+            lock_dir.mkdir(parents=True, exist_ok=False)
+            pid_path.write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            return {"ok": False, "error": "materialize_lock_failed"}
     try:
         if not DB_PATH.exists():
             return {"ok": False, "error": "db_missing"}
@@ -16922,15 +16938,11 @@ def run_auto_trade_for_date(
                 )
             if main_ok and isinstance(cand_main, dict):
                 _append_decision_target("main", cand_main)
-            if yes_top_ok and isinstance(cand_yes_top, dict):
-                _append_decision_target("yes_top", cand_yes_top)
             if decision_targets:
                 payload["entry_expected_targets"] = decision_targets
             rank_vals: List[float] = []
             if main_ok and isinstance(cand_main, dict):
                 rank_vals.append(_ssot_candidate_rank(cand_main))
-            if yes_top_ok and isinstance(cand_yes_top, dict):
-                rank_vals.append(_ssot_candidate_rank(cand_yes_top))
             rank = max(rank_vals) if rank_vals else -999.0
             candidates.append((rank, slug, event_date, payload, decision_targets))
         else:
