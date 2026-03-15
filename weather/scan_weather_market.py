@@ -11294,6 +11294,9 @@ def execute_auto_trades(
     ):
         lcb_global_q_combo_no_near_count = 2
     lcb_global_q_combo_no_near_count = max(0, min(int(lcb_global_q_combo_no_near_count), 6))
+    lcb_global_q_combo_no_near_entry_enabled = False
+    lcb_global_q_combo_no_near_ratio_effective = 0.0
+    lcb_global_q_combo_no_near_count_effective = 0
     lcb_global_q_combo_no_far_count = _env_int("PM_LCB_GLOBAL_Q_COMBO_NO_FAR_COUNT")
     if (
         lcb_global_q_combo_no_far_count is None
@@ -18770,6 +18773,98 @@ def execute_auto_trades(
             return ""
         return _normalize_explicit_combo_role(candidate_ref.get("lcb_q_combo_role"))
 
+    def _yes_top_q_market_only_eval(
+        candidate_ref: Optional[Mapping[str, Any]],
+        side_label: str,
+    ) -> Tuple[bool, bool, Optional[float]]:
+        if not isinstance(candidate_ref, Mapping):
+            return False, False, None
+        if str(side_label or "").strip().upper() != "YES":
+            return False, False, None
+        if str(candidate_ref.get("strategy") or "").strip().lower() != "lcb_global":
+            return False, False, None
+        if _selected_explicit_combo_role(candidate_ref) != LCB_Q_COMBO_ROLE_YES_PEAK:
+            return False, False, None
+        q_gap_val = to_float(candidate_ref.get("lcb_yes_top_q_market_gap"))
+        bucket_match = bool(candidate_ref.get("lcb_yes_top_label_match"))
+        if not bucket_match:
+            bucket_match = bool(
+                candidate_ref.get("lcb_yes_top_market_match")
+                and candidate_ref.get("lcb_yes_top_cal_match")
+            )
+        return True, bucket_match, q_gap_val
+
+    def _resolve_combo_q_peak_outcome(
+        candidate_ref: Optional[Mapping[str, Any]] = None,
+    ) -> str:
+        if isinstance(candidate_ref, Mapping):
+            outcome_now = str(candidate_ref.get("lcb_q_combo_q_peak_outcome") or "").strip()
+            if outcome_now:
+                return outcome_now
+        return str(lcb_q_combo_q_peak_outcome_current or "").strip()
+
+    def _resolve_combo_q_peak_distance(
+        outcome_label: str,
+        candidate_ref: Optional[Mapping[str, Any]] = None,
+    ) -> Tuple[str, Optional[int], Optional[float]]:
+        outcome_now = str(outcome_label or "").strip()
+        q_peak_outcome = _resolve_combo_q_peak_outcome(candidate_ref)
+        if not outcome_now or not q_peak_outcome or outcome_now == q_peak_outcome:
+            return q_peak_outcome, None, None
+        rank_anchor = outcome_rank_index.get(q_peak_outcome)
+        rank_current = outcome_rank_index.get(outcome_now)
+        if rank_anchor is not None and rank_current is not None:
+            return q_peak_outcome, abs(int(rank_current) - int(rank_anchor)), None
+        center_anchor = _parse_lcb_outcome_center(q_peak_outcome)
+        center_current = _parse_lcb_outcome_center(outcome_now)
+        if (
+            center_anchor is not None
+            and math.isfinite(center_anchor)
+            and center_current is not None
+            and math.isfinite(center_current)
+        ):
+            return q_peak_outcome, None, abs(float(center_current) - float(center_anchor))
+        return q_peak_outcome, None, None
+
+    def _combo_no_near_matches_q_peak(
+        outcome_label: str,
+        *,
+        side_label: str,
+        candidate_ref: Optional[Mapping[str, Any]] = None,
+    ) -> bool:
+        if str(side_label or "").strip().upper() != "NO":
+            return False
+        _q_peak_outcome, rank_gap, center_gap = _resolve_combo_q_peak_distance(
+            outcome_label,
+            candidate_ref,
+        )
+        if rank_gap is not None:
+            return rank_gap == 1
+        return bool(
+            center_gap is not None
+            and center_gap > TIME_EDGE_Q_EPS
+            and center_gap <= 1.1 + TIME_EDGE_Q_EPS
+        )
+
+    def _combo_no_far_matches_q_peak(
+        outcome_label: str,
+        *,
+        side_label: str,
+        candidate_ref: Optional[Mapping[str, Any]] = None,
+    ) -> bool:
+        if str(side_label or "").strip().upper() != "NO":
+            return False
+        _q_peak_outcome, rank_gap, center_gap = _resolve_combo_q_peak_distance(
+            outcome_label,
+            candidate_ref,
+        )
+        if rank_gap is not None:
+            return rank_gap >= 2
+        return bool(
+            center_gap is not None
+            and center_gap > 1.1 + TIME_EDGE_Q_EPS
+        )
+
     if lcb_global_enabled and lcb_global_q_combo_enabled:
         combo_budget_raw = float(lcb_global_q_combo_event_budget_usdc)
         combo_existing_notional = 0.0
@@ -19005,6 +19100,26 @@ def execute_auto_trades(
                         return
                     if (not allow_zero_weight) and weight_val <= TIME_EDGE_Q_EPS:
                         return
+                    role_norm = _normalize_explicit_combo_role(role_name)
+                    if role_norm == LCB_Q_COMBO_ROLE_NO_ADJACENT:
+                        if not _combo_no_near_matches_q_peak(
+                            str(info_ref.get("outcome") or ""),
+                            side_label=str(info_ref.get("side") or ""),
+                            candidate_ref=info_ref.get("cand"),
+                        ):
+                            return
+                    if role_norm == LCB_Q_COMBO_ROLE_NO_REMOTE:
+                        if not _combo_no_far_matches_q_peak(
+                            str(info_ref.get("outcome") or ""),
+                            side_label=str(info_ref.get("side") or ""),
+                            candidate_ref=info_ref.get("cand"),
+                        ):
+                            return
+                    if role_norm in LCB_Q_COMBO_NO_ROLES:
+                        q_peak_outcome_now = str(q_peak_outcome or near_far_anchor_outcome or "").strip()
+                        outcome_now = str(info_ref.get("outcome") or "").strip()
+                        if q_peak_outcome_now and outcome_now == q_peak_outcome_now:
+                            return
                     key_ref = info_ref.get("key")
                     if not isinstance(key_ref, tuple):
                         return
@@ -19241,12 +19356,13 @@ def execute_auto_trades(
                     no_near_pool = list(fallback_no_near_pool)
                 if not no_far_pool:
                     no_far_pool = list(fallback_no_far_pool)
-                _add_role_group(
-                    no_near_pool,
-                    role_name=LCB_Q_COMBO_ROLE_NO_ADJACENT,
-                    ratio_total=float(lcb_global_q_combo_no_near_ratio),
-                    max_count=int(lcb_global_q_combo_no_near_count),
-                )
+                if lcb_global_q_combo_no_near_entry_enabled:
+                    _add_role_group(
+                        no_near_pool,
+                        role_name=LCB_Q_COMBO_ROLE_NO_ADJACENT,
+                        ratio_total=float(lcb_global_q_combo_no_near_ratio_effective),
+                        max_count=int(lcb_global_q_combo_no_near_count_effective),
+                    )
                 _add_role_group(
                     no_far_pool,
                     role_name=LCB_Q_COMBO_ROLE_NO_REMOTE,
@@ -19260,11 +19376,6 @@ def execute_auto_trades(
                 )
                 if not has_aux_no_roles:
                     forced_specs = [
-                        (
-                            LCB_Q_COMBO_ROLE_NO_ADJACENT,
-                            list(no_near_pool) if no_near_pool else list(fallback_no_near_pool),
-                            float(lcb_global_q_combo_no_near_ratio),
-                        ),
                         (
                             LCB_Q_COMBO_ROLE_NO_REMOTE,
                             list(no_far_pool) if no_far_pool else list(fallback_no_far_pool),
@@ -19683,7 +19794,7 @@ def execute_auto_trades(
 
     lcb_q_combo_force_caps: Dict[str, int] = {
         LCB_Q_COMBO_ROLE_YES_PEAK: max(int(lcb_global_q_combo_yes_peak_count), 0),
-        LCB_Q_COMBO_ROLE_NO_ADJACENT: max(int(lcb_global_q_combo_no_near_count), 0),
+        LCB_Q_COMBO_ROLE_NO_ADJACENT: max(int(lcb_global_q_combo_no_near_count_effective), 0),
         LCB_Q_COMBO_ROLE_NO_REMOTE: max(int(lcb_global_q_combo_no_far_count), 0),
     }
     lcb_q_combo_force_counts: Dict[str, int] = {
@@ -19721,33 +19832,30 @@ def execute_auto_trades(
             if yes_consistent:
                 return LCB_Q_COMBO_ROLE_YES_PEAK
             return ""
-        # NO side: classify by distance to q-peak anchor bucket.
-        anchor_outcome = q_peak_outcome or str(top_market_label or top_cal_label or "").strip()
+        # NO side: classify only by distance to yes_top/q_peak bucket.
+        anchor_outcome = q_peak_outcome
         if not anchor_outcome:
             return ""
-        if outcome_u == anchor_outcome:
-            return ""
-        rank_anchor = outcome_rank_index.get(anchor_outcome)
-        rank_current = outcome_rank_index.get(outcome_u)
-        if rank_anchor is not None and rank_current is not None:
-            rank_gap = abs(int(rank_current) - int(rank_anchor))
+        _anchor_outcome, rank_gap, center_gap = _resolve_combo_q_peak_distance(
+            outcome_u,
+            candidate_ref,
+        )
+        if rank_gap is not None:
             if rank_gap == 1:
-                return LCB_Q_COMBO_ROLE_NO_ADJACENT
+                return (
+                    LCB_Q_COMBO_ROLE_NO_ADJACENT
+                    if lcb_global_q_combo_no_near_entry_enabled
+                    else ""
+                )
             if rank_gap >= 2:
                 return LCB_Q_COMBO_ROLE_NO_REMOTE
-        center_anchor = _parse_lcb_outcome_center(anchor_outcome)
-        center_current = _parse_lcb_outcome_center(outcome_u)
-        if (
-            center_anchor is not None
-            and math.isfinite(center_anchor)
-            and center_current is not None
-            and math.isfinite(center_current)
-        ):
-            center_gap = abs(float(center_current) - float(center_anchor))
-            if center_gap <= TIME_EDGE_Q_EPS:
-                return ""
+        if center_gap is not None:
             return (
-                LCB_Q_COMBO_ROLE_NO_ADJACENT
+                (
+                    LCB_Q_COMBO_ROLE_NO_ADJACENT
+                    if lcb_global_q_combo_no_near_entry_enabled
+                    else ""
+                )
                 if center_gap <= 1.1
                 else LCB_Q_COMBO_ROLE_NO_REMOTE
             )
@@ -19792,7 +19900,7 @@ def execute_auto_trades(
         force_cap_for_target = max(force_cap, 1)
         ratio_map = {
             LCB_Q_COMBO_ROLE_YES_PEAK: float(lcb_global_q_combo_yes_peak_ratio),
-            LCB_Q_COMBO_ROLE_NO_ADJACENT: float(lcb_global_q_combo_no_near_ratio),
+            LCB_Q_COMBO_ROLE_NO_ADJACENT: float(lcb_global_q_combo_no_near_ratio_effective),
             LCB_Q_COMBO_ROLE_NO_REMOTE: float(lcb_global_q_combo_no_far_ratio),
         }
         inferred_ratio = max(float(ratio_map.get(inferred_role, 0.0)), 0.0)
@@ -19901,6 +20009,188 @@ def execute_auto_trades(
             ),
             "lcb_q_combo_selection_theoretical_active": bool(
                 candidate_ref.get("lcb_q_combo_selection_theoretical_active")
+            ),
+        }
+
+    def _build_lcb_qpeak_no_entry_block_detail(
+        candidate_ref: Optional[Mapping[str, Any]],
+        *,
+        outcome_label: str,
+        side_label: str,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(candidate_ref, Mapping):
+            return None
+        if str(candidate_ref.get("strategy") or "").strip().lower() != "lcb_global":
+            return None
+        if not bool(candidate_ref.get("lcb_q_combo_enabled")):
+            return None
+        outcome_now = str(outcome_label or candidate_ref.get("outcome") or "").strip()
+        side_now = str(side_label or candidate_ref.get("side") or "").strip().upper()
+        if not outcome_now or side_now != "NO":
+            return None
+        q_peak_outcome = str(
+            candidate_ref.get("lcb_q_combo_q_peak_outcome")
+            or lcb_q_combo_q_peak_outcome_current
+            or ""
+        ).strip()
+        if not q_peak_outcome or outcome_now != q_peak_outcome:
+            return None
+        return {
+            "strategy": "lcb_global",
+            "lcb_q_combo_blocked_no_q_peak": True,
+            "lcb_q_combo_role": str(_candidate_explicit_combo_role(candidate_ref) or ""),
+            "lcb_q_combo_selected": bool(candidate_ref.get("lcb_q_combo_selected")),
+            "lcb_q_combo_selected_theoretical": bool(
+                candidate_ref.get("lcb_q_combo_selected_theoretical")
+            ),
+            "lcb_q_combo_exec_eligible": bool(candidate_ref.get("lcb_q_combo_exec_eligible")),
+            "lcb_q_combo_q_peak_outcome": str(q_peak_outcome),
+            "lcb_q_combo_q_peak_source": str(
+                candidate_ref.get("lcb_q_combo_q_peak_source")
+                or lcb_q_combo_q_peak_source_current
+                or ""
+            ),
+            "lcb_q_combo_selection_active": bool(
+                candidate_ref.get("lcb_q_combo_selection_active")
+            ),
+            "lcb_q_combo_selection_theoretical_active": bool(
+                candidate_ref.get("lcb_q_combo_selection_theoretical_active")
+            ),
+        }
+
+    def _build_lcb_no_near_qpeak_mismatch_detail(
+        candidate_ref: Optional[Mapping[str, Any]],
+        *,
+        outcome_label: str,
+        side_label: str,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(candidate_ref, Mapping):
+            return None
+        if str(candidate_ref.get("strategy") or "").strip().lower() != "lcb_global":
+            return None
+        if str(side_label or candidate_ref.get("side") or "").strip().upper() != "NO":
+            return None
+        role_now = _candidate_explicit_combo_role(candidate_ref)
+        if role_now != LCB_Q_COMBO_ROLE_NO_ADJACENT:
+            return None
+        outcome_now = str(outcome_label or candidate_ref.get("outcome") or "").strip()
+        if not outcome_now:
+            return None
+        if _combo_no_near_matches_q_peak(
+            outcome_now,
+            side_label="NO",
+            candidate_ref=candidate_ref,
+        ):
+            return None
+        q_peak_outcome, rank_gap, center_gap = _resolve_combo_q_peak_distance(
+            outcome_now,
+            candidate_ref,
+        )
+        return {
+            "strategy": "lcb_global",
+            "lcb_q_combo_role": str(role_now),
+            "lcb_q_combo_selected": bool(candidate_ref.get("lcb_q_combo_selected")),
+            "lcb_q_combo_selected_theoretical": bool(
+                candidate_ref.get("lcb_q_combo_selected_theoretical")
+            ),
+            "lcb_q_combo_exec_eligible": bool(candidate_ref.get("lcb_q_combo_exec_eligible")),
+            "lcb_q_combo_q_peak_outcome": str(q_peak_outcome),
+            "lcb_q_combo_anchor_outcome": str(candidate_ref.get("lcb_q_combo_anchor_outcome") or ""),
+            "lcb_q_combo_anchor_side": str(candidate_ref.get("lcb_q_combo_anchor_side") or ""),
+            "lcb_q_combo_anchor_mode": str(candidate_ref.get("lcb_q_combo_anchor_mode") or ""),
+            "lcb_q_combo_rank_gap_to_q_peak": (
+                float(rank_gap) if rank_gap is not None else None
+            ),
+            "lcb_q_combo_center_gap_to_q_peak": (
+                float(center_gap) if center_gap is not None else None
+            ),
+        }
+
+    def _build_lcb_no_near_disabled_detail(
+        candidate_ref: Optional[Mapping[str, Any]],
+        *,
+        outcome_label: str,
+        side_label: str,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(candidate_ref, Mapping):
+            return None
+        if str(candidate_ref.get("strategy") or "").strip().lower() != "lcb_global":
+            return None
+        if str(side_label or candidate_ref.get("side") or "").strip().upper() != "NO":
+            return None
+        role_now = _candidate_explicit_combo_role(candidate_ref)
+        if role_now != LCB_Q_COMBO_ROLE_NO_ADJACENT:
+            return None
+        outcome_now = str(outcome_label or candidate_ref.get("outcome") or "").strip()
+        q_peak_outcome, rank_gap, center_gap = _resolve_combo_q_peak_distance(
+            outcome_now,
+            candidate_ref,
+        )
+        return {
+            "strategy": "lcb_global",
+            "lcb_q_combo_role": str(role_now),
+            "lcb_q_combo_selected": bool(candidate_ref.get("lcb_q_combo_selected")),
+            "lcb_q_combo_selected_theoretical": bool(
+                candidate_ref.get("lcb_q_combo_selected_theoretical")
+            ),
+            "lcb_q_combo_exec_eligible": bool(candidate_ref.get("lcb_q_combo_exec_eligible")),
+            "lcb_q_combo_q_peak_outcome": str(q_peak_outcome),
+            "lcb_q_combo_anchor_outcome": str(candidate_ref.get("lcb_q_combo_anchor_outcome") or ""),
+            "lcb_q_combo_anchor_side": str(candidate_ref.get("lcb_q_combo_anchor_side") or ""),
+            "lcb_q_combo_anchor_mode": str(candidate_ref.get("lcb_q_combo_anchor_mode") or ""),
+            "lcb_q_combo_rank_gap_to_q_peak": (
+                float(rank_gap) if rank_gap is not None else None
+            ),
+            "lcb_q_combo_center_gap_to_q_peak": (
+                float(center_gap) if center_gap is not None else None
+            ),
+        }
+
+    def _build_lcb_no_far_qpeak_mismatch_detail(
+        candidate_ref: Optional[Mapping[str, Any]],
+        *,
+        outcome_label: str,
+        side_label: str,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(candidate_ref, Mapping):
+            return None
+        if str(candidate_ref.get("strategy") or "").strip().lower() != "lcb_global":
+            return None
+        if str(side_label or candidate_ref.get("side") or "").strip().upper() != "NO":
+            return None
+        role_now = _candidate_explicit_combo_role(candidate_ref)
+        if role_now != LCB_Q_COMBO_ROLE_NO_REMOTE:
+            return None
+        outcome_now = str(outcome_label or candidate_ref.get("outcome") or "").strip()
+        if not outcome_now:
+            return None
+        if _combo_no_far_matches_q_peak(
+            outcome_now,
+            side_label="NO",
+            candidate_ref=candidate_ref,
+        ):
+            return None
+        q_peak_outcome, rank_gap, center_gap = _resolve_combo_q_peak_distance(
+            outcome_now,
+            candidate_ref,
+        )
+        return {
+            "strategy": "lcb_global",
+            "lcb_q_combo_role": str(role_now),
+            "lcb_q_combo_selected": bool(candidate_ref.get("lcb_q_combo_selected")),
+            "lcb_q_combo_selected_theoretical": bool(
+                candidate_ref.get("lcb_q_combo_selected_theoretical")
+            ),
+            "lcb_q_combo_exec_eligible": bool(candidate_ref.get("lcb_q_combo_exec_eligible")),
+            "lcb_q_combo_q_peak_outcome": str(q_peak_outcome),
+            "lcb_q_combo_anchor_outcome": str(candidate_ref.get("lcb_q_combo_anchor_outcome") or ""),
+            "lcb_q_combo_anchor_side": str(candidate_ref.get("lcb_q_combo_anchor_side") or ""),
+            "lcb_q_combo_anchor_mode": str(candidate_ref.get("lcb_q_combo_anchor_mode") or ""),
+            "lcb_q_combo_rank_gap_to_q_peak": (
+                float(rank_gap) if rank_gap is not None else None
+            ),
+            "lcb_q_combo_center_gap_to_q_peak": (
+                float(center_gap) if center_gap is not None else None
             ),
         }
 
@@ -22105,6 +22395,48 @@ def execute_auto_trades(
                     if age_sec < AUTO_TRADE_ENTRY_RETRY_COOLDOWN_SEC:
                         retry_blocked = True
             candidate_retry_hint = candidate_map.get(side) if side in candidate_side else None
+            yes_top_q_only_mode_outer = False
+            yes_top_q_only_pass_outer = False
+            yes_top_q_only_gap_outer: Optional[float] = None
+            if side in candidate_side:
+                (
+                    yes_top_q_only_mode_outer,
+                    yes_top_q_only_pass_outer,
+                    yes_top_q_only_gap_outer,
+                ) = _yes_top_q_market_only_eval(candidate_retry_hint, side)
+                if yes_top_q_only_mode_outer and (not yes_top_q_only_pass_outer):
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=["yes_top_bucket_mismatch"],
+                        reasons=["yes_top仅按同温度桶一致性判定：当前不在同一桶，禁止入场"],
+                        details={
+                            "strategy": str((candidate_retry_hint or {}).get("strategy") or ""),
+                            "lcb_q_combo_role": str(
+                                (candidate_retry_hint or {}).get("lcb_q_combo_role") or ""
+                            ),
+                            "lcb_yes_top_label_match": bool(
+                                (candidate_retry_hint or {}).get("lcb_yes_top_label_match")
+                            ),
+                            "lcb_yes_top_cal_match": bool(
+                                (candidate_retry_hint or {}).get("lcb_yes_top_cal_match")
+                            ),
+                            "lcb_yes_top_market_match": bool(
+                                (candidate_retry_hint or {}).get("lcb_yes_top_market_match")
+                            ),
+                            "lcb_yes_top_q_market_consistent": bool(
+                                (candidate_retry_hint or {}).get("lcb_yes_top_q_market_consistent")
+                            ),
+                            "lcb_yes_top_q_market_gap": yes_top_q_only_gap_outer,
+                            "lcb_yes_top_market_consist_eps": to_float(
+                                (candidate_retry_hint or {}).get("lcb_yes_top_market_consist_eps")
+                            ),
+                        },
+                    )
+                    continue
             retry_waived = False
             retry_waive_meta: Dict[str, Any] = {}
             if retry_blocked:
@@ -22144,7 +22476,7 @@ def execute_auto_trades(
                 age_sec = (now_utc - prev_last_action_at).total_seconds()
                 if age_sec < AUTO_TRADE_REENTRY_COOLDOWN_SEC:
                     reentry_blocked = True
-            if pending_block:
+            if pending_block and (not yes_top_q_only_mode_outer):
                 if not exit_flag:
                     if not exit_only and side in candidate_side:
                         _buffer_decision(
@@ -22164,7 +22496,7 @@ def execute_auto_trades(
                             },
                         )
                     continue
-            if exit_block and exit_flag:
+            if exit_block and exit_flag and (not yes_top_q_only_mode_outer):
                 if not exit_only and side in candidate_side:
                     _buffer_decision(
                         outcome,
@@ -22455,15 +22787,18 @@ def execute_auto_trades(
             # SSOT decision: if a candidate exists but entry gating blocks before any state/order update,
             # record the blocking reasons so the UI can explain "为什么没下单".
             if not exit_only and side in candidate_side:
-                outer_ok = (
-                    not other_active
-                    and (prev_state not in {"entry", "entry_pending"} or allow_topup)
-                    and not exit_entry_block
-                    and not retry_blocked
-                    and not reentry_blocked
-                    and not residual_exit_lock_active
-                    and not entry_drawdown_blocked
-                )
+                if yes_top_q_only_mode_outer:
+                    outer_ok = bool(yes_top_q_only_pass_outer)
+                else:
+                    outer_ok = (
+                        not other_active
+                        and (prev_state not in {"entry", "entry_pending"} or allow_topup)
+                        and not exit_entry_block
+                        and not retry_blocked
+                        and not reentry_blocked
+                        and not residual_exit_lock_active
+                        and not entry_drawdown_blocked
+                    )
                 if not outer_ok:
                     rc: List[str] = ["entry_gate_blocked"]
                     rs: List[str] = ["入场风控阻断(未触发下单)"]
@@ -22538,13 +22873,18 @@ def execute_auto_trades(
             if (
                 not exit_only
                 and side in candidate_side
-                and not other_active
-                and (prev_state not in {"entry", "entry_pending"} or allow_topup)
-                and not exit_entry_block
-                and not retry_blocked
-                and not reentry_blocked
-                and not residual_exit_lock_active
-                and not entry_drawdown_blocked
+                and (
+                    yes_top_q_only_mode_outer
+                    or (
+                        not other_active
+                        and (prev_state not in {"entry", "entry_pending"} or allow_topup)
+                        and not exit_entry_block
+                        and not retry_blocked
+                        and not reentry_blocked
+                        and not residual_exit_lock_active
+                        and not entry_drawdown_blocked
+                    )
+                )
             ):
                 candidate = candidate_map.get(side)
                 if candidate is None:
@@ -22563,14 +22903,45 @@ def execute_auto_trades(
                     )
                     continue
                 candidate_strategy = str(candidate.get("strategy") or "").strip().lower()
+                (
+                    yes_top_q_only_mode_runtime,
+                    yes_top_q_only_pass_runtime,
+                    yes_top_q_only_gap_runtime,
+                ) = _yes_top_q_market_only_eval(candidate, side)
                 is_new_entry_pre = (
                     position_size <= TIME_EDGE_Q_EPS and not allow_topup
                 )
+                if yes_top_q_only_mode_runtime and (not yes_top_q_only_pass_runtime):
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=["yes_top_bucket_mismatch"],
+                        reasons=["yes_top仅按同温度桶一致性判定：当前不在同一桶，禁止入场"],
+                        details={
+                            "strategy": candidate_strategy,
+                            "lcb_q_combo_role": str(candidate.get("lcb_q_combo_role") or ""),
+                            "lcb_yes_top_label_match": bool(candidate.get("lcb_yes_top_label_match")),
+                            "lcb_yes_top_cal_match": bool(candidate.get("lcb_yes_top_cal_match")),
+                            "lcb_yes_top_market_match": bool(candidate.get("lcb_yes_top_market_match")),
+                            "lcb_yes_top_q_market_consistent": bool(
+                                candidate.get("lcb_yes_top_q_market_consistent")
+                            ),
+                            "lcb_yes_top_q_market_gap": yes_top_q_only_gap_runtime,
+                            "lcb_yes_top_market_consist_eps": to_float(
+                                candidate.get("lcb_yes_top_market_consist_eps")
+                            ),
+                        },
+                    )
+                    continue
                 if (
                     lcb_q_peak_switch_triggered
                     and candidate_strategy == "lcb_global"
                     and side == "YES"
                     and is_new_entry_pre
+                    and (not yes_top_q_only_mode_runtime)
                 ):
                     if outcome in lcb_q_peak_switch_old_yes_outcomes:
                         _buffer_decision(
@@ -22622,7 +22993,76 @@ def execute_auto_trades(
                     and candidate_strategy == "lcb_global"
                     and is_new_entry_pre
                     and bool(candidate.get("lcb_q_combo_enabled"))
+                    and (not yes_top_q_only_mode_runtime)
                 ):
+                    qpeak_no_entry_block_detail = _build_lcb_qpeak_no_entry_block_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if qpeak_no_entry_block_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_q_peak_forbidden"],
+                            reasons=["Q峰值桶禁止 NO 入场"],
+                            details=qpeak_no_entry_block_detail,
+                        )
+                        continue
+                    no_near_disabled_detail = _build_lcb_no_near_disabled_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if no_near_disabled_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_near_disabled"],
+                            reasons=["no_near 已停用，不再入场"],
+                            details=no_near_disabled_detail,
+                        )
+                        continue
+                    no_near_qpeak_mismatch_detail = _build_lcb_no_near_qpeak_mismatch_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if no_near_qpeak_mismatch_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_near_q_peak_mismatch"],
+                            reasons=["no_near 仅允许 yes_top 相邻桶 NO 入场"],
+                            details=no_near_qpeak_mismatch_detail,
+                        )
+                        continue
+                    no_far_qpeak_mismatch_detail = _build_lcb_no_far_qpeak_mismatch_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if no_far_qpeak_mismatch_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_far_q_peak_mismatch"],
+                            reasons=["no_far 仅允许 yes_top 远桶 NO 入场"],
+                            details=no_far_qpeak_mismatch_detail,
+                        )
+                        continue
                     qpeak_reserved_detail = _build_lcb_qpeak_reserved_detail(
                         candidate,
                         outcome_label=outcome,
@@ -22783,7 +23223,7 @@ def execute_auto_trades(
                     candidate,
                     allow_apply=bool(position_size <= TIME_EDGE_Q_EPS),
                 )
-                if candidate.get("kelly_blocked"):
+                if candidate.get("kelly_blocked") and (not yes_top_q_only_mode_runtime):
                     _buffer_decision(
                         outcome,
                         side,
@@ -22807,38 +23247,57 @@ def execute_auto_trades(
                     candidate
                 )
                 if strategy_size_ratio <= TIME_EDGE_Q_EPS:
-                    _buffer_decision(
-                        outcome,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["strategy_size_ratio_zero"],
-                        reasons=[f"策略仓位系数为0({candidate_strategy or 'main'})，本轮不下单"],
-                        details={
-                            "strategy": candidate_strategy or "main",
-                            "strategy_size_ratio": strategy_size_ratio,
-                            "size_base": base_size_before_ratio,
-                        },
-                    )
-                    continue
+                    if (
+                        yes_top_q_only_mode_runtime
+                        and base_size_before_ratio is not None
+                        and math.isfinite(base_size_before_ratio)
+                        and base_size_before_ratio > TIME_EDGE_Q_EPS
+                    ):
+                        candidate["size"] = float(base_size_before_ratio)
+                        strategy_size_ratio = 1.0
+                        scaled_size = float(base_size_before_ratio)
+                    else:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["strategy_size_ratio_zero"],
+                            reasons=[f"策略仓位系数为0({candidate_strategy or 'main'})，本轮不下单"],
+                            details={
+                                "strategy": candidate_strategy or "main",
+                                "strategy_size_ratio": strategy_size_ratio,
+                                "size_base": base_size_before_ratio,
+                            },
+                        )
+                        continue
                 if scaled_size is None or not math.isfinite(scaled_size) or scaled_size <= TIME_EDGE_Q_EPS:
-                    _buffer_decision(
-                        outcome,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["strategy_size_scaled_invalid"],
-                        reasons=["策略仓位系数换算后数量无效"],
-                        details={
-                            "strategy": candidate_strategy or "main",
-                            "strategy_size_ratio": strategy_size_ratio,
-                            "size_base": base_size_before_ratio,
-                            "size_scaled": scaled_size,
-                        },
-                    )
-                    continue
+                    if (
+                        yes_top_q_only_mode_runtime
+                        and base_size_before_ratio is not None
+                        and math.isfinite(base_size_before_ratio)
+                        and base_size_before_ratio > TIME_EDGE_Q_EPS
+                    ):
+                        candidate["size"] = float(base_size_before_ratio)
+                        scaled_size = float(base_size_before_ratio)
+                    else:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["strategy_size_scaled_invalid"],
+                            reasons=["策略仓位系数换算后数量无效"],
+                            details={
+                                "strategy": candidate_strategy or "main",
+                                "strategy_size_ratio": strategy_size_ratio,
+                                "size_base": base_size_before_ratio,
+                                "size_scaled": scaled_size,
+                            },
+                        )
+                        continue
                 if (
                     candidate_strategy == "follow_copy"
                     and side == "YES"
@@ -23013,6 +23472,7 @@ def execute_auto_trades(
                     and candidate_strategy != "follow_copy"
                     and prev_state not in {"entry", "entry_pending"}
                     and not allow_topup
+                    and (not yes_top_q_only_mode_runtime)
                 ):
                     loss_streak = int(bucket_loss_streak_by_outcome.get(outcome) or 0)
                     if loss_streak >= int(bucket_loss_streak_block_n):
@@ -23095,7 +23555,7 @@ def execute_auto_trades(
                     if candidate_strategy == "follow_copy"
                     else entry_refresh_pre_stale_ratio
                 )
-                if tick_stale_sec_effective > 0:
+                if tick_stale_sec_effective > 0 and (not yes_top_q_only_mode_runtime):
                     if (
                         refresh_cfg.get("enabled")
                         and (
@@ -23328,7 +23788,7 @@ def execute_auto_trades(
                 candidate["trend_penalty_score"] = 0.0
                 if "trend_penalty_reasons" in candidate:
                     candidate.pop("trend_penalty_reasons", None)
-                if (not follow_bypass_trend) and (
+                if (not yes_top_q_only_mode_runtime) and (not follow_bypass_trend) and (
                     (block_trend_unknown and cand_trend_unknown)
                     or (block_trend_down and cand_trend_down)
                     or (require_trend_up and not cand_trend_up)
@@ -23470,7 +23930,12 @@ def execute_auto_trades(
                         if size_after is not None and math.isfinite(size_after)
                         else None
                     )
-                if location_block and not allow_location_override and (not lcb_location_soft_block):
+                if (
+                    location_block
+                    and (not yes_top_q_only_mode_runtime)
+                    and not allow_location_override
+                    and (not lcb_location_soft_block)
+                ):
                     rc = ["location_block"]
                     rs = ["地点风控阻断(同地点已有活跃持仓/非该地点最优)"]
                     if event_active_entry:
@@ -23991,6 +24456,74 @@ def execute_auto_trades(
                     and is_new_entry_pre
                     and bool(candidate.get("lcb_q_combo_enabled"))
                 ):
+                    qpeak_no_entry_block_detail = _build_lcb_qpeak_no_entry_block_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if qpeak_no_entry_block_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_q_peak_forbidden"],
+                            reasons=["Q峰值桶禁止 NO 入场"],
+                            details=qpeak_no_entry_block_detail,
+                        )
+                        continue
+                    no_near_disabled_detail = _build_lcb_no_near_disabled_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if no_near_disabled_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_near_disabled"],
+                            reasons=["no_near 已停用，不再入场"],
+                            details=no_near_disabled_detail,
+                        )
+                        continue
+                    no_near_qpeak_mismatch_detail = _build_lcb_no_near_qpeak_mismatch_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if no_near_qpeak_mismatch_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_near_q_peak_mismatch"],
+                            reasons=["no_near 仅允许 yes_top 相邻桶 NO 入场"],
+                            details=no_near_qpeak_mismatch_detail,
+                        )
+                        continue
+                    no_far_qpeak_mismatch_detail = _build_lcb_no_far_qpeak_mismatch_detail(
+                        candidate,
+                        outcome_label=outcome,
+                        side_label=side,
+                    )
+                    if no_far_qpeak_mismatch_detail is not None:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["lcb_q_combo_no_far_q_peak_mismatch"],
+                            reasons=["no_far 仅允许 yes_top 远桶 NO 入场"],
+                            details=no_far_qpeak_mismatch_detail,
+                        )
+                        continue
                     qpeak_reserved_detail = _build_lcb_qpeak_reserved_detail(
                         candidate,
                         outcome_label=outcome,
@@ -24149,7 +24682,7 @@ def execute_auto_trades(
                     candidate,
                     allow_apply=bool(position_size <= TIME_EDGE_Q_EPS),
                 )
-                if candidate.get("kelly_blocked"):
+                if candidate.get("kelly_blocked") and (not yes_top_q_only_mode_runtime):
                     _buffer_decision(
                         outcome,
                         side,
@@ -24173,42 +24706,61 @@ def execute_auto_trades(
                     candidate
                 )
                 if strategy_size_ratio_final <= TIME_EDGE_Q_EPS:
-                    _buffer_decision(
-                        outcome,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["strategy_size_ratio_zero"],
-                        reasons=[f"策略仓位系数为0({candidate_strategy or 'main'})，本轮不下单"],
-                        details={
-                            "strategy": candidate_strategy or "main",
-                            "strategy_size_ratio": strategy_size_ratio_final,
-                            "size_base": base_size_final,
-                        },
-                    )
-                    continue
+                    if (
+                        yes_top_q_only_mode_runtime
+                        and base_size_final is not None
+                        and math.isfinite(base_size_final)
+                        and base_size_final > TIME_EDGE_Q_EPS
+                    ):
+                        candidate["size"] = float(base_size_final)
+                        strategy_size_ratio_final = 1.0
+                        scaled_size_final = float(base_size_final)
+                    else:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["strategy_size_ratio_zero"],
+                            reasons=[f"策略仓位系数为0({candidate_strategy or 'main'})，本轮不下单"],
+                            details={
+                                "strategy": candidate_strategy or "main",
+                                "strategy_size_ratio": strategy_size_ratio_final,
+                                "size_base": base_size_final,
+                            },
+                        )
+                        continue
                 if (
                     scaled_size_final is None
                     or not math.isfinite(scaled_size_final)
                     or scaled_size_final <= TIME_EDGE_Q_EPS
                 ):
-                    _buffer_decision(
-                        outcome,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["strategy_size_scaled_invalid"],
-                        reasons=["策略仓位系数换算后数量无效"],
-                        details={
-                            "strategy": candidate_strategy or "main",
-                            "strategy_size_ratio": strategy_size_ratio_final,
-                            "size_base": base_size_final,
-                            "size_scaled": scaled_size_final,
-                        },
-                    )
-                    continue
+                    if (
+                        yes_top_q_only_mode_runtime
+                        and base_size_final is not None
+                        and math.isfinite(base_size_final)
+                        and base_size_final > TIME_EDGE_Q_EPS
+                    ):
+                        candidate["size"] = float(base_size_final)
+                        scaled_size_final = float(base_size_final)
+                    else:
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "entry",
+                            decided_state="blocked",
+                            will_order=False,
+                            reason_codes=["strategy_size_scaled_invalid"],
+                            reasons=["策略仓位系数换算后数量无效"],
+                            details={
+                                "strategy": candidate_strategy or "main",
+                                "strategy_size_ratio": strategy_size_ratio_final,
+                                "size_base": base_size_final,
+                                "size_scaled": scaled_size_final,
+                            },
+                        )
+                        continue
                 order_price = candidate.get("price")
                 order_size = candidate.get("size")
                 candidate_target_size = to_float(order_size)
@@ -24960,7 +25512,11 @@ def execute_auto_trades(
                 is_new_entry = (not is_topup) and (position_size <= TIME_EDGE_Q_EPS)
                 strategy_name = str(candidate.get("strategy") or "main").strip().lower() or "main"
                 lcb_global_candidate = bool(strategy_name == "lcb_global")
-                if lcb_global_candidate and bool(candidate.get("edge_tradeability_blocked")):
+                if (
+                    lcb_global_candidate
+                    and bool(candidate.get("edge_tradeability_blocked"))
+                    and (not yes_top_q_only_mode_runtime)
+                ):
                     combo_role_now = _selected_explicit_combo_role(candidate)
                     combo_selected_now = bool(combo_role_now)
                     bypass_by_selected_combo = bool(
@@ -24981,7 +25537,11 @@ def execute_auto_trades(
                         )
                     else:
                         candidate["edge_tradeability_q_combo_relaxed"] = False
-                if lcb_global_candidate and bool(candidate.get("edge_tradeability_blocked")):
+                if (
+                    lcb_global_candidate
+                    and bool(candidate.get("edge_tradeability_blocked"))
+                    and (not yes_top_q_only_mode_runtime)
+                ):
                     defer_to_near_miss = bool(
                         is_new_entry and edge_realizable_v2_gate_entry and lcb_global_near_miss_enabled
                     )
