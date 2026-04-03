@@ -4356,6 +4356,130 @@ def _latest_tick_for_outcome(
     return best_bid, best_ask, bid_depth, ask_depth, prev_bid, prev_ask, prev_bid_depth, prev_ask_depth
 
 
+def _freshest_exit_quote_for_side(
+    conn: sqlite3.Connection,
+    slug: str,
+    event_date: str,
+    outcome: str,
+    side: str,
+    row_ref: Mapping[str, Any],
+) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    side_u = str(side or "").strip().upper()
+    if side_u == "YES":
+        best_bid = to_float(row_ref.get("best_bid"))
+        best_ask = to_float(row_ref.get("best_ask"))
+        bid_depth = to_float(row_ref.get("bid_depth_topN"))
+        ask_depth = to_float(row_ref.get("ask_depth_topN"))
+    else:
+        best_bid = to_float(row_ref.get("best_bid_no"))
+        best_ask = to_float(row_ref.get("best_ask_no"))
+        bid_depth = to_float(row_ref.get("bid_depth_topN_no"))
+        ask_depth = to_float(row_ref.get("ask_depth_topN_no"))
+    latest_bid, latest_ask, latest_bid_depth, latest_ask_depth, *_ = _latest_tick_for_outcome(
+        conn,
+        slug,
+        event_date,
+        outcome,
+        side_u,
+    )
+    if latest_bid is not None and math.isfinite(latest_bid):
+        best_bid = float(latest_bid)
+    if latest_ask is not None and math.isfinite(latest_ask):
+        best_ask = float(latest_ask)
+    if latest_bid_depth is not None and math.isfinite(latest_bid_depth):
+        bid_depth = float(latest_bid_depth)
+    if latest_ask_depth is not None and math.isfinite(latest_ask_depth):
+        ask_depth = float(latest_ask_depth)
+    return best_bid, best_ask, bid_depth, ask_depth
+
+
+def _derive_complement_quote_for_side(
+    side: str,
+    row_ref: Mapping[str, Any],
+) -> Tuple[Optional[float], Optional[float]]:
+    side_u = str(side or "").strip().upper()
+    if side_u == "NO":
+        best_bid_yes = to_float(row_ref.get("best_bid"))
+        best_ask_yes = to_float(row_ref.get("best_ask"))
+        best_bid_no, best_ask_no, *_ = _derive_no_quote_from_yes(best_bid_yes, best_ask_yes)
+        return best_bid_no, best_ask_no
+    best_bid_no = to_float(row_ref.get("best_bid_no"))
+    best_ask_no = to_float(row_ref.get("best_ask_no"))
+    best_bid_yes = None
+    best_ask_yes = None
+    if best_ask_no is not None and math.isfinite(best_ask_no):
+        best_bid_yes = min(1.0, max(0.0, 1.0 - float(best_ask_no)))
+    if best_bid_no is not None and math.isfinite(best_bid_no):
+        best_ask_yes = min(1.0, max(0.0, 1.0 - float(best_bid_no)))
+    return best_bid_yes, best_ask_yes
+
+
+def _resolve_exit_submission_price(
+    preferred_price: Any,
+    best_bid: Any,
+    best_ask: Any,
+    *,
+    side: str,
+    row_ref: Mapping[str, Any],
+    allow_ask_fallback: bool,
+) -> Tuple[Optional[float], bool, str, Optional[float], Optional[float]]:
+    bid_val = to_float(best_bid)
+    ask_val = to_float(best_ask)
+    exit_price, used_ask = _resolve_exit_liquidity_price(
+        preferred_price,
+        bid_val,
+        ask_val,
+        allow_ask_fallback=allow_ask_fallback,
+    )
+    if exit_price is not None:
+        return exit_price, used_ask, "", bid_val, ask_val
+    comp_bid, comp_ask = _derive_complement_quote_for_side(side, row_ref)
+    used_complement = False
+    if (
+        (bid_val is None or not math.isfinite(bid_val) or bid_val <= TIME_EDGE_Q_EPS)
+        and comp_bid is not None
+        and math.isfinite(comp_bid)
+    ):
+        bid_val = float(comp_bid)
+        used_complement = True
+    if (
+        (ask_val is None or not math.isfinite(ask_val) or ask_val <= TIME_EDGE_Q_EPS)
+        and comp_ask is not None
+        and math.isfinite(comp_ask)
+    ):
+        ask_val = float(comp_ask)
+        used_complement = True
+    exit_price, used_ask = _resolve_exit_liquidity_price(
+        preferred_price,
+        bid_val,
+        ask_val,
+        allow_ask_fallback=allow_ask_fallback,
+    )
+    if exit_price is not None:
+        reason = "complement_quote" if used_complement else ""
+        return exit_price, used_ask, reason, bid_val, ask_val
+    if ask_val is not None and math.isfinite(ask_val) and ask_val > TIME_EDGE_Q_EPS:
+        reason = "one_sided_ask_only"
+        if used_complement:
+            reason = "one_sided_ask_only_complement"
+        return float(ask_val), True, reason, bid_val, ask_val
+    return None, False, "", bid_val, ask_val
+
+
+def _effective_stop_loss_edge_confirm_enabled(
+    base_enabled: bool,
+    *,
+    lcb_exit_context_active: bool = False,
+    lcb_ignore_edge_confirm: bool = False,
+) -> bool:
+    enabled = bool(base_enabled)
+    if not enabled:
+        return False
+    if lcb_exit_context_active and lcb_ignore_edge_confirm:
+        return False
+    return True
+
+
 def _load_market_tick_latest_by_key(
     conn: sqlite3.Connection,
     slug: str,
@@ -7269,6 +7393,11 @@ def _dump_reason_list(values: Optional[Iterable[Any]]) -> Optional[str]:
     return json.dumps(out, ensure_ascii=False)
 
 
+def _dump_reason_list_or_blank(values: Optional[Iterable[Any]]) -> str:
+    dumped = _dump_reason_list(values)
+    return dumped if dumped is not None else ""
+
+
 def _parse_reason_list(raw: Any) -> List[str]:
     if raw is None:
         return []
@@ -9459,7 +9588,7 @@ def execute_auto_trades(
                 if "locked" not in str(exc).lower() or attempt == 5:
                     raise
                 time.sleep(0.5 * (attempt + 1))
-    positions_by_token: Dict[str, Dict[str, Optional[float]]] = {}
+    positions_by_token: Dict[str, Dict[str, Any]] = {}
     positions_error = ""
     if POSITIONS_SYNC_ENABLED:
         positions_by_token, positions_error = fetch_positions_by_token()
@@ -9491,6 +9620,7 @@ def execute_auto_trades(
         _AUTO_TRADE_LAST_SETTLED_RECONCILE_AT = now_reconcile_ts
         cleared_count = 0
         settled_open_count = 0
+        settled_open_status_counts: Dict[str, int] = {}
         now_iso = utc_now_iso()
         try:
             cur.execute(
@@ -9530,6 +9660,7 @@ def execute_auto_trades(
             if not slug_r or not event_date_r or not outcome_r or side_r not in {"YES", "NO"}:
                 continue
             token_r = yes_token_r if side_r == "YES" else no_token_r
+            live_entry: Optional[Dict[str, Any]] = None
             live_size = None
             if token_r:
                 live_entry = positions_by_token.get(token_r)
@@ -9549,6 +9680,13 @@ def execute_auto_trades(
                             last_action_at = ?,
                             last_status = 'settled_no_position',
                             last_error = 'settled_no_position',
+                            exit_reasons = '',
+                            exit_reason_codes = '',
+                            exit_triggered_at = NULL,
+                            exit_skip_reason = '',
+                            exit_skip_detail = '',
+                            exit_skip_at = NULL,
+                            stop_loss_probe_at = NULL,
                             updated_at = ?
                         WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
                           AND (state IN ('entry', 'entry_pending') OR COALESCE(position_size, 0) > 0)
@@ -9560,23 +9698,53 @@ def execute_auto_trades(
                     continue
             elif live_size is not None and math.isfinite(live_size) and live_size > settled_reconcile_dust:
                 settled_open_count += 1
+                settled_status = _classify_settled_position_status(live_entry)
+                settled_open_status_counts[settled_status] = (
+                    int(settled_open_status_counts.get(settled_status) or 0) + 1
+                )
                 try:
                     cur.execute(
                         """
                         UPDATE edge_trades
-                        SET last_status = 'settled_position_open',
-                            last_error = 'settled_position_open',
+                        SET last_status = ?,
+                            last_error = ?,
+                            exit_reasons = '',
+                            exit_reason_codes = '',
+                            exit_triggered_at = NULL,
+                            exit_skip_reason = '',
+                            exit_skip_detail = '',
+                            exit_skip_at = NULL,
+                            stop_loss_probe_at = NULL,
                             updated_at = ?
                         WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
                         """,
-                        (now_iso, slug_r, event_date_r, outcome_r, side_r),
+                        (
+                            settled_status,
+                            settled_status,
+                            now_iso,
+                            slug_r,
+                            event_date_r,
+                            outcome_r,
+                            side_r,
+                        ),
                     )
                 except sqlite3.OperationalError:
                     continue
-        if cleared_count > 0:
+        if cleared_count > 0 or settled_open_count > 0:
+            settled_parts = []
+            for status_name in (
+                "settled_wait_redeemable",
+                "settled_claim_ready",
+                "settled_claim_pending",
+                "settled_position_open",
+            ):
+                count_val = int(settled_open_status_counts.get(status_name) or 0)
+                if count_val > 0:
+                    settled_parts.append(f"{status_name}={count_val}")
+            settled_suffix = f" {' '.join(settled_parts)}" if settled_parts else ""
             print(
                 f"[auto-trade] settled reconcile cleared={cleared_count} "
-                f"open_marked={settled_open_count}"
+                f"open_marked={settled_open_count}{settled_suffix}"
             )
     location_key = ""
     location_basis = ""
@@ -20336,10 +20504,22 @@ def execute_auto_trades(
             active_exit_stop_loss_confirm_ticks = int(exit_stop_loss_confirm_ticks)
             active_exit_stop_loss_confirm_sec = float(exit_stop_loss_confirm_sec)
             active_exit_stop_loss_force_after_sec = float(exit_stop_loss_force_after_sec)
-            active_stop_loss_edge_confirm_enabled = bool(stop_loss_edge_confirm_enabled)
+            lcb_stop_loss_ignore_edge_confirm_active = bool(
+                lcb_exit_context_active
+                and lcb_global_role_stop_loss_ignore_edge_confirm
+            )
+            active_stop_loss_edge_confirm_enabled = _effective_stop_loss_edge_confirm_enabled(
+                stop_loss_edge_confirm_enabled,
+                lcb_exit_context_active=lcb_exit_context_active,
+                lcb_ignore_edge_confirm=lcb_stop_loss_ignore_edge_confirm_active,
+            )
             active_stop_loss_edge_confirm_max = float(stop_loss_edge_confirm_max)
             active_trail_stop_pct = trail_stop_pct
             active_trail_stop_label = trail_stop_label
+            if lcb_exit_context_active:
+                row["lcb_stop_loss_ignore_edge_confirm"] = bool(
+                    lcb_stop_loss_ignore_edge_confirm_active
+                )
             if yes_top_exit_mode_active:
                 if yes_top_exit_stop_loss_pct is not None:
                     active_exit_stop_loss_pct = yes_top_exit_stop_loss_pct
@@ -20373,8 +20553,6 @@ def execute_auto_trades(
                 role_force_sec = to_float(lcb_role_stop_loss_profile.get("force_after_sec"))
                 if role_force_sec is not None and math.isfinite(role_force_sec):
                     active_exit_stop_loss_force_after_sec = max(0.0, float(role_force_sec))
-                if lcb_global_role_stop_loss_ignore_edge_confirm:
-                    active_stop_loss_edge_confirm_enabled = False
                 row["lcb_role_stop_loss_only_active"] = bool(lcb_role_stop_loss_only_active)
                 row["lcb_role_stop_loss_pct"] = active_exit_stop_loss_pct
                 row["lcb_role_stop_loss_confirm_ticks"] = int(active_exit_stop_loss_confirm_ticks)
@@ -20934,6 +21112,37 @@ def execute_auto_trades(
             avg_cost = to_float(prev_entry.get("avg_price"))
             if avg_cost is None or not math.isfinite(avg_cost):
                 avg_cost = to_float(prev_entry.get("entry_price"))
+            (
+                stop_best_bid_val,
+                stop_best_ask_val,
+                stop_refreshed_bid_depth_val,
+                stop_refreshed_ask_depth_val,
+            ) = _freshest_exit_quote_for_side(
+                conn,
+                slug,
+                event_date_key,
+                outcome,
+                side,
+                row,
+            )
+            if side == "YES":
+                if stop_best_bid_val is not None:
+                    row["best_bid"] = stop_best_bid_val
+                if stop_best_ask_val is not None:
+                    row["best_ask"] = stop_best_ask_val
+                if stop_refreshed_bid_depth_val is not None:
+                    row["bid_depth_topN"] = stop_refreshed_bid_depth_val
+                if stop_refreshed_ask_depth_val is not None:
+                    row["ask_depth_topN"] = stop_refreshed_ask_depth_val
+            else:
+                if stop_best_bid_val is not None:
+                    row["best_bid_no"] = stop_best_bid_val
+                if stop_best_ask_val is not None:
+                    row["best_ask_no"] = stop_best_ask_val
+                if stop_refreshed_bid_depth_val is not None:
+                    row["bid_depth_topN_no"] = stop_refreshed_bid_depth_val
+                if stop_refreshed_ask_depth_val is not None:
+                    row["ask_depth_topN_no"] = stop_refreshed_ask_depth_val
             exit_price_for_stop = None
             if side == "YES":
                 exit_price_for_stop = to_float(row.get("best_bid")) or to_float(row.get("best_ask"))
@@ -20957,6 +21166,12 @@ def execute_auto_trades(
                 stop_loss_line = avg_cost * (1.0 - active_exit_stop_loss_pct)
                 stop_loss_hit = exit_price_for_stop <= stop_loss_line
                 if stop_loss_hit:
+                    prev_exit_reason_codes_for_rearm = {
+                        str(code or "").strip().lower()
+                        for code in _parse_reason_list(prev_entry.get("exit_reason_codes"))
+                        if str(code or "").strip()
+                    }
+                    stop_loss_rearm_from_prev_cycle = "stop_loss" in prev_exit_reason_codes_for_rearm
                     if side == "YES":
                         prev_exit_price = to_float(row.get("prev_best_bid")) or to_float(row.get("prev_best_ask"))
                     else:
@@ -20966,6 +21181,9 @@ def execute_auto_trades(
                         and math.isfinite(prev_exit_price)
                         and prev_exit_price <= stop_loss_line
                     )
+                    if stop_loss_rearm_from_prev_cycle:
+                        prev_hit = True
+                        row["stop_loss_rearm_from_prev_cycle"] = True
                     if stop_loss_probe_at is None:
                         probe_iso = utc_now_iso()
                         stop_loss_probe_at = _parse_iso_dt(probe_iso)
@@ -27882,15 +28100,60 @@ def execute_auto_trades(
                         exit_price = to_float(row.get("exit_price_book_yes"))
                     else:
                         exit_price = to_float(row.get("exit_price_book_no"))
-                best_bid_val = to_float(row.get("best_bid") if side == "YES" else row.get("best_bid_no"))
-                best_ask_val = to_float(row.get("best_ask") if side == "YES" else row.get("best_ask_no"))
-                exit_price, exit_using_ask_fallback = _resolve_exit_liquidity_price(
+                (
+                    best_bid_val,
+                    best_ask_val,
+                    refreshed_bid_depth_val,
+                    refreshed_ask_depth_val,
+                ) = _freshest_exit_quote_for_side(
+                    conn,
+                    slug,
+                    event_date_key,
+                    outcome,
+                    side,
+                    row,
+                )
+                if side == "YES":
+                    if best_bid_val is not None:
+                        row["best_bid"] = best_bid_val
+                    if best_ask_val is not None:
+                        row["best_ask"] = best_ask_val
+                    if refreshed_bid_depth_val is not None:
+                        row["bid_depth_topN"] = refreshed_bid_depth_val
+                    if refreshed_ask_depth_val is not None:
+                        row["ask_depth_topN"] = refreshed_ask_depth_val
+                else:
+                    if best_bid_val is not None:
+                        row["best_bid_no"] = best_bid_val
+                    if best_ask_val is not None:
+                        row["best_ask_no"] = best_ask_val
+                    if refreshed_bid_depth_val is not None:
+                        row["bid_depth_topN_no"] = refreshed_bid_depth_val
+                    if refreshed_ask_depth_val is not None:
+                        row["ask_depth_topN_no"] = refreshed_ask_depth_val
+                (
+                    exit_price,
+                    exit_using_ask_fallback,
+                    exit_quote_fallback_reason,
+                    best_bid_val,
+                    best_ask_val,
+                ) = _resolve_exit_submission_price(
                     exit_price,
                     best_bid_val,
                     best_ask_val,
+                    side=side,
+                    row_ref=row,
                     allow_ask_fallback=exit_allow_ask_fallback,
                 )
+                if exit_quote_fallback_reason:
+                    row["exit_quote_fallback_reason"] = exit_quote_fallback_reason
                 if exit_price is None:
+                    bid_text = "None"
+                    ask_text = "None"
+                    if best_bid_val is not None and math.isfinite(best_bid_val):
+                        bid_text = f"{float(best_bid_val):.6f}"
+                    if best_ask_val is not None and math.isfinite(best_ask_val):
+                        ask_text = f"{float(best_ask_val):.6f}"
                     _update_trade_state(
                         outcome,
                         side,
@@ -27901,6 +28164,12 @@ def execute_auto_trades(
                         last_action_at=utc_now_iso(),
                         last_status="exit_price_missing",
                         last_error="exit_price_missing",
+                        exit_skip_reason="exit_price_missing",
+                        exit_skip_detail=(
+                            f"mode={exit_price_mode} bid={bid_text} ask={ask_text} "
+                            f"allow_ask_fallback={int(bool(exit_allow_ask_fallback))}"
+                        ),
+                        exit_skip_at=utc_now_iso(),
                         exit_reasons=exit_reasons_text,
                         exit_reason_codes=exit_reason_codes_text,
                         exit_triggered_at=exit_triggered_at_update,
@@ -27934,7 +28203,7 @@ def execute_auto_trades(
                 }
                 stop_loss_reason_active = "stop_loss" in exit_reason_code_set
                 stop_loss_trigger = False
-                stop_loss_edge_confirm_ok = not stop_loss_edge_confirm_enabled
+                stop_loss_edge_confirm_ok = not active_stop_loss_edge_confirm_enabled
                 stop_loss_forced_by_probe_age = False
                 stop_loss_probe_age_sec = None
                 if (
@@ -27948,6 +28217,12 @@ def execute_auto_trades(
                 ):
                     stop_loss_hit = exit_price <= avg_cost * (1.0 - active_exit_stop_loss_pct)
                     if stop_loss_hit:
+                        prev_exit_reason_codes_for_rearm = {
+                            str(code or "").strip().lower()
+                            for code in _parse_reason_list(prev_entry.get("exit_reason_codes"))
+                            if str(code or "").strip()
+                        }
+                        stop_loss_rearm_from_prev_cycle = "stop_loss" in prev_exit_reason_codes_for_rearm
                         if side == "YES":
                             prev_exit_price = to_float(row.get("prev_best_bid")) or to_float(row.get("prev_best_ask"))
                         else:
@@ -27957,6 +28232,9 @@ def execute_auto_trades(
                             and math.isfinite(prev_exit_price)
                             and prev_exit_price <= avg_cost * (1.0 - active_exit_stop_loss_pct)
                         )
+                        if stop_loss_rearm_from_prev_cycle:
+                            prev_hit = True
+                            row["stop_loss_rearm_from_prev_cycle"] = True
                         depth_ok = (
                             bid_size_val is not None
                             and math.isfinite(bid_size_val)
@@ -27970,12 +28248,12 @@ def execute_auto_trades(
                                 0.0, (now_utc - stop_loss_probe_at).total_seconds()
                             )
                         stop_loss_forced_by_probe_age = (
-                            exit_stop_loss_force_after_sec is not None
-                            and math.isfinite(exit_stop_loss_force_after_sec)
-                            and exit_stop_loss_force_after_sec > 0
+                            active_exit_stop_loss_force_after_sec is not None
+                            and math.isfinite(active_exit_stop_loss_force_after_sec)
+                            and active_exit_stop_loss_force_after_sec > 0
                             and stop_loss_probe_at is not None
                             and stop_loss_probe_age_sec is not None
-                            and stop_loss_probe_age_sec >= float(exit_stop_loss_force_after_sec)
+                            and stop_loss_probe_age_sec >= float(active_exit_stop_loss_force_after_sec)
                         )
                         stop_loss_edge_for_confirm = to_float(
                             row.get("hold_edge_realizable_yes") if side == "YES" else row.get("hold_edge_realizable_no")
@@ -27997,25 +28275,26 @@ def execute_auto_trades(
                             and math.isfinite(stop_loss_edge_for_confirm)
                         )
                         if (
-                            stop_loss_edge_confirm_enabled
+                            active_stop_loss_edge_confirm_enabled
                             and stop_loss_metric_missing
                             and stop_loss_edge_confirm_fail_open_on_missing
                         ):
                             stop_loss_edge_confirm_ok = True
                         else:
                             stop_loss_edge_confirm_ok = (
-                                (not stop_loss_edge_confirm_enabled)
+                                (not active_stop_loss_edge_confirm_enabled)
                                 or (
                                     stop_loss_edge_for_confirm is not None
                                     and math.isfinite(stop_loss_edge_for_confirm)
                                     and stop_loss_edge_for_confirm
-                                    <= stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
+                                    <= active_stop_loss_edge_confirm_max + TIME_EDGE_Q_EPS
                                 )
                             )
                         stop_loss_trigger = (
                             (depth_ok or prev_hit) and stop_loss_edge_confirm_ok
                         ) or stop_loss_forced_by_probe_age
-                        row["stop_loss_force_after_sec"] = float(exit_stop_loss_force_after_sec)
+                        row["stop_loss_edge_confirm_max"] = float(active_stop_loss_edge_confirm_max)
+                        row["stop_loss_force_after_sec"] = float(active_exit_stop_loss_force_after_sec)
                         row["stop_loss_forced_by_probe_age"] = stop_loss_forced_by_probe_age
                         row["stop_loss_probe_age_sec"] = stop_loss_probe_age_sec
                 depth_block_since = _parse_depth_block_since(
@@ -28650,6 +28929,9 @@ def execute_auto_trades(
                                     exit_reasons=exit_reasons_text,
                                     exit_reason_codes=exit_reason_codes_text,
                                     exit_triggered_at=exit_triggered_at_update,
+                                    exit_skip_reason="",
+                                    exit_skip_detail="",
+                                    exit_skip_at="",
                                     exit_retry_count=0,
                                     position_size=marketable_remaining_position,
                                     avg_price=marketable_matched_price,
@@ -28699,6 +28981,9 @@ def execute_auto_trades(
                                     exit_reasons=exit_reasons_text,
                                     exit_reason_codes=exit_reason_codes_text,
                                     exit_triggered_at=exit_triggered_at_update,
+                                    exit_skip_reason="",
+                                    exit_skip_detail="",
+                                    exit_skip_at="",
                                     exit_retry_count=0,
                                 )
                                 print(
@@ -28892,6 +29177,9 @@ def execute_auto_trades(
                                             exit_reasons=exit_reasons_text,
                                             exit_reason_codes=exit_reason_codes_text,
                                             exit_triggered_at=exit_triggered_at_update,
+                                            exit_skip_reason="",
+                                            exit_skip_detail="",
+                                            exit_skip_at="",
                                             exit_retry_count=0,
                                             position_size=retry_remaining_position,
                                             avg_price=retry_matched_price,
@@ -28944,6 +29232,9 @@ def execute_auto_trades(
                                             exit_reasons=exit_reasons_text,
                                             exit_reason_codes=exit_reason_codes_text,
                                             exit_triggered_at=exit_triggered_at_update,
+                                            exit_skip_reason="",
+                                            exit_skip_detail="",
+                                            exit_skip_at="",
                                             exit_retry_count=0,
                                         )
                                         print(
@@ -29027,6 +29318,9 @@ def execute_auto_trades(
                                         exit_reasons=exit_reasons_text,
                                         exit_reason_codes=exit_reason_codes_text,
                                         exit_triggered_at=exit_triggered_at_update,
+                                        exit_skip_reason="",
+                                        exit_skip_detail="",
+                                        exit_skip_at="",
                                         exit_retry_count=0,
                                     )
                                     print(
@@ -29112,6 +29406,9 @@ def execute_auto_trades(
                             exit_reasons=exit_reasons_text,
                             exit_reason_codes=exit_reason_codes_text,
                             exit_triggered_at=exit_triggered_at_update,
+                            exit_skip_reason="",
+                            exit_skip_detail="",
+                            exit_skip_at="",
                             exit_retry_count=0,
                         )
                         print(
@@ -29407,8 +29704,8 @@ def execute_auto_trades(
                             last_action_at=now_iso,
                             last_status="exit_no_trigger",
                             last_error="",
-                            exit_reasons=exit_reasons_text,
-                            exit_reason_codes=exit_reason_codes_text,
+                            exit_reasons=_dump_reason_list_or_blank(exit_reasons),
+                            exit_reason_codes=_dump_reason_list_or_blank(exit_reason_codes),
                             exit_triggered_at=exit_triggered_at_update,
                             exit_skip_reason="exit_no_trigger",
                             exit_skip_detail=detail,
@@ -32540,7 +32837,7 @@ def _force_clear_expired_positions(conn: sqlite3.Connection, *, now_iso: Optiona
 
 def sync_positions_to_db(
     conn: sqlite3.Connection,
-    positions_by_token: Dict[str, Dict[str, Optional[float]]],
+    positions_by_token: Dict[str, Dict[str, Any]],
 ) -> int:
     token_map = build_token_map_latest_runs(conn)
     key_to_token = {
@@ -32656,6 +32953,22 @@ def sync_positions_to_db(
     updated += _force_clear_expired_positions(conn, now_iso=now_iso)
     conn.commit()
     return updated
+
+
+def _classify_settled_position_status(
+    live_entry: Optional[Dict[str, Any]],
+    *,
+    claim_enabled: Optional[bool] = None,
+) -> str:
+    redeemable = None
+    if isinstance(live_entry, dict):
+        redeemable = _coerce_optional_bool(live_entry.get("redeemable"))
+    effective_claim_enabled = POLY_CLAIM_ENABLED if claim_enabled is None else bool(claim_enabled)
+    if redeemable is True:
+        return "settled_claim_pending" if effective_claim_enabled else "settled_claim_ready"
+    if redeemable is False:
+        return "settled_wait_redeemable"
+    return "settled_position_open"
 
 
 def build_trade_sync_maps(
@@ -40288,7 +40601,7 @@ def _positions_api_url() -> str:
     return POSITIONS_API_URL
 
 
-def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, Optional[float]]], str]:
+def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, Any]], str]:
     if ACCOUNT_REQUESTS_DISABLED:
         return {}, "disabled"
     if not POSITIONS_SYNC_ENABLED or not POSITIONS_API_URL:
@@ -40327,7 +40640,7 @@ def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, O
         POSITIONS_CACHE["ts"] = now
         return dict(POSITIONS_CACHE.get("data") or {}), POSITIONS_CACHE["error"]
     positions = _extract_positions_list(payload)
-    mapped: Dict[str, Dict[str, Optional[float]]] = {}
+    mapped: Dict[str, Dict[str, Any]] = {}
     for entry in positions:
         if not isinstance(entry, dict):
             continue
@@ -40364,7 +40677,12 @@ def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, O
             total_cost = to_float(entry.get("total_cost") or entry.get("cost") or entry.get("notional"))
             if total_cost is not None and size:
                 avg_price = total_cost / size
-        mapped[str(token_id)] = {"size": size, "avg_price": avg_price}
+        mapped[str(token_id)] = {
+            "size": size,
+            "avg_price": avg_price,
+            "redeemable": _coerce_optional_bool(entry.get("redeemable")),
+            "mergeable": _coerce_optional_bool(entry.get("mergeable")),
+        }
     POSITIONS_CACHE["data"] = mapped
     POSITIONS_CACHE["error"] = ""
     POSITIONS_CACHE["updated_at"] = utc_now_iso()
@@ -40568,6 +40886,63 @@ def _parse_event_json_field(raw: Optional[object], field: str) -> Optional[objec
         except json.JSONDecodeError as exc:
             raise ValueError(f"Event market {field} invalid JSON") from exc
     return raw
+
+
+def _select_rotating_window(
+    items: Iterable[Any],
+    per_run: int,
+    offset_path: Path,
+    *,
+    legacy_offset_path: Optional[Path] = None,
+) -> List[Any]:
+    selected = list(items or [])
+    if per_run <= 0:
+        return []
+    if len(selected) <= per_run:
+        return selected
+    offset = 0
+    try:
+        if offset_path.exists():
+            offset = int(offset_path.read_text(encoding="utf-8").strip() or "0")
+        elif legacy_offset_path is not None and legacy_offset_path.exists():
+            offset = int(legacy_offset_path.read_text(encoding="utf-8").strip() or "0")
+    except Exception:
+        offset = 0
+    if offset < 0:
+        offset = 0
+    total = len(selected)
+    offset = offset % total
+    end = offset + per_run
+    if end <= total:
+        window = selected[offset:end]
+    else:
+        window = selected[offset:] + selected[: end - total]
+    next_offset = (offset + per_run) % total
+    try:
+        offset_path.write_text(str(next_offset), encoding="utf-8")
+    except Exception:
+        pass
+    return window
+
+
+def _derive_no_quote_from_yes(
+    best_bid_yes: Optional[float],
+    best_ask_yes: Optional[float],
+    bid_depth_yes: Optional[float] = None,
+    ask_depth_yes: Optional[float] = None,
+) -> Tuple[Optional[float], Optional[float], Optional[float], float, float]:
+    best_bid_no = None
+    best_ask_no = None
+    if best_ask_yes is not None and math.isfinite(best_ask_yes):
+        best_bid_no = min(1.0, max(0.0, 1.0 - float(best_ask_yes)))
+    if best_bid_yes is not None and math.isfinite(best_bid_yes):
+        best_ask_no = min(1.0, max(0.0, 1.0 - float(best_bid_yes)))
+    spread_no = None
+    if best_bid_no is not None and best_ask_no is not None:
+        spread_no = max(float(best_ask_no) - float(best_bid_no), 0.0)
+    bid_depth_no = float(ask_depth_yes or 0.0)
+    ask_depth_no = float(bid_depth_yes or 0.0)
+    return best_bid_no, best_ask_no, spread_no, bid_depth_no, ask_depth_no
 
 
 def fetch_orderbook(
@@ -45291,6 +45666,7 @@ def refresh_market_ticks_for_event(
             return None, None, None, 0.0, 0.0, f"{side_u.lower()}_{hint}:{err_text[:120]}"
 
     t0 = time.monotonic()
+    prefer_yes_complement_for_no = _env_bool("PM_MARKET_REFRESH_PREFER_YES_COMPLEMENT_FOR_NO", True)
     for item in sorted_tokens:
         if time_budget_sec > 0 and (time.monotonic() - t0) >= time_budget_sec and rows:
             break
@@ -45321,7 +45697,23 @@ def refresh_market_ticks_for_event(
             ) = _fetch_side_quote(label, item_mut, "YES")
             if yes_err:
                 last_ob_error = yes_err
-        if no_token or allow_token_remap:
+        if prefer_yes_complement_for_no:
+            (
+                best_bid_no,
+                best_ask_no,
+                spread_no,
+                bid_depth_no,
+                ask_depth_no,
+            ) = _derive_no_quote_from_yes(
+                best_bid,
+                best_ask,
+                bid_depth,
+                ask_depth,
+            )
+        if (
+            (best_bid_no is None and best_ask_no is None)
+            and (no_token or allow_token_remap)
+        ):
             (
                 best_bid_no,
                 best_ask_no,
@@ -54535,6 +54927,34 @@ def main() -> None:
                 # this can cause long runs and watchdog kills, making ticks/facts stale.
                 if (args.market_refresh_only or args.model_refresh_only) and max_events_per_run > 0 and len(events) > max_events_per_run:
                     capped_events = events[:max_events_per_run]
+                    rotated_fixed_capped = False
+                    rotate_fixed_when_capped = _env_bool("PM_SCAN_PRIORITY_ROTATE_FIXED_WHEN_CAPPED", True)
+                    if rotate_fixed_when_capped and priority_fixed_selected_count > max_events_per_run:
+                        fixed_offset_path = (
+                            DATA_DIR / "model_scan.fixed_offset"
+                            if args.model_refresh_only
+                            else DATA_DIR / "scan_priority.fixed_offset"
+                        )
+                        legacy_fixed_offset_path = (
+                            DATA_DIR / "scan_15m.fixed_offset" if args.model_refresh_only else None
+                        )
+                        capped_events = _select_rotating_window(
+                            fixed_events,
+                            max_events_per_run,
+                            fixed_offset_path,
+                            legacy_offset_path=legacy_fixed_offset_path,
+                        )
+                        rotated_fixed_capped = True
+                        capped_slugs = [
+                            str(ev.get("slug") or "").strip()
+                            for ev in capped_events
+                            if isinstance(ev, dict)
+                        ]
+                        if capped_slugs:
+                            print(
+                                "[scan_priority] rotate_fixed_when_capped "
+                                f"selected={','.join(capped_slugs)}"
+                            )
                     # Optional reserve slot for non-fixed events in model/market refresh loops:
                     # when fixed slugs occupy all capped slots, candidates/others never get scanned,
                     # causing facts to stay stale for the long tail.
@@ -54545,6 +54965,8 @@ def main() -> None:
                     used_nonfixed_other = 0
                     used_nonfixed_candidate = 0
                     if (
+                        not rotated_fixed_capped
+                        and
                         reserve_nonfixed_slot
                         and (args.model_refresh_only or args.market_refresh_only)
                         and max_events_per_run >= 2
@@ -54589,6 +55011,8 @@ def main() -> None:
                     } if isinstance(priority_plan, dict) else set()
                     pruned_no_quote_slugs.discard("")
                     if (
+                        not rotated_fixed_capped
+                        and
                         reserve_tail_slot
                         and args.market_refresh_only
                         and max_events_per_run >= 2

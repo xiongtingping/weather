@@ -1493,11 +1493,17 @@ async function main() {
       let response;
       if (isMarket) {
         let finalAmount = Number.isFinite(amount) ? amount : NaN;
-        if (!Number.isFinite(finalAmount) && Number.isFinite(size) && Number.isFinite(price)) {
-          finalAmount = size * price;
-        }
-        if (!Number.isFinite(finalAmount) && Number.isFinite(size)) {
-          finalAmount = size;
+        if (side === Side.SELL) {
+          if (Number.isFinite(size)) {
+            finalAmount = size;
+          }
+        } else {
+          if (!Number.isFinite(finalAmount) && Number.isFinite(size) && Number.isFinite(price)) {
+            finalAmount = size * price;
+          }
+          if (!Number.isFinite(finalAmount) && Number.isFinite(size)) {
+            finalAmount = size;
+          }
         }
         if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
           throw new Error("missing_args:amount");
