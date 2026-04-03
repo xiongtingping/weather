@@ -244,7 +244,10 @@ def _export_decision_dataset(
           json_extract(details_json,'$.edge_realizable_p_converge') AS edge_realizable_p_converge,
           json_extract(details_json,'$.edge_signal_lcb') AS edge_signal_lcb,
           json_extract(details_json,'$.edge_path_p_reach_lcb') AS edge_path_p_reach_lcb,
-          json_extract(details_json,'$.edge_tradeability_edge_lcb') AS edge_tradeability_edge_lcb,
+          COALESCE(
+            json_extract(details_json,'$.edge_tradeability_profit_value'),
+            json_extract(details_json,'$.edge_tradeability_edge_lcb')
+          ) AS edge_tradeability_profit_value,
           json_extract(details_json,'$.edge_tradeability_mode') AS edge_tradeability_mode,
           json_extract(details_json,'$.edge_tradeability_blocked') AS edge_tradeability_blocked,
           json_extract(details_json,'$.edge_realizable_exec_audit_blocked') AS edge_realizable_exec_audit_blocked,
@@ -318,7 +321,7 @@ def _export_decision_dataset(
         "edge_realizable_p_converge",
         "edge_signal_lcb",
         "edge_path_p_reach_lcb",
-        "edge_tradeability_edge_lcb",
+        "edge_tradeability_profit_value",
         "edge_tradeability_mode",
         "edge_tradeability_blocked",
         "edge_realizable_exec_audit_blocked",
@@ -368,7 +371,7 @@ def _export_decision_dataset(
             payload["edge_realizable_p_converge"] = _to_float(row["edge_realizable_p_converge"])
             payload["edge_signal_lcb"] = _to_float(row["edge_signal_lcb"])
             payload["edge_path_p_reach_lcb"] = _to_float(row["edge_path_p_reach_lcb"])
-            payload["edge_tradeability_edge_lcb"] = _to_float(row["edge_tradeability_edge_lcb"])
+            payload["edge_tradeability_profit_value"] = _to_float(row["edge_tradeability_profit_value"])
             payload["edge_trade_realized_edge"] = realized
             payload["realized_edge_source"] = realized_source
             payload["label_realized_edge_nonneg"] = label_nonneg

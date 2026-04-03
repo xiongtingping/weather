@@ -17781,15 +17781,19 @@ def _build_tradeability_gate_snapshot(
     path_lcb_min_env = max(0.0, min(1.0, float(path_lcb_min_env)))
 
     edge_lcb_val = _v(
+        details.get("edge_tradeability_profit_value"),
         details.get("edge_tradeability_edge_lcb"),
+        entry.get("edge_tradeability_profit_value"),
         entry.get("edge_tradeability_edge_lcb"),
         entry.get("edge_realizable_v2"),
         entry.get("edge_realizable"),
     )
     edge_lcb_min = _v(
         details.get("edge_realizable_hq_edge_lcb_min"),
+        details.get("edge_tradeability_profit_min"),
         details.get("edge_tradeability_edge_lcb_min"),
         entry.get("edge_realizable_hq_edge_lcb_min"),
+        entry.get("edge_tradeability_profit_min"),
         entry.get("edge_tradeability_edge_lcb_min"),
         0.0,
     )
@@ -20289,10 +20293,10 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "edge_realizable_hold_cost",
                 "edge_realizable_target_exit_price",
                 "edge_realizable_delta_exit",
-                "edge_tradeability_edge_lcb",
+                "edge_tradeability_profit_value",
                 "edge_tradeability_signal_lcb_min",
                 "edge_tradeability_path_lcb_min",
-                "edge_tradeability_edge_lcb_min",
+                "edge_tradeability_profit_min",
                 "edge_realizable_hq_edge_lcb_min",
                 "exec_fee_bps",
                 "exec_fee_cost",
@@ -20303,6 +20307,22 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 v = _coalesce_numeric(entry.get(k), details.get(k))
                 if v is not None:
                     entry[k] = v
+            profit_val = _coalesce_numeric(
+                entry.get("edge_tradeability_profit_value"),
+                entry.get("edge_tradeability_edge_lcb"),
+                details.get("edge_tradeability_profit_value"),
+                details.get("edge_tradeability_edge_lcb"),
+            )
+            if profit_val is not None:
+                entry["edge_tradeability_profit_value"] = profit_val
+            profit_min = _coalesce_numeric(
+                entry.get("edge_tradeability_profit_min"),
+                entry.get("edge_tradeability_edge_lcb_min"),
+                details.get("edge_tradeability_profit_min"),
+                details.get("edge_tradeability_edge_lcb_min"),
+            )
+            if profit_min is not None:
+                entry["edge_tradeability_profit_min"] = profit_min
             for key_name in (
                 "edge_realizable_hq_bypass_p_realize_min",
                 "edge_realizable_hq_bypass_p_converge_min",
@@ -20408,10 +20428,16 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "edge_realizable_p_realize_missing": cand.get("edge_realizable_p_realize_missing"),
                 "edge_realizable_p_realize_low_sample": cand.get("edge_realizable_p_realize_low_sample"),
                 "edge_realizable_p_realize_samples_min": cand.get("edge_realizable_p_realize_samples_min"),
-                "edge_tradeability_edge_lcb": cand.get("edge_tradeability_edge_lcb"),
+                "edge_tradeability_profit_value": _coalesce_numeric(
+                    cand.get("edge_tradeability_profit_value"),
+                    cand.get("edge_tradeability_edge_lcb"),
+                ),
                 "edge_tradeability_signal_lcb_min": cand.get("edge_tradeability_signal_lcb_min"),
                 "edge_tradeability_path_lcb_min": cand.get("edge_tradeability_path_lcb_min"),
-                "edge_tradeability_edge_lcb_min": cand.get("edge_tradeability_edge_lcb_min"),
+                "edge_tradeability_profit_min": _coalesce_numeric(
+                    cand.get("edge_tradeability_profit_min"),
+                    cand.get("edge_tradeability_edge_lcb_min"),
+                ),
                 "edge_realizable_hq_edge_lcb_min": cand.get("edge_realizable_hq_edge_lcb_min"),
                 "edge_realizable_hq_bypass_p_realize_min": cand.get("edge_realizable_hq_bypass_p_realize_min"),
                 "edge_realizable_hq_bypass_p_converge_min": cand.get("edge_realizable_hq_bypass_p_converge_min"),
@@ -20500,10 +20526,16 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "edge_realizable_p_fill_entry": cand_dict.get("edge_realizable_p_fill_entry"),
                 "edge_realizable_p_fill_exit": cand_dict.get("edge_realizable_p_fill_exit"),
                 "edge_realizable_hold_cost": cand_dict.get("edge_realizable_hold_cost"),
-                "edge_tradeability_edge_lcb": cand_dict.get("edge_tradeability_edge_lcb"),
+                "edge_tradeability_profit_value": _coalesce_numeric(
+                    cand_dict.get("edge_tradeability_profit_value"),
+                    cand_dict.get("edge_tradeability_edge_lcb"),
+                ),
                 "edge_tradeability_signal_lcb_min": cand_dict.get("edge_tradeability_signal_lcb_min"),
                 "edge_tradeability_path_lcb_min": cand_dict.get("edge_tradeability_path_lcb_min"),
-                "edge_tradeability_edge_lcb_min": cand_dict.get("edge_tradeability_edge_lcb_min"),
+                "edge_tradeability_profit_min": _coalesce_numeric(
+                    cand_dict.get("edge_tradeability_profit_min"),
+                    cand_dict.get("edge_tradeability_edge_lcb_min"),
+                ),
                 "edge_realizable_hq_edge_lcb_min": cand_dict.get("edge_realizable_hq_edge_lcb_min"),
                 "edge_realizable_hq_bypass_p_realize_min": cand_dict.get("edge_realizable_hq_bypass_p_realize_min"),
                 "edge_realizable_hq_bypass_p_converge_min": cand_dict.get("edge_realizable_hq_bypass_p_converge_min"),
@@ -21839,7 +21871,9 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     else None
                 )
                 return _coalesce_metric(
+                    row_ref.get("edge_tradeability_profit_value_yes"),
                     row_ref.get("edge_tradeability_edge_lcb_yes"),
+                    row_ref.get("edge_tradeability_profit_value"),
                     row_ref.get("edge_tradeability_edge_lcb"),
                     row_ref.get("edge_realizable_yes"),
                     row_ref.get("edge_realizable"),
@@ -21857,7 +21891,9 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 else None
             )
             return _coalesce_metric(
+                row_ref.get("edge_tradeability_profit_value_no"),
                 row_ref.get("edge_tradeability_edge_lcb_no"),
+                row_ref.get("edge_tradeability_profit_value"),
                 row_ref.get("edge_realizable_no"),
                 fallback_edge_no,
             )
@@ -21874,6 +21910,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             if not slug_key or not event_date_key:
                 continue
             leg_lcb = _coalesce_metric(
+                entry.get("edge_tradeability_profit_value"),
                 entry.get("edge_tradeability_edge_lcb"),
                 entry.get("edge_realizable"),
                 entry.get("edge_realizable_v2"),
@@ -31324,10 +31361,16 @@ def _ssot_candidate_from_row(
         "edge_realizable_p_realize_missing": edge_realizable_p_realize_missing,
         "edge_realizable_p_realize_low_sample": edge_realizable_p_realize_low_sample,
         "edge_realizable_p_realize_samples_min": edge_realizable_p_realize_samples_min,
-        "edge_tradeability_edge_lcb": to_float(row.get("edge_tradeability_edge_lcb")),
+        "edge_tradeability_profit_value": _coalesce_numeric(
+            row.get("edge_tradeability_profit_value"),
+            row.get("edge_tradeability_edge_lcb"),
+        ),
         "edge_tradeability_signal_lcb_min": to_float(row.get("edge_tradeability_signal_lcb_min")),
         "edge_tradeability_path_lcb_min": to_float(row.get("edge_tradeability_path_lcb_min")),
-        "edge_tradeability_edge_lcb_min": to_float(row.get("edge_tradeability_edge_lcb_min")),
+        "edge_tradeability_profit_min": _coalesce_numeric(
+            row.get("edge_tradeability_profit_min"),
+            row.get("edge_tradeability_edge_lcb_min"),
+        ),
         "edge_realizable_hq_edge_lcb_min": to_float(row.get("edge_realizable_hq_edge_lcb_min")),
         "edge_realizable_hq_bypass_p_realize_min": row.get("edge_realizable_hq_bypass_p_realize_min"),
         "edge_realizable_hq_bypass_p_converge_min": row.get("edge_realizable_hq_bypass_p_converge_min"),

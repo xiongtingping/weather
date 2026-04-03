@@ -77,7 +77,10 @@ def main() -> int:
           json_extract(details_json,'$.edge_realizable_v2') AS v2,
           json_extract(details_json,'$.edge_signal_lcb') AS signal_lcb,
           json_extract(details_json,'$.edge_path_p_reach_lcb') AS path_lcb,
-          json_extract(details_json,'$.edge_tradeability_edge_lcb') AS edge_lcb,
+          COALESCE(
+            json_extract(details_json,'$.edge_tradeability_profit_value'),
+            json_extract(details_json,'$.edge_tradeability_edge_lcb')
+          ) AS profit_value,
           json_extract(details_json,'$.edge_tradeability_mode') AS mode,
           json_extract(details_json,'$.edge_tradeability_blocked') AS blocked,
           json_extract(details_json,'$.edge_tradeability_shadow_block') AS shadow_block,
@@ -93,7 +96,7 @@ def main() -> int:
 
     signal_lcb_vals: List[float] = []
     path_lcb_vals: List[float] = []
-    edge_lcb_vals: List[float] = []
+    profit_vals: List[float] = []
     by_strategy: Dict[str, Counter] = defaultdict(Counter)
     reason_counter: Counter = Counter()
 
@@ -120,13 +123,13 @@ def main() -> int:
         v2 = _to_float(r["v2"])
         signal_lcb = _to_float(r["signal_lcb"])
         path_lcb = _to_float(r["path_lcb"])
-        edge_lcb = _to_float(r["edge_lcb"])
+        profit_value = _to_float(r["profit_value"])
         if v2 is not None:
             v2_n += 1
         has_tradeability = (
             signal_lcb is not None
             or path_lcb is not None
-            or edge_lcb is not None
+            or profit_value is not None
             or mode != "unknown"
         )
         if has_tradeability:
@@ -145,9 +148,9 @@ def main() -> int:
             path_lcb_vals.append(path_lcb)
             if path_lcb >= 0.20:
                 path_lcb_ge_02_n += 1
-        if edge_lcb is not None:
-            edge_lcb_vals.append(edge_lcb)
-            if edge_lcb > 0:
+        if profit_value is not None:
+            profit_vals.append(profit_value)
+            if profit_value > 0:
                 edge_lcb_pos_n += 1
 
         by_strategy[strategy]["n"] += 1
@@ -244,9 +247,9 @@ def main() -> int:
             "comparator": ">=",
         },
         {
-            "name": "edge_lcb_avg_pos",
-            "ok": (sum(edge_lcb_vals) / len(edge_lcb_vals)) > 0 if edge_lcb_vals else False,
-            "value": (sum(edge_lcb_vals) / len(edge_lcb_vals)) if edge_lcb_vals else None,
+            "name": "profit_value_avg_pos",
+            "ok": (sum(profit_vals) / len(profit_vals)) > 0 if profit_vals else False,
+            "value": (sum(profit_vals) / len(profit_vals)) if profit_vals else None,
             "threshold": 0.0,
             "comparator": ">",
         },
@@ -293,12 +296,12 @@ def main() -> int:
         "metrics": {
             "signal_lcb_avg": (sum(signal_lcb_vals) / len(signal_lcb_vals)) if signal_lcb_vals else None,
             "path_lcb_avg": (sum(path_lcb_vals) / len(path_lcb_vals)) if path_lcb_vals else None,
-            "edge_lcb_avg": (sum(edge_lcb_vals) / len(edge_lcb_vals)) if edge_lcb_vals else None,
-            "edge_lcb_p50": _q(edge_lcb_vals, 0.50),
-            "edge_lcb_p90": _q(edge_lcb_vals, 0.90),
+            "profit_value_avg": (sum(profit_vals) / len(profit_vals)) if profit_vals else None,
+            "profit_value_p50": _q(profit_vals, 0.50),
+            "profit_value_p90": _q(profit_vals, 0.90),
             "signal_lcb_pos_share": (float(signal_lcb_pos_n) / float(len(signal_lcb_vals))) if signal_lcb_vals else None,
             "path_lcb_ge_0_20_share": (float(path_lcb_ge_02_n) / float(len(path_lcb_vals))) if path_lcb_vals else None,
-            "edge_lcb_pos_share": (float(edge_lcb_pos_n) / float(len(edge_lcb_vals))) if edge_lcb_vals else None,
+            "profit_value_pos_share": (float(edge_lcb_pos_n) / float(len(profit_vals))) if profit_vals else None,
         },
         "by_strategy": strategy_payload,
         "top_reason_codes": [

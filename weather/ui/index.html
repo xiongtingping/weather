@@ -9751,7 +9751,7 @@
                   </div>
                   <div class="trade-config-row">
                     <div class="config-group">
-                      <span class="trade-config-note">可交易下界阈值（edge_lcb）</span>
+                      <span class="trade-config-note">盈利头阈值（edge_lcb）</span>
                       <input id="lcbGlobalEdgeLcbMin" data-config-key="lcb_global_edge_lcb_min" type="number" step="0.001" min="0" inputmode="decimal" />
                     </div>
                     <div class="config-group">
@@ -27322,9 +27322,11 @@
           } else if (comboLegRaw === 'lcb') {
             marketParts.push(`组合腿 LCB${comboPctText}`);
           }
-          const lcbEdgeVal = toFiniteNumberOrNaN(item.edge_tradeability_edge_lcb);
+          const lcbEdgeVal = toFiniteNumberOrNaN(
+            item.edge_tradeability_profit_value ?? item.edge_tradeability_edge_lcb
+          );
           if (Number.isFinite(lcbEdgeVal)) {
-            marketParts.push(`LCB ${lcbEdgeVal.toFixed(4)}`);
+            marketParts.push(`盈利头 ${lcbEdgeVal.toFixed(4)}`);
           }
           const exitHeadroomMin = toFiniteNumberOrNaN(meta && meta.exit_edge_headroom_min);
           const execExitPriceVal = toFiniteNumberOrNaN(item.exec_exit_price);
@@ -27377,7 +27379,7 @@
           if (gateRaw) {
             gateChips.push(buildGateChip('信号下界', gateRaw.signal_lcb, false, gateLegacyMode));
             gateChips.push(buildGateChip('路径下界', gateRaw.path_lcb, true, gateLegacyMode));
-            gateChips.push(buildGateChip('可交易下界', gateRaw.edge_lcb, false, gateLegacyMode));
+            gateChips.push(buildGateChip('盈利头', gateRaw.edge_lcb, false, gateLegacyMode));
           }
           const gateMetaHtml = gateChips.length
             ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
@@ -31266,9 +31268,11 @@
         } else if (comboLegRaw === 'lcb') {
           marketParts.push(`组合腿 LCB${comboPctText}`);
         }
-        const lcbEdgeVal = toFiniteNumberOrNaN(item.edge_tradeability_edge_lcb);
+        const lcbEdgeVal = toFiniteNumberOrNaN(
+          item.edge_tradeability_profit_value ?? item.edge_tradeability_edge_lcb
+        );
         if (Number.isFinite(lcbEdgeVal)) {
-          marketParts.push(`LCB ${lcbEdgeVal.toFixed(4)}`);
+          marketParts.push(`盈利头 ${lcbEdgeVal.toFixed(4)}`);
         }
         const exitHeadroomMin = toFiniteNumberOrNaN(meta && meta.exit_edge_headroom_min);
         const execExitPriceVal = toFiniteNumberOrNaN(item.exec_exit_price);
@@ -31321,7 +31325,7 @@
         if (gateRaw) {
           gateChips.push(buildGateChip('信号下界', gateRaw.signal_lcb, false, gateLegacyMode));
           gateChips.push(buildGateChip('路径下界', gateRaw.path_lcb, true, gateLegacyMode));
-          gateChips.push(buildGateChip('可交易下界', gateRaw.edge_lcb, false, gateLegacyMode));
+          gateChips.push(buildGateChip('盈利头', gateRaw.edge_lcb, false, gateLegacyMode));
         }
         const gateMetaHtml = gateChips.length
           ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
