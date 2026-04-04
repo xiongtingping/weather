@@ -1,4 +1,5 @@
 import argparse
+from contextlib import contextmanager
 import json
 import math
 import time
@@ -729,6 +730,84 @@ def _apply_clob_trade_env_defaults(env: Dict[str, str]) -> None:
     if "PM_CLOB_TRADES_BUDGET_MS" not in env:
         total_budget_ms = max(8000, int((AUTO_TRADE_TIMEOUT - 5) * 1000 * 0.35))
         env["PM_CLOB_TRADES_BUDGET_MS"] = str(min(30000, total_budget_ms))
+
+
+def _apply_clob_fast_direct_env_defaults(
+    env: Dict[str, str],
+    *,
+    timeout_sec: Optional[float] = None,
+    hard_timeout_ms_key: Optional[str] = None,
+) -> None:
+    if "PM_CLOB_FORCE_DIRECT" not in env and "PM_CLOB_FORCE_PROXY" not in env:
+        env["PM_CLOB_FORCE_DIRECT"] = "1"
+    if "PM_CLOB_DIRECT_FIRST" not in env:
+        env["PM_CLOB_DIRECT_FIRST"] = "1"
+    if "PM_CLOB_DIRECT_RETRIES" not in env:
+        env["PM_CLOB_DIRECT_RETRIES"] = "1"
+    if "PM_CLOB_RETRY_MAX" not in env:
+        env["PM_CLOB_RETRY_MAX"] = "1"
+    if "PM_CLOB_RETRY_BASE_MS" not in env:
+        env["PM_CLOB_RETRY_BASE_MS"] = "0"
+    if "PM_CLOB_RETRY_MAX_MS" not in env:
+        env["PM_CLOB_RETRY_MAX_MS"] = "0"
+    if "PM_CLOB_TIMEOUT_MS" not in env:
+        timeout_budget_ms = 6000
+        if timeout_sec is not None and math.isfinite(timeout_sec) and timeout_sec > 0:
+            timeout_budget_ms = int(max(3000, min(8000, float(timeout_sec) * 1000.0 - 1000.0)))
+        env["PM_CLOB_TIMEOUT_MS"] = str(timeout_budget_ms)
+    if hard_timeout_ms_key and hard_timeout_ms_key not in env:
+        hard_timeout_ms = _coerce_int(env.get("PM_CLOB_TIMEOUT_MS"), 6000) + 1000
+        env[hard_timeout_ms_key] = str(max(4000, hard_timeout_ms))
+
+
+def _event_day_is_past(
+    event_date_raw: Optional[str],
+    fallback_event_date: Optional[str] = None,
+    *,
+    now_dt: Optional[datetime] = None,
+) -> bool:
+    now_local = now_dt or datetime.now().astimezone()
+    for candidate in (event_date_raw, fallback_event_date):
+        value = str(candidate or "").strip()
+        if not value:
+            continue
+        try:
+            event_day = datetime.strptime(value[:10], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        return event_day < now_local.date()
+    return False
+
+
+def _should_preserve_exit_retry_block(
+    *,
+    prev_last_action: Optional[str],
+    prev_exit_live_like: bool,
+) -> bool:
+    if prev_exit_live_like:
+        return True
+    action_norm = str(prev_last_action or "").strip().lower()
+    return action_norm in {"exit", "exit_marketable_retry", "open_order_sync", "open_order_reprice"}
+
+
+def _is_marketable_no_match_error(payload_or_text: Any) -> bool:
+    if isinstance(payload_or_text, dict):
+        text = " ".join(
+            str(payload_or_text.get(key) or "")
+            for key in ("error_detail", "error", "status", "statusText", "stderr", "stdout")
+        )
+    else:
+        text = str(payload_or_text or "")
+    lowered = text.strip().lower()
+    if not lowered:
+        return False
+    if "no orders found to match" in lowered:
+        return True
+    return (
+        "no match" in lowered
+        and "fak" in lowered
+        and ("kill" in lowered or "partially filled" in lowered)
+    )
 
 
 def _parse_scutil_value(text: str, key: str) -> str:
@@ -5017,6 +5096,26 @@ def _wait_for_db_writer_lock(tag: str, wait_sec: Optional[float] = None) -> bool
     return True
 
 
+def _wait_for_auto_trade_runtime_lock(tag: str, wait_sec: Optional[float] = None) -> bool:
+    max_wait = 0.0 if wait_sec is None else float(wait_sec)
+    if not math.isfinite(max_wait) or max_wait < 0:
+        max_wait = 0.0
+    poll = _facts_lock_poll_sec()
+    waited = 0.0
+    while _auto_trade_runtime_lock_is_active(cleanup_stale=True):
+        if waited >= max_wait:
+            print(f"[{tag}] auto_trade runtime active, skip (waited={int(waited)}s)")
+            return False
+        sleep_for = min(poll, max_wait - waited)
+        if sleep_for <= 0:
+            break
+        time.sleep(sleep_for)
+        waited += sleep_for
+    if waited > 0:
+        print(f"[{tag}] auto_trade runtime cleared after {int(waited)}s")
+    return True
+
+
 def _wait_for_facts_lock(tag: str, wait_sec: Optional[float] = None) -> bool:
     max_wait = _facts_lock_wait_sec() if wait_sec is None else float(wait_sec)
     if not math.isfinite(max_wait) or max_wait <= 0:
@@ -6274,13 +6373,32 @@ def _run_node_order(
         eff_type = (order_type or AUTO_TRADE_ORDER_TYPE).strip().upper()
         if eff_type in {"FOK", "FAK"}:
             env["PM_ALLOW_MARKET_ORDERS"] = "1"
+    side_upper = str(side or "").strip().upper()
+    timeout_sec = float(AUTO_TRADE_TIMEOUT)
+    fast_exit_direct = False
+    if action == "place-order":
+        eff_type = (order_type or AUTO_TRADE_ORDER_TYPE).strip().upper()
+        if eff_type in {"FOK", "FAK"} and side_upper == "SELL":
+            exit_timeout_sec = _env_float("PM_AUTO_TRADE_EXIT_NODE_TIMEOUT_SEC")
+            if (
+                exit_timeout_sec is None
+                or not math.isfinite(exit_timeout_sec)
+                or exit_timeout_sec <= 0
+            ):
+                exit_timeout_sec = 15.0
+            timeout_sec = max(5.0, min(float(exit_timeout_sec), float(AUTO_TRADE_TIMEOUT)))
+            fast_exit_direct = True
+    if side_upper == "SELL" and action == "cancel-orders":
+        fast_exit_direct = True
+    if fast_exit_direct:
+        _apply_clob_fast_direct_env_defaults(env, timeout_sec=timeout_sec)
 
     def _run_once(cmd_args: List[str]) -> Tuple[bool, Dict[str, Any]]:
         try:
             res = _run_node_subprocess(
                 cmd_args,
                 env=env,
-                timeout=AUTO_TRADE_TIMEOUT,
+                timeout=timeout_sec,
                 retries_on_errno24=1,
             )
         except Exception as exc:
@@ -6813,22 +6931,11 @@ def _run_node_get_order(order_id: str) -> Tuple[bool, Dict[str, Any]]:
         return True, {"dry_run": True, "order": {"orderID": order_id}}
     try:
         env = _build_node_env()
-        if "PM_CLOB_DIRECT_FIRST" not in env:
-            env["PM_CLOB_DIRECT_FIRST"] = "1"
-        if "PM_CLOB_DIRECT_RETRIES" not in env:
-            env["PM_CLOB_DIRECT_RETRIES"] = "1"
-        if "PM_CLOB_RETRY_MAX" not in env:
-            env["PM_CLOB_RETRY_MAX"] = "1"
-        if "PM_CLOB_RETRY_BASE_MS" not in env:
-            env["PM_CLOB_RETRY_BASE_MS"] = "0"
-        if "PM_CLOB_RETRY_MAX_MS" not in env:
-            env["PM_CLOB_RETRY_MAX_MS"] = "0"
-        if "PM_CLOB_TIMEOUT_MS" not in env:
-            timeout_ms = int(max(5000, min(20000, (AUTO_TRADE_CONFIRM_TIMEOUT - 2) * 1000)))
-            env["PM_CLOB_TIMEOUT_MS"] = str(timeout_ms)
-        if "PM_CLOB_GET_ORDER_HARD_TIMEOUT_MS" not in env:
-            hard_ms = int(max(5000, (AUTO_TRADE_CONFIRM_TIMEOUT - 1) * 1000))
-            env["PM_CLOB_GET_ORDER_HARD_TIMEOUT_MS"] = str(hard_ms)
+        _apply_clob_fast_direct_env_defaults(
+            env,
+            timeout_sec=max(5.0, float(AUTO_TRADE_CONFIRM_TIMEOUT) - 1.0),
+            hard_timeout_ms_key="PM_CLOB_GET_ORDER_HARD_TIMEOUT_MS",
+        )
         res = _run_node_subprocess(
             cmd,
             env=env,
@@ -7140,13 +7247,18 @@ def _auto_trade_cached_open_orders_by_token(
     if ACCOUNT_REQUESTS_DISABLED:
         return dict(cached) if isinstance(cached, dict) else {}
     cached_ts = float(_AUTO_TRADE_OPEN_ORDERS_CACHE.get("ts") or 0.0)
-    if (not force_refresh) and isinstance(cached, dict) and cached and (now_ts - cached_ts) <= cache_sec:
+    cache_age_sec = max(0.0, now_ts - cached_ts) if cached_ts > 0 else None
+    if (not force_refresh) and isinstance(cached, dict) and cached and cache_age_sec is not None and cache_age_sec <= cache_sec:
+        _AUTO_TRADE_OPEN_ORDERS_CACHE["last_source"] = "cache"
+        _AUTO_TRADE_OPEN_ORDERS_CACHE["last_age_sec"] = float(cache_age_sec)
+        _AUTO_TRADE_OPEN_ORDERS_CACHE["last_duration_sec"] = 0.0
         return dict(cached)
     if not allow_fetch:
         return dict(cached) if isinstance(cached, dict) else {}
     if _AUTO_TRADE_OPEN_ORDERS_LAST_FAIL_AT and (now_ts - _AUTO_TRADE_OPEN_ORDERS_LAST_FAIL_AT) < fail_cooldown_sec:
         return dict(cached) if isinstance(cached, dict) else {}
 
+    request_started_at = time.time()
     ok, payload = _run_node_open_orders()
     if not ok:
         payload = _normalize_errno24_payload(payload)
@@ -7163,6 +7275,9 @@ def _auto_trade_cached_open_orders_by_token(
             print(f"[auto-trade] open order sync failed: {msg}")
         _AUTO_TRADE_OPEN_ORDERS_LAST_FAIL_AT = now_ts
         _AUTO_TRADE_OPEN_ORDERS_LAST_FAIL_MSG = msg
+        _AUTO_TRADE_OPEN_ORDERS_CACHE["last_source"] = "network_error"
+        _AUTO_TRADE_OPEN_ORDERS_CACHE["last_age_sec"] = 0.0
+        _AUTO_TRADE_OPEN_ORDERS_CACHE["last_duration_sec"] = max(0.0, time.time() - request_started_at)
         return dict(cached) if isinstance(cached, dict) else {}
 
     open_orders_raw = payload.get("open_orders") if isinstance(payload, dict) else None
@@ -7195,8 +7310,12 @@ def _auto_trade_cached_open_orders_by_token(
                 "side": side,
             }
         )
-    _AUTO_TRADE_OPEN_ORDERS_CACHE["ts"] = now_ts
+    finished_at = time.time()
+    _AUTO_TRADE_OPEN_ORDERS_CACHE["ts"] = finished_at
     _AUTO_TRADE_OPEN_ORDERS_CACHE["by_token"] = dict(by_token)
+    _AUTO_TRADE_OPEN_ORDERS_CACHE["last_source"] = "network"
+    _AUTO_TRADE_OPEN_ORDERS_CACHE["last_age_sec"] = 0.0
+    _AUTO_TRADE_OPEN_ORDERS_CACHE["last_duration_sec"] = max(0.0, finished_at - request_started_at)
     _AUTO_TRADE_OPEN_ORDERS_LAST_FAIL_AT = 0.0
     _AUTO_TRADE_OPEN_ORDERS_LAST_FAIL_MSG = ""
     return dict(by_token)
@@ -7944,6 +8063,9 @@ def execute_auto_trades(
     *,
     exit_only: bool = False,
     run_id: Optional[int] = None,
+    positions_snapshot: Optional[Dict[str, Dict[str, Any]]] = None,
+    positions_snapshot_error: str = "",
+    settled_reconcile_context: Optional[Dict[str, Any]] = None,
 ) -> None:
     # NOTE: AUTO_TRADE_ENABLED is an env-driven switch and must be refreshed at runtime
     # (LaunchAgents/UI restarts/toggles can change env without reloading the module).
@@ -7979,6 +8101,114 @@ def execute_auto_trades(
     rows = result.get("rows") or []
     if not rows:
         return
+    event_timing_enabled = bool(exit_only or _env_bool("PM_AUTO_TRADE_EVENT_STAGE_TIMINGS", False))
+    event_timing_threshold_sec = _env_float("PM_AUTO_TRADE_EVENT_STAGE_TIMINGS_MIN_SEC")
+    if (
+        event_timing_threshold_sec is None
+        or not math.isfinite(event_timing_threshold_sec)
+        or event_timing_threshold_sec < 0
+    ):
+        event_timing_threshold_sec = 1.0
+    event_started_monotonic = time.monotonic()
+    event_stage_timings: Dict[str, float] = {}
+    event_stage_meta: Dict[str, Any] = {}
+
+    def _event_stage_start() -> float:
+        return time.monotonic()
+
+    def _event_stage_end(name: str, started: Optional[float]) -> None:
+        if started is None:
+            return
+        try:
+            elapsed = max(0.0, time.monotonic() - float(started))
+        except Exception:
+            return
+        prev = to_float(event_stage_timings.get(name))
+        if prev is not None and math.isfinite(prev):
+            elapsed += float(prev)
+        event_stage_timings[name] = round(float(elapsed), 3)
+
+    @contextmanager
+    def _event_stage_scope(name: str, *, enabled: bool = True) -> Iterable[None]:
+        started = _event_stage_start() if enabled else None
+        try:
+            yield
+        finally:
+            if enabled:
+                _event_stage_end(name, started)
+
+    def _emit_event_stage_timings() -> None:
+        if not event_timing_enabled:
+            return
+        total_sec = max(0.0, time.monotonic() - event_started_monotonic)
+        if total_sec + TIME_EDGE_Q_EPS < float(event_timing_threshold_sec):
+            return
+        parts = [f"total={total_sec:.3f}s"]
+        for stage_name in (
+            "state_load",
+            "payload_fallback_load",
+            "entry_candidates_build",
+            "positions_fetch",
+            "settled_reconcile",
+            "preflight_queries",
+            "open_orders_sync",
+            "snapshot_consistency_load",
+            "market_tick_refresh",
+            "order_confirm",
+            "exit_rows_focus",
+            "exit_row_prepare",
+            "exit_quote_refresh",
+            "exit_open_order_probe",
+            "exit_trigger_eval",
+            "exit_submit",
+            "exit_post_submit_confirm",
+            "decision_finalize",
+        ):
+            stage_val = to_float(event_stage_timings.get(stage_name))
+            if stage_val is None or not math.isfinite(stage_val):
+                continue
+            parts.append(f"{stage_name}={float(stage_val):.3f}s")
+        positions_source_meta = str(event_stage_meta.get("positions_source") or "").strip()
+        if positions_source_meta:
+            parts.append(f"positions_src={positions_source_meta}")
+        positions_count_meta = event_stage_meta.get("positions_count")
+        if positions_count_meta is not None:
+            try:
+                parts.append(f"positions_count={int(positions_count_meta)}")
+            except Exception:
+                pass
+        positions_cache_age_meta = to_float(event_stage_meta.get("positions_cache_age_sec"))
+        if positions_cache_age_meta is not None and math.isfinite(positions_cache_age_meta):
+            parts.append(f"positions_age={float(positions_cache_age_meta):.1f}s")
+        open_orders_source_meta = str(event_stage_meta.get("open_orders_source") or "").strip()
+        if open_orders_source_meta:
+            parts.append(f"open_orders_src={open_orders_source_meta}")
+        open_orders_cache_age_meta = to_float(event_stage_meta.get("open_orders_cache_age_sec"))
+        if open_orders_cache_age_meta is not None and math.isfinite(open_orders_cache_age_meta):
+            parts.append(f"open_orders_age={float(open_orders_cache_age_meta):.1f}s")
+        snap_rows_meta = event_stage_meta.get("snapshot_consistency_rows")
+        if snap_rows_meta is not None:
+            try:
+                parts.append(f"snapshot_rows={int(snap_rows_meta)}")
+            except Exception:
+                pass
+        exit_rows_before_meta = event_stage_meta.get("exit_rows_before_focus")
+        exit_rows_after_meta = event_stage_meta.get("exit_rows_after_focus")
+        if exit_rows_before_meta is not None and exit_rows_after_meta is not None:
+            try:
+                parts.append(f"exit_rows={int(exit_rows_before_meta)}->{int(exit_rows_after_meta)}")
+            except Exception:
+                pass
+        exit_held_outcomes_meta = event_stage_meta.get("exit_held_outcomes")
+        if exit_held_outcomes_meta is not None:
+            try:
+                parts.append(f"exit_held_outcomes={int(exit_held_outcomes_meta)}")
+            except Exception:
+                pass
+        print(
+            f"[auto-trade] event timings {slug} {event_date.split('T', 1)[0]} "
+            f"exit_only={1 if exit_only else 0} {' '.join(parts)}"
+        )
     entry_orderbook_missing_cooldown_sec = _env_int(
         "PM_AUTO_TRADE_ENTRY_ORDERBOOK_MISSING_COOLDOWN_SEC"
     )
@@ -8576,6 +8806,7 @@ def execute_auto_trades(
     conn = open_db()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+    state_load_started = _event_stage_start()
     prev_states = _load_trade_state(slug, event_date_key)
     entry_strategy_by_key: Dict[Tuple[str, str], str] = {}
     entry_combo_role_by_key: Dict[Tuple[str, str], str] = {}
@@ -8649,6 +8880,7 @@ def execute_auto_trades(
         entry_strategy_by_key = {}
         entry_combo_role_by_key = {}
         entry_q_ref_by_key = {}
+    _event_stage_end("state_load", state_load_started)
     # Buffer per-(outcome, side, action) so each run writes only the latest decision,
     # and the UI can explain "why no order" without recomputing gating.
     decision_buffer: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
@@ -9657,10 +9889,28 @@ def execute_auto_trades(
                 time.sleep(0.5 * (attempt + 1))
     positions_by_token: Dict[str, Dict[str, Any]] = {}
     positions_error = ""
+    positions_fetch_started = _event_stage_start()
+    positions_source = "disabled"
+    positions_cache_age_sec = None
     if POSITIONS_SYNC_ENABLED:
-        positions_by_token, positions_error = fetch_positions_by_token()
+        if isinstance(positions_snapshot, dict):
+            positions_by_token = dict(positions_snapshot)
+            positions_error = str(positions_snapshot_error or "")
+            positions_source = "prefetched"
+            last_positions_ts_prefetch = to_float(POSITIONS_CACHE.get("ts"))
+            if last_positions_ts_prefetch is not None and math.isfinite(last_positions_ts_prefetch):
+                positions_cache_age_sec = max(0.0, time.time() - float(last_positions_ts_prefetch))
+        else:
+            positions_by_token, positions_error = fetch_positions_by_token()
+            positions_source = str(POSITIONS_CACHE.get("last_source") or "network")
+            positions_cache_age_sec = to_float(POSITIONS_CACHE.get("last_age_sec"))
         if positions_error and not positions_by_token:
             print(f"[auto-trade] positions sync failed: {positions_error}")
+    event_stage_meta["positions_source"] = positions_source
+    event_stage_meta["positions_count"] = len(positions_by_token)
+    if positions_cache_age_sec is not None and math.isfinite(positions_cache_age_sec):
+        event_stage_meta["positions_cache_age_sec"] = float(positions_cache_age_sec)
+    _event_stage_end("positions_fetch", positions_fetch_started)
     allow_balance_check = True
     if positions_priority_fast_loop and not positions_priority_allow_slow:
         if positions_by_token:
@@ -9677,8 +9927,14 @@ def execute_auto_trades(
         settled_reconcile_dust = 0.0
     global _AUTO_TRADE_LAST_SETTLED_RECONCILE_AT
     now_reconcile_ts = time.time()
+    settled_reconcile_started = _event_stage_start()
+    settled_reconcile_ctx = (
+        settled_reconcile_context if isinstance(settled_reconcile_context, dict) else None
+    )
+    settled_reconcile_already_done = bool(settled_reconcile_ctx.get("done")) if settled_reconcile_ctx else False
     if (
         POSITIONS_SYNC_ENABLED
+        and not settled_reconcile_already_done
         and (
             settled_reconcile_interval_sec <= 0
             or (now_reconcile_ts - _AUTO_TRADE_LAST_SETTLED_RECONCILE_AT) >= settled_reconcile_interval_sec
@@ -9813,6 +10069,12 @@ def execute_auto_trades(
                 f"[auto-trade] settled reconcile cleared={cleared_count} "
                 f"open_marked={settled_open_count}{settled_suffix}"
             )
+    if settled_reconcile_ctx is not None and not settled_reconcile_already_done:
+        settled_reconcile_ctx["done"] = True
+        settled_reconcile_ctx["slug"] = slug
+        settled_reconcile_ctx["event_date"] = event_date_key
+    _event_stage_end("settled_reconcile", settled_reconcile_started)
+    preflight_queries_started = _event_stage_start()
     location_key = ""
     location_basis = ""
     location_label = ""
@@ -10203,6 +10465,7 @@ def execute_auto_trades(
             entry_order_counts[(outcome, side)] = int(row[2] or 0)
     except sqlite3.OperationalError:
         entry_order_counts = {}
+    _event_stage_end("preflight_queries", preflight_queries_started)
     # Hard guard: per run + per leg (outcome/side), submit at most one entry order.
     # This prevents accidental duplicate submissions from multiple entry branches.
     entry_submit_guard_runtime: Set[Tuple[str, str]] = set()
@@ -10301,6 +10564,7 @@ def execute_auto_trades(
         open_order_auto_cancel_sec = open_order_wait_sec
     open_order_has_creds = False
     open_order_sync_needed = open_order_sync_enabled and (not exit_only or orphan_sweep_enabled)
+    open_orders_sync_started = _event_stage_start()
     if open_order_sync_needed:
         open_order_has_creds = bool(
             os.environ.get("POLY_API_KEY")
@@ -10314,6 +10578,13 @@ def execute_auto_trades(
         open_orders_by_token = _auto_trade_cached_open_orders_by_token(allow_fetch=allow_fetch)
         if allow_fetch:
             _mark_slow_request_used()
+    event_stage_meta["open_orders_source"] = str(
+        _AUTO_TRADE_OPEN_ORDERS_CACHE.get("last_source") or ("disabled" if not open_order_sync_needed else "")
+    )
+    open_orders_cache_age_sec = to_float(_AUTO_TRADE_OPEN_ORDERS_CACHE.get("last_age_sec"))
+    if open_orders_cache_age_sec is not None and math.isfinite(open_orders_cache_age_sec):
+        event_stage_meta["open_orders_cache_age_sec"] = float(open_orders_cache_age_sec)
+    _event_stage_end("open_orders_sync", open_orders_sync_started)
     now_utc = datetime.now(timezone.utc)
     orphan_sweep_min_age_sec = _env_float("PM_AUTO_TRADE_ORPHAN_SWEEP_MIN_AGE_SEC")
     if orphan_sweep_min_age_sec is None or not math.isfinite(orphan_sweep_min_age_sec):
@@ -11990,6 +12261,7 @@ def execute_auto_trades(
         lcb_global_snapshot_consistency_stats.clear()
         if (not lcb_global_snapshot_consistency_enabled) or (not slug) or (not event_date_key):
             return
+        snapshot_consistency_started = _event_stage_start()
         limit_rows = max(
             int(lcb_global_snapshot_consistency_window) * 3,
             int(lcb_global_snapshot_consistency_window) + 2,
@@ -12011,6 +12283,7 @@ def execute_auto_trades(
             snap_rows = cur_snap.fetchall()
         except Exception:
             snap_rows = []
+        event_stage_meta["snapshot_consistency_rows"] = len(snap_rows or [])
         for row in snap_rows:
             created_raw = str((row["created_at"] if isinstance(row, sqlite3.Row) else row[1]) or "").strip()
             if created_raw:
@@ -12054,6 +12327,7 @@ def execute_auto_trades(
                     seq_yes.append(yes_state)
                 if len(seq_no) < int(lcb_global_snapshot_consistency_window):
                     seq_no.append(no_state)
+        _event_stage_end("snapshot_consistency_load", snapshot_consistency_started)
 
     def _lcb_global_snapshot_consistency_eval(outcome_label: str, side: str) -> Dict[str, Any]:
         key = (
@@ -13620,7 +13894,9 @@ def execute_auto_trades(
         return last_action_at
 
     def _confirm_order(order_id: str) -> Tuple[str, str, str, Optional[Dict[str, Any]]]:
+        confirm_started = _event_stage_start()
         if not order_id:
+            _event_stage_end("order_confirm", confirm_started)
             return "missing", "", "missing_order_id", None
         attempts = max(AUTO_TRADE_CONFIRM_RETRIES, 0) + 1
         last_payload: Dict[str, Any] = {}
@@ -13634,15 +13910,20 @@ def execute_auto_trades(
                     status = str(status_raw or "").strip()
                     status_norm = status.lower()
                     if status_norm in {"canceled", "cancelled", "rejected", "failed", "expired"}:
+                        _event_stage_end("order_confirm", confirm_started)
                         return "not_found", status, status or "order_rejected", order
+                    _event_stage_end("order_confirm", confirm_started)
                     return "ok", status or "confirmed", "", order
+                _event_stage_end("order_confirm", confirm_started)
                 return "not_found", "", "order_missing", None
             err_short = _format_order_error_short(payload)
             err_lower = err_short.lower()
             if "not found" in err_lower or "not_found" in err_lower or "404" in err_lower:
+                _event_stage_end("order_confirm", confirm_started)
                 return "not_found", "", err_short, None
             if idx < attempts - 1:
                 time.sleep(AUTO_TRADE_CONFIRM_DELAY_SEC)
+        _event_stage_end("order_confirm", confirm_started)
         return "error", "", _format_order_error_short(last_payload), None
 
     def _confirm_entry_not_found_recheck(
@@ -13922,24 +14203,29 @@ def execute_auto_trades(
             for order in (open_orders_by_token.get(token_id) or [])
             if str(order.get("side") or "").upper() == "SELL"
         ]
-        allow_fetch_open = open_order_has_creds
-        if positions_priority_fast_loop and not positions_priority_allow_slow:
-            allow_fetch_open = False
-        refreshed_by_token = _auto_trade_cached_open_orders_by_token(
-            allow_fetch=allow_fetch_open,
-            force_refresh=True,
+        refresh_open_orders = _env_bool(
+            "PM_AUTO_TRADE_MARKET_EXIT_PROBE_REFRESH_OPEN_ORDERS",
+            False,
         )
-        if allow_fetch_open:
-            _mark_slow_request_used()
-        if isinstance(refreshed_by_token, dict):
-            refreshed_open_orders = list(refreshed_by_token.get(token_id) or [])
-            open_orders_by_token[token_id] = refreshed_open_orders
-            sell_open_orders = [
-                order
-                for order in refreshed_open_orders
-                if str(order.get("side") or "").upper() == "SELL"
-            ]
-            out["open_orders_refreshed"] = True
+        if refresh_open_orders:
+            allow_fetch_open = open_order_has_creds
+            if positions_priority_fast_loop and not positions_priority_allow_slow:
+                allow_fetch_open = False
+            refreshed_by_token = _auto_trade_cached_open_orders_by_token(
+                allow_fetch=allow_fetch_open,
+                force_refresh=True,
+            )
+            if allow_fetch_open:
+                _mark_slow_request_used()
+            if isinstance(refreshed_by_token, dict):
+                refreshed_open_orders = list(refreshed_by_token.get(token_id) or [])
+                open_orders_by_token[token_id] = refreshed_open_orders
+                sell_open_orders = [
+                    order
+                    for order in refreshed_open_orders
+                    if str(order.get("side") or "").upper() == "SELL"
+                ]
+                out["open_orders_refreshed"] = True
         sell_open_order_ids = [
             str(order.get("order_id") or "")
             for order in sell_open_orders
@@ -14026,6 +14312,421 @@ def execute_auto_trades(
             pnl,
         )
         _send_sms_message(msg, SMS_RECIPIENT)
+
+    def _handle_marketable_exit_retry(
+        *,
+        token_id: str,
+        title: str,
+        outcome: str,
+        side: str,
+        event_url: str,
+        row_ref: Mapping[str, Any],
+        prev_entry_ref: Mapping[str, Any],
+        prev_state_ref: Optional[str],
+        now_iso: str,
+        size_to_sell: float,
+        exit_price: float,
+        exit_order_type: str,
+        exit_reason_extra: str,
+        exit_reasons_text: str,
+        exit_reason_codes_text: str,
+        exit_triggered_at_update: str,
+        prev_exit_retry_count: int,
+        marketable_details: Dict[str, Any],
+        base_order_id: str = "",
+    ) -> None:
+        retry_price, retry_price_clamped = _normalize_place_order_price(
+            float(exit_price) - float(exit_reprice_step)
+        )
+        marketable_details["exit_marketable_retry_attempted"] = True
+        marketable_details["exit_marketable_retry_price"] = retry_price
+        marketable_details["exit_marketable_retry_price_clamped"] = bool(retry_price_clamped)
+        if (
+            retry_price is None
+            or not math.isfinite(retry_price)
+            or retry_price + exit_same_price_eps >= float(exit_price)
+        ):
+            _update_trade_state(
+                outcome,
+                side,
+                prev_state_ref or "entry",
+                None,
+                "",
+                last_action="exit_marketable_retry",
+                last_action_price=exit_price,
+                last_action_size=size_to_sell,
+                last_action_order_type=exit_order_type,
+                last_action_at=now_iso,
+                last_status="exit_retry_price_floor",
+                last_error="exit_retry_price_floor",
+                exit_reasons=exit_reasons_text,
+                exit_reason_codes=exit_reason_codes_text,
+                exit_triggered_at=exit_triggered_at_update,
+                exit_retry_count=prev_exit_retry_count + 1,
+                position_size=size_to_sell,
+            )
+            print(
+                f"[auto-trade] exit retry skipped {title} {side} {outcome} "
+                f"order={base_order_id or '—'} reason=retry_price_floor{exit_reason_extra}"
+            )
+            _buffer_decision(
+                outcome,
+                side,
+                "exit",
+                decided_state="entry",
+                will_order=True,
+                reason_codes=["exit_marketable_retry_skipped_price_floor"],
+                reasons=["FAK退出无成交，但已无更低一档可重试"],
+                details=marketable_details,
+            )
+            return
+        retry_submit_started = _event_stage_start() if exit_only else None
+        retry_ok, retry_payload = _run_node_order(
+            "place-order",
+            token_id,
+            "SELL",
+            price=retry_price,
+            size=size_to_sell,
+            order_type=exit_order_type,
+        )
+        retry_order_id = str(retry_payload.get("orderID") or retry_payload.get("orderId") or "")
+        if retry_ok and not retry_order_id and not retry_payload.get("dry_run"):
+            retry_ok = False
+            retry_payload = {
+                "error": "missing_order_id",
+                "stdout": retry_payload,
+            }
+        retry_status_text = str(retry_payload.get("status") or retry_payload.get("statusText") or "")
+        if not retry_status_text and retry_ok:
+            retry_status_text = "submitted"
+        if retry_payload.get("dry_run"):
+            retry_status_text = retry_status_text or "dry_run"
+        _event_stage_end("exit_submit", retry_submit_started)
+        marketable_details["exit_marketable_retry_order_id"] = retry_order_id
+        marketable_details["exit_marketable_retry_status"] = retry_status_text
+        if retry_ok and retry_order_id:
+            _record_auto_order(
+                retry_order_id,
+                outcome,
+                side,
+                "exit",
+                retry_price,
+                size_to_sell,
+                exit_order_type,
+                None,
+                None,
+                None,
+                "exit",
+            )
+            retry_probe_started = _event_stage_start() if exit_only else None
+            retry_probe = _probe_marketable_exit_submission(
+                token_id=token_id,
+                order_id=retry_order_id,
+                prev_position=size_to_sell,
+            )
+            _event_stage_end("exit_post_submit_confirm", retry_probe_started)
+            retry_probe_state = str(retry_probe.get("probe_state") or "")
+            retry_confirm_status = str(
+                retry_probe.get("confirm_status")
+                or retry_status_text
+                or "submitted"
+            )
+            retry_confirm_error = str(retry_probe.get("confirm_error") or "")
+            retry_remaining_position = to_float(retry_probe.get("remaining_position"))
+            retry_matched_size = to_float(retry_probe.get("matched_size"))
+            retry_matched_price = to_float(retry_probe.get("matched_price"))
+            marketable_details["exit_marketable_retry_status"] = retry_confirm_status
+            marketable_details["exit_marketable_retry_error"] = retry_confirm_error
+            marketable_details["exit_marketable_retry_probe_state"] = retry_probe_state
+            marketable_details["exit_marketable_retry_confirm_state"] = str(
+                retry_probe.get("confirm_state") or ""
+            )
+            marketable_details["exit_marketable_retry_matched_size"] = retry_matched_size
+            marketable_details["exit_marketable_retry_matched_price"] = retry_matched_price
+            marketable_details["exit_marketable_retry_remaining_position"] = retry_remaining_position
+            marketable_details["exit_marketable_retry_sell_open_order_seen"] = bool(
+                retry_probe.get("sell_open_order_seen")
+            )
+            marketable_details["exit_marketable_retry_sell_open_order_ids"] = list(
+                retry_probe.get("sell_open_order_ids") or []
+            )
+            if retry_probe_state == "filled":
+                if (
+                    retry_remaining_position is None
+                    or not math.isfinite(retry_remaining_position)
+                ):
+                    if retry_matched_size is not None and math.isfinite(retry_matched_size):
+                        retry_remaining_position = max(
+                            float(size_to_sell) - float(retry_matched_size),
+                            0.0,
+                        )
+                    else:
+                        retry_remaining_position = 0.0
+                next_state = "exit" if retry_remaining_position <= TIME_EDGE_Q_EPS else "entry"
+                _update_trade_state(
+                    outcome,
+                    side,
+                    next_state,
+                    None,
+                    retry_order_id,
+                    last_action="confirm_exit",
+                    last_action_price=retry_price,
+                    last_action_size=size_to_sell,
+                    last_action_order_type=exit_order_type,
+                    last_action_at=now_iso,
+                    last_status=retry_confirm_status or "confirmed",
+                    last_error="",
+                    exit_reasons=exit_reasons_text,
+                    exit_reason_codes=exit_reason_codes_text,
+                    exit_triggered_at=exit_triggered_at_update,
+                    exit_skip_reason="",
+                    exit_skip_detail="",
+                    exit_skip_at="",
+                    exit_retry_count=0,
+                    position_size=retry_remaining_position,
+                    avg_price=retry_matched_price,
+                )
+                print(
+                    f"[auto-trade] exit retry confirm {title} {side} {outcome} "
+                    f"sell={size_to_sell} @ {retry_price} "
+                    f"filled={retry_matched_size if retry_matched_size is not None else '—'} "
+                    f"remain={retry_remaining_position:.6f}{exit_reason_extra}"
+                )
+                _buffer_decision(
+                    outcome,
+                    side,
+                    "exit",
+                    decided_state=next_state,
+                    will_order=True,
+                    reason_codes=[
+                        "exit_marketable_immediate_confirmed",
+                        "exit_marketable_retry_submitted",
+                    ],
+                    reasons=["FAK退出同轮降价重试后确认成交"],
+                    details=marketable_details,
+                )
+                _maybe_send_exit_sms(
+                    title=title,
+                    side=side,
+                    outcome=outcome,
+                    event_url=event_url,
+                    exit_price=retry_price,
+                    size_to_sell=size_to_sell,
+                    status_text=retry_confirm_status or "confirmed",
+                    prev_entry_ref=prev_entry_ref,
+                    row_ref=row_ref,
+                )
+                return
+            if retry_probe_state == "live":
+                _update_trade_state(
+                    outcome,
+                    side,
+                    "exit",
+                    None,
+                    retry_order_id,
+                    last_action="exit_marketable_retry",
+                    last_action_price=retry_price,
+                    last_action_size=size_to_sell,
+                    last_action_order_type=exit_order_type,
+                    last_action_at=now_iso,
+                    last_status=retry_confirm_status or retry_status_text or "submitted",
+                    last_error="exit_pending",
+                    exit_reasons=exit_reasons_text,
+                    exit_reason_codes=exit_reason_codes_text,
+                    exit_triggered_at=exit_triggered_at_update,
+                    exit_skip_reason="",
+                    exit_skip_detail="",
+                    exit_skip_at="",
+                    exit_retry_count=0,
+                )
+                print(
+                    f"[auto-trade] exit retry pending {title} {side} {outcome} "
+                    f"sell={size_to_sell} @ {retry_price} "
+                    f"order={retry_order_id or '—'} state=exit_pending{exit_reason_extra}"
+                )
+                _buffer_decision(
+                    outcome,
+                    side,
+                    "exit",
+                    decided_state="exit",
+                    will_order=True,
+                    reason_codes=[
+                        "order_submitted",
+                        "exit_marketable_retry_submitted",
+                    ],
+                    reasons=["FAK退出同轮降价重试已提交，仍在队列"],
+                    details=marketable_details,
+                )
+                _maybe_send_exit_sms(
+                    title=title,
+                    side=side,
+                    outcome=outcome,
+                    event_url=event_url,
+                    exit_price=retry_price,
+                    size_to_sell=size_to_sell,
+                    status_text=retry_confirm_status or retry_status_text or "submitted",
+                    prev_entry_ref=prev_entry_ref,
+                    row_ref=row_ref,
+                )
+                return
+            if retry_probe_state == "no_fill":
+                _update_trade_state(
+                    outcome,
+                    side,
+                    prev_state_ref or "entry",
+                    None,
+                    "",
+                    last_action="exit_marketable_retry",
+                    last_action_price=retry_price,
+                    last_action_size=size_to_sell,
+                    last_action_order_type=exit_order_type,
+                    last_action_at=now_iso,
+                    last_status="exit_retry_no_fill",
+                    last_error="exit_retry_no_fill",
+                    exit_reasons=exit_reasons_text,
+                    exit_reason_codes=exit_reason_codes_text,
+                    exit_triggered_at=exit_triggered_at_update,
+                    exit_retry_count=prev_exit_retry_count + 1,
+                    position_size=size_to_sell,
+                )
+                print(
+                    f"[auto-trade] exit retry no_fill {title} {side} {outcome} "
+                    f"sell={size_to_sell} @ {retry_price}{exit_reason_extra}"
+                )
+                _buffer_decision(
+                    outcome,
+                    side,
+                    "exit",
+                    decided_state="entry",
+                    will_order=True,
+                    reason_codes=["exit_marketable_retry_no_fill"],
+                    reasons=["FAK退出同轮降价重试后仍无成交"],
+                    details=marketable_details,
+                )
+                return
+            _update_trade_state(
+                outcome,
+                side,
+                "exit",
+                None,
+                retry_order_id,
+                last_action="exit_marketable_retry",
+                last_action_price=retry_price,
+                last_action_size=size_to_sell,
+                last_action_order_type=exit_order_type,
+                last_action_at=now_iso,
+                last_status=retry_confirm_status or retry_status_text or "submitted",
+                last_error=retry_confirm_error or "",
+                exit_reasons=exit_reasons_text,
+                exit_reason_codes=exit_reason_codes_text,
+                exit_triggered_at=exit_triggered_at_update,
+                exit_skip_reason="",
+                exit_skip_detail="",
+                exit_skip_at="",
+                exit_retry_count=0,
+            )
+            print(
+                f"[auto-trade] exit retry submitted {title} {side} {outcome} "
+                f"sell={size_to_sell} @ {retry_price} "
+                f"order={retry_order_id or '—'} state=exit_pending{exit_reason_extra}"
+            )
+            _buffer_decision(
+                outcome,
+                side,
+                "exit",
+                decided_state="exit",
+                will_order=True,
+                reason_codes=[
+                    "order_submitted",
+                    "exit_marketable_retry_submitted",
+                ],
+                reasons=["FAK退出同轮降价重试已提交，等待后续确认"],
+                details=marketable_details,
+            )
+            _maybe_send_exit_sms(
+                title=title,
+                side=side,
+                outcome=outcome,
+                event_url=event_url,
+                exit_price=retry_price,
+                size_to_sell=size_to_sell,
+                status_text=retry_confirm_status or retry_status_text or "submitted",
+                prev_entry_ref=prev_entry_ref,
+                row_ref=row_ref,
+            )
+            return
+        retry_last_error = _format_order_error_short(retry_payload)
+        marketable_details["exit_marketable_retry_error"] = retry_last_error
+        if _is_marketable_no_match_error(retry_payload):
+            _update_trade_state(
+                outcome,
+                side,
+                prev_state_ref or "entry",
+                None,
+                "",
+                last_action="exit_marketable_retry",
+                last_action_price=retry_price,
+                last_action_size=size_to_sell,
+                last_action_order_type=exit_order_type,
+                last_action_at=now_iso,
+                last_status="exit_retry_no_fill",
+                last_error="exit_retry_no_fill",
+                exit_reasons=exit_reasons_text,
+                exit_reason_codes=exit_reason_codes_text,
+                exit_triggered_at=exit_triggered_at_update,
+                exit_retry_count=prev_exit_retry_count + 1,
+                position_size=size_to_sell,
+            )
+            print(
+                f"[auto-trade] exit retry no_fill {title} {side} {outcome} "
+                f"sell={size_to_sell} @ {retry_price}{exit_reason_extra}"
+            )
+            _buffer_decision(
+                outcome,
+                side,
+                "exit",
+                decided_state="entry",
+                will_order=True,
+                reason_codes=["exit_marketable_retry_no_fill"],
+                reasons=["FAK退出同轮降价重试后仍无匹配对手盘"],
+                details=marketable_details,
+            )
+            return
+        _update_trade_state(
+            outcome,
+            side,
+            prev_state_ref or "entry",
+            None,
+            "",
+            last_action="exit_marketable_retry",
+            last_action_price=retry_price,
+            last_action_size=size_to_sell,
+            last_action_order_type=exit_order_type,
+            last_action_at=now_iso,
+            last_status=retry_status_text or "exit_retry_failed",
+            last_error=retry_last_error or "exit_retry_failed",
+            exit_reasons=exit_reasons_text,
+            exit_reason_codes=exit_reason_codes_text,
+            exit_triggered_at=exit_triggered_at_update,
+            exit_retry_count=prev_exit_retry_count + 1,
+            position_size=size_to_sell,
+        )
+        print(
+            f"[auto-trade] exit retry failed {title} {side} {outcome} "
+            f"sell={size_to_sell} @ {retry_price}{exit_reason_extra} "
+            f"{_format_order_error(retry_payload)}"
+        )
+        _buffer_decision(
+            outcome,
+            side,
+            "exit",
+            decided_state="exit_failed",
+            will_order=True,
+            reason_codes=["exit_marketable_retry_failed"],
+            reasons=["FAK退出同轮降价重试失败"],
+            details=marketable_details,
+        )
+        return
 
     lcb_global_entry_orders_submitted = 0
 
@@ -14162,6 +14863,42 @@ def execute_auto_trades(
                 detail,
             )
         return False, "", "", detail
+
+    if exit_only:
+        with _event_stage_scope("exit_rows_focus", enabled=True):
+            held_outcomes_exact: Set[str] = set()
+            held_outcomes_norm: Set[str] = set()
+            for (outcome_key, _side_key), prev_entry in prev_states.items():
+                outcome_text = str(outcome_key or "").strip()
+                if not outcome_text:
+                    continue
+                prev_state_key = str(prev_entry.get("state") or "").strip().lower()
+                prev_pos_key = to_float(prev_entry.get("position_size")) or 0.0
+                if prev_state_key in {"entry", "entry_pending"} or prev_pos_key > TIME_EDGE_Q_EPS:
+                    held_outcomes_exact.add(outcome_text)
+                    outcome_norm = _normalize_outcome_key(outcome_text)
+                    if outcome_norm:
+                        held_outcomes_norm.add(outcome_norm)
+            event_stage_meta["exit_held_outcomes"] = len(held_outcomes_exact)
+            if held_outcomes_exact or held_outcomes_norm:
+                rows_before_exit_focus = len(rows)
+                rows = [
+                    row_ref
+                    for row_ref in rows
+                    if isinstance(row_ref, dict)
+                    and (
+                        str(row_ref.get("outcome") or "").strip() in held_outcomes_exact
+                        or _normalize_outcome_key(str(row_ref.get("outcome") or "").strip())
+                        in held_outcomes_norm
+                    )
+                ]
+                event_stage_meta["exit_rows_before_focus"] = rows_before_exit_focus
+                event_stage_meta["exit_rows_after_focus"] = len(rows)
+                if rows_before_exit_focus != len(rows):
+                    print(
+                        f"[auto-trade] exit-only focus rows {slug} {event_date_key} "
+                        f"{rows_before_exit_focus}->{len(rows)}"
+                    )
 
     entry_outcome_market_blocks: Dict[str, Dict[str, Any]] = {}
     entry_tradable_rows: List[Dict[str, Any]] = []
@@ -15870,7 +16607,8 @@ def execute_auto_trades(
         return best_candidate
 
     q_fallback_row_by_outcome: Dict[str, Dict[str, Any]] = {}
-    if slug and event_date_key:
+    q_fallback_load_started = _event_stage_start()
+    if (not exit_only) and slug and event_date_key:
         try:
             with open_db() as conn_q_fallback:
                 fallback_rows = _load_latest_payload_rows(conn_q_fallback, slug, event_date_key)
@@ -15887,6 +16625,7 @@ def execute_auto_trades(
                     q_fallback_row_by_outcome[outcome_q_norm] = row_q_copy
         except Exception:
             q_fallback_row_by_outcome = {}
+    _event_stage_end("payload_fallback_load", q_fallback_load_started)
 
     def _resolve_q_fallback_for_side(
         outcome_label: str,
@@ -18264,6 +19003,9 @@ def execute_auto_trades(
         if not outcome:
             continue
         observed_runtime_outcomes.add(outcome)
+        if exit_only:
+            entry_candidates_by_outcome[outcome] = []
+            continue
         outcome_market_block = entry_outcome_market_blocks.get(outcome)
         if isinstance(outcome_market_block, dict):
             expected_for_outcome = expected_entry_targets_by_outcome.get(outcome) or []
@@ -18290,11 +19032,13 @@ def execute_auto_trades(
                         side_detail,
                     )
             continue
+        build_candidates_started = _event_stage_start()
         try:
             candidates = _build_entry_candidates(row)
         except Exception as exc:
             print(f"[auto-trade] entry candidates failed: {slug} {outcome} err={exc}")
             candidates = []
+        _event_stage_end("entry_candidates_build", build_candidates_started)
         expected_for_outcome = expected_entry_targets_by_outcome.get(outcome) or []
         if (not lcb_global_enabled) and expected_for_outcome:
             candidate_sides_runtime = {
@@ -18689,6 +19433,7 @@ def execute_auto_trades(
             "error_code": "",
             "force_attempt": bool(force_attempt),
         }
+        refresh_started = _event_stage_start()
         tag = str(refresh_cfg.get("tag") or "entry").strip() or "entry"
         if force_attempt:
             tag = f"{tag}_force"
@@ -18696,16 +19441,19 @@ def execute_auto_trades(
         note_prefix = f"{tag}_refresh"
         if (not force_attempt) and (not refresh_cfg.get("enabled")):
             result["note"] = f"{note_prefix}_disabled"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         max_per_event = int(refresh_cfg.get("max_per_event") or 0)
         if (not force_attempt) and max_per_event <= 0:
             result["note"] = f"{note_prefix}_max_zero"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         outcome_u = str(outcome_label or "").strip()
         side_u = str(side_label or "").strip().upper()
         if not outcome_u or side_u not in {"YES", "NO"}:
             result["attempted"] = True
             result["note"] = f"{note_prefix}_bad_key"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         attempt_count_by_key = refresh_state.setdefault("attempt_count_by_key", {})
         cooldown_key = (outcome_u, side_u)
@@ -18713,6 +19461,7 @@ def execute_auto_trades(
         if (not force_attempt) and attempt_count >= max_per_event:
             result["attempted"] = True
             result["note"] = f"{note_prefix}_max_reached"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         now_ts = time.time()
         last_at_by_key = refresh_state.setdefault("last_at_by_key", {})
@@ -18727,6 +19476,7 @@ def execute_auto_trades(
             result["attempted"] = True
             wait_sec = max(0.0, cooldown_sec - (now_ts - float(last_ts)))
             result["note"] = f"{note_prefix}_cooldown:{wait_sec:.1f}s"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         result["attempted"] = True
         attempt_count_by_key[cooldown_key] = attempt_count + 1
@@ -18742,6 +19492,7 @@ def execute_auto_trades(
                     token_id = str(row_ref.get("no_token") or "").strip()
         if not token_id:
             result["note"] = f"{note_prefix}_missing_token"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         allow_token_remap = _env_bool("PM_AUTO_TRADE_ENTRY_REFRESH_ALLOW_TOKEN_REMAP", True)
         best_bid = None
@@ -18818,6 +19569,7 @@ def execute_auto_trades(
                                 result["note"] = f"{note_prefix}_failed:{retry_exc}"
                             if retried:
                                 result["note"] += ":token_refreshed"
+                            _event_stage_end("market_tick_refresh", refresh_started)
                             return result
             if best_bid is None and best_ask is None:
                 if fallback_price is not None and math.isfinite(fallback_price):
@@ -18834,9 +19586,11 @@ def execute_auto_trades(
                         result["note"] = f"{note_prefix}_failed:{exc}"
                     if retried:
                         result["note"] += ":token_refreshed"
+                    _event_stage_end("market_tick_refresh", refresh_started)
                     return result
         if best_bid is None and best_ask is None:
             result["note"] = f"{note_prefix}_no_quotes"
+            _event_stage_end("market_tick_refresh", refresh_started)
             return result
         created_at = utc_now_iso()
         ts_now = _parse_iso_dt(created_at)
@@ -18894,6 +19648,7 @@ def execute_auto_trades(
         result["note"] = f"{note_prefix}_ok"
         result["created_at"] = created_at
         result["tick_age_sec"] = 0.0
+        _event_stage_end("market_tick_refresh", refresh_started)
         return result
 
     def _resolve_follow_entry_strategy(
@@ -20512,6 +21267,7 @@ def execute_auto_trades(
         for side in ("YES", "NO"):
             prev_entry = prev_states.get((outcome, side), {})
             prev_state = prev_entry.get("state") or ""
+            exit_row_prepare_started = _event_stage_start() if exit_only else None
             if not exit_only:
                 outcome_market_block = entry_outcome_market_blocks.get(outcome)
                 if isinstance(outcome_market_block, dict):
@@ -20740,6 +21496,9 @@ def execute_auto_trades(
                                     last_action_at=now_iso,
                                     last_status="no_position",
                                     last_error="no_position",
+                                    exit_skip_reason="",
+                                    exit_skip_detail="",
+                                    exit_skip_at="",
                                     position_size=0.0,
                                     avg_price=override_avg,
                                 )
@@ -20762,6 +21521,9 @@ def execute_auto_trades(
                                     last_action_at=now_iso,
                                     last_status="pos_sync",
                                     last_error="",
+                                    exit_skip_reason="",
+                                    exit_skip_detail="",
+                                    exit_skip_at="",
                                     position_size=override_size,
                                     avg_price=override_avg,
                                 )
@@ -20781,6 +21543,9 @@ def execute_auto_trades(
                         last_action_at=now_iso,
                         last_status="no_position",
                         last_error="no_position",
+                        exit_skip_reason="",
+                        exit_skip_detail="",
+                        exit_skip_at="",
                         position_size=0.0,
                     )
                     prev_entry["position_size"] = 0.0
@@ -20802,7 +21567,14 @@ def execute_auto_trades(
                         entry_retry_count=prev_retry_count + 1,
                     )
                     prev_state = "entry_failed"
-            if prev_state == "entry" and prev_last_order_id:
+            entry_confirm_skip_exit_only = bool(
+                exit_only and (to_float(prev_entry.get("position_size")) or 0.0) > TIME_EDGE_Q_EPS
+            )
+            if entry_confirm_skip_exit_only:
+                prev_entry["entry_confirm_skip_exit_only"] = True
+            _event_stage_end("exit_row_prepare", exit_row_prepare_started)
+            exit_open_order_probe_started = _event_stage_start() if exit_only else None
+            if prev_state == "entry" and prev_last_order_id and not entry_confirm_skip_exit_only:
                 min_age_sec = _env_float("PM_AUTO_TRADE_CONFIRM_ENTRY_MIN_AGE_SEC") or 15.0
                 age_sec = None
                 if prev_last_action_at:
@@ -20875,7 +21647,12 @@ def execute_auto_trades(
                             last_status="confirm_error",
                             last_error=confirm_error or "confirm_error",
                         )
-            if prev_state == "entry_pending" and prev_last_order_id and not confirm_checked:
+            if (
+                prev_state == "entry_pending"
+                and prev_last_order_id
+                and not confirm_checked
+                and not entry_confirm_skip_exit_only
+            ):
                 confirm_state, confirm_status, confirm_error, confirm_order = _confirm_order(prev_last_order_id)
                 matched_size = None
                 matched_price = None
@@ -21115,6 +21892,8 @@ def execute_auto_trades(
                                 last_status=confirm_status or "confirm_not_found",
                                 last_error=confirm_error or "order_not_found",
                             )
+            _event_stage_end("exit_open_order_probe", exit_open_order_probe_started)
+            exit_trigger_eval_started = _event_stage_start() if exit_only else None
             if side == "YES":
                 exit_flag = bool(row.get("edge_min_exit_yes"))
                 exit_reasons = row.get("edge_min_exit_reasons_yes") or []
@@ -21224,6 +22003,7 @@ def execute_auto_trades(
                 exit_refresh_candidate_ref = dict(side_candidate)
             if token_id_override and not str(exit_refresh_candidate_ref.get("token_id") or "").strip():
                 exit_refresh_candidate_ref["token_id"] = token_id_override
+            exit_quote_refresh_started = _event_stage_start() if exit_only else None
             if position_size_for_exit > TIME_EDGE_Q_EPS:
                 exit_quote_refresh_meta = _try_refresh_market_tick(
                     outcome,
@@ -21309,6 +22089,7 @@ def execute_auto_trades(
                     row["bid_depth_topN_no"] = stop_refreshed_bid_depth_val
                 if stop_refreshed_ask_depth_val is not None:
                     row["ask_depth_topN_no"] = stop_refreshed_ask_depth_val
+            _event_stage_end("exit_quote_refresh", exit_quote_refresh_started)
             exit_price_for_stop = None
             if not exit_quote_stale:
                 if side == "YES":
@@ -21828,6 +22609,7 @@ def execute_auto_trades(
                 "partially_filled",
                 "partiallyfilled",
             }
+            _event_stage_end("exit_trigger_eval", exit_trigger_eval_started)
             if (
                 mirror_exit_follow_source_only
                 and prev_state in {"entry", "entry_pending"}
@@ -28737,14 +29519,10 @@ def execute_auto_trades(
                 )
                 if min_exit_size is not None and math.isfinite(min_exit_size) and min_exit_size > 0:
                     if size_to_sell < min_exit_size:
-                        event_is_past = False
-                        event_date_raw = str(row.get("event_date") or "").strip()
-                        if event_date_raw:
-                            try:
-                                event_day = datetime.strptime(event_date_raw[:10], "%Y-%m-%d").date()
-                                event_is_past = event_day < datetime.now().astimezone().date()
-                            except Exception:
-                                event_is_past = False
+                        event_is_past = _event_day_is_past(
+                            row.get("event_date"),
+                            event_date,
+                        )
                         if event_is_past:
                             _update_trade_state(
                                 outcome,
@@ -28954,8 +29732,30 @@ def execute_auto_trades(
             if exit_action_ready:
                 exit_retry_blocked = False
                 if not forced_exit:
+                    preserve_retry_block = _should_preserve_exit_retry_block(
+                        prev_last_action=prev_last_action,
+                        prev_exit_live_like=prev_exit_live_like,
+                    )
                     if AUTO_TRADE_EXIT_RETRY_MAX > 0 and prev_exit_retry_count >= AUTO_TRADE_EXIT_RETRY_MAX:
-                        if exit_retry_reset_sec > 0 and prev_last_action_at:
+                        if not preserve_retry_block:
+                            now_iso = utc_now_iso()
+                            _update_trade_state(
+                                outcome,
+                                side,
+                                prev_state or "entry",
+                                None,
+                                None,
+                                last_action="exit_reset",
+                                last_action_at=now_iso,
+                                last_status="exit_retry_reset",
+                                last_error="",
+                                exit_reasons=exit_reasons_text,
+                                exit_reason_codes=exit_reason_codes_text,
+                                exit_triggered_at=exit_triggered_at_update,
+                                exit_retry_count=0,
+                            )
+                            prev_exit_retry_count = 0
+                        elif exit_retry_reset_sec > 0 and prev_last_action_at:
                             age_sec = (now_utc - prev_last_action_at).total_seconds()
                             if age_sec >= exit_retry_reset_sec:
                                 now_iso = utc_now_iso()
@@ -29000,6 +29800,7 @@ def execute_auto_trades(
                         continue
                 if AUTO_TRADE_SELL_ON_EXIT and size_to_sell and exit_price:
                     exit_order_type = str(AUTO_TRADE_EXIT_ORDER_TYPE or "FAK").strip().upper() or "FAK"
+                    exit_submit_started = _event_stage_start() if exit_only else None
                     if exit_order_type in {"FAK", "FOK"}:
                         # Exit with marketable order types must avoid balance being occupied by stale SELL GTCs.
                         _run_node_order("cancel-orders", token_id, "SELL")
@@ -29033,9 +29834,10 @@ def execute_auto_trades(
                         status_text = "submitted"
                     if payload.get("dry_run"):
                         status_text = status_text or "dry_run"
+                    order_id_text = str(payload.get("orderID") or payload.get("orderId") or "")
+                    _event_stage_end("exit_submit", exit_submit_started)
                     if ok:
                         now_iso = utc_now_iso()
-                        order_id_text = str(payload.get("orderID") or payload.get("orderId") or "")
                         marketable_status_pending = str(status_text or "").strip().lower() in {
                             "submitted",
                             "delayed",
@@ -29049,10 +29851,15 @@ def execute_auto_trades(
                             and not payload.get("dry_run")
                             and marketable_status_pending
                         ):
+                            exit_post_submit_confirm_started = _event_stage_start() if exit_only else None
                             marketable_probe = _probe_marketable_exit_submission(
                                 token_id=token_id,
                                 order_id=order_id_text,
                                 prev_position=size_to_sell,
+                            )
+                            _event_stage_end(
+                                "exit_post_submit_confirm",
+                                exit_post_submit_confirm_started,
                             )
                             _record_auto_order(
                                 order_id_text,
@@ -29242,380 +30049,26 @@ def execute_auto_trades(
                                 )
                                 continue
                             if marketable_probe_state == "no_fill":
-                                retry_price, retry_price_clamped = _normalize_place_order_price(
-                                    float(exit_price) - float(exit_reprice_step)
-                                )
-                                marketable_details["exit_marketable_retry_attempted"] = True
-                                marketable_details["exit_marketable_retry_price"] = retry_price
-                                marketable_details["exit_marketable_retry_price_clamped"] = bool(
-                                    retry_price_clamped
-                                )
-                                if (
-                                    retry_price is None
-                                    or not math.isfinite(retry_price)
-                                    or retry_price + exit_same_price_eps >= float(exit_price)
-                                ):
-                                    _update_trade_state(
-                                        outcome,
-                                        side,
-                                        prev_state or "entry",
-                                        None,
-                                        "",
-                                        last_action="exit_marketable_retry",
-                                        last_action_price=exit_price,
-                                        last_action_size=size_to_sell,
-                                        last_action_order_type=exit_order_type,
-                                        last_action_at=now_iso,
-                                        last_status="exit_retry_price_floor",
-                                        last_error="exit_retry_price_floor",
-                                        exit_reasons=exit_reasons_text,
-                                        exit_reason_codes=exit_reason_codes_text,
-                                        exit_triggered_at=exit_triggered_at_update,
-                                        exit_retry_count=prev_exit_retry_count + 1,
-                                        position_size=size_to_sell,
-                                    )
-                                    print(
-                                        f"[auto-trade] exit retry skipped {title} {side} {outcome} "
-                                        f"order={order_id_text or '—'} reason=retry_price_floor{exit_reason_extra}"
-                                    )
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "exit",
-                                        decided_state="entry",
-                                        will_order=True,
-                                        reason_codes=["exit_marketable_retry_skipped_price_floor"],
-                                        reasons=["FAK退出同轮确认无成交，但已无更低一档可重试"],
-                                        details=marketable_details,
-                                    )
-                                    continue
-                                retry_ok, retry_payload = _run_node_order(
-                                    "place-order",
-                                    token_id,
-                                    "SELL",
-                                    price=retry_price,
-                                    size=size_to_sell,
-                                    order_type=exit_order_type,
-                                )
-                                retry_order_id = str(
-                                    retry_payload.get("orderID") or retry_payload.get("orderId") or ""
-                                )
-                                if retry_ok and not retry_order_id and not retry_payload.get("dry_run"):
-                                    retry_ok = False
-                                    retry_payload = {
-                                        "error": "missing_order_id",
-                                        "stdout": retry_payload,
-                                    }
-                                retry_status_text = str(
-                                    retry_payload.get("status") or retry_payload.get("statusText") or ""
-                                )
-                                if not retry_status_text and retry_ok:
-                                    retry_status_text = "submitted"
-                                if retry_payload.get("dry_run"):
-                                    retry_status_text = retry_status_text or "dry_run"
-                                marketable_details["exit_marketable_retry_order_id"] = retry_order_id
-                                marketable_details["exit_marketable_retry_status"] = retry_status_text
-                                if retry_ok and retry_order_id:
-                                    _record_auto_order(
-                                        retry_order_id,
-                                        outcome,
-                                        side,
-                                        "exit",
-                                        retry_price,
-                                        size_to_sell,
-                                        exit_order_type,
-                                        None,
-                                        None,
-                                        None,
-                                        "exit",
-                                    )
-                                    retry_probe = _probe_marketable_exit_submission(
-                                        token_id=token_id,
-                                        order_id=retry_order_id,
-                                        prev_position=size_to_sell,
-                                    )
-                                    retry_probe_state = str(retry_probe.get("probe_state") or "")
-                                    retry_confirm_status = str(
-                                        retry_probe.get("confirm_status")
-                                        or retry_status_text
-                                        or "submitted"
-                                    )
-                                    retry_confirm_error = str(retry_probe.get("confirm_error") or "")
-                                    retry_remaining_position = to_float(
-                                        retry_probe.get("remaining_position")
-                                    )
-                                    retry_matched_size = to_float(retry_probe.get("matched_size"))
-                                    retry_matched_price = to_float(retry_probe.get("matched_price"))
-                                    marketable_details["exit_marketable_retry_status"] = retry_confirm_status
-                                    marketable_details["exit_marketable_retry_error"] = retry_confirm_error
-                                    marketable_details["exit_marketable_retry_probe_state"] = (
-                                        retry_probe_state
-                                    )
-                                    marketable_details["exit_marketable_retry_confirm_state"] = str(
-                                        retry_probe.get("confirm_state") or ""
-                                    )
-                                    marketable_details["exit_marketable_retry_matched_size"] = (
-                                        retry_matched_size
-                                    )
-                                    marketable_details["exit_marketable_retry_matched_price"] = (
-                                        retry_matched_price
-                                    )
-                                    marketable_details["exit_marketable_retry_remaining_position"] = (
-                                        retry_remaining_position
-                                    )
-                                    marketable_details["exit_marketable_retry_sell_open_order_seen"] = bool(
-                                        retry_probe.get("sell_open_order_seen")
-                                    )
-                                    marketable_details["exit_marketable_retry_sell_open_order_ids"] = list(
-                                        retry_probe.get("sell_open_order_ids") or []
-                                    )
-                                    if retry_probe_state == "filled":
-                                        if (
-                                            retry_remaining_position is None
-                                            or not math.isfinite(retry_remaining_position)
-                                        ):
-                                            if (
-                                                retry_matched_size is not None
-                                                and math.isfinite(retry_matched_size)
-                                            ):
-                                                retry_remaining_position = max(
-                                                    float(size_to_sell) - float(retry_matched_size),
-                                                    0.0,
-                                                )
-                                            else:
-                                                retry_remaining_position = 0.0
-                                        next_state = (
-                                            "exit"
-                                            if retry_remaining_position <= TIME_EDGE_Q_EPS
-                                            else "entry"
-                                        )
-                                        _update_trade_state(
-                                            outcome,
-                                            side,
-                                            next_state,
-                                            None,
-                                            retry_order_id,
-                                            last_action="confirm_exit",
-                                            last_action_price=retry_price,
-                                            last_action_size=size_to_sell,
-                                            last_action_order_type=exit_order_type,
-                                            last_action_at=now_iso,
-                                            last_status=retry_confirm_status or "confirmed",
-                                            last_error="",
-                                            exit_reasons=exit_reasons_text,
-                                            exit_reason_codes=exit_reason_codes_text,
-                                            exit_triggered_at=exit_triggered_at_update,
-                                            exit_skip_reason="",
-                                            exit_skip_detail="",
-                                            exit_skip_at="",
-                                            exit_retry_count=0,
-                                            position_size=retry_remaining_position,
-                                            avg_price=retry_matched_price,
-                                        )
-                                        print(
-                                            f"[auto-trade] exit retry confirm {title} {side} {outcome} "
-                                            f"sell={size_to_sell} @ {retry_price} "
-                                            f"filled={retry_matched_size if retry_matched_size is not None else '—'} "
-                                            f"remain={retry_remaining_position:.6f}{exit_reason_extra}"
-                                        )
-                                        _buffer_decision(
-                                            outcome,
-                                            side,
-                                            "exit",
-                                            decided_state=next_state,
-                                            will_order=True,
-                                            reason_codes=[
-                                                "exit_marketable_immediate_confirmed",
-                                                "exit_marketable_retry_submitted",
-                                            ],
-                                            reasons=["FAK退出同轮降价重试后确认成交"],
-                                            details=marketable_details,
-                                        )
-                                        _maybe_send_exit_sms(
-                                            title=title,
-                                            side=side,
-                                            outcome=outcome,
-                                            event_url=event_url,
-                                            exit_price=retry_price,
-                                            size_to_sell=size_to_sell,
-                                            status_text=retry_confirm_status or "confirmed",
-                                            prev_entry_ref=prev_entry,
-                                            row_ref=row,
-                                        )
-                                        continue
-                                    if retry_probe_state == "live":
-                                        _update_trade_state(
-                                            outcome,
-                                            side,
-                                            "exit",
-                                            None,
-                                            retry_order_id,
-                                            last_action="exit_marketable_retry",
-                                            last_action_price=retry_price,
-                                            last_action_size=size_to_sell,
-                                            last_action_order_type=exit_order_type,
-                                            last_action_at=now_iso,
-                                            last_status=retry_confirm_status or retry_status_text or "submitted",
-                                            last_error="exit_pending",
-                                            exit_reasons=exit_reasons_text,
-                                            exit_reason_codes=exit_reason_codes_text,
-                                            exit_triggered_at=exit_triggered_at_update,
-                                            exit_skip_reason="",
-                                            exit_skip_detail="",
-                                            exit_skip_at="",
-                                            exit_retry_count=0,
-                                        )
-                                        print(
-                                            f"[auto-trade] exit retry pending {title} {side} {outcome} "
-                                            f"sell={size_to_sell} @ {retry_price} "
-                                            f"order={retry_order_id or '—'} state=exit_pending{exit_reason_extra}"
-                                        )
-                                        _buffer_decision(
-                                            outcome,
-                                            side,
-                                            "exit",
-                                            decided_state="exit",
-                                            will_order=True,
-                                            reason_codes=[
-                                                "order_submitted",
-                                                "exit_marketable_retry_submitted",
-                                            ],
-                                            reasons=["FAK退出同轮降价重试已提交，仍在队列"],
-                                            details=marketable_details,
-                                        )
-                                        _maybe_send_exit_sms(
-                                            title=title,
-                                            side=side,
-                                            outcome=outcome,
-                                            event_url=event_url,
-                                            exit_price=retry_price,
-                                            size_to_sell=size_to_sell,
-                                            status_text=retry_confirm_status or retry_status_text or "submitted",
-                                            prev_entry_ref=prev_entry,
-                                            row_ref=row,
-                                        )
-                                        continue
-                                    if retry_probe_state == "no_fill":
-                                        _update_trade_state(
-                                            outcome,
-                                            side,
-                                            prev_state or "entry",
-                                            None,
-                                            "",
-                                            last_action="exit_marketable_retry",
-                                            last_action_price=retry_price,
-                                            last_action_size=size_to_sell,
-                                            last_action_order_type=exit_order_type,
-                                            last_action_at=now_iso,
-                                            last_status="exit_retry_no_fill",
-                                            last_error="exit_retry_no_fill",
-                                            exit_reasons=exit_reasons_text,
-                                            exit_reason_codes=exit_reason_codes_text,
-                                            exit_triggered_at=exit_triggered_at_update,
-                                            exit_retry_count=prev_exit_retry_count + 1,
-                                            position_size=size_to_sell,
-                                        )
-                                        print(
-                                            f"[auto-trade] exit retry no_fill {title} {side} {outcome} "
-                                            f"sell={size_to_sell} @ {retry_price}{exit_reason_extra}"
-                                        )
-                                        _buffer_decision(
-                                            outcome,
-                                            side,
-                                            "exit",
-                                            decided_state="entry",
-                                            will_order=True,
-                                            reason_codes=["exit_marketable_retry_no_fill"],
-                                            reasons=["FAK退出同轮降价重试后仍无成交"],
-                                            details=marketable_details,
-                                        )
-                                        continue
-                                    _update_trade_state(
-                                        outcome,
-                                        side,
-                                        "exit",
-                                        None,
-                                        retry_order_id,
-                                        last_action="exit_marketable_retry",
-                                        last_action_price=retry_price,
-                                        last_action_size=size_to_sell,
-                                        last_action_order_type=exit_order_type,
-                                        last_action_at=now_iso,
-                                        last_status=retry_confirm_status or retry_status_text or "submitted",
-                                        last_error=retry_confirm_error or "",
-                                        exit_reasons=exit_reasons_text,
-                                        exit_reason_codes=exit_reason_codes_text,
-                                        exit_triggered_at=exit_triggered_at_update,
-                                        exit_skip_reason="",
-                                        exit_skip_detail="",
-                                        exit_skip_at="",
-                                        exit_retry_count=0,
-                                    )
-                                    print(
-                                        f"[auto-trade] exit retry submitted {title} {side} {outcome} "
-                                        f"sell={size_to_sell} @ {retry_price} "
-                                        f"order={retry_order_id or '—'} state=exit_pending{exit_reason_extra}"
-                                    )
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "exit",
-                                        decided_state="exit",
-                                        will_order=True,
-                                        reason_codes=[
-                                            "order_submitted",
-                                            "exit_marketable_retry_submitted",
-                                        ],
-                                        reasons=["FAK退出同轮降价重试已提交，等待后续确认"],
-                                        details=marketable_details,
-                                    )
-                                    _maybe_send_exit_sms(
-                                        title=title,
-                                        side=side,
-                                        outcome=outcome,
-                                        event_url=event_url,
-                                        exit_price=retry_price,
-                                        size_to_sell=size_to_sell,
-                                        status_text=retry_confirm_status or retry_status_text or "submitted",
-                                        prev_entry_ref=prev_entry,
-                                        row_ref=row,
-                                    )
-                                    continue
-                                retry_last_error = _format_order_error_short(retry_payload)
-                                marketable_details["exit_marketable_retry_error"] = retry_last_error
-                                _update_trade_state(
-                                    outcome,
-                                    side,
-                                    prev_state or "entry",
-                                    None,
-                                    "",
-                                    last_action="exit_marketable_retry",
-                                    last_action_price=retry_price,
-                                    last_action_size=size_to_sell,
-                                    last_action_order_type=exit_order_type,
-                                    last_action_at=now_iso,
-                                    last_status=retry_status_text or "exit_retry_failed",
-                                    last_error=retry_last_error or "exit_retry_failed",
-                                    exit_reasons=exit_reasons_text,
-                                    exit_reason_codes=exit_reason_codes_text,
-                                    exit_triggered_at=exit_triggered_at_update,
-                                    exit_retry_count=prev_exit_retry_count + 1,
-                                    position_size=size_to_sell,
-                                )
-                                print(
-                                    f"[auto-trade] exit retry failed {title} {side} {outcome} "
-                                    f"sell={size_to_sell} @ {retry_price}{exit_reason_extra} "
-                                    f"{_format_order_error(retry_payload)}"
-                                )
-                                _buffer_decision(
-                                    outcome,
-                                    side,
-                                    "exit",
-                                    decided_state="exit_failed",
-                                    will_order=True,
-                                    reason_codes=["exit_marketable_retry_failed"],
-                                    reasons=["FAK退出同轮降价重试失败"],
-                                    details=marketable_details,
+                                _handle_marketable_exit_retry(
+                                    token_id=token_id,
+                                    title=title,
+                                    outcome=outcome,
+                                    side=side,
+                                    event_url=event_url,
+                                    row_ref=row,
+                                    prev_entry_ref=prev_entry,
+                                    prev_state_ref=prev_state,
+                                    now_iso=now_iso,
+                                    size_to_sell=size_to_sell,
+                                    exit_price=exit_price,
+                                    exit_order_type=exit_order_type,
+                                    exit_reason_extra=exit_reason_extra,
+                                    exit_reasons_text=exit_reasons_text,
+                                    exit_reason_codes_text=exit_reason_codes_text,
+                                    exit_triggered_at_update=exit_triggered_at_update,
+                                    prev_exit_retry_count=prev_exit_retry_count,
+                                    marketable_details=marketable_details,
+                                    base_order_id=order_id_text,
                                 )
                                 continue
                         _update_trade_state(
@@ -29690,6 +30143,10 @@ def execute_auto_trades(
                         status_text = str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed")
                         last_error = _format_order_error_short(payload)
                         is_no_orderbook = _is_no_orderbook_error(last_error)
+                        is_marketable_no_match = (
+                            exit_order_type in {"FAK", "FOK"}
+                            and _is_marketable_no_match_error(payload)
+                        )
                         no_balance_like = "not enough balance / allowance" in str(last_error or "").lower()
                         if fatal:
                             status_text = "exit_failed_fatal"
@@ -29704,9 +30161,11 @@ def execute_auto_trades(
                                 allow_fetch_open = not (
                                     positions_priority_fast_loop and not positions_priority_allow_slow
                                 )
+                                stale_open_probe_started = _event_stage_start() if exit_only else None
                                 refreshed_by_token = _auto_trade_cached_open_orders_by_token(
                                     allow_fetch=allow_fetch_open
                                 )
+                                _event_stage_end("exit_post_submit_confirm", stale_open_probe_started)
                                 if allow_fetch_open:
                                     _mark_slow_request_used()
                                 if isinstance(refreshed_by_token, dict):
@@ -29761,6 +30220,58 @@ def execute_auto_trades(
                                     },
                                 )
                                 continue
+                        if is_marketable_no_match:
+                            marketable_details = {
+                                "order_id": order_id_text,
+                                "status": status_text or "failed",
+                                "order_price": exit_price,
+                                "order_size": size_to_sell,
+                                "strategy": str(prev_entry.get("strategy") or "exit"),
+                                "exit_reason_codes": list(exit_reason_codes or []),
+                                "exit_reasons": list(exit_reasons or []),
+                                "exit_marketable_immediate_confirmed": False,
+                                "exit_marketable_confirm_state": "submit_no_match",
+                                "exit_marketable_confirm_status": status_text or "failed",
+                                "exit_marketable_confirm_error": last_error,
+                                "exit_marketable_probe_state": "submit_no_match",
+                                "exit_marketable_matched_size": None,
+                                "exit_marketable_matched_price": None,
+                                "exit_marketable_matched_side": "",
+                                "exit_marketable_remaining_position": size_to_sell,
+                                "exit_marketable_open_orders_refreshed": False,
+                                "exit_marketable_sell_open_order_seen": False,
+                                "exit_marketable_sell_open_order_ids": [],
+                                "exit_marketable_positions_refreshed": False,
+                                "exit_marketable_positions_error": "",
+                                "exit_marketable_retry_attempted": False,
+                                "exit_marketable_retry_price": None,
+                                "exit_marketable_retry_order_id": "",
+                                "exit_marketable_retry_status": "",
+                                "exit_marketable_retry_error": "",
+                                "exit_marketable_retry_probe_state": "",
+                            }
+                            _handle_marketable_exit_retry(
+                                token_id=token_id,
+                                title=title,
+                                outcome=outcome,
+                                side=side,
+                                event_url=event_url,
+                                row_ref=row,
+                                prev_entry_ref=prev_entry,
+                                prev_state_ref=prev_state,
+                                now_iso=now_iso,
+                                size_to_sell=size_to_sell,
+                                exit_price=exit_price,
+                                exit_order_type=exit_order_type,
+                                exit_reason_extra=exit_reason_extra,
+                                exit_reasons_text=exit_reasons_text,
+                                exit_reason_codes_text=exit_reason_codes_text,
+                                exit_triggered_at_update=exit_triggered_at_update,
+                                prev_exit_retry_count=prev_exit_retry_count,
+                                marketable_details=marketable_details,
+                                base_order_id=order_id_text,
+                            )
+                            continue
                         now_iso = utc_now_iso()
                         _update_trade_state(
                             outcome,
@@ -30017,6 +30528,7 @@ def execute_auto_trades(
                             exit_skip_detail=detail,
                             exit_skip_at=now_iso,
                         )
+    decision_finalize_started = _event_stage_start()
     try:
         _ensure_expected_entry_decisions()
         _flush_decisions()
@@ -30027,6 +30539,8 @@ def execute_auto_trades(
     except Exception as exc:
         print(f"[auto-trade] no_orderbook reconcile failed {slug} {event_date_key}: {exc}")
     conn.commit()
+    _event_stage_end("decision_finalize", decision_finalize_started)
+    _emit_event_stage_timings()
     conn.close()
 
 
@@ -30187,12 +30701,67 @@ def _trade_sync_profile_env(profile_name: str) -> Dict[str, str]:
     return {}
 
 
+def _trade_sync_recent_after_hint(
+    trade_token_map: Dict[str, Dict[str, str]],
+    lookback_sec: float,
+) -> str:
+    if not trade_token_map:
+        return ""
+    if lookback_sec is None or not math.isfinite(lookback_sec) or lookback_sec <= 0:
+        return ""
+    slugs = sorted(
+        {
+            str(meta.get("slug") or "").strip()
+            for meta in (trade_token_map or {}).values()
+            if isinstance(meta, dict) and str(meta.get("slug") or "").strip()
+        }
+    )
+    event_dates = sorted(
+        {
+            _normalize_date_key(str(meta.get("event_date") or "").strip())
+            for meta in (trade_token_map or {}).values()
+            if isinstance(meta, dict) and str(meta.get("event_date") or "").strip()
+        }
+    )
+    event_dates = [value for value in event_dates if value]
+    if not slugs or not event_dates:
+        return ""
+    try:
+        with open_db() as conn_recent:
+            cur_recent = conn_recent.cursor()
+            slug_q = ",".join(["?"] * len(slugs))
+            date_q = ",".join(["?"] * len(event_dates))
+            cur_recent.execute(
+                f"""
+                SELECT MAX(COALESCE(trade_time, created_at))
+                FROM edge_trade_fills
+                WHERE slug IN ({slug_q})
+                  AND event_date IN ({date_q})
+                """,
+                tuple(slugs) + tuple(event_dates),
+            )
+            row = cur_recent.fetchone()
+    except sqlite3.OperationalError:
+        return ""
+    latest_text = str((row[0] if row else "") or "").strip()
+    latest_dt = _parse_iso_dt(latest_text)
+    if latest_dt is None:
+        return ""
+    if latest_dt.tzinfo is None:
+        latest_dt = latest_dt.replace(tzinfo=timezone.utc)
+    after_dt = latest_dt - timedelta(seconds=float(lookback_sec))
+    return after_dt.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
 def _trade_sync_status_extra(
     *,
     profile_name: str,
     lightweight: bool,
     fail_count: Optional[int] = None,
     probe_orders: int = 0,
+    recent_after: Optional[str] = None,
+    recent_after_lookback_sec: Optional[float] = None,
+    trade_token_count: Optional[int] = None,
 ) -> Dict[str, Any]:
     count = _TRADE_SYNC_FAIL_COUNT if fail_count is None else max(int(fail_count), 0)
     profile_key = str(profile_name or "").strip().lower() or "normal"
@@ -30202,6 +30771,18 @@ def _trade_sync_status_extra(
         "trade_sync_fail_count": int(count),
         "trade_sync_probe_orders": int(max(probe_orders, 0)),
     }
+    recent_after_text = str(recent_after or "").strip()
+    extra["trade_sync_recent_after"] = recent_after_text
+    if (
+        recent_after_lookback_sec is not None
+        and math.isfinite(float(recent_after_lookback_sec))
+        and float(recent_after_lookback_sec) > 0
+    ):
+        extra["trade_sync_recent_after_lookback_sec"] = int(float(recent_after_lookback_sec))
+    else:
+        extra["trade_sync_recent_after_lookback_sec"] = 0
+    if trade_token_count is not None:
+        extra["trade_sync_token_count"] = max(int(trade_token_count), 0)
     if profile_key.startswith("degraded_") and not lightweight:
         extra["degraded"] = True
         extra["mode"] = "trade_sync_degraded"
@@ -30721,6 +31302,9 @@ def sync_trade_fills(
     probe_orders: int = 0,
 ) -> bool:
     profile_name = str(sync_profile or "").strip().lower() or _trade_sync_profile_name()
+    trade_token_count = len(trade_token_map or {})
+    recent_after_used = ""
+    recent_after_lookback_used: Optional[float] = None
     if respect_circuit and _trade_sync_is_open():
         cooldown_until = _TRADE_SYNC_COOLDOWN_UNTIL
         remaining = max(0, int(cooldown_until - time.time()))
@@ -30739,6 +31323,9 @@ def sync_trade_fills(
                     lightweight=lightweight,
                     fail_count=_TRADE_SYNC_FAIL_COUNT,
                     probe_orders=probe_orders,
+                    recent_after=recent_after_used,
+                    recent_after_lookback_sec=recent_after_lookback_used,
+                    trade_token_count=trade_token_count,
                 ),
             )
         return False
@@ -30774,8 +31361,38 @@ def sync_trade_fills(
     if not lightweight:
         profile_env = _trade_sync_profile_env(profile_name)
     run_env_override = dict(env_override or {})
+    recent_after_lookback_sec = _env_float("PM_TRADE_SYNC_RECENT_AFTER_LOOKBACK_SEC")
+    if (
+        recent_after_lookback_sec is not None
+        and math.isfinite(recent_after_lookback_sec)
+        and recent_after_lookback_sec > 0
+        and "PM_CLOB_TRADES_AFTER" not in run_env_override
+        and "PM_CLOB_TRADES_BEFORE" not in run_env_override
+    ):
+        recent_after_hint = _trade_sync_recent_after_hint(
+            trade_token_map,
+            float(recent_after_lookback_sec),
+        )
+        if recent_after_hint:
+            run_env_override["PM_CLOB_TRADES_AFTER"] = recent_after_hint
+            run_env_override.setdefault("PM_TRADE_SYNC_ASSUME_ZERO", "0")
+            recent_after_used = recent_after_hint
+            recent_after_lookback_used = float(recent_after_lookback_sec)
+            print(
+                f"[auto-trade] trade sync recent_after={recent_after_hint} "
+                f"lookback_sec={int(float(recent_after_lookback_sec))}"
+            )
     for key, value in profile_env.items():
         run_env_override.setdefault(str(key), str(value))
+    if not recent_after_used:
+        recent_after_used = str(run_env_override.get("PM_CLOB_TRADES_AFTER") or "").strip()
+        if recent_after_used:
+            if (
+                recent_after_lookback_sec is not None
+                and math.isfinite(recent_after_lookback_sec)
+                and recent_after_lookback_sec > 0
+            ):
+                recent_after_lookback_used = float(recent_after_lookback_sec)
     if not run_env_override:
         run_env_override = {}
     timeout_used = timeout_override
@@ -30880,6 +31497,9 @@ def sync_trade_fills(
                         lightweight=lightweight,
                         fail_count=fail_count,
                         probe_orders=probe_orders,
+                        recent_after=recent_after_used,
+                        recent_after_lookback_sec=recent_after_lookback_used,
+                        trade_token_count=trade_token_count,
                     ),
                 )
             return False
@@ -32993,15 +33613,25 @@ def sync_trade_fills(
                 lightweight=lightweight,
                 fail_count=0,
                 probe_orders=probe_orders,
+                recent_after=recent_after_used,
+                recent_after_lookback_sec=recent_after_lookback_used,
+                trade_token_count=trade_token_count,
             ),
         )
     return True
 
 
-def build_token_map_latest_runs(conn: sqlite3.Connection) -> Dict[str, Dict[str, str]]:
+def build_token_map_latest_runs(
+    conn: sqlite3.Connection,
+    required_tokens: Optional[Iterable[str]] = None,
+) -> Dict[str, Dict[str, str]]:
     token_map: Dict[str, Dict[str, str]] = {}
+    required_token_set = {
+        str(token or "").strip()
+        for token in (required_tokens or [])
+        if str(token or "").strip()
+    }
     cur = conn.cursor()
-    market_tokens_by_event: Dict[Tuple[str, str], List[Tuple[str, str, str]]] = {}
     try:
         cur.execute(
             """
@@ -33018,11 +33648,29 @@ def build_token_map_latest_runs(conn: sqlite3.Connection) -> Dict[str, Dict[str,
             if not slug_m or not event_date_m or not outcome_m:
                 continue
             event_date_m = event_date_m.split("T")[0]
-            market_tokens_by_event.setdefault((slug_m, event_date_m), []).append(
-                (outcome_m, yes_token_m, no_token_m)
-            )
+            if yes_token_m and yes_token_m not in token_map:
+                token_map[yes_token_m] = {
+                    "slug": slug_m,
+                    "event_date": event_date_m,
+                    "outcome": outcome_m,
+                    "side": "YES",
+                }
+            if no_token_m and no_token_m not in token_map:
+                token_map[no_token_m] = {
+                    "slug": slug_m,
+                    "event_date": event_date_m,
+                    "outcome": outcome_m,
+                    "side": "NO",
+                }
     except sqlite3.OperationalError:
-        market_tokens_by_event = {}
+        token_map = {}
+    unresolved_tokens = {
+        token_id
+        for token_id in required_token_set
+        if token_id and token_id not in token_map
+    }
+    if not unresolved_tokens:
+        return token_map
     try:
         cur.execute(
             """
@@ -33040,7 +33688,7 @@ def build_token_map_latest_runs(conn: sqlite3.Connection) -> Dict[str, Dict[str,
         if not slug or not event_date:
             continue
         event_date_norm = event_date.split("T")[0]
-        key = (slug, event_date)
+        key = (slug, event_date_norm)
         if key in seen:
             continue
         seen.add(key)
@@ -33064,43 +33712,143 @@ def build_token_map_latest_runs(conn: sqlite3.Connection) -> Dict[str, Dict[str,
             yes_token = str(item.get("yes_token") or "")
             no_token = str(item.get("no_token") or "")
             if yes_token:
-                payload_had_token = True
                 if yes_token not in token_map:
+                    payload_had_token = True
                     token_map[yes_token] = {
                         "slug": slug,
                         "event_date": event_date_norm,
                         "outcome": outcome,
                         "side": "YES",
                     }
+                unresolved_tokens.discard(yes_token)
             if no_token:
-                payload_had_token = True
                 if no_token not in token_map:
+                    payload_had_token = True
                     token_map[no_token] = {
                         "slug": slug,
                         "event_date": event_date_norm,
                         "outcome": outcome,
                         "side": "NO",
                     }
-        if not payload_had_token:
-            fallback_rows = market_tokens_by_event.get((slug, event_date_norm), [])
-            for outcome, yes_token, no_token in fallback_rows:
-                if yes_token:
-                    if yes_token not in token_map:
-                        token_map[yes_token] = {
-                            "slug": slug,
-                            "event_date": event_date_norm,
-                            "outcome": outcome,
-                            "side": "YES",
-                        }
-                if no_token:
-                    if no_token not in token_map:
-                        token_map[no_token] = {
-                            "slug": slug,
-                            "event_date": event_date_norm,
-                            "outcome": outcome,
-                            "side": "NO",
-                        }
+                unresolved_tokens.discard(no_token)
+        if payload_had_token and not unresolved_tokens:
+            break
     return token_map
+
+
+def _resolve_token_ids_for_edge_trade_keys(
+    conn: sqlite3.Connection,
+    trade_keys: Iterable[Tuple[str, str, str, str]],
+) -> Dict[Tuple[str, str, str, str], str]:
+    token_by_key: Dict[Tuple[str, str, str, str], str] = {}
+    normalized_keys: List[Tuple[str, str, str, str]] = []
+    seen_keys: Set[Tuple[str, str, str, str]] = set()
+    for slug, event_date, outcome, side in trade_keys or []:
+        slug_key = str(slug or "").strip()
+        event_date_key = _normalize_date_key(str(event_date or "").strip())
+        outcome_key = str(outcome or "").strip()
+        side_key = str(side or "").strip().upper()
+        if not slug_key or not event_date_key or not outcome_key or side_key not in {"YES", "NO"}:
+            continue
+        key = (slug_key, event_date_key, outcome_key, side_key)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        normalized_keys.append(key)
+    if not normalized_keys:
+        return token_by_key
+
+    cur = conn.cursor()
+    grouped_keys: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
+    for slug, event_date, outcome, side in normalized_keys:
+        grouped_keys.setdefault((slug, event_date), []).append((outcome, side))
+
+    unresolved_by_event: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
+    for (slug, event_date), outcome_sides in grouped_keys.items():
+        outcome_tokens: Dict[str, Tuple[str, str]] = {}
+        try:
+            cur.execute(
+                """
+                SELECT outcome, yes_token, no_token
+                FROM market_tokens
+                WHERE slug = ? AND event_date = ?
+                """,
+                (slug, event_date),
+            )
+            for row in cur.fetchall() or []:
+                outcome_key = str(row[0] or "").strip()
+                if not outcome_key:
+                    continue
+                outcome_tokens[outcome_key] = (
+                    str(row[1] or "").strip(),
+                    str(row[2] or "").strip(),
+                )
+        except sqlite3.OperationalError:
+            outcome_tokens = {}
+
+        unresolved_items: List[Tuple[str, str]] = []
+        for outcome, side in outcome_sides:
+            token_pair = outcome_tokens.get(outcome)
+            token_id = ""
+            if token_pair:
+                token_id = token_pair[0] if side == "YES" else token_pair[1]
+            if token_id:
+                token_by_key[(slug, event_date, outcome, side)] = token_id
+            else:
+                unresolved_items.append((outcome, side))
+        if unresolved_items:
+            unresolved_by_event[(slug, event_date)] = unresolved_items
+
+    if not unresolved_by_event:
+        return token_by_key
+
+    for (slug, event_date), outcome_sides in unresolved_by_event.items():
+        try:
+            cur.execute(
+                """
+                SELECT payload_json
+                FROM event_runs
+                WHERE slug = ?
+                  AND (event_date = ? OR substr(event_date, 1, 10) = ?)
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (slug, event_date, event_date),
+            )
+            row = cur.fetchone()
+        except sqlite3.OperationalError:
+            row = None
+        if not row:
+            continue
+        payload_raw = row[0] if not isinstance(row, sqlite3.Row) else row["payload_json"]
+        if not payload_raw:
+            continue
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            continue
+        payload_rows = payload.get("rows") or []
+        if not isinstance(payload_rows, list):
+            continue
+        outcome_tokens: Dict[str, Tuple[str, str]] = {}
+        for item in payload_rows:
+            if not isinstance(item, dict):
+                continue
+            outcome_key = str(item.get("outcome") or "").strip()
+            if not outcome_key:
+                continue
+            outcome_tokens[outcome_key] = (
+                str(item.get("yes_token") or "").strip(),
+                str(item.get("no_token") or "").strip(),
+            )
+        for outcome, side in outcome_sides:
+            token_pair = outcome_tokens.get(outcome)
+            token_id = ""
+            if token_pair:
+                token_id = token_pair[0] if side == "YES" else token_pair[1]
+            if token_id:
+                token_by_key[(slug, event_date, outcome, side)] = token_id
+    return token_by_key
 
 
 def _force_clear_expired_positions(conn: sqlite3.Connection, *, now_iso: Optional[str] = None) -> int:
@@ -33145,117 +33893,83 @@ def sync_positions_to_db(
     conn: sqlite3.Connection,
     positions_by_token: Dict[str, Dict[str, Any]],
 ) -> int:
-    token_map = build_token_map_latest_runs(conn)
-    key_to_token = {
-        (meta["slug"], meta["event_date"], meta["outcome"], meta["side"]): token
-        for token, meta in token_map.items()
-    }
     cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, slug, event_date, outcome, side
+            FROM edge_trades
+            WHERE state IN ('entry', 'entry_pending')
+               OR (position_size IS NOT NULL AND position_size > 0)
+            """
+        )
+        active_rows = cur.fetchall() or []
+    except sqlite3.OperationalError:
+        active_rows = []
+    active_entries: List[Tuple[int, str, str, str, str, str]] = []
+    active_keys: List[Tuple[str, str, str, str]] = []
+    for row in active_rows:
+        row_id = int(row[0]) if row[0] is not None else 0
+        slug = str(row[1] or "").strip()
+        event_date_raw = str(row[2] or "").strip()
+        outcome = str(row[3] or "").strip()
+        side = str(row[4] or "").strip().upper()
+        event_date_key = _normalize_date_key(event_date_raw)
+        if row_id <= 0 or not slug or not event_date_key or not outcome or side not in {"YES", "NO"}:
+            continue
+        active_entries.append((row_id, slug, event_date_raw, event_date_key, outcome, side))
+        active_keys.append((slug, event_date_key, outcome, side))
+    key_to_token = _resolve_token_ids_for_edge_trade_keys(conn, active_keys)
     now_iso = utc_now_iso()
     updated = 0
-    for token_id, entry in positions_by_token.items():
-        mapping = token_map.get(token_id)
-        if not mapping:
+    for row_id, slug, event_date_raw, event_date_key, outcome, side in active_entries:
+        token_id = key_to_token.get((slug, event_date_key, outcome, side))
+        live_entry = positions_by_token.get(token_id) if token_id else None
+        size = to_float(live_entry.get("size")) if isinstance(live_entry, dict) else None
+        if size is None or not math.isfinite(size) or size <= TIME_EDGE_Q_EPS:
+            if POSITIONS_ASSUME_ZERO:
+                cur.execute(
+                    """
+                    UPDATE edge_trades
+                    SET position_size = 0,
+                        state = 'exit',
+                        last_action = ?,
+                        last_action_at = ?,
+                        last_status = 'no_position',
+                        last_error = '',
+                        updated_at = ?
+                    WHERE id = ?
+                      AND COALESCE(position_size, 0) > 0
+                    """,
+                    ("pos_sync_clear", now_iso, now_iso, row_id),
+                )
+                updated += int(cur.rowcount or 0)
             continue
-        size = to_float(entry.get("size"))
-        if size is None or not math.isfinite(size):
-            continue
-        if size <= 0 and POSITIONS_ASSUME_ZERO:
-            cur.execute(
-                """
-                UPDATE edge_trades
-                SET position_size = 0,
-                    state = 'exit',
-                    last_action = ?,
-                    last_action_at = ?,
-                    last_status = 'no_position',
-                    last_error = '',
-                    updated_at = ?
-                WHERE slug = ?
-                  AND (event_date = ? OR substr(event_date, 1, 10) = ?)
-                  AND outcome = ?
-                  AND side = ?
-                  AND position_size > 0
-                """,
-                (
-                    "pos_sync_clear",
-                    now_iso,
-                    now_iso,
-                    mapping["slug"],
-                    mapping["event_date"],
-                    mapping["event_date"],
-                    mapping["outcome"],
-                    mapping["side"],
-                ),
-            )
-            updated += cur.rowcount
-            continue
-        avg_price = to_float(entry.get("avg_price"))
-        state = "entry" if size > 0 else "exit"
+        avg_price = to_float(live_entry.get("avg_price")) if isinstance(live_entry, dict) else None
         cur.execute(
             """
             UPDATE edge_trades
             SET position_size = ?,
                 avg_price = COALESCE(?, avg_price),
-                state = ?,
+                state = 'entry',
                 last_action = ?,
                 last_action_at = ?,
                 last_status = ?,
                 last_error = '',
                 updated_at = ?
-            WHERE slug = ?
-              AND (event_date = ? OR substr(event_date, 1, 10) = ?)
-              AND outcome = ?
-              AND side = ?
+            WHERE id = ?
             """,
             (
                 size,
                 avg_price,
-                state,
                 "pos_sync",
                 now_iso,
                 "pos_sync",
                 now_iso,
-                mapping["slug"],
-                mapping["event_date"],
-                mapping["event_date"],
-                mapping["outcome"],
-                mapping["side"],
+                row_id,
             ),
         )
-        updated += cur.rowcount
-    if POSITIONS_ASSUME_ZERO:
-        for (slug, event_date, outcome, side), token_id in key_to_token.items():
-            if token_id in positions_by_token:
-                continue
-            cur.execute(
-                """
-                UPDATE edge_trades
-                SET position_size = 0,
-                    state = 'exit',
-                    last_action = ?,
-                    last_action_at = ?,
-                    last_status = 'no_position',
-                    last_error = '',
-                    updated_at = ?
-                WHERE slug = ?
-                  AND (event_date = ? OR substr(event_date, 1, 10) = ?)
-                  AND outcome = ?
-                  AND side = ?
-                  AND position_size > 0
-                """,
-                (
-                    "pos_sync_clear",
-                    now_iso,
-                    now_iso,
-                    slug,
-                    event_date,
-                    event_date,
-                    outcome,
-                    side,
-                ),
-            )
-            updated += cur.rowcount
+        updated += int(cur.rowcount or 0)
     updated += _force_clear_expired_positions(conn, now_iso=now_iso)
     conn.commit()
     return updated
@@ -33288,12 +34002,21 @@ def build_trade_sync_maps(
     try:
         cur.execute(
             """
-            SELECT slug, event_date, payload_json, market_var
-            FROM event_runs
-            WHERE run_date = ?
-            ORDER BY created_at DESC
+            SELECT er.slug, er.event_date, er.payload_json, er.market_var
+            FROM event_runs er
+            JOIN (
+                SELECT slug, event_date, MAX(created_at) AS max_created_at
+                FROM event_runs
+                WHERE run_date = ?
+                GROUP BY slug, event_date
+            ) latest
+              ON latest.slug = er.slug
+             AND latest.event_date = er.event_date
+             AND latest.max_created_at = er.created_at
+            WHERE er.run_date = ?
+            ORDER BY er.created_at DESC
             """,
-            (run_date,),
+            (run_date, run_date),
         )
     except sqlite3.OperationalError:
         return trade_token_map, trade_mark_map, 0
@@ -33352,8 +34075,8 @@ def build_trade_sync_maps(
                 if mark_no is not None:
                     trade_mark_map[(slug, event_date_key, outcome, "NO")] = mark_no
 
-    # 1) Primary: today's snapshots.
-    for slug, event_date, payload_raw, market_var in cur.fetchall():
+    # 1) Primary: latest snapshot per (slug, event_date) for the target day.
+    for slug, event_date, payload_raw, market_var in cur:
         _add_payload(str(slug or ""), str(event_date or ""), str(market_var or ""), payload_raw)
 
     # 2) Exit/position safety net: always include still-open positions (may be from older run_dates).
@@ -33966,7 +34689,7 @@ def _auto_trade_event_worker(
         os.environ["PM_DB_CONNECT_TIMEOUT_SEC"] = f"{worker_db_connect_timeout_sec:.3f}"
         worker_db_busy_timeout_ms = _env_int("PM_AUTO_TRADE_EVENT_WORKER_DB_BUSY_TIMEOUT_MS")
         if worker_db_busy_timeout_ms is None or worker_db_busy_timeout_ms <= 0:
-            worker_db_busy_timeout_ms = 5000
+            worker_db_busy_timeout_ms = 30000
         worker_db_busy_timeout_ms = min(int(worker_db_busy_timeout_ms), 30000)
         os.environ["PM_DB_BUSY_TIMEOUT_MS"] = str(worker_db_busy_timeout_ms)
         execute_auto_trades(
@@ -33998,6 +34721,8 @@ def run_auto_trades_for_date(
     exit_only: bool = False,
     run_id: Optional[int] = None,
     job_heartbeat: Optional[Callable[[], None]] = None,
+    positions_snapshot: Optional[Dict[str, Dict[str, Any]]] = None,
+    positions_snapshot_error: str = "",
 ) -> Dict[str, Any]:
     if not DB_PATH.exists():
         return {"ok": False, "error": "db_missing"}
@@ -34016,6 +34741,7 @@ def run_auto_trades_for_date(
     if event_backoff_sec < 0:
         event_backoff_sec = 0.0
     timeout_inline_retry = _env_bool("PM_AUTO_TRADE_EVENT_TIMEOUT_INLINE_RETRY", False)
+    exit_sweep_inline = bool(exit_only and _env_bool("PM_AUTO_TRADE_EXIT_SWEEP_INLINE", True))
     timeout_inline_lock_retry = _env_int("PM_AUTO_TRADE_EVENT_TIMEOUT_INLINE_LOCK_RETRY")
     if timeout_inline_lock_retry is None or timeout_inline_lock_retry < 1:
         timeout_inline_lock_retry = 3
@@ -34039,6 +34765,7 @@ def run_auto_trades_for_date(
         heartbeat_interval_sec = 45.0
     heartbeat_interval_sec = max(5.0, min(float(heartbeat_interval_sec), 300.0))
     heartbeat_last_monotonic = 0.0
+    settled_reconcile_context: Optional[Dict[str, Any]] = {"done": False} if exit_only else None
 
     def _heartbeat_if_due(force: bool = False) -> None:
         nonlocal heartbeat_last_monotonic
@@ -34078,7 +34805,7 @@ def run_auto_trades_for_date(
         elif fact_err:
             print(f"[auto-trade] facts unavailable ({fact_err}); fallback to event_runs")
     rows: List[sqlite3.Row] = []
-    if rows_source == "event_runs" or exit_only:
+    if rows_source == "event_runs" and not exit_only:
         conn = open_db()
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
@@ -34091,33 +34818,33 @@ def run_auto_trades_for_date(
         except sqlite3.OperationalError:
             conn.close()
             return {"ok": False, "error": "event_runs_missing"}
-    # For exit-only runs, also cover any still-open positions even if their latest snapshot
-    # is not on `run_date`. This prevents exits from silently stalling when the daily scan window
-    # no longer includes the entry day.
+        conn.close()
+    # For exit-only runs, avoid scanning the full day's event_runs payloads.
+    # We only need snapshots for markets with a live position / pending entry.
     open_position_keys: List[Tuple[str, str]] = []
     if exit_only:
         try:
-            cur.execute(
-                """
-                SELECT DISTINCT slug, event_date
-                FROM edge_trades
-                WHERE (state IN ('entry', 'entry_pending') OR (position_size IS NOT NULL AND position_size > 0))
-                """
-            )
-            for slug_raw, event_date_raw in cur.fetchall():
-                slug = str(slug_raw or "").strip()
-                event_date_key = str(event_date_raw or "").strip()
-                if "T" in event_date_key:
-                    event_date_key = event_date_key.split("T", 1)[0]
-                elif " " in event_date_key:
-                    event_date_key = event_date_key.split(" ", 1)[0]
-                if not slug or not event_date_key:
-                    continue
-                open_position_keys.append((slug, event_date_key))
+            with open_db() as conn_open:
+                cur_open = conn_open.cursor()
+                cur_open.execute(
+                    """
+                    SELECT DISTINCT slug, event_date
+                    FROM edge_trades
+                    WHERE (state IN ('entry', 'entry_pending') OR (position_size IS NOT NULL AND position_size > 0))
+                    """
+                )
+                for slug_raw, event_date_raw in cur_open.fetchall():
+                    slug = str(slug_raw or "").strip()
+                    event_date_key = str(event_date_raw or "").strip()
+                    if "T" in event_date_key:
+                        event_date_key = event_date_key.split("T", 1)[0]
+                    elif " " in event_date_key:
+                        event_date_key = event_date_key.split(" ", 1)[0]
+                    if not slug or not event_date_key:
+                        continue
+                    open_position_keys.append((slug, event_date_key))
         except sqlite3.OperationalError:
             open_position_keys = []
-    if rows_source == "event_runs" or exit_only:
-        conn.close()
     seen: set[Tuple[str, str]] = set()
     processed = 0
     skipped = 0
@@ -34177,7 +34904,16 @@ def run_auto_trades_for_date(
 
         def _run_with_timeout() -> Tuple[bool, str]:
             if event_timeout_sec <= 0:
-                execute_auto_trades(run_date_key, event_date_key, payload, exit_only=exit_only, run_id=run_id)
+                execute_auto_trades(
+                    run_date_key,
+                    event_date_key,
+                    payload,
+                    exit_only=exit_only,
+                    run_id=run_id,
+                    positions_snapshot=(positions_snapshot if exit_only else None),
+                    positions_snapshot_error=(positions_snapshot_error if exit_only else ""),
+                    settled_reconcile_context=settled_reconcile_context,
+                )
                 return True, ""
             ctx = multiprocessing.get_context("spawn")
             proc: Optional[multiprocessing.Process] = None
@@ -34263,6 +34999,9 @@ def run_auto_trades_for_date(
                             payload,
                             exit_only=exit_only,
                             run_id=run_id,
+                            positions_snapshot=(positions_snapshot if exit_only else None),
+                            positions_snapshot_error=(positions_snapshot_error if exit_only else ""),
+                            settled_reconcile_context=settled_reconcile_context,
                         )
                         return True, ""
                     except Exception as exc:
@@ -34284,17 +35023,20 @@ def run_auto_trades_for_date(
                     else:
                         os.environ[k] = prev
 
-        ok, err_reason = _run_with_timeout()
         inline_retried = False
-        if (not ok) and err_reason == "event_timeout" and timeout_inline_retry:
-            inline_retried = True
-            ok_inline, inline_err = _run_inline_lightweight()
-            if ok_inline:
-                ok = True
-                err_reason = ""
-                print(f"[auto-trade] event timeout recovered by inline retry {slug} {event_date_key}")
-            else:
-                err_reason = f"event_timeout_inline_failed:{inline_err or 'unknown'}"
+        if exit_sweep_inline:
+            ok, err_reason = _run_inline_lightweight()
+        else:
+            ok, err_reason = _run_with_timeout()
+            if (not ok) and err_reason == "event_timeout" and timeout_inline_retry:
+                inline_retried = True
+                ok_inline, inline_err = _run_inline_lightweight()
+                if ok_inline:
+                    ok = True
+                    err_reason = ""
+                    print(f"[auto-trade] event timeout recovered by inline retry {slug} {event_date_key}")
+                else:
+                    err_reason = f"event_timeout_inline_failed:{inline_err or 'unknown'}"
         if ok:
             processed += 1
             _heartbeat_if_due()
@@ -34471,6 +35213,40 @@ def run_auto_trades_for_date(
         attempted_events += 1
         _execute_payload(payload, slug, event_date_key)
 
+    def _load_latest_fact_row(slug: str, event_date_key: str) -> Optional[Dict[str, Any]]:
+        if not slug or not event_date_key:
+            return None
+        try:
+            cur2.execute(
+                """
+                SELECT h.fact_json
+                FROM event_fact_latest l
+                JOIN event_fact_history h ON h.id = l.fact_id
+                WHERE h.slug = ?
+                  AND (h.event_date = ? OR substr(h.event_date, 1, 10) = ?)
+                ORDER BY h.fact_as_of DESC, h.created_at DESC
+                LIMIT 1
+                """,
+                (slug, event_date_key, event_date_key),
+            )
+            row = cur2.fetchone()
+        except sqlite3.OperationalError:
+            row = None
+        if not row:
+            return None
+        fact_json = ""
+        if isinstance(row, sqlite3.Row):
+            fact_json = str(row["fact_json"] or "")
+        elif isinstance(row, tuple) and row:
+            fact_json = str(row[0] or "")
+        if not fact_json:
+            return None
+        return {
+            "slug": slug,
+            "event_date": event_date_key,
+            "fact_json": fact_json,
+        }
+
     if rows_source == "facts":
         for row in fact_rows:
             _process_fact_row(row)
@@ -34503,11 +35279,15 @@ def run_auto_trades_for_date(
                     row = cur2.fetchone()
                 except sqlite3.OperationalError:
                     row = None
-                if not row:
-                    # Without a snapshot payload we cannot map outcomes/tokens reliably.
-                    skipped += 1
+                if row and str(row["payload_json"] or "").strip():
+                    _process_row(row)
                     continue
-                _process_row(row)
+                fact_row = _load_latest_fact_row(slug, event_date_key)
+                if fact_row:
+                    _process_fact_row(fact_row)
+                    continue
+                # Without either snapshot payload or facts payload we cannot map outcomes/tokens reliably.
+                skipped += 1
     _heartbeat_if_due(force=True)
     result = {"ok": True, "run_date": run_date_key, "processed": processed, "skipped": skipped}
     if deferred > 0:
@@ -34589,22 +35369,22 @@ def _auto_trade_job_history_days() -> int:
 
 
 def _auto_trade_job_bookkeeping_connect_timeout_sec() -> float:
-    raw = os.environ.get("PM_AUTO_TRADE_JOB_BOOKKEEPING_CONNECT_TIMEOUT_SEC", "0.25")
+    raw = os.environ.get("PM_AUTO_TRADE_JOB_BOOKKEEPING_CONNECT_TIMEOUT_SEC", "0.75")
     try:
-        val = float(str(raw or "0.25").strip())
+        val = float(str(raw or "0.75").strip())
     except Exception:
-        val = 0.25
+        val = 0.75
     if not math.isfinite(val):
-        val = 0.25
+        val = 0.75
     return max(0.05, min(val, 2.0))
 
 
 def _auto_trade_job_bookkeeping_busy_timeout_ms() -> int:
-    raw = os.environ.get("PM_AUTO_TRADE_JOB_BOOKKEEPING_BUSY_TIMEOUT_MS", "1500")
+    raw = os.environ.get("PM_AUTO_TRADE_JOB_BOOKKEEPING_BUSY_TIMEOUT_MS", "5000")
     try:
-        val = int(float(str(raw or "1500").strip()))
+        val = int(float(str(raw or "5000").strip()))
     except Exception:
-        val = 1500
+        val = 5000
     return max(100, min(val, 5000))
 
 
@@ -34794,55 +35574,75 @@ def enqueue_auto_trade_job(
     with open_db() as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        now_dt = datetime.now(timezone.utc)
-        _auto_trade_job_cleanup_history(conn, now_dt, now_iso)
-        if not force_enqueue:
+        locked_error: Optional[Exception] = None
+        job_id = 0
+        inserted: Optional[sqlite3.Row] = None
+        for attempt in range(3):
+            now_dt = datetime.now(timezone.utc)
             try:
+                _auto_trade_job_cleanup_history(conn, now_dt, now_iso)
+                if not force_enqueue:
+                    try:
+                        cur.execute(
+                            """
+                            SELECT *
+                            FROM auto_trade_jobs
+                            WHERE run_date = ?
+                              AND state IN ('queued', 'running', 'retrying')
+                            ORDER BY priority DESC, created_at DESC, id DESC
+                            LIMIT 1
+                            """,
+                            (run_date_key,),
+                        )
+                        active = cur.fetchone()
+                    except sqlite3.Error:
+                        active = None
+                    if active:
+                        return {
+                            "ok": True,
+                            "enqueued": False,
+                            "reason": "already_active",
+                            "job": _serialize_job_row(active),
+                        }
                 cur.execute(
                     """
-                    SELECT *
-                    FROM auto_trade_jobs
-                    WHERE run_date = ?
-                      AND state IN ('queued', 'running', 'retrying')
-                    ORDER BY priority DESC, created_at DESC, id DESC
-                    LIMIT 1
+                    INSERT INTO auto_trade_jobs(
+                        run_date, source, state, priority, payload_json,
+                        lease_until, retry_count, max_retry, next_retry_at, last_error,
+                        started_at, ended_at, run_id, created_at, updated_at
+                    ) VALUES (?, ?, 'queued', ?, ?, '', 0, ?, ?, '', '', '', NULL, ?, ?)
                     """,
-                    (run_date_key,),
+                    (
+                        run_date_key,
+                        source_text,
+                        priority_val,
+                        payload_json,
+                        max_retry_val,
+                        now_iso,
+                        now_iso,
+                        now_iso,
+                    ),
                 )
-                active = cur.fetchone()
-            except sqlite3.Error:
-                active = None
-            if active:
-                return {
-                    "ok": True,
-                    "enqueued": False,
-                    "reason": "already_active",
-                    "job": _serialize_job_row(active),
-                }
-        cur.execute(
-            """
-            INSERT INTO auto_trade_jobs(
-                run_date, source, state, priority, payload_json,
-                lease_until, retry_count, max_retry, next_retry_at, last_error,
-                started_at, ended_at, run_id, created_at, updated_at
-            ) VALUES (?, ?, 'queued', ?, ?, '', 0, ?, ?, '', '', '', NULL, ?, ?)
-            """,
-            (
-                run_date_key,
-                source_text,
-                priority_val,
-                payload_json,
-                max_retry_val,
-                now_iso,
-                now_iso,
-                now_iso,
-            ),
-        )
-        job_id = int(cur.lastrowid or 0)
-        conn.commit()
-        cur.execute("SELECT * FROM auto_trade_jobs WHERE id = ?", (job_id,))
-        inserted = cur.fetchone()
-        conn.commit()
+                job_id = int(cur.lastrowid or 0)
+                conn.commit()
+                try:
+                    cur.execute("SELECT * FROM auto_trade_jobs WHERE id = ?", (job_id,))
+                    inserted = cur.fetchone()
+                except sqlite3.Error:
+                    inserted = None
+                break
+            except sqlite3.OperationalError as exc:
+                try:
+                    conn.rollback()
+                except sqlite3.Error:
+                    pass
+                if "locked" in str(exc).lower() and attempt < 2:
+                    locked_error = exc
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                raise
+        if job_id <= 0 and locked_error is not None:
+            raise locked_error
     return {"ok": True, "enqueued": True, "job": _serialize_job_row(inserted)}
 
 
@@ -34919,7 +35719,7 @@ def _auto_trade_job_touch(
     *,
     run_id: Optional[int] = None,
     now_dt: Optional[datetime] = None,
-) -> bool:
+) -> Optional[bool]:
     if int(job_id or 0) <= 0:
         return False
     now_dt = now_dt or datetime.now(timezone.utc)
@@ -34927,7 +35727,8 @@ def _auto_trade_job_touch(
     lease_until = (now_dt + timedelta(seconds=_auto_trade_job_lease_sec())).isoformat(
         timespec="seconds"
     )
-    for attempt in range(3):
+    locked_seen = False
+    for attempt in range(5):
         try:
             with _open_auto_trade_job_bookkeeping_db() as conn:
                 cur = conn.cursor()
@@ -34955,12 +35756,17 @@ def _auto_trade_job_touch(
                 conn.commit()
                 return bool(cur.rowcount or 0)
         except sqlite3.OperationalError as exc:
-            if _sqlite_locked_error(exc) and attempt < 2:
-                time.sleep(0.1 * float(attempt + 1))
-                continue
+            if _sqlite_locked_error(exc):
+                locked_seen = True
+                if attempt < 4:
+                    time.sleep(0.2 * float(attempt + 1))
+                    continue
+                return None
             return False
         except Exception:
             return False
+    if locked_seen:
+        return None
     return False
 
 
@@ -35368,6 +36174,9 @@ def run_auto_trade_job_worker_once() -> Dict[str, Any]:
         def _heartbeat() -> None:
             if job_id > 0:
                 touched = _auto_trade_job_touch(job_id, run_id=run_id)
+                if touched is None:
+                    print(f"[auto-trade] job heartbeat delayed: bookkeeping_locked job_id={job_id}")
+                    return
                 if not touched:
                     raise RuntimeError(f"touch_failed job_id={job_id}")
 
@@ -40143,6 +40952,15 @@ def run_trade_sync_for_date(
     mirror_only_override: Optional[bool] = None,
     mirror_priority_early_override: Optional[bool] = None,
 ) -> Dict[str, Any]:
+    started_mono = time.monotonic()
+    stage_timings: Dict[str, float] = {}
+
+    def _stage_start() -> float:
+        return time.monotonic()
+
+    def _stage_end(name: str, started_at: float) -> None:
+        stage_timings[name] = round(max(0.0, time.monotonic() - started_at), 3)
+
     _refresh_auto_trade_config()
     run_date_input = str(run_date or "").strip()
     run_date_norm = _normalize_date_key(run_date_input)
@@ -40308,6 +41126,7 @@ def run_trade_sync_for_date(
             f"[trade-sync] mirror_only fallback -> full sync "
             f"reason={str(mirror_early_summary.get('fallback_reason') or '')}"
         )
+    prep_started = _stage_start()
     with open_db() as conn:
         trade_token_map, trade_mark_map, event_count = build_trade_sync_maps(conn, run_date)
         if not trade_token_map:
@@ -40325,6 +41144,7 @@ def run_trade_sync_for_date(
                     conn, latest_run_date
                 )
         before_count = count_edge_trade_fills(conn)
+    _stage_end("prep", prep_started)
     try:
         # In low-latency mode, prioritize mirror follow ahead of the potentially slow trade sync.
         mirror_priority_early = (
@@ -40444,43 +41264,101 @@ def run_trade_sync_for_date(
                     "reason": "no_matched_orders",
                     "matched_orders": int(fast_probe.get("matched") or 0),
                 }
+    full_sync_started = _stage_start()
     full_sync_ok = sync_trade_fills(
         trade_token_map,
         trade_mark_map,
         sync_profile=_trade_sync_profile_name(),
     )
+    _stage_end("full_sync", full_sync_started)
     sync_ok = bool(full_sync_ok or fast_sync_ok)
+    post_sync_count_started = _stage_start()
     with open_db() as conn:
         after_count = count_edge_trade_fills(conn)
+    _stage_end("post_sync_count", post_sync_count_started)
     added = max(after_count - before_count, 0)
     fills_reconciled = 0
     fills_reconcile_error = ""
     pos_updated = 0
     pos_error = ""
+    positions_by_token: Dict[str, Dict[str, Any]] = {}
     mirror_summary: Dict[str, Any] = {"enabled": bool(mirror_enabled), "ran": False}
     try:
+        fills_reconcile_started = _stage_start()
         with open_db() as conn:
             fills_reconciled = reconcile_edge_trades_positions_from_fills(conn)
             conn.commit()
+        _stage_end("fills_reconcile", fills_reconcile_started)
     except Exception as exc:
+        _stage_end("fills_reconcile", fills_reconcile_started)
         fills_reconcile_error = str(exc)
     if POSITIONS_SYNC_ENABLED:
+        positions_started = _stage_start()
+        positions_refresh_source = "network"
+        positions_cache_age_sec = None
+        positions_force_min_interval_sec = _env_float(
+            "PM_TRADE_SYNC_POSITIONS_FORCE_MIN_INTERVAL_SEC"
+        )
+        if (
+            positions_force_min_interval_sec is None
+            or not math.isfinite(positions_force_min_interval_sec)
+            or positions_force_min_interval_sec < 0
+        ):
+            positions_force_min_interval_sec = 180.0
+        force_positions_refresh = True
+        cached_positions_snapshot: Optional[Dict[str, Dict[str, Any]]] = None
+        cached_positions_error = ""
+        last_positions_ts = to_float(POSITIONS_CACHE.get("ts"))
+        if (
+            last_positions_ts is not None
+            and math.isfinite(last_positions_ts)
+            and positions_force_min_interval_sec > 0
+        ):
+            cache_age_sec = max(0.0, time.time() - float(last_positions_ts))
+            if cache_age_sec < float(positions_force_min_interval_sec):
+                force_positions_refresh = False
+                cached_positions_snapshot = dict(POSITIONS_CACHE.get("data") or {})
+                cached_positions_error = str(POSITIONS_CACHE.get("error") or "")
+                positions_cache_age_sec = float(cache_age_sec)
         with open_db() as conn:
-            positions_by_token, pos_error = fetch_positions_by_token(force=True)
+            if (not force_positions_refresh) and cached_positions_snapshot is not None:
+                positions_by_token = dict(cached_positions_snapshot)
+                pos_error = str(cached_positions_error or "")
+                positions_refresh_source = "cache_window"
+            else:
+                positions_by_token, pos_error = fetch_positions_by_token(force=True)
+                positions_refresh_source = str(POSITIONS_CACHE.get("last_source") or "network")
+                positions_cache_age_sec = to_float(POSITIONS_CACHE.get("last_age_sec"))
             if not pos_error or positions_by_token:
                 pos_updated = sync_positions_to_db(conn, positions_by_token)
             else:
                 pos_updated = _force_clear_expired_positions(conn)
                 if pos_updated > 0:
                     conn.commit()
+        _stage_end("positions_sync", positions_started)
+        cache_age_text = (
+            f"{float(positions_cache_age_sec):.1f}s"
+            if positions_cache_age_sec is not None and math.isfinite(float(positions_cache_age_sec))
+            else "n/a"
+        )
+        print(
+            "[auto-trade] positions sync "
+            f"source={positions_refresh_source} cache_age={cache_age_text} "
+            f"tokens={len(positions_by_token)} err={'-' if not pos_error else pos_error}"
+        )
     else:
+        positions_started = _stage_start()
         with open_db() as conn:
             pos_updated = _force_clear_expired_positions(conn)
             if pos_updated > 0:
                 conn.commit()
+        _stage_end("positions_sync", positions_started)
     try:
+        mirror_started = _stage_start()
         mirror_summary = run_mirror_follow_trades_with_auto_refresh(run_date)
+        _stage_end("mirror", mirror_started)
     except Exception as exc:
+        _stage_end("mirror", mirror_started)
         mirror_summary = {
             "enabled": bool(mirror_enabled),
             "ran": False,
@@ -40491,10 +41369,20 @@ def run_trade_sync_for_date(
     if sync_ok:
         if full_sync_ok:
             _trade_sync_reset_circuit()
-        exit_recalc = run_auto_trades_for_date(run_date, exit_only=True)
+        exit_recalc_started = _stage_start()
+        exit_recalc = run_auto_trades_for_date(
+            run_date,
+            exit_only=True,
+            positions_snapshot=dict(positions_by_token or {}),
+            positions_snapshot_error=pos_error,
+        )
+        _stage_end("exit_recalc", exit_recalc_started)
         try:
+            claim_started = _stage_start()
             claim_summary = _maybe_run_auto_claim(run_date)
+            _stage_end("claim", claim_started)
         except Exception as exc:
+            _stage_end("claim", claim_started)
             claim_summary = {
                 "enabled": bool(POLY_CLAIM_ENABLED),
                 "ran": True,
@@ -40509,6 +41397,7 @@ def run_trade_sync_for_date(
                 conn.commit()
         except Exception as exc:
             print(f"[auto-trade] no_orderbook reconcile (trade sync) failed: {exc}")
+    status_snapshot = _load_trade_sync_status()
     return {
         "ok": bool(sync_ok),
         "run_date": run_date,
@@ -40525,6 +41414,11 @@ def run_trade_sync_for_date(
         "mirror": mirror_summary,
         "exit_recalc": exit_recalc,
         "claim": claim_summary,
+        "trade_sync_recent_after": str(status_snapshot.get("trade_sync_recent_after") or ""),
+        "trade_sync_recent_after_lookback_sec": int(status_snapshot.get("trade_sync_recent_after_lookback_sec") or 0),
+        "trade_sync_token_count": int(status_snapshot.get("trade_sync_token_count") or 0),
+        "stage_timings_sec": stage_timings,
+        "elapsed_sec": round(max(0.0, time.monotonic() - started_mono), 3),
     }
 
 
@@ -40550,6 +41444,14 @@ def run_trade_sync_loop(run_date: str, interval_sec: float) -> None:
                     time.sleep(sleep_sec)
                 continue
             if not _wait_for_db_writer_lock("trade-sync", _env_float("PM_TRADE_SYNC_DB_LOCK_WAIT_SEC")):
+                sleep_sec = max(0.0, float(interval) - (time.time() - loop_started))
+                if sleep_sec > 0:
+                    time.sleep(sleep_sec)
+                continue
+            auto_trade_wait_sec = _env_float("PM_TRADE_SYNC_AUTO_TRADE_LOCK_WAIT_SEC")
+            if auto_trade_wait_sec is None or not math.isfinite(auto_trade_wait_sec) or auto_trade_wait_sec < 0:
+                auto_trade_wait_sec = 0.0
+            if not _wait_for_auto_trade_runtime_lock("trade-sync", auto_trade_wait_sec):
                 sleep_sec = max(0.0, float(interval) - (time.time() - loop_started))
                 if sleep_sec > 0:
                     time.sleep(sleep_sec)
@@ -40764,7 +41666,10 @@ def run_trade_sync_loop(run_date: str, interval_sec: float) -> None:
                 except Exception as exc:
                     print(f"[trade-sync] mirror_fast_poll failed: {exc}")
         except Exception as exc:
-            print(f"[trade-sync] failed: {exc}")
+            if _sqlite_locked_error(exc):
+                print("[trade-sync] sqlite_locked_soft_skip")
+            else:
+                print(f"[trade-sync] failed: {exc}")
         sleep_sec = max(0.0, float(interval) - (time.time() - loop_started))
         if sleep_sec > 0:
             time.sleep(sleep_sec)
@@ -41042,17 +41947,29 @@ def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, A
     if not POSITIONS_SYNC_ENABLED or not POSITIONS_API_URL:
         return {}, "disabled"
     now = time.time()
+    cached_ts = to_float(POSITIONS_CACHE.get("ts"))
+    cache_age_sec = None
+    if cached_ts is not None and math.isfinite(cached_ts):
+        cache_age_sec = max(0.0, now - float(cached_ts))
     if (
         not force
         and POSITIONS_CACHE.get("ts")
-        and now - float(POSITIONS_CACHE.get("ts") or 0.0) < POSITIONS_CACHE_MAX_AGE_SEC
+        and cache_age_sec is not None
+        and cache_age_sec < POSITIONS_CACHE_MAX_AGE_SEC
     ):
+        POSITIONS_CACHE["last_source"] = "cache"
+        POSITIONS_CACHE["last_age_sec"] = float(cache_age_sec)
+        POSITIONS_CACHE["last_duration_sec"] = 0.0
         return dict(POSITIONS_CACHE.get("data") or {}), str(POSITIONS_CACHE.get("error") or "")
+    request_started_at = time.time()
     url = _positions_api_url()
     if not url:
         POSITIONS_CACHE["error"] = "missing_positions_url"
         POSITIONS_CACHE["updated_at"] = utc_now_iso()
-        POSITIONS_CACHE["ts"] = now
+        POSITIONS_CACHE["ts"] = time.time()
+        POSITIONS_CACHE["last_source"] = "config_error"
+        POSITIONS_CACHE["last_age_sec"] = 0.0
+        POSITIONS_CACHE["last_duration_sec"] = max(0.0, time.time() - request_started_at)
         return {}, POSITIONS_CACHE["error"]
     headers = {"User-Agent": DEFAULT_REQUEST_HEADERS.get("User-Agent", "Mozilla/5.0")}
     if POSITIONS_API_AUTH:
@@ -41072,7 +41989,11 @@ def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, A
     except Exception as exc:
         POSITIONS_CACHE["error"] = f"{exc}"
         POSITIONS_CACHE["updated_at"] = utc_now_iso()
-        POSITIONS_CACHE["ts"] = now
+        finished_at = time.time()
+        POSITIONS_CACHE["ts"] = finished_at
+        POSITIONS_CACHE["last_source"] = "network_error"
+        POSITIONS_CACHE["last_age_sec"] = 0.0
+        POSITIONS_CACHE["last_duration_sec"] = max(0.0, finished_at - request_started_at)
         return dict(POSITIONS_CACHE.get("data") or {}), POSITIONS_CACHE["error"]
     positions = _extract_positions_list(payload)
     mapped: Dict[str, Dict[str, Any]] = {}
@@ -41121,7 +42042,11 @@ def fetch_positions_by_token(force: bool = False) -> Tuple[Dict[str, Dict[str, A
     POSITIONS_CACHE["data"] = mapped
     POSITIONS_CACHE["error"] = ""
     POSITIONS_CACHE["updated_at"] = utc_now_iso()
-    POSITIONS_CACHE["ts"] = now
+    finished_at = time.time()
+    POSITIONS_CACHE["ts"] = finished_at
+    POSITIONS_CACHE["last_source"] = "network"
+    POSITIONS_CACHE["last_age_sec"] = 0.0
+    POSITIONS_CACHE["last_duration_sec"] = max(0.0, finished_at - request_started_at)
     return mapped, ""
 
 def _extract_market_open_at(event: Optional[Dict], market: Optional[Dict] = None) -> Optional[str]:
@@ -44112,6 +45037,18 @@ def init_db() -> None:
     )
     cur.execute(
         """
+        CREATE INDEX IF NOT EXISTS idx_auto_trade_decisions_order_id_action
+        ON auto_trade_decisions(json_extract(details_json, '$.order_id'), action, created_at)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_auto_trade_decisions_slug_event_action_run
+        ON auto_trade_decisions(slug, event_date, action, run_id, created_at)
+        """
+    )
+    cur.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_auto_trade_runs_started_at
         ON auto_trade_runs(started_at)
         """
@@ -44635,7 +45572,7 @@ def _load_latest_payload_rows(
     try:
         cur.execute(
             """
-            SELECT payload_json
+            SELECT id
             FROM event_runs
             WHERE slug = ? AND event_date = ?
             ORDER BY created_at DESC, id DESC
@@ -44645,9 +45582,7 @@ def _load_latest_payload_rows(
         )
         rows_payload = cur.fetchall() or []
     except sqlite3.Error:
-        return []
-    if not rows_payload:
-        return []
+        rows_payload = []
 
     def _rows_from_payload(payload_raw: Any) -> List[Dict[str, Any]]:
         if not payload_raw:
@@ -44657,6 +45592,8 @@ def _load_latest_payload_rows(
         except (TypeError, json.JSONDecodeError):
             return []
         rows = payload.get("rows")
+        if not isinstance(rows, list):
+            rows = payload.get("distribution")
         if not isinstance(rows, list):
             return []
         out_rows: List[Dict[str, Any]] = []
@@ -44690,10 +45627,59 @@ def _load_latest_payload_rows(
 
     fallback_rows: List[Dict[str, Any]] = []
     for payload_row in rows_payload:
+        row_id = payload_row[0] if isinstance(payload_row, tuple) else payload_row["id"]
+        if row_id is None:
+            continue
+        try:
+            cur.execute(
+                """
+                SELECT payload_json
+                FROM event_runs
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (int(row_id),),
+            )
+            payload_result = cur.fetchone()
+        except sqlite3.Error:
+            continue
+        if not payload_result:
+            continue
         payload_raw = (
-            payload_row[0] if isinstance(payload_row, tuple) else payload_row["payload_json"]
+            payload_result[0]
+            if isinstance(payload_result, tuple)
+            else payload_result["payload_json"]
         )
         parsed_rows = _rows_from_payload(payload_raw)
+        if not parsed_rows:
+            continue
+        if not fallback_rows:
+            fallback_rows = parsed_rows
+        if _rows_have_usable_q(parsed_rows):
+            return parsed_rows
+    try:
+        cur.execute(
+            """
+            SELECT h.fact_json
+            FROM event_fact_latest l
+            JOIN event_fact_history h ON h.id = l.fact_id
+            WHERE h.slug = ?
+              AND (h.event_date = ? OR substr(h.event_date, 1, 10) = ?)
+            ORDER BY COALESCE(h.fact_as_of, h.created_at) DESC, h.id DESC
+            LIMIT 24
+            """,
+            (slug, event_date, event_date),
+        )
+        fact_rows_payload = cur.fetchall() or []
+    except sqlite3.Error:
+        fact_rows_payload = []
+    for fact_row in fact_rows_payload:
+        fact_raw = (
+            fact_row[0]
+            if isinstance(fact_row, tuple)
+            else fact_row["fact_json"]
+        )
+        parsed_rows = _rows_from_payload(fact_raw)
         if not parsed_rows:
             continue
         if not fallback_rows:

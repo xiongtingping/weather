@@ -28,6 +28,9 @@ PLISTS=(
   com.weather.daily_scan.plist
   com.weather.auto_trade_watcher.plist
   com.weather.auto_trade_entry_1m.plist
+  com.weather.trade_engine.plist
+)
+LEGACY_PLISTS=(
   com.weather.auto_trade_worker.plist
   com.weather.trade_sync_loop.plist
 )
@@ -73,6 +76,17 @@ if [ ! -s "$ENTRIES_FILE" ]; then
   echo "No plist files installed." >&2
   exit 1
 fi
+
+for name in "${LEGACY_PLISTS[@]}"; do
+  dest="${DST_DIR}/${name}"
+  label="${name%.plist}"
+  launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+  rm -f "$dest"
+  if [ "$DISABLE_AGENTS" = "1" ]; then
+    launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
+    launchctl disable "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
+  fi
+done
 
 while IFS=$'\t' read -r label dest; do
   [ -z "$label" ] && continue

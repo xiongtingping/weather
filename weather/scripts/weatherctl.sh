@@ -28,11 +28,15 @@ labels=(
   "com.weather.market_refresh_1m"
   "com.weather.model_scan"
   "com.weather.auto_trade_entry_1m"
-  "com.weather.auto_trade_worker"
+  "com.weather.trade_engine"
   "com.weather.auto_trade_watcher"
-  "com.weather.trade_sync_loop"
   "com.weather.daily_scan"
   "com.weather.exit_retry_watch"
+)
+
+legacy_trade_labels=(
+  "com.weather.auto_trade_worker"
+  "com.weather.trade_sync_loop"
 )
 
 usage() {
@@ -61,7 +65,7 @@ Commands:
   clean-locks           Remove stale lock directories under data/
   kill-procs            Kill old python/node processes for this repo (best-effort)
   db                    Open sqlite3 shell on data/archive.db
-  tail:<name>           Tail logs (name: market|model|entry|worker|watcher|sync|ui|uierr)
+  tail:<name>           Tail logs (name: market|model|entry|engine|worker|watcher|sync|ui|uierr)
 EOF
 }
 
@@ -127,12 +131,8 @@ _bootstrap_label() {
 
 _bootout_label() {
   local label="$1"
-  local plist="$(_plist_path_for_label "$label")"
-  if [ ! -f "$plist" ]; then
-    return 0
-  fi
   launchctl stop "${GUI_DOMAIN}/${label}" >/dev/null 2>&1 || true
-  launchctl bootout "${GUI_DOMAIN}" "$plist" >/dev/null 2>&1 || true
+  launchctl bootout "${GUI_DOMAIN}/${label}" >/dev/null 2>&1 || true
 }
 
 cmd="${1:-}"
@@ -240,6 +240,9 @@ case "$cmd" in
       "$ROOT/data/market_refresh.log" \
       "$ROOT/data/model_scan.log" \
       "$ROOT/data/logs/auto_trade_entry_1m.log" \
+      "$ROOT/data/logs/trade_engine.log" \
+      "$ROOT/data/logs/trade_engine.out.log" \
+      "$ROOT/data/logs/trade_engine.err.log" \
       "$ROOT/data/logs/auto_trade_watcher.out.log" \
       "$ROOT/data/logs/trade_sync_loop.out.log" \
       "$ROOT/data/ui_server.out.log" \
@@ -252,6 +255,9 @@ case "$cmd" in
     ;;
   start)
     echo "---- $(_now) start ----"
+    for label in "${legacy_trade_labels[@]}"; do
+      _bootout_label "$label"
+    done
     for label in "${labels[@]}"; do
       _bootstrap_label "$label"
     done
@@ -260,6 +266,9 @@ case "$cmd" in
   stop)
     echo "---- $(_now) stop ----"
     for label in "${labels[@]}"; do
+      _bootout_label "$label"
+    done
+    for label in "${legacy_trade_labels[@]}"; do
       _bootout_label "$label"
     done
     echo "ok"
@@ -356,7 +365,7 @@ case "$cmd" in
   clean-locks)
     echo "---- $(_now) clean-locks ----"
     rm -rf "$ROOT/data/"*.lock "$ROOT/data/"*.lock/ 2>/dev/null || true
-    rm -rf "$ROOT/data/market_refresh.lock" "$ROOT/data/model_scan.lock" "$ROOT/data/auto_trade_entry.lock" "$ROOT/data/auto_trade_worker.lock" "$ROOT/data/facts_materialize.lock" 2>/dev/null || true
+    rm -rf "$ROOT/data/market_refresh.lock" "$ROOT/data/model_scan.lock" "$ROOT/data/auto_trade_entry.lock" "$ROOT/data/auto_trade_worker.lock" "$ROOT/data/trade_sync_loop.lock" "$ROOT/data/trade_engine.lock" "$ROOT/data/facts_materialize.lock" 2>/dev/null || true
     echo "ok"
     ;;
   kill-procs)
@@ -368,6 +377,7 @@ case "$cmd" in
       "$ROOT/scripts/auto_trade_watcher.py" \
       "$ROOT/scripts/auto_trade_worker.sh" \
       "$ROOT/scripts/trade_sync_loop.sh" \
+      "$ROOT/scripts/trade_engine_loop.sh" \
       "$ROOT/scripts/daily_scan_and_settlement.sh" \
       ; do
       pgrep -f "$pat" 2>/dev/null | while read -r pid; do
@@ -393,11 +403,14 @@ case "$cmd" in
   tail:watcher)
     tail -n 200 -f "$ROOT/data/logs/auto_trade_watcher.out.log"
     ;;
+  tail:engine)
+    tail -n 200 -f "$ROOT/data/logs/trade_engine.log"
+    ;;
   tail:worker)
-    tail -n 200 -f "$ROOT/data/logs/auto_trade_worker.log"
+    tail -n 200 -f "$ROOT/data/logs/trade_engine.log"
     ;;
   tail:sync)
-    tail -n 200 -f "$ROOT/data/logs/trade_sync_loop.out.log"
+    tail -n 200 -f "$ROOT/data/logs/trade_engine.log"
     ;;
   tail:ui)
     tail -n 200 -f "$ROOT/data/ui_server.out.log"

@@ -15,6 +15,7 @@ PLISTS=(
   com.weather.daily_scan.plist
   com.weather.auto_trade_watcher.plist
   com.weather.auto_trade_entry_1m.plist
+  com.weather.trade_engine.plist
   com.weather.auto_trade_worker.plist
   com.weather.trade_sync_loop.plist
 )

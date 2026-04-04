@@ -289,7 +289,7 @@ export PM_MARKET_REFRESH_COMPOSE_SCORE=0
 export PM_FACTS_MATERIALIZE_AFTER_SCAN=0
 export PM_SCAN_GAMMA_MAX_PAGES
 export PM_DB_CONNECT_TIMEOUT_SEC="${PM_DB_CONNECT_TIMEOUT_SEC:-5}"
-export PM_DB_BUSY_TIMEOUT_MS="${PM_DB_BUSY_TIMEOUT_MS:-5000}"
+export PM_DB_BUSY_TIMEOUT_MS="${PM_DB_BUSY_TIMEOUT_MS:-30000}"
 
 # Temperature markets have many outcomes; keep defaults conservative but allow short burst mode for stale ticks.
 : "${PM_MARKET_REFRESH_MAX_EVENTS_PER_RUN:=4}"

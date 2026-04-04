@@ -23,17 +23,21 @@ PLISTS=(
   com.weather.daily_scan.plist
   com.weather.auto_trade_watcher.plist
   com.weather.auto_trade_entry_1m.plist
-  com.weather.auto_trade_worker.plist
-  com.weather.trade_sync_loop.plist
+  com.weather.trade_engine.plist
   com.weather.q_calibrated_writeback_hourly.plist
   com.weather.feedback_loop_hourly.plist
   com.weather.daily_trade_sms_summary.plist
+)
+LEGACY_PLISTS=(
+  com.weather.auto_trade_worker.plist
+  com.weather.trade_sync_loop.plist
 )
 
 /usr/bin/python3 - "$USER_NAME" "$GROUP_NAME" "$ROOT" "$DST_DIR" "${PLISTS[@]}" >"$ROOT/data/.launchd_entries.tmp" <<'PY'
 import plistlib
 import sys
 from pathlib import Path
+from typing import Optional
 
 user, group, root, dst_dir, *plist_names = sys.argv[1:]
 root = Path(root)
@@ -63,7 +67,7 @@ def _rewrite_strings(obj, old_root: str, new_root: str):
         return {k: _rewrite_strings(v, old_root, new_root) for k, v in obj.items()}
     return obj
 
-def infer_old_root(data: dict) -> str | None:
+def infer_old_root(data: dict) -> Optional[str]:
     wd = data.get("WorkingDirectory")
     if isinstance(wd, str) and wd.startswith("/"):
         return wd
@@ -109,6 +113,14 @@ if [ ! -s "$ENTRIES_FILE" ]; then
   exit 1
 fi
 
+for name in "${LEGACY_PLISTS[@]}"; do
+  dest="${DST_DIR}/${name}"
+  label="${name%.plist}"
+  launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
+  launchctl disable "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
+  rm -f "$dest"
+done
+
 while IFS=$'\t' read -r label dest; do
   [ -z "$label" ] && continue
   [ -z "$dest" ] && continue
@@ -116,7 +128,6 @@ while IFS=$'\t' read -r label dest; do
   if [ "$BOOTSTRAP" = "1" ]; then
     launchctl enable "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
     launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
-    launchctl bootout "gui/${UID_VALUE}" "$dest" >/dev/null 2>&1 || true
     if ! launchctl bootstrap "gui/${UID_VALUE}" "$dest"; then
       echo "[launchagent] bootstrap failed: ${label} (${dest})" >&2
       launchctl print "gui/${UID_VALUE}/${label}" 2>/dev/null | head -n 20 >&2 || true

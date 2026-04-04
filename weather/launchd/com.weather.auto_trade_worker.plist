@@ -7,8 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/bin/zsh</string>
-      <string>-lc</string>
+      <string>/bin/bash</string>
       <string>/Users/xiong/weather/scripts/auto_trade_worker.sh</string>
     </array>
 
