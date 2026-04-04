@@ -787,7 +787,7 @@ def _should_preserve_exit_retry_block(
     if prev_exit_live_like:
         return True
     action_norm = str(prev_last_action or "").strip().lower()
-    return action_norm in {"exit", "exit_marketable_retry", "open_order_sync", "open_order_reprice"}
+    return action_norm in {"exit", "open_order_sync", "open_order_reprice"}
 
 
 def _is_marketable_no_match_error(payload_or_text: Any) -> bool:
@@ -930,6 +930,7 @@ def _sleep_backoff(backoff: float, attempt: int, max_backoff: float) -> None:
 
 def _refresh_auto_trade_config() -> None:
     global AUTO_TRADE_MIN_EDGE_SCORE, _AUTO_TRADE_CONFIG_MTIME
+    global AUTO_TRADE_DRY_RUN
     global MINUTE_EDGE_ENTRY_ASK_MIN, MINUTE_EDGE_ENTRY_ASK_MAX
     global MINUTE_EDGE_ENTRY_TAIL_LOCK_ENABLED
     global MINUTE_EDGE_ENTRY_TAIL_LOCK_ASK_HARD, MINUTE_EDGE_ENTRY_TAIL_LOCK_ASK_SOFT
@@ -970,6 +971,13 @@ def _refresh_auto_trade_config() -> None:
     global AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY
     global AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY
     global MINUTE_EDGE_HEADROOM_EXIT
+    AUTO_TRADE_DRY_RUN = os.environ.get("PM_AUTO_TRADE_DRY_RUN", "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
     path = AUTO_TRADE_CONFIG_PATH
     try:
         stat = path.stat()
@@ -1501,6 +1509,12 @@ def _refresh_auto_trade_config() -> None:
     _apply_float(
         "lcb_global_edge_lcb_min_d1",
         "PM_LCB_GLOBAL_EDGE_LCB_MIN_D1",
+        None,
+        0,
+    )
+    _apply_float(
+        "lcb_global_min_trade_ev_usdc",
+        "PM_LCB_GLOBAL_MIN_TRADE_EV_USDC",
         None,
         0,
     )
@@ -2276,6 +2290,30 @@ def _candidate_tradeability_profit_min(
         if val is not None and math.isfinite(val):
             return float(val)
     return None
+
+
+def _candidate_trade_ev_usdc(
+    candidate_ref: Optional[Mapping[str, Any]],
+    *,
+    order_size: Optional[float] = None,
+) -> Tuple[Optional[float], Optional[float], str]:
+    if not isinstance(candidate_ref, Mapping):
+        return None, None, ""
+    size_val = to_float(order_size if order_size is not None else candidate_ref.get("size"))
+    if size_val is None or not math.isfinite(size_val) or size_val <= 0:
+        return None, None, "size_invalid"
+    for key, source in (
+        ("edge_tradeability_profit_value", "edge_tradeability_profit_value"),
+        ("edge_tradeability_edge_lcb", "edge_tradeability_edge_lcb"),
+        ("edge_realizable_v2", "edge_realizable_v2"),
+        ("edge_realizable", "edge_realizable"),
+        ("exec_edge_entry", "exec_edge_entry"),
+    ):
+        edge_val = to_float(candidate_ref.get(key))
+        if edge_val is None or not math.isfinite(edge_val):
+            continue
+        return float(size_val) * float(edge_val), float(edge_val), source
+    return None, None, "edge_missing"
 
 
 def _candidate_lcb_combo_role_hint(
@@ -6366,7 +6404,7 @@ def _run_node_order(
             cmd += ["--amount", f"{amount:.6f}"]
         cmd += ["--order-type", effective_order_type]
     if AUTO_TRADE_DRY_RUN:
-        return True, {"dry_run": True, "cmd": cmd}
+        return True, {"dry_run": True, "status": "dry_run", "cmd": cmd}
 
     env = _build_node_env()
     if action == "place-order":
@@ -11645,6 +11683,9 @@ def execute_auto_trades(
     entry_main_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_MAIN_ENABLED", True)
     entry_follow_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED", False)
     lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
+    # Legacy entry strategies are retired. Runtime only keeps lcb_global.
+    entry_main_enabled = False
+    entry_follow_enabled = False
     lcb_global_signal_lcb_min = _env_float("PM_LCB_GLOBAL_SIGNAL_LCB_MIN")
     if lcb_global_signal_lcb_min is None or not math.isfinite(lcb_global_signal_lcb_min):
         lcb_global_signal_lcb_min = to_float(edge_tradeability_policy.get("signal_lcb_min"))
@@ -11671,6 +11712,10 @@ def execute_auto_trades(
     if lcb_global_edge_lcb_min_d1 is None or not math.isfinite(lcb_global_edge_lcb_min_d1):
         lcb_global_edge_lcb_min_d1 = max(float(lcb_global_edge_lcb_min), -0.001)
     lcb_global_edge_lcb_min_d1 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d1)))
+    lcb_global_min_trade_ev_usdc = _env_float("PM_LCB_GLOBAL_MIN_TRADE_EV_USDC")
+    if lcb_global_min_trade_ev_usdc is None or not math.isfinite(lcb_global_min_trade_ev_usdc):
+        lcb_global_min_trade_ev_usdc = 0.01
+    lcb_global_min_trade_ev_usdc = max(0.0, float(lcb_global_min_trade_ev_usdc))
     lcb_global_block_d2_plus = _env_bool("PM_LCB_GLOBAL_BLOCK_D2_PLUS", True)
     # When D2+ blocking is enabled, still allow runtime to fall back to base edge min
     # so future events are not blanket-disabled before combo role selection.
@@ -12921,6 +12966,7 @@ def execute_auto_trades(
     if entry_yes_top_market_consist_eps > 1:
         entry_yes_top_market_consist_eps = entry_yes_top_market_consist_eps / 100.0
     entry_hard_bound_no_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_ENABLED", False)
+    entry_hard_bound_no_enabled = False
     entry_hard_bound_no_min_signal_edge = _env_float(
         "PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_MIN_SIGNAL_EDGE"
     )
@@ -12963,6 +13009,7 @@ def execute_auto_trades(
     if entry_hard_bound_fetch_timeout_sec <= 0:
         entry_hard_bound_fetch_timeout_sec = 3.0
     entry_adj_pair_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_ADJ_PAIR_ENABLED", False)
+    entry_adj_pair_enabled = False
     entry_adj_pair_min_combined_signal_edge = _env_float(
         "PM_AUTO_TRADE_ENTRY_ADJ_PAIR_MIN_COMBINED_SIGNAL_EDGE"
     )
@@ -14362,6 +14409,9 @@ def execute_auto_trades(
                 exit_reasons=exit_reasons_text,
                 exit_reason_codes=exit_reason_codes_text,
                 exit_triggered_at=exit_triggered_at_update,
+                exit_skip_reason="",
+                exit_skip_detail="",
+                exit_skip_at="",
                 exit_retry_count=prev_exit_retry_count + 1,
                 position_size=size_to_sell,
             )
@@ -14586,6 +14636,9 @@ def execute_auto_trades(
                     exit_reasons=exit_reasons_text,
                     exit_reason_codes=exit_reason_codes_text,
                     exit_triggered_at=exit_triggered_at_update,
+                    exit_skip_reason="",
+                    exit_skip_detail="",
+                    exit_skip_at="",
                     exit_retry_count=prev_exit_retry_count + 1,
                     position_size=size_to_sell,
                 )
@@ -14674,6 +14727,9 @@ def execute_auto_trades(
                 exit_reasons=exit_reasons_text,
                 exit_reason_codes=exit_reason_codes_text,
                 exit_triggered_at=exit_triggered_at_update,
+                exit_skip_reason="",
+                exit_skip_detail="",
+                exit_skip_at="",
                 exit_retry_count=prev_exit_retry_count + 1,
                 position_size=size_to_sell,
             )
@@ -14708,6 +14764,9 @@ def execute_auto_trades(
             exit_reasons=exit_reasons_text,
             exit_reason_codes=exit_reason_codes_text,
             exit_triggered_at=exit_triggered_at_update,
+            exit_skip_reason="",
+            exit_skip_detail="",
+            exit_skip_at="",
             exit_retry_count=prev_exit_retry_count + 1,
             position_size=size_to_sell,
         )
@@ -17828,6 +17887,8 @@ def execute_auto_trades(
         nonlocal entry_open_logged
         if lcb_global_enabled:
             return _build_lcb_global_candidates(row)
+        # Non-lcb entry strategies are retired; if lcb_global is off, do not build legacy entries.
+        return []
         if row.get("synthetic_exit_only"):
             return []
         if entry_blocked_by_temp_edge_score:
@@ -21503,6 +21564,14 @@ def execute_auto_trades(
                                     avg_price=override_avg,
                                 )
                                 prev_entry["position_size"] = 0.0
+                                prev_entry["exit_skip_reason"] = ""
+                                prev_entry["exit_skip_detail"] = ""
+                                prev_entry["exit_skip_at"] = ""
+                                prev_last_action = "pos_sync_clear"
+                                prev_last_status = "no_position"
+                                prev_last_error = "no_position"
+                                prev_last_action_at = now_utc
+                                prev_last_order_id = ""
                                 prev_state = "exit"
                         else:
                             if abs(override_size - prev_pos) > 1e-6 or (
@@ -21530,6 +21599,13 @@ def execute_auto_trades(
                                 prev_entry["position_size"] = override_size
                                 if override_avg is not None and math.isfinite(override_avg):
                                     prev_entry["avg_price"] = override_avg
+                                prev_entry["exit_skip_reason"] = ""
+                                prev_entry["exit_skip_detail"] = ""
+                                prev_entry["exit_skip_at"] = ""
+                                prev_last_action = "pos_sync"
+                                prev_last_status = "pos_sync"
+                                prev_last_error = ""
+                                prev_last_action_at = now_utc
                                 prev_state = "entry"
                 elif POSITIONS_ASSUME_ZERO and prev_pos > 0:
                     now_iso = utc_now_iso()
@@ -21549,6 +21625,14 @@ def execute_auto_trades(
                         position_size=0.0,
                     )
                     prev_entry["position_size"] = 0.0
+                    prev_entry["exit_skip_reason"] = ""
+                    prev_entry["exit_skip_detail"] = ""
+                    prev_entry["exit_skip_at"] = ""
+                    prev_last_action = "pos_sync_clear"
+                    prev_last_status = "no_position"
+                    prev_last_error = "no_position"
+                    prev_last_action_at = now_utc
+                    prev_last_order_id = ""
                     prev_state = "exit"
             if prev_state == "entry" and not prev_last_order_id:
                 position_size = to_float(prev_entry.get("position_size")) or 0.0
@@ -26338,6 +26422,21 @@ def execute_auto_trades(
                 is_new_entry = (not is_topup) and (position_size <= TIME_EDGE_Q_EPS)
                 strategy_name = str(candidate.get("strategy") or "main").strip().lower() or "main"
                 lcb_global_candidate = bool(strategy_name == "lcb_global")
+                if not lcb_global_candidate:
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=["legacy_entry_strategy_retired"],
+                        reasons=["非 lcb_global 入场策略已退役，禁止入场"],
+                        details={
+                            "strategy": strategy_name,
+                            "legacy_entry_strategy_retired": True,
+                        },
+                    )
+                    continue
                 if (
                     lcb_global_candidate
                     and bool(candidate.get("edge_tradeability_blocked"))
@@ -26456,66 +26555,27 @@ def execute_auto_trades(
                         continue
                 else:
                     candidate["plain_lcb_path_gate_pass"] = True
-                legacy_entry_gate_enforced = bool(
-                    (not edge_lcb_single_judge_mode) and (not lcb_global_candidate)
-                )
-                edge_gate_cfg = _edge_realizable_gates_for_strategy(strategy_name)
-                edge_realizable_min_gate = float(edge_gate_cfg.get("edge_realizable_min") or 0.0)
-                edge_realizable_min_v2_gate = to_float(edge_gate_cfg.get("edge_realizable_v2_min"))
-                if edge_realizable_min_v2_gate is not None and not math.isfinite(edge_realizable_min_v2_gate):
-                    edge_realizable_min_v2_gate = None
-                entry_edge_realizable_p_realize_min_gate = float(
-                    edge_gate_cfg.get("p_realize_min") or 0.0
-                )
-                entry_edge_realizable_p_converge_min_gate = float(
-                    edge_gate_cfg.get("p_converge_min") or 0.0
-                )
-                if edge_realizable_v2_gate_entry:
-                    v2_val = to_float(candidate.get("edge_realizable_v2"))
-                    if (
-                        v2_val is not None
-                        and math.isfinite(v2_val)
-                        and edge_realizable_min_v2_gate is not None
-                        and math.isfinite(edge_realizable_min_v2_gate)
-                    ):
-                        edge_realizable_min_gate = float(edge_realizable_min_v2_gate)
-                candidate["edge_realizable_gate_strategy"] = strategy_name
-                candidate["edge_realizable_gate_override_applied"] = bool(
-                    edge_gate_cfg.get("override_applied")
-                )
-                candidate["edge_realizable_gate_override_keys"] = str(
-                    edge_gate_cfg.get("override_keys") or ""
-                )
-                candidate["edge_realizable_gate_min"] = float(edge_realizable_min_gate)
-                if edge_realizable_min_v2_gate is not None and math.isfinite(edge_realizable_min_v2_gate):
-                    candidate["edge_realizable_gate_v2_min"] = float(edge_realizable_min_v2_gate)
-                candidate["edge_realizable_p_realize_min"] = float(
-                    entry_edge_realizable_p_realize_min_gate
-                )
-                candidate["edge_realizable_p_converge_min"] = float(
-                    entry_edge_realizable_p_converge_min_gate
-                )
-                hq_signal_lcb_min_gate = to_float(edge_gate_cfg.get("high_quality_signal_lcb_min"))
-                hq_path_lcb_min_gate = to_float(edge_gate_cfg.get("high_quality_path_lcb_min"))
-                hq_edge_lcb_min_gate = to_float(edge_gate_cfg.get("high_quality_edge_lcb_min"))
-                hq_bypass_p_realize_gate = bool(
-                    edge_gate_cfg.get("high_quality_bypass_p_realize_min")
-                )
-                hq_bypass_p_converge_gate = bool(
-                    edge_gate_cfg.get("high_quality_bypass_p_converge_min")
-                )
-                if hq_signal_lcb_min_gate is not None and math.isfinite(hq_signal_lcb_min_gate):
-                    candidate["edge_realizable_hq_signal_lcb_min"] = float(hq_signal_lcb_min_gate)
-                if hq_path_lcb_min_gate is not None and math.isfinite(hq_path_lcb_min_gate):
-                    candidate["edge_realizable_hq_path_lcb_min"] = float(hq_path_lcb_min_gate)
-                if hq_edge_lcb_min_gate is not None and math.isfinite(hq_edge_lcb_min_gate):
-                    candidate["edge_realizable_hq_edge_lcb_min"] = float(hq_edge_lcb_min_gate)
-                candidate["edge_realizable_hq_bypass_p_realize_min"] = bool(
-                    hq_bypass_p_realize_gate
-                )
-                candidate["edge_realizable_hq_bypass_p_converge_min"] = bool(
-                    hq_bypass_p_converge_gate
-                )
+                legacy_entry_gate_enforced = False
+                edge_gate_cfg = {}
+                edge_realizable_min_gate = 0.0
+                edge_realizable_min_v2_gate = None
+                entry_edge_realizable_p_realize_min_gate = 0.0
+                entry_edge_realizable_p_converge_min_gate = 0.0
+                candidate["legacy_entry_gate_enforced"] = False
+                candidate["legacy_entry_gate_removed"] = True
+                candidate["edge_realizable_gate_strategy"] = ""
+                candidate["edge_realizable_gate_override_applied"] = False
+                candidate["edge_realizable_gate_override_keys"] = ""
+                candidate["edge_realizable_gate_min"] = 0.0
+                candidate["edge_realizable_p_realize_min"] = 0.0
+                candidate["edge_realizable_p_converge_min"] = 0.0
+                hq_signal_lcb_min_gate = None
+                hq_path_lcb_min_gate = None
+                hq_edge_lcb_min_gate = None
+                hq_bypass_p_realize_gate = False
+                hq_bypass_p_converge_gate = False
+                candidate["edge_realizable_hq_bypass_p_realize_min"] = False
+                candidate["edge_realizable_hq_bypass_p_converge_min"] = False
                 strategy_gate_entry = _strategy_gate_entry_for(strategy_name)
                 strategy_realized_edge_gate_cfg = _strategy_realized_edge_gates_for_strategy(
                     strategy_name
@@ -27568,6 +27628,76 @@ def execute_auto_trades(
                                 candidate["marketable_min_usdc_size_from"] = market_min_meta.get("original_size")
                                 candidate["marketable_min_usdc_size_to"] = market_min_meta.get("adjusted_size")
                                 candidate["marketable_min_usdc_amount_to"] = market_min_meta.get("adjusted_amount")
+                        if lcb_global_min_trade_ev_usdc > TIME_EDGE_Q_EPS:
+                            trade_ev_usdc, trade_ev_per_share, trade_ev_source = _candidate_trade_ev_usdc(
+                                candidate,
+                                order_size=order_size,
+                            )
+                            candidate["lcb_global_trade_ev_usdc"] = (
+                                float(trade_ev_usdc)
+                                if trade_ev_usdc is not None and math.isfinite(trade_ev_usdc)
+                                else None
+                            )
+                            candidate["lcb_global_trade_ev_per_share"] = (
+                                float(trade_ev_per_share)
+                                if trade_ev_per_share is not None and math.isfinite(trade_ev_per_share)
+                                else None
+                            )
+                            candidate["lcb_global_trade_ev_source"] = str(trade_ev_source or "")
+                            candidate["lcb_global_min_trade_ev_usdc"] = float(lcb_global_min_trade_ev_usdc)
+                            if trade_ev_usdc is None or not math.isfinite(trade_ev_usdc):
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["lcb_global_trade_ev_missing"],
+                                    reasons=["LCB整单预期收益缺失，禁止入场"],
+                                    details={
+                                        "strategy": "lcb_global",
+                                        "order_size": order_size,
+                                        "order_amount": order_amount,
+                                        "price_for_amount": price_for_amount,
+                                        "trade_ev_source": trade_ev_source,
+                                        "trade_ev_per_share": trade_ev_per_share,
+                                        "trade_ev_usdc": trade_ev_usdc,
+                                        "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
+                                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
+                                        "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
+                                        "edge_realizable": to_float(candidate.get("edge_realizable")),
+                                    },
+                                )
+                                continue
+                            if trade_ev_usdc + TIME_EDGE_Q_EPS < float(lcb_global_min_trade_ev_usdc):
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["lcb_global_trade_ev_below_min"],
+                                    reasons=[
+                                        (
+                                            f"LCB整单预期收益={float(trade_ev_usdc):.4f}usdc < "
+                                            f"{float(lcb_global_min_trade_ev_usdc):.4f}usdc，禁止入场"
+                                        )
+                                    ],
+                                    details={
+                                        "strategy": "lcb_global",
+                                        "order_size": order_size,
+                                        "order_amount": order_amount,
+                                        "price_for_amount": price_for_amount,
+                                        "trade_ev_source": trade_ev_source,
+                                        "trade_ev_per_share": trade_ev_per_share,
+                                        "trade_ev_usdc": trade_ev_usdc,
+                                        "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
+                                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
+                                        "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
+                                        "edge_realizable": to_float(candidate.get("edge_realizable")),
+                                    },
+                                )
+                                continue
                         ok, payload = _run_node_order(
                             "place-order",
                             token_id,
@@ -28245,6 +28375,80 @@ def execute_auto_trades(
                                 },
                             )
                             continue
+                        if lcb_global_min_trade_ev_usdc > TIME_EDGE_Q_EPS:
+                            trade_ev_usdc, trade_ev_per_share, trade_ev_source = _candidate_trade_ev_usdc(
+                                candidate,
+                                order_size=order_size,
+                            )
+                            candidate["lcb_global_trade_ev_usdc"] = (
+                                float(trade_ev_usdc)
+                                if trade_ev_usdc is not None and math.isfinite(trade_ev_usdc)
+                                else None
+                            )
+                            candidate["lcb_global_trade_ev_per_share"] = (
+                                float(trade_ev_per_share)
+                                if trade_ev_per_share is not None and math.isfinite(trade_ev_per_share)
+                                else None
+                            )
+                            candidate["lcb_global_trade_ev_source"] = str(trade_ev_source or "")
+                            candidate["lcb_global_min_trade_ev_usdc"] = float(lcb_global_min_trade_ev_usdc)
+                            if trade_ev_usdc is None or not math.isfinite(trade_ev_usdc):
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["lcb_global_trade_ev_missing"],
+                                    reasons=["LCB整单预期收益缺失，禁止入场"],
+                                    details={
+                                        "strategy": "lcb_global",
+                                        "order_size": order_size,
+                                        "order_amount": order_amount,
+                                        "order_price": order_price,
+                                        "order_type": effective_order_type,
+                                        "trade_ev_source": trade_ev_source,
+                                        "trade_ev_per_share": trade_ev_per_share,
+                                        "trade_ev_usdc": trade_ev_usdc,
+                                        "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
+                                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
+                                        "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
+                                        "edge_realizable": to_float(candidate.get("edge_realizable")),
+                                        "exec_edge_entry": to_float(candidate.get("exec_edge_entry")),
+                                    },
+                                )
+                                continue
+                            if trade_ev_usdc + TIME_EDGE_Q_EPS < float(lcb_global_min_trade_ev_usdc):
+                                _buffer_decision(
+                                    outcome,
+                                    side,
+                                    "entry",
+                                    decided_state="blocked",
+                                    will_order=False,
+                                    reason_codes=["lcb_global_trade_ev_below_min"],
+                                    reasons=[
+                                        (
+                                            f"LCB整单预期收益={float(trade_ev_usdc):.4f}usdc < "
+                                            f"{float(lcb_global_min_trade_ev_usdc):.4f}usdc，禁止入场"
+                                        )
+                                    ],
+                                    details={
+                                        "strategy": "lcb_global",
+                                        "order_size": order_size,
+                                        "order_amount": order_amount,
+                                        "order_price": order_price,
+                                        "order_type": effective_order_type,
+                                        "trade_ev_source": trade_ev_source,
+                                        "trade_ev_per_share": trade_ev_per_share,
+                                        "trade_ev_usdc": trade_ev_usdc,
+                                        "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
+                                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
+                                        "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
+                                        "edge_realizable": to_float(candidate.get("edge_realizable")),
+                                        "exec_edge_entry": to_float(candidate.get("exec_edge_entry")),
+                                    },
+                                )
+                                continue
                         ok, payload = _run_node_order(
                             "place-order",
                             token_id,
@@ -29339,6 +29543,7 @@ def execute_auto_trades(
                     and exit_force_backoff_sec > 0
                     and prev_last_action_at
                     and prev_last_action == "exit"
+                    and prev_last_order_id
                 ):
                     age_sec = (now_utc - prev_last_action_at).total_seconds()
                     if age_sec < exit_force_backoff_sec:
@@ -29362,6 +29567,7 @@ def execute_auto_trades(
                     and not forced_exit
                     and prev_last_action == "exit"
                     and prev_last_action_at
+                    and prev_last_order_id
                     and status_norm in open_statuses
                 ):
                     age_sec = (now_utc - prev_last_action_at).total_seconds()
@@ -29732,12 +29938,53 @@ def execute_auto_trades(
             if exit_action_ready:
                 exit_retry_blocked = False
                 if not forced_exit:
+                    retry_no_fill_rearm_active = (
+                        str(prev_last_action or "").strip().lower() == "exit_marketable_retry"
+                        and str(prev_last_status or "").strip().lower()
+                        in {"exit_retry_no_fill", "exit_retry_price_floor"}
+                        and not str(prev_last_order_id or "").strip()
+                    )
                     preserve_retry_block = _should_preserve_exit_retry_block(
                         prev_last_action=prev_last_action,
                         prev_exit_live_like=prev_exit_live_like,
                     )
                     if AUTO_TRADE_EXIT_RETRY_MAX > 0 and prev_exit_retry_count >= AUTO_TRADE_EXIT_RETRY_MAX:
-                        if not preserve_retry_block:
+                        if retry_no_fill_rearm_active and prev_last_action_at:
+                            age_sec = (now_utc - prev_last_action_at).total_seconds()
+                            retry_no_fill_rearm_sec = float(
+                                max(float(AUTO_TRADE_EXIT_RETRY_COOLDOWN_SEC), 1.0)
+                            )
+                            if exit_retry_reset_sec > 0:
+                                retry_no_fill_rearm_sec = float(
+                                    min(retry_no_fill_rearm_sec, max(float(exit_retry_reset_sec), 1.0))
+                                )
+                            if age_sec >= retry_no_fill_rearm_sec:
+                                now_iso = utc_now_iso()
+                                _update_trade_state(
+                                    outcome,
+                                    side,
+                                    prev_state or "entry",
+                                    None,
+                                    None,
+                                    last_action="exit_reset",
+                                    last_action_at=now_iso,
+                                    last_status="exit_retry_reset",
+                                    last_error="",
+                                    exit_reasons=exit_reasons_text,
+                                    exit_reason_codes=exit_reason_codes_text,
+                                    exit_triggered_at=exit_triggered_at_update,
+                                    exit_skip_reason="",
+                                    exit_skip_detail="",
+                                    exit_skip_at="",
+                                    exit_retry_count=0,
+                                )
+                                prev_exit_retry_count = 0
+                                prev_last_action = "exit_reset"
+                                prev_last_status = "exit_retry_reset"
+                                prev_last_action_at = now_utc
+                            else:
+                                exit_retry_blocked = True
+                        elif not preserve_retry_block:
                             now_iso = utc_now_iso()
                             _update_trade_state(
                                 outcome,
@@ -29752,9 +29999,15 @@ def execute_auto_trades(
                                 exit_reasons=exit_reasons_text,
                                 exit_reason_codes=exit_reason_codes_text,
                                 exit_triggered_at=exit_triggered_at_update,
+                                exit_skip_reason="",
+                                exit_skip_detail="",
+                                exit_skip_at="",
                                 exit_retry_count=0,
                             )
                             prev_exit_retry_count = 0
+                            prev_last_action = "exit_reset"
+                            prev_last_status = "exit_retry_reset"
+                            prev_last_action_at = now_utc
                         elif exit_retry_reset_sec > 0 and prev_last_action_at:
                             age_sec = (now_utc - prev_last_action_at).total_seconds()
                             if age_sec >= exit_retry_reset_sec:
@@ -29771,14 +30024,20 @@ def execute_auto_trades(
                                     exit_reasons=exit_reasons_text,
                                     exit_reason_codes=exit_reason_codes_text,
                                     exit_triggered_at=exit_triggered_at_update,
+                                    exit_skip_reason="",
+                                    exit_skip_detail="",
+                                    exit_skip_at="",
                                     exit_retry_count=0,
                                 )
                                 prev_exit_retry_count = 0
+                                prev_last_action = "exit_reset"
+                                prev_last_status = "exit_retry_reset"
+                                prev_last_action_at = now_utc
                             else:
                                 exit_retry_blocked = True
                         else:
                             exit_retry_blocked = True
-                    if prev_last_action_at and prev_last_action == "exit":
+                    if prev_last_action_at and prev_last_action == "exit" and prev_last_order_id:
                         age_sec = (now_utc - prev_last_action_at).total_seconds()
                         if age_sec < AUTO_TRADE_EXIT_RETRY_COOLDOWN_SEC:
                             exit_retry_blocked = True
@@ -30142,6 +30401,7 @@ def execute_auto_trades(
                         fatal = _is_fatal_order_error(payload)
                         status_text = str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed")
                         last_error = _format_order_error_short(payload)
+                        now_iso = utc_now_iso()
                         is_no_orderbook = _is_no_orderbook_error(last_error)
                         is_marketable_no_match = (
                             exit_order_type in {"FAK", "FOK"}
