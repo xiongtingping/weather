@@ -1,0 +1,14 @@
+/Users/xiong/weather/scripts/lib/run_with_timeout.sh: line 22: /Users/xiong/weather/data/logs/auto_trade_worker.log: No such file or directory
+/Users/xiong/weather/scripts/lib/run_with_timeout.sh: line 49: /Users/xiong/weather/data/logs/auto_trade_worker.log: No such file or directory
+/Users/xiong/weather/scripts/auto_trade_worker.sh: line 72: /Users/xiong/weather/data/logs/auto_trade_worker.log: No such file or directory
+/Users/xiong/weather/weather/scripts/auto_trade_worker.sh: line 72: echo: write error: No space left on device
+/Users/xiong/weather/weather/scripts/auto_trade_worker.sh: line 72: echo: write error: No space left on device
+/etc/zprofile:7: fork failed: resource temporarily unavailable
+/Users/xiong/.zprofile:14: fork failed: resource temporarily unavailable
+/Users/xiong/weather/weather/scripts/auto_trade_worker.sh: fork: Resource temporarily unavailable
+/Users/xiong/.zprofile:14: fork failed: resource temporarily unavailable
+/Users/xiong/weather/weather/scripts/auto_trade_worker.sh: fork: Resource temporarily unavailable
+/etc/zprofile:7: fork failed: resource temporarily unavailable
+/Users/xiong/.zprofile:14: fork failed: resource temporarily unavailable
+/Users/xiong/weather/weather/scripts/auto_trade_worker.sh: fork: Resource temporarily unavailable
+/Users/xiong/weather/weather/scripts/auto_trade_worker.sh: fork: Resource temporarily unavailable
