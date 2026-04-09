@@ -4,6 +4,7 @@ import unittest
 from scan_weather_market import (
     _dump_reason_list_or_blank,
     _effective_stop_loss_edge_confirm_enabled,
+    _effective_stop_loss_edge_confirm_fail_open_on_missing,
     _freshest_exit_quote_for_side,
     _load_market_tick_latest_by_key,
     _resolve_exit_submission_price,
@@ -159,12 +160,22 @@ class MarketTickFreshnessTests(unittest.TestCase):
         self.assertAlmostEqual(best_bid, 0.0)
         self.assertAlmostEqual(best_ask, 0.001)
 
-    def test_effective_stop_loss_edge_confirm_disabled_for_plain_lcb(self) -> None:
+    def test_effective_stop_loss_edge_confirm_kept_for_plain_lcb(self) -> None:
+        self.assertTrue(
+            _effective_stop_loss_edge_confirm_enabled(
+                True,
+                lcb_exit_context_active=True,
+                lcb_ignore_edge_confirm=True,
+            )
+        )
+
+    def test_effective_stop_loss_edge_confirm_disabled_for_combo_stop_loss_only(self) -> None:
         self.assertFalse(
             _effective_stop_loss_edge_confirm_enabled(
                 True,
                 lcb_exit_context_active=True,
                 lcb_ignore_edge_confirm=True,
+                combo_stop_loss_only=True,
             )
         )
 
@@ -174,6 +185,24 @@ class MarketTickFreshnessTests(unittest.TestCase):
                 True,
                 lcb_exit_context_active=False,
                 lcb_ignore_edge_confirm=True,
+            )
+        )
+
+    def test_effective_stop_loss_fail_open_disabled_for_plain_lcb(self) -> None:
+        self.assertFalse(
+            _effective_stop_loss_edge_confirm_fail_open_on_missing(
+                True,
+                lcb_exit_context_active=True,
+                combo_stop_loss_only=False,
+            )
+        )
+
+    def test_effective_stop_loss_fail_open_kept_for_combo_stop_loss_only(self) -> None:
+        self.assertTrue(
+            _effective_stop_loss_edge_confirm_fail_open_on_missing(
+                True,
+                lcb_exit_context_active=True,
+                combo_stop_loss_only=True,
             )
         )
 
