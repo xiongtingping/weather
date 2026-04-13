@@ -1,0 +1,514 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "自动交易" [ref=e8] [cursor=pointer]:
+            - /url: "#autoTradeSection"
+          - link "策略配置" [ref=e9] [cursor=pointer]:
+            - /url: "#strategySection"
+          - link "站点/模型" [ref=e10] [cursor=pointer]:
+            - /url: "#availabilitySection"
+        - generic [ref=e11]:
+          - link "事件" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "评分校正" [ref=e13] [cursor=pointer]:
+            - /url: "#ratingBiasSectionBlock"
+      - generic [ref=e14]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e16] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e17]: 总开关
+          - generic [ref=e18]: 开启
+        - generic [ref=e21]:
+          - button "同步" [ref=e22] [cursor=pointer]
+          - button "模型" [ref=e23] [cursor=pointer]
+          - button "盘口" [ref=e24] [cursor=pointer]
+          - button "刷新" [ref=e25] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e26] [cursor=pointer]
+          - button "日志" [ref=e28] [cursor=pointer]
+          - group [ref=e29]:
+            - generic "控制中心" [ref=e30] [cursor=pointer]: 控
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - status [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: 新鲜度
+            - generic [ref=e37]: 等待数据…时效口径
+            - generic [ref=e38]:
+              - generic [ref=e40]:
+                - generic [ref=e41]: 模型
+                - generic [ref=e42]: —
+              - generic [ref=e45]:
+                - generic [ref=e46]: 盘口
+                - generic [ref=e47]: —
+          - generic [ref=e49]:
+            - generic [ref=e50]:
+              - generic [ref=e51] [cursor=pointer]:
+                - generic [ref=e52]: 健康检查
+                - generic [ref=e53]: 展开
+                - button "复制" [ref=e54]
+              - generic: —
+            - group [ref=e55]:
+              - generic "追涨触发统计" [ref=e56] [cursor=pointer]:
+                - generic [ref=e57]: 追涨触发统计
+      - generic [ref=e58]:
+        - generic [ref=e60]: 自动买卖检测
+        - generic [ref=e61]: —
+        - generic [ref=e62]: —
+        - generic [ref=e64]: 事件口径
+        - generic [ref=e65]:
+          - generic [ref=e66]: 自动交易：—
+          - generic [ref=e67]: 成交同步：—
+          - generic [ref=e68]: 最后触发：—
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic "页面数据状态：刷新中 · 03-04 10:10" [ref=e222]:
+              - generic [ref=e74]: 刷新中
+              - generic "页面数据最后刷新/失败时间" [ref=e223]: 03-04 10:10
+            - generic [ref=e224]: 加载中...
+          - generic [ref=e78]: LCB全市场 开 1.00x
+        - generic [ref=e79]:
+          - button "auto_trade_watcher" [ref=e80] [cursor=pointer]
+          - button "残留清理" [ref=e81] [cursor=pointer]
+          - generic [ref=e82] [cursor=pointer]:
+            - checkbox "自动交易 关闭"
+            - generic [ref=e84]: 自动交易 关闭
+    - generic [ref=e85]:
+      - generic [ref=e86]: 自动交易总览
+      - generic [ref=e87]:
+        - generic [ref=e226]:
+          - generic [ref=e229]: 自动交易成交分析（LCB全市场）
+          - generic [ref=e230]: 统计起点 2026-03-03 · 持仓口径=本地状态
+          - generic [ref=e232]:
+            - generic [ref=e233]:
+              - generic [ref=e234]: 今日
+              - generic [ref=e235]: 过去7天
+              - generic [ref=e236]: 总计
+            - generic [ref=e237]:
+              - generic [ref=e238]:
+                - generic [ref=e239]: 持仓订单数量
+                - generic [ref=e240]:
+                  - generic [ref=e241]:
+                    - generic [ref=e242]: 今日
+                    - generic [ref=e243]: "0"
+                    - generic [ref=e244]: 今日开仓且仍持仓
+                  - generic [ref=e245]:
+                    - generic [ref=e246]: 过去7天
+                    - generic [ref=e247]: "0"
+                    - generic [ref=e248]: 7天开仓且仍持仓
+                  - generic [ref=e249]:
+                    - generic [ref=e250]: 总计
+                    - generic [ref=e251]: "0"
+                    - generic [ref=e252]: 当前交易中持仓
+                - generic [ref=e253]: "口径: trading_open (不含可赎回)"
+              - generic [ref=e254]:
+                - generic [ref=e255]: 已完成订单数量
+                - generic [ref=e256]:
+                  - generic [ref=e257]:
+                    - generic [ref=e258]: 今日
+                    - generic [ref=e259]: "0"
+                    - generic [ref=e260]: 盈 0 / 亏 0
+                  - generic [ref=e261]:
+                    - generic [ref=e262]: 过去7天
+                    - generic [ref=e263]: "0"
+                    - generic [ref=e264]: 盈 0 / 亏 0
+                  - generic [ref=e265]:
+                    - generic [ref=e266]: 总计
+                    - generic [ref=e267]: "0"
+                    - generic [ref=e268]: 盈 0 / 亏 0
+                - generic [ref=e269]: "打平(未计入完成): 今日 0 · 7天 0 · 总计 0"
+              - generic [ref=e270]:
+                - generic [ref=e271]: PnL
+                - generic [ref=e272]:
+                  - generic [ref=e273]:
+                    - generic [ref=e274]: 今日
+                    - generic [ref=e275]: —
+                    - generic [ref=e276]: 已实现 — / 未实现 —
+                  - generic [ref=e277]:
+                    - generic [ref=e278]: 过去7天
+                    - generic [ref=e279]: —
+                    - generic [ref=e280]: 已实现 — / 未实现 —
+                  - generic [ref=e281]:
+                    - generic [ref=e282]: 总计
+                    - generic [ref=e283]: —
+                    - generic [ref=e284]: 已实现 — / 未实现 —
+                - generic [ref=e285]: "单位: USDC"
+              - generic [ref=e286]:
+                - generic [ref=e287]: ROI
+                - generic [ref=e288]:
+                  - generic [ref=e289]:
+                    - generic [ref=e290]: 今日
+                    - generic [ref=e291]: —
+                    - generic [ref=e292]: 已实现 ROI
+                  - generic [ref=e293]:
+                    - generic [ref=e294]: 过去7天
+                    - generic [ref=e295]: —
+                    - generic [ref=e296]: 已实现 ROI
+                  - generic [ref=e297]:
+                    - generic [ref=e298]: 总计
+                    - generic [ref=e299]: —
+                    - generic [ref=e300]: 已实现 ROI
+        - generic [ref=e302]:
+          - generic [ref=e303]:
+            - generic [ref=e304]: 自动交易追踪（可兑现口径 · SSOT）
+            - generic [ref=e305]: 统一展示自动交易追踪、持仓、挂单与可兑现口径榜单
+          - generic [ref=e308]:
+            - generic [ref=e310]:
+              - generic [ref=e311]:
+                - generic [ref=e312]:
+                  - generic [ref=e313]: 城市/站点概览
+                  - generic [ref=e314]:
+                    - generic [ref=e315]:
+                      - generic [ref=e316]: 城
+                      - text: 城市 0
+                    - generic [ref=e317]: 分组 16
+                  - generic [ref=e318]: 按城市+站点合并展示，点击日期可直接跳转对应市场。
+                - generic [ref=e320]:
+                  - generic [ref=e321]:
+                    - generic [ref=e322]: 城
+                    - generic [ref=e323]: 城市数据
+                  - generic [ref=e324]: 分组 16 · 事件 0
+                  - generic [ref=e325]:
+                    - generic [ref=e326]: 模型温度 —
+                    - generic [ref=e327]: 盘口快照 —
+                  - generic [ref=e328]: 中位：模型 — · 快照 —
+              - generic [ref=e329]:
+                - generic [ref=e330]:
+                  - generic [ref=e331]:
+                    - generic [ref=e332]: 城
+                    - generic [ref=e333]: Ankara
+                  - generic [ref=e334]: 今日及未来无事件
+                - generic [ref=e335]:
+                  - generic [ref=e336]:
+                    - generic [ref=e337]: 城
+                    - generic [ref=e338]: Miami
+                  - generic [ref=e339]: 今日及未来无事件
+                - generic [ref=e340]:
+                  - generic [ref=e341]:
+                    - generic [ref=e342]: 城
+                    - generic [ref=e343]: Paris
+                  - generic [ref=e344]: 今日及未来无事件
+                - generic [ref=e345]:
+                  - generic [ref=e346]:
+                    - generic [ref=e347]: 城
+                    - generic [ref=e348]: Sao Paulo
+                  - generic [ref=e349]: 今日及未来无事件
+                - generic [ref=e350]:
+                  - generic [ref=e351]:
+                    - generic [ref=e352]: 城
+                    - generic [ref=e353]: Seattle
+                  - generic [ref=e354]: 今日及未来无事件
+                - generic [ref=e355]:
+                  - generic [ref=e356]:
+                    - generic [ref=e357]: 城
+                    - generic [ref=e358]: Wellington
+                  - generic [ref=e359]: 今日及未来无事件
+                - generic [ref=e360]:
+                  - generic [ref=e361]:
+                    - generic [ref=e362]: 城
+                    - generic [ref=e363]: 亚特兰大
+                  - generic [ref=e364]: 今日及未来无事件
+                - generic [ref=e365]:
+                  - generic [ref=e366]:
+                    - generic [ref=e367]: 城
+                    - generic [ref=e368]: 伦敦
+                  - generic [ref=e369]: 今日及未来无事件
+                - generic [ref=e370]:
+                  - generic [ref=e371]:
+                    - generic [ref=e372]: 城
+                    - generic [ref=e373]: 多伦多
+                  - generic [ref=e374]: 今日及未来无事件
+                - generic [ref=e375]:
+                  - generic [ref=e376]:
+                    - generic [ref=e377]: 城
+                    - generic [ref=e378]: 密西沙加
+                  - generic [ref=e379]: 今日及未来无事件
+                - generic [ref=e380]:
+                  - generic [ref=e381]:
+                    - generic [ref=e382]: 城
+                    - generic [ref=e383]: 布宜诺斯艾利斯
+                  - generic [ref=e384]: 今日及未来无事件
+                - generic [ref=e385]:
+                  - generic [ref=e386]:
+                    - generic [ref=e387]: 城
+                    - generic [ref=e388]: 洛杉矶
+                  - generic [ref=e389]: 今日及未来无事件
+                - generic [ref=e390]:
+                  - generic [ref=e391]:
+                    - generic [ref=e392]: 城
+                    - generic [ref=e393]: 纽约
+                  - generic [ref=e394]: 今日及未来无事件
+                - generic [ref=e395]:
+                  - generic [ref=e396]:
+                    - generic [ref=e397]: 城
+                    - generic [ref=e398]: 芝加哥
+                  - generic [ref=e399]: 今日及未来无事件
+                - generic [ref=e400]:
+                  - generic [ref=e401]:
+                    - generic [ref=e402]: 城
+                    - generic [ref=e403]: 达拉斯
+                  - generic [ref=e404]: 今日及未来无事件
+                - generic [ref=e405]:
+                  - generic [ref=e406]:
+                    - generic [ref=e407]: 城
+                    - generic [ref=e408]: 首尔
+                  - generic [ref=e409]: 今日及未来无事件
+            - generic [ref=e410]:
+              - generic [ref=e411]:
+                - generic [ref=e412]:
+                  - generic [ref=e413]: LCB候选
+                  - generic [ref=e414]: "0"
+                - generic [ref=e415]:
+                  - generic [ref=e416]: LCB达标
+                  - generic [ref=e417]: "0"
+                - generic [ref=e418]:
+                  - generic [ref=e419]: LCB阻断
+                  - generic [ref=e420]: "0"
+              - generic [ref=e421]: 样本 LCB 0
+            - generic [ref=e422]:
+              - generic [ref=e423]:
+                - generic [ref=e424]:
+                  - generic [ref=e425]: 自动交易追踪（LCB全市场）
+                  - generic [ref=e426]: 统一 LCB 决策链路 · 候选 -> 门禁 -> 下单 -> 成交 -> 退出
+                  - generic [ref=e428]: LCB全市场 关
+                  - generic [ref=e429]: 流程：通畅0 · 待处理0 · 阻断0
+                  - generic [ref=e430]: 盘口补拉 · refresh_pending
+                - button "加速决策" [ref=e432] [cursor=pointer]
+              - generic [ref=e435]: 加载中…
+    - generic [ref=e88]:
+      - generic [ref=e89]: 自动交易策略配置
+      - generic [ref=e91]:
+        - generic [ref=e92]: 策略配置面板
+        - generic [ref=e94]:
+          - generic [ref=e97]: 已保存
+          - button "保存设置" [disabled] [ref=e98]
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - generic [ref=e101]: 策略开关 · 一键启停
+            - generic [ref=e102]:
+              - generic [ref=e103]:
+                - generic [ref=e104]: 入场策略总开关（LCB全市场统一策略）
+                - generic [ref=e105]:
+                  - button "一键启用LCB策略" [ref=e106] [cursor=pointer]
+                  - button "恢复仅LCB" [ref=e107] [cursor=pointer]
+              - generic [ref=e109]:
+                - checkbox "LCB全市场" [checked] [ref=e110]
+                - text: LCB全市场
+              - generic [ref=e111]:
+                - generic [ref=e112]:
+                  - checkbox "模型扫描" [ref=e113]
+                  - text: 模型扫描
+                - generic [ref=e114]:
+                  - checkbox "盘口刷新" [ref=e115]
+                  - text: 盘口刷新
+                - generic [ref=e116]:
+                  - checkbox "自动交易（总开关）" [ref=e117]
+                  - text: 自动交易（总开关）
+              - generic [ref=e118]: 说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。
+              - generic [ref=e119]: 上面的“一键按钮”仅作用于 LCB 全市场策略开关。
+              - generic [ref=e120]: 总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。
+              - generic [ref=e121]:
+                - generic [ref=e122]:
+                  - generic [ref=e123]: LCB全市场仓位系数
+                  - spinbutton [ref=e125]: "1"
+                - generic [ref=e126]:
+                  - generic [ref=e127]: 信号下界阈值（signal_lcb）
+                  - spinbutton [ref=e129]: "0"
+                - generic [ref=e130]:
+                  - generic [ref=e131]: 路径下界阈值（path_lcb）
+                  - spinbutton [ref=e133]: "0.1"
+              - generic [ref=e134]:
+                - generic [ref=e135]:
+                  - generic [ref=e136]: 可交易下界阈值（edge_lcb）
+                  - spinbutton [ref=e138]: "0"
+                - generic [ref=e139]:
+                  - generic [ref=e140]: 最大盘口价差（spread）
+                  - spinbutton [ref=e142]: "0.08"
+                - generic [ref=e143]:
+                  - generic [ref=e144]: 最小盘口深度（USDC）
+                  - spinbutton [ref=e146]: "0"
+                - generic [ref=e147]:
+                  - generic [ref=e148]: 最大盘口时延（秒）
+                  - spinbutton [ref=e150]: "180"
+              - generic [ref=e151]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]: 每轮最多新开仓（0=不限制）
+                  - spinbutton [ref=e155]: "0"
+                - generic [ref=e156]:
+                  - generic [ref=e157]: 全局最多活跃持仓（0=不限制）
+                  - spinbutton [ref=e159]: "0"
+              - generic [ref=e160]: 仓位系数基准为 1.00x；0 表示本轮不新开仓。
+              - generic [ref=e162]:
+                - text: LCB全市场 · 开 ·
+                - generic [ref=e163]: 1.00x
+          - generic [ref=e164]:
+            - generic [ref=e165]: 执行参数（LCB）
+            - generic [ref=e168]:
+              - checkbox "自动交易前预取事件详情 i" [checked] [ref=e169]
+              - text: 自动交易前预取事件详情
+              - generic "启动 trade_sync_loop 前先跑一次详情抓取（PM_SCAN_FETCH_EVENT_DETAIL=1 scan_weather_market.py --scan-weather-today ...），确保最新 outcome_volume 反映在 event_runs 再执行自动交易。" [ref=e170]: i
+            - generic [ref=e172]:
+              - generic [ref=e173]: 自动交易最小间隔(秒)
+              - generic "自动交易运行节流的最小间隔（PM_AUTO_TRADE_MIN_RUN_INTERVAL_SEC）。调低=更频繁触发，调高=更保守。" [ref=e174]: i
+              - spinbutton [ref=e176]: "30"
+            - generic [ref=e177]:
+              - generic [ref=e178]:
+                - generic [ref=e179]:
+                  - checkbox "买价上限 i" [disabled] [ref=e180]
+                  - text: 买价上限
+                  - generic "ask高于上限不买，避免追高。" [ref=e181]: i
+                - generic [ref=e182]:
+                  - spinbutton [disabled] [ref=e183]: "0.95"
+                  - generic [ref=e184]: 开关关闭，当前不生效
+              - generic [ref=e185]:
+                - generic [ref=e186]: 每单预算
+                - generic "用于换算下单数量：size=预算/价格。实际还会受单笔上限和最小下单量限制。" [ref=e187]: i
+                - spinbutton [ref=e189]: "3"
+                - generic [ref=e190]: USDC
+            - generic [ref=e191]: 买价上限(ask)。调低=只买更便宜；调高=允许更贵的报价。
+            - generic [ref=e192]: 用于换算下单数量(预算/价格)。实际还会受“单笔上限”影响。
+          - generic [ref=e193]:
+            - generic [ref=e194]: 退出条件 · 风控与止损
+            - generic [ref=e195]:
+              - generic [ref=e196]:
+                - generic [ref=e197]:
+                  - checkbox "止损(%) i" [checked] [ref=e198]
+                  - text: 止损(%)
+                  - generic "亏损达到该比例触发退出。" [ref=e199]: i
+                - spinbutton [ref=e201]: "0.2"
+              - generic [ref=e202]:
+                - generic [ref=e203]:
+                  - checkbox "回撤止盈(%) i" [checked] [ref=e204]
+                  - text: 回撤止盈(%)
+                  - generic "从持仓峰值回撤达到该比例触发退出。" [ref=e205]: i
+                - spinbutton [ref=e207]: "0.12"
+            - generic [ref=e208]: 止损%调高=允许更大回撤再止损；调低=更紧。回撤止盈%调高=更宽松；调低=更敏感。
+        - generic [ref=e209]: 开关关闭时仅停用对应过滤，不清空阈值；点击保存后同步到自动交易进程。
+    - generic [ref=e211]: 站点映射与模型更新
+    - generic [ref=e212]:
+      - generic [ref=e213]:
+        - text: 事件列表（事实层）
+        - generic [ref=e214]: 已加载 0/0
+      - generic [ref=e437]:
+        - text: 暂无可展示事件
+        - generic [ref=e438]: 状态统计：已结算 0 · 已收盘 0 · 锁定 0 · 低盘口 0 · 总数 0
+    - generic [ref=e215]:
+      - generic [ref=e216]: 评分与偏差校正
+      - generic [ref=e440]:
+        - generic [ref=e441]: 评分与偏差校正（LCB最小监控）
+        - generic [ref=e442]: 仅保留 4 项：达标率、阻断Top、成交表现、持仓真值
+        - generic [ref=e443]:
+          - generic [ref=e444]:
+            - generic [ref=e445]: LCB门禁转化
+            - generic [ref=e446]:
+              - generic [ref=e447]:
+                - generic [ref=e448]: 候选 / 达标 / 阻断
+                - strong [ref=e449]: 0 / 0 / 0
+              - generic [ref=e450]:
+                - generic [ref=e451]: 达标率
+                - strong [ref=e452]: 0.0%
+              - generic [ref=e453]:
+                - generic [ref=e454]: run_date
+                - strong [ref=e455]: —
+              - generic [ref=e456]:
+                - generic [ref=e457]: trace更新时间
+                - strong [ref=e458]: —
+          - generic [ref=e459]:
+            - generic [ref=e460]: LCB成交表现
+            - generic [ref=e461]:
+              - generic [ref=e462]:
+                - generic [ref=e463]: 今日成交
+                - strong [ref=e464]: "0"
+              - generic [ref=e465]:
+                - generic [ref=e466]: 累计成交
+                - strong [ref=e467]: "0"
+              - generic [ref=e468]:
+                - generic [ref=e469]: 累计盈亏 / ROI
+                - strong [ref=e470]: — / —
+              - generic [ref=e471]:
+                - generic [ref=e472]: 累计胜率
+                - strong [ref=e473]: —
+          - generic [ref=e474]:
+            - generic [ref=e475]: LCB阻断Top（SSOT）
+            - generic [ref=e477]:
+              - generic [ref=e478]: 阻断Top
+              - strong [ref=e479]: 暂无
+          - generic [ref=e480]:
+            - generic [ref=e481]: 持仓真值口径
+            - generic [ref=e482]:
+              - generic [ref=e483]:
+                - generic [ref=e484]: 真值来源
+                - strong [ref=e485]: 降级本地
+              - generic [ref=e486]:
+                - generic [ref=e487]: 交易中 / 可赎回
+                - strong [ref=e488]: 0 / 0
+              - generic [ref=e489]:
+                - generic [ref=e490]: 总持仓
+                - strong [ref=e491]: "0"
+  - button "/agentation v1.3.2 Output Detail Standard Marker Colour Purple Blue Cyan Green Yellow Orange Red Clear after output Block page interactions" [ref=e217] [cursor=pointer]:
+    - img [ref=e219]
+    - generic:
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button:
+          - img
+    - generic:
+      - generic:
+        - generic: /agentation
+        - generic: v1.3.2
+        - button "Switch to light mode":
+          - img
+      - generic:
+        - generic:
+          - generic:
+            - text: Output Detail
+            - generic:
+              - img
+          - button "Standard":
+            - generic: Standard
+      - generic:
+        - generic: Marker Colour
+        - generic:
+          - generic:
+            - generic "Purple"
+          - generic:
+            - generic "Blue"
+          - generic:
+            - generic "Cyan"
+          - generic:
+            - generic "Green"
+          - generic:
+            - generic "Yellow"
+          - generic:
+            - generic "Orange"
+          - generic:
+            - generic "Red"
+      - generic:
+        - generic:
+          - checkbox "Clear after output"
+          - generic:
+            - text: Clear after output
+            - generic:
+              - img
+        - generic:
+          - checkbox "Block page interactions"
+          - generic: Block page interactions

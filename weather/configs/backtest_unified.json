@@ -1,0 +1,21 @@
+{
+  "force_predict": true,
+  "params": {
+    "auto_days": 10,
+    "auto_mode": "stage",
+    "auto_power": 0.5,
+    "actual_rounding": "round",
+    "temp_offset": 0.0,
+    "temp_offset_c": 0.0,
+    "temp_offset_f": 0.0,
+    "predict_mode": "mean",
+    "predict_quantile": 0.3,
+    "predict_offset": 0.0,
+    "predict_offset_c": 0.0,
+    "predict_offset_f": 0.0,
+    "early_gfs_share": 0.4,
+    "mid_ecmwf_share": 0.4,
+    "late_nws_share": 0.2,
+    "integer_ecmwf_share": 1.0
+  }
+}

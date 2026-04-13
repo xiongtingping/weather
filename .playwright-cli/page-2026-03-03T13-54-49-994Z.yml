@@ -1,0 +1,2150 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "自动交易" [ref=e8] [cursor=pointer]:
+            - /url: "#autoTradeSection"
+          - link "策略配置" [ref=e9] [cursor=pointer]:
+            - /url: "#strategySection"
+          - link "站点/模型" [ref=e10] [cursor=pointer]:
+            - /url: "#availabilitySection"
+        - generic [ref=e11]:
+          - link "事件" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "评分校正" [ref=e13] [cursor=pointer]:
+            - /url: "#ratingBiasSectionBlock"
+      - generic [ref=e14]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e16] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e17]: 总开关
+          - generic [ref=e18]: 开启
+        - generic [ref=e21]:
+          - button "同步" [ref=e22] [cursor=pointer]
+          - button "模型" [ref=e23] [cursor=pointer]
+          - button "盘口" [ref=e24] [cursor=pointer]
+          - button "刷新" [ref=e25] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e26] [cursor=pointer]
+          - button "日志" [ref=e28] [cursor=pointer]
+          - group [ref=e29]:
+            - generic "控制中心" [ref=e30] [cursor=pointer]: 控
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - status [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: 新鲜度
+            - generic [ref=e37]: 等待数据…时效口径
+            - generic [ref=e38]:
+              - generic [ref=e40]:
+                - generic [ref=e41]: 模型
+                - generic [ref=e42]: —
+              - generic [ref=e45]:
+                - generic [ref=e46]: 盘口
+                - generic [ref=e47]: —
+          - generic [ref=e49]:
+            - generic [ref=e50]:
+              - generic [ref=e51] [cursor=pointer]:
+                - generic [ref=e52]: 健康检查
+                - generic [ref=e53]: 展开
+                - button "复制" [ref=e54]
+              - generic: —
+            - group [ref=e55]:
+              - generic "追涨触发统计" [ref=e56] [cursor=pointer]:
+                - generic [ref=e57]: 追涨触发统计
+      - generic [ref=e58]:
+        - generic [ref=e60]: 自动买卖检测
+        - generic [ref=e61]: —
+        - generic [ref=e62]: —
+        - generic [ref=e64]: 事件口径
+        - generic [ref=e65]:
+          - generic [ref=e66]: 自动交易：—
+          - generic [ref=e67]: 成交同步：—
+          - generic [ref=e68]: 最后触发：—
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic "页面数据状态：刷新中 · 03-03 21:53" [ref=e980]:
+              - generic [ref=e74]: 刷新中
+              - generic "页面数据最后刷新/失败时间" [ref=e981]: 03-03 21:53
+            - generic [ref=e982]: 加载中...
+          - generic [ref=e77]:
+            - generic [ref=e983]: 主策略 开 1.00x
+            - generic [ref=e984]: YES最高桶 开 1.00x
+            - generic [ref=e985]: 临结价差 开 1.00x
+            - generic [ref=e986]: 物理边界NO 开 1.00x
+            - generic [ref=e987]: 邻桶配对 开 1.00x
+            - generic [ref=e988]: 影子跟单 关 0.08x
+        - generic [ref=e84]:
+          - button "auto_trade_watcher" [ref=e85] [cursor=pointer]
+          - button "残留清理" [ref=e86] [cursor=pointer]
+          - generic [ref=e87] [cursor=pointer]:
+            - checkbox "自动交易 关闭"
+            - generic [ref=e89]: 自动交易 关闭
+    - generic [ref=e90]:
+      - generic [ref=e91]: 自动交易总览
+      - generic [ref=e92]:
+        - generic [ref=e1039]:
+          - generic [ref=e1040]:
+            - generic [ref=e1042]: 自动交易成交分析
+            - generic [ref=e1043]:
+              - generic [ref=e1044]:
+                - generic [ref=e1045]: 同步状态
+                - generic [ref=e1046]: 上次同步 03-03 21:36
+              - generic [ref=e1047]:
+                - generic [ref=e1048]: 失败原因
+                - generic [ref=e1049]: —
+                - button "复制" [disabled] [ref=e1050]
+          - generic [ref=e1051]: 成交分析=缓存(可能过期) 17m · scoreboard_refresh_slow · 口径：成交笔数=trade_id；订单数=order_id · 失败=亏损成交 · 今日=自然日 · 持仓口径：当前=交易中；可赎回单列；全部=当前+可赎回 · 持仓口径降级=本地（PM_POSITIONS_SYNC=0）
+          - generic [ref=e1053]:
+            - generic [ref=e1054]:
+              - generic [ref=e1055]: 目前持仓订单数
+              - generic [ref=e1057]:
+                - generic [ref=e1058]:
+                  - generic [ref=e1059]: 当前
+                  - generic [ref=e1060]: "3"
+                - generic [ref=e1061]:
+                  - generic [ref=e1062]:
+                    - generic [ref=e1063]: 今日新增
+                    - generic [ref=e1064]: "1"
+                  - generic [ref=e1065]:
+                    - generic [ref=e1066]: 全部
+                    - generic [ref=e1067]: "3"
+              - generic [ref=e1068]: 交易中 3 · 可赎回 0 · 历史残余 6 · 7日新增 3
+            - generic [ref=e1069]:
+              - generic [ref=e1070]: 成交订单数
+              - generic [ref=e1072]:
+                - generic [ref=e1073]:
+                  - generic [ref=e1074]: 今日
+                  - generic [ref=e1075]: "3"
+                - generic [ref=e1076]:
+                  - generic [ref=e1077]:
+                    - generic [ref=e1078]: 7日
+                    - generic [ref=e1079]: "29"
+                  - generic [ref=e1080]:
+                    - generic [ref=e1081]: 总计
+                    - generic [ref=e1082]: "553"
+              - generic [ref=e1083]: order_id 去重
+            - generic [ref=e1084]:
+              - generic [ref=e1085]: 总买入数（成功）
+              - generic [ref=e1087]:
+                - generic [ref=e1088]:
+                  - generic [ref=e1089]: 今日
+                  - generic [ref=e1090]: "1"
+                - generic [ref=e1091]:
+                  - generic [ref=e1092]:
+                    - generic [ref=e1093]: 7日
+                    - generic [ref=e1094]: "21"
+                  - generic [ref=e1095]:
+                    - generic [ref=e1096]: 总计
+                    - generic [ref=e1097]: "397"
+              - generic [ref=e1098]: 买入成交笔数
+            - generic [ref=e1099]:
+              - generic [ref=e1100]: 总卖出数
+              - generic [ref=e1102]:
+                - generic [ref=e1103]:
+                  - generic [ref=e1104]: 今日
+                  - generic [ref=e1105]: "4"
+                - generic [ref=e1106]:
+                  - generic [ref=e1107]:
+                    - generic [ref=e1108]: 7日
+                    - generic [ref=e1109]: "17"
+                  - generic [ref=e1110]:
+                    - generic [ref=e1111]: 总计
+                    - generic [ref=e1112]: "300"
+              - generic [ref=e1113]: 卖出成交笔数
+            - generic [ref=e1114]:
+              - generic [ref=e1115]: 失败订单数
+              - generic [ref=e1117]:
+                - generic [ref=e1118]:
+                  - generic [ref=e1119]: 今日
+                  - generic [ref=e1120]: "0"
+                - generic [ref=e1121]:
+                  - generic [ref=e1122]:
+                    - generic [ref=e1123]: 7日
+                    - generic [ref=e1124]: "10"
+                  - generic [ref=e1125]:
+                    - generic [ref=e1126]: 总计
+                    - generic [ref=e1127]: "199"
+              - generic [ref=e1128]: 亏损成交笔数
+            - generic [ref=e1129]:
+              - generic [ref=e1130]: 已实现盈亏
+              - generic [ref=e1132]:
+                - generic [ref=e1133]:
+                  - generic [ref=e1134]: 今日
+                  - generic [ref=e1135]: "+3.89"
+                - generic [ref=e1136]:
+                  - generic [ref=e1137]:
+                    - generic [ref=e1138]: 7日
+                    - generic [ref=e1139]: "+3.12"
+                  - generic [ref=e1140]:
+                    - generic [ref=e1141]: 总计
+                    - generic [ref=e1142]: "-82.49"
+              - generic [ref=e1143]: 卖出结算
+            - generic [ref=e1144]:
+              - generic [ref=e1145]: 未实现盈亏
+              - generic [ref=e1147]:
+                - generic [ref=e1148]:
+                  - generic [ref=e1149]: 当前
+                  - generic [ref=e1150]: "-6.71"
+                - generic [ref=e1151]:
+                  - generic [ref=e1152]:
+                    - generic [ref=e1153]: 今日开仓
+                    - generic [ref=e1154]: "+1.68"
+                  - generic [ref=e1155]:
+                    - generic [ref=e1156]: 7日开仓
+                    - generic [ref=e1157]: "-6.71"
+              - generic [ref=e1158]: 持仓浮动（主值=当前）
+            - generic [ref=e1159]:
+              - generic [ref=e1160]: 赔率
+              - generic [ref=e1162]:
+                - generic [ref=e1163]:
+                  - generic [ref=e1164]: 今日
+                  - generic [ref=e1165]: 1:0.32
+                - generic [ref=e1166]:
+                  - generic [ref=e1167]:
+                    - generic [ref=e1168]: 7日
+                    - generic [ref=e1169]: 1:2.36
+                  - generic [ref=e1170]:
+                    - generic [ref=e1171]: 总计
+                    - generic [ref=e1172]: 1:14.1
+              - generic [ref=e1173]: 买入均价换算（非盈亏）
+          - generic [ref=e1174]:
+            - generic [ref=e1175]:
+              - generic [ref=e1176]: 主策略
+              - generic [ref=e1177]:
+                - generic [ref=e1178]:
+                  - generic [ref=e1179]: 今日
+                  - generic [ref=e1180]: 2026-03-03
+                - generic [ref=e1181]:
+                  - generic [ref=e1182]: 下单/成单
+                  - strong [ref=e1183]: 0/0
+                - generic [ref=e1184]:
+                  - generic [ref=e1185]: 盈亏
+                  - strong [ref=e1186]: "0.00"
+                - generic [ref=e1187]:
+                  - generic [ref=e1188]: ROI/胜率
+                  - strong [ref=e1189]: — / —
+              - generic [ref=e1190]:
+                - generic [ref=e1191]: 订单数
+                - strong [ref=e1192]: "89"
+              - generic [ref=e1193]:
+                - generic [ref=e1194]: 成单数
+                - strong [ref=e1195]: "32"
+              - generic [ref=e1196]:
+                - generic [ref=e1197]: 进/出(下)
+                - strong [ref=e1198]: 52/37
+              - generic [ref=e1199]:
+                - generic [ref=e1200]: 进/出(成)
+                - strong [ref=e1201]: 16/16
+              - generic [ref=e1202]:
+                - generic [ref=e1203]: 平仓/未平
+                - strong [ref=e1204]: 16/1
+              - generic [ref=e1205]:
+                - generic [ref=e1206]: 买/卖成交
+                - strong [ref=e1207]: 20/18
+              - generic [ref=e1208]:
+                - generic [ref=e1209]: 胜/负/平
+                - strong [ref=e1210]: 6/10/0
+              - generic [ref=e1211]:
+                - generic [ref=e1212]: 盈亏
+                - strong [ref=e1213]: "-4.99"
+              - generic [ref=e1214]:
+                - generic [ref=e1215]: 盈亏(NO/YES)
+                - strong [ref=e1216]: "-2.70 / -2.29"
+              - generic [ref=e1217]:
+                - generic [ref=e1218]: ROI
+                - strong [ref=e1219]: "-9.6%"
+              - generic [ref=e1220]:
+                - generic [ref=e1221]: ROI(NO/YES)
+                - strong [ref=e1222]: "-10.5% / -8.7%"
+              - generic [ref=e1223]:
+                - generic [ref=e1224]: 胜率
+                - strong [ref=e1225]: 37.5%
+              - generic [ref=e1226]:
+                - generic [ref=e1227]: 胜率(NO/YES)
+                - strong [ref=e1228]: 42.9% / 33.3%
+              - generic [ref=e1229]:
+                - generic [ref=e1230]: 赔率(买入)
+                - strong [ref=e1231]: 1:1.67
+              - generic [ref=e1232]:
+                - generic [ref=e1233]: 盈利因子
+                - strong [ref=e1234]: "0.26"
+              - generic [ref=e1235]:
+                - generic [ref=e1236]: 正/负收益
+                - strong [ref=e1237]: +1.73 / -6.73
+              - generic [ref=e1238]:
+                - generic [ref=e1239]: 期望edge均值
+                - strong [ref=e1240]: —
+              - generic [ref=e1241]:
+                - generic [ref=e1242]: 正期望占比
+                - strong [ref=e1243]: —
+              - generic [ref=e1244]:
+                - generic [ref=e1245]: 模型分歧
+                - strong [ref=e1246]: —
+            - generic [ref=e1247]:
+              - generic [ref=e1248]: 临结价差策略
+              - generic [ref=e1249]:
+                - generic [ref=e1250]:
+                  - generic [ref=e1251]: 今日
+                  - generic [ref=e1252]: 2026-03-03
+                - generic [ref=e1253]:
+                  - generic [ref=e1254]: 下单/成单
+                  - strong [ref=e1255]: 0/0
+                - generic [ref=e1256]:
+                  - generic [ref=e1257]: 盈亏
+                  - strong [ref=e1258]: "0.00"
+                - generic [ref=e1259]:
+                  - generic [ref=e1260]: ROI/胜率
+                  - strong [ref=e1261]: — / —
+              - generic [ref=e1262]:
+                - generic [ref=e1263]: 订单数
+                - strong [ref=e1264]: "214"
+              - generic [ref=e1265]:
+                - generic [ref=e1266]: 成单数
+                - strong [ref=e1267]: "19"
+              - generic [ref=e1268]:
+                - generic [ref=e1269]: 进/出(下)
+                - strong [ref=e1270]: 27/187
+              - generic [ref=e1271]:
+                - generic [ref=e1272]: 进/出(成)
+                - strong [ref=e1273]: 14/5
+              - generic [ref=e1274]:
+                - generic [ref=e1275]: 平仓/未平
+                - strong [ref=e1276]: 6/7
+              - generic [ref=e1277]:
+                - generic [ref=e1278]: 买/卖成交
+                - strong [ref=e1279]: 16/6
+              - generic [ref=e1280]:
+                - generic [ref=e1281]: 胜/负/平
+                - strong [ref=e1282]: 1/5/0
+              - generic [ref=e1283]:
+                - generic [ref=e1284]: 盈亏
+                - strong [ref=e1285]: "-2.79"
+              - generic [ref=e1286]:
+                - generic [ref=e1287]: 盈亏(NO/YES)
+                - strong [ref=e1288]: 0.00 / -2.79
+              - generic [ref=e1289]:
+                - generic [ref=e1290]: ROI
+                - strong [ref=e1291]: "-35.2%"
+              - generic [ref=e1292]:
+                - generic [ref=e1293]: ROI(NO/YES)
+                - strong [ref=e1294]: — / -35.2%
+              - generic [ref=e1295]:
+                - generic [ref=e1296]: 胜率
+                - strong [ref=e1297]: 16.7%
+              - generic [ref=e1298]:
+                - generic [ref=e1299]: 胜率(NO/YES)
+                - strong [ref=e1300]: — / 16.7%
+              - generic [ref=e1301]:
+                - generic [ref=e1302]: 赔率(买入)
+                - strong [ref=e1303]: 1:18.5
+              - generic [ref=e1304]:
+                - generic [ref=e1305]: 盈利因子
+                - strong [ref=e1306]: "0.01"
+              - generic [ref=e1307]:
+                - generic [ref=e1308]: 正/负收益
+                - strong [ref=e1309]: +0.05 / -3.44
+              - generic [ref=e1310]:
+                - generic [ref=e1311]: 期望edge均值
+                - strong [ref=e1312]: —
+              - generic [ref=e1313]:
+                - generic [ref=e1314]: 正期望占比
+                - strong [ref=e1315]: —
+              - generic [ref=e1316]:
+                - generic [ref=e1317]: 模型分歧
+                - strong [ref=e1318]: —
+            - generic [ref=e1319]:
+              - generic [ref=e1320]: YES最高桶策略
+              - generic [ref=e1321]:
+                - generic [ref=e1322]:
+                  - generic [ref=e1323]: 今日
+                  - generic [ref=e1324]: 2026-03-03
+                - generic [ref=e1325]:
+                  - generic [ref=e1326]: 下单/成单
+                  - strong [ref=e1327]: 0/0
+                - generic [ref=e1328]:
+                  - generic [ref=e1329]: 盈亏
+                  - strong [ref=e1330]: "0.00"
+                - generic [ref=e1331]:
+                  - generic [ref=e1332]: ROI/胜率
+                  - strong [ref=e1333]: — / —
+              - generic [ref=e1334]:
+                - generic [ref=e1335]: 订单数
+                - strong [ref=e1336]: "218"
+              - generic [ref=e1337]:
+                - generic [ref=e1338]: 成单数
+                - strong [ref=e1339]: "55"
+              - generic [ref=e1340]:
+                - generic [ref=e1341]: 进/出(下)
+                - strong [ref=e1342]: 71/147
+              - generic [ref=e1343]:
+                - generic [ref=e1344]: 进/出(成)
+                - strong [ref=e1345]: 22/33
+              - generic [ref=e1346]:
+                - generic [ref=e1347]: 平仓/未平
+                - strong [ref=e1348]: 25/2
+              - generic [ref=e1349]:
+                - generic [ref=e1350]: 买/卖成交
+                - strong [ref=e1351]: 27/14
+              - generic [ref=e1352]:
+                - generic [ref=e1353]: 胜/负/平
+                - strong [ref=e1354]: 7/15/3
+              - generic [ref=e1355]:
+                - generic [ref=e1356]: 盈亏
+                - strong [ref=e1357]: "+0.75"
+              - generic [ref=e1358]:
+                - generic [ref=e1359]: 盈亏(NO/YES)
+                - strong [ref=e1360]: 0.00 / +0.75
+              - generic [ref=e1361]:
+                - generic [ref=e1362]: ROI
+                - strong [ref=e1363]: 0.5%
+              - generic [ref=e1364]:
+                - generic [ref=e1365]: ROI(NO/YES)
+                - strong [ref=e1366]: — / 0.5%
+              - generic [ref=e1367]:
+                - generic [ref=e1368]: 胜率
+                - strong [ref=e1369]: 28.0%
+              - generic [ref=e1370]:
+                - generic [ref=e1371]: 胜率(NO/YES)
+                - strong [ref=e1372]: — / 28.0%
+              - generic [ref=e1373]:
+                - generic [ref=e1374]: 赔率(买入)
+                - strong [ref=e1375]: 1:1.35
+              - generic [ref=e1376]:
+                - generic [ref=e1377]: 盈利因子
+                - strong [ref=e1378]: "1.07"
+              - generic [ref=e1379]:
+                - generic [ref=e1380]: 正/负收益
+                - strong [ref=e1381]: +20.24 / -18.89
+              - generic [ref=e1382]:
+                - generic [ref=e1383]: 期望edge均值
+                - strong [ref=e1384]: —
+              - generic [ref=e1385]:
+                - generic [ref=e1386]: 正期望占比
+                - strong [ref=e1387]: —
+              - generic [ref=e1388]:
+                - generic [ref=e1389]: 模型分歧
+                - strong [ref=e1390]: —
+            - generic [ref=e1391]:
+              - generic [ref=e1392]: 硬边界NO策略
+              - generic [ref=e1393]:
+                - generic [ref=e1394]:
+                  - generic [ref=e1395]: 今日
+                  - generic [ref=e1396]: 2026-03-03
+                - generic [ref=e1397]:
+                  - generic [ref=e1398]: 下单/成单
+                  - strong [ref=e1399]: 0/0
+                - generic [ref=e1400]:
+                  - generic [ref=e1401]: 盈亏
+                  - strong [ref=e1402]: "0.00"
+                - generic [ref=e1403]:
+                  - generic [ref=e1404]: ROI/胜率
+                  - strong [ref=e1405]: — / —
+              - generic [ref=e1406]:
+                - generic [ref=e1407]: 订单数
+                - strong [ref=e1408]: "1"
+              - generic [ref=e1409]:
+                - generic [ref=e1410]: 成单数
+                - strong [ref=e1411]: "0"
+              - generic [ref=e1412]:
+                - generic [ref=e1413]: 进/出(下)
+                - strong [ref=e1414]: 1/0
+              - generic [ref=e1415]:
+                - generic [ref=e1416]: 进/出(成)
+                - strong [ref=e1417]: 0/0
+              - generic [ref=e1418]:
+                - generic [ref=e1419]: 平仓/未平
+                - strong [ref=e1420]: 0/0
+              - generic [ref=e1421]:
+                - generic [ref=e1422]: 买/卖成交
+                - strong [ref=e1423]: 0/0
+              - generic [ref=e1424]:
+                - generic [ref=e1425]: 胜/负/平
+                - strong [ref=e1426]: 0/0/0
+              - generic [ref=e1427]:
+                - generic [ref=e1428]: 盈亏
+                - strong [ref=e1429]: "0.00"
+              - generic [ref=e1430]:
+                - generic [ref=e1431]: 盈亏(NO/YES)
+                - strong [ref=e1432]: 0.00 / 0.00
+              - generic [ref=e1433]:
+                - generic [ref=e1434]: ROI
+                - strong [ref=e1435]: —
+              - generic [ref=e1436]:
+                - generic [ref=e1437]: ROI(NO/YES)
+                - strong [ref=e1438]: — / —
+              - generic [ref=e1439]:
+                - generic [ref=e1440]: 胜率
+                - strong [ref=e1441]: —
+              - generic [ref=e1442]:
+                - generic [ref=e1443]: 胜率(NO/YES)
+                - strong [ref=e1444]: — / —
+              - generic [ref=e1445]:
+                - generic [ref=e1446]: 赔率(买入)
+                - strong [ref=e1447]: —
+              - generic [ref=e1448]:
+                - generic [ref=e1449]: 盈利因子
+                - strong [ref=e1450]: —
+              - generic [ref=e1451]:
+                - generic [ref=e1452]: 正/负收益
+                - strong [ref=e1453]: 0.00 / 0.00
+              - generic [ref=e1454]:
+                - generic [ref=e1455]: 期望edge均值
+                - strong [ref=e1456]: —
+              - generic [ref=e1457]:
+                - generic [ref=e1458]: 正期望占比
+                - strong [ref=e1459]: —
+              - generic [ref=e1460]:
+                - generic [ref=e1461]: 模型分歧
+                - strong [ref=e1462]: —
+            - generic [ref=e1463]:
+              - generic [ref=e1464]: 邻桶配对策略
+              - generic [ref=e1465]:
+                - generic [ref=e1466]:
+                  - generic [ref=e1467]: 今日
+                  - generic [ref=e1468]: 2026-03-03
+                - generic [ref=e1469]:
+                  - generic [ref=e1470]: 下单/成单
+                  - strong [ref=e1471]: 6/3
+                - generic [ref=e1472]:
+                  - generic [ref=e1473]: 盈亏
+                  - strong [ref=e1474]: "-0.58"
+                - generic [ref=e1475]:
+                  - generic [ref=e1476]: ROI/胜率
+                  - strong [ref=e1477]: "-100.0% / 0.0%"
+              - generic [ref=e1478]:
+                - generic [ref=e1479]: 订单数
+                - strong [ref=e1480]: "216"
+              - generic [ref=e1481]:
+                - generic [ref=e1482]: 成单数
+                - strong [ref=e1483]: "52"
+              - generic [ref=e1484]:
+                - generic [ref=e1485]: 进/出(下)
+                - strong [ref=e1486]: 64/152
+              - generic [ref=e1487]:
+                - generic [ref=e1488]: 进/出(成)
+                - strong [ref=e1489]: 35/17
+              - generic [ref=e1490]:
+                - generic [ref=e1491]: 平仓/未平
+                - strong [ref=e1492]: 19/9
+              - generic [ref=e1493]:
+                - generic [ref=e1494]: 买/卖成交
+                - strong [ref=e1495]: 36/23
+              - generic [ref=e1496]:
+                - generic [ref=e1497]: 胜/负/平
+                - strong [ref=e1498]: 12/7/0
+              - generic [ref=e1499]:
+                - generic [ref=e1500]: 盈亏
+                - strong [ref=e1501]: "+3.71"
+              - generic [ref=e1502]:
+                - generic [ref=e1503]: 盈亏(NO/YES)
+                - strong [ref=e1504]: +11.00 / -7.29
+              - generic [ref=e1505]:
+                - generic [ref=e1506]: ROI
+                - strong [ref=e1507]: 4.9%
+              - generic [ref=e1508]:
+                - generic [ref=e1509]: ROI(NO/YES)
+                - strong [ref=e1510]: 18.2% / -49.8%
+              - generic [ref=e1511]:
+                - generic [ref=e1512]: 胜率
+                - strong [ref=e1513]: 63.2%
+              - generic [ref=e1514]:
+                - generic [ref=e1515]: 胜率(NO/YES)
+                - strong [ref=e1516]: 73.3% / 25.0%
+              - generic [ref=e1517]:
+                - generic [ref=e1518]: 赔率(买入)
+                - strong [ref=e1519]: 1:1.74
+              - generic [ref=e1520]:
+                - generic [ref=e1521]: 盈利因子
+                - strong [ref=e1522]: "1.32"
+              - generic [ref=e1523]:
+                - generic [ref=e1524]: 正/负收益
+                - strong [ref=e1525]: +13.65 / -10.34
+              - generic [ref=e1526]:
+                - generic [ref=e1527]: 期望edge均值
+                - strong [ref=e1528]: —
+              - generic [ref=e1529]:
+                - generic [ref=e1530]: 正期望占比
+                - strong [ref=e1531]: —
+              - generic [ref=e1532]:
+                - generic [ref=e1533]: 模型分歧
+                - strong [ref=e1534]: —
+            - generic [ref=e1535]:
+              - generic [ref=e1536]: 影子跟单策略
+              - generic [ref=e1537]:
+                - generic [ref=e1538]:
+                  - generic [ref=e1539]: 今日
+                  - generic [ref=e1540]: 2026-03-03
+                - generic [ref=e1541]:
+                  - generic [ref=e1542]: 下单/成单
+                  - strong [ref=e1543]: 0/0
+                - generic [ref=e1544]:
+                  - generic [ref=e1545]: 盈亏
+                  - strong [ref=e1546]: "0.00"
+                - generic [ref=e1547]:
+                  - generic [ref=e1548]: ROI/胜率
+                  - strong [ref=e1549]: — / —
+              - generic [ref=e1550]:
+                - generic [ref=e1551]: 订单数
+                - strong [ref=e1552]: "179"
+              - generic [ref=e1553]:
+                - generic [ref=e1554]: 成单数
+                - strong [ref=e1555]: "91"
+              - generic [ref=e1556]:
+                - generic [ref=e1557]: 进/出(下)
+                - strong [ref=e1558]: 106/73
+              - generic [ref=e1559]:
+                - generic [ref=e1560]: 进/出(成)
+                - strong [ref=e1561]: 60/31
+              - generic [ref=e1562]:
+                - generic [ref=e1563]: 平仓/未平
+                - strong [ref=e1564]: 15/2
+              - generic [ref=e1565]:
+                - generic [ref=e1566]: 买/卖成交
+                - strong [ref=e1567]: 76/7
+              - generic [ref=e1568]:
+                - generic [ref=e1569]: 胜/负/平
+                - strong [ref=e1570]: 9/6/0
+              - generic [ref=e1571]:
+                - generic [ref=e1572]: 盈亏
+                - strong [ref=e1573]: "+233.28"
+              - generic [ref=e1574]:
+                - generic [ref=e1575]: 盈亏(NO/YES)
+                - strong [ref=e1576]: "-90.46 / +323.74"
+              - generic [ref=e1577]:
+                - generic [ref=e1578]: ROI
+                - strong [ref=e1579]: 25.0%
+              - generic [ref=e1580]:
+                - generic [ref=e1581]: ROI(NO/YES)
+                - strong [ref=e1582]: "-11.3% / 238.9%"
+              - generic [ref=e1583]:
+                - generic [ref=e1584]: 胜率
+                - strong [ref=e1585]: 60.0%
+              - generic [ref=e1586]:
+                - generic [ref=e1587]: 胜率(NO/YES)
+                - strong [ref=e1588]: 75.0% / 42.9%
+              - generic [ref=e1589]:
+                - generic [ref=e1590]: 赔率(买入)
+                - strong [ref=e1591]: 1:2.78
+              - generic [ref=e1592]:
+                - generic [ref=e1593]: 盈利因子
+                - strong [ref=e1594]: "1.90"
+              - generic [ref=e1595]:
+                - generic [ref=e1596]: 正/负收益
+                - strong [ref=e1597]: +491.61 / -258.33
+              - generic [ref=e1598]:
+                - generic [ref=e1599]: 期望edge均值
+                - strong [ref=e1600]: —
+              - generic [ref=e1601]:
+                - generic [ref=e1602]: 正期望占比
+                - strong [ref=e1603]: —
+              - generic [ref=e1604]:
+                - generic [ref=e1605]: 模型分歧
+                - strong [ref=e1606]: —
+            - generic [ref=e1607]:
+              - generic [ref=e1608]: 未归属/手动
+              - generic [ref=e1609]:
+                - generic [ref=e1610]:
+                  - generic [ref=e1611]: 今日
+                  - generic [ref=e1612]: 2026-03-03
+                - generic [ref=e1613]:
+                  - generic [ref=e1614]: 下单/成单
+                  - strong [ref=e1615]: 0/0
+                - generic [ref=e1616]:
+                  - generic [ref=e1617]: 盈亏
+                  - strong [ref=e1618]: "0.00"
+                - generic [ref=e1619]:
+                  - generic [ref=e1620]: ROI/胜率
+                  - strong [ref=e1621]: — / —
+              - generic [ref=e1622]:
+                - generic [ref=e1623]: 订单数
+                - strong [ref=e1624]: "8"
+              - generic [ref=e1625]:
+                - generic [ref=e1626]: 成单数
+                - strong [ref=e1627]: "8"
+              - generic [ref=e1628]:
+                - generic [ref=e1629]: 进/出(下)
+                - strong [ref=e1630]: 0/8
+              - generic [ref=e1631]:
+                - generic [ref=e1632]: 进/出(成)
+                - strong [ref=e1633]: 0/8
+              - generic [ref=e1634]:
+                - generic [ref=e1635]: 平仓/未平
+                - strong [ref=e1636]: 6/1
+              - generic [ref=e1637]:
+                - generic [ref=e1638]: 买/卖成交
+                - strong [ref=e1639]: 2/3
+              - generic [ref=e1640]:
+                - generic [ref=e1641]: 胜/负/平
+                - strong [ref=e1642]: 3/3/0
+              - generic [ref=e1643]:
+                - generic [ref=e1644]: 盈亏
+                - strong [ref=e1645]: "-0.52"
+              - generic [ref=e1646]:
+                - generic [ref=e1647]: 盈亏(NO/YES)
+                - strong [ref=e1648]: 0.00 / -0.52
+              - generic [ref=e1649]:
+                - generic [ref=e1650]: ROI
+                - strong [ref=e1651]: "-1.5%"
+              - generic [ref=e1652]:
+                - generic [ref=e1653]: ROI(NO/YES)
+                - strong [ref=e1654]: — / -1.5%
+              - generic [ref=e1655]:
+                - generic [ref=e1656]: 胜率
+                - strong [ref=e1657]: 50.0%
+              - generic [ref=e1658]:
+                - generic [ref=e1659]: 胜率(NO/YES)
+                - strong [ref=e1660]: — / 50.0%
+              - generic [ref=e1661]:
+                - generic [ref=e1662]: 赔率(买入)
+                - strong [ref=e1663]: 1:4.29
+              - generic [ref=e1664]:
+                - generic [ref=e1665]: 盈利因子
+                - strong [ref=e1666]: "0.86"
+              - generic [ref=e1667]:
+                - generic [ref=e1668]: 正/负收益
+                - strong [ref=e1669]: +3.26 / -3.78
+              - generic [ref=e1670]:
+                - generic [ref=e1671]: 期望edge均值
+                - strong [ref=e1672]: —
+              - generic [ref=e1673]:
+                - generic [ref=e1674]: 正期望占比
+                - strong [ref=e1675]: —
+              - generic [ref=e1676]:
+                - generic [ref=e1677]: 模型分歧
+                - strong [ref=e1678]: —
+            - generic [ref=e1679]:
+              - generic [ref=e1680]: 退出补单
+              - generic [ref=e1681]:
+                - generic [ref=e1682]:
+                  - generic [ref=e1683]: 今日
+                  - generic [ref=e1684]: 2026-03-03
+                - generic [ref=e1685]:
+                  - generic [ref=e1686]: 下单/成单
+                  - strong [ref=e1687]: 0/0
+                - generic [ref=e1688]:
+                  - generic [ref=e1689]: 盈亏
+                  - strong [ref=e1690]: "0.00"
+                - generic [ref=e1691]:
+                  - generic [ref=e1692]: ROI/胜率
+                  - strong [ref=e1693]: — / —
+              - generic [ref=e1694]:
+                - generic [ref=e1695]: 订单数
+                - strong [ref=e1696]: "0"
+              - generic [ref=e1697]:
+                - generic [ref=e1698]: 成单数
+                - strong [ref=e1699]: "6"
+              - generic [ref=e1700]:
+                - generic [ref=e1701]: 进/出(下)
+                - strong [ref=e1702]: 0/0
+              - generic [ref=e1703]:
+                - generic [ref=e1704]: 进/出(成)
+                - strong [ref=e1705]: 0/0
+              - generic [ref=e1706]:
+                - generic [ref=e1707]: 平仓/未平
+                - strong [ref=e1708]: 4/0
+              - generic [ref=e1709]:
+                - generic [ref=e1710]: 买/卖成交
+                - strong [ref=e1711]: 6/2
+              - generic [ref=e1712]:
+                - generic [ref=e1713]: 胜/负/平
+                - strong [ref=e1714]: 2/2/0
+              - generic [ref=e1715]:
+                - generic [ref=e1716]: 盈亏
+                - strong [ref=e1717]: "+0.12"
+              - generic [ref=e1718]:
+                - generic [ref=e1719]: 盈亏(NO/YES)
+                - strong [ref=e1720]: 0.00 / +0.12
+              - generic [ref=e1721]:
+                - generic [ref=e1722]: ROI
+                - strong [ref=e1723]: 1.9%
+              - generic [ref=e1724]:
+                - generic [ref=e1725]: ROI(NO/YES)
+                - strong [ref=e1726]: — / 1.9%
+              - generic [ref=e1727]:
+                - generic [ref=e1728]: 胜率
+                - strong [ref=e1729]: 50.0%
+              - generic [ref=e1730]:
+                - generic [ref=e1731]: 胜率(NO/YES)
+                - strong [ref=e1732]: — / 50.0%
+              - generic [ref=e1733]:
+                - generic [ref=e1734]: 赔率(买入)
+                - strong [ref=e1735]: 1:1.84
+              - generic [ref=e1736]:
+                - generic [ref=e1737]: 盈利因子
+                - strong [ref=e1738]: "1.06"
+              - generic [ref=e1739]:
+                - generic [ref=e1740]: 正/负收益
+                - strong [ref=e1741]: +2.11 / -1.99
+              - generic [ref=e1742]:
+                - generic [ref=e1743]: 期望edge均值
+                - strong [ref=e1744]: —
+              - generic [ref=e1745]:
+                - generic [ref=e1746]: 正期望占比
+                - strong [ref=e1747]: —
+              - generic [ref=e1748]:
+                - generic [ref=e1749]: 模型分歧
+                - strong [ref=e1750]: —
+            - generic [ref=e1751]:
+              - generic [ref=e1752]: 影子跟单改进
+              - generic [ref=e1753]:
+                - generic [ref=e1754]:
+                  - generic [ref=e1755]: 今日
+                  - generic [ref=e1756]: 2026-03-03
+                - generic [ref=e1757]:
+                  - generic [ref=e1758]: 下单/成单
+                  - strong [ref=e1759]: 0/0
+                - generic [ref=e1760]:
+                  - generic [ref=e1761]: 盈亏
+                  - strong [ref=e1762]: "0.00"
+                - generic [ref=e1763]:
+                  - generic [ref=e1764]: ROI/胜率
+                  - strong [ref=e1765]: — / —
+              - generic [ref=e1766]:
+                - generic [ref=e1767]: 订单数
+                - strong [ref=e1768]: "0"
+              - generic [ref=e1769]:
+                - generic [ref=e1770]: 成单数
+                - strong [ref=e1771]: "4"
+              - generic [ref=e1772]:
+                - generic [ref=e1773]: 进/出(下)
+                - strong [ref=e1774]: 0/0
+              - generic [ref=e1775]:
+                - generic [ref=e1776]: 进/出(成)
+                - strong [ref=e1777]: 0/0
+              - generic [ref=e1778]:
+                - generic [ref=e1779]: 平仓/未平
+                - strong [ref=e1780]: 2/0
+              - generic [ref=e1781]:
+                - generic [ref=e1782]: 买/卖成交
+                - strong [ref=e1783]: 5/8
+              - generic [ref=e1784]:
+                - generic [ref=e1785]: 胜/负/平
+                - strong [ref=e1786]: 1/1/0
+              - generic [ref=e1787]:
+                - generic [ref=e1788]: 盈亏
+                - strong [ref=e1789]: "+25.59"
+              - generic [ref=e1790]:
+                - generic [ref=e1791]: 盈亏(NO/YES)
+                - strong [ref=e1792]: +26.58 / -1.00
+              - generic [ref=e1793]:
+                - generic [ref=e1794]: ROI
+                - strong [ref=e1795]: 31.1%
+              - generic [ref=e1796]:
+                - generic [ref=e1797]: ROI(NO/YES)
+                - strong [ref=e1798]: 32.7% / -100.0%
+              - generic [ref=e1799]:
+                - generic [ref=e1800]: 胜率
+                - strong [ref=e1801]: 50.0%
+              - generic [ref=e1802]:
+                - generic [ref=e1803]: 胜率(NO/YES)
+                - strong [ref=e1804]: 100.0% / 0.0%
+              - generic [ref=e1805]:
+                - generic [ref=e1806]: 赔率(买入)
+                - strong [ref=e1807]: 1:0.65
+              - generic [ref=e1808]:
+                - generic [ref=e1809]: 盈利因子
+                - strong [ref=e1810]: "26.60"
+              - generic [ref=e1811]:
+                - generic [ref=e1812]: 正/负收益
+                - strong [ref=e1813]: +26.58 / -1.00
+              - generic [ref=e1814]:
+                - generic [ref=e1815]: 期望edge均值
+                - strong [ref=e1816]: —
+              - generic [ref=e1817]:
+                - generic [ref=e1818]: 正期望占比
+                - strong [ref=e1819]: —
+              - generic [ref=e1820]:
+                - generic [ref=e1821]: 模型分歧
+                - strong [ref=e1822]: —
+          - generic [ref=e1823]:
+            - generic [ref=e1824]: fills 缺少 auto_orders 归属（分类）
+            - generic [ref=e1825]: 不可用：refresh_pending
+          - generic [ref=e1826]:
+            - generic [ref=e1827]:
+              - generic [ref=e1828]:
+                - generic [ref=e1829]: 临结价差策略（独立策略实盘，非影子跟单）
+                - generic [ref=e1830]: run_date 2026-03-03
+              - generic [ref=e1831]: 这块是“临结价差策略”自己的实盘统计；不等于影子跟单。
+              - generic [ref=e1832]:
+                - generic [ref=e1833]:
+                  - generic [ref=e1834]: 订单数
+                  - strong [ref=e1835]: "214"
+                - generic [ref=e1836]:
+                  - generic [ref=e1837]: 进/出单
+                  - strong [ref=e1838]: 27/187
+                - generic [ref=e1839]:
+                  - generic [ref=e1840]: 进场 NO/YES
+                  - strong [ref=e1841]: 0/27
+                - generic [ref=e1842]:
+                  - generic [ref=e1843]: 出场 NO/YES
+                  - strong [ref=e1844]: 0/187
+                - generic [ref=e1845]:
+                  - generic [ref=e1846]: 成交数
+                  - strong [ref=e1847]: "13"
+                - generic [ref=e1848]:
+                  - generic [ref=e1849]: 买/卖成交
+                  - strong [ref=e1850]: 16/6
+                - generic [ref=e1851]:
+                  - generic [ref=e1852]: 买成交 NO/YES
+                  - strong [ref=e1853]: 0/16
+                - generic [ref=e1854]:
+                  - generic [ref=e1855]: 卖成交 NO/YES
+                  - strong [ref=e1856]: 0/6
+                - generic [ref=e1857]:
+                  - generic [ref=e1858]: 进场均价 NO/YES
+                  - strong [ref=e1859]: — / 0.051
+                - generic [ref=e1860]:
+                  - generic [ref=e1861]: 买成交均价 NO/YES
+                  - strong [ref=e1862]: — / 0.051
+                - generic [ref=e1863]:
+                  - generic [ref=e1864]: 卖成交均价 NO/YES
+                  - strong [ref=e1865]: — / 0.073
+                - generic [ref=e1866]:
+                  - generic [ref=e1867]: 进场金额 NO/YES
+                  - strong [ref=e1868]: 0.00 / +22.36
+                - generic [ref=e1869]:
+                  - generic [ref=e1870]: 买成交金额 NO/YES
+                  - strong [ref=e1871]: 0.00 / +15.13
+                - generic [ref=e1872]:
+                  - generic [ref=e1873]: 卖成交金额 NO/YES
+                  - strong [ref=e1874]: 0.00 / +5.13
+                - generic [ref=e1875]:
+                  - generic [ref=e1876]: NO占比(进场/买/卖)
+                  - strong [ref=e1877]: 0.0% / 0.0% / 0.0%
+                - generic [ref=e1878]:
+                  - generic [ref=e1879]: 胜率 / ROI
+                  - strong [ref=e1880]: 16.7% / -35.2%
+                - generic [ref=e1881]:
+                  - generic [ref=e1882]: 总盈亏
+                  - strong [ref=e1883]: "-2.79"
+                - generic [ref=e1884]:
+                  - generic [ref=e1885]: 今日追踪候选
+                  - strong [ref=e1886]: "0"
+                - generic [ref=e1887]:
+                  - generic [ref=e1888]: 流程状态
+                  - strong [ref=e1889]: 通畅 0 / 阻断 0 / 待处理 0
+              - generic [ref=e1890]: Top 阻断原因（/api/auto-trade-trace）
+              - generic [ref=e1891]: 暂无阻断原因（按当前追踪列表）。
+            - generic [ref=e1892]:
+              - generic [ref=e1893]:
+                - generic [ref=e1894]: 临结价差（Paper 对照层，不下真实单）
+                - generic [ref=e1895]: as_of —
+              - generic [ref=e1896]: 临结价差 Paper 对照统计暂不可用。
+          - generic [ref=e1897]:
+            - generic [ref=e1898]:
+              - generic [ref=e1899]: 当前持仓温度事件（自动）
+              - generic [ref=e1900]: 条目 5 · 持仓中 3 · 已结束 2（已折叠）
+            - generic [ref=e1901]: 持仓口径降级=本地（PM_POSITIONS_SYNC=0）
+            - generic [ref=e1902]:
+              - generic [ref=e1903]:
+                - generic [ref=e1904]:
+                  - link "Highest temperature in Miami on March 2?" [ref=e1906] [cursor=pointer]:
+                    - /url: https://polymarket.com/event/highest-temperature-in-miami-on-march-2-2026
+                  - generic [ref=e1907]:
+                    - generic [ref=e1908]: 策略 exit
+                    - generic [ref=e1909]: YES · 75°F or below
+                    - generic [ref=e1910]: 持仓 26.64
+                - generic [ref=e1911]: KMIA · 2026-03-02
+                - generic [ref=e1912]:
+                  - generic [ref=e1913]:
+                    - generic [ref=e1914]: 买均价(今日)
+                    - generic [ref=e1915]: — (0)
+                  - generic [ref=e1916]:
+                    - generic [ref=e1917]: 卖均价(今日)
+                    - generic [ref=e1918]: — (0)
+                  - generic [ref=e1919]:
+                    - generic [ref=e1920]: 持仓状态
+                    - generic [ref=e1921]: entry
+                  - generic [ref=e1922]:
+                    - generic [ref=e1923]: 已实现(今日)
+                    - generic [ref=e1924]: "0.00"
+                  - generic [ref=e1925]:
+                    - generic [ref=e1926]: 未实现
+                    - generic [ref=e1927]: "-2.90"
+                  - generic [ref=e1928]:
+                    - generic [ref=e1929]: 总盈亏估算
+                    - generic [ref=e1930]: "-2.90"
+                  - generic [ref=e1931]:
+                    - generic [ref=e1932]: 首次成交
+                    - generic [ref=e1933]: —
+                  - generic [ref=e1934]:
+                    - generic [ref=e1935]: 最近成交/更新
+                    - generic [ref=e1936]: 03-03 21:33
+              - generic [ref=e1937]:
+                - generic [ref=e1938]:
+                  - link "Highest temperature in NYC on March 2?" [ref=e1940] [cursor=pointer]:
+                    - /url: https://polymarket.com/event/highest-temperature-in-nyc-on-march-2-2026
+                  - generic [ref=e1941]:
+                    - generic [ref=e1942]: 策略 exit
+                    - generic [ref=e1943]: NO · 32-33°F
+                    - generic [ref=e1944]: 持仓 8.48
+                - generic [ref=e1945]: KLGA · 2026-03-02
+                - generic [ref=e1946]:
+                  - generic [ref=e1947]:
+                    - generic [ref=e1948]: 买均价(今日)
+                    - generic [ref=e1949]: — (0)
+                  - generic [ref=e1950]:
+                    - generic [ref=e1951]: 卖均价(今日)
+                    - generic [ref=e1952]: — (0)
+                  - generic [ref=e1953]:
+                    - generic [ref=e1954]: 持仓状态
+                    - generic [ref=e1955]: entry
+                  - generic [ref=e1956]:
+                    - generic [ref=e1957]: 已实现(今日)
+                    - generic [ref=e1958]: "0.00"
+                  - generic [ref=e1959]:
+                    - generic [ref=e1960]: 未实现
+                    - generic [ref=e1961]: "-5.48"
+                  - generic [ref=e1962]:
+                    - generic [ref=e1963]: 总盈亏估算
+                    - generic [ref=e1964]: "-5.48"
+                  - generic [ref=e1965]:
+                    - generic [ref=e1966]: 首次成交
+                    - generic [ref=e1967]: —
+                  - generic [ref=e1968]:
+                    - generic [ref=e1969]: 最近成交/更新
+                    - generic [ref=e1970]: 03-03 21:32
+              - generic [ref=e1971]:
+                - generic [ref=e1972]:
+                  - link "Highest temperature in Seoul on March 3?" [ref=e1974] [cursor=pointer]:
+                    - /url: https://polymarket.com/event/highest-temperature-in-seoul-on-march-3-2026
+                  - generic [ref=e1975]:
+                    - generic [ref=e1976]: 邻桶配对策略
+                    - generic [ref=e1977]: NO · 9°C
+                    - generic [ref=e1978]: 持仓 7.01
+                - generic [ref=e1979]: RKSI · 2026-03-03
+                - generic [ref=e1980]:
+                  - generic [ref=e1981]:
+                    - generic [ref=e1982]: 买均价(今日)
+                    - generic [ref=e1983]: 0.760 (1)
+                  - generic [ref=e1984]:
+                    - generic [ref=e1985]: 卖均价(今日)
+                    - generic [ref=e1986]: — (0)
+                  - generic [ref=e1987]:
+                    - generic [ref=e1988]: 持仓状态
+                    - generic [ref=e1989]: entry
+                  - generic [ref=e1990]:
+                    - generic [ref=e1991]: 已实现(今日)
+                    - generic [ref=e1992]: "0.00"
+                  - generic [ref=e1993]:
+                    - generic [ref=e1994]: 未实现
+                    - generic [ref=e1995]: "+1.68"
+                  - generic [ref=e1996]:
+                    - generic [ref=e1997]: 总盈亏估算
+                    - generic [ref=e1998]: "+1.68"
+                  - generic [ref=e1999]:
+                    - generic [ref=e2000]: 首次成交
+                    - generic [ref=e2001]: 03-03 13:50
+                  - generic [ref=e2002]:
+                    - generic [ref=e2003]: 最近成交/更新
+                    - generic [ref=e2004]: 03-03 13:50
+              - group [ref=e2005]:
+                - generic "▸ 已结束 2（点击展开）" [ref=e2006] [cursor=pointer]
+          - generic [ref=e2007]:
+            - generic [ref=e2008]:
+              - generic [ref=e2009]: 可赎回仓位事件（自动）
+              - generic [ref=e2010]: 条目 0
+            - generic [ref=e2012]: 当前暂无可赎回仓位事件。
+          - generic [ref=e2013]:
+            - generic [ref=e2014]:
+              - generic [ref=e2015]: Open Orders
+              - generic [ref=e2016]:
+                - button "手动刷新 open orders" [ref=e2017] [cursor=pointer]
+                - generic "自动刷新 open orders" [ref=e2018]:
+                  - checkbox "自动刷新" [ref=e2019]
+                  - text: 自动刷新
+                - generic [ref=e2020]:
+                  - spinbutton [disabled] [ref=e2021]: "30"
+                  - generic [ref=e2022]: 秒
+            - generic [ref=e2023]: 挂单数 0
+            - generic [ref=e2025]: 暂无挂单
+        - generic [ref=e2027]:
+          - generic [ref=e2028]:
+            - generic [ref=e2029]: 自动交易追踪（可兑现口径 · SSOT）
+            - generic [ref=e2030]: 统一展示自动交易追踪、持仓、挂单与可兑现口径榜单
+          - generic [ref=e2033]:
+            - generic [ref=e2035]:
+              - generic [ref=e2036]:
+                - generic [ref=e2037]:
+                  - generic [ref=e2038]: 城市/站点概览
+                  - generic [ref=e2039]:
+                    - generic [ref=e2040]:
+                      - generic [ref=e2041]: 城
+                      - text: 城市 0
+                    - generic [ref=e2042]: 分组 16
+                  - generic [ref=e2043]: 按城市+站点合并展示，点击日期可直接跳转对应市场。
+                - generic [ref=e2045]:
+                  - generic [ref=e2046]:
+                    - generic [ref=e2047]: 城
+                    - generic [ref=e2048]: 城市数据
+                  - generic [ref=e2049]: 分组 16 · 事件 0
+                  - generic [ref=e2050]:
+                    - generic [ref=e2051]: 模型温度 —
+                    - generic [ref=e2052]: 盘口快照 —
+                  - generic [ref=e2053]: 中位：模型 — · 快照 —
+              - generic [ref=e2054]:
+                - generic [ref=e2055]:
+                  - generic [ref=e2056]:
+                    - generic [ref=e2057]: 城
+                    - generic [ref=e2058]: Ankara
+                  - generic [ref=e2059]: 今日及未来无事件
+                - generic [ref=e2060]:
+                  - generic [ref=e2061]:
+                    - generic [ref=e2062]: 城
+                    - generic [ref=e2063]: Miami
+                  - generic [ref=e2064]: 今日及未来无事件
+                - generic [ref=e2065]:
+                  - generic [ref=e2066]:
+                    - generic [ref=e2067]: 城
+                    - generic [ref=e2068]: Paris
+                  - generic [ref=e2069]: 今日及未来无事件
+                - generic [ref=e2070]:
+                  - generic [ref=e2071]:
+                    - generic [ref=e2072]: 城
+                    - generic [ref=e2073]: Sao Paulo
+                  - generic [ref=e2074]: 今日及未来无事件
+                - generic [ref=e2075]:
+                  - generic [ref=e2076]:
+                    - generic [ref=e2077]: 城
+                    - generic [ref=e2078]: Seattle
+                  - generic [ref=e2079]: 今日及未来无事件
+                - generic [ref=e2080]:
+                  - generic [ref=e2081]:
+                    - generic [ref=e2082]: 城
+                    - generic [ref=e2083]: Wellington
+                  - generic [ref=e2084]: 今日及未来无事件
+                - generic [ref=e2085]:
+                  - generic [ref=e2086]:
+                    - generic [ref=e2087]: 城
+                    - generic [ref=e2088]: 亚特兰大
+                  - generic [ref=e2089]: 今日及未来无事件
+                - generic [ref=e2090]:
+                  - generic [ref=e2091]:
+                    - generic [ref=e2092]: 城
+                    - generic [ref=e2093]: 伦敦
+                  - generic [ref=e2094]: 今日及未来无事件
+                - generic [ref=e2095]:
+                  - generic [ref=e2096]:
+                    - generic [ref=e2097]: 城
+                    - generic [ref=e2098]: 多伦多
+                  - generic [ref=e2099]: 今日及未来无事件
+                - generic [ref=e2100]:
+                  - generic [ref=e2101]:
+                    - generic [ref=e2102]: 城
+                    - generic [ref=e2103]: 密西沙加
+                  - generic [ref=e2104]: 今日及未来无事件
+                - generic [ref=e2105]:
+                  - generic [ref=e2106]:
+                    - generic [ref=e2107]: 城
+                    - generic [ref=e2108]: 布宜诺斯艾利斯
+                  - generic [ref=e2109]: 今日及未来无事件
+                - generic [ref=e2110]:
+                  - generic [ref=e2111]:
+                    - generic [ref=e2112]: 城
+                    - generic [ref=e2113]: 洛杉矶
+                  - generic [ref=e2114]: 今日及未来无事件
+                - generic [ref=e2115]:
+                  - generic [ref=e2116]:
+                    - generic [ref=e2117]: 城
+                    - generic [ref=e2118]: 纽约
+                  - generic [ref=e2119]: 今日及未来无事件
+                - generic [ref=e2120]:
+                  - generic [ref=e2121]:
+                    - generic [ref=e2122]: 城
+                    - generic [ref=e2123]: 芝加哥
+                  - generic [ref=e2124]: 今日及未来无事件
+                - generic [ref=e2125]:
+                  - generic [ref=e2126]:
+                    - generic [ref=e2127]: 城
+                    - generic [ref=e2128]: 达拉斯
+                  - generic [ref=e2129]: 今日及未来无事件
+                - generic [ref=e2130]:
+                  - generic [ref=e2131]:
+                    - generic [ref=e2132]: 城
+                    - generic [ref=e2133]: 首尔
+                  - generic [ref=e2134]: 今日及未来无事件
+            - generic [ref=e2136]:
+              - generic [ref=e2137]:
+                - generic [ref=e2138]: 主策略达标
+                - generic [ref=e2139]: "0"
+              - generic [ref=e2140]:
+                - generic [ref=e2141]: YES最高桶达标
+                - generic [ref=e2142]: "0"
+            - generic [ref=e2143]:
+              - generic [ref=e2144]:
+                - generic [ref=e2145]:
+                  - generic [ref=e2146]: 自动交易追踪（全策略）
+                  - generic [ref=e2147]: 主策略/YES最高桶/临结价差/物理边界NO/邻桶曲线套利/影子跟单 · 流程进度与卡点
+                - button "加速决策" [ref=e2150] [cursor=pointer]
+              - generic [ref=e2151]:
+                - generic [ref=e2153]: 加载中…
+                - generic [ref=e2155]:
+                  - generic [ref=e2156]: 影子跟单（mirror_follow）
+                  - generic [ref=e2160]:
+                    - generic [ref=e2161]:
+                      - generic [ref=e2162]: 影子跟单 mirror_follow
+                      - generic [ref=e2163]: 今日 2026-03-03 · 总 0 · 已下单 0 · 失败 0 · 跳过 0
+                    - generic [ref=e2164]:
+                      - generic [ref=e2165]: 同步状态 同步更新偏旧
+                      - generic [ref=e2166]: 跟随账户 0x827825...859464
+                      - generic [ref=e2167]: 源最新成交 02-22 20:54
+                      - generic [ref=e2168]: 影子更新时间 02-22 20:54
+                      - generic [ref=e2169]: 源→影子延迟 27s
+                      - generic [ref=e2170]: 更新时效 217h
+                      - generic [ref=e2171]: 持仓匹配 0/12 · 源缺 12 · 影子残留 0
+                    - generic [ref=e2173]: 暂无跟单记录
+    - generic [ref=e93]:
+      - generic [ref=e94]: 自动交易策略配置
+      - generic [ref=e96]:
+        - generic [ref=e97]: 策略配置面板
+        - generic [ref=e98]:
+          - generic [ref=e99]: 预设方案
+          - generic [ref=e100]: 当前：吃edge版
+          - generic [ref=e989]:
+            - button "默认" [ref=e990] [cursor=pointer]
+            - button "保守型" [ref=e991] [cursor=pointer]
+            - button "进攻型" [ref=e992] [cursor=pointer]
+            - button "吃edge版当前" [ref=e993] [cursor=pointer]
+            - button "默认edge方案" [ref=e994] [cursor=pointer]
+            - button "低yes 高no（杠铃策略）" [ref=e995] [cursor=pointer]
+          - generic [ref=e101]:
+            - button "保存为新方案" [ref=e102] [cursor=pointer]
+            - button "更新当前方案" [ref=e103] [cursor=pointer]
+            - button "重命名" [ref=e104] [cursor=pointer]
+            - button "删除" [ref=e105] [cursor=pointer]
+        - generic [ref=e106]:
+          - generic [ref=e107]:
+            - generic [ref=e2174]: 当前符合的温度事件
+            - strong [ref=e2175]: —
+            - generic [ref=e2176]: / —
+          - generic [ref=e111]:
+            - generic [ref=e114]: 已保存
+            - button "一键检测" [ref=e115] [cursor=pointer]
+            - button "自动修复" [ref=e116] [cursor=pointer]
+            - button "保存设置" [disabled] [ref=e117]
+        - generic [ref=e118]:
+          - generic [ref=e999]:
+            - generic [ref=e1000]: 可视化冲突提示
+            - generic [ref=e1001]: 错误 0 · 警告 0 · 提示 2
+          - generic [ref=e1002]:
+            - generic [ref=e1003]:
+              - generic [ref=e1004]: 提示
+              - generic [ref=e1005]: q范围开关关闭：entry_q_min/max 不参与过滤。建议：需要生效则打开开关，或清空该值（当前不参与过滤）
+            - generic [ref=e1006]:
+              - generic [ref=e1007]: 提示
+              - generic [ref=e1008]: 买价上限开关关闭：auto_max_ask 不参与过滤。建议：需要生效则打开开关，或清空该值（当前不参与过滤）
+        - generic [ref=e119]:
+          - generic [ref=e120]:
+            - generic [ref=e121]: 策略开关 · 一键启停
+            - generic [ref=e122]:
+              - generic [ref=e123]:
+                - generic [ref=e124]: 入场策略总开关（主策略 + 独立策略）
+                - generic [ref=e125]:
+                  - button "一键启动全部策略" [ref=e126] [cursor=pointer]
+                  - button "一键关闭到仅主策略" [ref=e127] [cursor=pointer]
+              - generic [ref=e128]:
+                - generic [ref=e129]:
+                  - checkbox "主策略" [checked] [ref=e130]
+                  - text: 主策略
+                - generic [ref=e131]:
+                  - checkbox "YES最高桶" [checked] [ref=e132]
+                  - text: YES最高桶
+                - generic [ref=e133]:
+                  - checkbox "临结价差" [checked] [ref=e134]
+                  - text: 临结价差
+                - generic [ref=e135]:
+                  - checkbox "影子跟单" [ref=e136]
+                  - text: 影子跟单
+                - generic [ref=e137]:
+                  - checkbox "物理边界 NO" [checked] [ref=e138]
+                  - text: 物理边界 NO
+                - generic [ref=e139]:
+                  - checkbox "邻桶配对" [checked] [ref=e140]
+                  - text: 邻桶配对
+              - generic [ref=e141]:
+                - generic [ref=e142]:
+                  - checkbox "模型扫描" [ref=e143]
+                  - text: 模型扫描
+                - generic [ref=e144]:
+                  - checkbox "盘口刷新" [ref=e145]
+                  - text: 盘口刷新
+                - generic [ref=e146]:
+                  - checkbox "自动交易（总开关）" [ref=e147]
+                  - text: 自动交易（总开关）
+              - generic [ref=e148]: 说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。
+              - generic [ref=e149]: 上面的“一键按钮”会同时作用于全部策略开关（含 YES最高桶 / 临结价差 / 影子跟单）。
+              - generic [ref=e150]: 总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。
+              - generic [ref=e151]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]: 主策略仓位系数
+                  - spinbutton [ref=e155]: "1"
+                - generic [ref=e156]:
+                  - generic [ref=e157]: YES最高桶仓位系数
+                  - spinbutton [ref=e159]: "1"
+                - generic [ref=e160]:
+                  - generic [ref=e161]: 临结价差仓位系数
+                  - spinbutton [ref=e163]: "1"
+              - generic [ref=e164]:
+                - generic [ref=e165]:
+                  - generic [ref=e166]: 物理边界NO仓位系数
+                  - spinbutton [ref=e168]: "1"
+                - generic [ref=e169]:
+                  - generic [ref=e170]: 邻桶配对仓位系数
+                  - spinbutton [ref=e172]: "1"
+                - generic [ref=e173]:
+                  - generic [ref=e174]: 影子跟单份数比例（1.00=100%，0.10=10%，0.08=8%）
+                  - spinbutton [ref=e176]: "0.08"
+                - generic [ref=e177]:
+                  - generic [ref=e178]: 影子跟单最小下单金额（USDC）
+                  - spinbutton [ref=e180]: "0"
+              - generic [ref=e181]: 仓位系数基准为 1.00x；0 表示该策略当轮不下单。
+              - generic [ref=e182]:
+                - generic [ref=e1009]:
+                  - text: 主策略 · 开 ·
+                  - generic [ref=e1010]: 1.00x
+                - generic [ref=e1011]:
+                  - text: YES最高桶 · 开 ·
+                  - generic [ref=e1012]: 1.00x
+                - generic [ref=e1013]:
+                  - text: 临结价差 · 开 ·
+                  - generic [ref=e1014]: 1.00x
+                - generic [ref=e1015]:
+                  - text: 物理边界NO · 开 ·
+                  - generic [ref=e1016]: 1.00x
+                - generic [ref=e1017]:
+                  - text: 邻桶配对 · 开 ·
+                  - generic [ref=e1018]: 1.00x
+                - generic [ref=e1019]:
+                  - text: 影子跟单 · 关 ·
+                  - generic [ref=e1020]: 0.08x
+          - generic [ref=e195]:
+            - generic [ref=e196]: 入场阈值 · EdgeScore
+            - generic [ref=e197]:
+              - generic [ref=e198]:
+                - generic [ref=e199]: 全局最低门槛
+                - generic "全局最低 有效优势分 门槛（edge_score_min），低于该值直接不进场。" [ref=e200]: i
+                - spinbutton [ref=e202]: "1"
+              - generic [ref=e203]:
+                - generic [ref=e204]: 温度事件显示阈值
+                - generic "温度事件有效优势分阈值（temperature_event_min_edge_score_display）：低于该值会在扫描归档时跳过，并阻止自动交易入场；UI 也会隐藏。" [ref=e205]: i
+                - spinbutton [ref=e207]: "1"
+            - generic [ref=e208]: 这是最硬的全局门槛，优先级高于其它区间控制。
+            - generic [ref=e209]:
+              - generic [ref=e210]:
+                - generic [ref=e211]:
+                  - checkbox "有效优势分 Never i" [ref=e212]
+                  - text: 有效优势分 Never
+                  - generic "硬过滤区间（edge_score_never_min / edge_score_never_max）。低于下限或高于上限直接不考虑该侧。" [ref=e213]: i
+                - generic [ref=e214]:
+                  - spinbutton [ref=e216]: "5"
+                  - generic [ref=e217]: ~
+                  - spinbutton [ref=e219]: "40"
+              - generic [ref=e220]:
+                - generic [ref=e221]:
+                  - checkbox "有效优势分 可买 i" [checked] [ref=e222]
+                  - text: 有效优势分 可买
+                  - generic "通过过滤后进入可买区间（edge_score_buy_min / edge_score_buy_max）才允许下单，用于控制进场强度。" [ref=e223]: i
+                - generic [ref=e224]:
+                  - spinbutton [ref=e226]: "1"
+                  - generic [ref=e227]: ~
+                  - spinbutton [ref=e229]: "40"
+            - generic [ref=e230]: 用于剔除过低/过高 有效优势分。调高下限或调低上限=更严格；调低下限或调高上限=放宽。
+            - generic [ref=e231]: 有效优势分 可买区间以配置为准（edge_score_buy_min / edge_score_buy_max），只有落在这两个值之间的事件才会进入下一步筛选。 把下限调高或上限调低会更加严格地排除极端高/低预测；调低下限或抬上限则能在更宽的 有效优势分 带宽里试错。
+            - generic [ref=e233]:
+              - generic [ref=e234]: Time×Structure 最低值
+              - generic "time_factor × structure_factor 的最小乘积（time_structure_min / PM_TIME_STRUCTURE_MIN），决定 EdgeScore 的下限。调高可以让 time/structure 对 EdgeScore 的影响更大。" [ref=e235]: i
+              - spinbutton [ref=e237]: "0.2"
+            - generic [ref=e240]:
+              - checkbox "自动交易前预取事件详情 i" [checked] [ref=e241]
+              - text: 自动交易前预取事件详情
+              - generic "启动 trade_sync_loop 前先跑一次详情抓取（PM_SCAN_FETCH_EVENT_DETAIL=1 scan_weather_market.py --scan-weather-today ...），确保最新 outcome_volume 反映在 event_runs 再执行自动交易。" [ref=e242]: i
+            - generic [ref=e244]:
+              - generic [ref=e245]: 自动交易最小间隔(秒)
+              - generic "自动交易运行节流的最小间隔（PM_AUTO_TRADE_MIN_RUN_INTERVAL_SEC）。调低=更频繁触发，调高=更保守。" [ref=e246]: i
+              - spinbutton [ref=e248]: "30"
+            - generic [ref=e249]:
+              - generic [ref=e250]:
+                - generic [ref=e251]:
+                  - checkbox "买价上限 i" [disabled] [ref=e252]
+                  - text: 买价上限
+                  - generic "ask高于上限不买，避免追高。" [ref=e253]: i
+                - generic [ref=e254]:
+                  - spinbutton [disabled] [ref=e255]: "0.95"
+                  - generic [ref=e256]: 开关关闭，当前不生效
+              - generic [ref=e257]:
+                - generic [ref=e258]: 每单预算
+                - generic "用于换算下单数量：size=预算/价格。实际还会受单笔上限和最小下单量限制。" [ref=e259]: i
+                - spinbutton [ref=e261]: "3"
+                - generic [ref=e262]: USDC
+            - generic [ref=e263]: 买价上限(ask)。调低=只买更便宜；调高=允许更贵的报价。
+            - generic [ref=e264]: 用于换算下单数量(预算/价格)。实际还会受“单笔上限”影响。
+          - generic [ref=e265]:
+            - generic [ref=e266]: 入场阈值 · 可兑现口径（不扣手续费）
+            - generic [ref=e267]:
+              - generic [ref=e268]:
+                - generic [ref=e269]:
+                  - checkbox "可兑现口径门槛 i" [checked] [ref=e270]
+                  - text: 可兑现口径门槛
+                  - generic "edge_realizable(v2)=exec_edge_entry×p_realize−持有成本；p_realize=入场成交×回归×退出成交。v1=exec_edge_entry（q_entry−可成交价−执行成本）。" [ref=e271]: i
+                - spinbutton [ref=e274]: "0.05"
+              - generic [ref=e275]:
+                - generic [ref=e276]: 预估手续费(停用)
+                - generic "当前口径不扣手续费，字段保留为兼容。" [ref=e277]: i
+                - spinbutton [ref=e279]: "100"
+                - generic [ref=e280]: bps
+            - generic [ref=e281]: 核心思路：只看执行成本后的可兑现边际为正才允许入场。
+          - generic [ref=e282]:
+            - generic [ref=e283]: 入场条件 · 概率与盘口
+            - generic [ref=e284]:
+              - generic [ref=e285]:
+                - generic [ref=e286]:
+                  - checkbox "q区间 i" [disabled] [ref=e287]
+                  - text: q区间
+                  - generic "模型概率过滤。太低或太高都不做，避免噪音或过热区间。" [ref=e288]: i
+                - generic [ref=e289]:
+                  - generic [ref=e290]:
+                    - spinbutton [disabled] [ref=e291]: "0.2"
+                    - generic [ref=e292]: 开关关闭，当前不生效
+                  - generic [ref=e293]: ~
+                  - generic [ref=e294]:
+                    - spinbutton [disabled] [ref=e295]: "0.9"
+                    - generic [ref=e296]: 开关关闭，当前不生效
+              - generic [ref=e298]:
+                - checkbox "q分段 i" [disabled] [ref=e299]
+                - text: q分段
+                - generic "q 必须落在任意一个分段区间内。用于分段过滤。" [ref=e300]: i
+              - generic [ref=e302]:
+                - generic [ref=e303]: 段1
+                - spinbutton [disabled] [ref=e305]: "0.2"
+                - generic [ref=e306]: ~
+                - spinbutton [disabled] [ref=e308]: "0.4"
+              - generic [ref=e310]:
+                - generic [ref=e311]: 段2
+                - spinbutton [disabled] [ref=e313]: "0.93"
+                - generic [ref=e314]: ~
+                - spinbutton [disabled] [ref=e316]: "0.99"
+              - generic [ref=e318]:
+                - generic [ref=e319]: 段3
+                - spinbutton [disabled] [ref=e321]
+                - generic [ref=e322]: ~
+                - spinbutton [disabled] [ref=e324]
+            - generic [ref=e325]: q在区间内才进场。调高下限/调低上限=更保守；调低下限/调高上限=更宽松。
+            - generic [ref=e326]:
+              - generic [ref=e327]:
+                - generic [ref=e328]:
+                  - checkbox "ask过滤区间(YES) i" [disabled] [ref=e329]
+                  - text: ask过滤区间(YES)
+                  - generic "用于过滤当时盘口 best_ask(YES)。注意：系统下单通常用更保守的限价(如 mid)，成交价也可能低于 best_ask/低于该下限；该下限不是“成交价下限”。" [ref=e330]: i
+                - generic [ref=e331]:
+                  - spinbutton [disabled] [ref=e333]: "0.02"
+                  - generic [ref=e334]: ~
+                  - spinbutton [disabled] [ref=e336]: "0.95"
+              - generic [ref=e337]:
+                - generic [ref=e338]:
+                  - checkbox "ask过滤区间(NO) i" [disabled] [ref=e339]
+                  - text: ask过滤区间(NO)
+                  - generic "用于过滤当时盘口 best_ask(NO)。注意：该下限不是“成交价下限”。" [ref=e340]: i
+                - generic [ref=e341]:
+                  - spinbutton [disabled] [ref=e343]: "0.02"
+                  - generic [ref=e344]: ~
+                  - spinbutton [disabled] [ref=e346]: "0.95"
+            - generic [ref=e347]: 调高下限=剔除过低卖价；调低上限=剔除过高卖价。
+            - generic [ref=e348]:
+              - generic [ref=e349]:
+                - generic [ref=e350]:
+                  - checkbox "ask≤q_min i" [disabled] [ref=e351]
+                  - text: ask≤q_min
+                  - generic "买入价不能高于保守概率下界，避免高估入场。" [ref=e352]: i
+                - generic [ref=e353]:
+                  - generic [ref=e354]: 缓冲
+                  - generic "允许ask略高于q_min的幅度，调大=更宽松。" [ref=e355]: i
+                  - spinbutton [disabled] [ref=e357]: "0.03"
+              - generic [ref=e359]:
+                - checkbox "spread≥0 i" [checked] [ref=e360]
+                - text: spread≥0
+                - generic "排除倒挂盘口(价差为负)。" [ref=e361]: i
+              - generic [ref=e362]:
+                - generic [ref=e363]:
+                  - checkbox "spread≤ i" [disabled] [ref=e364]
+                  - text: spread≤
+                  - generic "只在点差足够小的时候进场，避免滑点。" [ref=e365]: i
+                - spinbutton [disabled] [ref=e367]: "0.03"
+              - generic [ref=e368]:
+                - generic [ref=e369]:
+                  - checkbox "信号边际≥ i" [ref=e370]
+                  - text: 信号边际≥
+                  - generic "信号边际（入场口径）= q_entry - 可成交价（NO 用 q_entry_no - 可成交价_no）。q_entry 优先 q_calibrated，其次 q_raw。阈值越高越严格。" [ref=e371]: i
+                - generic [ref=e372]:
+                  - spinbutton [ref=e374]: "0.1"
+                  - generic [ref=e375]: 连续
+                  - generic "需要连续N次满足条件，降低瞬时噪音单。" [ref=e376]: i
+                  - spinbutton [ref=e378]: "1"
+            - generic [ref=e379]: ask≤q_min+缓冲避免高估入场；缓冲=允许ask略高。spread≥0剔除倒挂；spread≤上限只在小点差入场；信号边际≥阈值才进场。连续次数提高=更严格。
+            - generic [ref=e380]:
+              - generic [ref=e381]: Edge（原始信号边际）历史偏差校正
+              - generic [ref=e382]:
+                - generic [ref=e1021]: 可信度关闭
+                - generic [ref=e1022]: 偏差关闭
+                - generic [ref=e1023]: 校正关闭
+              - generic [ref=e386]:
+                - generic [ref=e387]:
+                  - generic [ref=e388]:
+                    - checkbox "可信度≥ i" [ref=e389]
+                    - text: 可信度≥
+                    - generic "可信度=实现优势/预测优势（Edge偏差校正）。低于阈值不进场。" [ref=e390]: i
+                  - spinbutton [ref=e392]: "0.5474669783545848"
+                - generic [ref=e393]:
+                  - generic [ref=e394]:
+                    - checkbox "偏差≥ i" [ref=e395]
+                    - text: 偏差≥
+                    - generic "偏差=实际-预测（%）。低于阈值不进场。可填负值。" [ref=e396]: i
+                  - spinbutton [ref=e398]: "-5"
+                - generic [ref=e399]:
+                  - generic [ref=e400]:
+                    - checkbox "偏差校正 i" [ref=e401]
+                    - text: 偏差校正
+                    - generic "使用历史偏差做可信度/偏差过滤（不修改信号边际）。" [ref=e402]: i
+                  - generic [ref=e403]:
+                    - generic [ref=e404]: 天数
+                    - spinbutton [ref=e406]: "30"
+            - generic [ref=e407]: 可信度/偏差来自 Edge 历史偏差校正（事件口径）。偏差校正仅用于过滤，不修改信号边际。
+            - generic [ref=e408]:
+              - generic [ref=e410]:
+                - checkbox "edge区间 i" [ref=e411]
+                - text: edge区间
+                - generic "信号边际必须落在任意一个区间内，用于分段过滤。" [ref=e412]: i
+              - generic [ref=e414]:
+                - generic [ref=e415]: 段1
+                - spinbutton [ref=e417]: "0.01"
+                - generic [ref=e418]: ~
+                - spinbutton [ref=e420]: "0.8"
+              - generic [ref=e422]:
+                - generic [ref=e423]: 段2
+                - spinbutton [ref=e425]
+                - generic [ref=e426]: ~
+                - spinbutton [ref=e428]
+              - generic [ref=e430]:
+                - generic [ref=e431]: 段3
+                - spinbutton [ref=e433]
+                - generic [ref=e434]: ~
+                - spinbutton [ref=e436]
+            - generic [ref=e437]: edge区间开启后，信号边际必须落在任意一段区间内；区间可留空表示不启用该段。
+            - generic [ref=e439]:
+              - generic [ref=e440]: 入场价(限价)
+              - generic "默认使用中间价：有 bid 时 (bid+ask)/2；无 bid 则 ask - spread/2。趋势/lag 限价保护会覆盖。" [ref=e441]: i
+              - generic [ref=e442]: 中间价
+            - generic [ref=e443]: 不再直接用 best_ask，改为基于 spread 的中间价作为默认下单价。
+            - generic [ref=e444]:
+              - generic [ref=e446]:
+                - checkbox "最高概率桶NO禁入（市场盘口） i" [disabled] [ref=e447]
+                - text: 最高概率桶NO禁入（市场盘口）
+                - generic "最高概率标签在某桶时不做NO，避免逆势。" [ref=e448]: i
+              - generic [ref=e449]:
+                - generic [ref=e450]:
+                  - checkbox "NO禁入(YES q) i" [disabled] [ref=e451]
+                  - text: NO禁入(YES q)
+                  - generic "当YES侧概率落在禁入区间时不做NO。" [ref=e452]: i
+                - generic [ref=e453]:
+                  - spinbutton [ref=e455]: "0.65"
+                  - generic [ref=e456]: ~
+                  - spinbutton [ref=e458]: "1"
+            - generic [ref=e459]: 最高概率桶NO禁入（市场盘口温度口径）：开启则不买“市场盘口最高概率桶”的NO。NO禁入：YES q落在区间内则不买NO；调高下限缩小禁入区间，调高上限扩大禁入区间。
+            - generic [ref=e461]:
+              - generic [ref=e462]:
+                - checkbox "YES高估 i" [disabled] [ref=e463]
+                - text: YES高估
+                - generic "仅当YES明显偏贵时才买NO；阈值越低越容易买NO。" [ref=e464]: i
+              - generic [ref=e465]:
+                - spinbutton [ref=e467]: "0.03"
+                - generic [ref=e468]: ≥
+                - generic [ref=e469]: ask − q
+            - generic [ref=e470]: YES高估(ask−q)。调高=需更明显高估才买NO；调低=更容易买NO。
+          - generic [ref=e471]:
+            - generic [ref=e472]: 独立策略 · YES最高桶策略
+            - generic [ref=e473]:
+              - generic [ref=e474]:
+                - generic [ref=e475]: 只买YES
+                - generic [ref=e476]: 最高概率桶策略：三权重一致为加分项；重点看 q_raw 与 q_calibrated、一致的四大模型。盘口/模型一致时仅代表“更强一致性”，仍需满足 exec_edge（可兑现边际）门槛。
+              - generic [ref=e477]:
+                - generic [ref=e478]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e479]:
+                  - checkbox "仅独立策略 i" [ref=e480]
+                  - text: 仅独立策略
+                  - generic "开启后主策略进场暂停，仅保留YES最高概率桶策略。" [ref=e481]: i
+                - generic [ref=e482]:
+                  - generic [ref=e483]: 最高桶 q≥
+                  - spinbutton [ref=e485]: "0.38"
+                - generic [ref=e486]:
+                  - generic [ref=e487]: 领先差≥
+                  - spinbutton [ref=e489]: "0.14"
+                  - generic [ref=e490]: Top-2
+                - generic [ref=e491]:
+                  - generic [ref=e492]: 模型差≤
+                  - spinbutton [ref=e494]: "0.1"
+                - generic [ref=e495]:
+                  - generic [ref=e496]: 模型≥
+                  - spinbutton [ref=e498]: "3"
+                - generic [ref=e499]:
+                  - generic [ref=e500]: YES 信号边际≥
+                  - spinbutton [ref=e502]: "0.06"
+                - generic [ref=e503]:
+                  - checkbox "exec_edge≥ i" [checked] [ref=e504]
+                  - text: exec_edge≥
+                  - generic "可兑现边际：q_entry − 可成交价 − 执行成本。作为 YES Top 的硬门槛（核心变现口径）。" [ref=e505]: i
+                - spinbutton [ref=e507]: "0.01"
+              - generic [ref=e508]:
+                - generic [ref=e509]:
+                  - checkbox "ask≥ i" [checked] [ref=e510]
+                  - text: ask≥
+                  - generic "最高概率桶的YES买价下限，过滤尾盘锁价假edge。" [ref=e511]: i
+                - spinbutton [ref=e513]: "0.03"
+                - generic [ref=e514]:
+                  - checkbox "ask≤ i" [checked] [ref=e515]
+                  - text: ask≤
+                  - generic "最高概率桶的YES买价上限。" [ref=e516]: i
+                - spinbutton [ref=e518]: "0.68"
+                - generic [ref=e519]:
+                  - checkbox "spread≤ i" [checked] [ref=e520]
+                  - text: spread≤
+                  - generic "最高概率桶的点差上限，避免滑点。" [ref=e521]: i
+                - spinbutton [ref=e523]: "0.03"
+              - generic [ref=e524]:
+                - generic [ref=e525]:
+                  - generic [ref=e526]: 价差比≤
+                  - spinbutton [ref=e528]: "0.1"
+                  - generic [ref=e529]: spread/price
+                - generic [ref=e530]:
+                  - generic [ref=e531]: 追价信号边际≥
+                  - spinbutton [ref=e533]: "0.1"
+                - generic [ref=e534]:
+                  - generic [ref=e535]: 趋势强度≥
+                  - spinbutton [ref=e537]: "0.01"
+              - generic [ref=e538]: YES Top 独立退出（仅作用于 YES Top 持仓）
+              - generic [ref=e539]:
+                - generic [ref=e540]:
+                  - generic [ref=e541]: 止损(%)
+                  - spinbutton [ref=e543]: "0.18"
+                - generic [ref=e544]:
+                  - generic [ref=e545]: 回撤止盈(%)
+                  - spinbutton [ref=e547]: "0.12"
+                - generic [ref=e548]:
+                  - generic [ref=e549]: 最短持有(秒)
+                  - spinbutton [ref=e551]: "1800"
+              - generic [ref=e552]:
+                - generic [ref=e553]:
+                  - generic [ref=e554]: q 下限≤
+                  - spinbutton [ref=e556]: "0.5"
+                - generic [ref=e557]:
+                  - generic [ref=e558]: 入场回撤≥
+                  - spinbutton [ref=e560]: "0.12"
+                - generic [ref=e561]:
+                  - generic [ref=e562]: Top 差距≥
+                  - spinbutton [ref=e564]: "0.1"
+              - generic [ref=e565]:
+                - generic [ref=e566]:
+                  - checkbox "要求模型确认" [checked] [ref=e567]
+                  - text: 要求模型确认
+                - generic [ref=e568]:
+                  - checkbox "允许 trend_down 触发退出" [ref=e569]
+                  - text: 允许 trend_down 触发退出
+              - generic [ref=e570]: 最高桶 q=模型最高概率；领先差=最高桶q−次高桶q；模型差=该桶 q_max−q_min（当模型一致率=100%时不再检查模型差）。三权重一致仅作加分；q_raw 与 q_calibrated 一致、或四大模型一致时可放宽过滤；若 q_raw/q_calibrated/市场盘口三者一致则直接入场。该策略仍受开盘等待/最小下单量等保护。
+              - generic [ref=e571]: 价差比/追价信号/趋势强度用于 YES Top 入场执行节奏。YES Top 独立退出参数用于“最高桶反转”退出，不影响主策略退出参数。
+          - generic [ref=e572]:
+            - generic [ref=e573]: 独立策略 · 临结价差策略（临近结算分布）
+            - generic [ref=e574]:
+              - generic [ref=e575]:
+                - generic [ref=e576]: 概率门控
+                - generic [ref=e577]: 临近结算窗口内按分布价差做组合入场：NO 主腿（高概率不发生桶）+ YES 辅助腿（中心/对冲），并按事件级净暴露风控。
+              - generic [ref=e578]:
+                - generic [ref=e579]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e580]:
+                  - checkbox "仅最高温度桶事件" [checked] [ref=e581]
+                  - text: 仅最高温度桶事件
+                - generic [ref=e582]:
+                  - checkbox "仅 NO 侧入场" [ref=e583]
+                  - text: 仅 NO 侧入场
+                - generic [ref=e584]:
+                  - checkbox "启用 YES 辅助腿" [checked] [ref=e585]
+                  - text: 启用 YES 辅助腿
+                - generic [ref=e586]:
+                  - checkbox "NO 核心条件门禁" [checked] [ref=e587]
+                  - text: NO 核心条件门禁
+                - generic [ref=e588]:
+                  - checkbox "YES 仅作对冲" [ref=e589]
+                  - text: YES 仅作对冲
+                - generic [ref=e590]:
+                  - checkbox "启用盘口深度门禁" [checked] [ref=e591]
+                  - text: 启用盘口深度门禁
+                - generic [ref=e592]:
+                  - checkbox "跳过趋势门禁" [checked] [ref=e593]
+                  - text: 跳过趋势门禁
+                - generic [ref=e594]:
+                  - checkbox "跳过 可兑现分(扣费)≥分层门槛(D=*) i" [checked] [ref=e595]
+                  - text: 跳过 可兑现分(扣费)≥分层门槛(D=*)
+                  - generic "仅跳过 可兑现分(扣费)(edge_realizable_score) 分层门槛(D=*)（用于提高临结价差策略成交率）；不影响 exec_edge_entry（可兑现期望）硬门槛。" [ref=e596]: i
+                - generic [ref=e597]:
+                  - generic [ref=e598]: 结算前窗口(h)
+                  - generic "距离结算前N小时内允许临结价差入场。" [ref=e599]: i
+                  - spinbutton [ref=e601]: "20"
+                - generic [ref=e602]:
+                  - generic [ref=e603]: 结算后窗口(h)
+                  - generic "结算后容忍窗口（通常保持较小）。" [ref=e604]: i
+                  - spinbutton [ref=e606]: "4"
+              - generic [ref=e607]:
+                - generic [ref=e608]:
+                  - checkbox "硬门槛：exec_edge_entry i" [checked] [ref=e609]
+                  - text: 硬门槛：exec_edge_entry
+                  - generic "要求该腿在可成交价上仍为正期望：exec_edge_entry = q_entry − 可成交价 − 成本。" [ref=e610]: i
+                - generic [ref=e611]:
+                  - generic [ref=e612]: exec_edge阈值
+                  - generic "阈值越高越保守；0 表示仅要求 >0。" [ref=e613]: i
+                  - spinbutton [ref=e615]: "0"
+              - generic [ref=e616]:
+                - generic [ref=e617]:
+                  - generic [ref=e618]: NO 价格下限
+                  - generic "BUY NO 时要求 ask 不低于该值。" [ref=e619]: i
+                  - spinbutton [ref=e621]: "0.94"
+                - generic [ref=e622]:
+                  - generic [ref=e623]: YES 价格上限
+                  - generic "BUY YES 时要求 ask 不高于该值。" [ref=e624]: i
+                  - spinbutton [ref=e626]: "0.35"
+                - generic [ref=e627]:
+                  - generic [ref=e628]: 成本缓冲
+                  - generic "edge 计算时额外扣减成本缓冲。" [ref=e629]: i
+                  - spinbutton [ref=e631]: "0.006"
+                - generic [ref=e632]:
+                  - generic [ref=e633]: 最小信号边际
+                  - generic "临结价差候选 signal_edge 需高于该阈值。" [ref=e634]: i
+                  - spinbutton [ref=e636]: "0.005"
+                - generic [ref=e637]:
+                  - generic [ref=e638]: NO 优先加分
+                  - generic "候选排序时给 NO 侧加分，提升 NO 主腿优先级。" [ref=e639]: i
+                  - spinbutton [ref=e641]: "4"
+                - generic [ref=e642]:
+                  - generic [ref=e643]: YES 辅助信号下限
+                  - spinbutton [ref=e645]: "0.02"
+                - generic [ref=e646]:
+                  - generic [ref=e647]: YES Top 排名上限
+                  - spinbutton [ref=e649]: "2"
+                - generic [ref=e650]:
+                  - generic [ref=e651]: 深度倍率
+                  - spinbutton [ref=e653]: "1.1"
+              - generic [ref=e654]:
+                - generic [ref=e655]:
+                  - generic [ref=e656]: NO 最大腿数
+                  - spinbutton [ref=e658]: "8"
+                - generic [ref=e659]:
+                  - generic [ref=e660]: YES 最大腿数
+                  - spinbutton [ref=e662]: "1"
+                - generic [ref=e663]:
+                  - generic [ref=e664]: 事件总腿数上限
+                  - spinbutton [ref=e666]: "8"
+                - generic [ref=e667]:
+                  - generic [ref=e668]: 净 short-YES 上限(USDC)
+                  - spinbutton [ref=e670]: "45"
+                - generic [ref=e671]:
+                  - generic [ref=e672]: YES 对冲触发净 short 最低(USDC)
+                  - spinbutton [ref=e674]: "5"
+              - generic [ref=e675]: 临结价差策略独立退出
+              - generic [ref=e676]:
+                - generic [ref=e677]:
+                  - checkbox "启用独立退出 i" [checked] [ref=e678]
+                  - text: 启用独立退出
+                  - generic "关闭时临结价差持仓沿用主策略退出口径。" [ref=e679]: i
+                - generic [ref=e680]:
+                  - generic [ref=e681]: 止损(%)
+                  - spinbutton [ref=e683]: "0.07"
+                - generic [ref=e684]:
+                  - generic [ref=e685]: 回撤止盈(%)
+                  - spinbutton [ref=e687]: "0.04"
+                - generic [ref=e688]:
+                  - checkbox "持有到结算优先" [ref=e689]
+                  - text: 持有到结算优先
+                - generic [ref=e690]:
+                  - generic [ref=e691]: 释放窗口(结算前h)
+                  - spinbutton [ref=e693]: "1"
+                - generic [ref=e694]:
+                  - generic [ref=e695]: 止盈重定价阈值(%)
+                  - spinbutton [ref=e697]: "0.05"
+                - generic [ref=e698]:
+                  - generic [ref=e699]: 止盈重定价最短持有(s)
+                  - spinbutton [ref=e701]: "120"
+              - generic [ref=e702]: 核心口径：NO 主腿满足 P(YES)_true < 1-price(NO)-cost；YES 辅助腿用于中心桶校正/对冲。支持事件内 NO+YES 组合，不是单桶孤立下单。
+              - generic [ref=e703]: 事件级风控：腿数上限 + 净 short-YES 上限；YES 默认仅在已有 NO 暴露时启用（对冲修正）。
+              - generic [ref=e704]: 独立退出开启后，仅对临结价差持仓生效；默认“持有到结算优先”，在释放窗口外仅保留防守退出（止损/回撤/超时）与止盈重定价。
+          - generic [ref=e705]:
+            - generic [ref=e706]: 独立策略 · 物理边界NO（实况/规则触发）
+            - generic [ref=e707]:
+              - generic [ref=e708]:
+                - generic [ref=e709]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e710]:
+                  - checkbox "硬门槛：exec_edge_entry i" [checked] [ref=e711]
+                  - text: 硬门槛：exec_edge_entry
+                  - generic "要求入场价位上仍为正期望：exec_edge_entry = q_entry − 可成交价 − 成本。" [ref=e712]: i
+                - generic [ref=e713]:
+                  - generic [ref=e714]: exec_edge阈值
+                  - generic "阈值越高越保守；0 表示仅要求 >0。" [ref=e715]: i
+                  - spinbutton [ref=e717]: "0"
+                - generic [ref=e718]:
+                  - generic [ref=e719]: 最小信号边际
+                  - spinbutton [ref=e721]: "0.02"
+                - generic [ref=e722]:
+                  - generic [ref=e723]: 实况缓存(s)
+                  - spinbutton [ref=e725]: "180"
+                - generic [ref=e726]:
+                  - generic [ref=e727]: 拉取超时(s)
+                  - spinbutton [ref=e729]: "3"
+              - generic [ref=e730]: 触发逻辑：当实况/规则判定“已越过该桶上界”时买 NO（仅最高温事件，且通常 D0 更有效）。该策略仍受统一门禁（最高概率桶NO禁入等）约束。
+          - generic [ref=e731]:
+            - generic [ref=e732]: 独立策略 · 邻桶曲线套利（adj_pair）
+            - generic [ref=e733]:
+              - generic [ref=e734]:
+                - generic [ref=e735]: 启用开关请在上方「策略开关 · 一键启停」设置
+                - generic [ref=e736]:
+                  - checkbox "硬门槛：exec_edge_entry i" [checked] [ref=e737]
+                  - text: 硬门槛：exec_edge_entry
+                  - generic "要求最终执行的那一腿在可成交价上仍为正期望。" [ref=e738]: i
+                - generic [ref=e739]:
+                  - generic [ref=e740]: exec_edge阈值
+                  - generic "阈值越高越保守；0 表示仅要求 >0。" [ref=e741]: i
+                  - spinbutton [ref=e743]: "0.01"
+                - generic [ref=e744]:
+                  - generic [ref=e745]: 组合边际≥
+                  - spinbutton [ref=e747]: "0.03"
+                - generic [ref=e748]:
+                  - generic [ref=e749]: 单腿边际≥
+                  - spinbutton [ref=e751]: "0.015"
+              - generic [ref=e752]: 逻辑：低桶买 YES + 高邻桶买 NO 形成“曲线套利”，执行层会择优只下单“可兑现边际更好”的那一腿；仍受统一门禁约束。
+          - generic [ref=e753]:
+            - generic [ref=e754]: 入场条件 · 深度与趋势
+            - generic [ref=e755]:
+              - generic [ref=e756]:
+                - generic [ref=e757]:
+                  - checkbox "深度倍率 i" [disabled] [ref=e758]
+                  - text: 深度倍率
+                  - generic "盘口深度/下单量≥倍率才进场，避免单子吃光薄盘口。" [ref=e759]: i
+                - spinbutton [disabled] [ref=e761]: "1.2"
+              - generic [ref=e763]:
+                - spinbutton [disabled] [ref=e765]: "1"
+                - generic [ref=e766]: ~
+                - generic "倍率上下限，有效优势分变化时会在区间内调整。" [ref=e767]: i
+                - spinbutton [disabled] [ref=e769]: "1.2"
+              - generic [ref=e771]:
+                - generic [ref=e772]: 坡度
+                - generic "有效优势分越高，倍率下降越快；值越大越容易放行高分单。" [ref=e773]: i
+                - spinbutton [disabled] [ref=e775]: "0.02"
+              - generic [ref=e777]:
+                - generic [ref=e778]: VWAP
+                - generic "多档深度缓冲倍率，考虑盘口多档吃单的成本。" [ref=e779]: i
+                - spinbutton [ref=e781]: "2"
+              - generic [ref=e783]:
+                - generic [ref=e784]: Outcome vol≥
+                - generic "按 outcome 维度的成交量门槛；默认在下单前实时确认，实时值低于阈值时禁入。0 表示关闭。" [ref=e785]: i
+                - spinbutton [disabled] [ref=e787]: "0"
+            - generic [ref=e788]: 深度倍率用于限制单量(ask_depth/倍率)。倍率越大越严格；最小/最大是上下限；斜率越大表示有效优势分越高时要求下降越快(更容易放行)。VWAP倍率用于多档深度缓冲。Outcome vol 默认在下单前做实时确认。
+            - generic [ref=e789]:
+              - generic [ref=e790]:
+                - generic [ref=e791]:
+                  - checkbox "lag≤ i" [disabled] [ref=e792]
+                  - text: lag≤
+                  - generic "盘口/模型不同步程度。越小越严格，越大越宽松。" [ref=e793]: i
+                - spinbutton [disabled] [ref=e795]: "0.6"
+              - generic [ref=e796]:
+                - generic [ref=e797]:
+                  - checkbox "lag≥限价 i" [disabled] [ref=e798]
+                  - text: lag≥限价
+                  - generic "lag达到阈值时强制限价入场，避免追价。" [ref=e799]: i
+                - spinbutton [disabled] [ref=e801]: "0.5"
+            - generic [ref=e802]: lag越小越新。调低=更严格；调高=容忍更慢刷新。lag≥阈值时强制限价入场。
+            - generic [ref=e803]:
+              - generic [ref=e804]:
+                - generic [ref=e805]: 开盘等待(动态)
+                - generic "开盘后先等待，避免开盘价偏离；等待直到价格从开盘峰值回落到阈值，或超过最长等待。" [ref=e806]: i
+                - generic [ref=e807]:
+                  - generic [ref=e808]: 最短(秒)
+                  - spinbutton [ref=e810]: "900"
+                  - generic [ref=e811]: 最长(秒)
+                  - spinbutton [ref=e813]: "3600"
+              - generic [ref=e814]:
+                - generic [ref=e815]: Spread基准
+                - generic "spread≥基准时使用最长等待；更小则按比例缩短。" [ref=e816]: i
+                - spinbutton [ref=e818]: "0.06"
+            - generic [ref=e819]:
+              - generic [ref=e820]:
+                - generic [ref=e821]: 回落阈值
+                - generic "当前中间价相对开盘峰值的回落比例，达到阈值才允许进场。" [ref=e822]: i
+                - spinbutton [ref=e824]: "0.03"
+              - generic [ref=e825]:
+                - generic [ref=e826]: 峰值窗口(秒)
+                - generic "只统计开盘后该窗口内的最高价作为峰值基准。" [ref=e827]: i
+                - spinbutton [ref=e829]: "1800"
+            - generic [ref=e830]: 开盘时间=市场创建时间(Gamma)。等待规则：至少最短秒；若当前中间价从开盘峰值回落≥阈值则放行，否则最多等待到最长秒。
+            - generic [ref=e831]:
+              - generic [ref=e833]:
+                - checkbox "部分成交追补 i" [checked] [ref=e834]
+                - text: 部分成交追补
+                - generic "首单只成交部分时自动补单，直到接近目标数量。" [ref=e835]: i
+              - generic [ref=e836]:
+                - generic [ref=e837]:
+                  - checkbox "追价 i" [checked] [ref=e838]
+                  - text: 追价
+                  - generic "补单允许限价高于当前ask，以吃到更深档位。" [ref=e839]: i
+                - generic [ref=e840]:
+                  - generic [ref=e841]: 步长
+                  - generic "每次补单提高限价的步进。" [ref=e842]: i
+                  - spinbutton [ref=e844]: "0.01"
+                - generic [ref=e845]:
+                  - generic [ref=e846]: 上限
+                  - generic "追价最大上浮幅度，防止过度追价。" [ref=e847]: i
+                  - spinbutton [ref=e849]: "0.03"
+            - generic [ref=e850]: 部分成交后自动补单；追价=允许限价高于当前ask，步长×次数不超过上限。
+            - generic [ref=e851]:
+              - generic [ref=e852]:
+                - generic [ref=e853]:
+                  - checkbox "模型方向 i" [checked] [ref=e854]
+                  - text: 模型方向
+                  - generic "多模型方向一致才进场，用于过滤分歧信号。" [ref=e855]: i
+                - generic [ref=e856]:
+                  - generic [ref=e857]: 步数
+                  - generic "用最近N次模型更新判断方向。" [ref=e858]: i
+                  - spinbutton [ref=e860]: "2"
+              - generic [ref=e862]:
+                - generic [ref=e863]: 一致性
+                - generic "同方向模型占比门槛，比如0.6=至少60%模型同向。" [ref=e864]: i
+                - spinbutton [ref=e866]: "0.6"
+              - generic [ref=e868]:
+                - generic [ref=e869]: 最少模型
+                - generic "参与方向判断的模型数量下限，避免样本太少。" [ref=e870]: i
+                - spinbutton [ref=e872]: "2"
+            - generic [ref=e873]: 模型方向一致才进场。步数越大/一致性越高=更严格；最少模型提高=更保守。
+            - generic [ref=e874]:
+              - generic [ref=e875]:
+                - generic [ref=e876]:
+                  - checkbox "趋势限价 i" [checked] [ref=e877]
+                  - text: 趋势限价
+                  - generic "趋势下行时不追价，改用更保守的限价入场。" [ref=e878]: i
+                - generic [ref=e879]:
+                  - generic [ref=e880]: 步数
+                  - generic "允许的降价尝试次数，次数越多越容易成交但可能更差价。" [ref=e881]: i
+                  - spinbutton [ref=e883]: "4"
+              - generic [ref=e885]:
+                - generic [ref=e886]: 强制E≥
+                - generic "有效优势分低于此值时使用更严格的限价。" [ref=e887]: i
+                - spinbutton [ref=e889]: "8"
+              - generic [ref=e891]:
+                - generic [ref=e892]: 折扣
+                - generic "限价折扣系数，越低越保守。" [ref=e893]: i
+                - spinbutton [ref=e895]: "0.9"
+            - generic [ref=e896]: 趋势下行时限价。步数越大=允许多次降价尝试；强制E阈值越高=更容易进入严格限价；折扣越低=限价更低更保守。
+            - generic [ref=e899]:
+              - generic [ref=e900]: 趋势最小跨度(秒)
+              - generic "最近N步的时间跨度不足该值则判定 trend_unknown（默认 600=10分钟）。" [ref=e901]: i
+              - spinbutton [ref=e903]: "60"
+            - generic [ref=e906]:
+              - checkbox "仅趋势上行入场 i" [ref=e907]
+              - text: 仅趋势上行入场
+              - generic "仅当该侧价格趋势上行(trend_up=true)才允许入场；趋势未知/趋势下行会阻断并写入未下单原因（SSOT）。" [ref=e908]: i
+            - generic [ref=e909]: 开启后更严格：只有价格趋势上行且信号满足才进场，避免“下跌中抄底”。
+          - generic [ref=e910]:
+            - generic [ref=e911]: 退出条件 · 风控与止损
+            - generic [ref=e912]:
+              - generic [ref=e913]:
+                - generic [ref=e914]:
+                  - checkbox "止损(%) i" [checked] [ref=e915]
+                  - text: 止损(%)
+                  - generic "亏损达到该比例触发退出。" [ref=e916]: i
+                - spinbutton [ref=e918]: "0.2"
+              - generic [ref=e919]:
+                - generic [ref=e920]:
+                  - checkbox "回撤止盈(%) i" [checked] [ref=e921]
+                  - text: 回撤止盈(%)
+                  - generic "从持仓峰值回撤达到该比例触发退出。" [ref=e922]: i
+                - spinbutton [ref=e924]: "0.12"
+            - generic [ref=e925]: 止损%调高=允许更大回撤再止损；调低=更紧。回撤止盈%调高=更宽松；调低=更敏感。
+            - generic [ref=e926]:
+              - generic [ref=e927]:
+                - generic [ref=e928]:
+                  - checkbox "趋势退出 i" [checked] [ref=e929]
+                  - text: 趋势退出
+                  - generic "价格/趋势持续走弱时退出，避免持续逆势。" [ref=e930]: i
+                - generic [ref=e931]:
+                  - generic [ref=e932]: 最小跌幅
+                  - generic "要求至少下跌到这个幅度才触发趋势退出。" [ref=e933]: i
+                  - spinbutton [ref=e935]: "0.05"
+              - generic [ref=e937]:
+                - generic [ref=e938]: 一致性
+                - generic "趋势信号一致性比例门槛，越高越严格。" [ref=e939]: i
+                - spinbutton [ref=e941]: "0.67"
+            - generic [ref=e942]: 调高最小跌幅/一致性=更严格；调低=更敏感。
+            - generic [ref=e943]:
+              - generic [ref=e944]:
+                - generic [ref=e945]:
+                  - checkbox "lag> i" [checked] [ref=e946]
+                  - text: lag>
+                  - generic "lag过高表示盘口偏离/更新滞后，视作风险信号。" [ref=e947]: i
+                - spinbutton [ref=e949]: "0.8"
+                - generic [ref=e950]:
+                  - generic [ref=e951]: 连续
+                  - generic "需要连续触发N次才退出，降低误触发。" [ref=e952]: i
+                  - spinbutton [ref=e954]: "2"
+              - generic [ref=e955]:
+                - generic [ref=e956]:
+                  - checkbox "翻转阈值 i" [checked] [ref=e957]
+                  - text: 翻转阈值
+                  - generic "边际反向达到该阈值才退出，避免轻微波动误退出。" [ref=e958]: i
+                - spinbutton [ref=e960]: "0.02"
+              - generic [ref=e961]:
+                - generic [ref=e962]: 信号边际<
+                - generic "信号边际低于该阈值才会计入弱势信号，用于翻转/退出判断。" [ref=e963]: i
+                - spinbutton [ref=e965]: "0.1"
+            - generic [ref=e966]: lag>阈值连续触发退出。连续次数越高=更宽松；越低=更敏感。翻转阈值调高=需更强反向才能退出；调低=更容易退出。信号边际<阈值越高=更容易视作弱势。
+        - generic [ref=e967]: 开关关闭时仅停用对应过滤，不清空阈值；点击保存后同步到自动交易进程。
+    - generic [ref=e968]:
+      - generic [ref=e969]: 站点映射与模型更新
+      - generic [ref=e2178]:
+        - generic [ref=e2179]: 近7天模型差分布
+        - generic [ref=e2180]: 暂无有效样本 · 更新时间 —
+        - generic [ref=e2181]:
+          - generic [ref=e2182]:
+            - generic [ref=e2183]: 均值
+            - generic [ref=e2184]: —
+          - generic [ref=e2185]:
+            - generic [ref=e2186]: P50
+            - generic [ref=e2187]: —
+          - generic [ref=e2188]:
+            - generic [ref=e2189]: P75
+            - generic [ref=e2190]: —
+          - generic [ref=e2191]:
+            - generic [ref=e2192]: P90
+            - generic [ref=e2193]: —
+          - generic [ref=e2194]:
+            - generic [ref=e2195]: 最小
+            - generic [ref=e2196]: —
+          - generic [ref=e2197]:
+            - generic [ref=e2198]: 最大
+            - generic [ref=e2199]: —
+        - generic [ref=e2200]: 阈值覆盖
+        - generic [ref=e2202]:
+          - generic [ref=e2203]: —
+          - strong [ref=e2204]: —
+        - generic [ref=e2205]: 分布区间
+        - generic [ref=e2207]:
+          - generic [ref=e2208]: —
+          - strong [ref=e2209]: —
+    - generic [ref=e970]:
+      - generic [ref=e971]:
+        - text: 事件列表（事实层）
+        - generic [ref=e972]: 快速 已加载 0/0
+      - generic [ref=e2210]:
+        - text: 暂无可展示事件
+        - generic [ref=e2211]: 状态统计：已结算 0 · 已收盘 0 · 锁定 0 · 低盘口 0 · 总数 0
+    - generic [ref=e973]:
+      - generic [ref=e974]: 评分与偏差校正
+      - generic [ref=e2213]:
+        - generic [ref=e2214]: 评分明细
+        - generic [ref=e2215]: 模型与权重命中率评分、趋势与 Edge（原始信号边际）历史偏差校正
+        - generic [ref=e2216]:
+          - generic [ref=e2217]:
+            - generic [ref=e2218]: 命中率趋势与温差
+            - generic [ref=e2219]: 按月份倒序统计；命中=最高概率桶概率（q_raw）与结算一致；温差=期望值-结算；默认仅显示自动交易口径
+          - generic [ref=e2220]:
+            - generic [ref=e2221]: Edge（原始信号边际）历史偏差校正
+            - generic [ref=e2222]: 最近成功 — · 来源 —
+            - generic [ref=e2223]: 模型可信度看事件口径，交易表现看成交口径。
+            - generic [ref=e2224]: 成交口径（交易表现）
+            - generic [ref=e2225]: 暂无统计数据
+            - generic [ref=e2226]: 口径：每笔自动成交取成交时最近模型快照的最高边际桶（边际>0） · 已接入 有效优势分 / 自动交易（可在交易策略里配置）。
+            - generic [ref=e2227]: 可靠性校准：看“预测优势区间”是否在历史上兑现为“实现优势”，差距越小越可靠。Edge=信号边际（入场口径）：YES 用 q_entry - best_ask；NO 用 q_entry_no - best_ask_no；q_entry 优先 q_calibrated，其次 q_raw（不含EdgeScore）。
+            - generic [ref=e2228]:
+              - generic [ref=e2229]:
+                - generic [ref=e2230]: YES侧汇总
+                - generic [ref=e2232]:
+                  - generic [ref=e2233]: 有效事件数
+                  - strong [ref=e2234]: —
+              - generic [ref=e2235]:
+                - generic [ref=e2236]: NO侧汇总
+                - generic [ref=e2238]:
+                  - generic [ref=e2239]: 有效事件数
+                  - strong [ref=e2240]: —
+              - generic [ref=e2241]:
+                - generic [ref=e2242]: 全部桶汇总
+                - generic [ref=e2244]:
+                  - generic [ref=e2245]: 有效事件数
+                  - strong [ref=e2246]: —
+              - generic [ref=e2247]:
+                - generic [ref=e2248]: 最高桶统计
+                - generic [ref=e2250]:
+                  - generic [ref=e2251]: 有效事件数
+                  - strong [ref=e2252]: —
+              - generic [ref=e2253]:
+                - generic [ref=e2254]: Edge 可靠性校正
+                - generic [ref=e2256]:
+                  - generic [ref=e2257]: —
+                  - strong [ref=e2258]: —
+  - button "/agentation v1.3.2 Output Detail Standard Marker Colour Purple Blue Cyan Green Yellow Orange Red Clear after output Block page interactions" [ref=e975] [cursor=pointer]:
+    - img [ref=e977]
+    - generic:
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button:
+          - img
+    - generic:
+      - generic:
+        - generic: /agentation
+        - generic: v1.3.2
+        - button "Switch to light mode":
+          - img
+      - generic:
+        - generic:
+          - generic:
+            - text: Output Detail
+            - generic:
+              - img
+          - button "Standard":
+            - generic: Standard
+      - generic:
+        - generic: Marker Colour
+        - generic:
+          - generic:
+            - generic "Purple"
+          - generic:
+            - generic "Blue"
+          - generic:
+            - generic "Cyan"
+          - generic:
+            - generic "Green"
+          - generic:
+            - generic "Yellow"
+          - generic:
+            - generic "Orange"
+          - generic:
+            - generic "Red"
+      - generic:
+        - generic:
+          - checkbox "Clear after output"
+          - generic:
+            - text: Clear after output
+            - generic:
+              - img
+        - generic:
+          - checkbox "Block page interactions"
+          - generic: Block page interactions

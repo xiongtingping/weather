@@ -1,0 +1,286 @@
+== ui process ==
+  PID  PPID COMMAND
+55064     1 /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python /Users/xiong/weather/ui/server.py
+
+== listening 3002 ==
+COMMAND   PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Python  55064 xiong    3u  IPv4 0x2a196ca3eaea4005      0t0  TCP 127.0.0.1:3002 (LISTEN)
+
+== fd count ui ==
+     274
+
+== top repeated fds (ui) ==
+COMMAND   PID  USER   FD   TYPE             DEVICE   SIZE/OFF                NODE NAME
+Python  55064 xiong  cwd    DIR               1,17        896           332525232 /Users/xiong/weather
+Python  55064 xiong  txt    REG               1,17     118288            76878364 /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python
+Python  55064 xiong  txt    REG               1,17     203120            76878422 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_hashlib.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17      66592           336829471 /Users/xiong/weather/.venv/lib/python3.13/site-packages/charset_normalizer/md.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     175136            76878454 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_json.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     201360            76878414 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_struct.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     174128            76878415 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_blake2.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     358064            76878411 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_pickle.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     273200            76878425 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_socket.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17    2289328 1152921500312524246 /usr/lib/dyld
+Python  55064 xiong  txt    REG               1,17     197392            76878393 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/zlib.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17      32768           370524801 /Users/xiong/weather/data/archive.db-shm
+Python  55064 xiong  txt    REG               1,17     137952            76878397 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_bisect.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     233088            76878464 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/math.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     178320            76878406 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/select.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     220368            76878412 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/array.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     139184            76878445 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_random.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     118608            76878429 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_statistics.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     137376            76878433 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/fcntl.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     139232            76878405 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_posixsubprocess.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     184144            76878400 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_multibytecodec.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     329888            76878459 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_datetime.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     140640            76878455 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_bz2.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     718336            76878426 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_decimal.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17    2563152            76878439 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_sqlite3.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     140160            76878453 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/binascii.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     118432            76878438 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_uuid.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     511248            76878408 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/pyexpat.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     136960            76878437 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_heapq.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     140080            76878416 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_queue.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     554896            76878407 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_lzma.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17   13458864            76881098 /Library/Frameworks/Python.framework/Versions/3.13/Python
+Python  55064 xiong  txt    REG               1,17    7780960            76878380 /Library/Frameworks/Python.framework/Versions/3.13/lib/libcrypto.3.dylib
+Python  55064 xiong  txt    REG               1,17     468480            76878431 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_ssl.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     141440            76878434 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_opcode.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     137904            76878423 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/grp.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     121312            76878440 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_scproxy.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17    1322672            76878379 /Library/Frameworks/Python.framework/Versions/3.13/lib/libssl.3.dylib
+Python  55064 xiong  txt    REG               1,17     502424           336829468 /Users/xiong/weather/.venv/lib/python3.13/site-packages/charset_normalizer/md__mypyc.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     176400            76878420 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_zoneinfo.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     137888            76878448 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/resource.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     176736            76878430 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_csv.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     118528            76878452 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_contextvars.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17    1509280            76878394 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/unicodedata.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     154848           336828071 /Users/xiong/weather/.venv/lib/python3.13/site-packages/numpy/linalg/_umath_linalg.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17     397328            76878457 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/lib-dynload/_ctypes.cpython-313-darwin.so
+Python  55064 xiong  txt    REG               1,17    3677896           336828151 /Users/xiong/weather/.venv/lib/python3.13/site-packages/numpy/_core/_multiarray_umath.cpython-313-darwin.so
+Python  55064 xiong    0r   CHR                3,2        0t0                 339 /dev/null
+Python  55064 xiong    1u   REG               1,17   79750959           339470772 /Users/xiong/weather/data/ui_server.out.log
+Python  55064 xiong    2u   REG               1,17  362369212           339470773 /Users/xiong/weather/data/ui_server.err.log
+Python  55064 xiong    3u  IPv4 0x2a196ca3eaea4005        0t0                 TCP 127.0.0.1:3002 (LISTEN)
+Python  55064 xiong    5u  unix  0x44de9abc3de8d9d        0t0                     ->0xbc6c312e95b825f9
+Python  55064 xiong    6u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong    7u  IPv4 0x701b4455b7859588        0t0                 TCP 127.0.0.1:3002->127.0.0.1:62929 (CLOSED)
+Python  55064 xiong    8u  IPv4 0xb45c9cd8aca6583f        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63171 (CLOSED)
+Python  55064 xiong    9u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   10u  IPv4 0xa496f6ea9ae387e2        0t0                 TCP 127.0.0.1:3002->127.0.0.1:65316 (ESTABLISHED)
+Python  55064 xiong   11u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   12r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   13u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   14u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   15u  IPv4 0x8fddb7d5922e7560        0t0                 TCP 127.0.0.1:3002->127.0.0.1:62931 (CLOSED)
+Python  55064 xiong   16u   REG               1,17      32768           370524801 /Users/xiong/weather/data/archive.db-shm
+Python  55064 xiong   17u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   18u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   19r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   20u  IPv4 0xe0ea61a2789c810a        0t0                 TCP 127.0.0.1:3002->127.0.0.1:62932 (CLOSED)
+Python  55064 xiong   21u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   22u  IPv4 0xa6ff36c6618d4db1        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64595 (CLOSED)
+Python  55064 xiong   23u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   24u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   25u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   26u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   27u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   28u  IPv4    0x9132886eed334        0t0                 TCP 127.0.0.1:3002->127.0.0.1:65361 (CLOSE_WAIT)
+Python  55064 xiong   29u  IPv4 0x6b10ce2b5845c073        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63003 (CLOSED)
+Python  55064 xiong   30u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   31u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   32u  IPv4 0x324a6a87b267c2e3        0t0                 TCP 127.0.0.1:3002->127.0.0.1:62985 (CLOSED)
+Python  55064 xiong   33u  IPv4  0xb21efe6da43634d        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63000 (CLOSED)
+Python  55064 xiong   34u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   35u  IPv4 0x7871c2bae439d83b        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63001 (CLOSED)
+Python  55064 xiong   36u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   37u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   38u  IPv4 0xb03409850c1dc31d        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64145 (CLOSED)
+Python  55064 xiong   39u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   40u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   41u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   42u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   43u  IPv4 0x28f3ec2b62b26d00        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63002 (CLOSED)
+Python  55064 xiong   44u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   45u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   46u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   47u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   48u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   49u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   50u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   51u   REG               1,17  716837560           370524953 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_811661f175790874
+Python  55064 xiong   52u   REG               1,17  716837560           370524954 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_883146bef2d3f5ad
+Python  55064 xiong   53u  IPv4 0x7f65c07f98b47374        0t0                 TCP 127.0.0.1:3002->127.0.0.1:65134 (CLOSE_WAIT)
+Python  55064 xiong   54u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   55u  IPv4 0xde449e1bb8073045        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63045 (CLOSED)
+Python  55064 xiong   56u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   57u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   58u  IPv4 0x96179ce7c847a460        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63092 (CLOSED)
+Python  55064 xiong   59u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   60u  IPv4 0x5650c58d130291a3        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63091 (CLOSED)
+Python  55064 xiong   61u   REG               1,17   25599112           370532072 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_4d82a7a88aff766d
+Python  55064 xiong   62u   REG               1,17   25599112           370532073 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_92ed219c1e4fe5f6
+Python  55064 xiong   63u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   64u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   65u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   66u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   67u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   68u  IPv4 0xda1b410ed495d5dc        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63059 (CLOSED)
+Python  55064 xiong   69u  IPv4 0x4dfeee9c27b838d1        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63846 (ESTABLISHED)
+Python  55064 xiong   70u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   71u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   72u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   73u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   74u  IPv4 0x9266f0b33bfceba9        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63068 (CLOSED)
+Python  55064 xiong   75u  IPv4 0x7439e78013f6f95f        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63093 (CLOSED)
+Python  55064 xiong   76u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   77u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   78u   REG               1,17   25599112           370532088 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_6ae080b95465d0d
+Python  55064 xiong   79u  IPv4 0xb5dee96fae2bc4ea        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63099 (CLOSED)
+Python  55064 xiong   80u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   81u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   82u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   83u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   84u   REG               1,17  716837560           370524990 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_c9cbb3ae57fab8ce
+Python  55064 xiong   85u   REG               1,17  716837560           370524991 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_3e51cfe1543ba850
+Python  55064 xiong   86u   REG               1,17   25599112           370524995 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_5853d7a8b7ff7ac9
+Python  55064 xiong   87u   REG               1,17   25599112           370524996 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_583e198ad3865b3f
+Python  55064 xiong   88u  IPv4 0x56de7253c2a21781        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63114 (CLOSED)
+Python  55064 xiong   89u  IPv4 0x460e8702f537d10a        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63133 (CLOSED)
+Python  55064 xiong   90u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   91u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   92u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   93u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   94u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong   95u   REG               1,17   25599112           370525033 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_862574acf2e68a67
+Python  55064 xiong   96u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   97u  IPv4 0x77eb9477468b51d1        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63146 (CLOSED)
+Python  55064 xiong   98u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong   99u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  100u  IPv4 0xb03e528e0adf212b        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64115 (CLOSED)
+Python  55064 xiong  101u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  102u  IPv4   0xe12370a427e341        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63131 (CLOSED)
+Python  55064 xiong  103u   REG               1,17   25599112           370525034 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_7d96e724d4106c69
+Python  55064 xiong  104u  IPv4 0xcdc1f10907c3b76e        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64120 (CLOSED)
+Python  55064 xiong  105u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  106u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  107u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  108u  IPv4 0x14175cb18c8f878b        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63125 (CLOSED)
+Python  55064 xiong  109u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  110u  IPv4  0x5f30455d6805ca5        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64118 (CLOSED)
+Python  55064 xiong  111u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  112u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  113u   REG               1,17  716837560           370525015 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_993791b3e39e9ee8
+Python  55064 xiong  114u   REG               1,17  716837560           370525016 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_df9c6307c9e93740
+Python  55064 xiong  115u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  116u  IPv4 0x21ccce1da568dbec        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63827 (CLOSED)
+Python  55064 xiong  117u   REG               1,17   25599112           370532089 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_dec3f4c7146d6d7a
+Python  55064 xiong  118u  IPv4 0x57ed1d46d6d9d808        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64097 (CLOSED)
+Python  55064 xiong  119u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  120u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  121u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  122u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  123u   REG               1,17   25599112           370525170 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_7c84b42fa7261b66
+Python  55064 xiong  124u   REG               1,17   25599112           370525171 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_8d9dba95840690d1
+Python  55064 xiong  125u  IPv4 0xa4710cc1a0d83fe9        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64116 (CLOSED)
+Python  55064 xiong  126u  IPv4 0x87f983a05edf96ba        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64992 (CLOSE_WAIT)
+Python  55064 xiong  127r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  128u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  129u   REG               1,17  716837560           370531100 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_e8a3aab904cdf99b
+Python  55064 xiong  130u  IPv4 0xd5dd0f53e4d1349d        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63437 (CLOSED)
+Python  55064 xiong  131u  IPv4   0xc8dfdca0a057f7        0t0                 TCP 127.0.0.1:3002->127.0.0.1:63442 (CLOSED)
+Python  55064 xiong  132u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  133u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  134u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  135u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  136r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  137u   REG               1,17   25599112           370532090 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_823121e77b5cf7e2
+Python  55064 xiong  138u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  139u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  140u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  141u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  142u  IPv4 0xe1af72ff8a193169        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64201 (CLOSED)
+Python  55064 xiong  143u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  144u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  145u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  146u   REG               1,17   25599112           370532091 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_dad358987861aed4
+Python  55064 xiong  147u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  148u  IPv4 0xfbfa1a796e415f01        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64168 (CLOSED)
+Python  55064 xiong  149r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  150u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  151r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  152u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  153u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  154u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  155u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  156u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  157u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  158r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  159u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  160u  IPv4 0x807afa68f5ccf694        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64113 (CLOSED)
+Python  55064 xiong  161u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  162u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  163u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  164u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  165u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  166u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  167u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  168u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  169u  IPv4 0xe910fe52aa9d28c1        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64223 (CLOSED)
+Python  55064 xiong  170u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  171u  IPv4 0xbec216f83ab96f71        0t0                 TCP 127.0.0.1:3002->127.0.0.1:65430 (CLOSE_WAIT)
+Python  55064 xiong  172u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  173u  IPv4 0x7a7c53ab5a07b81a        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64155 (CLOSED)
+Python  55064 xiong  174u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  175u  IPv4 0x76593392ac318bb8        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64239 (CLOSED)
+Python  55064 xiong  176u   REG               1,17  716837560           370531069 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_3582b9ccd99f72c0
+Python  55064 xiong  177u  IPv4 0xa8f45f60c83a5e84        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64910 (CLOSED)
+Python  55064 xiong  178u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  179u  IPv4 0x7b13ef2dff5d5979        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64271 (CLOSED)
+Python  55064 xiong  180u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  181u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  183u  IPv4 0x323064cd2569518a        0t0                 TCP 127.0.0.1:3002->127.0.0.1:65401 (CLOSE_WAIT)
+Python  55064 xiong  184u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  185u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  186u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  187u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  188u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  189u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  190u   REG               1,17  716837560           370531437 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_9f3cc22b192d50be
+Python  55064 xiong  191u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  192u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  193u  IPv4 0xe85646036b8a8014        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64247 (CLOSED)
+Python  55064 xiong  194u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  195u  IPv4 0xd8ebd40b6c840a36        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64245 (CLOSED)
+Python  55064 xiong  196u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  197u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  198u   REG               1,17  716837560           370531476 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_d0fe18d434297c2e
+Python  55064 xiong  199u   REG               1,17  716837560           370531337 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_1ea5f8ccc495bfdb
+Python  55064 xiong  200u   REG               1,17  716837560           370531669 /private/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/etilqs_c28db2aad3c869df
+Python  55064 xiong  201u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  203u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  204u  IPv4 0x23a9aaf910ef1d52        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64244 (CLOSED)
+Python  55064 xiong  205u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  206u  IPv4 0xf68d407530ef8ef6        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64303 (CLOSED)
+Python  55064 xiong  207u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  208u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  209u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  210u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  211u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  212u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  213u  IPv4 0xf4c1a5b09c89b69e        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64599 (CLOSED)
+Python  55064 xiong  214u  IPv4 0xe96374588d2371fa        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64995 (CLOSE_WAIT)
+Python  55064 xiong  215u  IPv4 0xd0b4cfb4ce3938b7        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64600 (CLOSED)
+Python  55064 xiong  216u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  217u  IPv4  0x9b856a3f6163acc        0t0                 TCP 127.0.0.1:3002->127.0.0.1:65505 (CLOSE_WAIT)
+Python  55064 xiong  218u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  219r   DIR       188,10540391          0                 344 /dev/fd
+Python  55064 xiong  220r   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  221u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  222u  IPv4 0xef06aad2a59d791a        0t0                 TCP 127.0.0.1:3002->127.0.0.1:64753 (CLOSED)
+Python  55064 xiong  224u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  225u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  226u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  229u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal
+Python  55064 xiong  232u   REG               1,17 3399757824           332593041 /Users/xiong/weather/data/archive.db
+Python  55064 xiong  234u   REG               1,17    5413712           370524800 /Users/xiong/weather/data/archive.db-wal

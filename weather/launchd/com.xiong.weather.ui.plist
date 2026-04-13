@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.xiong.weather.ui</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/Users/xiong/weather/weather/scripts/ui_server_forever.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/xiong/weather/weather</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>SoftResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/xiong/weather/weather/data/ui_server.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/xiong/weather/weather/data/ui_server.err.log</string>
+  </dict>
+</plist>

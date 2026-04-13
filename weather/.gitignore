@@ -1,0 +1,26 @@
+# Runtime / local-only artifacts (SSOT: do not commit)
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+
+# Local databases, logs, locks, caches
+data/
+logs/
+*.log
+*.pid
+*.lock
+*.lock/
+
+# Secrets / env
+.env

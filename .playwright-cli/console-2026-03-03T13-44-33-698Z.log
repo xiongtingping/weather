@@ -1,0 +1,14 @@
+[   37108ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3002/favicon.ico:0
+[  672405ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/facts-range?days=1&date=2026-03-03:0
+[  682387ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/auto-trade-health?date=2026-03-03:0
+[  682393ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/auto-trade-health?date=2026-03-03:0
+[  687476ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/scan:0
+[  689264ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/scoreboard?days=30:0
+[  690160ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/auto-trade-trace?date=2026-03-03&limit=0:0
+[  690243ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/edge-bias?days=30:0
+[  692670ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/scan:0
+[  695259ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/auto-trade-trace?date=2026-03-03&limit=0:0
+[  702419ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/services:0
+[  705812ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/edge-bias?days=30:0
+[  709012ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/auto-trade-health?date=2026-03-03:0
+[  713658ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_TIMED_OUT @ http://127.0.0.1:3002/api/auto-trade-health?date=2026-03-03:0
