@@ -1,0 +1,195 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "自动交易" [ref=e8] [cursor=pointer]:
+            - /url: "#autoTradeSection"
+          - link "策略配置" [ref=e9] [cursor=pointer]:
+            - /url: "#strategySection"
+          - link "站点/模型" [ref=e10] [cursor=pointer]:
+            - /url: "#availabilitySection"
+        - generic [ref=e11]:
+          - link "事件" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "评分校正" [ref=e13] [cursor=pointer]:
+            - /url: "#ratingBiasSectionBlock"
+      - generic [ref=e14]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e16] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e17]: 总开关
+          - generic [ref=e18]: 开启
+        - generic [ref=e21]:
+          - button "同步" [ref=e22] [cursor=pointer]
+          - button "模型" [ref=e23] [cursor=pointer]
+          - button "盘口" [ref=e24] [cursor=pointer]
+          - button "刷新" [ref=e25] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e26] [cursor=pointer]
+          - button "日志" [ref=e28] [cursor=pointer]
+          - group [ref=e29]:
+            - generic "控制中心" [ref=e30] [cursor=pointer]: 控
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - status [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: 新鲜度
+            - generic [ref=e37]: 等待数据…时效口径
+            - generic [ref=e38]:
+              - generic [ref=e40]:
+                - generic [ref=e41]: 模型
+                - generic [ref=e42]: —
+              - generic [ref=e45]:
+                - generic [ref=e46]: 盘口
+                - generic [ref=e47]: —
+          - generic [ref=e49]:
+            - generic [ref=e50]:
+              - generic [ref=e51] [cursor=pointer]:
+                - generic [ref=e52]: 健康检查
+                - generic [ref=e53]: 展开
+                - button "复制" [ref=e54]
+              - generic: —
+            - group [ref=e55]:
+              - generic "追涨触发统计" [ref=e56] [cursor=pointer]:
+                - generic [ref=e57]: 追涨触发统计
+      - generic [ref=e58]:
+        - generic [ref=e60]: 自动买卖检测
+        - generic [ref=e61]: —
+        - generic [ref=e62]: —
+        - generic [ref=e64]: 事件口径
+        - generic [ref=e65]:
+          - generic [ref=e66]: 自动交易：—
+          - generic [ref=e67]: 成交同步：—
+          - generic [ref=e68]: 最后触发：—
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic "页面数据状态：刷新中 · 04-15 20:32" [ref=e72]:
+              - generic [ref=e74]: 刷新中
+              - generic "页面数据最后刷新/失败时间" [ref=e75]: 04-15 20:32
+            - generic [ref=e77]: 加载中...
+          - generic [ref=e79]: LCB全市场 开 1.00x
+        - generic [ref=e80]:
+          - button "auto_trade_watcher" [ref=e81] [cursor=pointer]
+          - button "残留清理" [ref=e82] [cursor=pointer]
+          - generic [ref=e83] [cursor=pointer]:
+            - checkbox "自动交易 关闭"
+            - generic [ref=e85]: 自动交易 关闭
+    - generic [ref=e87]: 自动交易总览
+    - generic [ref=e89]:
+      - generic [ref=e90]: 自动交易策略配置
+      - generic [ref=e92]:
+        - generic [ref=e93]: 策略配置面板
+        - generic [ref=e95]:
+          - generic [ref=e98]: 已保存
+          - button "保存设置" [disabled] [ref=e99]
+        - generic [ref=e100]:
+          - generic [ref=e101]:
+            - generic [ref=e102]: 策略开关 · 一键启停
+            - generic [ref=e103]:
+              - generic [ref=e104]:
+                - generic [ref=e105]: 入场策略总开关（LCB全市场统一策略）
+                - generic [ref=e106]:
+                  - button "一键启用LCB策略" [ref=e107] [cursor=pointer]
+                  - button "恢复仅LCB" [ref=e108] [cursor=pointer]
+              - generic [ref=e110]:
+                - checkbox "LCB全市场" [checked] [ref=e111]
+                - text: LCB全市场
+              - generic [ref=e112]:
+                - generic [ref=e113]:
+                  - checkbox "模型扫描" [ref=e114]
+                  - text: 模型扫描
+                - generic [ref=e115]:
+                  - checkbox "盘口刷新" [ref=e116]
+                  - text: 盘口刷新
+                - generic [ref=e117]:
+                  - checkbox "自动交易（总开关）" [ref=e118]
+                  - text: 自动交易（总开关）
+              - generic [ref=e119]: 说明：上面三项为“系统级开关”（LaunchAgent / PM_AUTO_TRADE_ENABLED），不是策略参数；用于快速排查“策略已开但不扫/不刷新/不交易”。
+              - generic [ref=e120]: 上面的“一键按钮”仅作用于 LCB 全市场策略开关。
+              - generic [ref=e121]: 总开关关闭后：停止模型/盘口/自动交易/同步 + 清理后台进程；开启后按暂停前状态恢复。
+              - generic [ref=e122]:
+                - generic [ref=e123]:
+                  - generic [ref=e124]: LCB全市场仓位系数
+                  - spinbutton [ref=e126]: "1"
+                - generic [ref=e127]:
+                  - generic [ref=e128]: 信号下界阈值（signal_lcb）
+                  - spinbutton [ref=e130]: "0"
+                - generic [ref=e131]:
+                  - generic [ref=e132]: 路径下界阈值（path_lcb）
+                  - spinbutton [ref=e134]: "0.1"
+              - generic [ref=e135]:
+                - generic [ref=e136]:
+                  - generic [ref=e137]: 盈利头阈值（edge_lcb）
+                  - spinbutton [ref=e139]: "0"
+                - generic [ref=e140]:
+                  - generic [ref=e141]: 最大盘口价差（spread）
+                  - spinbutton [ref=e143]: "0.08"
+                - generic [ref=e144]:
+                  - generic [ref=e145]: 最小盘口深度（USDC）
+                  - spinbutton [ref=e147]: "0"
+                - generic [ref=e148]:
+                  - generic [ref=e149]: 最大盘口时延（秒）
+                  - spinbutton [ref=e151]: "180"
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - generic [ref=e154]: 每轮最多新开仓（0=不限制）
+                  - spinbutton [ref=e156]: "0"
+                - generic [ref=e157]:
+                  - generic [ref=e158]: 全局最多活跃持仓（0=不限制）
+                  - spinbutton [ref=e160]: "0"
+              - generic [ref=e161]: 仓位系数基准为 1.00x；0 表示本轮不新开仓。
+              - generic [ref=e163]:
+                - text: LCB全市场 · 开 ·
+                - generic [ref=e164]: 1.00x
+          - generic [ref=e165]:
+            - generic [ref=e166]: 执行参数（LCB）
+            - generic [ref=e169]:
+              - checkbox "自动交易前预取事件详情 i" [checked] [ref=e170]
+              - text: 自动交易前预取事件详情
+              - generic "启动 trade_sync_loop 前先跑一次详情抓取（PM_SCAN_FETCH_EVENT_DETAIL=1 scan_weather_market.py --scan-weather-today ...），确保最新 outcome_volume 反映在 event_runs 再执行自动交易。" [ref=e171]: i
+            - generic [ref=e173]:
+              - generic [ref=e174]: 自动交易最小间隔(秒)
+              - generic "自动交易运行节流的最小间隔（PM_AUTO_TRADE_MIN_RUN_INTERVAL_SEC）。调低=更频繁触发，调高=更保守。" [ref=e175]: i
+              - spinbutton [ref=e177]: "120"
+            - generic [ref=e178]:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - checkbox "买价上限 i" [disabled] [ref=e181]
+                  - text: 买价上限
+                  - generic "ask高于上限不买，避免追高。" [ref=e182]: i
+                - generic [ref=e183]:
+                  - spinbutton [disabled] [ref=e184]: "0.65"
+                  - generic [ref=e185]: 开关关闭，当前不生效
+              - generic [ref=e186]:
+                - generic [ref=e187]: 每单预算
+                - generic "用于换算下单数量：size=预算/价格。实际还会受单笔上限和最小下单量限制。" [ref=e188]: i
+                - spinbutton [ref=e190]: "10"
+                - generic [ref=e191]: USDC
+            - generic [ref=e192]: 买价上限(ask)。调低=只买更便宜；调高=允许更贵的报价。
+            - generic [ref=e193]: 用于换算下单数量(预算/价格)。实际还会受“单笔上限”影响。
+          - generic [ref=e194]:
+            - generic [ref=e195]: 退出条件 · 风控与止损
+            - generic [ref=e196]:
+              - generic [ref=e197]:
+                - generic [ref=e198]:
+                  - checkbox "止损(%) i" [checked] [ref=e199]
+                  - text: 止损(%)
+                  - generic "亏损达到该比例触发退出。" [ref=e200]: i
+                - spinbutton [ref=e202]: "0.2"
+              - generic [ref=e203]:
+                - generic [ref=e204]:
+                  - checkbox "回撤止盈(%) i" [checked] [ref=e205]
+                  - text: 回撤止盈(%)
+                  - generic "从持仓峰值回撤达到该比例触发退出。" [ref=e206]: i
+                - spinbutton [ref=e208]: "0.01"
+            - generic [ref=e209]: 止损%调高=允许更大回撤再止损；调低=更紧。回撤止盈%调高=更宽松；调低=更敏感。
+        - generic [ref=e210]: 开关关闭时仅停用对应过滤，不清空阈值；点击保存后同步到自动交易进程。
+    - generic [ref=e212]: 站点映射与模型更新
+    - generic [ref=e214]:
+      - text: 事件列表（事实层）
+      - generic [ref=e215]: 加载中…
+    - generic [ref=e231]: 评分与偏差校正

@@ -4,9 +4,15 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import scan_weather_market as s
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+POLYMARKET_ORDER_SCRIPT = ROOT_DIR / "scripts" / "polymarket_order.mjs"
+DEFAULT_OUTPUT_PATH = ROOT_DIR / "data" / "order_status_trace.json"
 
 
 def _load_orders(conn, only_missing: bool, limit: Optional[int]) -> List[Tuple[Any, ...]]:
@@ -48,7 +54,7 @@ def _parse_payload(stdout: str, stderr: str, code: int) -> Dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Trace order status via polymarket get-order")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of orders")
-    parser.add_argument("--output", type=str, default="/Users/xiong/weather/data/order_status_trace.json")
+    parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT_PATH))
     parser.add_argument("--include-all", action="store_true", help="Include all auto_orders (not only missing)")
     args = parser.parse_args()
 
@@ -62,7 +68,7 @@ def main() -> None:
         "orders": [],
     }
 
-    cmd_base = ["node", "/Users/xiong/weather/scripts/polymarket_order.mjs", "get-order", "--order-id"]
+    cmd_base = ["node", str(POLYMARKET_ORDER_SCRIPT), "get-order", "--order-id"]
 
     for r in rows:
         order_id, slug, event_date, outcome, side, action, size, created_at = r

@@ -18,6 +18,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from edge_calibration_runtime import build_segment_key
+from scripts.calibration_dataset_utils import days_to_event as dataset_days_to_event
+from scripts.calibration_dataset_utils import load_first_q_settled_dataset
 
 
 @dataclass
@@ -45,19 +47,6 @@ def _to_int(value: Any, default: int = 0) -> int:
         return int(value)
     except Exception:
         return int(default)
-
-
-def _parse_ts(value: Any) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except Exception:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def _normalize_unit(unit: Optional[str]) -> Optional[str]:
@@ -170,6 +159,25 @@ def _bucket_hit(actual: float, label: str, rounding_rule: Optional[str]) -> Opti
         high = max(float(spec.k), float(spec.k2))
         return low <= value <= high
     return None
+
+
+def _bucket_label_for_value(
+    rows: List[Dict[str, Any]],
+    actual: Optional[float],
+    rounding_rule: Optional[str],
+) -> str:
+    if actual is None or not math.isfinite(actual):
+        return ""
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        outcome = str(row.get("outcome") or "").strip()
+        if not outcome:
+            continue
+        hit = _bucket_hit(float(actual), outcome, rounding_rule)
+        if hit is True:
+            return outcome
+    return ""
 
 
 def _safe_logit(prob: float, eps: float = 1e-6) -> float:
@@ -568,20 +576,14 @@ def _metrics(samples: List[Tuple[float, int]]) -> Dict[str, Any]:
 
 
 def _days_to_event(event_date: str, created_at: str) -> Optional[float]:
-    ts = _parse_ts(created_at)
-    if ts is None:
-        return None
-    try:
-        ev_day = datetime.strptime(str(event_date or "")[:10], "%Y-%m-%d").date()
-    except Exception:
-        return None
-    return float((ev_day - ts.date()).days)
+    return dataset_days_to_event(event_date, created_at)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train q_raw->q_calibrated bundle (D0/D1/D2+ segmented platt).")
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "archive.db"))
     parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--limit-events", type=int, default=5000)
     parser.add_argument("--l2", type=float, default=0.2)
     parser.add_argument("--z", type=float, default=1.64)
     parser.add_argument("--min-label-samples", type=int, default=30)
@@ -599,90 +601,80 @@ def main() -> None:
 
     conn = sqlite3.connect(str(db_path))
     _ensure_tables(conn)
-    rows = _load_rows(conn, since_iso)
-    settlement_map = _load_settlement_map(conn)
+    events = load_first_q_settled_dataset(conn, since_iso, int(args.limit_events))
     samples: List[Dict[str, Any]] = []
     labeled_platt: List[Tuple[float, int, float]] = []
     labeled_platt_by_dte: Dict[str, List[Tuple[float, int, float]]] = defaultdict(list)
 
-    for row in rows:
-        details: Dict[str, Any] = {}
-        try:
-            payload = json.loads(str(row.get("details_json") or ""))
-            if isinstance(payload, dict):
-                details = payload
-        except Exception:
-            details = {}
-        q_raw = _to_float(details.get("q_raw"))
-        if q_raw is None:
-            q_raw = _to_float(details.get("q_entry"))
-        if q_raw is None:
+    for event in events:
+        rows_event = event.get("rows")
+        if not isinstance(rows_event, list) or not rows_event:
             continue
-        q_raw = min(max(float(q_raw), 1e-6), 1.0 - 1e-6)
-        spread = _to_float(details.get("spread"))
-        depth_ratio = _to_float(details.get("depth_ratio"))
-        tick_age = _to_float(details.get("tick_age_sec"))
-        days_to_event = _days_to_event(str(row.get("event_date") or ""), str(row.get("created_at") or ""))
-        segment_key_full, seg_ctx = build_segment_key(
-            days_to_event=days_to_event,
-            spread=spread,
-            depth_ratio=depth_ratio,
-            tick_age_sec=tick_age,
-            decision_ts=row.get("created_at"),
-        )
-        dte_bucket = _dte_bucket(days_to_event)
-        segment_key = _dte_bucket_key(seg_ctx.regime, days_to_event)
-        settlement_info = settlement_map.get(
-            (str(row.get("slug") or ""), str(row.get("event_date") or ""))
-        ) or {}
-        settlement_actual = _to_float(settlement_info.get("settlement_actual"))
-        rounding_rule = str(
-            settlement_info.get("rounding_rule")
-            or details.get("rounding_rule")
-            or ""
-        )
-        label, label_source = _label_from_settlement(
-            side=str(row.get("side") or ""),
-            outcome=str(row.get("outcome") or ""),
-            settlement_actual=settlement_actual,
-            rounding_rule=rounding_rule,
-        )
-        sample = {
-            "decision_id": _to_int(row.get("decision_id")),
-            "run_id": _to_int(row.get("run_id")),
-            "run_date": str(row.get("run_date") or ""),
-            "slug": str(row.get("slug") or ""),
-            "event_date": str(row.get("event_date") or ""),
-            "outcome": str(row.get("outcome") or ""),
-            "side": str(row.get("side") or "").upper(),
-            "strategy": str(details.get("strategy") or ""),
-            "q_raw": q_raw,
-            "q_calibrated": _to_float(details.get("q_calibrated")),
-            "q_calibrated_lcb": _to_float(details.get("q_calibrated_lcb")),
-            "q_calibrated_ucb": _to_float(details.get("q_calibrated_ucb")),
-            "q_calibrated_sigma": _to_float(details.get("q_calibrated_sigma")),
-            "spread": spread,
-            "depth_ratio": depth_ratio,
-            "tick_age_sec": tick_age,
-            "days_to_event": days_to_event,
-            "dte_bucket": dte_bucket,
-            "segment_key": segment_key,
-            "segment_key_full": segment_key_full,
-            "created_at": str(row.get("created_at") or ""),
-            "label": label,
-            "label_source": label_source,
-            "settlement_actual": settlement_actual,
-            "rounding_rule": rounding_rule,
-            "realized_pnl": _to_float(row.get("realized_pnl")),
-            "resolved_at": str(
-                settlement_info.get("resolved_at")
-                or row.get("resolved_at")
-                or ""
-            ),
-            "details_json": details,
-        }
-        samples.append(sample)
-        if label in {0, 1}:
+        settlement_actual = _to_float(event.get("settlement_actual"))
+        rounding_rule = str(event.get("rounding_rule") or "")
+        actual_label = _bucket_label_for_value(rows_event, settlement_actual, rounding_rule)
+        if not actual_label:
+            continue
+        created_at = str(event.get("created_at") or "")
+        event_date = str(event.get("event_date") or "")
+        days_to_event = _days_to_event(event_date, created_at)
+        base_decision_id = -max(1, _to_int(event.get("anchor_snapshot_id")))
+        for idx, row in enumerate(rows_event, start=1):
+            if not isinstance(row, dict):
+                continue
+            outcome = str(row.get("outcome") or "").strip()
+            q_raw = _to_float(row.get("q_raw"))
+            if q_raw is None:
+                q_raw = _to_float(row.get("q_round"))
+            if not outcome or q_raw is None:
+                continue
+            q_raw = min(max(float(q_raw), 1e-6), 1.0 - 1e-6)
+            spread = _to_float(row.get("spread"))
+            depth_ratio = _to_float(row.get("depth_ratio_yes"))
+            if depth_ratio is None:
+                depth_ratio = _to_float(row.get("depth_ratio"))
+            tick_age = _to_float(row.get("tick_age_sec"))
+            segment_key_full, seg_ctx = build_segment_key(
+                days_to_event=days_to_event,
+                spread=spread,
+                depth_ratio=depth_ratio,
+                tick_age_sec=tick_age,
+                decision_ts=created_at,
+            )
+            dte_bucket = _dte_bucket(days_to_event)
+            segment_key = _dte_bucket_key(seg_ctx.regime, days_to_event)
+            label = 1 if outcome == actual_label else 0
+            sample = {
+                "decision_id": base_decision_id * 1000 - idx,
+                "run_id": None,
+                "run_date": "",
+                "slug": str(event.get("slug") or ""),
+                "event_date": event_date,
+                "outcome": outcome,
+                "side": "YES",
+                "strategy": "q_settle_event_run",
+                "q_raw": q_raw,
+                "q_calibrated": _to_float(row.get("q_calibrated")),
+                "q_calibrated_lcb": _to_float(row.get("q_calibrated_lcb")),
+                "q_calibrated_ucb": _to_float(row.get("q_calibrated_ucb")),
+                "q_calibrated_sigma": _to_float(row.get("q_calibrated_sigma")),
+                "spread": spread,
+                "depth_ratio": depth_ratio,
+                "tick_age_sec": tick_age,
+                "days_to_event": days_to_event,
+                "dte_bucket": dte_bucket,
+                "segment_key": segment_key,
+                "segment_key_full": segment_key_full,
+                "created_at": created_at,
+                "label": label,
+                "label_source": "settlement_actual_bucket_hit",
+                "settlement_actual": settlement_actual,
+                "rounding_rule": rounding_rule,
+                "realized_pnl": None,
+                "resolved_at": created_at,
+                "details_json": row,
+            }
+            samples.append(sample)
             item = (float(q_raw), int(label), 1.0)
             labeled_platt.append(item)
             labeled_platt_by_dte[dte_bucket].append(item)

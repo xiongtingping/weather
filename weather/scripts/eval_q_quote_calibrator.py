@@ -15,6 +15,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from edge_calibration_runtime import predict_q_quote
+from scripts.calibration_dataset_utils import days_to_event as dataset_days_to_event
+from scripts.calibration_dataset_utils import load_joined_open_market_dataset
 
 
 def _to_float(value: Any) -> Optional[float]:
@@ -27,28 +29,8 @@ def _to_float(value: Any) -> Optional[float]:
     return float(num)
 
 
-def _parse_ts(value: Any) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except Exception:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
 def _days_to_event(event_date: str, created_at: str) -> Optional[float]:
-    ts = _parse_ts(created_at)
-    if ts is None:
-        return None
-    try:
-        ev_day = datetime.strptime(str(event_date or "")[:10], "%Y-%m-%d").date()
-    except Exception:
-        return None
-    return float((ev_day - ts.date()).days)
+    return dataset_days_to_event(event_date, created_at)
 
 
 def _load_bundle(path: Path) -> Dict[str, Any]:
@@ -87,48 +69,9 @@ def _load_open_first_rows(
     since_iso: str,
     limit_events: int,
 ) -> List[Dict[str, Any]]:
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT id, slug, event_date, created_at, payload_json
-        FROM event_runs
-        WHERE payload_json IS NOT NULL
-          AND payload_json != ''
-          AND datetime(created_at) >= datetime(?)
-        ORDER BY datetime(created_at) ASC, id ASC
-        """,
-        (since_iso,),
-    )
-    first_by_event: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    for row in cur.fetchall():
-        slug = str(row[1] or "").strip()
-        event_date = str(row[2] or "").strip()
-        created_at = str(row[3] or "").strip()
-        if not slug or not event_date or not created_at:
-            continue
-        key = (slug, event_date)
-        if key in first_by_event:
-            continue
-        try:
-            payload = json.loads(str(row[4] or ""))
-        except Exception:
-            payload = {}
-        if not isinstance(payload, dict):
-            payload = {}
-        rows = payload.get("rows") or payload.get("distribution") or []
-        if not isinstance(rows, list) or not rows:
-            continue
-        first_by_event[key] = {
-            "slug": slug,
-            "event_date": event_date,
-            "created_at": created_at,
-            "rows": rows,
-        }
-        if len(first_by_event) >= max(1, int(limit_events)):
-            break
-
     samples: List[Dict[str, Any]] = []
-    for event in first_by_event.values():
+    events = load_joined_open_market_dataset(conn, since_iso, int(limit_events))
+    for event in events:
         slug = str(event.get("slug") or "")
         event_date = str(event.get("event_date") or "")
         created_at = str(event.get("created_at") or "")

@@ -39,6 +39,7 @@ LEGACY_PLISTS=(
 import plistlib
 import sys
 from pathlib import Path
+from typing import Optional
 
 user, group, root, dst_dir, *plist_names = sys.argv[1:]
 root = Path(root)
@@ -49,12 +50,46 @@ def default_home(u: str) -> str:
         return "/var/root"
     return f"/Users/{u}"
 
+def _walk_strings(obj):
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, list):
+        for x in obj:
+            yield from _walk_strings(x)
+    elif isinstance(obj, dict):
+        for x in obj.values():
+            yield from _walk_strings(x)
+
+def _rewrite_strings(obj, old_root: str, new_root: str):
+    if isinstance(obj, str):
+        return obj.replace(old_root, new_root)
+    if isinstance(obj, list):
+        return [_rewrite_strings(x, old_root, new_root) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _rewrite_strings(v, old_root, new_root) for k, v in obj.items()}
+    return obj
+
+def infer_old_root(data: dict) -> Optional[str]:
+    wd = data.get("WorkingDirectory")
+    if isinstance(wd, str) and wd.startswith("/"):
+        return wd
+    for s in _walk_strings(data):
+        if not isinstance(s, str) or not s.startswith("/"):
+            continue
+        for marker in ("/scripts/", "/data/", "/.venv/", "/.env", "/scan_weather_market.py", "/ui/server.py"):
+            if marker in s:
+                return s.split(marker, 1)[0]
+    return None
+
 for name in plist_names:
     src = root / "launchd" / name
     if not src.exists():
         continue
     with src.open("rb") as f:
         data = plistlib.load(f)
+    old_root = infer_old_root(data)
+    if old_root and old_root != str(root):
+        data = _rewrite_strings(data, old_root, str(root))
     data["UserName"] = user
     data["GroupName"] = group
     env = data.get("EnvironmentVariables") or {}
@@ -63,7 +98,7 @@ for name in plist_names:
     env.setdefault("LOGNAME", user)
     env.setdefault("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
     data["EnvironmentVariables"] = env
-    data.setdefault("WorkingDirectory", str(root))
+    data["WorkingDirectory"] = str(root)
     dst = dst_dir / name
     with dst.open("wb") as f:
         plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)

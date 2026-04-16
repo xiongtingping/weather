@@ -98,7 +98,7 @@ for name in plist_names:
     env.setdefault("LOGNAME", user)
     env.setdefault("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
     data["EnvironmentVariables"] = env
-    data.setdefault("WorkingDirectory", str(root))
+    data["WorkingDirectory"] = str(root)
     dst = dst_dir / name
     with dst.open("wb") as f:
         plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)

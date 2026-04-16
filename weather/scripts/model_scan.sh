@@ -55,6 +55,75 @@ if [ ! -x "$PY" ]; then
   exit 1
 fi
 
+_facts_materialize_window_from_scan() {
+  local run_date="${1:-}"
+  local days_arg="${2:-}"
+  local include_yesterday="${3:-0}"
+  "$PY" - "$ROOT/data/archive.db" "$run_date" "$days_arg" "$include_yesterday" <<'PY'
+import sqlite3
+import sys
+from datetime import date, timedelta
+
+db_path, run_date_raw, days_arg_raw, include_yesterday_raw = sys.argv[1:5]
+run_date_text = str(run_date_raw or "").strip().split("T", 1)[0]
+try:
+    run_day = date.fromisoformat(run_date_text)
+except Exception:
+    print("")
+    print("1")
+    raise SystemExit(0)
+
+include_yesterday = str(include_yesterday_raw or "").strip().lower() in {"1", "true", "yes", "on"}
+days_ahead = 0
+parts = str(days_arg_raw or "").strip().split()
+if len(parts) >= 2:
+    try:
+        days_ahead = int(parts[1])
+    except Exception:
+        days_ahead = 0
+
+end_day = run_day + timedelta(days=max(0, days_ahead))
+if days_ahead < 0:
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=1.0)
+        cur = conn.cursor()
+        row = cur.execute(
+            """
+            SELECT MAX(event_date)
+            FROM (
+              SELECT event_date FROM model_snapshots WHERE run_date = ?
+              UNION ALL
+              SELECT event_date FROM market_snapshots WHERE run_date = ?
+              UNION ALL
+              SELECT event_date FROM event_runs WHERE run_date = ?
+            )
+            """,
+            (run_date_text, run_date_text, run_date_text),
+        ).fetchone()
+        candidate_text = str((row[0] if row else "") or "").strip().split("T", 1)[0]
+        if candidate_text:
+            candidate_day = date.fromisoformat(candidate_text)
+            if candidate_day > end_day:
+                end_day = candidate_day
+    except Exception:
+        pass
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+
+start_day = run_day - timedelta(days=1) if include_yesterday else run_day
+if end_day < start_day:
+    end_day = start_day
+days = max(1, (end_day - start_day).days + 1)
+print(end_day.isoformat())
+print(days)
+PY
+}
+
 # Auto-trade running: do NOT stop scanning. Instead, focus the scan on Top OK (auto-trade entry_ok)
 # and execution-related slugs (positions/open orders) to keep the pipeline fresh with minimal fan-out.
 AUTO_LOCK_DIR="$ROOT/data/auto_trade_runtime.lock"
@@ -95,7 +164,11 @@ if [ "${AUTO_TRADE_ACTIVE}" = "1" ]; then
   # Priority scan plan is built from facts (SSOT): entry_ok slugs come from auto_trade_ssot.
   export PM_SCAN_PRIORITY_ENABLED=1
   export PM_SCAN_PRIORITY_INCLUDE_ENTRY_OK=1
+  export PM_SCAN_PRIORITY_INCLUDE_Q_MISSING=1
   export PM_SCAN_PRIORITY_CANDIDATES_PER_RUN="${PM_SCAN_PRIORITY_CANDIDATES_PER_RUN:-2}"
+  export PM_SCAN_PRIORITY_Q_MISSING_TOPN="${PM_SCAN_PRIORITY_Q_MISSING_TOPN:-12}"
+  export PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOT="${PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOT:-1}"
+  export PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOTS="${PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOTS:-1}"
   : "${PM_MODEL_SCAN_AUTO_TRADE_OTHERS_PER_RUN:=0}"
   export PM_SCAN_PRIORITY_OTHERS_PER_RUN="${PM_MODEL_SCAN_AUTO_TRADE_OTHERS_PER_RUN}"
   export PM_SCAN_PRIORITY_INCLUDE_FACT_TAIL="${PM_SCAN_PRIORITY_INCLUDE_FACT_TAIL:-1}"
@@ -721,8 +794,15 @@ done
 : "${PM_FACTS_MATERIALIZE_AFTER_SCAN:=1}"
 if [ "${PM_FACTS_MATERIALIZE_AFTER_SCAN}" = "1" ]; then
   RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
-  echo "---- $(date '+%Y-%m-%d %H:%M:%S') facts_materialize start (run_date=${RUN_DATE}) ----" >> "$LOG"
-  "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$RUN_DATE" >> "$LOG" 2>&1 || true
+  facts_window="$(_facts_materialize_window_from_scan "$RUN_DATE" "${DAYS_ARG:-}" "${PM_SCAN_INCLUDE_YESTERDAY:-0}")"
+  FACTS_END_DATE="$(printf '%s\n' "$facts_window" | sed -n '1p')"
+  FACTS_DAYS="$(printf '%s\n' "$facts_window" | sed -n '2p')"
+  if [ -z "${FACTS_END_DATE:-}" ] || ! [[ "${FACTS_DAYS:-}" =~ ^[0-9]+$ ]]; then
+    FACTS_END_DATE="$RUN_DATE"
+    FACTS_DAYS=1
+  fi
+  echo "---- $(date '+%Y-%m-%d %H:%M:%S') facts_materialize start (run_date=${RUN_DATE} end=${FACTS_END_DATE} days=${FACTS_DAYS}) ----" >> "$LOG"
+  "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$FACTS_END_DATE" --facts-days "$FACTS_DAYS" >> "$LOG" 2>&1 || true
 fi
 
 : "${PM_TRADE_SYNC_AFTER_SCAN:=1}"

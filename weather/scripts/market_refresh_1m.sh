@@ -23,6 +23,75 @@ if [ ! -x "$PY" ]; then
   exit 1
 fi
 
+_facts_materialize_window_from_scan() {
+  local run_date="${1:-}"
+  local days_arg="${2:-}"
+  local include_yesterday="${3:-0}"
+  "$PY" - "$ROOT/data/archive.db" "$run_date" "$days_arg" "$include_yesterday" <<'PY'
+import sqlite3
+import sys
+from datetime import date, timedelta
+
+db_path, run_date_raw, days_arg_raw, include_yesterday_raw = sys.argv[1:5]
+run_date_text = str(run_date_raw or "").strip().split("T", 1)[0]
+try:
+    run_day = date.fromisoformat(run_date_text)
+except Exception:
+    print("")
+    print("1")
+    raise SystemExit(0)
+
+include_yesterday = str(include_yesterday_raw or "").strip().lower() in {"1", "true", "yes", "on"}
+days_ahead = 0
+parts = str(days_arg_raw or "").strip().split()
+if len(parts) >= 2:
+    try:
+        days_ahead = int(parts[1])
+    except Exception:
+        days_ahead = 0
+
+end_day = run_day + timedelta(days=max(0, days_ahead))
+if days_ahead < 0:
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=1.0)
+        cur = conn.cursor()
+        row = cur.execute(
+            """
+            SELECT MAX(event_date)
+            FROM (
+              SELECT event_date FROM model_snapshots WHERE run_date = ?
+              UNION ALL
+              SELECT event_date FROM market_snapshots WHERE run_date = ?
+              UNION ALL
+              SELECT event_date FROM event_runs WHERE run_date = ?
+            )
+            """,
+            (run_date_text, run_date_text, run_date_text),
+        ).fetchone()
+        candidate_text = str((row[0] if row else "") or "").strip().split("T", 1)[0]
+        if candidate_text:
+            candidate_day = date.fromisoformat(candidate_text)
+            if candidate_day > end_day:
+                end_day = candidate_day
+    except Exception:
+        pass
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+
+start_day = run_day - timedelta(days=1) if include_yesterday else run_day
+if end_day < start_day:
+    end_day = start_day
+days = max(1, (end_day - start_day).days + 1)
+print(end_day.isoformat())
+print(days)
+PY
+}
+
 # Auto-trade running: do NOT stop market refresh. Instead, focus refresh on Top OK candidates
 # (priority-only mode) to keep quotes fresh for execution with minimal fan-out.
 AUTO_LOCK_DIR="$ROOT/data/auto_trade_runtime.lock"
@@ -199,8 +268,12 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 echo "$$" > "$LOCK_PID_FILE"
 DB_LOCK_HELD=0
+LOCK_RELEASED=0
 cleanup_locks() {
-  rm -rf "$LOCK_DIR" 2>/dev/null || true
+  if [ "$LOCK_RELEASED" != "1" ]; then
+    rm -rf "$LOCK_DIR" 2>/dev/null || true
+    LOCK_RELEASED=1
+  fi
   if [ "$DB_LOCK_HELD" = "1" ]; then
     cur_pid=""
     if [ -f "$DB_LOCK_PID_FILE" ]; then
@@ -288,8 +361,10 @@ export PM_SCAN_FETCH_EVENT_DETAIL=0
 export PM_MARKET_REFRESH_COMPOSE_SCORE=0
 export PM_FACTS_MATERIALIZE_AFTER_SCAN=0
 export PM_SCAN_GAMMA_MAX_PAGES
-export PM_DB_CONNECT_TIMEOUT_SEC="${PM_DB_CONNECT_TIMEOUT_SEC:-5}"
-export PM_DB_BUSY_TIMEOUT_MS="${PM_DB_BUSY_TIMEOUT_MS:-30000}"
+# Market refresh is latency-sensitive; fail fast on DB contention instead of
+# waiting behind longer-running writers and letting ticks go stale.
+export PM_DB_CONNECT_TIMEOUT_SEC="${PM_DB_CONNECT_TIMEOUT_SEC:-1}"
+export PM_DB_BUSY_TIMEOUT_MS="${PM_DB_BUSY_TIMEOUT_MS:-500}"
 
 # Temperature markets have many outcomes; keep defaults conservative but allow short burst mode for stale ticks.
 : "${PM_MARKET_REFRESH_MAX_EVENTS_PER_RUN:=4}"
@@ -327,6 +402,7 @@ export PM_SCAN_INCLUDE_YESTERDAY
 
 # Priority scan plan (SSOT) for market refresh: fixed (positions/open orders/entry_ok) + a small candidate set.
 # Note: scan_weather_market.py applies priority selection before any rotation limiter, so keep these small.
+: "${PM_MARKET_REFRESH_PRIORITY_ENABLED:=1}"
 : "${PM_MARKET_REFRESH_PRIORITY_CANDIDATES_PER_RUN:=2}"
 : "${PM_MARKET_REFRESH_PRIORITY_OTHERS_PER_RUN:=0}"
 : "${PM_MARKET_REFRESH_PRIORITY_POSITION_TOPN:=16}"
@@ -335,11 +411,16 @@ export PM_SCAN_INCLUDE_YESTERDAY
 if ! [[ "${PM_MARKET_REFRESH_PRIORITY_POSITION_LOOKBACK_DAYS}" =~ ^-?[0-9]+$ ]] || [ "${PM_MARKET_REFRESH_PRIORITY_POSITION_LOOKBACK_DAYS}" -lt 0 ]; then
   PM_MARKET_REFRESH_PRIORITY_POSITION_LOOKBACK_DAYS="${PM_SCAN_FAST_DAYS_AHEAD}"
 fi
+export PM_SCAN_PRIORITY_ENABLED="${PM_MARKET_REFRESH_PRIORITY_ENABLED}"
+export PM_SCAN_PRIORITY_INCLUDE_Q_MISSING="${PM_SCAN_PRIORITY_INCLUDE_Q_MISSING:-1}"
 export PM_SCAN_PRIORITY_CANDIDATES_PER_RUN="${PM_MARKET_REFRESH_PRIORITY_CANDIDATES_PER_RUN}"
 export PM_SCAN_PRIORITY_OTHERS_PER_RUN="${PM_MARKET_REFRESH_PRIORITY_OTHERS_PER_RUN}"
 export PM_SCAN_PRIORITY_POSITION_TOPN="${PM_MARKET_REFRESH_PRIORITY_POSITION_TOPN}"
 export PM_SCAN_PRIORITY_OPEN_ORDER_TOPN="${PM_MARKET_REFRESH_PRIORITY_OPEN_ORDER_TOPN}"
 export PM_SCAN_PRIORITY_POSITION_LOOKBACK_DAYS="${PM_MARKET_REFRESH_PRIORITY_POSITION_LOOKBACK_DAYS}"
+export PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOT="${PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOT:-1}"
+export PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOTS="${PM_SCAN_PRIORITY_RESERVE_NONFIXED_SLOTS:-1}"
+export PM_SCAN_PRIORITY_ROTATE_FIXED_WHEN_CAPPED="${PM_SCAN_PRIORITY_ROTATE_FIXED_WHEN_CAPPED:-0}"
 # Tail refresh: when the oldest market tick becomes too stale, include it in the fixed set to keep
 # the UI freshness SSOT from accumulating a long tail.
 : "${PM_MARKET_REFRESH_TAIL_TOPN:=1}"
@@ -450,32 +531,54 @@ fi
 # Keep market refresh fail-fast under jitter; next minute run will retry.
 : "${PM_SCAN_MARKET_REFRESH_CLOB_BOOK_TIMEOUT_SEC:=2}"
 : "${PM_SCAN_MARKET_REFRESH_CLOB_BOOK_RETRIES:=1}"
+: "${PM_SCAN_MARKET_REFRESH_TOTAL_TIME_BUDGET_SEC:=${PM_SCAN_MARKET_REFRESH_TIME_BUDGET_SEC}}"
+export PM_SCAN_MARKET_REFRESH_FAST_MODE="${PM_SCAN_MARKET_REFRESH_FAST_MODE:-1}"
+export PM_SCAN_MARKET_REFRESH_PRICE_AUGMENT_ENABLED="${PM_SCAN_MARKET_REFRESH_PRICE_AUGMENT_ENABLED:-0}"
+export PM_SCAN_MARKET_REFRESH_ALLOW_TOKEN_REMAP="${PM_SCAN_MARKET_REFRESH_ALLOW_TOKEN_REMAP:-0}"
+export PM_SCAN_MARKET_REFRESH_ALLOW_GAMMA_PRICE_FALLBACK="${PM_SCAN_MARKET_REFRESH_ALLOW_GAMMA_PRICE_FALLBACK:-0}"
+export PM_SCAN_MARKET_REFRESH_ALLOW_LAST_TICK_FALLBACK="${PM_SCAN_MARKET_REFRESH_ALLOW_LAST_TICK_FALLBACK:-0}"
+export PM_SCAN_MARKET_REFRESH_GLOBAL_RATE_LIMIT="${PM_SCAN_MARKET_REFRESH_GLOBAL_RATE_LIMIT:-0}"
+export PM_SCAN_MARKET_REFRESH_QUOTE_PREFETCH_WORKERS="${PM_SCAN_MARKET_REFRESH_QUOTE_PREFETCH_WORKERS:-4}"
+export PM_MARKET_REFRESH_COMPOSE_SCORE="${PM_MARKET_REFRESH_COMPOSE_SCORE:-0}"
 export PM_SCAN_MARKET_REFRESH_MAX_OUTCOMES PM_SCAN_MARKET_REFRESH_TIME_BUDGET_SEC
 export PM_SCAN_MARKET_REFRESH_ALL_OUTCOMES_MAX
+export PM_SCAN_MARKET_REFRESH_TOTAL_TIME_BUDGET_SEC
 export PM_SCAN_MARKET_REFRESH_CLOB_BOOK_TIMEOUT_SEC PM_SCAN_MARKET_REFRESH_CLOB_BOOK_RETRIES
+export PM_SCAN_MARKET_REFRESH_QUOTE_PREFETCH_WORKERS
 export PM_MARKET_REFRESH_CACHE_ONLY="${PM_MARKET_REFRESH_CACHE_ONLY:-1}"
 
 : "${PM_SCAN_MARKET_REFRESH_TIMEOUT_SEC:=240}"
+cmd=(
+  env
+  PM_SCAN_MAX_EVENTS_PER_RUN="${PM_MARKET_REFRESH_MAX_EVENTS_PER_RUN}"
+  PM_SCAN_MAX_MATCHED_PER_RUN="${PM_MARKET_REFRESH_MAX_MATCHED_PER_RUN}"
+  PYTHONUNBUFFERED=1
+  "$PY" "$ROOT/scan_weather_market.py"
+  --scan-weather-today
+  --tz "America/New_York"
+)
+if [ -n "${DAYS_ARG:-}" ]; then
+  # Intentionally split DAYS_ARG into words such as: --days-ahead 2
+  # shellcheck disable=SC2206
+  days_parts=( ${DAYS_ARG} )
+  cmd+=("${days_parts[@]}")
+fi
+cmd+=(
+  --market-refresh-only
+  --no-auto-trade
+  --no-update-models
+  --ensemble-models "${PM_SCAN_ENSEMBLE_MODELS:-gfs_seamless,icon_seamless,ecmwf_ifs025,nws_forecast}"
+  --depth-levels "${PM_SCAN_DEPTH_LEVELS:-5}"
+  --market-refresh-max-outcomes "${PM_SCAN_MARKET_REFRESH_MAX_OUTCOMES}"
+  --market-refresh-time-budget-sec "${PM_SCAN_MARKET_REFRESH_TIME_BUDGET_SEC}"
+  --market-refresh-clob-timeout-sec "${PM_SCAN_MARKET_REFRESH_CLOB_BOOK_TIMEOUT_SEC}"
+  --market-refresh-clob-retries "${PM_SCAN_MARKET_REFRESH_CLOB_BOOK_RETRIES}"
+)
+if [ -n "${INSECURE_ARG:-}" ]; then
+  cmd+=("${INSECURE_ARG}")
+fi
 set +e
-run_with_timeout "${PM_SCAN_MARKET_REFRESH_TIMEOUT_SEC}" "$LOG" \
-  env \
-    PM_SCAN_MAX_EVENTS_PER_RUN="${PM_MARKET_REFRESH_MAX_EVENTS_PER_RUN}" \
-    PM_SCAN_MAX_MATCHED_PER_RUN="${PM_MARKET_REFRESH_MAX_MATCHED_PER_RUN}" \
-    PYTHONUNBUFFERED=1 \
-    "$PY" "$ROOT/scan_weather_market.py" \
-    --scan-weather-today \
-    --tz "America/New_York" \
-    $DAYS_ARG \
-    --market-refresh-only \
-    --no-auto-trade \
-    --no-update-models \
-    --ensemble-models "${PM_SCAN_ENSEMBLE_MODELS:-gfs_seamless,icon_seamless,ecmwf_ifs025,nws_forecast}" \
-    --depth-levels "${PM_SCAN_DEPTH_LEVELS:-5}" \
-    --market-refresh-max-outcomes "${PM_SCAN_MARKET_REFRESH_MAX_OUTCOMES}" \
-    --market-refresh-time-budget-sec "${PM_SCAN_MARKET_REFRESH_TIME_BUDGET_SEC}" \
-    --market-refresh-clob-timeout-sec "${PM_SCAN_MARKET_REFRESH_CLOB_BOOK_TIMEOUT_SEC}" \
-    --market-refresh-clob-retries "${PM_SCAN_MARKET_REFRESH_CLOB_BOOK_RETRIES}" \
-    $INSECURE_ARG
+run_with_timeout "${PM_SCAN_MARKET_REFRESH_TIMEOUT_SEC}" "$LOG" "${cmd[@]}"
 scan_rc="$?"
 set -e
 
@@ -484,10 +587,20 @@ if [ "${scan_rc}" -ne 0 ]; then
 fi
 
 : "${PM_FACTS_MATERIALIZE_AFTER_SCAN:=1}"
+# Release the minute-refresh lock as soon as the quote scan is done. Downstream
+# facts materialization can run in parallel with the next minute tick refresh.
+cleanup_locks
 if [ "${PM_FACTS_MATERIALIZE_AFTER_SCAN}" = "1" ]; then
   RUN_DATE="$(TZ=America/New_York date '+%Y-%m-%d')"
-  echo "---- $(date '+%Y-%m-%d %H:%M:%S') facts_materialize start (run_date=${RUN_DATE}) ----" >> "$LOG"
-  "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$RUN_DATE" >> "$LOG" 2>&1 || true
+  facts_window="$(_facts_materialize_window_from_scan "$RUN_DATE" "${DAYS_ARG:-}" "${PM_SCAN_INCLUDE_YESTERDAY:-0}")"
+  FACTS_END_DATE="$(printf '%s\n' "$facts_window" | sed -n '1p')"
+  FACTS_DAYS="$(printf '%s\n' "$facts_window" | sed -n '2p')"
+  if [ -z "${FACTS_END_DATE:-}" ] || ! [[ "${FACTS_DAYS:-}" =~ ^[0-9]+$ ]]; then
+    FACTS_END_DATE="$RUN_DATE"
+    FACTS_DAYS=1
+  fi
+  echo "---- $(date '+%Y-%m-%d %H:%M:%S') facts_materialize start (run_date=${RUN_DATE} end=${FACTS_END_DATE} days=${FACTS_DAYS}) ----" >> "$LOG"
+  "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$FACTS_END_DATE" --facts-days "$FACTS_DAYS" >> "$LOG" 2>&1 || true
 fi
 
 : "${PM_MARKET_REFRESH_STRICT_EXIT:=0}"

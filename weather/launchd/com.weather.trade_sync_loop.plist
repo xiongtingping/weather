@@ -8,7 +8,7 @@
     <array>
       <string>/bin/zsh</string>
       <string>-lc</string>
-      <string>/Users/xiong/weather/scripts/trade_sync_loop.sh</string>
+      <string>/Users/xiong/weather/weather/scripts/trade_sync_loop.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -25,10 +25,10 @@
       <integer>8192</integer>
     </dict>
     <key>WorkingDirectory</key>
-    <string>/Users/xiong/weather</string>
+    <string>/Users/xiong/weather/weather</string>
     <key>StandardOutPath</key>
-    <string>/Users/xiong/weather/data/logs/trade_sync_loop.out.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/trade_sync_loop.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/xiong/weather/data/logs/trade_sync_loop.err.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/trade_sync_loop.err.log</string>
   </dict>
 </plist>

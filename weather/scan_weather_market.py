@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 from contextlib import contextmanager
 import json
 import math
@@ -2484,8 +2485,6 @@ def _candidate_is_plain_lcb_pinned_tail_no(
     ):
         return False
     ask_val = to_float(ask if ask is not None else candidate_ref.get("ask"))
-    if ask_val is None or not math.isfinite(ask_val):
-        return False
     order_price_val = to_float(
         order_price
         if order_price is not None
@@ -2496,14 +2495,57 @@ def _candidate_is_plain_lcb_pinned_tail_no(
     q_round_val = to_float(candidate_ref.get("q_round"))
     if q_round_val is None or not math.isfinite(q_round_val):
         q_round_val = to_float(candidate_ref.get("q_raw"))
+    q_entry_val = to_float(candidate_ref.get("q_entry"))
+    q_high_val = q_round_val
+    if q_high_val is None or not math.isfinite(q_high_val):
+        q_high_val = q_entry_val
     return bool(
         (order_price_val is not None and order_price_val >= 0.99 - TIME_EDGE_Q_EPS)
         or (
-            ask_val >= 0.993 - TIME_EDGE_Q_EPS
+            ask_val is not None
+            and math.isfinite(ask_val)
+            and ask_val >= 0.993 - TIME_EDGE_Q_EPS
             and q_round_val is not None
             and math.isfinite(q_round_val)
             and q_round_val >= 0.98 - TIME_EDGE_Q_EPS
         )
+        or (
+            (ask_val is None or not math.isfinite(ask_val))
+            and q_high_val is not None
+            and math.isfinite(q_high_val)
+            and q_high_val >= 0.995 - TIME_EDGE_Q_EPS
+            and q_entry_val is not None
+            and math.isfinite(q_entry_val)
+            and q_entry_val >= 0.995 - TIME_EDGE_Q_EPS
+        )
+    )
+
+
+def _candidate_is_plain_lcb_zero_prob_yes(
+    candidate_ref: Optional[Mapping[str, Any]],
+    *,
+    combo_enabled: Optional[bool] = None,
+) -> bool:
+    if not isinstance(candidate_ref, Mapping):
+        return False
+    if str(candidate_ref.get("side") or "").strip().upper() != "YES":
+        return False
+    if not _candidate_requires_plain_lcb_path_gate(
+        candidate_ref,
+        combo_enabled=combo_enabled,
+    ):
+        return False
+    q_entry_val = to_float(candidate_ref.get("q_entry"))
+    q_round_val = to_float(candidate_ref.get("q_round"))
+    if q_round_val is None or not math.isfinite(q_round_val):
+        q_round_val = to_float(candidate_ref.get("q_raw"))
+    return bool(
+        q_entry_val is not None
+        and math.isfinite(q_entry_val)
+        and q_entry_val <= 0.001 + TIME_EDGE_Q_EPS
+        and q_round_val is not None
+        and math.isfinite(q_round_val)
+        and q_round_val <= 0.001 + TIME_EDGE_Q_EPS
     )
 
 
@@ -3309,6 +3351,22 @@ TRADE_SYNC_FAST_WINDOW_BEFORE_SEC = int(
 TRADE_SYNC_FAST_MAX_PAGES = int(os.environ.get("PM_TRADE_SYNC_FAST_MAX_PAGES", "2") or 2)
 TRADE_SYNC_FAST_BUDGET_MS = int(os.environ.get("PM_TRADE_SYNC_FAST_BUDGET_MS", "15000") or 15000)
 TRADE_SYNC_FAST_TIMEOUT_SEC = float(os.environ.get("PM_TRADE_SYNC_FAST_TIMEOUT_SEC", "30") or 30)
+TRADE_SYNC_DATA_API_ENABLED = os.environ.get("PM_TRADE_SYNC_DATA_API_ENABLED", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+TRADE_SYNC_DATA_API_MAX_PAGES = int(os.environ.get("PM_TRADE_SYNC_DATA_API_MAX_PAGES", "8") or 8)
+TRADE_SYNC_DATA_API_LIMIT = int(os.environ.get("PM_TRADE_SYNC_DATA_API_LIMIT", "500") or 500)
+TRADE_SYNC_DATA_API_TIMEOUT_SEC = float(os.environ.get("PM_TRADE_SYNC_DATA_API_TIMEOUT_SEC", "8") or 8)
+TRADE_SYNC_DATA_API_RETRIES = int(os.environ.get("PM_TRADE_SYNC_DATA_API_RETRIES", "2") or 2)
+TRADE_SYNC_DATA_API_BACKOFF_SEC = float(os.environ.get("PM_TRADE_SYNC_DATA_API_BACKOFF_SEC", "0.5") or 0.5)
+TRADE_SYNC_DATA_API_BOOTSTRAP_LOOKBACK_HOURS = float(
+    os.environ.get("PM_TRADE_SYNC_DATA_API_BOOTSTRAP_LOOKBACK_HOURS", "168") or 168
+)
+TRADE_SYNC_DATA_API_LIGHTWEIGHT_MAX_PAGES = int(
+    os.environ.get("PM_TRADE_SYNC_DATA_API_LIGHTWEIGHT_MAX_PAGES", "2") or 2
+)
 if TRADE_SYNC_FAST_ORDER_PROBE_MAX_ROWS < 1:
     TRADE_SYNC_FAST_ORDER_PROBE_MAX_ROWS = 1
 if TRADE_SYNC_FAST_ORDER_PROBE_LOOKBACK_SEC < 300:
@@ -3323,6 +3381,25 @@ if TRADE_SYNC_FAST_BUDGET_MS < 5000:
     TRADE_SYNC_FAST_BUDGET_MS = 5000
 if not math.isfinite(TRADE_SYNC_FAST_TIMEOUT_SEC) or TRADE_SYNC_FAST_TIMEOUT_SEC < 10:
     TRADE_SYNC_FAST_TIMEOUT_SEC = 10.0
+if TRADE_SYNC_DATA_API_MAX_PAGES < 1:
+    TRADE_SYNC_DATA_API_MAX_PAGES = 1
+if TRADE_SYNC_DATA_API_LIMIT < 1:
+    TRADE_SYNC_DATA_API_LIMIT = 1
+if TRADE_SYNC_DATA_API_LIMIT > 500:
+    TRADE_SYNC_DATA_API_LIMIT = 500
+if not math.isfinite(TRADE_SYNC_DATA_API_TIMEOUT_SEC) or TRADE_SYNC_DATA_API_TIMEOUT_SEC <= 0:
+    TRADE_SYNC_DATA_API_TIMEOUT_SEC = 8.0
+if TRADE_SYNC_DATA_API_RETRIES < 1:
+    TRADE_SYNC_DATA_API_RETRIES = 1
+if not math.isfinite(TRADE_SYNC_DATA_API_BACKOFF_SEC) or TRADE_SYNC_DATA_API_BACKOFF_SEC < 0:
+    TRADE_SYNC_DATA_API_BACKOFF_SEC = 0.5
+if (
+    not math.isfinite(TRADE_SYNC_DATA_API_BOOTSTRAP_LOOKBACK_HOURS)
+    or TRADE_SYNC_DATA_API_BOOTSTRAP_LOOKBACK_HOURS <= 0
+):
+    TRADE_SYNC_DATA_API_BOOTSTRAP_LOOKBACK_HOURS = 168.0
+if TRADE_SYNC_DATA_API_LIGHTWEIGHT_MAX_PAGES < 1:
+    TRADE_SYNC_DATA_API_LIGHTWEIGHT_MAX_PAGES = 1
 MIRROR_TRADING_ENABLED = os.environ.get("PM_MIRROR_TRADING_ENABLED", "0").strip().lower() in {
     "1",
     "true",
@@ -5418,6 +5495,12 @@ def _resolve_order_size(
         notional = notional_override
     else:
         notional = _env_float("PM_ORDER_USDC")
+        if notional is None or not math.isfinite(notional) or notional <= 0:
+            configured_size = _env_float("PM_ORDER_SIZE")
+            if configured_size is None or not math.isfinite(configured_size) or configured_size <= 0:
+                # Keep live entry sizing deterministic even when LaunchAgent env
+                # lacks PM_ORDER_USDC. The configured min notional defaults to 1u.
+                notional = _entry_budget_min_notional_usdc()
     if notional is not None:
         notional = _apply_entry_budget_notional(notional, floor_to_min=True)
         size = notional / float(price)
@@ -5984,7 +6067,8 @@ def _open_meteo_wait_global_slot(scope: str = "open_meteo") -> float:
     wait_sec = 0.0
     conn = None
     try:
-        conn = open_db()
+        conn_ctx = open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200)
+        conn = conn_ctx.__enter__()
         cur = conn.cursor()
         cur.execute(
             """
@@ -6062,8 +6146,10 @@ def _clob_book_wait_global_slot(scope: str = "clob_book") -> float:
     key = f"net_rate:{scope}"
     wait_sec = 0.0
     conn = None
+    conn_ctx = None
     try:
-        conn = open_db()
+        conn_ctx = open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200)
+        conn = conn_ctx.__enter__()
         cur = conn.cursor()
         cur.execute(
             """
@@ -6115,7 +6201,9 @@ def _clob_book_wait_global_slot(scope: str = "clob_book") -> float:
                 continue
     finally:
         try:
-            if conn is not None:
+            if conn_ctx is not None:
+                conn_ctx.__exit__(None, None, None)
+            elif conn is not None:
                 conn.close()
         except Exception:
             pass
@@ -8862,6 +8950,27 @@ def execute_auto_trades(
         except Exception:
             has_open_position = False
         if not has_open_position:
+            try:
+                targets, targets_source = _resolve_fallback_diag_targets(result, slug, event_date_key)
+                if targets:
+                    _record_auto_trade_fallback_decisions(
+                        run_id=run_id,
+                        run_date=run_date,
+                        slug=slug,
+                        event_date=event_date_key,
+                        title=title,
+                        targets=targets,
+                        reason_code="market_closed",
+                        reason_text="市场已关闭且无持仓，跳过入场",
+                        details={
+                            "source": "execute_auto_trades_preflight",
+                            "targets_source": targets_source,
+                            "market_closed": True,
+                        },
+                        decided_state="blocked",
+                    )
+            except Exception:
+                pass
             return
         exit_only = True
     run_dt = _parse_date(run_date) or datetime.now(timezone.utc).date()
@@ -9684,14 +9793,14 @@ def execute_auto_trades(
                 decision_ts=payload.get("created_at"),
             )
             segment_key = seg_key
-        _sqlite_execute_with_retry(
+        _sqlite_execute_with_retry_compat(
             cur,
             "DELETE FROM calibration_samples WHERE decision_id = ?",
             (did,),
             attempts=max(1, int(attempts)),
             sleep_base_sec=float(sleep_base_sec),
         )
-        _sqlite_execute_with_retry(
+        _sqlite_execute_with_retry_compat(
             cur,
             """
             INSERT INTO calibration_samples(
@@ -9762,7 +9871,7 @@ def execute_auto_trades(
                 elif realized_pnl < -TIME_EDGE_Q_EPS:
                     label_val = 0
                     label_source = "realized_pnl_negative"
-            _sqlite_execute_with_retry(
+            _sqlite_execute_with_retry_compat(
                 cur,
                 "DELETE FROM calibration_labels WHERE decision_id = ?",
                 (did,),
@@ -9770,7 +9879,7 @@ def execute_auto_trades(
                 sleep_base_sec=float(sleep_base_sec),
             )
             if label_val in {0, 1}:
-                _sqlite_execute_with_retry(
+                _sqlite_execute_with_retry_compat(
                     cur,
                     """
                     INSERT INTO calibration_labels(
@@ -9825,7 +9934,7 @@ def execute_auto_trades(
         """
         for payload in decision_buffer.values():
             try:
-                _sqlite_execute_with_retry(
+                _sqlite_execute_with_retry_compat(
                     cur,
                     sql,
                     (
@@ -9861,13 +9970,20 @@ def execute_auto_trades(
                 print(f"[auto-trade] decision insert failed {slug} {event_date_key}: {exc}")
 
     def _ensure_expected_entry_decisions() -> None:
-        if exit_only or not expected_entry_targets:
+        if exit_only:
+            return
+        targets_to_check = expected_entry_targets
+        targets_source = "entry_expected_targets"
+        if not targets_to_check:
+            targets_to_check = _build_fallback_diag_targets_from_payload(result)
+            targets_source = "payload_silent_event_diag"
+        if not targets_to_check:
             return
         yes_top_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_YES_TOP_ENABLED", False)
         hard_bound_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_HARD_BOUND_NO_ENABLED", False)
         adj_pair_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_ADJ_PAIR_ENABLED", False)
         follow_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_FOLLOW_ENABLED", False)
-        for item in expected_entry_targets:
+        for item in targets_to_check:
             outcome = str(item.get("outcome") or "").strip()
             side = str(item.get("side") or "").strip().upper()
             strategy = str(item.get("strategy") or "").strip().lower()
@@ -9913,7 +10029,7 @@ def execute_auto_trades(
                 continue
             details_payload: Dict[str, Any] = {
                 "strategy": strategy,
-                "source": "entry_expected_targets",
+                "source": str(targets_source or "entry_expected_targets"),
                 "entry_blocked_by_temp_edge_score": bool(entry_blocked_by_temp_edge_score),
             }
             if isinstance(diag, dict):
@@ -9923,7 +10039,19 @@ def execute_auto_trades(
             entry_reasons = item.get("entry_reasons") if isinstance(item.get("entry_reasons"), list) else []
             if entry_reasons:
                 details_payload["ssot_entry_reasons"] = [str(x) for x in entry_reasons if str(x).strip()]
-            for field in ("edge_score", "edge_min", "ask", "q_min_bound", "spread", "lag", "token_id"):
+            for field in (
+                "edge_score",
+                "edge_min",
+                "exec_edge_score",
+                "exec_edge_entry",
+                "exec_edge_exit",
+                "ask",
+                "q_min_bound",
+                "spread",
+                "lag",
+                "token_id",
+                "fallback_best_score",
+            ):
                 if field in item and field not in details_payload:
                     details_payload[field] = item.get(field)
             details_eval = _merge_decision_details(outcome, side, "entry", details_payload)
@@ -13840,7 +13968,7 @@ def execute_auto_trades(
         follow_refresh_cooldown_sec = 0.0
     follow_refresh_timeout_sec = _env_float("PM_AUTO_TRADE_ENTRY_FOLLOW_REFRESH_TIMEOUT_SEC")
     if follow_refresh_timeout_sec is None or not math.isfinite(follow_refresh_timeout_sec):
-        follow_refresh_timeout_sec = 2.5
+        follow_refresh_timeout_sec = 1.2
     follow_refresh_timeout_sec = max(1.0, min(float(follow_refresh_timeout_sec), 10.0))
     follow_refresh_retries = _env_int("PM_AUTO_TRADE_ENTRY_FOLLOW_REFRESH_RETRIES")
     if follow_refresh_retries is None or follow_refresh_retries < 1:
@@ -13848,7 +13976,7 @@ def execute_auto_trades(
     follow_refresh_retries = max(1, min(int(follow_refresh_retries), 3))
     follow_refresh_max_per_event = _env_int("PM_AUTO_TRADE_ENTRY_FOLLOW_REFRESH_MAX_PER_EVENT")
     if follow_refresh_max_per_event is None or follow_refresh_max_per_event < 0:
-        follow_refresh_max_per_event = 6
+        follow_refresh_max_per_event = 2
     follow_refresh_max_per_event = max(0, min(int(follow_refresh_max_per_event), 20))
     follow_refresh_depth_levels = _env_int("PM_AUTO_TRADE_ENTRY_FOLLOW_REFRESH_DEPTH_LEVELS")
     if follow_refresh_depth_levels is None or follow_refresh_depth_levels < 1:
@@ -13866,15 +13994,15 @@ def execute_auto_trades(
         entry_refresh_cooldown_sec = 0.0
     entry_refresh_timeout_sec = _env_float("PM_AUTO_TRADE_ENTRY_REFRESH_TIMEOUT_SEC")
     if entry_refresh_timeout_sec is None or not math.isfinite(entry_refresh_timeout_sec):
-        entry_refresh_timeout_sec = 3.5
+        entry_refresh_timeout_sec = 1.2
     entry_refresh_timeout_sec = max(1.0, min(float(entry_refresh_timeout_sec), 10.0))
     entry_refresh_retries = _env_int("PM_AUTO_TRADE_ENTRY_REFRESH_RETRIES")
     if entry_refresh_retries is None or entry_refresh_retries < 1:
-        entry_refresh_retries = 2
+        entry_refresh_retries = 1
     entry_refresh_retries = max(1, min(int(entry_refresh_retries), 3))
     entry_refresh_max_per_event = _env_int("PM_AUTO_TRADE_ENTRY_REFRESH_MAX_PER_EVENT")
     if entry_refresh_max_per_event is None or entry_refresh_max_per_event < 0:
-        entry_refresh_max_per_event = 6
+        entry_refresh_max_per_event = 2
     entry_refresh_max_per_event = max(0, min(int(entry_refresh_max_per_event), 20))
     entry_refresh_depth_levels = _env_int("PM_AUTO_TRADE_ENTRY_REFRESH_DEPTH_LEVELS")
     if entry_refresh_depth_levels is None or entry_refresh_depth_levels < 1:
@@ -15224,50 +15352,67 @@ def execute_auto_trades(
 
     top_label_rows = entry_tradable_rows if entry_tradable_rows else rows
     top_market_label = _top_market_bucket(top_label_rows)
-    top_model_label, top_model_q, top_model_second_q = _top_model_bucket(top_label_rows)
     top_cal_label, top_cal_q, top_cal_second_q = _top_calibrated_bucket(top_label_rows)
+    top_model_label = ""
+    top_model_q = None
+    top_model_second_q = None
+    top_model_gap = None
+    top_model_spread = None
     top_lcb_peak_label = str(top_market_label or top_cal_label or "").strip()
     top_lcb_peak_source = ""
     if top_market_label:
         top_lcb_peak_source = "top_market_label"
     elif top_cal_label:
         top_lcb_peak_source = "top_cal_label"
-    top_model_gap = None
-    if top_model_q is not None and math.isfinite(top_model_q):
-        if top_model_second_q is None or not math.isfinite(top_model_second_q):
-            top_model_gap = top_model_q
-        else:
-            top_model_gap = top_model_q - top_model_second_q
-    top_model_spread = None
-    if top_model_label:
-        for row in rows:
-            if str(row.get("outcome") or "") != top_model_label:
-                continue
-            spread_val = to_float(row.get("q_round_model_spread"))
-            if spread_val is None or not math.isfinite(spread_val):
-                q_min_val = to_float(row.get("q_min"))
-                q_max_val = to_float(row.get("q_max"))
-                if q_min_val is not None and q_max_val is not None:
-                    spread_val = q_max_val - q_min_val
-            if spread_val is not None and math.isfinite(spread_val):
-                top_model_spread = max(spread_val, 0.0)
-            break
     models = result.get("models") or []
     rounding_rule = result.get("rounding_rule")
     market_unit = result.get("market_unit")
+    legacy_bucket_vote_context_needed = bool(
+        (not lcb_global_enabled)
+        or entry_yes_top_enabled
+        or lcb_global_q_combo_enabled
+    )
     bucket_labels = [row.get("outcome") for row in rows if row.get("outcome")]
-    scenario_override = (
-        scenario_weights(models, run_date, event_date, rounding_rule, market_unit, bucket_labels)
-        if models
-        else {}
-    )
-    weights_equal = resolve_weights(models, "equal", weight_date=run_date) if models else {}
-    weights_auto = resolve_weights(models, "auto", weight_date=run_date) if models else {}
-    weights_scenario = (
-        resolve_weights(models, "scenario", weights_override=scenario_override, weight_date=run_date)
-        if models
-        else {}
-    )
+    scenario_override: Dict[str, float] = {}
+    weights_equal: Dict[str, float] = {}
+    weights_auto: Dict[str, float] = {}
+    weights_scenario: Dict[str, float] = {}
+    if legacy_bucket_vote_context_needed and models:
+        top_model_label, top_model_q, top_model_second_q = _top_model_bucket(top_label_rows)
+        if top_model_q is not None and math.isfinite(top_model_q):
+            if top_model_second_q is None or not math.isfinite(top_model_second_q):
+                top_model_gap = top_model_q
+            else:
+                top_model_gap = top_model_q - top_model_second_q
+        if top_model_label:
+            for row in rows:
+                if str(row.get("outcome") or "") != top_model_label:
+                    continue
+                spread_val = to_float(row.get("q_round_model_spread"))
+                if spread_val is None or not math.isfinite(spread_val):
+                    q_min_val = to_float(row.get("q_min"))
+                    q_max_val = to_float(row.get("q_max"))
+                    if q_min_val is not None and q_max_val is not None:
+                        spread_val = q_max_val - q_min_val
+                if spread_val is not None and math.isfinite(spread_val):
+                    top_model_spread = max(spread_val, 0.0)
+                break
+        scenario_override = scenario_weights(
+            models,
+            run_date,
+            event_date,
+            rounding_rule,
+            market_unit,
+            bucket_labels,
+        )
+        weights_equal = resolve_weights(models, "equal", weight_date=run_date)
+        weights_auto = resolve_weights(models, "auto", weight_date=run_date)
+        weights_scenario = resolve_weights(
+            models,
+            "scenario",
+            weights_override=scenario_override,
+            weight_date=run_date,
+        )
     bucket_diag = result.get("bucket_diag") or {}
     corrected_top3 = bucket_diag.get("corrected_top3") if isinstance(bucket_diag, dict) else {}
     if not isinstance(corrected_top3, dict):
@@ -15279,130 +15424,153 @@ def execute_auto_trades(
             return str(entries[0].get("label") or "")
         return ""
 
-    weight_top_equal = _top_label_from_diag("equal") or _top_label_for_weights(
-        top_label_rows, models, weights_equal
-    )
-    weight_top_auto = _top_label_from_diag("auto") or _top_label_for_weights(
-        top_label_rows, models, weights_auto
-    )
-    weight_top_scenario = _top_label_from_diag("scenario") or _top_label_for_weights(
-        top_label_rows, models, weights_scenario
-    )
-    mode_top_labels: Dict[str, str] = {
-        "equal": weight_top_equal,
-        "auto": weight_top_auto,
-        "scenario": weight_top_scenario,
-    }
-    mode_vote_weights: Dict[str, float] = {
-        "equal": max(0.0, float(bucket_vote_weight_equal)),
-        "auto": max(0.0, float(bucket_vote_weight_auto)),
-        "scenario": max(0.0, float(bucket_vote_weight_scenario)),
-    }
-    mode_vote_multipliers: Dict[str, float] = {mode: 1.0 for mode in mode_vote_weights.keys()}
-    if bucket_mode_switch_enabled:
-        mode_perf = get_recent_bucket_mode_performance(
-            bucket_mode_switch_days,
-            end_date=run_date,
-        )
-        for mode in mode_vote_weights.keys():
-            perf_entry = mode_perf.get(mode) if isinstance(mode_perf, dict) else None
-            if not isinstance(perf_entry, dict):
-                continue
-            n = to_float(perf_entry.get("n")) or 0.0
-            delta = to_float(perf_entry.get("delta"))
-            if (
-                n + TIME_EDGE_Q_EPS < float(bucket_mode_switch_min_samples)
-                or delta is None
-                or not math.isfinite(delta)
-            ):
-                continue
-            if delta <= float(bucket_mode_switch_disable_delta) + TIME_EDGE_Q_EPS:
-                mode_vote_multipliers[mode] = 0.0
-            elif delta >= float(bucket_mode_switch_boost_delta) - TIME_EDGE_Q_EPS:
-                mode_vote_multipliers[mode] = float(bucket_mode_switch_boost_mult)
-    for mode in mode_vote_weights.keys():
-        mode_vote_weights[mode] = max(
-            0.0,
-            float(mode_vote_weights.get(mode, 0.0) or 0.0)
-            * max(0.0, float(mode_vote_multipliers.get(mode, 1.0) or 0.0)),
-        )
-
-    weight_label_scores: Dict[str, float] = {}
-    weight_label_modes: Dict[str, int] = {}
-    for mode, label in mode_top_labels.items():
-        vote_weight = float(mode_vote_weights.get(mode, 0.0) or 0.0)
-        if not label or vote_weight <= 0:
-            continue
-        weight_label_scores[label] = weight_label_scores.get(label, 0.0) + vote_weight
-        weight_label_modes[label] = weight_label_modes.get(label, 0) + 1
-
-    used_fallback_vote = False
-    if not weight_label_scores:
-        used_fallback_vote = True
-        for label in mode_top_labels.values():
-            if not label:
-                continue
-            weight_label_scores[label] = weight_label_scores.get(label, 0.0) + 1.0
-            weight_label_modes[label] = weight_label_modes.get(label, 0) + 1
-
+    weight_top_equal = ""
+    weight_top_auto = ""
+    weight_top_scenario = ""
+    mode_top_labels: Dict[str, str] = {}
+    mode_vote_weights: Dict[str, float] = {}
+    mode_vote_multipliers: Dict[str, float] = {}
     weight_top_label = ""
     weight_top_consistent = False
-    if weight_label_scores:
-        weight_top_label, weight_top_score = max(
-            weight_label_scores.items(),
-            key=lambda item: (item[1], item[0]),
+    weight_top_match = False
+    mean_bucket_equal = ""
+    mean_bucket_auto = ""
+    mean_bucket_scenario = ""
+    model_top_label = ""
+    model_top_ratio = 0.0
+    model_top_total = 0
+    model_top_all = False
+    model_top_count = 0
+    model_top_match = False
+    weight_top_bonus = False
+    model4_consistent = False
+    if legacy_bucket_vote_context_needed and models:
+        weight_top_equal = _top_label_from_diag("equal") or _top_label_for_weights(
+            top_label_rows, models, weights_equal
         )
-        total_score = sum(weight_label_scores.values())
-        weight_top_share = (float(weight_top_score) / total_score) if total_score > 0 else 0.0
-        if used_fallback_vote:
-            active_modes = sum(1 for label in mode_top_labels.values() if label)
-        else:
-            active_modes = sum(
-                1
-                for mode, label in mode_top_labels.items()
-                if label and float(mode_vote_weights.get(mode, 0.0) or 0.0) > 0
+        weight_top_auto = _top_label_from_diag("auto") or _top_label_for_weights(
+            top_label_rows, models, weights_auto
+        )
+        weight_top_scenario = _top_label_from_diag("scenario") or _top_label_for_weights(
+            top_label_rows, models, weights_scenario
+        )
+        mode_top_labels = {
+            "equal": weight_top_equal,
+            "auto": weight_top_auto,
+            "scenario": weight_top_scenario,
+        }
+        mode_vote_weights = {
+            "equal": max(0.0, float(bucket_vote_weight_equal)),
+            "auto": max(0.0, float(bucket_vote_weight_auto)),
+            "scenario": max(0.0, float(bucket_vote_weight_scenario)),
+        }
+        mode_vote_multipliers = {mode: 1.0 for mode in mode_vote_weights.keys()}
+        if bucket_mode_switch_enabled:
+            mode_perf = get_recent_bucket_mode_performance(
+                bucket_mode_switch_days,
+                end_date=run_date,
             )
-        mode_hits = int(weight_label_modes.get(weight_top_label) or 0)
-        if active_modes <= 1:
-            weight_top_consistent = weight_top_share + TIME_EDGE_Q_EPS >= bucket_vote_consistent_share_min
-        else:
-            weight_top_consistent = (
-                weight_top_share + TIME_EDGE_Q_EPS >= bucket_vote_consistent_share_min
-                and mode_hits >= 2
+            for mode in mode_vote_weights.keys():
+                perf_entry = mode_perf.get(mode) if isinstance(mode_perf, dict) else None
+                if not isinstance(perf_entry, dict):
+                    continue
+                n = to_float(perf_entry.get("n")) or 0.0
+                delta = to_float(perf_entry.get("delta"))
+                if (
+                    n + TIME_EDGE_Q_EPS < float(bucket_mode_switch_min_samples)
+                    or delta is None
+                    or not math.isfinite(delta)
+                ):
+                    continue
+                if delta <= float(bucket_mode_switch_disable_delta) + TIME_EDGE_Q_EPS:
+                    mode_vote_multipliers[mode] = 0.0
+                elif delta >= float(bucket_mode_switch_boost_delta) - TIME_EDGE_Q_EPS:
+                    mode_vote_multipliers[mode] = float(bucket_mode_switch_boost_mult)
+        for mode in mode_vote_weights.keys():
+            mode_vote_weights[mode] = max(
+                0.0,
+                float(mode_vote_weights.get(mode, 0.0) or 0.0)
+                * max(0.0, float(mode_vote_multipliers.get(mode, 1.0) or 0.0)),
             )
-    weight_top_match = bool(top_model_label) and bool(weight_top_label) and top_model_label == weight_top_label
-    mean_bucket_equal = _mean_bucket_label(
-        rows, models, weights_equal, rounding_rule, None, event_date
-    )
-    mean_bucket_auto = _mean_bucket_label(
-        rows, models, weights_auto, rounding_rule, None, event_date
-    )
-    mean_bucket_scenario = _mean_bucket_label(
-        rows, models, weights_scenario, rounding_rule, None, event_date
-    )
-    model_top_label, model_top_ratio, model_top_total, model_top_all = _model_top_label_consensus(
-        top_label_rows, models
-    )
-    model_top_count = int(round(model_top_ratio * model_top_total)) if model_top_total else 0
-    consensus_min_count = int(round(entry_yes_top_model_consensus_min))
-    if consensus_min_count < 2:
-        consensus_min_count = 2
-    consensus_ok = model_top_total >= consensus_min_count and model_top_count >= consensus_min_count
-    model_top_match = (
-        model_top_total >= 2
-        and bool(top_model_label)
-        and bool(model_top_label)
-        and model_top_label == top_model_label
-        and consensus_ok
-    )
-    weight_top_bonus = weight_top_consistent and weight_top_match
-    model4_consistent = (
-        model_top_all
-        and model_top_total >= 4
-        and bool(top_model_label)
-        and bool(model_top_label)
-        and model_top_label == top_model_label
-    )
+
+        weight_label_scores: Dict[str, float] = {}
+        weight_label_modes: Dict[str, int] = {}
+        for mode, label in mode_top_labels.items():
+            vote_weight = float(mode_vote_weights.get(mode, 0.0) or 0.0)
+            if not label or vote_weight <= 0:
+                continue
+            weight_label_scores[label] = weight_label_scores.get(label, 0.0) + vote_weight
+            weight_label_modes[label] = weight_label_modes.get(label, 0) + 1
+
+        used_fallback_vote = False
+        if not weight_label_scores:
+            used_fallback_vote = True
+            for label in mode_top_labels.values():
+                if not label:
+                    continue
+                weight_label_scores[label] = weight_label_scores.get(label, 0.0) + 1.0
+                weight_label_modes[label] = weight_label_modes.get(label, 0) + 1
+
+        if weight_label_scores:
+            weight_top_label, weight_top_score = max(
+                weight_label_scores.items(),
+                key=lambda item: (item[1], item[0]),
+            )
+            total_score = sum(weight_label_scores.values())
+            weight_top_share = (float(weight_top_score) / total_score) if total_score > 0 else 0.0
+            if used_fallback_vote:
+                active_modes = sum(1 for label in mode_top_labels.values() if label)
+            else:
+                active_modes = sum(
+                    1
+                    for mode, label in mode_top_labels.items()
+                    if label and float(mode_vote_weights.get(mode, 0.0) or 0.0) > 0
+                )
+            mode_hits = int(weight_label_modes.get(weight_top_label) or 0)
+            if active_modes <= 1:
+                weight_top_consistent = (
+                    weight_top_share + TIME_EDGE_Q_EPS >= bucket_vote_consistent_share_min
+                )
+            else:
+                weight_top_consistent = (
+                    weight_top_share + TIME_EDGE_Q_EPS >= bucket_vote_consistent_share_min
+                    and mode_hits >= 2
+                )
+        weight_top_match = (
+            bool(top_model_label) and bool(weight_top_label) and top_model_label == weight_top_label
+        )
+        mean_bucket_equal = _mean_bucket_label(
+            rows, models, weights_equal, rounding_rule, None, event_date
+        )
+        mean_bucket_auto = _mean_bucket_label(
+            rows, models, weights_auto, rounding_rule, None, event_date
+        )
+        mean_bucket_scenario = _mean_bucket_label(
+            rows, models, weights_scenario, rounding_rule, None, event_date
+        )
+        model_top_label, model_top_ratio, model_top_total, model_top_all = _model_top_label_consensus(
+            top_label_rows, models
+        )
+        model_top_count = int(round(model_top_ratio * model_top_total)) if model_top_total else 0
+        consensus_min_count = int(round(entry_yes_top_model_consensus_min))
+        if consensus_min_count < 2:
+            consensus_min_count = 2
+        consensus_ok = model_top_total >= consensus_min_count and model_top_count >= consensus_min_count
+        model_top_match = (
+            model_top_total >= 2
+            and bool(top_model_label)
+            and bool(model_top_label)
+            and model_top_label == top_model_label
+            and consensus_ok
+        )
+        weight_top_bonus = weight_top_consistent and weight_top_match
+        model4_consistent = (
+            model_top_all
+            and model_top_total >= 4
+            and bool(top_model_label)
+            and bool(model_top_label)
+            and model_top_label == top_model_label
+        )
 
     rows = _augment_rows_with_positions(rows, conn, slug, event_date_key)
     _fill_rows_with_latest_ticks(rows, conn, slug, event_date_key)
@@ -16938,65 +17106,38 @@ def execute_auto_trades(
     def _resolve_q_fallback_for_side(
         outcome_label: str,
         side_label: str,
-    ) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float], str]:
+    ) -> Tuple[
+        Optional[float],
+        Optional[float],
+        Optional[float],
+        Optional[float],
+        Optional[float],
+        Optional[float],
+        str,
+        str,
+    ]:
         if not q_fallback_row_by_outcome:
-            return None, None, None, None, ""
+            return None, None, None, None, None, None, "", ""
         outcome_key = str(outcome_label or "").strip()
         if not outcome_key:
-            return None, None, None, None, ""
+            return None, None, None, None, None, None, "", ""
         row_fb = (
             q_fallback_row_by_outcome.get(outcome_key)
             or q_fallback_row_by_outcome.get(_normalize_outcome_key(outcome_key))
         )
         if not isinstance(row_fb, Mapping):
-            return None, None, None, None, ""
-        side_u = str(side_label or "").strip().upper()
-        if side_u == "YES":
-            q_entry_fb = to_float(row_fb.get("q_entry"))
-            if q_entry_fb is None or not math.isfinite(q_entry_fb):
-                q_entry_fb = to_float(row_fb.get("q_calibrated"))
-            if q_entry_fb is None or not math.isfinite(q_entry_fb):
-                q_entry_fb = to_float(row_fb.get("q_raw"))
-            if q_entry_fb is None or not math.isfinite(q_entry_fb):
-                q_entry_fb = to_float(row_fb.get("q_round"))
-            q_raw_fb = to_float(row_fb.get("q_round"))
-            if q_raw_fb is None or not math.isfinite(q_raw_fb):
-                q_raw_fb = to_float(row_fb.get("q_raw"))
-            q_cal_fb = to_float(row_fb.get("q_calibrated"))
-            q_edge_fb = to_float(row_fb.get("q_edge"))
-            if q_edge_fb is None or not math.isfinite(q_edge_fb):
-                q_edge_fb = q_cal_fb if q_cal_fb is not None and math.isfinite(q_cal_fb) else q_raw_fb
-            return q_entry_fb, q_raw_fb, q_cal_fb, q_edge_fb, "event_runs_history"
-        q_entry_no_fb = to_float(row_fb.get("q_entry_no"))
-        if q_entry_no_fb is None or not math.isfinite(q_entry_no_fb):
-            q_yes_fb = to_float(row_fb.get("q_entry"))
-            if q_yes_fb is None or not math.isfinite(q_yes_fb):
-                q_yes_fb = to_float(row_fb.get("q_calibrated"))
-            if q_yes_fb is None or not math.isfinite(q_yes_fb):
-                q_yes_fb = to_float(row_fb.get("q_raw"))
-            if q_yes_fb is None or not math.isfinite(q_yes_fb):
-                q_yes_fb = to_float(row_fb.get("q_round"))
-            if q_yes_fb is not None and math.isfinite(q_yes_fb):
-                q_entry_no_fb = max(0.0, min(1.0, 1.0 - float(q_yes_fb)))
-        q_raw_no_fb = to_float(row_fb.get("q_round_no"))
-        if q_raw_no_fb is None or not math.isfinite(q_raw_no_fb):
-            q_raw_yes_fb = to_float(row_fb.get("q_round"))
-            if q_raw_yes_fb is None or not math.isfinite(q_raw_yes_fb):
-                q_raw_yes_fb = to_float(row_fb.get("q_raw"))
-            if q_raw_yes_fb is not None and math.isfinite(q_raw_yes_fb):
-                q_raw_no_fb = max(0.0, min(1.0, 1.0 - float(q_raw_yes_fb)))
-        q_cal_no_fb = to_float(row_fb.get("q_calibrated_no"))
-        if q_cal_no_fb is None or not math.isfinite(q_cal_no_fb):
-            q_cal_yes_fb = to_float(row_fb.get("q_calibrated"))
-            if q_cal_yes_fb is not None and math.isfinite(q_cal_yes_fb):
-                q_cal_no_fb = max(0.0, min(1.0, 1.0 - float(q_cal_yes_fb)))
-        q_edge_no_fb = to_float(row_fb.get("q_edge_no"))
-        if q_edge_no_fb is None or not math.isfinite(q_edge_no_fb):
-            if q_cal_no_fb is not None and math.isfinite(q_cal_no_fb):
-                q_edge_no_fb = q_cal_no_fb
-            else:
-                q_edge_no_fb = q_raw_no_fb
-        return q_entry_no_fb, q_raw_no_fb, q_cal_no_fb, q_edge_no_fb, "event_runs_history"
+            return None, None, None, None, None, None, "", ""
+        q_fb = _payload_row_q_fields_for_side(row_fb, side_label)
+        return (
+            to_float(q_fb.get("q_entry")),
+            to_float(q_fb.get("q_raw")),
+            to_float(q_fb.get("q_calibrated")),
+            to_float(q_fb.get("q_edge")),
+            to_float(q_fb.get("q_quote")),
+            to_float(q_fb.get("q_quote_blend_alpha")),
+            str(q_fb.get("q_quote_source") or ""),
+            "event_runs_history",
+        )
 
     def _resolve_q_market_proxy_for_side(
         row_ref: Mapping[str, Any],
@@ -17181,6 +17322,8 @@ def execute_auto_trades(
                 q_raw_val = to_float(row_ref.get("q_round"))
                 q_cal_val = to_float(row_ref.get("q_calibrated"))
                 q_quote_val = to_float(row_ref.get("q_quote"))
+                q_quote_blend_alpha_val = to_float(row_ref.get("q_quote_blend_alpha"))
+                q_quote_source_val = str(row_ref.get("q_quote_source") or "")
                 q_edge_val = to_float(row_ref.get("q_edge"))
                 trend_down_val = bool(row_ref.get("trend_down_yes"))
                 trend_up_val = bool(row_ref.get("trend_up_yes"))
@@ -17214,6 +17357,8 @@ def execute_auto_trades(
                 q_raw_val = to_float(row_ref.get("q_round_no"))
                 q_cal_val = to_float(row_ref.get("q_calibrated_no"))
                 q_quote_val = to_float(row_ref.get("q_quote_no"))
+                q_quote_blend_alpha_val = to_float(row_ref.get("q_quote_blend_alpha_no"))
+                q_quote_source_val = str(row_ref.get("q_quote_source_no") or "")
                 q_edge_val = to_float(row_ref.get("q_edge_no"))
                 trend_down_val = bool(row_ref.get("trend_down_no"))
                 trend_up_val = bool(row_ref.get("trend_up_no"))
@@ -17280,12 +17425,19 @@ def execute_auto_trades(
                 or q_edge_val is None
                 or not math.isfinite(q_edge_val)
             )
-            if q_needs_fallback:
+            q_quote_needs_fallback = bool(
+                q_quote_val is None
+                or not math.isfinite(q_quote_val)
+            )
+            if q_needs_fallback or q_quote_needs_fallback:
                 (
                     q_prob_fb,
                     q_raw_fb,
                     q_cal_fb,
                     q_edge_fb,
+                    q_quote_fb,
+                    q_quote_blend_alpha_fb,
+                    q_quote_source_fb,
                     q_fb_source,
                 ) = _resolve_q_fallback_for_side(outcome_label, side)
                 if q_prob_val is None or not math.isfinite(q_prob_val):
@@ -17310,6 +17462,18 @@ def execute_auto_trades(
                     elif q_raw_val is not None and math.isfinite(q_raw_val):
                         q_edge_val = float(q_raw_val)
                         q_fallback_used = True
+                if q_quote_val is None or not math.isfinite(q_quote_val):
+                    if q_quote_fb is not None and math.isfinite(q_quote_fb):
+                        q_quote_val = max(0.0, min(1.0, float(q_quote_fb)))
+                        q_fallback_used = True
+                if (
+                    (q_quote_blend_alpha_val is None or not math.isfinite(q_quote_blend_alpha_val))
+                    and q_quote_blend_alpha_fb is not None
+                    and math.isfinite(q_quote_blend_alpha_fb)
+                ):
+                    q_quote_blend_alpha_val = float(q_quote_blend_alpha_fb)
+                if not q_quote_source_val and q_quote_source_fb:
+                    q_quote_source_val = str(q_quote_source_fb)
                 if q_fallback_used:
                     q_fallback_source = str(q_fb_source or "event_runs_history")
             q_still_missing = bool(
@@ -17368,7 +17532,8 @@ def execute_auto_trades(
                 "q_round": q_raw_val,
                 "q_calibrated": q_cal_val,
                 "q_quote": q_quote_val,
-                "q_quote_blend_alpha": to_float(row_ref.get("q_quote_blend_alpha")) if side == "YES" else to_float(row_ref.get("q_quote_blend_alpha_no")),
+                "q_quote_blend_alpha": q_quote_blend_alpha_val,
+                "q_quote_source": str(q_quote_source_val or ""),
                 "q_edge": q_edge_val,
                 "q_fallback_used": bool(q_fallback_used),
                 "q_fallback_source": str(q_fallback_source or ""),
@@ -17646,6 +17811,72 @@ def execute_auto_trades(
                     reason_codes=["token_missing"],
                     reasons=["缺少token_id"],
                     details=base_detail,
+                )
+                continue
+            pinned_tail_pre_probe = {
+                "strategy": "lcb_global",
+                "side": side,
+                "lcb_combo_leg": combo_leg,
+                "lcb_q_combo_role_hint": str(combo_role_hint or ""),
+                "ask": ask_val,
+                "order_price": _resolve_mid_price(ask_val, bid_val, spread_val),
+                "q_entry": q_prob_val,
+                "q_round": q_raw_val,
+                "q_raw": q_raw_val,
+            }
+            if _candidate_is_plain_lcb_pinned_tail_no(
+                pinned_tail_pre_probe,
+                combo_enabled=lcb_global_q_combo_enabled,
+                ask=ask_val,
+                order_price=to_float(pinned_tail_pre_probe.get("order_price")),
+            ):
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["plain_lcb_pinned_tail_no_filtered"],
+                    reasons=["Plain LCB尾部NO接近1.0，源头过滤"],
+                    details={
+                        **base_detail,
+                        "plain_lcb_pinned_tail_no_filtered": True,
+                        "plain_lcb_pinned_tail_no_prefilter": True,
+                        "order_price": to_float(pinned_tail_pre_probe.get("order_price")),
+                        "q_entry": q_prob_val,
+                        "q_round": q_raw_val,
+                        "q_raw": q_raw_val,
+                    },
+                )
+                continue
+            zero_prob_yes_probe = {
+                "strategy": "lcb_global",
+                "side": side,
+                "lcb_combo_leg": combo_leg,
+                "lcb_q_combo_role_hint": str(combo_role_hint or ""),
+                "q_entry": q_prob_val,
+                "q_round": q_raw_val,
+                "q_raw": q_raw_val,
+            }
+            if _candidate_is_plain_lcb_zero_prob_yes(
+                zero_prob_yes_probe,
+                combo_enabled=lcb_global_q_combo_enabled,
+            ):
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["plain_lcb_zero_prob_yes_filtered"],
+                    reasons=["Plain LCB最高YES桶模型概率为0，源头过滤"],
+                    details={
+                        **base_detail,
+                        "plain_lcb_zero_prob_yes_filtered": True,
+                        "q_entry": q_prob_val,
+                        "q_round": q_raw_val,
+                        "q_raw": q_raw_val,
+                    },
                 )
                 continue
             if _is_orderbook_missing_recent_token(token_id):
@@ -18074,12 +18305,44 @@ def execute_auto_trades(
                 position_ratio = 0.0
             size_val = _resolve_order_size(order_price, position_ratio, None)
             if size_val is None or not math.isfinite(size_val):
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["order_size_missing"],
+                    reasons=["下单尺寸缺失(PM_ORDER_USDC/PM_ORDER_SIZE未配置)"],
+                    details={
+                        **base_detail,
+                        "order_price": float(order_price),
+                        "position_ratio": float(position_ratio),
+                        "pm_order_usdc": _env_float("PM_ORDER_USDC"),
+                        "pm_order_size": _env_float("PM_ORDER_SIZE"),
+                        "entry_budget_min_usdc": float(_entry_budget_min_notional_usdc()),
+                    },
+                )
                 continue
             if min_entry_size_val > 0 and size_val < min_entry_size_val:
                 size_val = float(min_entry_size_val)
             if tail_locked and lcb_global_tail_lock_soft:
                 size_val = max(float(size_val) * float(lcb_global_tail_lock_size_ratio), float(min_entry_size_val or 0.0))
             if size_val <= TIME_EDGE_Q_EPS:
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=["order_size_nonpositive"],
+                    reasons=["下单尺寸<=0，禁止入场"],
+                    details={
+                        **base_detail,
+                        "order_price": float(order_price),
+                        "position_ratio": float(position_ratio),
+                        "size": float(size_val),
+                    },
+                )
                 continue
             if combo_yes_top_relaxed_gates:
                 base_detail["lcb_q_combo_yes_top_relaxed_gates"] = list(combo_yes_top_relaxed_gates)
@@ -18153,6 +18416,60 @@ def execute_auto_trades(
             }
             sort_val = _candidate_realizable_sort_score(cand, row_ref)
             if sort_val is None or not math.isfinite(sort_val):
+                reason_codes = ["edge_realizable_sort_missing"]
+                reasons = ["可兑现排序分缺失，候选未进入执行层"]
+                tradeability_reasons = str(cand.get("edge_tradeability_reasons") or "").strip()
+                if bool(cand.get("edge_tradeability_blocked")):
+                    parsed_codes = [
+                        item.strip()
+                        for item in tradeability_reasons.split(",")
+                        if item and str(item).strip()
+                    ]
+                    reason_codes = ["edge_tradeability_blocked"] + parsed_codes
+                    reasons = [
+                        "LCB可兑现收益门阻断",
+                        f"tradeability={tradeability_reasons or 'blocked'}",
+                    ]
+                elif bool(cand.get("edge_realizable_exec_audit_blocked")):
+                    reason_codes = ["edge_exec_audit_blocked"]
+                    reasons = ["执行审计门阻断(exec_audit)"]
+                elif bool(cand.get("edge_realizable_report_blocked")):
+                    reason_codes = ["edge_realizable_report_blocked"]
+                    reasons = ["可兑现回放报告门阻断"]
+                _buffer_decision(
+                    outcome_label,
+                    side,
+                    "entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=reason_codes,
+                    reasons=reasons,
+                    details={
+                        **base_detail,
+                        "order_price": float(order_price),
+                        "size": float(size_val),
+                        "edge_realizable_sort": to_float(cand.get("edge_realizable_sort")),
+                        "edge_realizable_sort_score": to_float(cand.get("edge_realizable_sort_score")),
+                        "edge_realizable_sort_p_realize": to_float(
+                            cand.get("edge_realizable_sort_p_realize")
+                        ),
+                        "edge_signal_lcb": to_float(cand.get("edge_signal_lcb")),
+                        "edge_path_p_reach_lcb": to_float(cand.get("edge_path_p_reach_lcb")),
+                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(cand),
+                        "edge_tradeability_profit_min": _candidate_tradeability_profit_min(cand),
+                        "edge_tradeability_blocked": bool(cand.get("edge_tradeability_blocked")),
+                        "edge_tradeability_reasons": tradeability_reasons,
+                        "edge_tradeability_policy_enforce": bool(
+                            cand.get("edge_tradeability_policy_enforce")
+                        ),
+                        "edge_realizable_exec_audit_blocked": bool(
+                            cand.get("edge_realizable_exec_audit_blocked")
+                        ),
+                        "edge_realizable_report_blocked": bool(
+                            cand.get("edge_realizable_report_blocked")
+                        ),
+                    },
+                )
                 continue
             candidates.append(cand)
         if len(candidates) > 1:
@@ -19749,6 +20066,7 @@ def execute_auto_trades(
         "tag": "follow",
         "enabled": bool(follow_refresh_on_stale),
         "max_per_event": int(follow_refresh_max_per_event),
+        "max_total_attempts": int(follow_refresh_max_per_event),
         "cooldown_sec": float(follow_refresh_cooldown_sec),
         "timeout_sec": float(follow_refresh_timeout_sec),
         "retries": int(follow_refresh_retries),
@@ -19758,6 +20076,7 @@ def execute_auto_trades(
         "tag": "entry",
         "enabled": bool(entry_refresh_on_stale),
         "max_per_event": int(entry_refresh_max_per_event),
+        "max_total_attempts": int(entry_refresh_max_per_event),
         "cooldown_sec": float(entry_refresh_cooldown_sec),
         "timeout_sec": float(entry_refresh_timeout_sec),
         "retries": int(entry_refresh_retries),
@@ -19767,6 +20086,7 @@ def execute_auto_trades(
         "tag": "exit",
         "enabled": bool(_env_bool("PM_AUTO_TRADE_EXIT_REFRESH_ON_STALE", True)),
         "max_per_event": max(1, int(entry_refresh_max_per_event)),
+        "max_total_attempts": max(1, int(entry_refresh_max_per_event)),
         "cooldown_sec": float(entry_refresh_cooldown_sec),
         "timeout_sec": float(entry_refresh_timeout_sec),
         "retries": int(entry_refresh_retries),
@@ -19805,6 +20125,19 @@ def execute_auto_trades(
         max_per_event = int(refresh_cfg.get("max_per_event") or 0)
         if (not force_attempt) and max_per_event <= 0:
             result["note"] = f"{note_prefix}_max_zero"
+            _event_stage_end("market_tick_refresh", refresh_started)
+            return result
+        max_total_attempts = int(
+            refresh_cfg.get("max_total_attempts", max_per_event) or 0
+        )
+        attempt_count_total = int(refresh_state.get("attempt_count_total") or 0)
+        if (
+            (not force_attempt)
+            and max_total_attempts > 0
+            and attempt_count_total >= max_total_attempts
+        ):
+            result["attempted"] = True
+            result["note"] = f"{note_prefix}_event_budget_reached"
             _event_stage_end("market_tick_refresh", refresh_started)
             return result
         outcome_u = str(outcome_label or "").strip()
@@ -20009,6 +20342,175 @@ def execute_auto_trades(
         result["tick_age_sec"] = 0.0
         _event_stage_end("market_tick_refresh", refresh_started)
         return result
+
+    def _candidate_entry_tick_refresh_runtime(
+        outcome_label: str,
+        side_label: str,
+        candidate_ref: Mapping[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        side_u = str(side_label or "").strip().upper()
+        if side_u not in {"YES", "NO"}:
+            return None
+        strategy_name = str(candidate_ref.get("strategy") or "").strip().lower()
+        refresh_cfg = (
+            follow_refresh_cfg if strategy_name == "follow_copy" else entry_refresh_cfg
+        )
+        refresh_state = (
+            follow_refresh_state if strategy_name == "follow_copy" else entry_refresh_state
+        )
+        refresh_pre_ratio = (
+            follow_refresh_pre_stale_ratio
+            if strategy_name == "follow_copy"
+            else entry_refresh_pre_stale_ratio
+        )
+        tick_stale_sec_effective = (
+            follow_market_tick_stale_sec
+            if strategy_name == "follow_copy"
+            else market_tick_stale_sec
+        )
+        if (
+            strategy_name == "lcb_global"
+            and lcb_global_max_tick_age_sec is not None
+            and math.isfinite(lcb_global_max_tick_age_sec)
+            and lcb_global_max_tick_age_sec > 0
+        ):
+            tick_stale_sec_effective = float(lcb_global_max_tick_age_sec)
+        tick_age_sec = _market_tick_age_sec(outcome_label, side_u)
+        refresh_needed = bool(
+            tick_stale_sec_effective > 0
+            and refresh_cfg.get("enabled")
+            and (
+                tick_age_sec is None
+                or (
+                    tick_age_sec is not None
+                    and math.isfinite(tick_age_sec)
+                    and (
+                        tick_age_sec >= tick_stale_sec_effective
+                        or (
+                            refresh_pre_ratio > 0
+                            and tick_age_sec
+                            >= (tick_stale_sec_effective * refresh_pre_ratio)
+                        )
+                    )
+                )
+            )
+        )
+        return {
+            "strategy": strategy_name,
+            "refresh_cfg": refresh_cfg,
+            "refresh_state": refresh_state,
+            "tick_age_sec": tick_age_sec,
+            "tick_stale_sec": tick_stale_sec_effective,
+            "refresh_needed": refresh_needed,
+        }
+
+    def _prefetch_priority_entry_market_ticks() -> None:
+        prefetch_items: List[Tuple[Tuple[float, ...], str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]] = []
+        seen_keys: Set[Tuple[str, str]] = set()
+        for outcome_label, candidates in entry_candidates_by_outcome.items():
+            for candidate_ref in candidates or []:
+                if not isinstance(candidate_ref, dict):
+                    continue
+                side_u = str(candidate_ref.get("side") or "").strip().upper()
+                if side_u not in {"YES", "NO"}:
+                    continue
+                key = (str(outcome_label or "").strip(), side_u)
+                if not key[0] or key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                runtime_meta = _candidate_entry_tick_refresh_runtime(
+                    outcome_label,
+                    side_u,
+                    candidate_ref,
+                )
+                if not isinstance(runtime_meta, dict):
+                    continue
+                candidate_ref["entry_prefresh_tick_age_sec"] = runtime_meta.get("tick_age_sec")
+                candidate_ref["entry_prefresh_tick_stale_sec"] = runtime_meta.get("tick_stale_sec")
+                if not runtime_meta.get("refresh_needed"):
+                    candidate_ref["entry_prefresh_refresh_needed"] = False
+                    continue
+                candidate_ref["entry_prefresh_refresh_needed"] = True
+                strategy_name = str(runtime_meta.get("strategy") or "").strip().lower()
+                tradeability_pass = bool(candidate_ref.get("edge_tradeability_pass"))
+                tradeability_blocked = bool(candidate_ref.get("edge_tradeability_blocked"))
+                profit_val = _candidate_tradeability_profit_value(candidate_ref)
+                if profit_val is None or not math.isfinite(profit_val):
+                    profit_val = to_float(candidate_ref.get("edge_realizable_sort"))
+                if profit_val is None or not math.isfinite(profit_val):
+                    profit_val = to_float(candidate_ref.get("edge_min"))
+                if profit_val is None or not math.isfinite(profit_val):
+                    profit_val = 0.0
+                sort_val = _candidate_sort_score(candidate_ref)
+                if sort_val is None or not math.isfinite(sort_val):
+                    sort_val = 0.0
+                tick_age_val = to_float(runtime_meta.get("tick_age_sec"))
+                if tick_age_val is None or not math.isfinite(tick_age_val):
+                    tick_age_val = 1.0e9
+                if (
+                    strategy_name == "lcb_global"
+                    and (not tradeability_pass)
+                    and profit_val <= TIME_EDGE_Q_EPS
+                ):
+                    candidate_ref["entry_prefresh_skipped_reason"] = "nonpositive_tradeability"
+                    continue
+                priority_key = (
+                    1.0 if strategy_name == "lcb_global" else 0.0,
+                    1.0 if tradeability_pass else 0.0,
+                    0.0 if tradeability_blocked else 1.0,
+                    float(max(profit_val, -1.0)),
+                    float(sort_val),
+                    float(tick_age_val),
+                )
+                candidate_ref["entry_prefresh_priority_key"] = list(priority_key)
+                prefetch_items.append(
+                    (
+                        priority_key,
+                        outcome_label,
+                        side_u,
+                        candidate_ref,
+                        runtime_meta["refresh_cfg"],
+                        runtime_meta["refresh_state"],
+                    )
+                )
+        if not prefetch_items:
+            return
+        prefetch_items.sort(key=lambda item: item[0], reverse=True)
+        for rank_idx, item in enumerate(prefetch_items, start=1):
+            (
+                _priority_key,
+                outcome_label,
+                side_u,
+                candidate_ref,
+                refresh_cfg,
+                refresh_state,
+            ) = item
+            candidate_ref["entry_prefresh_rank"] = int(rank_idx)
+            max_total_attempts = int(
+                refresh_cfg.get("max_total_attempts", refresh_cfg.get("max_per_event") or 0) or 0
+            )
+            if (
+                max_total_attempts > 0
+                and int(refresh_state.get("attempt_count_total") or 0) >= max_total_attempts
+            ):
+                candidate_ref["entry_prefresh_skipped_reason"] = "event_budget_reached_preloop"
+                continue
+            refresh_meta = _try_refresh_market_tick(
+                outcome_label,
+                side_u,
+                candidate_ref,
+                refresh_cfg,
+                refresh_state,
+            )
+            candidate_ref["entry_prefresh_attempted"] = bool(refresh_meta.get("attempted"))
+            candidate_ref["entry_prefresh_ok"] = bool(refresh_meta.get("ok"))
+            candidate_ref["entry_prefresh_note"] = str(refresh_meta.get("note") or "")
+            candidate_ref["entry_prefresh_mode"] = str(refresh_meta.get("mode") or "")
+            refresh_error = str(refresh_meta.get("error_code") or "").strip()
+            if refresh_error:
+                candidate_ref["entry_prefresh_error"] = refresh_error
+
+    _prefetch_priority_entry_market_ticks()
 
     def _resolve_follow_entry_strategy(
         outcome_label: str,
@@ -31595,29 +32097,74 @@ def _trade_sync_recent_after_hint(
     event_dates = [value for value in event_dates if value]
     if not slugs or not event_dates:
         return ""
+
+    def _latest_anchor_from_row(row: Any) -> Optional[datetime]:
+        latest_text = str((row[0] if row else "") or "").strip()
+        latest_dt = _parse_iso_dt(latest_text)
+        if latest_dt is None:
+            return None
+        if latest_dt.tzinfo is None:
+            latest_dt = latest_dt.replace(tzinfo=timezone.utc)
+        return latest_dt
+
     try:
         with open_db() as conn_recent:
             cur_recent = conn_recent.cursor()
             slug_q = ",".join(["?"] * len(slugs))
             date_q = ",".join(["?"] * len(event_dates))
-            cur_recent.execute(
-                f"""
-                SELECT MAX(COALESCE(trade_time, created_at))
-                FROM edge_trade_fills
-                WHERE slug IN ({slug_q})
-                  AND event_date IN ({date_q})
-                """,
-                tuple(slugs) + tuple(event_dates),
+            params = tuple(slugs) + tuple(event_dates)
+            latest_dt: Optional[datetime] = None
+            query_specs = (
+                (
+                    f"""
+                    SELECT MAX(COALESCE(trade_time, created_at))
+                    FROM edge_trade_fills
+                    WHERE slug IN ({slug_q})
+                      AND substr(COALESCE(event_date, ''), 1, 10) IN ({date_q})
+                    """,
+                    params,
+                ),
+                (
+                    f"""
+                    SELECT MAX(COALESCE(created_at, ''))
+                    FROM auto_orders
+                    WHERE slug IN ({slug_q})
+                      AND substr(COALESCE(event_date, ''), 1, 10) IN ({date_q})
+                    """,
+                    params,
+                ),
+                (
+                    f"""
+                    SELECT MAX(COALESCE(created_at, ''))
+                    FROM auto_trade_decisions
+                    WHERE COALESCE(will_order, 0) = 1
+                      AND slug IN ({slug_q})
+                      AND substr(COALESCE(event_date, ''), 1, 10) IN ({date_q})
+                    """,
+                    params,
+                ),
+                (
+                    f"""
+                    SELECT MAX(COALESCE(last_fill_at, last_action_at, updated_at, entry_at, ''))
+                    FROM edge_trades
+                    WHERE slug IN ({slug_q})
+                      AND substr(COALESCE(event_date, ''), 1, 10) IN ({date_q})
+                    """,
+                    params,
+                ),
             )
-            row = cur_recent.fetchone()
+            for query, query_params in query_specs:
+                try:
+                    cur_recent.execute(query, query_params)
+                    latest_dt = _latest_anchor_from_row(cur_recent.fetchone())
+                except sqlite3.OperationalError:
+                    latest_dt = None
+                if latest_dt is not None:
+                    break
     except sqlite3.OperationalError:
         return ""
-    latest_text = str((row[0] if row else "") or "").strip()
-    latest_dt = _parse_iso_dt(latest_text)
     if latest_dt is None:
         return ""
-    if latest_dt.tzinfo is None:
-        latest_dt = latest_dt.replace(tzinfo=timezone.utc)
     after_dt = latest_dt - timedelta(seconds=float(lookback_sec))
     return after_dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
@@ -31663,6 +32210,260 @@ def _trade_sync_status_extra(
         extra["mode_reason"] = ""
         extra["mode_detail"] = ""
     return extra
+
+
+def _trade_sync_data_api_user() -> str:
+    for key in ("POLY_DATA_API_USER", "PM_FUNDER_ADDRESS"):
+        value = str(os.environ.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _trade_sync_is_weather_slug(value: Optional[str]) -> bool:
+    return str(value or "").strip().lower().startswith("highest-temperature-in-")
+
+
+def _parse_weather_event_date_from_event_slug(event_slug: Optional[str]) -> str:
+    slug = str(event_slug or "").strip().lower()
+    if not slug:
+        return ""
+    match = re.search(r"-on-([a-z]+)-(\d{1,2})-(\d{4})$", slug)
+    if not match:
+        return ""
+    month_text = str(match.group(1) or "").strip().title()
+    day_text = str(match.group(2) or "").strip()
+    year_text = str(match.group(3) or "").strip()
+    try:
+        return datetime.strptime(
+            f"{month_text} {int(day_text)} {int(year_text)}",
+            "%B %d %Y",
+        ).date().isoformat()
+    except Exception:
+        return ""
+
+
+def _parse_weather_bucket_outcome_from_title(title: Optional[str]) -> str:
+    text = str(title or "").strip()
+    if not text:
+        return ""
+    match = re.search(r"\bbe\s+(.+?)\s+on\s+[A-Za-z]+\s+\d{1,2}\??$", text, flags=re.I)
+    if not match:
+        return ""
+    bucket_text = str(match.group(1) or "").strip()
+    bucket_lower = bucket_text.lower()
+    if bucket_lower.startswith("between "):
+        bucket_text = bucket_text[8:].strip()
+    return bucket_text
+
+
+def _normalize_trade_sync_data_api_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(row, dict):
+        return None
+    asset = str(row.get("asset") or row.get("asset_id") or "").strip()
+    if not asset:
+        return None
+    event_slug = str(row.get("eventSlug") or row.get("event_slug") or "").strip()
+    bucket_slug = str(row.get("slug") or "").strip()
+    canonical_slug = event_slug if _trade_sync_is_weather_slug(event_slug) else bucket_slug
+    if not _trade_sync_is_weather_slug(canonical_slug):
+        return None
+    event_date = _parse_weather_event_date_from_event_slug(canonical_slug)
+    outcome_bucket = _parse_weather_bucket_outcome_from_title(row.get("title"))
+    outcome_binary = str(row.get("outcome") or "").strip().upper()
+    if outcome_binary not in {"YES", "NO"}:
+        return None
+    trade_side = str(row.get("side") or "").strip().upper()
+    if trade_side not in {"BUY", "SELL"}:
+        return None
+    price = to_float(row.get("price"))
+    size = to_float(row.get("size") or row.get("quantity"))
+    timestamp = row.get("timestamp")
+    if (
+        not event_date
+        or not outcome_bucket
+        or price is None
+        or size is None
+        or not math.isfinite(price)
+        or not math.isfinite(size)
+        or price <= 0
+        or size <= 0
+    ):
+        return None
+    tx_hash = str(row.get("transactionHash") or row.get("transaction_hash") or "").strip().lower()
+    explicit_id = f"{tx_hash}|{asset}|{trade_side}" if tx_hash else ""
+    trade_id = explicit_id or hashlib.sha1(
+        json.dumps(
+            {
+                "asset": asset,
+                "trade_side": trade_side,
+                "timestamp": timestamp,
+                "price": price,
+                "size": size,
+                "slug": canonical_slug,
+                "outcome_side": outcome_binary,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "tradeID": trade_id,
+        "asset_id": asset,
+        "side": trade_side,
+        "price": float(price),
+        "size": float(size),
+        "timestamp": timestamp,
+        "transactionHash": tx_hash,
+        "eventSlug": canonical_slug,
+        "title": str(row.get("title") or "").strip(),
+        "bucket_outcome": outcome_bucket,
+        "outcome_side": outcome_binary,
+        "_source": "data_api_trades",
+    }
+
+
+def _resolve_trade_sync_mapping(
+    trade_token_map: Dict[str, Dict[str, str]],
+    token_id: str,
+    trade: Dict[str, Any],
+) -> Optional[Dict[str, str]]:
+    token_key = str(token_id or "").strip()
+    if token_key:
+        mapping = trade_token_map.get(token_key)
+        if mapping:
+            return mapping
+    slug = str(
+        trade.get("eventSlug")
+        or trade.get("event_slug")
+        or trade.get("canonical_slug")
+        or trade.get("slug")
+        or ""
+    ).strip()
+    if not _trade_sync_is_weather_slug(slug):
+        return None
+    event_date = _normalize_date_key(str(trade.get("event_date") or "").strip())
+    if not event_date:
+        event_date = _parse_weather_event_date_from_event_slug(slug)
+    outcome = str(
+        trade.get("bucket_outcome")
+        or trade.get("outcome_bucket")
+        or trade.get("bucket")
+        or ""
+    ).strip()
+    side = str(
+        trade.get("outcome_side")
+        or trade.get("binary_outcome")
+        or ""
+    ).strip().upper()
+    if side not in {"YES", "NO"}:
+        raw_outcome = str(trade.get("outcome") or "").strip().upper()
+        if raw_outcome in {"YES", "NO"}:
+            side = raw_outcome
+    if not event_date or not outcome or side not in {"YES", "NO"}:
+        return None
+    resolved = {
+        "slug": slug,
+        "event_date": event_date,
+        "outcome": outcome,
+        "side": side,
+    }
+    if token_key and token_key not in trade_token_map:
+        trade_token_map[token_key] = dict(resolved)
+    return resolved
+
+
+def _fetch_trade_sync_data_api_trades(
+    *,
+    recent_after_iso: str = "",
+    lightweight: bool = False,
+) -> Tuple[bool, Dict[str, Any]]:
+    user = _trade_sync_data_api_user()
+    if not user:
+        return False, {"error": "missing_data_api_user"}
+    host = str(os.environ.get("POLY_DATA_API_HOST", "https://data-api.polymarket.com") or "").strip()
+    host = host.rstrip("/") or "https://data-api.polymarket.com"
+    endpoint = f"{host}/trades"
+    max_pages = (
+        TRADE_SYNC_DATA_API_LIGHTWEIGHT_MAX_PAGES
+        if lightweight
+        else TRADE_SYNC_DATA_API_MAX_PAGES
+    )
+    limit = TRADE_SYNC_DATA_API_LIMIT
+    cutoff_dt = _parse_iso_dt(recent_after_iso) if recent_after_iso else None
+    if cutoff_dt is None:
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=float(TRADE_SYNC_DATA_API_BOOTSTRAP_LOOKBACK_HOURS))
+    if cutoff_dt.tzinfo is None:
+        cutoff_dt = cutoff_dt.replace(tzinfo=timezone.utc)
+    cutoff_ts = int(cutoff_dt.timestamp())
+    rows_out: List[Dict[str, Any]] = []
+    pages = 0
+    fetched_rows = 0
+    offset = 0
+    hit_page_limit = False
+    dedupe_keys: Set[str] = set()
+    oldest_seen_ts = 0
+    while pages < max_pages:
+        resp = requests_get(
+            endpoint,
+            params={"user": user, "offset": int(offset), "limit": int(limit)},
+            timeout=int(max(1, round(float(TRADE_SYNC_DATA_API_TIMEOUT_SEC)))),
+            retries=int(TRADE_SYNC_DATA_API_RETRIES),
+            backoff=float(TRADE_SYNC_DATA_API_BACKOFF_SEC),
+        )
+        if resp.status_code != 200:
+            body = (resp.text or "").strip()
+            detail = body[:240] if body else f"http_{int(resp.status_code)}"
+            return False, {"error": f"data_api_http_{int(resp.status_code)}", "error_detail": detail}
+        payload = resp.json()
+        page_rows = payload if isinstance(payload, list) else []
+        if not page_rows:
+            break
+        pages += 1
+        fetched_rows += len(page_rows)
+        page_oldest_ts = 0
+        for row in page_rows:
+            if not isinstance(row, dict):
+                continue
+            ts = 0
+            raw_ts = row.get("timestamp")
+            if raw_ts is not None:
+                try:
+                    ts = int(float(raw_ts))
+                except Exception:
+                    ts = 0
+            if ts > 0 and (page_oldest_ts <= 0 or ts < page_oldest_ts):
+                page_oldest_ts = ts
+            if ts > 0 and ts < cutoff_ts:
+                continue
+            normalized = _normalize_trade_sync_data_api_row(row)
+            if not normalized:
+                continue
+            dedupe_key = str(normalized.get("tradeID") or "").strip()
+            if dedupe_key and dedupe_key in dedupe_keys:
+                continue
+            if dedupe_key:
+                dedupe_keys.add(dedupe_key)
+            rows_out.append(normalized)
+        if page_oldest_ts > 0:
+            oldest_seen_ts = page_oldest_ts
+        if len(page_rows) < limit:
+            break
+        hit_page_limit = True
+        if page_oldest_ts > 0 and page_oldest_ts < cutoff_ts:
+            break
+        offset += limit
+    return True, {
+        "ok": True,
+        "trades": rows_out,
+        "complete": not hit_page_limit,
+        "page_count": int(pages),
+        "fetched_rows": int(fetched_rows),
+        "weather_rows": int(len(rows_out)),
+        "cutoff_iso": cutoff_dt.astimezone(timezone.utc).isoformat(timespec="seconds"),
+        "oldest_seen_ts": int(max(oldest_seen_ts, 0)),
+        "source": "data_api_trades",
+    }
 
 
 def _trade_sync_reset_circuit() -> None:
@@ -32267,7 +33068,39 @@ def sync_trade_fills(
     timeout_used = timeout_override
     ok = False
     payload: Dict[str, Any] = {}
+    data_api_used = False
     timeout_fallback_used = False
+    bootstrap_no_fills = False
+    try:
+        with open_db() as conn_bootstrap:
+            bootstrap_no_fills = count_edge_trade_fills(conn_bootstrap) <= 0
+    except Exception:
+        bootstrap_no_fills = False
+
+    if TRADE_SYNC_DATA_API_ENABLED:
+        data_api_recent_after = "" if bootstrap_no_fills else recent_after_used
+        ok_data_api, payload_data_api = _fetch_trade_sync_data_api_trades(
+            recent_after_iso=data_api_recent_after,
+            lightweight=lightweight,
+        )
+        if ok_data_api:
+            payload = dict(payload_data_api or {})
+            payload["complete"] = False
+            ok = True
+            data_api_used = True
+            print(
+                "[auto-trade] trade sync data_api "
+                f"pages={int(payload.get('page_count') or 0)} "
+                f"fetched_rows={int(payload.get('fetched_rows') or 0)} "
+                f"weather_rows={int(payload.get('weather_rows') or 0)} "
+                f"cutoff={str(payload.get('cutoff_iso') or '')}"
+            )
+        else:
+            data_api_err = str(payload_data_api.get("error") or "data_api_failed")
+            data_api_detail = str(payload_data_api.get("error_detail") or "").strip()
+            detail_text = f" detail={data_api_detail}" if data_api_detail else ""
+            print(f"[auto-trade] trade sync data_api failed: {data_api_err}{detail_text}")
+
     def _is_timeout_payload(obj: Dict[str, Any]) -> bool:
         blob = " ".join(
             str(obj.get(key, "") or "")
@@ -32275,106 +33108,107 @@ def sync_trade_fills(
         ).lower()
         return "timeout" in blob or "timed out" in blob or "etimedout" in blob
 
-    for attempt in range(1, attempts + 1):
-        ok, payload = _run_node_trades(
-            run_env_override or None,
-            timeout_override=timeout_used,
-        )
-        if not ok and not timeout_fallback_used and _is_timeout_payload(payload):
-            timeout_fallback_used = True
-            fallback_env = {
-                "PM_CLOB_TRADES_MAX_PAGES": "2",
-                "PM_CLOB_TRADES_BUDGET_MS": "20000",
-                "PM_CLOB_TRADES_HARD_TIMEOUT_MS": "60000",
-                "PM_CLOB_TIMEOUT_MS": "20000",
-                "PM_CLOB_RETRY_MAX": "1",
-            }
-            fallback_env_merged = dict(run_env_override)
-            fallback_env_merged.update(fallback_env)
-            ok_fallback, payload_fallback = _run_node_trades(
-                fallback_env_merged,
-                timeout_override=45,
+    if not ok:
+        for attempt in range(1, attempts + 1):
+            ok, payload = _run_node_trades(
+                run_env_override or None,
+                timeout_override=timeout_used,
             )
-            if ok_fallback:
-                ok, payload = ok_fallback, payload_fallback
-                break
-            payload = payload_fallback
-        if ok:
-            break
-        err = str(payload.get("error") or "exec_nonzero")
-        err_detail = str(payload.get("error_detail") or "").strip()
-        stderr_raw = payload.get("stderr")
-        stdout_raw = payload.get("stdout")
-        if _payload_has_errno24(payload) or _is_errno24_error(err) or _is_errno24_error(err_detail):
-            err = "exec_errno24"
-            if not err_detail:
-                err_detail = "too_many_open_files"
-        debug_node_errors = _env_bool("PM_DEBUG_NODE_ERRORS", False)
-        stderr = _redact_sensitive_text(str(stderr_raw or ""))
-        stdout = _redact_sensitive_text(str(stdout_raw or ""))
-        tail = (stderr or stdout).splitlines()[-1].strip() if (stderr or stdout) else ""
-        tail = tail[:240] if tail else ""
-        detail_parts = [f"[auto-trade] trade sync failed: {err}"]
-        if err_detail:
-            detail_parts.append(f"detail={err_detail}")
-        elif tail:
-            detail_parts.append(f"detail={tail}")
-        if debug_node_errors:
-            if stderr:
-                detail_parts.append(f"stderr_tail={stderr[-400:]}")
-            if stdout:
-                detail_parts.append(f"stdout_tail={stdout[-400:]}")
-        print(" | ".join(detail_parts))
-        detail_text = err_detail or tail or ""
-        err_text = err
-        err_blob = " ".join([err_text, detail_text, stderr or "", stdout or ""])
-        is_502 = "502" in err_blob or "Bad Gateway" in err_blob
-        transient_blob = err_blob.lower()
-        transient = any(
-            token in transient_blob
-            for token in (
-                "503",
-                "service unavailable",
-                "502",
-                "bad gateway",
-                "socket hang up",
-                "econnreset",
-                "aborted",
-                "timed out",
-                "timeout",
-                "etimedout",
-                "gateway timeout",
-                "exec_errno24",
-                "errno 24",
-                "too many open files",
-                "emfile",
-            )
-        )
-        if attempt >= attempts or not transient:
-            fail_count, cooldown_until = _trade_sync_mark_failure(transient)
-            cooldown_ms = int(cooldown_until * 1000) if cooldown_until else 0
-            if update_status:
-                _update_trade_sync_status(
-                    False,
-                    err_text,
-                    detail_text,
-                    is_502,
-                    cooldown_ms,
-                    fail_count,
-                    extra=_trade_sync_status_extra(
-                        profile_name=profile_name,
-                        lightweight=lightweight,
-                        fail_count=fail_count,
-                        probe_orders=probe_orders,
-                        recent_after=recent_after_used,
-                        recent_after_lookback_sec=recent_after_lookback_used,
-                        trade_token_count=trade_token_count,
-                    ),
+            if not ok and not timeout_fallback_used and _is_timeout_payload(payload):
+                timeout_fallback_used = True
+                fallback_env = {
+                    "PM_CLOB_TRADES_MAX_PAGES": "2",
+                    "PM_CLOB_TRADES_BUDGET_MS": "20000",
+                    "PM_CLOB_TRADES_HARD_TIMEOUT_MS": "60000",
+                    "PM_CLOB_TIMEOUT_MS": "20000",
+                    "PM_CLOB_RETRY_MAX": "1",
+                }
+                fallback_env_merged = dict(run_env_override)
+                fallback_env_merged.update(fallback_env)
+                ok_fallback, payload_fallback = _run_node_trades(
+                    fallback_env_merged,
+                    timeout_override=45,
                 )
-            return False
-        backoff = min(30.0, TRADE_SYNC_BACKOFF_SEC * attempt)
-        print(f"[auto-trade] trade sync retry {attempt}/{attempts} in {backoff:.1f}s")
-        time.sleep(backoff)
+                if ok_fallback:
+                    ok, payload = ok_fallback, payload_fallback
+                    break
+                payload = payload_fallback
+            if ok:
+                break
+            err = str(payload.get("error") or "exec_nonzero")
+            err_detail = str(payload.get("error_detail") or "").strip()
+            stderr_raw = payload.get("stderr")
+            stdout_raw = payload.get("stdout")
+            if _payload_has_errno24(payload) or _is_errno24_error(err) or _is_errno24_error(err_detail):
+                err = "exec_errno24"
+                if not err_detail:
+                    err_detail = "too_many_open_files"
+            debug_node_errors = _env_bool("PM_DEBUG_NODE_ERRORS", False)
+            stderr = _redact_sensitive_text(str(stderr_raw or ""))
+            stdout = _redact_sensitive_text(str(stdout_raw or ""))
+            tail = (stderr or stdout).splitlines()[-1].strip() if (stderr or stdout) else ""
+            tail = tail[:240] if tail else ""
+            detail_parts = [f"[auto-trade] trade sync failed: {err}"]
+            if err_detail:
+                detail_parts.append(f"detail={err_detail}")
+            elif tail:
+                detail_parts.append(f"detail={tail}")
+            if debug_node_errors:
+                if stderr:
+                    detail_parts.append(f"stderr_tail={stderr[-400:]}")
+                if stdout:
+                    detail_parts.append(f"stdout_tail={stdout[-400:]}")
+            print(" | ".join(detail_parts))
+            detail_text = err_detail or tail or ""
+            err_text = err
+            err_blob = " ".join([err_text, detail_text, stderr or "", stdout or ""])
+            is_502 = "502" in err_blob or "Bad Gateway" in err_blob
+            transient_blob = err_blob.lower()
+            transient = any(
+                token in transient_blob
+                for token in (
+                    "503",
+                    "service unavailable",
+                    "502",
+                    "bad gateway",
+                    "socket hang up",
+                    "econnreset",
+                    "aborted",
+                    "timed out",
+                    "timeout",
+                    "etimedout",
+                    "gateway timeout",
+                    "exec_errno24",
+                    "errno 24",
+                    "too many open files",
+                    "emfile",
+                )
+            )
+            if attempt >= attempts or not transient:
+                fail_count, cooldown_until = _trade_sync_mark_failure(transient)
+                cooldown_ms = int(cooldown_until * 1000) if cooldown_until else 0
+                if update_status:
+                    _update_trade_sync_status(
+                        False,
+                        err_text,
+                        detail_text,
+                        is_502,
+                        cooldown_ms,
+                        fail_count,
+                        extra=_trade_sync_status_extra(
+                            profile_name=profile_name,
+                            lightweight=lightweight,
+                            fail_count=fail_count,
+                            probe_orders=probe_orders,
+                            recent_after=recent_after_used,
+                            recent_after_lookback_sec=recent_after_lookback_used,
+                            trade_token_count=trade_token_count,
+                        ),
+                    )
+                return False
+            backoff = min(30.0, TRADE_SYNC_BACKOFF_SEC * attempt)
+            print(f"[auto-trade] trade sync retry {attempt}/{attempts} in {backoff:.1f}s")
+            time.sleep(backoff)
     trades_raw = payload.get("trades")
     if trades_raw is None:
         trades_raw = payload.get("data")
@@ -33087,6 +33921,7 @@ def sync_trade_fills(
         auto_order_strategy = ""
         decision_id: Optional[int] = None
         decision_run_id: Optional[int] = None
+        attribution_order_key = order_key
         evidence: Dict[str, Any] = {
             "slug": slug,
             "event_date": event_date_key,
@@ -33095,12 +33930,31 @@ def sync_trade_fills(
             "trade_side": str(trade_side or "").strip().upper(),
             "trade_time": str(trade_time or "").strip(),
         }
+        auto_row: Optional[Dict[str, Any]] = None
+        decision_lookup_order_id = order_key
         if not order_key:
-            reason = "no_order_id"
+            inferred_row, inferred_info = _infer_auto_order_row_from_key_time(
+                slug=slug,
+                event_date=event_date_key,
+                outcome=outcome,
+                side=side,
+                trade_side=trade_side,
+                trade_time=trade_time,
+            )
+            if inferred_info:
+                evidence["auto_order_infer"] = inferred_info
+            if inferred_row:
+                auto_row = inferred_row
+                matched_order_id = str(auto_row.get("order_id") or "").strip()
+                if matched_order_id:
+                    attribution_order_key = matched_order_id
+                    decision_lookup_order_id = matched_order_id
+                    evidence["order_id_inferred"] = matched_order_id
+            else:
+                reason = "no_order_id"
         else:
             evidence["order_id"] = order_key
             auto_row = _load_auto_order_row(order_key)
-            decision_lookup_order_id = order_key
             if not auto_row:
                 inferred_row, inferred_info = _infer_auto_order_row_from_key_time(
                     slug=slug,
@@ -33120,86 +33974,87 @@ def sync_trade_fills(
                         decision_lookup_order_id = matched_order_id
                 else:
                     reason = "no_auto_order"
-            if auto_row:
-                auto_order_id_val = auto_row.get("id")
-                auto_order_id = int(auto_order_id_val) if auto_order_id_val is not None else None
-                auto_order_action = _normalize_auto_order_action(auto_row.get("action"))
-                auto_order_strategy = str(auto_row.get("strategy") or "").strip()
-                evidence["auto_order_created_at"] = str(auto_row.get("created_at") or "")
-                evidence["auto_order_action"] = auto_order_action
-                evidence["auto_order_strategy"] = auto_order_strategy
-                mismatch_fields: List[str] = []
-                auto_slug = str(auto_row.get("slug") or "").strip()
-                auto_event_date = _normalize_date_key(str(auto_row.get("event_date") or "").strip())
-                auto_outcome = str(auto_row.get("outcome") or "").strip()
-                auto_side = str(auto_row.get("side") or "").strip().upper()
-                if auto_slug and auto_slug != slug:
-                    mismatch_fields.append("slug")
-                if auto_event_date and auto_event_date != event_date_key:
-                    mismatch_fields.append("event_date")
-                if auto_outcome and auto_outcome != outcome:
-                    mismatch_fields.append("outcome")
-                if auto_side and auto_side != side:
-                    mismatch_fields.append("side")
-                if mismatch_fields:
-                    reason = "order_key_mismatch"
-                    evidence["order_mismatch_fields"] = mismatch_fields
+        if auto_row:
+            auto_order_id_val = auto_row.get("id")
+            auto_order_id = int(auto_order_id_val) if auto_order_id_val is not None else None
+            auto_order_action = _normalize_auto_order_action(auto_row.get("action"))
+            auto_order_strategy = str(auto_row.get("strategy") or "").strip()
+            evidence["auto_order_created_at"] = str(auto_row.get("created_at") or "")
+            evidence["auto_order_action"] = auto_order_action
+            evidence["auto_order_strategy"] = auto_order_strategy
+            mismatch_fields: List[str] = []
+            auto_slug = str(auto_row.get("slug") or "").strip()
+            auto_event_date = _normalize_date_key(str(auto_row.get("event_date") or "").strip())
+            auto_outcome = str(auto_row.get("outcome") or "").strip()
+            auto_side = str(auto_row.get("side") or "").strip().upper()
+            if auto_slug and auto_slug != slug:
+                mismatch_fields.append("slug")
+            if auto_event_date and auto_event_date != event_date_key:
+                mismatch_fields.append("event_date")
+            if auto_outcome and auto_outcome != outcome:
+                mismatch_fields.append("outcome")
+            if auto_side and auto_side != side:
+                mismatch_fields.append("side")
+            if mismatch_fields:
+                reason = "order_key_mismatch"
+                evidence["order_mismatch_fields"] = mismatch_fields
+            else:
+                action_key = _normalize_auto_order_action(auto_order_action)
+                if action_key not in {"entry", "exit"}:
+                    action_key = _infer_action_from_trade_side(trade_side)
+                if action_key not in {"entry", "exit"}:
+                    reason = "unknown_action"
                 else:
-                    action_key = _normalize_auto_order_action(auto_order_action)
-                    if action_key not in {"entry", "exit"}:
-                        action_key = _infer_action_from_trade_side(trade_side)
-                    if action_key not in {"entry", "exit"}:
-                        reason = "unknown_action"
+                    anchor_ts = str(trade_time or "").strip() or str(auto_row.get("created_at") or "").strip()
+                    if decision_lookup_order_id and decision_lookup_order_id != order_key:
+                        evidence["decision_lookup_order_id"] = decision_lookup_order_id
+                    match = _find_matching_decision(
+                        order_id=decision_lookup_order_id,
+                        slug=slug,
+                        event_date=event_date_key,
+                        outcome=outcome,
+                        side=side,
+                        action=action_key,
+                        anchor_ts=anchor_ts,
+                    )
+                    if not match:
+                        reason = "missing_decision"
                     else:
-                        anchor_ts = str(trade_time or "").strip() or str(auto_row.get("created_at") or "").strip()
-                        if decision_lookup_order_id and decision_lookup_order_id != order_key:
-                            evidence["decision_lookup_order_id"] = decision_lookup_order_id
-                        match = _find_matching_decision(
-                            order_id=decision_lookup_order_id,
-                            slug=slug,
-                            event_date=event_date_key,
-                            outcome=outcome,
-                            side=side,
-                            action=action_key,
-                            anchor_ts=anchor_ts,
+                        decision_id_val = match.get("id")
+                        decision_run_id_val = match.get("run_id")
+                        decision_id = int(decision_id_val) if decision_id_val is not None else None
+                        decision_run_id = (
+                            int(decision_run_id_val) if decision_run_id_val is not None else None
                         )
-                        if not match:
-                            reason = "missing_decision"
-                        else:
-                            decision_id_val = match.get("id")
-                            decision_run_id_val = match.get("run_id")
-                            decision_id = int(decision_id_val) if decision_id_val is not None else None
-                            decision_run_id = (
-                                int(decision_run_id_val) if decision_run_id_val is not None else None
+                        evidence["decision_created_at"] = str(match.get("created_at") or "")
+                        evidence["decision_run_date"] = str(match.get("run_date") or "")
+                        if match.get("delta_sec") is not None:
+                            evidence["decision_delta_sec"] = float(match.get("delta_sec") or 0.0)
+                        if decision_run_id is None or decision_run_id <= 0:
+                            repaired_run_id = _resolve_decision_run_id(
+                                decision_id=decision_id,
+                                run_date_hint=str(match.get("run_date") or event_date_key),
+                                created_at_hint=str(match.get("created_at") or ""),
                             )
-                            evidence["decision_created_at"] = str(match.get("created_at") or "")
-                            evidence["decision_run_date"] = str(match.get("run_date") or "")
-                            if match.get("delta_sec") is not None:
-                                evidence["decision_delta_sec"] = float(match.get("delta_sec") or 0.0)
-                            if decision_run_id is None or decision_run_id <= 0:
-                                repaired_run_id = _resolve_decision_run_id(
-                                    decision_id=decision_id,
-                                    run_date_hint=str(match.get("run_date") or event_date_key),
-                                    created_at_hint=str(match.get("created_at") or ""),
-                                )
-                                if repaired_run_id is not None and repaired_run_id > 0:
-                                    decision_run_id = int(repaired_run_id)
-                                    evidence["decision_run_id_repaired"] = int(repaired_run_id)
-                                    linked = 1
-                                    reason = "linked"
-                                elif action_key == "exit" and decision_id is not None:
-                                    linked = 1
-                                    reason = "linked"
-                                    evidence["decision_missing_run_id"] = True
-                                else:
-                                    reason = "missing_run_id"
-                            else:
+                            if repaired_run_id is not None and repaired_run_id > 0:
+                                decision_run_id = int(repaired_run_id)
+                                evidence["decision_run_id_repaired"] = int(repaired_run_id)
                                 linked = 1
                                 reason = "linked"
+                            elif action_key == "exit" and decision_id is not None:
+                                linked = 1
+                                reason = "linked"
+                                evidence["decision_missing_run_id"] = True
+                            else:
+                                reason = "missing_run_id"
+                        else:
+                            linked = 1
+                            reason = "linked"
         if not reason:
             reason = "unknown"
         try:
-            cur.execute(
+            _sqlite_execute_with_retry(
+                cur.execute,
                 """
                 INSERT INTO trade_fill_attributions(
                     trade_id, fill_id, order_id,
@@ -33224,7 +34079,7 @@ def sync_trade_fills(
                 (
                     trade_key,
                     int(fill_id) if fill_id is not None else None,
-                    order_key,
+                    attribution_order_key or None,
                     auto_order_id,
                     auto_order_action,
                     auto_order_strategy,
@@ -33612,7 +34467,7 @@ def sync_trade_fills(
             "action": action_key,
         }
         try:
-            _sqlite_execute_with_retry(
+            _sqlite_execute_with_retry_compat(
                 cur,
                 """
                 INSERT INTO auto_trade_decisions(
@@ -33797,7 +34652,7 @@ def sync_trade_fills(
             if not token_id:
                 continue
             token_id = str(token_id)
-            mapping = trade_token_map.get(token_id)
+            mapping = _resolve_trade_sync_mapping(trade_token_map, token_id, trade)
             if not mapping:
                 continue
             order_id = (
@@ -33831,7 +34686,8 @@ def sync_trade_fills(
             event_date = mapping["event_date"]
             outcome = mapping["outcome"]
             side = mapping["side"]
-            cur.execute(
+            _sqlite_execute_with_retry(
+                cur.execute,
                 """
                 INSERT INTO edge_trade_fills (
                     slug, event_date, outcome, outcome_side,
@@ -34102,7 +34958,8 @@ def sync_trade_fills(
                 },
                 ensure_ascii=False,
             )
-            cur.execute(
+            _sqlite_execute_with_retry(
+                cur.execute,
                 """
                 INSERT INTO edge_trade_fills (
                     slug, event_date, outcome, outcome_side,
@@ -34406,7 +35263,8 @@ def sync_trade_fills(
         unrealized = None
         if mark_price is not None and position > 0 and avg_cost > 0:
             unrealized = (mark_price - avg_cost) * position
-        cur.execute(
+        _sqlite_execute_with_retry(
+            cur.execute,
             """
             INSERT INTO edge_trades (
                 slug, event_date, outcome, side, state,
@@ -34727,7 +35585,8 @@ def _force_clear_expired_positions(conn: sqlite3.Connection, *, now_iso: Optiona
     today_utc = datetime.now(timezone.utc).date().isoformat()
     cur = conn.cursor()
     try:
-        cur.execute(
+        _sqlite_execute_with_retry(
+            cur.execute,
             """
             UPDATE edge_trades
             SET position_size = 0,
@@ -34887,10 +35746,55 @@ def build_trade_sync_maps(
             """,
             (run_date, run_date),
         )
+        event_run_rows = cur.fetchall() or []
     except sqlite3.OperationalError:
         return trade_token_map, trade_mark_map, 0
     seen: set[Tuple[str, str]] = set()
     event_count = 0
+
+    def _add_token(
+        slug: str,
+        event_date_key: str,
+        outcome: str,
+        side: str,
+        token_id: str,
+        mark: Optional[float] = None,
+    ) -> None:
+        token_key = str(token_id or "").strip()
+        slug_key = str(slug or "").strip()
+        event_key = _normalize_date_key(str(event_date_key or "").strip())
+        outcome_key = str(outcome or "").strip()
+        side_key = str(side or "").strip().upper()
+        if not token_key or not slug_key or not event_key or not outcome_key or side_key not in {"YES", "NO"}:
+            return
+        if token_key not in trade_token_map:
+            trade_token_map[token_key] = {
+                "slug": slug_key,
+                "event_date": event_key,
+                "outcome": outcome_key,
+                "side": side_key,
+            }
+        if mark is not None and math.isfinite(float(mark)):
+            trade_mark_map[(slug_key, event_key, outcome_key, side_key)] = float(mark)
+
+    try:
+        cur.execute(
+            """
+            SELECT slug, event_date, outcome, yes_token, no_token
+            FROM market_tokens
+            ORDER BY datetime(updated_at) DESC, rowid DESC
+            """
+        )
+        for slug_m, event_date_m, outcome_m, yes_token_m, no_token_m in cur.fetchall() or []:
+            slug_key = str(slug_m or "").strip()
+            event_key = _normalize_date_key(str(event_date_m or "").strip())
+            outcome_key = str(outcome_m or "").strip()
+            if not slug_key or not event_key or not outcome_key:
+                continue
+            _add_token(slug_key, event_key, outcome_key, "YES", str(yes_token_m or "").strip())
+            _add_token(slug_key, event_key, outcome_key, "NO", str(no_token_m or "").strip())
+    except sqlite3.OperationalError:
+        pass
 
     def _add_payload(slug: str, event_date: str, market_var: str, payload_raw: Any) -> None:
         nonlocal event_count
@@ -34924,28 +35828,14 @@ def build_trade_sync_maps(
             yes_token = str(item.get("yes_token") or "")
             no_token = str(item.get("no_token") or "")
             if yes_token:
-                trade_token_map[yes_token] = {
-                    "slug": slug,
-                    "event_date": event_date_key,
-                    "outcome": outcome,
-                    "side": "YES",
-                }
                 mark = to_float(item.get("best_bid")) or to_float(item.get("best_ask"))
-                if mark is not None:
-                    trade_mark_map[(slug, event_date_key, outcome, "YES")] = mark
+                _add_token(slug, event_date_key, outcome, "YES", yes_token, mark)
             if no_token:
-                trade_token_map[no_token] = {
-                    "slug": slug,
-                    "event_date": event_date_key,
-                    "outcome": outcome,
-                    "side": "NO",
-                }
                 mark_no = to_float(item.get("best_bid_no")) or to_float(item.get("best_ask_no"))
-                if mark_no is not None:
-                    trade_mark_map[(slug, event_date_key, outcome, "NO")] = mark_no
+                _add_token(slug, event_date_key, outcome, "NO", no_token, mark_no)
 
     # 1) Primary: latest snapshot per (slug, event_date) for the target day.
-    for slug, event_date, payload_raw, market_var in cur:
+    for slug, event_date, payload_raw, market_var in event_run_rows:
         _add_payload(str(slug or ""), str(event_date or ""), str(market_var or ""), payload_raw)
 
     # 2) Exit/position safety net: always include still-open positions (may be from older run_dates).
@@ -35291,10 +36181,10 @@ def _load_auto_trade_ssot_for_event(
 def _build_fallback_targets_from_ssot(ssot: Dict[str, Any]) -> List[Dict[str, Any]]:
     targets: List[Dict[str, Any]] = []
 
-    def _append(strategy: str, cand: Optional[Dict[str, Any]]) -> None:
+    def _append(strategy: str, cand: Optional[Dict[str, Any]], *, require_entry_ok: bool = True) -> None:
         if not isinstance(cand, dict):
             return
-        if not bool(cand.get("entry_ok")):
+        if require_entry_ok and not bool(cand.get("entry_ok")):
             return
         outcome = str(cand.get("outcome") or "").strip()
         side = str(cand.get("side") or "").strip().upper()
@@ -35326,6 +36216,103 @@ def _build_fallback_targets_from_ssot(ssot: Dict[str, Any]) -> List[Dict[str, An
     return targets
 
 
+def _build_fallback_diag_targets_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    targets = _extract_fallback_targets_from_payload(payload)
+    if targets:
+        return targets
+    ssot = payload.get("auto_trade_ssot")
+    if isinstance(ssot, dict):
+        cand = ssot.get("main_candidate")
+        if isinstance(cand, dict):
+            out = str(cand.get("outcome") or "").strip()
+            side = str(cand.get("side") or "").strip().upper()
+            if out and side in {"YES", "NO"}:
+                suffix = "yes" if side == "YES" else "no"
+                return [
+                    {
+                        "strategy": "main",
+                        "outcome": out,
+                        "side": side,
+                        "entry_ok": bool(cand.get("entry_ok")),
+                        "entry_reasons": list(cand.get("entry_reasons") or [])
+                        if isinstance(cand.get("entry_reasons"), list)
+                        else [],
+                        "edge_score": to_float(cand.get("edge_score")),
+                        "exec_edge_score": to_float(cand.get("exec_edge_score")),
+                        "exec_edge_entry": to_float(cand.get("exec_edge_entry")),
+                        "exec_edge_exit": to_float(cand.get("exec_edge_exit")),
+                        "edge_min": to_float(cand.get("edge_min")),
+                        "ask": to_float(cand.get("ask")),
+                        "q_min_bound": to_float(cand.get("q_min_bound")),
+                        "spread": to_float(cand.get("spread")),
+                        "lag": to_float(cand.get("lag")),
+                        "token_id": str(cand.get("token_id") or cand.get(f"{suffix}_token") or "").strip(),
+                    }
+                ]
+    rows_payload = payload.get("distribution") or payload.get("rows") or []
+    if not isinstance(rows_payload, list) or not rows_payload:
+        if isinstance(ssot, dict):
+            reason_list = ssot.get("main_entry_reasons")
+            reason_text = "; ".join(str(x) for x in reason_list if str(x or "").strip()) if isinstance(reason_list, list) else ""
+            return [
+                {
+                    "strategy": "main",
+                    "outcome": "__event__",
+                    "side": "NO",
+                    "entry_ok": False,
+                    "entry_reasons": [reason_text or "主策略没有生成候选"],
+                }
+            ]
+        return []
+
+    best: Optional[Tuple[float, Dict[str, Any], str]] = None
+    for row in rows_payload:
+        if not isinstance(row, dict):
+            continue
+        outcome = str(row.get("outcome") or "").strip()
+        if not outcome:
+            continue
+        for side in ("YES", "NO"):
+            suffix = "yes" if side == "YES" else "no"
+            score = to_float(row.get(f"edge_realizable_score_{suffix}"))
+            if score is None or not math.isfinite(score):
+                score = to_float(row.get(f"edge_score_{suffix}"))
+            if score is None or not math.isfinite(score):
+                continue
+            if best is None or float(score) > best[0]:
+                best = (float(score), row, side)
+    if best is None:
+        first_row = next((row for row in rows_payload if isinstance(row, dict) and str(row.get("outcome") or "").strip()), None)
+        if not isinstance(first_row, dict):
+            return []
+        best = (0.0, first_row, "YES")
+
+    score, row, side = best
+    suffix = "yes" if side == "YES" else "no"
+    return [
+        {
+            "strategy": "main",
+            "outcome": str(row.get("outcome") or "").strip(),
+            "side": side,
+            "entry_ok": False,
+            "entry_reasons": ["事件未完成执行，使用分布行补写诊断目标"],
+            "edge_score": to_float(row.get(f"edge_score_{suffix}")),
+            "exec_edge_score": to_float(row.get(f"exec_edge_score_{suffix}")),
+            "exec_edge_entry": to_float(row.get(f"exec_edge_entry_{suffix}")),
+            "exec_edge_exit": to_float(row.get(f"exec_edge_exit_{suffix}")),
+            "edge_min": to_float(row.get(f"edge_min_{suffix}")),
+            "ask": to_float(row.get("best_ask" if side == "YES" else "best_ask_no")),
+            "q_min_bound": to_float(row.get("q_min" if side == "YES" else "q_min_no")),
+            "spread": to_float(row.get("spread" if side == "YES" else "spread_no")),
+            "lag": to_float(row.get("market_stale_sec")),
+            "token_id": str(row.get("yes_token" if side == "YES" else "no_token") or "").strip(),
+            "fallback_best_score": float(score),
+        }
+    ]
+
+
 def _resolve_fallback_decision_targets(
     payload: Dict[str, Any],
     slug: str,
@@ -35338,6 +36325,22 @@ def _resolve_fallback_decision_targets(
     if not isinstance(ssot, dict):
         return [], ""
     return _build_fallback_targets_from_ssot(ssot), "auto_trade_ssot"
+
+
+def _resolve_fallback_diag_targets(
+    payload: Dict[str, Any],
+    slug: str,
+    event_date_key: str,
+) -> Tuple[List[Dict[str, Any]], str]:
+    targets = _build_fallback_diag_targets_from_payload(payload)
+    if targets:
+        return targets, "payload_diag"
+    ssot = _load_auto_trade_ssot_for_event(slug, event_date_key)
+    if isinstance(ssot, dict):
+        targets = _build_fallback_targets_from_ssot(ssot)
+        if targets:
+            return targets, "auto_trade_ssot"
+    return [], ""
 
 
 def _auto_trade_latest_fact_run_date(conn: sqlite3.Connection) -> str:
@@ -35504,13 +36507,13 @@ def _auto_trade_event_worker(
             os.environ["PM_AUTO_TRADE_ENTRY_OUTCOME_VOLUME_GATE_MODE"] = "pre"
             os.environ.setdefault("PM_AUTO_TRADE_ENTRY_OUTCOME_VOLUME_REFRESH_SEC", "0")
         worker_refresh_on_stale = str(
-            os.environ.get("PM_AUTO_TRADE_EVENT_WORKER_REFRESH_ON_STALE", "1") or ""
+            os.environ.get("PM_AUTO_TRADE_EVENT_WORKER_REFRESH_ON_STALE", "0") or ""
         ).strip().lower() in {"1", "true", "yes", "on"}
         if not worker_refresh_on_stale:
             os.environ["PM_AUTO_TRADE_ENTRY_REFRESH_ON_STALE"] = "0"
             os.environ["PM_AUTO_TRADE_ENTRY_FOLLOW_REFRESH_ON_STALE"] = "0"
         worker_allow_token_remap = str(
-            os.environ.get("PM_AUTO_TRADE_EVENT_WORKER_ALLOW_TOKEN_REMAP", "1") or ""
+            os.environ.get("PM_AUTO_TRADE_EVENT_WORKER_ALLOW_TOKEN_REMAP", "0") or ""
         ).strip().lower() in {"1", "true", "yes", "on"}
         if not worker_allow_token_remap:
             os.environ["PM_AUTO_TRADE_ENTRY_REFRESH_ALLOW_TOKEN_REMAP"] = "0"
@@ -35532,9 +36535,31 @@ def _auto_trade_event_worker(
         os.environ["PM_DB_CONNECT_TIMEOUT_SEC"] = f"{worker_db_connect_timeout_sec:.3f}"
         worker_db_busy_timeout_ms = _env_int("PM_AUTO_TRADE_EVENT_WORKER_DB_BUSY_TIMEOUT_MS")
         if worker_db_busy_timeout_ms is None or worker_db_busy_timeout_ms <= 0:
-            worker_db_busy_timeout_ms = 30000
-        worker_db_busy_timeout_ms = min(int(worker_db_busy_timeout_ms), 30000)
+            worker_db_busy_timeout_ms = 1000
+        worker_db_busy_timeout_ms = min(int(worker_db_busy_timeout_ms), 5000)
         os.environ["PM_DB_BUSY_TIMEOUT_MS"] = str(worker_db_busy_timeout_ms)
+        decision_retry_attempts = _env_int(
+            "PM_AUTO_TRADE_EVENT_WORKER_DECISION_WRITE_RETRY_ATTEMPTS"
+        )
+        if decision_retry_attempts is None or decision_retry_attempts < 1:
+            decision_retry_attempts = 1
+        decision_retry_attempts = max(1, min(int(decision_retry_attempts), 3))
+        os.environ["PM_AUTO_TRADE_DECISION_WRITE_RETRY_ATTEMPTS"] = str(
+            decision_retry_attempts
+        )
+        decision_retry_sleep_sec = _env_float(
+            "PM_AUTO_TRADE_EVENT_WORKER_DECISION_WRITE_RETRY_SLEEP_SEC"
+        )
+        if (
+            decision_retry_sleep_sec is None
+            or not math.isfinite(decision_retry_sleep_sec)
+            or decision_retry_sleep_sec < 0
+        ):
+            decision_retry_sleep_sec = 0.05
+        decision_retry_sleep_sec = max(0.0, min(float(decision_retry_sleep_sec), 0.5))
+        os.environ["PM_AUTO_TRADE_DECISION_WRITE_RETRY_SLEEP_SEC"] = (
+            f"{decision_retry_sleep_sec:.3f}"
+        )
         execute_auto_trades(
             run_date_key,
             event_date_key,
@@ -35722,6 +36747,39 @@ def run_auto_trades_for_date(
         except sqlite3.OperationalError:
             active_position_keys = set()
 
+    def _event_row_key(row_obj: Any) -> Tuple[str, str]:
+        if hasattr(row_obj, "keys"):
+            slug_val = str(row_obj["slug"] or "").strip()
+            event_date_val = str(row_obj["event_date"] or "").strip()
+        else:
+            slug_val = str((row_obj[3] if len(row_obj) > 3 else "") or "").strip()
+            event_date_val = str((row_obj[2] if len(row_obj) > 2 else "") or "").strip()
+        return slug_val, _normalize_date_key(event_date_val)
+
+    fact_event_total = 0
+    event_run_total = 0
+    if events_per_job_max > 0:
+        if rows_source == "facts" and fact_rows:
+            fact_rows, fact_event_total = _select_rotating_unique_window(
+                fact_rows,
+                int(events_per_job_max),
+                DATA_DIR / "auto_trade.fact_events_offset",
+                legacy_offset_path=DATA_DIR / "auto_trade.events_offset",
+                key_fn=lambda row: (
+                    str((row or {}).get("slug") or "").strip(),
+                    _normalize_date_key(str((row or {}).get("event_date") or "").strip()),
+                ),
+            )
+        elif rows_source == "event_runs" and rows:
+            event_run_rows, event_run_total = _select_rotating_unique_window(
+                rows,
+                int(events_per_job_max),
+                DATA_DIR / "auto_trade.event_run_events_offset",
+                legacy_offset_path=DATA_DIR / "auto_trade.events_offset",
+                key_fn=_event_row_key,
+            )
+            rows = event_run_rows
+
     def _event_cap_reached() -> bool:
         return bool(events_per_job_max and attempted_events >= int(events_per_job_max))
 
@@ -35900,7 +36958,7 @@ def run_auto_trades_for_date(
             f"[auto-trade] event skipped {slug} {event_date_key} reason={reason_code} detail={err_reason or '-'}"
         )
         if not exit_only:
-            targets, targets_source = _resolve_fallback_decision_targets(payload, slug, event_date_key)
+            targets, targets_source = _resolve_fallback_diag_targets(payload, slug, event_date_key)
             if targets:
                 common_details = {
                     "source": "auto_trade_event_worker",
@@ -35997,6 +37055,24 @@ def run_auto_trades_for_date(
         if not isinstance(payload, dict) or not payload.get("rows"):
             skipped += 1
             return
+        rows_payload = payload.get("rows")
+        if not exit_only and isinstance(rows_payload, list) and rows_payload and not _rows_have_usable_q(rows_payload):
+            hydrated_rows: List[Dict[str, Any]] = []
+            try:
+                with open_db() as conn_payload:
+                    hydrated_rows = _load_latest_payload_rows(conn_payload, slug, event_date_key)
+            except sqlite3.Error:
+                hydrated_rows = []
+            if hydrated_rows and _rows_have_usable_q(hydrated_rows):
+                merged_rows = _merge_market_rows_into_payload_rows(hydrated_rows, rows_payload)
+                merged_rows = _merge_rows_preserve_edge_scores(merged_rows, hydrated_rows)
+                _recompute_signal_edges_in_rows(merged_rows)
+                payload["rows"] = merged_rows
+                print(f"[auto-trade] hydrated qless event_runs payload: {slug} {event_date_key}")
+            else:
+                print(f"[auto-trade] skip qless event_runs payload: {slug} {event_date_key}")
+                skipped += 1
+                return
         if not payload.get("event_url"):
             payload["event_url"] = str(row["event_url"] or "")
         if not payload.get("title"):
@@ -36121,9 +37197,14 @@ def run_auto_trades_for_date(
                 skipped += 1
     _heartbeat_if_due(force=True)
     result = {"ok": True, "run_date": run_date_key, "processed": processed, "skipped": skipped}
+    if events_per_job_max > 0:
+        result["events_per_job_max"] = int(events_per_job_max)
     if deferred > 0:
         result["deferred"] = int(deferred)
-        result["events_per_job_max"] = int(events_per_job_max)
+    if fact_event_total > 0:
+        result["fact_event_total"] = int(fact_event_total)
+    if event_run_total > 0:
+        result["event_run_total"] = int(event_run_total)
     if skipped_old_events > 0:
         result["skipped_old_events"] = int(skipped_old_events)
         result["event_max_age_days"] = int(event_max_age_days or 0)
@@ -42765,6 +43846,57 @@ def requests_get(
     raise requests.RequestException("requests_get failed")
 
 
+def _market_refresh_fast_mode_enabled(args: Optional[argparse.Namespace]) -> bool:
+    if not getattr(args, "market_refresh_only", False):
+        return False
+    return _env_bool("PM_SCAN_MARKET_REFRESH_FAST_MODE", True)
+
+
+def _market_refresh_total_run_budget_sec(args: Optional[argparse.Namespace]) -> float:
+    if not getattr(args, "market_refresh_only", False):
+        return 0.0
+    total_budget_sec = _env_float("PM_SCAN_MARKET_REFRESH_TOTAL_TIME_BUDGET_SEC")
+    if total_budget_sec is None or not math.isfinite(total_budget_sec) or total_budget_sec <= 0:
+        return 0.0
+    return float(total_budget_sec)
+
+
+def _effective_market_refresh_event_budget_sec(
+    args: argparse.Namespace,
+    *,
+    run_deadline_monotonic: Optional[float] = None,
+    now_monotonic: Optional[float] = None,
+) -> float:
+    try:
+        event_budget_sec = float(getattr(args, "market_refresh_time_budget_sec", 0.0) or 0.0)
+    except Exception:
+        event_budget_sec = 0.0
+    if not math.isfinite(event_budget_sec) or event_budget_sec < 0:
+        event_budget_sec = 0.0
+    if run_deadline_monotonic is None or not math.isfinite(float(run_deadline_monotonic)):
+        return event_budget_sec
+    now_val = float(now_monotonic) if now_monotonic is not None else time.monotonic()
+    if not math.isfinite(now_val):
+        return event_budget_sec
+    remaining_sec = max(0.0, float(run_deadline_monotonic) - now_val)
+    if event_budget_sec <= 0:
+        return remaining_sec
+    return min(event_budget_sec, remaining_sec)
+
+
+def _market_refresh_quote_prefetch_workers(args: Optional[argparse.Namespace]) -> int:
+    if not getattr(args, "market_refresh_only", False):
+        return 0
+    raw = _env_int("PM_SCAN_MARKET_REFRESH_QUOTE_PREFETCH_WORKERS")
+    if raw is None:
+        raw = 0
+    try:
+        workers = int(raw)
+    except Exception:
+        workers = 0
+    return max(0, min(workers, 8))
+
+
 def fetch_gamma_market_by_slug(
     slug: str,
     *,
@@ -43273,6 +44405,39 @@ def _select_rotating_window(
     return window
 
 
+def _select_rotating_unique_window(
+    items: Iterable[Any],
+    per_run: int,
+    offset_path: Path,
+    *,
+    key_fn: Callable[[Any], Any],
+    legacy_offset_path: Optional[Path] = None,
+) -> Tuple[List[Any], int]:
+    unique_items: List[Any] = []
+    seen_keys: Set[Any] = set()
+    for item in list(items or []):
+        try:
+            key = key_fn(item)
+        except Exception:
+            key = None
+        if key in (None, "", ()):
+            continue
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_items.append(item)
+    total_unique = len(unique_items)
+    if per_run <= 0 or total_unique <= per_run:
+        return unique_items, total_unique
+    selected = _select_rotating_window(
+        unique_items,
+        per_run,
+        offset_path,
+        legacy_offset_path=legacy_offset_path,
+    )
+    return selected, total_unique
+
+
 def _derive_no_quote_from_yes(
     best_bid_yes: Optional[float],
     best_ask_yes: Optional[float],
@@ -43299,6 +44464,8 @@ def fetch_orderbook(
     backoff: float = 1.0,
     *,
     timeout_sec: Optional[float] = None,
+    price_augment_enabled: Optional[bool] = None,
+    apply_global_rate_limit: Optional[bool] = None,
 ) -> Dict:
     # NOTE: Market refresh can pass a tighter timeout/retry policy to keep ticks moving
     # even when some outcomes have empty/slow books. Other callers keep the default.
@@ -43321,7 +44488,14 @@ def fetch_orderbook(
     # Keep market-refresh calls truly low-latency (1s) while preserving a sane floor.
     timeout_sec_req = max(1.0, min(30.0, timeout_sec_req))
     retries = max(1, int(retries or 1))
-    price_augment_enabled = _env_bool("PM_CLOB_PRICE_AUGMENT_ENABLED", True)
+    if price_augment_enabled is None:
+        price_augment_enabled = _env_bool("PM_CLOB_PRICE_AUGMENT_ENABLED", True)
+    else:
+        price_augment_enabled = bool(price_augment_enabled)
+    if apply_global_rate_limit is None:
+        apply_global_rate_limit = _env_bool("PM_CLOB_BOOK_GLOBAL_RATE_LIMIT", CLOB_BOOK_GLOBAL_RATE_LIMIT)
+    else:
+        apply_global_rate_limit = bool(apply_global_rate_limit)
     price_augment_timeout_sec = _env_float("PM_CLOB_PRICE_AUGMENT_TIMEOUT_SEC")
     if (
         price_augment_timeout_sec is None
@@ -43484,7 +44658,8 @@ def fetch_orderbook(
         return out_payload
 
     for attempt in range(retries):
-        _clob_book_wait_global_slot()
+        if apply_global_rate_limit:
+            _clob_book_wait_global_slot()
         rate_limit_sleep_sec = None
         for bypass_mode in mode_bypass_list:
             try:
@@ -45505,6 +46680,141 @@ def open_db() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def open_db_ro_fast(timeout_sec: float = 0.2, busy_timeout_ms: int = 200) -> Iterable[sqlite3.Connection]:
+    """Short-lived read-only DB connection for hot read paths.
+
+    Avoid journal_mode changes here so readers do not queue behind writers.
+    """
+    try:
+        conn = sqlite3.connect(
+            f"file:{DB_PATH}?mode=ro",
+            uri=True,
+            timeout=float(timeout_sec),
+        )
+    except sqlite3.Error:
+        conn = sqlite3.connect(DB_PATH, timeout=float(timeout_sec))
+    try:
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+        except sqlite3.Error:
+            pass
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
+
+def _sqlite_is_locked_error(exc: Any) -> bool:
+    text = str(exc or "").strip().lower()
+    return (
+        "database is locked" in text
+        or "database table is locked" in text
+        or "database schema is locked" in text
+        or "busy" in text
+    )
+
+
+def _sqlite_execute_with_retry(
+    target: Any,
+    sql: str,
+    params: Tuple[Any, ...] = (),
+    *,
+    attempts: Optional[int] = None,
+    sleep_base_sec: Optional[float] = None,
+    sleep_cap_sec: Optional[float] = None,
+    retry_count: Optional[int] = None,
+    retry_sleep_sec: Optional[float] = None,
+) -> Any:
+    execute_fn = target.execute if hasattr(target, "execute") else target
+    if not callable(execute_fn):
+        raise TypeError("target must be a sqlite cursor or execute callable")
+
+    max_attempts_raw = attempts if attempts is not None else retry_count
+    if max_attempts_raw is None or max_attempts_raw < 1:
+        max_attempts_raw = _env_int("PM_DB_LOCK_RETRY_COUNT")
+    if max_attempts_raw is None or max_attempts_raw < 1:
+        max_attempts_raw = 3
+    max_attempts = max(1, min(int(max_attempts_raw), 12))
+
+    base_sleep = sleep_base_sec
+    if base_sleep is None or not math.isfinite(base_sleep) or base_sleep < 0:
+        base_sleep = retry_sleep_sec
+    if base_sleep is None or not math.isfinite(base_sleep) or base_sleep < 0:
+        base_sleep = _env_float("PM_DB_LOCK_RETRY_SLEEP_SEC")
+    if base_sleep is None or not math.isfinite(base_sleep) or base_sleep < 0:
+        base_sleep = 0.35
+    base_sleep = max(0.0, min(float(base_sleep), 5.0))
+
+    cap_sleep = sleep_cap_sec
+    if cap_sleep is None or not math.isfinite(cap_sleep) or cap_sleep < 0:
+        cap_sleep = max(float(base_sleep), 2.0)
+    cap_sleep = max(0.0, min(float(cap_sleep), 10.0))
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(int(max_attempts)):
+        try:
+            return execute_fn(sql, params)
+        except sqlite3.OperationalError as exc:
+            last_exc = exc
+            if (not _sqlite_is_locked_error(exc)) or (attempt + 1 >= int(max_attempts)):
+                raise
+            if base_sleep > 0:
+                sleep_for = float(base_sleep) * float(attempt + 1)
+                if cap_sleep > 0:
+                    sleep_for = min(sleep_for, float(cap_sleep))
+                time.sleep(sleep_for)
+    if last_exc is not None:
+        raise last_exc
+    return execute_fn(sql, params)
+
+
+def _sqlite_execute_with_retry_compat(
+    target: Any,
+    sql: str,
+    params: Tuple[Any, ...] = (),
+    *,
+    attempts: Optional[int] = None,
+    sleep_base_sec: Optional[float] = None,
+    sleep_cap_sec: Optional[float] = None,
+    retry_count: Optional[int] = None,
+    retry_sleep_sec: Optional[float] = None,
+) -> Any:
+    try:
+        return _sqlite_execute_with_retry(
+            target,
+            sql,
+            params,
+            attempts=attempts,
+            sleep_base_sec=sleep_base_sec,
+            sleep_cap_sec=sleep_cap_sec,
+            retry_count=retry_count,
+            retry_sleep_sec=retry_sleep_sec,
+        )
+    except TypeError as exc:
+        text = str(exc or "")
+        if "unexpected keyword argument" not in text:
+            raise
+        effective_attempts = attempts if attempts is not None else retry_count
+        if effective_attempts is None or not math.isfinite(float(effective_attempts)) or int(effective_attempts) < 1:
+            effective_attempts = 3
+        effective_sleep = sleep_base_sec
+        if effective_sleep is None or not math.isfinite(float(effective_sleep)) or float(effective_sleep) < 0:
+            effective_sleep = retry_sleep_sec
+        if effective_sleep is None or not math.isfinite(float(effective_sleep)) or float(effective_sleep) < 0:
+            effective_sleep = 0.35
+        return _sqlite_execute_with_retry(
+            target,
+            sql,
+            params,
+            retry_count=int(effective_attempts),
+            retry_sleep_sec=float(effective_sleep),
+        )
+
+
 def init_db() -> None:
     DATA_DIR.mkdir(exist_ok=True)
     conn = open_db()
@@ -46619,6 +47929,18 @@ def _rows_have_usable_q(rows_ref: List[Dict[str, Any]]) -> bool:
     return False
 
 
+def _rows_have_market_quotes(rows_ref: List[Dict[str, Any]]) -> bool:
+    if not rows_ref:
+        return False
+    for row_ref in rows_ref:
+        if not isinstance(row_ref, Mapping):
+            continue
+        for key in _MARKET_REFRESH_ROW_FIELDS:
+            if _to_finite_float(row_ref.get(key)) is not None:
+                return True
+    return False
+
+
 def _merge_rows_fill_missing_q_fields(
     primary_rows: List[Dict[str, Any]],
     fallback_rows: List[Dict[str, Any]],
@@ -46676,6 +47998,87 @@ def _merge_rows_fill_missing_q_fields(
             if _to_finite_float(current_val) is None and _to_finite_float(fallback_val) is not None:
                 target_row[key] = fallback_val
     return merged_rows
+
+
+def _payload_row_q_fields_for_side(
+    row_ref: Mapping[str, Any],
+    side_label: str,
+) -> Dict[str, Any]:
+    if not isinstance(row_ref, Mapping):
+        return {}
+    side_u = str(side_label or "").strip().upper()
+    if side_u == "YES":
+        q_entry_val = to_float(row_ref.get("q_entry"))
+        if q_entry_val is None or not math.isfinite(q_entry_val):
+            q_entry_val = to_float(row_ref.get("q_calibrated"))
+        if q_entry_val is None or not math.isfinite(q_entry_val):
+            q_entry_val = to_float(row_ref.get("q_raw"))
+        if q_entry_val is None or not math.isfinite(q_entry_val):
+            q_entry_val = to_float(row_ref.get("q_round"))
+        q_raw_val = to_float(row_ref.get("q_round"))
+        if q_raw_val is None or not math.isfinite(q_raw_val):
+            q_raw_val = to_float(row_ref.get("q_raw"))
+        q_cal_val = to_float(row_ref.get("q_calibrated"))
+        q_quote_val = to_float(row_ref.get("q_quote"))
+        q_edge_val = to_float(row_ref.get("q_edge"))
+        if q_edge_val is None or not math.isfinite(q_edge_val):
+            q_edge_val = q_cal_val if q_cal_val is not None and math.isfinite(q_cal_val) else q_raw_val
+        return {
+            "q_entry": q_entry_val,
+            "q_raw": q_raw_val,
+            "q_calibrated": q_cal_val,
+            "q_edge": q_edge_val,
+            "q_quote": q_quote_val,
+            "q_quote_blend_alpha": to_float(row_ref.get("q_quote_blend_alpha")),
+            "q_quote_source": str(row_ref.get("q_quote_source") or ""),
+        }
+
+    q_entry_val = to_float(row_ref.get("q_entry_no"))
+    if q_entry_val is None or not math.isfinite(q_entry_val):
+        q_yes_val = to_float(row_ref.get("q_entry"))
+        if q_yes_val is None or not math.isfinite(q_yes_val):
+            q_yes_val = to_float(row_ref.get("q_calibrated"))
+        if q_yes_val is None or not math.isfinite(q_yes_val):
+            q_yes_val = to_float(row_ref.get("q_raw"))
+        if q_yes_val is None or not math.isfinite(q_yes_val):
+            q_yes_val = to_float(row_ref.get("q_round"))
+        if q_yes_val is not None and math.isfinite(q_yes_val):
+            q_entry_val = max(0.0, min(1.0, 1.0 - float(q_yes_val)))
+    q_raw_val = to_float(row_ref.get("q_round_no"))
+    if q_raw_val is None or not math.isfinite(q_raw_val):
+        q_raw_yes_val = to_float(row_ref.get("q_round"))
+        if q_raw_yes_val is None or not math.isfinite(q_raw_yes_val):
+            q_raw_yes_val = to_float(row_ref.get("q_raw"))
+        if q_raw_yes_val is not None and math.isfinite(q_raw_yes_val):
+            q_raw_val = max(0.0, min(1.0, 1.0 - float(q_raw_yes_val)))
+    q_cal_val = to_float(row_ref.get("q_calibrated_no"))
+    if q_cal_val is None or not math.isfinite(q_cal_val):
+        q_cal_yes_val = to_float(row_ref.get("q_calibrated"))
+        if q_cal_yes_val is not None and math.isfinite(q_cal_yes_val):
+            q_cal_val = max(0.0, min(1.0, 1.0 - float(q_cal_yes_val)))
+    q_quote_val = to_float(row_ref.get("q_quote_no"))
+    q_quote_source = str(row_ref.get("q_quote_source_no") or "")
+    if q_quote_val is None or not math.isfinite(q_quote_val):
+        q_quote_yes_val = to_float(row_ref.get("q_quote"))
+        if q_quote_yes_val is not None and math.isfinite(q_quote_yes_val):
+            q_quote_val = max(0.0, min(1.0, 1.0 - float(q_quote_yes_val)))
+            if not q_quote_source:
+                q_quote_source = "complement_yes_q_quote"
+    q_edge_val = to_float(row_ref.get("q_edge_no"))
+    if q_edge_val is None or not math.isfinite(q_edge_val):
+        q_edge_val = q_cal_val if q_cal_val is not None and math.isfinite(q_cal_val) else q_raw_val
+    q_quote_blend_alpha = to_float(row_ref.get("q_quote_blend_alpha_no"))
+    if q_quote_blend_alpha is None or not math.isfinite(q_quote_blend_alpha):
+        q_quote_blend_alpha = to_float(row_ref.get("q_quote_blend_alpha"))
+    return {
+        "q_entry": q_entry_val,
+        "q_raw": q_raw_val,
+        "q_calibrated": q_cal_val,
+        "q_edge": q_edge_val,
+        "q_quote": q_quote_val,
+        "q_quote_blend_alpha": q_quote_blend_alpha,
+        "q_quote_source": q_quote_source,
+    }
 
 
 def _latest_fact_history_row_for_event(
@@ -46883,6 +48286,7 @@ def _load_latest_payload_rows(
     merged_rows = [dict(item) for item in candidate_sets[0] if isinstance(item, Mapping)]
     for rows_ref in candidate_sets[1:]:
         merged_rows = _merge_rows_fill_missing_q_fields(merged_rows, rows_ref)
+        merged_rows = _merge_rows_preserve_edge_scores(merged_rows, rows_ref)
         if _rows_have_usable_q(merged_rows):
             # Keep merging through all sources so partial outcome coverage gets backfilled too.
             continue
@@ -46926,6 +48330,13 @@ def _merge_rows_preserve_edge_scores(
             ],
             "derived": [
                 "entry_price_yes",
+                "exec_entry_price_yes",
+                "exec_entry_cost_yes",
+                "exec_edge_entry_yes",
+                "exec_edge_exit_yes",
+                "exec_exit_price_yes",
+                "exec_exit_cost_yes",
+                "exec_edge_score_yes",
                 "depth_ratio_yes",
                 "signal_edge_round",
                 "signal_edge_min",
@@ -46964,6 +48375,13 @@ def _merge_rows_preserve_edge_scores(
             ],
             "derived": [
                 "entry_price_no",
+                "exec_entry_price_no",
+                "exec_entry_cost_no",
+                "exec_edge_entry_no",
+                "exec_edge_exit_no",
+                "exec_exit_price_no",
+                "exec_exit_cost_no",
+                "exec_edge_score_no",
                 "depth_ratio_no",
                 "signal_edge_round_no",
                 "signal_edge_min_no",
@@ -47095,11 +48513,17 @@ _MARKET_REFRESH_ROW_FIELDS = (
     "spread",
     "bid_depth_topN",
     "ask_depth_topN",
+    "ask_depth_total",
+    "best_bid_size",
+    "best_ask_size",
     "best_bid_no",
     "best_ask_no",
     "spread_no",
     "bid_depth_topN_no",
     "ask_depth_topN_no",
+    "ask_depth_total_no",
+    "best_bid_size_no",
+    "best_ask_size_no",
 )
 
 
@@ -47177,6 +48601,7 @@ def _save_event_run_from_market_refresh(
         return
     cur = conn.cursor()
     row_map: Dict[str, Any] = {}
+    previous_rows_for_q = _load_latest_payload_rows(conn, slug, event_date)
     try:
         cur.execute(
             """
@@ -47207,11 +48632,23 @@ def _save_event_run_from_market_refresh(
                 payload_loaded = None
             if isinstance(payload_loaded, dict):
                 payload_obj = dict(payload_loaded)
-        previous_rows_for_q = _load_latest_payload_rows(conn, slug, event_date)
-        merged_rows = _merge_market_rows_into_payload_rows(payload_obj.get("rows"), rows)
+        latest_rows = payload_obj.get("rows")
+        merged_rows = _merge_market_rows_into_payload_rows(latest_rows, rows)
         if previous_rows_for_q:
+            latest_rows_list = [
+                dict(item)
+                for item in latest_rows
+                if isinstance(item, Mapping)
+            ] if isinstance(latest_rows, list) else []
+            latest_has_q = _rows_have_usable_q(latest_rows_list)
+            if (not latest_has_q) and len(previous_rows_for_q) >= len(latest_rows_list):
+                merged_rows = _merge_market_rows_into_payload_rows(previous_rows_for_q, rows)
+            else:
+                merged_rows = _merge_rows_fill_missing_q_fields(merged_rows, previous_rows_for_q)
             merged_rows = _merge_rows_preserve_edge_scores(merged_rows, previous_rows_for_q)
             _recompute_signal_edges_in_rows(merged_rows)
+        if not _rows_have_usable_q(merged_rows):
+            return
         payload_obj["rows"] = merged_rows
         payload_obj.setdefault("slug", slug)
         row_map["run_date"] = run_date
@@ -47235,9 +48672,16 @@ def _save_event_run_from_market_refresh(
         )
         return
 
+    merged_rows = [dict(item) for item in rows if isinstance(item, Mapping)]
+    if previous_rows_for_q:
+        merged_rows = _merge_market_rows_into_payload_rows(previous_rows_for_q, rows)
+        merged_rows = _merge_rows_preserve_edge_scores(merged_rows, previous_rows_for_q)
+        _recompute_signal_edges_in_rows(merged_rows)
+    if not _rows_have_usable_q(merged_rows):
+        return
     payload_obj = {
         "slug": slug,
-        "rows": [dict(item) for item in rows if isinstance(item, Mapping)],
+        "rows": merged_rows,
     }
     cur.execute(
         """
@@ -47374,9 +48818,9 @@ def save_market_snapshot(
     rows: List[Dict[str, Any]],
     meta: Dict[str, Any],
     created_at: str,
-) -> None:
+) -> bool:
     if not slug or not event_date or not rows:
-        return
+        return False
     payload_obj = {"slug": slug, "rows": rows}
     payload = json.dumps(payload_obj)
     meta_json = json.dumps(meta) if meta else None
@@ -47390,7 +48834,7 @@ def save_market_snapshot(
                 """,
                 (run_date, event_date, slug, payload, meta_json, created_at),
             )
-            return
+            return True
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() and attempt < 4:
                 time.sleep(0.25 * (attempt + 1))
@@ -47399,8 +48843,9 @@ def save_market_snapshot(
                 print(
                     f"[scan_snapshot] save_market_snapshot locked slug={slug} event_date={event_date} error={exc}"
                 )
-                return
+                return False
             raise
+    return False
 
 
 def compose_score_snapshot(
@@ -47422,20 +48867,60 @@ def compose_score_snapshot(
     payload_market, meta_market, created_market, market_id = _load_latest_snapshot(
         conn, "market_snapshots", slug, event_date
     )
-    market_only_fallback_rows: List[Dict[str, Any]] = []
-    if payload_market is not None and payload_model is None:
-        market_only_fallback_rows = _load_latest_payload_rows(conn, slug, event_date)
+    payload_fallback_rows: List[Dict[str, Any]] = []
+    if payload_market is None or payload_model is None:
+        payload_fallback_rows = _load_latest_payload_rows(conn, slug, event_date)
     conn.close()
     if payload_market is None:
-        return False, "missing_snapshot"
+        model_rows = payload_model.get("rows") if isinstance(payload_model, dict) else None
+        if not isinstance(model_rows, list) or not model_rows:
+            return False, "missing_snapshot"
+        if not payload_fallback_rows or not _rows_have_market_quotes(payload_fallback_rows):
+            return False, "missing_snapshot"
+        merged_rows = _merge_rows_fill_missing_q_fields(payload_fallback_rows, model_rows)
+        merged_rows = _merge_rows_preserve_edge_scores(merged_rows, model_rows)
+        _recompute_signal_edges_in_rows(merged_rows)
+        if not _rows_have_usable_q(merged_rows):
+            return False, "missing_model_q_fallback"
+        meta = dict(meta_hint or {})
+        for source in (meta_model,):
+            if isinstance(source, dict):
+                for key, value in source.items():
+                    if key not in meta or meta.get(key) in (None, ""):
+                        meta[key] = value
+        event_url = str(meta.get("event_url") or "")
+        if not event_url and slug:
+            event_url = f"https://polymarket.com/event/{slug}"
+            meta["event_url"] = event_url
+        payload_model_dict = payload_model if isinstance(payload_model, dict) else {}
+        result = {
+            "slug": slug,
+            "date": event_date,
+            "event_url": event_url,
+            "title": str(meta.get("title") or slug),
+            "members": list(payload_model_dict.get("members") or []),
+            "models": list(payload_model_dict.get("models") or []),
+            "model_members": dict(payload_model_dict.get("model_members") or {}),
+            "rows": merged_rows,
+            "skip_market_ticks": True,
+            "score_composer": {
+                "model_snapshot_id": model_id,
+                "market_snapshot_id": None,
+                "model_snapshot_at": created_model,
+                "market_snapshot_at": "",
+                "source": "model_only_snapshot_fallback",
+            },
+        }
+        archive_run(run_date, event_date, result, [], meta)
+        return True, None
     if payload_model is None:
         market_rows = payload_market.get("rows") if isinstance(payload_market, dict) else None
         if not isinstance(market_rows, list) or not market_rows:
             return False, "missing_snapshot"
-        if not market_only_fallback_rows:
+        if not payload_fallback_rows:
             return False, "missing_snapshot"
-        merged_rows = _merge_market_rows_into_payload_rows(market_only_fallback_rows, market_rows)
-        merged_rows = _merge_rows_fill_missing_q_fields(merged_rows, market_only_fallback_rows)
+        merged_rows = _merge_market_rows_into_payload_rows(payload_fallback_rows, market_rows)
+        merged_rows = _merge_rows_fill_missing_q_fields(merged_rows, payload_fallback_rows)
         _recompute_signal_edges_in_rows(merged_rows)
         if not _rows_have_usable_q(merged_rows):
             return False, "missing_model_q_fallback"
@@ -47451,8 +48936,12 @@ def compose_score_snapshot(
             meta["event_url"] = event_url
         result = {
             "slug": slug,
+            "date": event_date,
             "event_url": event_url,
             "title": str(meta.get("title") or slug),
+            "members": [],
+            "models": [],
+            "model_members": {},
             "rows": merged_rows,
             "skip_market_ticks": True,
             "score_composer": {
@@ -47512,7 +49001,15 @@ def compose_score_snapshot(
     compose_args.model_refresh_only = False
 
     try:
-        result = analyze_event(event_url, event_date, float(lat), float(lon), str(tz), compose_args)
+        result = analyze_event(
+            event_url,
+            event_date,
+            float(lat),
+            float(lon),
+            str(tz),
+            compose_args,
+            event_hint=meta,
+        )
     except Exception as exc:
         return False, f"compose_failed {exc}"
 
@@ -47551,17 +49048,86 @@ def compose_score_snapshot(
     return True, None
 
 
+def compose_score_snapshot_with_market_bootstrap(
+    run_date: str,
+    event_date: str,
+    slug: str,
+    args: argparse.Namespace,
+    *,
+    meta_hint: Optional[Dict[str, Any]] = None,
+    event_detail: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, Optional[str]]:
+    ok, err = compose_score_snapshot(run_date, event_date, slug, args, meta_hint=meta_hint)
+    if ok or not _should_bootstrap_market_for_compose_error(err):
+        return ok, err
+    if not _env_bool("PM_MODEL_SCAN_COMPOSE_MARKET_BOOTSTRAP", True):
+        return ok, err
+
+    refresh_args = argparse.Namespace(**vars(args))
+    refresh_args.market_refresh_only = True
+    refresh_args.model_refresh_only = False
+    refresh_ok, refresh_err, _count, rows, created_at = refresh_market_ticks_for_event(
+        slug,
+        event_date,
+        refresh_args,
+        event_detail,
+    )
+    if not refresh_ok or not rows:
+        return ok, err if err else refresh_err
+
+    market_meta = dict(meta_hint or {})
+    event_url = str(market_meta.get("event_url") or "")
+    if not event_url and slug:
+        event_url = f"https://polymarket.com/event/{slug}"
+    market_meta["slug"] = slug
+    market_meta["event_url"] = event_url
+    if "title" not in market_meta:
+        market_meta["title"] = slug
+    try:
+        init_db()
+        with open_db() as conn:
+            saved = save_market_snapshot(
+                conn,
+                run_date,
+                event_date,
+                slug,
+                rows,
+                market_meta,
+                created_at or utc_now_iso(),
+            )
+            if not saved:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                return ok, err
+            conn.commit()
+    except Exception:
+        return ok, err
+
+    return compose_score_snapshot(run_date, event_date, slug, args, meta_hint=meta_hint)
+
+
+def _should_bootstrap_market_for_compose_error(err: Optional[str]) -> bool:
+    code = str(err or "").strip()
+    return code in {
+        "missing_snapshot",
+        "market_snapshot_expired",
+        "snapshot_time_mismatch",
+    }
+
+
 def save_market_ticks(
     conn: sqlite3.Connection,
     run_date: str,
     event_date: str,
     result: Dict,
     created_at: str,
-) -> None:
+) -> bool:
     rows = result.get("rows") or []
     slug = str(result.get("slug") or "")
     if not rows or not slug or not event_date:
-        return
+        return False
     date_key = event_date.split("T", 1)[0]
     cur = conn.cursor()
 
@@ -47624,7 +49190,8 @@ def save_market_ticks(
                     created_at,
                 ),
             ):
-                return
+                return False
+    return True
 
 
 def _load_cached_market_tokens(
@@ -47720,6 +49287,150 @@ def _load_cached_market_tokens_latest(
     return _load_cached_market_tokens(conn, slug, latest_event_date)
 
 
+def _load_cached_market_tokens_for_slug(
+    slug: str,
+    event_date: str,
+) -> List[Dict[str, Any]]:
+    if not slug:
+        return []
+    try:
+        init_db()
+        with open_db() as conn:
+            tokens = _load_cached_market_tokens(conn, slug, event_date)
+            if not tokens:
+                tokens = _load_cached_market_tokens_latest(conn, slug)
+            return tokens
+    except Exception:
+        return []
+
+
+def _load_cached_weather_event_stub_by_slug(slug: str) -> Optional[Dict[str, Any]]:
+    slug_key = str(slug or "").strip()
+    if not slug_key:
+        return None
+    seen: Set[str] = set()
+    for cached_events in (
+        _load_weather_events_cache(allow_stale=True),
+        _load_weather_events_good_cache(),
+    ):
+        for item in cached_events or []:
+            if not isinstance(item, dict):
+                continue
+            item_slug = str(item.get("slug") or "").strip()
+            if not item_slug or item_slug in seen:
+                continue
+            seen.add(item_slug)
+            if item_slug == slug_key:
+                return item
+    return None
+
+
+def _load_event_market_context(
+    slug: str,
+    event_date: str,
+    *,
+    event_hint: Optional[Mapping[str, Any]] = None,
+) -> Tuple[
+    List[Dict[str, Any]],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[Dict[str, Any]],
+    str,
+    List[str],
+]:
+    title = None
+    resolution_source = None
+    description = None
+    event_ref = None
+    errors: List[str] = []
+
+    hint = event_hint if isinstance(event_hint, Mapping) else None
+    if hint:
+        event_ref = dict(hint)
+        title = str(hint.get("title") or "").strip() or None
+        resolution_source = (
+            str(hint.get("resolutionSource") or hint.get("resolution_source") or "").strip() or None
+        )
+        description = str(hint.get("description") or "").strip() or None
+    if title is None or resolution_source is None or description is None:
+        cached_stub = _load_cached_weather_event_stub_by_slug(slug)
+        if isinstance(cached_stub, dict):
+            event_ref = dict(cached_stub)
+            if title is None:
+                title = str(cached_stub.get("title") or "").strip() or None
+            if resolution_source is None:
+                resolution_source = (
+                    str(
+                        cached_stub.get("resolutionSource")
+                        or cached_stub.get("resolution_source")
+                        or ""
+                    ).strip()
+                    or None
+                )
+            if description is None:
+                description = str(cached_stub.get("description") or "").strip() or None
+
+    event_live = None
+    try:
+        event_live = fetch_gamma_event_by_slug(slug)
+    except Exception as exc:
+        errors.append(f"event_fetch={exc}")
+        event_live = None
+    if event_live is not None:
+        try:
+            outcome_tokens = parse_outcomes_and_tokens_from_event(event_live)
+        except Exception as exc:
+            errors.append(f"event_parse={exc}")
+            outcome_tokens = []
+        if outcome_tokens:
+            return (
+                outcome_tokens,
+                str(event_live.get("title") or "").strip() or title,
+                str(event_live.get("resolutionSource") or "").strip() or resolution_source,
+                str(event_live.get("description") or "").strip() or description,
+                event_live,
+                "gamma_event",
+                errors,
+            )
+
+    market = None
+    try:
+        market = fetch_gamma_market_by_slug(slug)
+    except Exception as exc:
+        errors.append(f"market_fetch={exc}")
+        market = None
+    if market is not None:
+        try:
+            outcome_tokens = parse_outcomes_and_tokens(market)
+        except Exception as exc:
+            errors.append(f"market_parse={exc}")
+            outcome_tokens = []
+        if outcome_tokens:
+            return (
+                outcome_tokens,
+                title,
+                resolution_source,
+                description,
+                event_ref,
+                "gamma_market",
+                errors,
+            )
+
+    outcome_tokens = _load_cached_market_tokens_for_slug(slug, event_date)
+    if outcome_tokens:
+        return (
+            outcome_tokens,
+            title,
+            resolution_source,
+            description,
+            event_ref,
+            "cached_tokens",
+            errors,
+        )
+    return [], title, resolution_source, description, event_ref, "missing", errors
+
+
 def _save_cached_market_tokens(
     conn: sqlite3.Connection,
     slug: str,
@@ -47731,6 +49442,15 @@ def _save_cached_market_tokens(
         return
     date_key = event_date.split("T", 1)[0]
     cur = conn.cursor()
+    attempts = _env_int("PM_MARKET_TOKENS_WRITE_RETRY_ATTEMPTS")
+    if attempts is None or attempts < 1:
+        attempts = 3
+    sleep_base_sec = _env_float("PM_MARKET_TOKENS_WRITE_RETRY_SLEEP_SEC")
+    if sleep_base_sec is None or not math.isfinite(sleep_base_sec) or sleep_base_sec < 0:
+        sleep_base_sec = 0.1
+    sleep_cap_sec = _env_float("PM_MARKET_TOKENS_WRITE_RETRY_SLEEP_CAP_SEC")
+    if sleep_cap_sec is None or not math.isfinite(sleep_cap_sec) or sleep_cap_sec < 0:
+        sleep_cap_sec = 0.5
     for item in outcome_tokens:
         if not isinstance(item, dict):
             continue
@@ -47746,7 +49466,8 @@ def _save_cached_market_tokens(
         market_archived = _coerce_optional_bool(item.get("market_archived"))
         market_accepting_orders = _coerce_optional_bool(item.get("market_accepting_orders"))
         market_enable_orderbook = _coerce_optional_bool(item.get("market_enable_orderbook"))
-        cur.execute(
+        _sqlite_execute_with_retry_compat(
+            cur,
             """
             INSERT INTO market_tokens (
                 slug,
@@ -47790,6 +49511,9 @@ def _save_cached_market_tokens(
                 1 if market_enable_orderbook is True else 0 if market_enable_orderbook is False else None,
                 updated_at,
             ),
+            attempts=int(attempts),
+            sleep_base_sec=float(sleep_base_sec),
+            sleep_cap_sec=float(sleep_cap_sec),
         )
 
 
@@ -47798,28 +49522,40 @@ def refresh_market_ticks_for_event(
     event_date: str,
     args: argparse.Namespace,
     event_detail: Optional[Dict[str, Any]] = None,
+    *,
+    run_deadline_monotonic: Optional[float] = None,
 ) -> Tuple[bool, Optional[str], int, Optional[List[Dict[str, Any]]], Optional[str]]:
     if not slug or not event_date:
         return False, "missing_slug_or_date", 0, None, None
+    t_refresh_start = time.perf_counter()
+    token_load_sec = 0.0
+    priority_label_sec = 0.0
+    quote_fetch_sec = 0.0
+    db_write_sec = 0.0
     outcome_tokens: List[Dict[str, Any]] = []
     cache_only = False
+    cache_only_bootstrap = True
     if getattr(args, "market_refresh_only", False):
         cache_only = _env_bool("PM_MARKET_REFRESH_CACHE_ONLY", True)
+        # Keep the minute refresh loop cache-first, but allow a cold-start token bootstrap
+        # so market_tokens can recover from an empty cache instead of deadlocking forever.
+        cache_only_bootstrap = _env_bool("PM_MARKET_REFRESH_CACHE_ONLY_BOOTSTRAP", True)
     # Prefer cached tokens to avoid Gamma fan-out/instability in minute-level refresh loops.
+    t_token = time.perf_counter()
     try:
         init_db()
-        with open_db() as conn:
+        with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn:
             outcome_tokens = _load_cached_market_tokens(conn, slug, event_date)
     except Exception:
         outcome_tokens = []
     if cache_only and not outcome_tokens:
         try:
             init_db()
-            with open_db() as conn:
+            with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn:
                 outcome_tokens = _load_cached_market_tokens_latest(conn, slug)
         except Exception:
             outcome_tokens = []
-        if not outcome_tokens:
+        if not outcome_tokens and not cache_only_bootstrap:
             return False, "cache_only_missing_tokens", 0, None, None
 
     if not outcome_tokens:
@@ -47847,7 +49583,7 @@ def refresh_market_ticks_for_event(
             # Gamma failed; fall back to latest cached tokens for the slug if available.
             try:
                 init_db()
-                with open_db() as conn:
+                with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn:
                     outcome_tokens = _load_cached_market_tokens_latest(conn, slug)
             except Exception:
                 outcome_tokens = []
@@ -47861,6 +49597,7 @@ def refresh_market_ticks_for_event(
                     conn.commit()
             except Exception:
                 pass
+    token_load_sec += time.perf_counter() - t_token
     if not outcome_tokens:
         return False, "missing_outcomes", 0, None, None
 
@@ -47881,13 +49618,10 @@ def refresh_market_ticks_for_event(
         refresh_all_max = 10
     if refresh_all_max > 0 and len(outcome_tokens) <= refresh_all_max:
         max_outcomes = 0
-    time_budget_sec = 0.0
-    try:
-        time_budget_sec = float(getattr(args, "market_refresh_time_budget_sec", 0.0) or 0.0)
-    except Exception:
-        time_budget_sec = 0.0
-    if not math.isfinite(time_budget_sec) or time_budget_sec < 0:
-        time_budget_sec = 0.0
+    time_budget_sec = _effective_market_refresh_event_budget_sec(
+        args,
+        run_deadline_monotonic=run_deadline_monotonic,
+    )
     # Tighten per-request policy for market refresh so a few bad books don't stall the whole event.
     clob_timeout_sec = 0.0
     try:
@@ -47908,6 +49642,31 @@ def refresh_market_ticks_for_event(
         clob_retries = 1
     if clob_retries > 3:
         clob_retries = 3
+    fast_mode = _market_refresh_fast_mode_enabled(args)
+    allow_token_remap = _env_bool(
+        "PM_SCAN_MARKET_REFRESH_ALLOW_TOKEN_REMAP",
+        not fast_mode,
+    )
+    allow_gamma_price_fallback = _env_bool(
+        "PM_SCAN_MARKET_REFRESH_ALLOW_GAMMA_PRICE_FALLBACK",
+        not fast_mode,
+    )
+    allow_last_tick_fallback = _env_bool(
+        "PM_SCAN_MARKET_REFRESH_ALLOW_LAST_TICK_FALLBACK",
+        False,
+    )
+    prefer_yes_complement_for_no = _env_bool(
+        "PM_MARKET_REFRESH_PREFER_YES_COMPLEMENT_FOR_NO",
+        True,
+    )
+    price_augment_enabled = _env_bool(
+        "PM_SCAN_MARKET_REFRESH_PRICE_AUGMENT_ENABLED",
+        not fast_mode,
+    )
+    apply_global_rate_limit = _env_bool(
+        "PM_SCAN_MARKET_REFRESH_GLOBAL_RATE_LIMIT",
+        not fast_mode,
+    )
 
     # Prioritize the latest known best candidate (facts SSOT), then liquid outcomes.
     # We include:
@@ -47930,9 +49689,10 @@ def refresh_market_ticks_for_event(
             lbl = str(tokens[j].get("label") or "").strip()
             if lbl:
                 priority_labels.add(lbl)
+    t_priority = time.perf_counter()
     try:
         init_db()
-        with open_db() as conn:
+        with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -47984,8 +49744,44 @@ def refresh_market_ticks_for_event(
                     held_outcome = str(row_pos[0] or "").strip()
                     if held_outcome:
                         priority_labels.add(held_outcome)
+                stale_outcome_topn = _env_int("PM_SCAN_MARKET_REFRESH_STALE_OUTCOME_TOPN")
+                if stale_outcome_topn is None or stale_outcome_topn <= 0:
+                    stale_outcome_topn = 6
+                stale_outcome_window_min = _env_int("PM_SCAN_MARKET_REFRESH_STALE_OUTCOME_WINDOW_MIN")
+                if stale_outcome_window_min is None or stale_outcome_window_min <= 0:
+                    stale_outcome_window_min = 60
+                try:
+                    window_expr = f"-{max(5, int(stale_outcome_window_min))} minutes"
+                    cur.execute(
+                        """
+                        SELECT outcome, COUNT(*) AS hits, MAX(created_at) AS last_seen
+                        FROM auto_trade_decisions
+                        WHERE slug = ?
+                          AND substr(COALESCE(event_date, ''), 1, 10) = ?
+                          AND action = 'entry'
+                          AND outcome IS NOT NULL AND outcome != ''
+                          AND reason_codes_json LIKE '%market_tick_stale%'
+                          AND datetime(COALESCE(created_at, '')) >= datetime('now', ?)
+                        GROUP BY outcome
+                        ORDER BY hits DESC, last_seen DESC
+                        LIMIT ?
+                        """,
+                        (
+                            slug,
+                            event_date_key,
+                            window_expr,
+                            int(max(1, stale_outcome_topn)),
+                        ),
+                    )
+                    for row_stale in cur.fetchall() or []:
+                        stale_outcome = str(row_stale[0] or "").strip()
+                        if stale_outcome:
+                            priority_labels.add(stale_outcome)
+                except sqlite3.OperationalError:
+                    pass
     except Exception:
         priority_labels = set()
+    priority_label_sec += time.perf_counter() - t_priority
 
     def _volume_score(item: Dict[str, Any]) -> float:
         vol = to_float(item.get("outcome_volume"))
@@ -48023,11 +49819,9 @@ def refresh_market_ticks_for_event(
     # forever while never updating `event_market_ticks.created_at`, making freshness look stuck.
     any_quote = False
     last_ob_error: Optional[str] = None
-    allow_token_remap = _env_bool("PM_SCAN_MARKET_REFRESH_ALLOW_TOKEN_REMAP", True)
-    allow_gamma_price_fallback = _env_bool("PM_SCAN_MARKET_REFRESH_ALLOW_GAMMA_PRICE_FALLBACK", True)
-    allow_last_tick_fallback = _env_bool("PM_SCAN_MARKET_REFRESH_ALLOW_LAST_TICK_FALLBACK", True)
     token_refresh_attempted: Set[str] = set()
     last_tick_fallback_cache: Dict[Tuple[str, str], Tuple[Optional[float], Optional[float], Optional[float], float, float]] = {}
+    prefetched_side_quotes: Dict[Tuple[str, str], Tuple[Optional[float], Optional[float], Optional[float], float, float, Optional[str]]] = {}
 
     def _looks_like_no_orderbook_error(text: str) -> bool:
         lowered = str(text or "").lower()
@@ -48204,6 +49998,8 @@ def refresh_market_ticks_for_event(
                 retries=clob_retries,
                 backoff=0.25,
                 timeout_sec=clob_timeout_sec,
+                price_augment_enabled=price_augment_enabled,
+                apply_global_rate_limit=apply_global_rate_limit,
             )
             (
                 best_bid_val,
@@ -48241,6 +50037,8 @@ def refresh_market_ticks_for_event(
                             retries=clob_retries,
                             backoff=0.25,
                             timeout_sec=clob_timeout_sec,
+                            price_augment_enabled=price_augment_enabled,
+                            apply_global_rate_limit=apply_global_rate_limit,
                         )
                         (
                             best_bid_val,
@@ -48327,9 +50125,53 @@ def refresh_market_ticks_for_event(
             return None, None, None, 0.0, 0.0, f"{side_u.lower()}_{hint}:{err_text[:120]}"
 
     t0 = time.monotonic()
-    prefer_yes_complement_for_no = _env_bool("PM_MARKET_REFRESH_PREFER_YES_COMPLEMENT_FOR_NO", True)
+    def _market_refresh_budget_exhausted() -> bool:
+        if time_budget_sec > 0 and (time.monotonic() - t0) >= time_budget_sec:
+            return True
+        if run_deadline_monotonic is not None and math.isfinite(float(run_deadline_monotonic)):
+            return time.monotonic() >= float(run_deadline_monotonic)
+        return False
+
+    quote_prefetch_workers = _market_refresh_quote_prefetch_workers(args)
+    if quote_prefetch_workers > 1:
+        prefetch_tasks: List[Tuple[str, Dict[str, Any], str]] = []
+        for item in sorted_tokens:
+            if _market_refresh_budget_exhausted():
+                break
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            yes_token = str(item.get("yes_token") or "").strip()
+            if not label:
+                continue
+            if not yes_token and not allow_token_remap:
+                continue
+            prefetch_tasks.append((label, dict(item), "YES"))
+        if prefetch_tasks:
+            max_prefetch = min(len(prefetch_tasks), int(quote_prefetch_workers))
+            t_quote_prefetch = time.perf_counter()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_prefetch) as executor:
+                future_map = {
+                    executor.submit(_fetch_side_quote, label, item_ref, side): (label, side)
+                    for label, item_ref, side in prefetch_tasks
+                }
+                for future in concurrent.futures.as_completed(future_map):
+                    label, side = future_map[future]
+                    try:
+                        prefetched_side_quotes[(label, side)] = future.result()
+                    except Exception as exc:
+                        prefetched_side_quotes[(label, side)] = (
+                            None,
+                            None,
+                            None,
+                            0.0,
+                            0.0,
+                            f"{str(side or '').lower()}_prefetch_failed:{str(exc)[:120]}",
+                        )
+            quote_fetch_sec += time.perf_counter() - t_quote_prefetch
+
     for item in sorted_tokens:
-        if time_budget_sec > 0 and (time.monotonic() - t0) >= time_budget_sec and rows:
+        if _market_refresh_budget_exhausted() and rows:
             break
         label = str(item.get("label") or "")
         yes_token = item.get("yes_token")
@@ -48348,16 +50190,30 @@ def refresh_market_ticks_for_event(
         ask_depth_no = 0.0
         item_mut = item if isinstance(item, dict) else {}
         if yes_token or allow_token_remap:
-            (
-                best_bid,
-                best_ask,
-                spread,
-                bid_depth,
-                ask_depth,
-                yes_err,
-            ) = _fetch_side_quote(label, item_mut, "YES")
-            if yes_err:
-                last_ob_error = yes_err
+            if not (_market_refresh_budget_exhausted() and rows):
+                prefetched_yes = prefetched_side_quotes.get((label, "YES"))
+                if prefetched_yes is not None:
+                    (
+                        best_bid,
+                        best_ask,
+                        spread,
+                        bid_depth,
+                        ask_depth,
+                        yes_err,
+                    ) = prefetched_yes
+                else:
+                    t_quote = time.perf_counter()
+                    (
+                        best_bid,
+                        best_ask,
+                        spread,
+                        bid_depth,
+                        ask_depth,
+                        yes_err,
+                    ) = _fetch_side_quote(label, item_mut, "YES")
+                    quote_fetch_sec += time.perf_counter() - t_quote
+                if yes_err:
+                    last_ob_error = yes_err
         if prefer_yes_complement_for_no:
             (
                 best_bid_no,
@@ -48375,16 +50231,19 @@ def refresh_market_ticks_for_event(
             (best_bid_no is None and best_ask_no is None)
             and (no_token or allow_token_remap)
         ):
-            (
-                best_bid_no,
-                best_ask_no,
-                spread_no,
-                bid_depth_no,
-                ask_depth_no,
-                no_err,
-            ) = _fetch_side_quote(label, item_mut, "NO")
-            if no_err:
-                last_ob_error = no_err
+            if not _market_refresh_budget_exhausted():
+                t_quote = time.perf_counter()
+                (
+                    best_bid_no,
+                    best_ask_no,
+                    spread_no,
+                    bid_depth_no,
+                    ask_depth_no,
+                    no_err,
+                ) = _fetch_side_quote(label, item_mut, "NO")
+                quote_fetch_sec += time.perf_counter() - t_quote
+                if no_err:
+                    last_ob_error = no_err
         if (
             best_bid is not None
             or best_ask is not None
@@ -48407,6 +50266,8 @@ def refresh_market_ticks_for_event(
                 "ask_depth_topN_no": ask_depth_no,
             }
         )
+        if _market_refresh_budget_exhausted():
+            break
     if not rows:
         return False, "empty_ticks", 0, None, None
     if not any_quote:
@@ -48418,11 +50279,41 @@ def refresh_market_ticks_for_event(
     created_at = utc_now_iso()
     title_hint = str((event_detail or {}).get("title") or slug)
     event_url = f"https://polymarket.com/event/{slug}" if slug else ""
+    run_date = today_date_str(args.tz)
+    t_write = time.perf_counter()
     with open_db() as conn:
-        save_market_ticks(conn, today_date_str(args.tz), event_date, result, created_at)
+        ticks_saved = save_market_ticks(conn, run_date, event_date, result, created_at)
+        snapshot_saved = save_market_snapshot(
+            conn,
+            run_date,
+            event_date,
+            slug,
+            rows,
+            {
+                "slug": slug,
+                "event_url": event_url,
+                "title": title_hint,
+            },
+            created_at,
+        )
+        if not ticks_saved or not snapshot_saved:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            failed_parts: List[str] = []
+            if not ticks_saved:
+                failed_parts.append("ticks")
+            if not snapshot_saved:
+                failed_parts.append("snapshot")
+            print(
+                f"[market_refresh] rollback incomplete_db_write slug={slug} "
+                f"event_date={event_date} failed={','.join(failed_parts) or 'unknown'}"
+            )
+            return False, "db_write_incomplete", 0, None, None
         _save_event_run_from_market_refresh(
             conn,
-            today_date_str(args.tz),
+            run_date,
             event_date,
             slug,
             rows,
@@ -48431,6 +50322,17 @@ def refresh_market_ticks_for_event(
             title=title_hint,
         )
         conn.commit()
+    db_write_sec += time.perf_counter() - t_write
+    total_refresh_sec = time.perf_counter() - t_refresh_start
+    print(
+        "[market_refresh_event_timing] "
+        f"slug={slug} token_load={token_load_sec:.3f}s "
+        f"priority_label={priority_label_sec:.3f}s "
+        f"quote_fetch={quote_fetch_sec:.3f}s "
+        f"db_write={db_write_sec:.3f}s "
+        f"total={total_refresh_sec:.3f}s "
+        f"rows={len(rows)}/{len(outcome_tokens)}"
+    )
     partial = len(rows) < len(outcome_tokens)
     return True, ("partial" if partial else None), len(rows), rows, created_at
 
@@ -48972,23 +50874,41 @@ def save_skips(run_date: str, skips: List[Dict[str, str]]) -> None:
         return
     init_db()
     conn = open_db()
-    cur = conn.cursor()
-    for item in skips:
-        cur.execute(
-            """
-            INSERT INTO scan_skips (run_date, slug, title, reason, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                run_date,
-                item.get("slug"),
-                item.get("title"),
-                item.get("reason"),
-                utc_now_iso(),
-            ),
-        )
-    conn.commit()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        for item in skips:
+            try:
+                _sqlite_execute_with_retry_compat(
+                    cur,
+                    """
+                    INSERT INTO scan_skips (run_date, slug, title, reason, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_date,
+                        item.get("slug"),
+                        item.get("title"),
+                        item.get("reason"),
+                        utc_now_iso(),
+                    ),
+                    attempts=6,
+                    sleep_base_sec=0.2,
+                    sleep_cap_sec=1.0,
+                )
+            except sqlite3.OperationalError as exc:
+                if _sqlite_is_locked_error(exc):
+                    print(f"[scan_skip] save_skips locked run_date={run_date} error={exc}")
+                    continue
+                raise
+        try:
+            conn.commit()
+        except sqlite3.OperationalError as exc:
+            if _sqlite_is_locked_error(exc):
+                print(f"[scan_skip] save_skips commit locked run_date={run_date} error={exc}")
+            else:
+                raise
+    finally:
+        conn.close()
 
 
 def _insert_event_run_with_payload(
@@ -51929,22 +53849,25 @@ def analyze_event(
     lon: float,
     tz: str,
     args: argparse.Namespace,
+    *,
+    event_hint: Optional[Mapping[str, Any]] = None,
 ) -> Dict:
     slug = slug_from_event_url(event_url)
-    event = fetch_gamma_event_by_slug(slug)
-    title = None
-    resolution_source = None
-    description = None
-    if event is not None:
-        outcome_tokens = parse_outcomes_and_tokens_from_event(event)
-        title = event.get("title")
-        resolution_source = event.get("resolutionSource")
-        description = event.get("description")
-    else:
-        market = fetch_gamma_market_by_slug(slug)
-        if market is None:
-            raise ValueError(f"No event/market returned for slug={slug}")
-        outcome_tokens = parse_outcomes_and_tokens(market)
+    (
+        outcome_tokens,
+        title,
+        resolution_source,
+        description,
+        event,
+        market_context_source,
+        market_context_errors,
+    ) = _load_event_market_context(slug, date, event_hint=event_hint)
+    if not outcome_tokens:
+        if market_context_errors:
+            raise ValueError(
+                f"No event/market returned for slug={slug} ({'; '.join(market_context_errors[:2])})"
+            )
+        raise ValueError(f"No event/market returned for slug={slug}")
 
     market_var = infer_market_variable(title, slug)
     if not market_var:
@@ -54705,6 +56628,7 @@ def analyze_event(
                 else ""
             ),
         },
+        "market_context_source": market_context_source,
         "rows": rows,
         "city_most_likely_label": city_most_likely_label,
         "city_most_likely_q": city_most_likely_q,
@@ -55537,6 +57461,8 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
         "open_order_slugs": [],
         "candidate_slugs": [],
         "entry_ok_slugs": [],
+        "q_missing_slugs": [],
+        "market_tick_stale_slugs": [],
         "tail_slugs": [],
         "fact_tail_slugs": [],
         "event_stub_by_slug": {},
@@ -55565,6 +57491,8 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
     min_edge_score = _env_float("PM_SCAN_PRIORITY_MIN_EDGE_SCORE")
     include_open_orders = _env_bool("PM_SCAN_PRIORITY_INCLUDE_OPEN_ORDERS", False)
     include_entry_ok = _env_bool("PM_SCAN_PRIORITY_INCLUDE_ENTRY_OK", True)
+    include_q_missing = _env_bool("PM_SCAN_PRIORITY_INCLUDE_Q_MISSING", True)
+    include_market_tick_stale = _env_bool("PM_SCAN_PRIORITY_INCLUDE_MARKET_TICK_STALE", True)
     include_tail = _env_bool("PM_SCAN_PRIORITY_INCLUDE_TAIL", False)
     tail_topn = _env_int("PM_SCAN_PRIORITY_TAIL_TOPN")
     if tail_topn is None or tail_topn < 0:
@@ -55589,6 +57517,21 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
     entry_ok_min_edge_score = _env_float("PM_SCAN_PRIORITY_ENTRY_OK_MIN_EDGE_SCORE")
     if entry_ok_min_edge_score is not None and not math.isfinite(entry_ok_min_edge_score):
         entry_ok_min_edge_score = None
+    q_missing_topn = _env_int("PM_SCAN_PRIORITY_Q_MISSING_TOPN")
+    if q_missing_topn is None or q_missing_topn < 0:
+        q_missing_topn = topn
+    q_missing_window_min = _env_int("PM_SCAN_PRIORITY_Q_MISSING_WINDOW_MIN")
+    if q_missing_window_min is None or q_missing_window_min <= 0:
+        q_missing_window_min = 30
+    q_missing_model_lag_min = _env_int("PM_SCAN_PRIORITY_Q_MISSING_MODEL_LAG_MIN")
+    if q_missing_model_lag_min is None or q_missing_model_lag_min <= 0:
+        q_missing_model_lag_min = q_missing_window_min
+    market_tick_stale_topn = _env_int("PM_SCAN_PRIORITY_MARKET_TICK_STALE_TOPN")
+    if market_tick_stale_topn is None or market_tick_stale_topn < 0:
+        market_tick_stale_topn = topn
+    market_tick_stale_window_min = _env_int("PM_SCAN_PRIORITY_MARKET_TICK_STALE_WINDOW_MIN")
+    if market_tick_stale_window_min is None or market_tick_stale_window_min <= 0:
+        market_tick_stale_window_min = 30
     if min_edge_score is None or not math.isfinite(min_edge_score):
         min_edge_score = 6.0
     position_min_size = _env_float("PM_SCAN_PRIORITY_POSITION_MIN_SIZE")
@@ -55798,23 +57741,26 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
 
         cur.execute(
             """
-            SELECT slug, suggestions_json, created_at
-            FROM event_runs
-            WHERE slug IS NOT NULL AND slug != ''
-              AND event_date >= ? AND event_date <= ?
-            ORDER BY created_at DESC
+            SELECT e.slug, e.suggestions_json, e.created_at
+            FROM event_runs e
+            JOIN (
+                SELECT slug, MAX(id) AS max_id
+                FROM event_runs
+                WHERE slug IS NOT NULL AND slug != ''
+                  AND event_date >= ? AND event_date <= ?
+                GROUP BY slug
+            ) latest ON latest.max_id = e.id
+            ORDER BY datetime(COALESCE(e.created_at, '')) DESC
             """,
             (start_date, end_date),
         )
-        seen_slug: Set[str] = set()
         candidate_scored: List[Tuple[float, str]] = []
         entry_ok_scored: List[Tuple[float, str]] = []
         entry_ok_scored_best: Dict[str, float] = {}
         for row in cur.fetchall():
             slug = str(row[0] or "").strip()
-            if not slug or slug in seen_slug:
+            if not slug:
                 continue
-            seen_slug.add(slug)
             raw_suggestions = row[1]
             if not raw_suggestions:
                 continue
@@ -55853,6 +57799,8 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
         if include_entry_ok and entry_ok_topn > 0:
             fetch_limit = max(20, int(entry_ok_topn) * 6)
             fetch_limit = max(1, min(fetch_limit, 200))
+            plain_no_peak_exclude = _env_bool("PM_LCB_GLOBAL_PLAIN_NO_PEAK_EXCLUDE", True)
+            lcb_global_enabled_now = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
             try:
                 cur.execute(
                     """
@@ -55893,6 +57841,7 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
                     ssot = fact.get("auto_trade_ssot")
                     if not isinstance(ssot, dict):
                         continue
+                    fact_market_top_label = str(fact.get("market_top_label") or "").strip()
                     candidates: List[Dict[str, Any]] = []
                     cand_main = ssot.get("main_candidate")
                     if isinstance(cand_main, dict):
@@ -55903,6 +57852,16 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
                     for cand in candidates:
                         if not bool(cand.get("entry_ok")):
                             continue
+                        if plain_no_peak_exclude and lcb_global_enabled_now:
+                            cand_probe = dict(cand)
+                            cand_probe.setdefault("strategy", "lcb_global")
+                            cand_probe.setdefault("lcb_q_combo_q_peak_outcome", fact_market_top_label)
+                            if _candidate_is_plain_lcb_peak_no(
+                                cand_probe,
+                                combo_enabled=False,
+                                outcome_label=str(cand_probe.get("outcome") or ""),
+                            ):
+                                continue
                         score = to_float(cand.get("edge_score"))
                         if score is None or not math.isfinite(score):
                             score = best_score2
@@ -55934,6 +57893,127 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
                 entry_ok_slugs.append(slug2)
                 if len(entry_ok_slugs) >= int(entry_ok_topn):
                     break
+
+        market_tick_stale_slugs: List[str] = []
+        if include_market_tick_stale and market_tick_stale_topn > 0:
+            seen_tick_stale: Set[str] = set()
+            try:
+                window_expr = f"-{max(5, int(market_tick_stale_window_min))} minutes"
+                cur.execute(
+                    """
+                    SELECT slug, COUNT(*) AS hits, MAX(created_at) AS last_seen
+                    FROM auto_trade_decisions
+                    WHERE slug IS NOT NULL AND slug != ''
+                      AND action = 'entry'
+                      AND substr(COALESCE(event_date, ''), 1, 10) >= ?
+                      AND substr(COALESCE(event_date, ''), 1, 10) <= ?
+                      AND reason_codes_json LIKE '%market_tick_stale%'
+                      AND datetime(COALESCE(created_at, '')) >= datetime('now', ?)
+                    GROUP BY slug
+                    ORDER BY hits DESC, last_seen DESC
+                    LIMIT ?
+                    """,
+                    (
+                        start_date,
+                        end_date,
+                        window_expr,
+                        int(max(1, market_tick_stale_topn)),
+                    ),
+                )
+                for row_tick in cur.fetchall() or []:
+                    slug_tick = str(row_tick[0] or "").strip()
+                    if not slug_tick or slug_tick in seen_tick_stale:
+                        continue
+                    seen_tick_stale.add(slug_tick)
+                    market_tick_stale_slugs.append(slug_tick)
+            except sqlite3.OperationalError:
+                market_tick_stale_slugs = []
+
+        q_missing_slugs: List[str] = []
+        if include_q_missing and q_missing_topn > 0:
+            seen_q_missing: Set[str] = set()
+            try:
+                window_expr = f"-{max(5, int(q_missing_window_min))} minutes"
+                cur.execute(
+                    """
+                    SELECT slug, COUNT(*) AS hits, MAX(created_at) AS last_seen
+                    FROM auto_trade_decisions
+                    WHERE slug IS NOT NULL AND slug != ''
+                      AND event_date >= ? AND event_date <= ?
+                      AND reason_codes_json LIKE '%q_missing%'
+                      AND datetime(COALESCE(created_at, '')) >= datetime('now', ?)
+                    GROUP BY slug
+                    ORDER BY hits DESC, last_seen DESC
+                    LIMIT ?
+                    """,
+                    (start_date, end_date, window_expr, int(max(1, q_missing_topn))),
+                )
+                for row_q in cur.fetchall() or []:
+                    slug_q = str(row_q[0] or "").strip()
+                    if not slug_q or slug_q in seen_q_missing:
+                        continue
+                    seen_q_missing.add(slug_q)
+                    q_missing_slugs.append(slug_q)
+            except sqlite3.OperationalError:
+                q_missing_slugs = []
+                seen_q_missing = set()
+            # Structural q-missing source:
+            # recent market snapshots whose model coverage is structurally missing or too stale
+            # relative to the latest market snapshot for the same slug/event_date.
+            # These events often never reach auto-trade q_missing decisions, so they must be surfaced
+            # here or model_scan will keep starving them under priority mode.
+            if len(q_missing_slugs) < int(max(1, q_missing_topn)):
+                try:
+                    fetch_limit = max(20, int(q_missing_topn) * 8)
+                    model_lag_expr = f"-{max(1, int(q_missing_model_lag_min))} minutes"
+                    cur.execute(
+                        """
+                        WITH latest_market AS (
+                          SELECT slug, event_date, MAX(datetime(COALESCE(created_at, ''))) AS market_at
+                          FROM market_snapshots
+                          WHERE event_date >= ? AND event_date <= ?
+                            AND datetime(COALESCE(created_at, '')) >= datetime('now', ?)
+                          GROUP BY slug, event_date
+                        ),
+                        latest_model AS (
+                          SELECT slug, event_date, MAX(datetime(COALESCE(created_at, ''))) AS model_at
+                          FROM model_snapshots
+                          WHERE event_date >= ? AND event_date <= ?
+                          GROUP BY slug, event_date
+                        )
+                        SELECT lm.slug, lm.market_at
+                        FROM latest_market lm
+                        LEFT JOIN latest_model md
+                          ON md.slug = lm.slug AND md.event_date = lm.event_date
+                        WHERE md.slug IS NULL
+                           OR md.model_at IS NULL
+                           OR datetime(md.model_at) < datetime(lm.market_at, ?)
+                        ORDER BY
+                          CASE WHEN md.model_at IS NULL THEN 1 ELSE 0 END DESC,
+                          (julianday(lm.market_at) - julianday(md.model_at)) DESC,
+                          lm.market_at DESC
+                        LIMIT ?
+                        """,
+                        (
+                            start_date,
+                            end_date,
+                            window_expr,
+                            start_date,
+                            end_date,
+                            model_lag_expr,
+                            int(fetch_limit),
+                        ),
+                    )
+                    for row_q in cur.fetchall() or []:
+                        slug_q = str(row_q[0] or "").strip()
+                        if not slug_q or slug_q in seen_q_missing:
+                            continue
+                        seen_q_missing.add(slug_q)
+                        q_missing_slugs.append(slug_q)
+                        if len(q_missing_slugs) >= int(max(1, q_missing_topn)):
+                            break
+                except sqlite3.OperationalError:
+                    pass
 
         no_quote_stuck_slugs: Set[str] = set()
         if skip_no_quote_stuck:
@@ -55981,6 +58061,9 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
         base_fixed_source = list(position_slugs)
         if include_open_orders:
             base_fixed_source.extend(open_order_slugs)
+        # Entry-blocked stale ticks are execution-critical and should outrank stale-tail cleanup.
+        if market_tick_stale_slugs:
+            base_fixed_source.extend(market_tick_stale_slugs)
         # Put tail slugs after execution-critical fixed slugs so they do not crowd out positions/open orders.
         if tail_slugs:
             base_fixed_source.extend(tail_slugs)
@@ -55998,6 +58081,12 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
 
         candidate_only_slugs: List[str] = []
         seen_candidate: Set[str] = set(seen_fixed)
+        for slug in q_missing_slugs:
+            ss = str(slug or "").strip()
+            if not ss or ss in seen_candidate:
+                continue
+            seen_candidate.add(ss)
+            candidate_only_slugs.append(ss)
         # Put Top OK (auto-trade entry_ok) candidates first.
         for slug in entry_ok_slugs:
             ss = str(slug or "").strip()
@@ -56046,6 +58135,8 @@ def _load_priority_scan_plan(run_date: str) -> Dict[str, Any]:
         plan["open_order_slugs"] = open_order_slugs
         plan["candidate_slugs"] = candidate_only_slugs
         plan["entry_ok_slugs"] = entry_ok_slugs
+        plan["q_missing_slugs"] = q_missing_slugs
+        plan["market_tick_stale_slugs"] = market_tick_stale_slugs
         plan["tail_slugs"] = tail_slugs
         plan["fact_tail_slugs"] = fact_tail_slugs
         plan["event_stub_by_slug"] = event_stub_by_slug
@@ -57346,6 +59437,9 @@ def main() -> None:
         fetch_sec = 0.0
         compute_sec = 0.0
         write_sec = 0.0
+        priority_load_sec = 0.0
+        market_refresh_event_sec = 0.0
+        market_refresh_event_count = 0
         t_fetch = time.monotonic()
         events, warnings = fetch_weather_events(args.weather_page_url)
         fetch_sec += time.monotonic() - t_fetch
@@ -57377,7 +59471,9 @@ def main() -> None:
             "no",
             "off",
         }
+        t_priority = time.monotonic()
         priority_plan = _load_priority_scan_plan(run_date)
+        priority_load_sec += time.monotonic() - t_priority
         priority_ordered_slugs = list(priority_plan.get("ordered_slugs") or [])
         priority_fixed_slugs = list(priority_plan.get("fixed_slugs") or [])
         priority_candidate_slugs = list(priority_plan.get("candidate_slugs") or [])
@@ -57575,6 +59671,8 @@ def main() -> None:
                 print(
                     f"[scan_priority] positions={len(priority_plan.get('position_slugs') or [])} "
                     f"open_orders={len(priority_plan.get('open_order_slugs') or [])} "
+                    f"tick_stale={len(priority_plan.get('market_tick_stale_slugs') or [])} "
+                    f"q_missing={len(priority_plan.get('q_missing_slugs') or [])} "
                     f"entry_ok={len(priority_plan.get('entry_ok_slugs') or [])} "
                     f"candidates={len(priority_plan.get('candidate_slugs') or [])} "
                     f"pruned_stale={len(priority_plan.get('fixed_pruned_stale_event_slugs') or [])} "
@@ -57666,6 +59764,11 @@ def main() -> None:
                     # minute refresh does not get stuck on execution-fixed slugs forever.
                     reserve_tail_slot = _env_bool("PM_SCAN_PRIORITY_RESERVE_TAIL_SLOT", False)
                     tail_slugs_plan = priority_plan.get("tail_slugs") if isinstance(priority_plan, dict) else []
+                    market_tick_stale_slug_set = {
+                        str(s or "").strip()
+                        for s in (priority_plan.get("market_tick_stale_slugs") or [])
+                    } if isinstance(priority_plan, dict) else set()
+                    market_tick_stale_slug_set.discard("")
                     pruned_no_quote_slugs = {
                         str(s or "").strip()
                         for s in (priority_plan.get("fixed_pruned_no_quote_slugs") or [])
@@ -57726,6 +59829,26 @@ def main() -> None:
                             replace_at = 0 if reserve_tail_prepend else (len(capped_events) - 1)
                             if replace_at < 0:
                                 replace_at = 0
+                            protected_stale_idx = None
+                            if market_tick_stale_slug_set:
+                                replacement_slug_set = {replacement_slug} if replacement_slug else set()
+                                for idx_cur, ev_cur in enumerate(capped_events):
+                                    if not isinstance(ev_cur, dict):
+                                        continue
+                                    cur_slug = str(ev_cur.get("slug") or "").strip()
+                                    if not cur_slug or cur_slug not in market_tick_stale_slug_set:
+                                        continue
+                                    if cur_slug in replacement_slug_set:
+                                        continue
+                                    if idx_cur == replace_at:
+                                        protected_stale_idx = idx_cur
+                                        break
+                                if protected_stale_idx is not None:
+                                    for idx_cur in range(len(capped_events) - 1, -1, -1):
+                                        if idx_cur == protected_stale_idx:
+                                            continue
+                                        replace_at = idx_cur
+                                        break
                             replaced_slug = ""
                             if isinstance(capped_events[replace_at], dict):
                                 replaced_slug = str(capped_events[replace_at].get("slug") or "").strip()
@@ -57821,7 +59944,19 @@ def main() -> None:
             scan_temp_event_min_edge_score = 0.0
         trade_token_map: Dict[str, Dict[str, str]] = {}
         trade_mark_map: Dict[Tuple[str, str, str, str], Optional[float]] = {}
+        market_refresh_run_deadline_monotonic: Optional[float] = None
+        if args.market_refresh_only:
+            total_budget_sec = _market_refresh_total_run_budget_sec(args)
+            if total_budget_sec > 0:
+                market_refresh_run_deadline_monotonic = time.monotonic() + float(total_budget_sec)
         for ev in events:
+            if (
+                args.market_refresh_only
+                and market_refresh_run_deadline_monotonic is not None
+                and time.monotonic() >= market_refresh_run_deadline_monotonic
+            ):
+                print("[market_refresh] total_run_budget_exhausted before next event")
+                break
             slug = ev.get("slug") or ""
             title = ev.get("title") or slug
             raw_end_date = ev.get("endDate")
@@ -57860,36 +59995,22 @@ def main() -> None:
                     reason = f"date_out_of_range {event_date}"
                     skipped.append({"slug": slug, "title": title, "reason": reason})
                     continue
+                t_market_refresh_event = time.monotonic()
                 ok, err, _count, rows, created_at = refresh_market_ticks_for_event(
                     slug,
                     event_date,
                     args,
                     event_detail,
+                    run_deadline_monotonic=market_refresh_run_deadline_monotonic,
                 )
+                market_refresh_event_sec += time.monotonic() - t_market_refresh_event
+                market_refresh_event_count += 1
                 if not ok:
                     reason = f"market_refresh_failed {err or ''}".strip()
                     skipped.append({"slug": slug, "title": title, "reason": reason})
                     print(f"- {title}: skipped ({reason})")
                     continue
                 matched += 1
-                if rows:
-                    init_db()
-                    with open_db() as conn:
-                        save_market_snapshot(
-                            conn,
-                            run_date,
-                            event_date,
-                            slug,
-                            rows,
-                            {
-                                "slug": slug,
-                                "event_url": f"https://polymarket.com/event/{slug}",
-                                "title": title,
-                                "event_end_utc": raw_end_date or "",
-                            },
-                            created_at or utc_now_iso(),
-                        )
-                        conn.commit()
                 if _env_bool("PM_MARKET_REFRESH_COMPOSE_SCORE", True):
                     ok, err = compose_score_snapshot(
                         run_date,
@@ -57947,9 +60068,25 @@ def main() -> None:
                     model_args.no_orderbook_fetch = True
                     model_args.no_market_ticks = True
                     model_args.auto_trade = False
-                    result = analyze_event(event_url, event_date, lat, lon, tz, model_args)
+                    result = analyze_event(
+                        event_url,
+                        event_date,
+                        lat,
+                        lon,
+                        tz,
+                        model_args,
+                        event_hint=event_detail or ev,
+                    )
                 else:
-                    result = analyze_event(event_url, event_date, lat, lon, tz, args)
+                    result = analyze_event(
+                        event_url,
+                        event_date,
+                        lat,
+                        lon,
+                        tz,
+                        args,
+                        event_hint=event_detail or ev,
+                    )
             except Exception as e:
                 reason = str(e)
                 skipped.append({"slug": slug, "title": title, "reason": reason})
@@ -57998,14 +60135,29 @@ def main() -> None:
                 }
                 init_db()
                 with open_db() as conn:
-                    save_model_snapshot(conn, run_date, event_date, result, meta, utc_now_iso())
+                    snapshot_created_at = utc_now_iso()
+                    save_model_snapshot(conn, run_date, event_date, result, meta, snapshot_created_at)
+                    _save_event_run_from_market_refresh(
+                        conn,
+                        run_date,
+                        event_date,
+                        result.get("slug") or slug,
+                        result.get("rows") or [],
+                        snapshot_created_at,
+                        event_url=event_url,
+                        title=result.get("title") or title,
+                        lat=lat,
+                        lon=lon,
+                        tz=tz,
+                    )
                     conn.commit()
-                ok, err = compose_score_snapshot(
+                ok, err = compose_score_snapshot_with_market_bootstrap(
                     run_date,
                     event_date,
                     result.get("slug") or slug,
                     args,
                     meta_hint=meta,
+                    event_detail=event_detail or ev,
                 )
                 if not ok and err:
                     print(f"- {title}: score_composer skipped ({err})")
@@ -58176,14 +60328,20 @@ def main() -> None:
             "priority_others_selected": priority_others_selected_count,
             "priority_positions": len(priority_plan.get("position_slugs") or []),
             "priority_open_orders": len(priority_plan.get("open_order_slugs") or []),
+            "priority_market_tick_stale": len(priority_plan.get("market_tick_stale_slugs") or []),
             "priority_candidates": len(priority_plan.get("candidate_slugs") or []),
             "priority_candidates_per_run": int(priority_plan.get("candidates_per_run") or 0),
+            "priority_load_sec": round(priority_load_sec, 3),
+            "market_refresh_event_sec": round(market_refresh_event_sec, 3),
+            "market_refresh_event_count": int(market_refresh_event_count),
         }
         _write_scan_timing(timing_payload)
         print(
             "\n[scan_timing] "
             f"fetch={fetch_sec:.1f}s compute={compute_sec:.1f}s "
             f"write={write_sec:.1f}s total={total_sec:.1f}s "
+            f"priority_load={priority_load_sec:.1f}s "
+            f"market_refresh_event={market_refresh_event_sec:.1f}s/{market_refresh_event_count} "
             f"events={events_total}/{events_total_before_limit} matched={matched} skipped={len(skipped)} "
             f"max_events={max_events_per_run} max_matched={max_matched_per_run} "
             f"priority=fixed{priority_fixed_selected_count}+cand{priority_candidate_selected_count}+other{priority_others_selected_count}/{len(priority_ordered_slugs)} "
@@ -58273,9 +60431,23 @@ def main() -> None:
         }
         init_db()
         with open_db() as conn:
-            save_model_snapshot(conn, run_date, date, result, meta, utc_now_iso())
+            snapshot_created_at = utc_now_iso()
+            save_model_snapshot(conn, run_date, date, result, meta, snapshot_created_at)
+            _save_event_run_from_market_refresh(
+                conn,
+                run_date,
+                date,
+                result.get("slug") or "",
+                result.get("rows") or [],
+                snapshot_created_at,
+                event_url=args.event_url,
+                title=result.get("title"),
+                lat=args.lat,
+                lon=args.lon,
+                tz=args.tz,
+            )
             conn.commit()
-        ok, err = compose_score_snapshot(
+        ok, err = compose_score_snapshot_with_market_bootstrap(
             run_date,
             date,
             result.get("slug") or "",

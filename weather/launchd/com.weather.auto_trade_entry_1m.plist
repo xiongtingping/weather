@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>
-      <string>/Users/xiong/weather/scripts/auto_trade_entry_1m.sh</string>
+      <string>/Users/xiong/weather/weather/scripts/auto_trade_entry_1m.sh</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -29,11 +29,11 @@
     </dict>
 
     <key>WorkingDirectory</key>
-    <string>/Users/xiong/weather</string>
+    <string>/Users/xiong/weather/weather</string>
 
     <key>StandardOutPath</key>
-    <string>/Users/xiong/weather/data/logs/auto_trade_entry_1m.out.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/auto_trade_entry_1m.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/xiong/weather/data/logs/auto_trade_entry_1m.err.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/auto_trade_entry_1m.err.log</string>
   </dict>
 </plist>

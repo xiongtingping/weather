@@ -8,7 +8,7 @@
     <array>
       <string>/bin/zsh</string>
       <string>-lc</string>
-      <string>/Users/xiong/weather/scripts/model_scan.sh</string>
+      <string>/Users/xiong/weather/weather/scripts/model_scan.sh</string>
     </array>
     <key>StartInterval</key>
     <integer>300</integer>
@@ -25,8 +25,8 @@
       <integer>8192</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/xiong/weather/data/logs/model_scan.out.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/model_scan.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/xiong/weather/data/logs/model_scan.err.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/model_scan.err.log</string>
   </dict>
 </plist>

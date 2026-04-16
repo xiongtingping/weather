@@ -9,6 +9,10 @@ if [ -f "$ROOT/.env" ]; then
   . "$ROOT/.env"
   set +a
 fi
+if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
+  . "$ROOT/scripts/lib/load_launchctl_env.sh"
+  load_polymarket_launchctl_env
+fi
 
 : "${PM_NOFILE_SOFT:=8192}"
 if [[ "$PM_NOFILE_SOFT" =~ ^[0-9]+$ ]]; then

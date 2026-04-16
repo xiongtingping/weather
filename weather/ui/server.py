@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import resource
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse, urlencode
 from zoneinfo import ZoneInfo
 
@@ -38,6 +38,10 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from edge_realizable import edge_realizable, edge_realizable_score, edge_realizable_v2
+from edge_signal_runtime import compute_signal_advantage
+from edge_path_runtime import estimate_path_probability
+from edge_exec_runtime import estimate_tradeable_edge_floor
+from edge_policy_runtime import load_edge_policy_from_env, evaluate_tradeability
 
 try:
     from eth_account import Account as EthAccount
@@ -326,7 +330,7 @@ if LONDON_FOLLOW_SIM_ALIGN_FOLLOW_ENTRY:
 # refresh rows even if fact_as_of timestamps are unchanged.
 # Bump this whenever facts composition semantics change, so `--materialize-facts` can re-compose
 # the latest facts even when `fact_as_of` is unchanged (SSOT: avoid stale/null derived fields).
-FACTS_COMPOSER_VERSION = os.environ.get("PM_FACTS_COMPOSER_VERSION", "ui_server_event_runs_v4")
+FACTS_COMPOSER_VERSION = os.environ.get("PM_FACTS_COMPOSER_VERSION", "ui_server_event_runs_v5")
 
 
 def load_env_file(path: Path) -> None:
@@ -904,7 +908,13 @@ FD_GUARD_LSOF_TIMEOUT_SEC = max(0.3, min(float(FD_GUARD_LSOF_TIMEOUT_SEC), 5.0))
 _fd_labels_raw = str(
     os.environ.get(
         "PM_FD_GUARD_LABELS",
-        "com.xiong.weather.ui,com.weather.auto_trade_worker,com.weather.auto_trade_watcher,com.weather.trade_sync_loop",
+        (
+            "com.xiong.weather.ui,"
+            "com.weather.trade_engine,"
+            "com.weather.auto_trade_watcher,"
+            "com.weather.auto_trade_worker,"
+            "com.weather.trade_sync_loop"
+        ),
     )
     or ""
 )
@@ -15212,17 +15222,7 @@ def _auto_trade_event_worker(
 def services_health() -> Dict[str, Any]:
     """Backend/runtime health for LaunchAgents + DB freshness (UI SSOT)."""
     t0 = time.monotonic()
-    labels = [
-        "com.xiong.weather.ui",
-        "com.weather.market_refresh_1m",
-        "com.weather.model_scan",
-        "com.weather.auto_trade_entry_1m",
-        "com.weather.auto_trade_worker",
-        "com.weather.auto_trade_watcher",
-        "com.weather.trade_sync_loop",
-        "com.weather.daily_scan",
-        "com.weather.exit_retry_watch",
-    ]
+    labels = _launchd_health_labels()
     launch_map: Dict[str, Any] = {}
     launch_ok = False
     launch_error = ""
@@ -15277,6 +15277,7 @@ def services_health() -> Dict[str, Any]:
             # Scheduled one-shot jobs often have no pid and can make `launchctl print` slow.
             print_pid_labels = {
                 "com.xiong.weather.ui",
+                "com.weather.trade_engine",
                 "com.weather.auto_trade_worker",
                 "com.weather.auto_trade_watcher",
                 "com.weather.trade_sync_loop",
@@ -15426,6 +15427,7 @@ def services_health() -> Dict[str, Any]:
         "market_refresh": str(repo / "data/market_refresh.log"),
         "model_scan": str(repo / "data/model_scan.log"),
         "auto_trade_entry": str(repo / "data/logs/auto_trade_entry_1m.log"),
+        "trade_engine": str(repo / "data/logs/trade_engine.log"),
         "auto_trade_worker": str(repo / "data/logs/auto_trade_worker.log"),
         "auto_trade_watcher": str(repo / "data/logs/auto_trade_watcher.out.log"),
         "trade_sync_loop": str(repo / "data/logs/trade_sync_loop.out.log"),
@@ -15491,9 +15493,11 @@ def services_health() -> Dict[str, Any]:
         return _age_sec(ts_text)
 
     watcher_log_age = _log_age_sec("auto_trade_watcher")
+    trade_engine_log_age = _log_age_sec("trade_engine")
     worker_log_age = _log_age_sec("auto_trade_worker")
     sync_log_age = _log_age_sec("trade_sync_loop")
     watcher_recent = watcher_log_age is not None and watcher_log_age <= 300
+    trade_engine_recent = trade_engine_log_age is not None and trade_engine_log_age <= 300
     worker_recent = worker_log_age is not None and worker_log_age <= 300
     sync_recent = sync_log_age is not None and sync_log_age <= 300
     trade_sync_status = load_trade_sync_status()
@@ -15581,8 +15585,10 @@ def services_health() -> Dict[str, Any]:
                 "auto-trade watcher LaunchAgent 未运行",
                 {"label": "com.weather.auto_trade_watcher", "log_age_sec": watcher_log_age},
             )
+        trade_engine_pid = _pid_for("com.weather.trade_engine")
+        trade_engine_active = trade_engine_pid is not None or trade_engine_recent
         worker_pid = _pid_for("com.weather.auto_trade_worker")
-        if worker_pid is None and not worker_recent:
+        if (not trade_engine_active) and worker_pid is None and not worker_recent:
             reasons.append("auto-trade worker 未运行")
             _add_issue(
                 "auto_trade_worker_not_running",
@@ -15591,7 +15597,7 @@ def services_health() -> Dict[str, Any]:
                 {"label": "com.weather.auto_trade_worker", "log_age_sec": worker_log_age},
             )
         sync_pid = _pid_for("com.weather.trade_sync_loop")
-        if sync_pid is None and not sync_recent and not sync_status_recent:
+        if (not trade_engine_active) and sync_pid is None and not sync_recent and not sync_status_recent:
             reasons.append("trade_sync_loop 未运行")
             _add_issue(
                 "trade_sync_loop_not_running",
@@ -15688,6 +15694,7 @@ def services_health() -> Dict[str, Any]:
     if launch_ok:
         for label in (
             "com.xiong.weather.ui",
+            "com.weather.trade_engine",
             "com.weather.auto_trade_worker",
             "com.weather.auto_trade_watcher",
             "com.weather.trade_sync_loop",
@@ -15743,15 +15750,29 @@ def services_health() -> Dict[str, Any]:
     }
 
 
+def _launchd_legacy_trade_labels() -> List[str]:
+    return [
+        "com.weather.auto_trade_worker",
+        "com.weather.trade_sync_loop",
+    ]
+
+
+def _launchd_health_labels() -> List[str]:
+    labels: List[str] = []
+    for label in [*_launchd_service_labels(), *_launchd_legacy_trade_labels()]:
+        if label not in labels:
+            labels.append(label)
+    return labels
+
+
 def _launchd_service_labels() -> List[str]:
     return [
         "com.xiong.weather.ui",
         "com.weather.market_refresh_1m",
         "com.weather.model_scan",
         "com.weather.auto_trade_entry_1m",
-        "com.weather.auto_trade_worker",
+        "com.weather.trade_engine",
         "com.weather.auto_trade_watcher",
-        "com.weather.trade_sync_loop",
         "com.weather.daily_scan",
         "com.weather.exit_retry_watch",
     ]
@@ -15772,7 +15793,12 @@ def _launchctl_run(cmd: List[str], timeout_sec: float = 8) -> Dict[str, Any]:
 
 
 def _system_pause_labels() -> List[str]:
-    return [label for label in _launchd_service_labels() if label != "com.xiong.weather.ui"]
+    labels: List[str] = []
+    for label in [*_launchd_service_labels(), *_launchd_legacy_trade_labels()]:
+        if label == "com.xiong.weather.ui" or label in labels:
+            continue
+        labels.append(label)
+    return labels
 
 
 def _infer_launchd_enabled(label: str, disabled_map: Dict[str, str], launch_map: Dict[str, Any]) -> bool:
@@ -15795,6 +15821,7 @@ def launchd_apply_all(action: str) -> Dict[str, Any]:
     uid = os.getuid()
     domain = f"gui/{uid}"
     labels = _launchd_service_labels()
+    legacy_labels = _launchd_legacy_trade_labels()
     results: List[Dict[str, Any]] = []
 
     def _start_label(label: str) -> None:
@@ -15816,14 +15843,16 @@ def launchd_apply_all(action: str) -> Dict[str, Any]:
         results.append({"label": label, "bootout": _launchctl_run(["launchctl", "bootout", domain, str(plist)])})
 
     if action == "restart":
-        for label in labels:
+        for label in [*labels, *legacy_labels]:
             _stop_label(label)
         for label in labels:
             _start_label(label)
     elif action == "stop":
-        for label in labels:
+        for label in [*labels, *legacy_labels]:
             _stop_label(label)
     else:
+        for label in legacy_labels:
+            _stop_label(label)
         for label in labels:
             _start_label(label)
     return {"ok": True, "action": action, "domain": domain, "results": results}
@@ -15860,6 +15889,7 @@ def launchd_apply_labels(
     # KeepAlive agents are safe to kickstart immediately; scheduled jobs usually aren't.
     keepalive_labels = {
         "com.xiong.weather.ui",
+        "com.weather.trade_engine",
         "com.weather.auto_trade_worker",
         "com.weather.auto_trade_watcher",
         "com.weather.trade_sync_loop",
@@ -15925,6 +15955,7 @@ def launchd_set_enabled_labels(
 
     keepalive_labels = {
         "com.xiong.weather.ui",
+        "com.weather.trade_engine",
         "com.weather.auto_trade_worker",
         "com.weather.auto_trade_watcher",
         "com.weather.trade_sync_loop",
@@ -15992,7 +16023,7 @@ def apply_system_pause(paused: bool) -> Dict[str, Any]:
     core_labels = {
         "com.weather.model_scan",
         "com.weather.market_refresh_1m",
-        "com.weather.trade_sync_loop",
+        "com.weather.trade_engine",
     }
     auto_trade_enabled = snapshot.get("auto_trade_enabled") if isinstance(snapshot, dict) else None
     auto_trade_labels = {
@@ -17882,6 +17913,69 @@ def _build_tradeability_gate_snapshot(
     }
 
 
+def _refresh_entry_tradeability_gate(
+    entry: Dict[str, Any],
+    decision: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not isinstance(entry, dict):
+        return
+    entry["tradeability_gate"] = _build_tradeability_gate_snapshot(
+        entry,
+        decision if isinstance(decision, dict) else None,
+    )
+
+
+def _tradeability_reason_texts(
+    gate: Dict[str, Any],
+    reason_codes: Any = None,
+) -> List[str]:
+    out: List[str] = []
+    gate_dict = gate if isinstance(gate, dict) else {}
+    codes_raw = reason_codes
+    if isinstance(codes_raw, str):
+        codes = [str(x or "").strip() for x in codes_raw.split(",") if str(x or "").strip()]
+    elif isinstance(codes_raw, list):
+        codes = [str(x or "").strip() for x in codes_raw if str(x or "").strip()]
+    else:
+        codes = []
+    code_set = set(codes)
+
+    def _append(text: str) -> None:
+        value = str(text or "").strip()
+        if value and value not in out:
+            out.append(value)
+
+    def _fmt_metric(raw: Any, digits: int) -> str:
+        val = to_float(raw)
+        if val is None or not math.isfinite(val):
+            return "—"
+        return f"{float(val):.{digits}f}"
+
+    metric_map = (
+        ("signal_lcb", "signal_lcb", 3, "signal_lcb_missing", "signal_lcb_below_min"),
+        ("path_lcb", "path_lcb", 3, "path_lcb_missing", "path_lcb_below_min"),
+        ("edge_lcb", "edge_lcb", 4, "edge_lcb_missing", "edge_lcb_below_min"),
+    )
+    for gate_key, label, digits, missing_code, below_code in metric_map:
+        metric = gate_dict.get(gate_key) if isinstance(gate_dict.get(gate_key), dict) else {}
+        status = str(metric.get("status") or "").strip().lower()
+        if missing_code in code_set or status == "missing":
+            _append(f"{label}缺失")
+            continue
+        if below_code in code_set or status == "fail":
+            value_text = _fmt_metric(metric.get("value"), digits)
+            min_text = _fmt_metric(metric.get("min"), digits)
+            _append(f"{label}={value_text}<{min_text}")
+
+    if "v2_missing" in code_set:
+        _append("可兑现V2缺失")
+    if "exec_audit_not_pass" in code_set:
+        _append("执行审计门未通过")
+    if not out and codes:
+        _append(f"LCB门禁未通过({','.join(codes)})")
+    return out
+
+
 def _decorate_entry_execution(
     entry: Dict[str, Any],
     *,
@@ -17917,7 +18011,7 @@ def _decorate_entry_execution(
         return None
 
     decision = _resolve_decision()
-    entry["tradeability_gate"] = _build_tradeability_gate_snapshot(entry, decision if isinstance(decision, dict) else None)
+    _refresh_entry_tradeability_gate(entry, decision if isinstance(decision, dict) else None)
     if isinstance(decision, dict):
         reason_codes = (
             list(decision.get("reason_codes") or [])
@@ -19366,7 +19460,7 @@ def _trace_refresh_market_ticks_for_blocked(
     return meta
 
 
-def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
+def auto_trade_trace(run_date: str, limit: int = 20, readonly: bool = False) -> Dict[str, Any]:
     try:
         limit_val = int(limit or 0)
     except (TypeError, ValueError):
@@ -20294,9 +20388,20 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 "edge_realizable_target_exit_price",
                 "edge_realizable_delta_exit",
                 "edge_tradeability_profit_value",
+                "edge_signal_alpha",
+                "edge_signal_lcb",
+                "edge_signal_sigma",
+                "edge_signal_confidence",
+                "edge_path_p_reach",
+                "edge_path_p_reach_lcb",
+                "edge_path_p_reach_ucb",
                 "edge_tradeability_signal_lcb_min",
                 "edge_tradeability_path_lcb_min",
                 "edge_tradeability_profit_min",
+                "edge_tradeability_edge_expected",
+                "edge_tradeability_edge_ucb",
+                "edge_tradeability_miss_cost",
+                "edge_tradeability_slippage_buffer",
                 "edge_realizable_hq_edge_lcb_min",
                 "exec_fee_bps",
                 "exec_fee_cost",
@@ -20324,6 +20429,30 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             if profit_min is not None:
                 entry["edge_tradeability_profit_min"] = profit_min
             for key_name in (
+                "edge_tradeability_mode",
+                "edge_tradeability_reasons",
+                "edge_path_bucket_key",
+                "edge_path_bucket_key_used",
+                "edge_path_source",
+            ):
+                if str(entry.get(key_name) or "").strip():
+                    continue
+                value = details.get(key_name)
+                if value is not None:
+                    entry[key_name] = value
+            for key_name in (
+                "edge_path_sample_n",
+                "edge_path_fallback_rank",
+                "edge_tradeability_policy_enforce",
+                "edge_tradeability_canary_sampled",
+                "edge_tradeability_pass",
+                "edge_tradeability_blocked",
+                "edge_tradeability_shadow_block",
+                "edge_tradeability_path_gate_enforced",
+            ):
+                if entry.get(key_name) is None and key_name in details:
+                    entry[key_name] = details.get(key_name)
+            for key_name in (
                 "edge_realizable_hq_bypass_p_realize_min",
                 "edge_realizable_hq_bypass_p_converge_min",
                 "edge_realizable_hq_bypassed_p_realize_min",
@@ -20338,6 +20467,7 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                 fallback_exit = _coalesce_numeric(entry.get("exec_exit_price"), details.get("exec_exit_price"))
                 if fallback_exit is not None:
                     entry["edge_realizable_target_exit_price"] = fallback_exit
+            _refresh_entry_tradeability_gate(entry, decision)
 
         def _entry_should_hide_negative(entry: Dict[str, Any]) -> bool:
             if not isinstance(entry, dict):
@@ -20432,12 +20562,36 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     cand.get("edge_tradeability_profit_value"),
                     cand.get("edge_tradeability_edge_lcb"),
                 ),
+                "edge_signal_alpha": cand.get("edge_signal_alpha"),
+                "edge_signal_lcb": cand.get("edge_signal_lcb"),
+                "edge_signal_sigma": cand.get("edge_signal_sigma"),
+                "edge_signal_confidence": cand.get("edge_signal_confidence"),
+                "edge_path_p_reach": cand.get("edge_path_p_reach"),
+                "edge_path_p_reach_lcb": cand.get("edge_path_p_reach_lcb"),
+                "edge_path_p_reach_ucb": cand.get("edge_path_p_reach_ucb"),
+                "edge_path_sample_n": cand.get("edge_path_sample_n"),
+                "edge_path_bucket_key": cand.get("edge_path_bucket_key"),
+                "edge_path_bucket_key_used": cand.get("edge_path_bucket_key_used"),
+                "edge_path_fallback_rank": cand.get("edge_path_fallback_rank"),
+                "edge_path_source": cand.get("edge_path_source"),
                 "edge_tradeability_signal_lcb_min": cand.get("edge_tradeability_signal_lcb_min"),
                 "edge_tradeability_path_lcb_min": cand.get("edge_tradeability_path_lcb_min"),
                 "edge_tradeability_profit_min": _coalesce_numeric(
                     cand.get("edge_tradeability_profit_min"),
                     cand.get("edge_tradeability_edge_lcb_min"),
                 ),
+                "edge_tradeability_edge_expected": cand.get("edge_tradeability_edge_expected"),
+                "edge_tradeability_edge_ucb": cand.get("edge_tradeability_edge_ucb"),
+                "edge_tradeability_miss_cost": cand.get("edge_tradeability_miss_cost"),
+                "edge_tradeability_slippage_buffer": cand.get("edge_tradeability_slippage_buffer"),
+                "edge_tradeability_mode": cand.get("edge_tradeability_mode"),
+                "edge_tradeability_policy_enforce": cand.get("edge_tradeability_policy_enforce"),
+                "edge_tradeability_canary_sampled": cand.get("edge_tradeability_canary_sampled"),
+                "edge_tradeability_pass": cand.get("edge_tradeability_pass"),
+                "edge_tradeability_blocked": cand.get("edge_tradeability_blocked"),
+                "edge_tradeability_shadow_block": cand.get("edge_tradeability_shadow_block"),
+                "edge_tradeability_reasons": cand.get("edge_tradeability_reasons"),
+                "edge_tradeability_path_gate_enforced": cand.get("edge_tradeability_path_gate_enforced"),
                 "edge_realizable_hq_edge_lcb_min": cand.get("edge_realizable_hq_edge_lcb_min"),
                 "edge_realizable_hq_bypass_p_realize_min": cand.get("edge_realizable_hq_bypass_p_realize_min"),
                 "edge_realizable_hq_bypass_p_converge_min": cand.get("edge_realizable_hq_bypass_p_converge_min"),
@@ -20530,12 +20684,36 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
                     cand_dict.get("edge_tradeability_profit_value"),
                     cand_dict.get("edge_tradeability_edge_lcb"),
                 ),
+                "edge_signal_alpha": cand_dict.get("edge_signal_alpha"),
+                "edge_signal_lcb": cand_dict.get("edge_signal_lcb"),
+                "edge_signal_sigma": cand_dict.get("edge_signal_sigma"),
+                "edge_signal_confidence": cand_dict.get("edge_signal_confidence"),
+                "edge_path_p_reach": cand_dict.get("edge_path_p_reach"),
+                "edge_path_p_reach_lcb": cand_dict.get("edge_path_p_reach_lcb"),
+                "edge_path_p_reach_ucb": cand_dict.get("edge_path_p_reach_ucb"),
+                "edge_path_sample_n": cand_dict.get("edge_path_sample_n"),
+                "edge_path_bucket_key": cand_dict.get("edge_path_bucket_key"),
+                "edge_path_bucket_key_used": cand_dict.get("edge_path_bucket_key_used"),
+                "edge_path_fallback_rank": cand_dict.get("edge_path_fallback_rank"),
+                "edge_path_source": cand_dict.get("edge_path_source"),
                 "edge_tradeability_signal_lcb_min": cand_dict.get("edge_tradeability_signal_lcb_min"),
                 "edge_tradeability_path_lcb_min": cand_dict.get("edge_tradeability_path_lcb_min"),
                 "edge_tradeability_profit_min": _coalesce_numeric(
                     cand_dict.get("edge_tradeability_profit_min"),
                     cand_dict.get("edge_tradeability_edge_lcb_min"),
                 ),
+                "edge_tradeability_edge_expected": cand_dict.get("edge_tradeability_edge_expected"),
+                "edge_tradeability_edge_ucb": cand_dict.get("edge_tradeability_edge_ucb"),
+                "edge_tradeability_miss_cost": cand_dict.get("edge_tradeability_miss_cost"),
+                "edge_tradeability_slippage_buffer": cand_dict.get("edge_tradeability_slippage_buffer"),
+                "edge_tradeability_mode": cand_dict.get("edge_tradeability_mode"),
+                "edge_tradeability_policy_enforce": cand_dict.get("edge_tradeability_policy_enforce"),
+                "edge_tradeability_canary_sampled": cand_dict.get("edge_tradeability_canary_sampled"),
+                "edge_tradeability_pass": cand_dict.get("edge_tradeability_pass"),
+                "edge_tradeability_blocked": cand_dict.get("edge_tradeability_blocked"),
+                "edge_tradeability_shadow_block": cand_dict.get("edge_tradeability_shadow_block"),
+                "edge_tradeability_reasons": cand_dict.get("edge_tradeability_reasons"),
+                "edge_tradeability_path_gate_enforced": cand_dict.get("edge_tradeability_path_gate_enforced"),
                 "edge_realizable_hq_edge_lcb_min": cand_dict.get("edge_realizable_hq_edge_lcb_min"),
                 "edge_realizable_hq_bypass_p_realize_min": cand_dict.get("edge_realizable_hq_bypass_p_realize_min"),
                 "edge_realizable_hq_bypass_p_converge_min": cand_dict.get("edge_realizable_hq_bypass_p_converge_min"),
@@ -20555,6 +20733,19 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
             entry.update(_event_live_position_metrics(_ssot_trade_info_map(fact.get("auto_trades"))))
             _apply_live_position_overlay(entry)
             _apply_recent_trade_overlay(entry)
+            _decorate_entry_execution(
+                entry,
+                decisions_by_key=decisions_by_key,
+                decisions_by_key_strategy=decisions_by_key_strategy,
+                decisions_by_event=decisions_by_event,
+                entry_orders_by_key=entry_orders_by_key,
+                entry_orders_by_key_strategy=entry_orders_by_key_strategy,
+                auto_run_inflight=auto_run_inflight,
+                wait_sec=wait_sec,
+                last_run_row=last_run_row,
+                run_state_public=run_state_public,
+                now_dt=now_dt,
+            )
             return entry
 
         items: List[Dict[str, Any]] = []
@@ -23497,6 +23688,9 @@ def auto_trade_trace(run_date: str, limit: int = 20) -> Dict[str, Any]:
         finally:
             _trace_refresh_done()
 
+    if readonly:
+        return _compute_payload()
+
     now_ts = time.time()
     cached = _AUTO_TRADE_TRACE_CACHE.get(run_date_key)
     if cached:
@@ -24202,6 +24396,14 @@ def to_float(value: Any) -> Optional[float]:
     if num != num:
         return None
     return num
+
+
+def _coalesce_numeric(value: Any, *fallbacks: Any) -> Optional[float]:
+    for raw in (value, *fallbacks):
+        num = to_float(raw)
+        if num is not None and math.isfinite(num):
+            return float(num)
+    return None
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -25218,6 +25420,19 @@ def _latest_event_meta_from_facts(conn: sqlite3.Connection, slug: str, event_dat
         "market_top_label": market_label,
         "market_unit": str(fact.get("market_unit") or ""),
     }
+
+
+def _attach_fact_provenance_from_run_payload(item: Dict[str, Any], run_payload: Dict[str, Any]) -> None:
+    if not isinstance(item, dict) or not isinstance(run_payload, dict):
+        return
+    score_meta = run_payload.get("score_composer")
+    if not isinstance(score_meta, dict):
+        return
+    existing = item.get("fact_provenance")
+    if isinstance(existing, dict):
+        existing.update(score_meta)
+    else:
+        item["fact_provenance"] = dict(score_meta)
 
 
 def is_finite(value: Optional[float]) -> bool:
@@ -30625,6 +30840,226 @@ def _latest_ticks_for_event(
     return out
 
 
+def _market_price_fallback_for_side(
+    row: Mapping[str, Any],
+    side: str,
+) -> Optional[float]:
+    side_u = str(side or "").strip().upper()
+    if side_u == "NO":
+        direct = to_float(row.get("no_price"))
+        if direct is None or not math.isfinite(direct):
+            comp = to_float(row.get("yes_price"))
+            if comp is not None and math.isfinite(comp):
+                direct = 1.0 - float(comp)
+    else:
+        direct = to_float(row.get("yes_price"))
+        if direct is None or not math.isfinite(direct):
+            comp = to_float(row.get("no_price"))
+            if comp is not None and math.isfinite(comp):
+                direct = 1.0 - float(comp)
+    if direct is None or not math.isfinite(direct):
+        return None
+    return min(1.0, max(0.0, float(direct)))
+
+
+def _apply_market_quote_fallback_for_side_in_place(
+    row: Dict[str, Any],
+    side: str,
+) -> bool:
+    if not isinstance(row, dict):
+        return False
+    side_u = str(side or "").strip().upper()
+    if side_u == "NO":
+        bid_key = "best_bid_no"
+        ask_key = "best_ask_no"
+        spread_key = "spread_no"
+        bid_depth_key = "bid_depth_topN_no"
+        ask_depth_key = "ask_depth_topN_no"
+        ask_reason_key = "ask_missing_reason_no"
+        fallback_meta_key = "market_quote_fallback_no"
+    else:
+        side_u = "YES"
+        bid_key = "best_bid"
+        ask_key = "best_ask"
+        spread_key = "spread"
+        bid_depth_key = "bid_depth_topN"
+        ask_depth_key = "ask_depth_topN"
+        ask_reason_key = "ask_missing_reason_yes"
+        fallback_meta_key = "market_quote_fallback_yes"
+    fallback_price = _market_price_fallback_for_side(row, side_u)
+    if fallback_price is None or not math.isfinite(fallback_price):
+        return False
+
+    bid_val = to_float(row.get(bid_key))
+    ask_val = to_float(row.get(ask_key))
+    touched = False
+    if bid_val is None or not math.isfinite(bid_val):
+        bid_val = min(float(fallback_price), float(ask_val)) if ask_val is not None and math.isfinite(ask_val) else float(fallback_price)
+        row[bid_key] = bid_val
+        touched = True
+    if ask_val is None or not math.isfinite(ask_val):
+        ask_val = max(float(fallback_price), float(bid_val)) if bid_val is not None and math.isfinite(bid_val) else float(fallback_price)
+        row[ask_key] = ask_val
+        touched = True
+    if row.get(spread_key) is None and bid_val is not None and ask_val is not None:
+        row[spread_key] = max(float(ask_val) - float(bid_val), 0.0)
+        touched = True
+    if row.get(bid_depth_key) is None:
+        row[bid_depth_key] = 0.0
+        touched = True
+    if row.get(ask_depth_key) is None:
+        row[ask_depth_key] = 0.0
+        touched = True
+    if touched:
+        row[ask_reason_key] = "gamma_price_fallback"
+        row[fallback_meta_key] = "gamma_price"
+    return touched
+
+
+def _distribution_needs_edge_recompute(distribution: List[Dict[str, Any]]) -> bool:
+    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
+    v2_enabled = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    for dist_row in distribution:
+        if not isinstance(dist_row, dict):
+            continue
+        ask_yes = to_float(dist_row.get("best_ask"))
+        ask_no = to_float(dist_row.get("best_ask_no"))
+        es_yes = to_float(dist_row.get("edge_score_yes"))
+        es_no = to_float(dist_row.get("edge_score_no"))
+        exs_yes = to_float(dist_row.get("exec_edge_score_yes"))
+        exs_no = to_float(dist_row.get("exec_edge_score_no"))
+        lcb_yes_missing = (
+            tradeability_enabled
+            and (
+                to_float(dist_row.get("edge_signal_lcb_yes")) is None
+                or to_float(dist_row.get("edge_path_p_reach_lcb_yes")) is None
+                or _coalesce_numeric(
+                    dist_row.get("edge_tradeability_profit_value_yes"),
+                    dist_row.get("edge_tradeability_edge_lcb_yes"),
+                ) is None
+                or dist_row.get("edge_tradeability_pass_yes") is None
+            )
+        )
+        lcb_no_missing = (
+            tradeability_enabled
+            and (
+                to_float(dist_row.get("edge_signal_lcb_no")) is None
+                or to_float(dist_row.get("edge_path_p_reach_lcb_no")) is None
+                or _coalesce_numeric(
+                    dist_row.get("edge_tradeability_profit_value_no"),
+                    dist_row.get("edge_tradeability_edge_lcb_no"),
+                ) is None
+                or dist_row.get("edge_tradeability_pass_no") is None
+            )
+        )
+        v2_yes_missing = v2_enabled and to_float(dist_row.get("edge_realizable_v2_yes")) is None
+        v2_no_missing = v2_enabled and to_float(dist_row.get("edge_realizable_v2_no")) is None
+        if ask_yes is not None and math.isfinite(ask_yes) and (es_yes is None or not math.isfinite(es_yes)):
+            return True
+        if ask_no is not None and math.isfinite(ask_no) and (es_no is None or not math.isfinite(es_no)):
+            return True
+        if ask_yes is not None and math.isfinite(ask_yes) and (exs_yes is None or not math.isfinite(exs_yes)):
+            return True
+        if ask_no is not None and math.isfinite(ask_no) and (exs_no is None or not math.isfinite(exs_no)):
+            return True
+        if ask_yes is not None and math.isfinite(ask_yes) and (lcb_yes_missing or v2_yes_missing):
+            return True
+        if ask_no is not None and math.isfinite(ask_no) and (lcb_no_missing or v2_no_missing):
+            return True
+    return False
+
+
+def _hydrate_distribution_market_fields_in_place(
+    conn: sqlite3.Connection,
+    distribution: List[Dict[str, Any]],
+    slug: str,
+    event_date_key: str,
+    run_date_key: str = "",
+) -> bool:
+    if not distribution:
+        return False
+    needs_tick = any(
+        isinstance(row, dict)
+        and (row.get("best_ask") is None or row.get("best_ask_no") is None)
+        for row in distribution
+    )
+    tick_map: Dict[Tuple[str, str], sqlite3.Row] = {}
+    if needs_tick and slug and event_date_key:
+        tick_map = _latest_ticks_for_event(conn, slug, event_date_key)
+    touched_market = False
+    for dist_row in distribution:
+        if not isinstance(dist_row, dict):
+            continue
+        if event_date_key and dist_row.get("event_date") is None:
+            dist_row["event_date"] = event_date_key
+        if run_date_key and dist_row.get("run_date") is None:
+            dist_row["run_date"] = run_date_key
+        outcome = str(dist_row.get("outcome") or "")
+        if tick_map and outcome:
+            tick_yes = tick_map.get((outcome, "YES"))
+            if tick_yes:
+                if dist_row.get("best_bid") is None and tick_yes["best_bid"] is not None:
+                    dist_row["best_bid"] = tick_yes["best_bid"]
+                    touched_market = True
+                if dist_row.get("best_ask") is None and tick_yes["best_ask"] is not None:
+                    dist_row["best_ask"] = tick_yes["best_ask"]
+                    dist_row["ask_missing_reason_yes"] = ""
+                    touched_market = True
+                if dist_row.get("spread") is None and dist_row.get("best_bid") is not None and dist_row.get("best_ask") is not None:
+                    dist_row["spread"] = max(float(dist_row["best_ask"]) - float(dist_row["best_bid"]), 0.0)
+                    touched_market = True
+                if dist_row.get("bid_depth_topN") is None and tick_yes["bid_depth_topN"] is not None:
+                    dist_row["bid_depth_topN"] = tick_yes["bid_depth_topN"]
+                    touched_market = True
+                if dist_row.get("ask_depth_topN") is None and tick_yes["ask_depth_topN"] is not None:
+                    dist_row["ask_depth_topN"] = tick_yes["ask_depth_topN"]
+                    touched_market = True
+            tick_no = tick_map.get((outcome, "NO"))
+            if tick_no:
+                if dist_row.get("best_bid_no") is None and tick_no["best_bid"] is not None:
+                    dist_row["best_bid_no"] = tick_no["best_bid"]
+                    touched_market = True
+                if dist_row.get("best_ask_no") is None and tick_no["best_ask"] is not None:
+                    dist_row["best_ask_no"] = tick_no["best_ask"]
+                    dist_row["ask_missing_reason_no"] = ""
+                    touched_market = True
+                if dist_row.get("spread_no") is None and dist_row.get("best_bid_no") is not None and dist_row.get("best_ask_no") is not None:
+                    dist_row["spread_no"] = max(float(dist_row["best_ask_no"]) - float(dist_row["best_bid_no"]), 0.0)
+                    touched_market = True
+                if dist_row.get("bid_depth_topN_no") is None and tick_no["bid_depth_topN"] is not None:
+                    dist_row["bid_depth_topN_no"] = tick_no["bid_depth_topN"]
+                    touched_market = True
+                if dist_row.get("ask_depth_topN_no") is None and tick_no["ask_depth_topN"] is not None:
+                    dist_row["ask_depth_topN_no"] = tick_no["ask_depth_topN"]
+                    touched_market = True
+        if _apply_market_quote_fallback_for_side_in_place(dist_row, "YES"):
+            touched_market = True
+        if _apply_market_quote_fallback_for_side_in_place(dist_row, "NO"):
+            touched_market = True
+    if not touched_market and not _distribution_needs_edge_recompute(distribution):
+        return False
+    try:
+        time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
+    except (TypeError, ValueError):
+        time_structure_min = 0.1
+    if not math.isfinite(time_structure_min) or time_structure_min <= 0:
+        time_structure_min = 0.1
+    for dist_row in distribution:
+        if not isinstance(dist_row, dict):
+            continue
+        if event_date_key and dist_row.get("event_date") is None:
+            dist_row["event_date"] = event_date_key
+        if run_date_key and dist_row.get("run_date") is None:
+            dist_row["run_date"] = run_date_key
+        _compute_edge_fields_in_place(dist_row, time_structure_min)
+    return True
+
+
 def query_latest_event_run(conn: sqlite3.Connection, slug: str, event_date: str) -> Optional[sqlite3.Row]:
     cur = conn.cursor()
     cur.execute(
@@ -30637,6 +31072,34 @@ def query_latest_event_run(conn: sqlite3.Connection, slug: str, event_date: str)
         """,
         (slug, event_date),
     )
+    return cur.fetchone()
+
+
+def query_latest_event_run_for_run_date(
+    conn: sqlite3.Connection,
+    slug: str,
+    event_date: str,
+    run_date: str,
+) -> Optional[sqlite3.Row]:
+    slug_key = str(slug or "").strip()
+    event_date_key = _normalize_date_key(str(event_date or ""))
+    run_date_key = _normalize_date_key(str(run_date or ""))
+    if not slug_key or not event_date_key or not run_date_key:
+        return None
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT *
+            FROM event_runs
+            WHERE slug = ? AND event_date = ? AND run_date = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (slug_key, event_date_key, run_date_key),
+        )
+    except sqlite3.Error:
+        return None
     return cur.fetchone()
 
 
@@ -30873,6 +31336,7 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
         "lcb_global_max_new_orders_per_run": _ssot_env_int("PM_LCB_GLOBAL_MAX_NEW_ORDERS_PER_RUN", 0),
         "lcb_global_max_open_positions": _ssot_env_int("PM_LCB_GLOBAL_MAX_OPEN_POSITIONS", 0),
         "lcb_global_signal_edge_min": _ssot_env_float("PM_LCB_GLOBAL_SIGNAL_EDGE_MIN"),
+        "lcb_global_plain_no_peak_exclude": _env_bool("PM_LCB_GLOBAL_PLAIN_NO_PEAK_EXCLUDE", True),
         "order_usdc": _ssot_env_float("PM_ORDER_USDC", 10.0),
         "kelly_enabled": _env_bool("PM_KELLY_ENABLED", True),
         "kelly_fraction": _ssot_env_float("PM_KELLY_FRACTION", 0.25),
@@ -30987,7 +31451,53 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
             ),
         },
         "temp_event_min_edge_score_entry": _ssot_env_float("PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY", 0.0),
+}
+
+
+def _ssot_normalize_lcb_combo_role(role: Any) -> str:
+    role_norm = str(role or "").strip().lower()
+    alias_map = {
+        "yes_top": "combo_yes_peak",
+        "combo_yes_peak": "combo_yes_peak",
+        "no_near": "combo_no_adjacent",
+        "combo_no_adjacent": "combo_no_adjacent",
+        "no_far": "combo_no_remote",
+        "combo_no_remote": "combo_no_remote",
     }
+    return str(alias_map.get(role_norm) or "")
+
+
+def _ssot_candidate_requires_plain_lcb_path_gate(
+    candidate: Optional[Mapping[str, Any]],
+    policy: Mapping[str, Any],
+) -> bool:
+    if not isinstance(candidate, Mapping):
+        return False
+    if not bool(policy.get("lcb_global_enabled")):
+        return False
+    strategy = str(candidate.get("strategy") or "lcb_global").strip().lower()
+    if strategy != "lcb_global":
+        return False
+    role_hint = _ssot_normalize_lcb_combo_role(candidate.get("lcb_q_combo_role_hint"))
+    return role_hint not in {"combo_yes_peak", "combo_no_adjacent", "combo_no_remote"}
+
+
+def _ssot_candidate_is_plain_lcb_peak_no(
+    candidate: Optional[Mapping[str, Any]],
+    policy: Mapping[str, Any],
+    market_top_label: Any,
+) -> bool:
+    if not isinstance(candidate, Mapping):
+        return False
+    if not bool(policy.get("lcb_global_plain_no_peak_exclude")):
+        return False
+    if str(candidate.get("side") or "").strip().upper() != "NO":
+        return False
+    if not _ssot_candidate_requires_plain_lcb_path_gate(candidate, policy):
+        return False
+    outcome = str(candidate.get("outcome") or "").strip()
+    top_label = str(market_top_label or "").strip()
+    return bool(outcome and top_label and outcome == top_label)
 
 
 def _ssot_trade_info_map(auto_trades: Any) -> Dict[Tuple[str, str], Dict[str, Any]]:
@@ -31157,6 +31667,31 @@ def _ssot_candidate_from_row(
     side = str(side or "").upper()
     if side not in {"YES", "NO"}:
         return None
+    suffix = "_yes" if side == "YES" else "_no"
+
+    def _side_float(*base_keys: str) -> Optional[float]:
+        for base_key in base_keys:
+            if not base_key:
+                continue
+            val = to_float(row.get(f"{base_key}{suffix}"))
+            if val is not None and math.isfinite(val):
+                return float(val)
+            val = to_float(row.get(base_key))
+            if val is not None and math.isfinite(val):
+                return float(val)
+        return None
+
+    def _side_value(*base_keys: str) -> Any:
+        for base_key in base_keys:
+            if not base_key:
+                continue
+            side_key = f"{base_key}{suffix}"
+            if side_key in row and row.get(side_key) is not None:
+                return row.get(side_key)
+            if base_key in row and row.get(base_key) is not None:
+                return row.get(base_key)
+        return None
+
     if side == "YES":
         ask = to_float(row.get("entry_price_yes"))
         if ask is None:
@@ -31267,6 +31802,7 @@ def _ssot_candidate_from_row(
         "yes",
         "on",
     }
+    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
     if v2_enabled and exec_edge_entry is not None and math.isfinite(exec_edge_entry):
         exec_entry_price = to_float(row.get("exec_entry_price_yes") if side == "YES" else row.get("exec_entry_price_no"))
         if exec_entry_price is None or not math.isfinite(exec_entry_price):
@@ -31342,6 +31878,11 @@ def _ssot_candidate_from_row(
     return {
         "side": side,
         "outcome": outcome,
+        "strategy": "lcb_global" if _env_bool("PM_LCB_GLOBAL_ENABLED", True) else "main",
+        "lcb_combo_leg": "lcb" if _env_bool("PM_LCB_GLOBAL_ENABLED", True) else "",
+        "lcb_q_combo_enabled": bool(_side_value("lcb_q_combo_enabled")),
+        "lcb_q_combo_role_hint": str(_side_value("lcb_q_combo_role_hint") or ""),
+        "lcb_q_combo_q_peak_outcome": str(market_top_label or ""),
         "edge_score": edge_score,
         "exec_edge_entry": exec_edge_entry,
         "exec_edge_exit": exec_edge_exit,
@@ -31351,31 +31892,69 @@ def _ssot_candidate_from_row(
         "edge_realizable_score": edge_realizable_score_val,
         "edge_realizable_v2": edge_realizable_v2_val,
         "edge_realizable_score_v2": edge_realizable_score_v2_val,
-        "edge_realizable_p_realize": edge_realizable_p_realize,
-        "edge_realizable_p_converge": edge_realizable_p_converge,
-        "edge_realizable_p_realize_min": to_float(row.get("edge_realizable_p_realize_min")),
-        "edge_realizable_p_converge_min": to_float(row.get("edge_realizable_p_converge_min")),
-        "edge_realizable_p_fill_entry": edge_realizable_p_fill_entry,
-        "edge_realizable_p_fill_exit": edge_realizable_p_fill_exit,
-        "edge_realizable_hold_cost": edge_realizable_hold_cost,
-        "edge_realizable_p_realize_missing": edge_realizable_p_realize_missing,
-        "edge_realizable_p_realize_low_sample": edge_realizable_p_realize_low_sample,
-        "edge_realizable_p_realize_samples_min": edge_realizable_p_realize_samples_min,
+        "edge_realizable_p_realize": _coalesce_numeric(edge_realizable_p_realize, _side_float("edge_realizable_p_realize")),
+        "edge_realizable_p_converge": _coalesce_numeric(edge_realizable_p_converge, _side_float("edge_realizable_p_converge")),
+        "edge_realizable_p_realize_min": _side_float("edge_realizable_p_realize_min"),
+        "edge_realizable_p_converge_min": _side_float("edge_realizable_p_converge_min"),
+        "edge_realizable_p_fill_entry": _coalesce_numeric(edge_realizable_p_fill_entry, _side_float("edge_realizable_p_fill_entry")),
+        "edge_realizable_p_fill_exit": _coalesce_numeric(edge_realizable_p_fill_exit, _side_float("edge_realizable_p_fill_exit")),
+        "edge_realizable_hold_cost": _coalesce_numeric(edge_realizable_hold_cost, _side_float("edge_realizable_hold_cost")),
+        "edge_realizable_p_realize_missing": (
+            edge_realizable_p_realize_missing
+            if edge_realizable_p_realize_missing is not None
+            else bool(_side_value("edge_realizable_p_realize_missing"))
+        ),
+        "edge_realizable_p_realize_low_sample": (
+            edge_realizable_p_realize_low_sample
+            if edge_realizable_p_realize_low_sample is not None
+            else bool(_side_value("edge_realizable_p_realize_low_sample"))
+        ),
+        "edge_realizable_p_realize_samples_min": _coalesce_numeric(
+            edge_realizable_p_realize_samples_min,
+            _side_float("edge_realizable_p_realize_samples_min"),
+        ),
+        "edge_realizable_bucket_key": str(
+            _side_value("edge_realizable_bucket_key") or ""
+        ),
+        "edge_signal_alpha": _side_float("edge_signal_alpha"),
+        "edge_signal_lcb": _side_float("edge_signal_lcb"),
+        "edge_signal_sigma": _side_float("edge_signal_sigma"),
+        "edge_signal_confidence": _side_float("edge_signal_confidence"),
+        "edge_path_p_reach": _side_float("edge_path_p_reach"),
+        "edge_path_p_reach_lcb": _side_float("edge_path_p_reach_lcb"),
+        "edge_path_p_reach_ucb": _side_float("edge_path_p_reach_ucb"),
+        "edge_path_sample_n": _side_value("edge_path_sample_n"),
+        "edge_path_bucket_key": str(_side_value("edge_path_bucket_key") or ""),
+        "edge_path_bucket_key_used": str(_side_value("edge_path_bucket_key_used") or ""),
+        "edge_path_fallback_rank": _side_value("edge_path_fallback_rank"),
+        "edge_path_source": str(_side_value("edge_path_source") or ""),
         "edge_tradeability_profit_value": _coalesce_numeric(
-            row.get("edge_tradeability_profit_value"),
-            row.get("edge_tradeability_edge_lcb"),
+            _side_value("edge_tradeability_profit_value"),
+            _side_value("edge_tradeability_edge_lcb"),
         ),
-        "edge_tradeability_signal_lcb_min": to_float(row.get("edge_tradeability_signal_lcb_min")),
-        "edge_tradeability_path_lcb_min": to_float(row.get("edge_tradeability_path_lcb_min")),
+        "edge_tradeability_signal_lcb_min": _side_float("edge_tradeability_signal_lcb_min"),
+        "edge_tradeability_path_lcb_min": _side_float("edge_tradeability_path_lcb_min"),
         "edge_tradeability_profit_min": _coalesce_numeric(
-            row.get("edge_tradeability_profit_min"),
-            row.get("edge_tradeability_edge_lcb_min"),
+            _side_value("edge_tradeability_profit_min"),
+            _side_value("edge_tradeability_edge_lcb_min"),
         ),
-        "edge_realizable_hq_edge_lcb_min": to_float(row.get("edge_realizable_hq_edge_lcb_min")),
-        "edge_realizable_hq_bypass_p_realize_min": row.get("edge_realizable_hq_bypass_p_realize_min"),
-        "edge_realizable_hq_bypass_p_converge_min": row.get("edge_realizable_hq_bypass_p_converge_min"),
-        "edge_realizable_hq_bypassed_p_realize_min": row.get("edge_realizable_hq_bypassed_p_realize_min"),
-        "edge_realizable_hq_bypassed_p_converge_min": row.get("edge_realizable_hq_bypassed_p_converge_min"),
+        "edge_tradeability_edge_expected": _side_float("edge_tradeability_edge_expected"),
+        "edge_tradeability_edge_ucb": _side_float("edge_tradeability_edge_ucb"),
+        "edge_tradeability_miss_cost": _side_float("edge_tradeability_miss_cost"),
+        "edge_tradeability_slippage_buffer": _side_float("edge_tradeability_slippage_buffer"),
+        "edge_tradeability_mode": str(_side_value("edge_tradeability_mode") or ""),
+        "edge_tradeability_policy_enforce": _side_value("edge_tradeability_policy_enforce"),
+        "edge_tradeability_canary_sampled": _side_value("edge_tradeability_canary_sampled"),
+        "edge_tradeability_pass": _side_value("edge_tradeability_pass"),
+        "edge_tradeability_blocked": _side_value("edge_tradeability_blocked"),
+        "edge_tradeability_shadow_block": _side_value("edge_tradeability_shadow_block"),
+        "edge_tradeability_reasons": str(_side_value("edge_tradeability_reasons") or ""),
+        "edge_tradeability_path_gate_enforced": _side_value("edge_tradeability_path_gate_enforced"),
+        "edge_realizable_hq_edge_lcb_min": _side_float("edge_realizable_hq_edge_lcb_min"),
+        "edge_realizable_hq_bypass_p_realize_min": _side_value("edge_realizable_hq_bypass_p_realize_min"),
+        "edge_realizable_hq_bypass_p_converge_min": _side_value("edge_realizable_hq_bypass_p_converge_min"),
+        "edge_realizable_hq_bypassed_p_realize_min": _side_value("edge_realizable_hq_bypassed_p_realize_min"),
+        "edge_realizable_hq_bypassed_p_converge_min": _side_value("edge_realizable_hq_bypassed_p_converge_min"),
         "edge_realizable_target_exit_price": edge_realizable_target_exit_price,
         "edge_realizable_target_exit_price_raw": edge_realizable_target_exit_price_raw,
         "edge_realizable_delta_exit": edge_realizable_delta_exit,
@@ -31595,6 +32174,23 @@ def _ssot_entry_reasons_main(
             if soft is not None and q_min is not None and math.isfinite(soft) and math.isfinite(q_min):
                 if ask <= soft + eps and q_min_bound is not None and math.isfinite(q_min_bound) and q_min_bound >= q_min - eps:
                     reasons.append("尾部锁定报价(ask偏低且q极端)")
+    if _ssot_candidate_is_plain_lcb_peak_no(candidate, policy, market_top_label):
+        reasons.append("Plain LCB不做Q峰值桶NO")
+    if bool(policy.get("lcb_global_enabled")) and candidate.get("edge_tradeability_pass") is not True:
+        gate = _build_tradeability_gate_snapshot(candidate, None)
+        lcb_reasons = _tradeability_reason_texts(
+            gate,
+            candidate.get("edge_tradeability_reasons"),
+        )
+        if not lcb_reasons:
+            if candidate.get("edge_tradeability_pass") is False:
+                lcb_reasons = ["LCB门禁未通过"]
+            else:
+                lcb_reasons = ["LCB门禁缺失"]
+        for reason in lcb_reasons:
+            text = str(reason or "").strip()
+            if text and text not in reasons:
+                reasons.append(text)
     trade_info = candidate.get("trade_info")
     if isinstance(trade_info, dict):
         try:
@@ -31656,9 +32252,20 @@ def _ssot_build_auto_trade_ssot(item: Dict[str, Any]) -> Optional[Dict[str, Any]
     # fields like `edge_score_yes/no` due to older composer versions. Recompute in-memory so the
     # auto-trade SSOT candidate never shows "有效优势分 —" when price/q/time/structure are available.
     needs_recompute = False
+    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
+    v2_enabled_for_recompute = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     for row in dist:
         if not isinstance(row, dict):
             continue
+        if event_date_key and row.get("event_date") is None:
+            row["event_date"] = event_date_key
+        if run_date_key and row.get("run_date") is None:
+            row["run_date"] = run_date_key
         ask_yes = to_float(row.get("best_ask"))
         ask_no = to_float(row.get("best_ask_no"))
         es_yes = to_float(row.get("edge_score_yes"))
@@ -31671,6 +32278,32 @@ def _ssot_build_auto_trade_ssot(item: Dict[str, Any]) -> Optional[Dict[str, Any]
         er_no = to_float(row.get("edge_realizable_no"))
         fee_yes = to_float(row.get("exec_fee_cost_yes"))
         fee_no = to_float(row.get("exec_fee_cost_no"))
+        lcb_yes_missing = (
+            tradeability_enabled
+            and (
+                to_float(row.get("edge_signal_lcb_yes")) is None
+                or to_float(row.get("edge_path_p_reach_lcb_yes")) is None
+                or _coalesce_numeric(
+                    row.get("edge_tradeability_profit_value_yes"),
+                    row.get("edge_tradeability_edge_lcb_yes"),
+                ) is None
+                or row.get("edge_tradeability_pass_yes") is None
+            )
+        )
+        lcb_no_missing = (
+            tradeability_enabled
+            and (
+                to_float(row.get("edge_signal_lcb_no")) is None
+                or to_float(row.get("edge_path_p_reach_lcb_no")) is None
+                or _coalesce_numeric(
+                    row.get("edge_tradeability_profit_value_no"),
+                    row.get("edge_tradeability_edge_lcb_no"),
+                ) is None
+                or row.get("edge_tradeability_pass_no") is None
+            )
+        )
+        v2_yes_missing = v2_enabled_for_recompute and to_float(row.get("edge_realizable_v2_yes")) is None
+        v2_no_missing = v2_enabled_for_recompute and to_float(row.get("edge_realizable_v2_no")) is None
         if ask_yes is not None and math.isfinite(ask_yes) and (es_yes is None or not math.isfinite(es_yes)):
             needs_recompute = True
             break
@@ -31699,6 +32332,12 @@ def _ssot_build_auto_trade_ssot(item: Dict[str, Any]) -> Optional[Dict[str, Any]
         if ask_no is not None and math.isfinite(ask_no) and (fee_no is None or not math.isfinite(fee_no)):
             needs_recompute = True
             break
+        if ask_yes is not None and math.isfinite(ask_yes) and (lcb_yes_missing or v2_yes_missing):
+            needs_recompute = True
+            break
+        if ask_no is not None and math.isfinite(ask_no) and (lcb_no_missing or v2_no_missing):
+            needs_recompute = True
+            break
     if needs_recompute:
         try:
             time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
@@ -31708,6 +32347,10 @@ def _ssot_build_auto_trade_ssot(item: Dict[str, Any]) -> Optional[Dict[str, Any]
             time_structure_min = 0.1
         for row in dist:
             if isinstance(row, dict):
+                if event_date_key and row.get("event_date") is None:
+                    row["event_date"] = event_date_key
+                if run_date_key and row.get("run_date") is None:
+                    row["run_date"] = run_date_key
                 _compute_edge_fields_in_place(row, time_structure_min)
     trade_info_map = _ssot_trade_info_map(item.get("auto_trades"))
     market_top_label = str(item.get("market_top_label") or "")
@@ -31816,12 +32459,21 @@ def _get_or_build_auto_trade_ssot(payload: Dict[str, Any]) -> Optional[Dict[str,
     ssot = payload.get("auto_trade_ssot")
     if not isinstance(ssot, dict):
         return _safe_build_auto_trade_ssot(payload)
+    main_reasons = ssot.get("main_entry_reasons")
+    if (
+        not isinstance(ssot.get("main_candidate"), dict)
+        and isinstance(main_reasons, list)
+        and any("SSOT构建异常" in str(reason or "") for reason in main_reasons)
+    ):
+        return _safe_build_auto_trade_ssot(payload)
     v2_enabled = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
+    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
+    lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
     def _missing_exec_fields(cand: Any) -> bool:
         if not isinstance(cand, dict):
             return False
@@ -31850,11 +32502,60 @@ def _get_or_build_auto_trade_ssot(payload: Dict[str, Any]) -> Optional[Dict[str,
         if hold_cost is None or not math.isfinite(hold_cost):
             return True
         return False
+    def _missing_lcb_fields(cand: Any) -> bool:
+        if not tradeability_enabled or not isinstance(cand, dict):
+            return False
+        signal_lcb = to_float(cand.get("edge_signal_lcb"))
+        path_lcb = to_float(cand.get("edge_path_p_reach_lcb"))
+        profit_val = _coalesce_numeric(
+            cand.get("edge_tradeability_profit_value"),
+            cand.get("edge_tradeability_edge_lcb"),
+        )
+        if signal_lcb is None or not math.isfinite(signal_lcb):
+            return True
+        if path_lcb is None or not math.isfinite(path_lcb):
+            return True
+        if profit_val is None or not math.isfinite(profit_val):
+            return True
+        if cand.get("edge_tradeability_pass") is None:
+            return True
+        return False
+    def _stale_lcb_entry_ok(cand: Any, entry_ok: Any) -> bool:
+        if not lcb_global_enabled or not tradeability_enabled or not isinstance(cand, dict):
+            return False
+        if cand.get("edge_tradeability_pass") is not False:
+            return False
+        return bool(entry_ok)
+    def _stale_plain_lcb_peak_entry_ok(cand: Any, entry_ok: Any) -> bool:
+        if not lcb_global_enabled or not bool(entry_ok) or not isinstance(cand, dict):
+            return False
+        policy = _ssot_entry_policy_snapshot()
+        return _ssot_candidate_is_plain_lcb_peak_no(
+            cand,
+            policy,
+            payload.get("market_top_label"),
+        )
     if (
         _missing_exec_fields(ssot.get("main_candidate"))
         or _missing_exec_fields(ssot.get("model_yes_top_candidate"))
         or _missing_v2_fields(ssot.get("main_candidate"))
         or _missing_v2_fields(ssot.get("model_yes_top_candidate"))
+        or _missing_lcb_fields(ssot.get("main_candidate"))
+        or _missing_lcb_fields(ssot.get("model_yes_top_candidate"))
+        or _stale_lcb_entry_ok(ssot.get("main_candidate"), ssot.get("main_entry_ok"))
+        or _stale_lcb_entry_ok(
+            ssot.get("model_yes_top_candidate"),
+            (ssot.get("model_yes_top_candidate") or {}).get("entry_ok")
+            if isinstance(ssot.get("model_yes_top_candidate"), dict)
+            else None,
+        )
+        or _stale_plain_lcb_peak_entry_ok(ssot.get("main_candidate"), ssot.get("main_entry_ok"))
+        or _stale_plain_lcb_peak_entry_ok(
+            ssot.get("model_yes_top_candidate"),
+            (ssot.get("model_yes_top_candidate") or {}).get("entry_ok")
+            if isinstance(ssot.get("model_yes_top_candidate"), dict)
+            else None,
+        )
     ):
         return _safe_build_auto_trade_ssot(payload)
     # If legacy SSOT lacks YES-top NA reason and no candidate, rebuild for explicit reason.
@@ -31916,6 +32617,9 @@ def build_run_item(
     event_date_key = str(row["event_date"] or "")
     if "T" in event_date_key:
         event_date_key = event_date_key.split("T", 1)[0]
+    run_date_key = str(row["run_date"] or "")
+    if "T" in run_date_key:
+        run_date_key = run_date_key.split("T", 1)[0]
     key = (str(row["slug"] or ""), event_date_key)
     payload_market_updated_at = str(payload.get("market_updated_at") or "").strip()
     tick_market_updated_at = str((market_tick_latest_map or {}).get(key) or "").strip()
@@ -31934,82 +32638,13 @@ def build_run_item(
     except (TypeError, ValueError):
         market_stale_sec = 120
     if distribution:
-        needs_tick = any(
-            (row.get("best_ask") is None and row.get("best_ask_no") is None)
-            for row in distribution
+        _hydrate_distribution_market_fields_in_place(
+            conn,
+            distribution,
+            str(row["slug"] or ""),
+            event_date_key,
+            run_date_key,
         )
-        touched_market = False
-        if needs_tick:
-            tick_map = _latest_ticks_for_event(conn, str(row["slug"] or ""), event_date_key)
-            if tick_map:
-                for dist_row in distribution:
-                    outcome = str(dist_row.get("outcome") or "")
-                    if not outcome:
-                        continue
-                    tick_yes = tick_map.get((outcome, "YES"))
-                    if tick_yes:
-                        if dist_row.get("best_bid") is None and tick_yes["best_bid"] is not None:
-                            dist_row["best_bid"] = tick_yes["best_bid"]
-                        if dist_row.get("best_ask") is None and tick_yes["best_ask"] is not None:
-                            dist_row["best_ask"] = tick_yes["best_ask"]
-                            dist_row["ask_missing_reason_yes"] = ""
-                            touched_market = True
-                        if dist_row.get("spread") is None and dist_row.get("best_bid") is not None and dist_row.get("best_ask") is not None:
-                            dist_row["spread"] = max(float(dist_row["best_ask"]) - float(dist_row["best_bid"]), 0.0)
-                        if dist_row.get("bid_depth_topN") is None and tick_yes["bid_depth_topN"] is not None:
-                            dist_row["bid_depth_topN"] = tick_yes["bid_depth_topN"]
-                        if dist_row.get("ask_depth_topN") is None and tick_yes["ask_depth_topN"] is not None:
-                            dist_row["ask_depth_topN"] = tick_yes["ask_depth_topN"]
-                    tick_no = tick_map.get((outcome, "NO"))
-                    if tick_no:
-                        if dist_row.get("best_bid_no") is None and tick_no["best_bid"] is not None:
-                            dist_row["best_bid_no"] = tick_no["best_bid"]
-                        if dist_row.get("best_ask_no") is None and tick_no["best_ask"] is not None:
-                            dist_row["best_ask_no"] = tick_no["best_ask"]
-                            dist_row["ask_missing_reason_no"] = ""
-                            touched_market = True
-                        if dist_row.get("spread_no") is None and dist_row.get("best_bid_no") is not None and dist_row.get("best_ask_no") is not None:
-                            dist_row["spread_no"] = max(float(dist_row["best_ask_no"]) - float(dist_row["best_bid_no"]), 0.0)
-                        if dist_row.get("bid_depth_topN_no") is None and tick_no["bid_depth_topN"] is not None:
-                            dist_row["bid_depth_topN_no"] = tick_no["bid_depth_topN"]
-                        if dist_row.get("ask_depth_topN_no") is None and tick_no["ask_depth_topN"] is not None:
-                            dist_row["ask_depth_topN_no"] = tick_no["ask_depth_topN"]
-        # Recompute derived fields (time/base/penalty/edge_score) when asks exist but edge_score is missing.
-        # This is required because we may patch asks from ticks (or have historical tick-filled asks),
-        # and leaving derived fields as null would break SSOT (UI shows "有效优势分 —" with a valid ask).
-        needs_recompute = touched_market
-        if not needs_recompute:
-            for dist_row in distribution:
-                if not isinstance(dist_row, dict):
-                    continue
-                ask_yes = to_float(dist_row.get("best_ask"))
-                ask_no = to_float(dist_row.get("best_ask_no"))
-                es_yes = to_float(dist_row.get("edge_score_yes"))
-                es_no = to_float(dist_row.get("edge_score_no"))
-                exs_yes = to_float(dist_row.get("exec_edge_score_yes"))
-                exs_no = to_float(dist_row.get("exec_edge_score_no"))
-                if ask_yes is not None and math.isfinite(ask_yes) and (es_yes is None or not math.isfinite(es_yes)):
-                    needs_recompute = True
-                    break
-                if ask_no is not None and math.isfinite(ask_no) and (es_no is None or not math.isfinite(es_no)):
-                    needs_recompute = True
-                    break
-                if ask_yes is not None and math.isfinite(ask_yes) and (exs_yes is None or not math.isfinite(exs_yes)):
-                    needs_recompute = True
-                    break
-                if ask_no is not None and math.isfinite(ask_no) and (exs_no is None or not math.isfinite(exs_no)):
-                    needs_recompute = True
-                    break
-        if needs_recompute:
-            try:
-                time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
-            except (TypeError, ValueError):
-                time_structure_min = 0.1
-            if not math.isfinite(time_structure_min) or time_structure_min <= 0:
-                time_structure_min = 0.1
-            for dist_row in distribution:
-                if isinstance(dist_row, dict):
-                    _compute_edge_fields_in_place(dist_row, time_structure_min)
     q_cal_na_reason = None
     fact_prov_extra: Optional[Dict[str, Any]] = None
     if distribution:
@@ -32034,14 +32669,14 @@ def build_run_item(
             "auto": row["corrected_top_bucket_auto"] or "",
             "scenario": row["corrected_top_bucket_scenario"] or "",
         }
-    )
+    ) or {}
     corrected_top_consistency = build_weight_map(
         {
             "equal": row["corrected_top_consistency_equal"] or "",
             "auto": row["corrected_top_consistency_auto"] or "",
             "scenario": row["corrected_top_consistency_scenario"] or "",
         }
-    )
+    ) or {}
     bucket_diag = payload.get("bucket_diag") or payload.get("bucket_diagnostics") or {}
     weight_maps = resolve_weight_maps_for_row(row, distribution, models) if distribution and models else {}
     if weight_maps:
@@ -32409,25 +33044,39 @@ def _load_latest_snapshot(
     table: str,
     slug: str,
     event_date: str,
+    run_date_max: str = "",
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], str, Optional[int]]:
     if table not in {"model_snapshots", "market_snapshots"}:
         return None, None, "", None
     slug_key = str(slug or "").strip()
     date_key = _normalize_date_key(str(event_date or ""))
+    run_date_max_key = _normalize_date_key(str(run_date_max or ""))
     if not slug_key or not date_key:
         return None, None, "", None
     cur = conn.cursor()
     try:
-        cur.execute(
-            f"""
-            SELECT id, payload_json, meta_json, created_at
-            FROM {table}
-            WHERE slug = ? AND event_date = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-            """,
-            (slug_key, date_key),
-        )
+        if run_date_max_key:
+            cur.execute(
+                f"""
+                SELECT id, payload_json, meta_json, created_at
+                FROM {table}
+                WHERE slug = ? AND event_date = ? AND run_date <= ?
+                ORDER BY run_date DESC, created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (slug_key, date_key, run_date_max_key),
+            )
+        else:
+            cur.execute(
+                f"""
+                SELECT id, payload_json, meta_json, created_at
+                FROM {table}
+                WHERE slug = ? AND event_date = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (slug_key, date_key),
+            )
     except sqlite3.Error:
         return None, None, "", None
     row = cur.fetchone()
@@ -32446,6 +33095,20 @@ def _load_latest_snapshot(
     created_at = str(row["created_at"] or "")
     snap_id = _to_int(row["id"])
     return payload, meta, created_at, snap_id
+
+
+def _snapshot_time_delta_ok_ui(
+    a: Optional[str],
+    b: Optional[str],
+    window_sec: float,
+) -> bool:
+    if not a or not b:
+        return False
+    ta = parse_iso_ts(str(a))
+    tb = parse_iso_ts(str(b))
+    if ta is None or tb is None:
+        return False
+    return abs((ta - tb).total_seconds()) <= float(window_sec)
 
 
 def _snapshot_key_rows_for_run_date(conn: sqlite3.Connection, run_date: str) -> List[Tuple[str, str, str]]:
@@ -32551,6 +33214,50 @@ def _direction_base(delta: Optional[float], scale: float = 0.02) -> float:
 
 def _compute_edge_fields_in_place(row: Dict[str, Any], time_structure_min: float) -> None:
     exec_fee_bps = _ssot_env_float("PM_AUTO_TRADE_EXEC_FEE_BPS", 100.0)
+    edge_tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
+    edge_tradeability_signal_z = _env_float("PM_EDGE_TRADEABILITY_SIGNAL_Z")
+    if edge_tradeability_signal_z is None or not math.isfinite(edge_tradeability_signal_z) or edge_tradeability_signal_z <= 0:
+        edge_tradeability_signal_z = 1.64
+    edge_tradeability_slippage_buffer = _env_float("PM_EDGE_TRADEABILITY_SLIPPAGE_BUFFER")
+    if edge_tradeability_slippage_buffer is not None and not math.isfinite(edge_tradeability_slippage_buffer):
+        edge_tradeability_slippage_buffer = None
+    edge_tradeability_policy = load_edge_policy_from_env()
+    lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", True)
+    if lcb_global_enabled:
+        edge_tradeability_policy["enabled"] = True
+        edge_tradeability_policy["mode"] = "enforced"
+        edge_tradeability_policy["require_exec_audit"] = False
+        edge_tradeability_policy["require_v2"] = False
+    lcb_global_signal_lcb_min = _env_float("PM_LCB_GLOBAL_SIGNAL_LCB_MIN")
+    if lcb_global_signal_lcb_min is None or not math.isfinite(lcb_global_signal_lcb_min):
+        lcb_global_signal_lcb_min = 0.35
+    lcb_global_signal_lcb_min = max(0.0, float(lcb_global_signal_lcb_min))
+    lcb_global_path_lcb_min = _env_float("PM_LCB_GLOBAL_PATH_LCB_MIN")
+    if lcb_global_path_lcb_min is None or not math.isfinite(lcb_global_path_lcb_min):
+        lcb_global_path_lcb_min = 0.03
+    lcb_global_path_lcb_min = min(1.0, max(0.0, float(lcb_global_path_lcb_min)))
+    lcb_global_edge_lcb_min = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN")
+    if lcb_global_edge_lcb_min is None or not math.isfinite(lcb_global_edge_lcb_min):
+        lcb_global_edge_lcb_min = 0.0005
+    lcb_global_edge_lcb_min = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min)))
+    lcb_global_edge_lcb_min_d0 = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN_D0")
+    if lcb_global_edge_lcb_min_d0 is None or not math.isfinite(lcb_global_edge_lcb_min_d0):
+        lcb_global_edge_lcb_min_d0 = lcb_global_edge_lcb_min
+    lcb_global_edge_lcb_min_d0 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d0)))
+    lcb_global_edge_lcb_min_d1 = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN_D1")
+    if lcb_global_edge_lcb_min_d1 is None or not math.isfinite(lcb_global_edge_lcb_min_d1):
+        lcb_global_edge_lcb_min_d1 = max(float(lcb_global_edge_lcb_min), -0.001)
+    lcb_global_edge_lcb_min_d1 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d1)))
+
+    def _resolve_lcb_global_edge_lcb_min(days_to_event_local: Optional[int]) -> Optional[float]:
+        if days_to_event_local is None:
+            return float(lcb_global_edge_lcb_min)
+        if days_to_event_local <= 0:
+            return float(lcb_global_edge_lcb_min_d0)
+        if days_to_event_local == 1:
+            return float(lcb_global_edge_lcb_min_d1)
+        return float(lcb_global_edge_lcb_min)
+
     q_round = to_float(row.get("q_round"))
     q_round_no = to_float(row.get("q_round_no"))
     if q_round_no is None and q_round is not None:
@@ -32821,6 +33528,361 @@ def _compute_edge_fields_in_place(row: Dict[str, Any], time_structure_min: float
     _compute_exec_for_side("YES", ask_yes, spread_yes, q_entry, time_yes, pen_yes)
     _compute_exec_for_side("NO", ask_no, spread_no, q_entry_no, time_no, pen_no)
 
+    event_date_key = date_only(str(row.get("event_date") or ""))
+    run_date_key = date_only(str(row.get("run_date") or row.get("current_event_date") or ""))
+    days_to_event: Optional[int] = None
+    if event_date_key and run_date_key:
+        event_dt = parse_date(event_date_key)
+        run_dt = parse_date(run_date_key)
+        if event_dt is not None and run_dt is not None:
+            try:
+                days_to_event = int((event_dt - run_dt).days)
+            except Exception:
+                days_to_event = None
+    if days_to_event is not None and days_to_event < 0:
+        days_to_event = 0
+
+    v2_enabled = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    def _first_numeric(*values: Any) -> Optional[float]:
+        return _coalesce_numeric(*values)
+
+    def _compute_runtime_for_side(
+        side: str,
+        ask: Optional[float],
+        spread: Optional[float],
+        q_entry_side: Optional[float],
+        q_round_side: Optional[float],
+        q_raw_side: Optional[float],
+        time_side: Optional[float],
+        penalty_side: float,
+    ) -> None:
+        suffix = "_yes" if side == "YES" else "_no"
+        if ask is None or not math.isfinite(ask):
+            return
+        if q_entry_side is None or not math.isfinite(q_entry_side):
+            return
+        if time_side is None or not math.isfinite(time_side):
+            return
+        if structure is None or not math.isfinite(structure):
+            return
+
+        exec_edge_entry = to_float(row.get(f"exec_edge_entry{suffix}"))
+        exec_edge_exit = to_float(row.get(f"exec_edge_exit{suffix}"))
+        exec_entry_price = to_float(row.get(f"exec_entry_price{suffix}"))
+        exec_exit_price = to_float(row.get(f"exec_exit_price{suffix}"))
+        exec_fee_cost = to_float(row.get(f"exec_fee_cost{suffix}"))
+        if exec_edge_entry is None or not math.isfinite(exec_edge_entry):
+            return
+        if exec_entry_price is None or not math.isfinite(exec_entry_price):
+            exec_entry_price = ask
+        best_bid = to_float(row.get("best_bid") if side == "YES" else row.get("best_bid_no"))
+        depth_ratio = to_float(row.get(f"depth_ratio{suffix}"))
+        if depth_ratio is None:
+            entry_size = to_float(row.get(f"entry_size{suffix}"))
+            depth_total = _first_numeric(
+                row.get("ask_depth_total" if side == "YES" else f"ask_depth_total{suffix}"),
+                row.get("ask_depth_topN" if side == "YES" else f"ask_depth_topN{suffix}"),
+            )
+            if (
+                entry_size is not None
+                and math.isfinite(entry_size)
+                and entry_size > 0
+                and depth_total is not None
+                and math.isfinite(depth_total)
+            ):
+                depth_ratio = float(depth_total) / float(entry_size)
+                row[f"depth_ratio{suffix}"] = depth_ratio
+        trend_pct = to_float(row.get(f"trend_pct{suffix}"))
+        trend_consistency_up = to_float(row.get(f"trend_consistency_up{suffix}"))
+        q_cal_side = to_float(row.get("q_calibrated" if side == "YES" else "q_calibrated_no"))
+        q_edge_side = to_float(row.get("q_edge" if side == "YES" else "q_edge_no"))
+        if q_edge_side is None:
+            q_edge_side = q_cal_side if q_cal_side is not None else q_raw_side
+        days_to_settle_val = float(days_to_event) if days_to_event is not None else None
+        hours_to_settle_val = float(days_to_event) * 24.0 if days_to_event is not None else None
+        order_type = str(os.environ.get("PM_AUTO_TRADE_ORDER_TYPE", "GTC") or "GTC").strip().upper()
+
+        target_exit_price = _first_numeric(row.get(f"edge_realizable_target_exit_price{suffix}"))
+        target_exit_price_raw = _first_numeric(row.get(f"edge_realizable_target_exit_price_raw{suffix}"))
+        delta_exit = _first_numeric(row.get(f"edge_realizable_delta_exit{suffix}"))
+        delta_exit_raw = _first_numeric(row.get(f"edge_realizable_delta_exit_raw{suffix}"))
+        delta_exit_cap = _first_numeric(row.get(f"edge_realizable_delta_exit_cap{suffix}"))
+        target_exit_clamped = row.get(f"edge_realizable_target_exit_clamped{suffix}")
+        if target_exit_price is None and exec_exit_price is not None and exec_edge_exit is not None:
+            target_exit_price, target_exit_meta = _build_edge_realizable_target_exit_price_ui(
+                exec_exit_price=exec_exit_price,
+                exec_edge_exit=exec_edge_exit,
+                base_bid=best_bid,
+                spread=spread,
+                side=side,
+                row=row,
+                headroom_min=float(_ssot_env_float("PM_AUTO_TRADE_EXIT_HEADROOM_MIN", 0.02) or 0.02),
+            )
+            if target_exit_meta:
+                target_exit_price_raw = _first_numeric(target_exit_meta.get("target_exit_price_raw"))
+                delta_exit_raw = _first_numeric(target_exit_meta.get("delta_exit_raw"))
+                delta_exit_cap = _first_numeric(target_exit_meta.get("delta_exit_cap"))
+                delta_exit = _first_numeric(target_exit_meta.get("delta_exit"))
+                target_exit_clamped = bool(target_exit_meta.get("target_exit_clamped"))
+        if target_exit_price is not None:
+            row[f"edge_realizable_target_exit_price{suffix}"] = target_exit_price
+        if target_exit_price_raw is not None:
+            row[f"edge_realizable_target_exit_price_raw{suffix}"] = target_exit_price_raw
+        if delta_exit is not None:
+            row[f"edge_realizable_delta_exit{suffix}"] = delta_exit
+        if delta_exit_raw is not None:
+            row[f"edge_realizable_delta_exit_raw{suffix}"] = delta_exit_raw
+        if delta_exit_cap is not None:
+            row[f"edge_realizable_delta_exit_cap{suffix}"] = delta_exit_cap
+        if target_exit_clamped is not None:
+            row[f"edge_realizable_target_exit_clamped{suffix}"] = bool(target_exit_clamped)
+
+        time_structure = max(float(time_side) * float(structure), time_structure_min)
+        edge_realizable_val = to_float(row.get(f"edge_realizable{suffix}"))
+        edge_realizable_score_val = to_float(row.get(f"edge_realizable_score{suffix}"))
+        if edge_realizable_val is None or not math.isfinite(edge_realizable_val):
+            edge_realizable_val, fee_cost_val = edge_realizable(exec_edge_entry, exec_entry_price, exec_fee_bps)
+            if edge_realizable_val is not None and math.isfinite(edge_realizable_val):
+                row[f"edge_realizable{suffix}"] = edge_realizable_val
+            if exec_fee_cost is None and fee_cost_val is not None and math.isfinite(fee_cost_val):
+                exec_fee_cost = fee_cost_val
+                row[f"exec_fee_cost{suffix}"] = fee_cost_val
+        if edge_realizable_score_val is None or not math.isfinite(edge_realizable_score_val):
+            edge_realizable_score_val = edge_realizable_score(edge_realizable_val, time_structure, penalty_side)
+            if edge_realizable_score_val is not None and math.isfinite(edge_realizable_score_val):
+                row[f"edge_realizable_score{suffix}"] = edge_realizable_score_val
+
+        edge_realizable_v2_val = to_float(row.get(f"edge_realizable_v2{suffix}"))
+        edge_realizable_score_v2_val = to_float(row.get(f"edge_realizable_score_v2{suffix}"))
+        edge_realizable_p_realize = to_float(row.get(f"edge_realizable_p_realize{suffix}"))
+        edge_realizable_p_converge = to_float(row.get(f"edge_realizable_p_converge{suffix}"))
+        edge_realizable_p_fill_entry = to_float(row.get(f"edge_realizable_p_fill_entry{suffix}"))
+        edge_realizable_p_fill_exit = to_float(row.get(f"edge_realizable_p_fill_exit{suffix}"))
+        edge_realizable_hold_cost = to_float(row.get(f"edge_realizable_hold_cost{suffix}"))
+        edge_realizable_p_realize_samples_min = to_float(row.get(f"edge_realizable_p_realize_samples_min{suffix}"))
+        edge_realizable_bucket_key = str(row.get(f"edge_realizable_bucket_key{suffix}") or "").strip()
+        if v2_enabled:
+            needs_v2 = any(
+                value is None or not math.isfinite(value)
+                for value in (
+                    edge_realizable_v2_val,
+                    edge_realizable_score_v2_val,
+                    edge_realizable_p_realize,
+                    edge_realizable_p_converge,
+                    edge_realizable_p_fill_entry,
+                    edge_realizable_p_fill_exit,
+                    edge_realizable_hold_cost,
+                )
+            )
+            if needs_v2:
+                v2_edge, v2_meta = edge_realizable_v2(
+                    exec_edge_entry,
+                    exec_entry_price,
+                    exec_fee_bps,
+                    target_exit_price=target_exit_price,
+                    base_bid=best_bid,
+                    spread=spread,
+                    depth_ratio=depth_ratio,
+                    days_to_settle=days_to_settle_val,
+                    hours_to_settle=hours_to_settle_val,
+                    order_type=order_type,
+                )
+                if v2_edge is not None and math.isfinite(v2_edge):
+                    edge_realizable_v2_val = float(v2_edge)
+                    row[f"edge_realizable_v2{suffix}"] = edge_realizable_v2_val
+                    row[f"edge_realizable_v2_raw{suffix}"] = edge_realizable_v2_val
+                if isinstance(v2_meta, dict):
+                    edge_realizable_bucket_key = str(v2_meta.get("bucket_key") or "").strip()
+                    if edge_realizable_bucket_key:
+                        row[f"edge_realizable_bucket_key{suffix}"] = edge_realizable_bucket_key
+                    edge_realizable_p_realize = _first_numeric(v2_meta.get("p_realize"))
+                    edge_realizable_p_converge = _first_numeric(v2_meta.get("p_converge"))
+                    edge_realizable_p_fill_entry = _first_numeric(v2_meta.get("p_fill_entry"))
+                    edge_realizable_p_fill_exit = _first_numeric(v2_meta.get("p_fill_exit"))
+                    edge_realizable_hold_cost = _first_numeric(v2_meta.get("hold_cost"))
+                    edge_realizable_p_realize_samples_min = _first_numeric(v2_meta.get("p_realize_samples_min"))
+                    if edge_realizable_p_realize is not None:
+                        row[f"edge_realizable_p_realize{suffix}"] = edge_realizable_p_realize
+                    if edge_realizable_p_converge is not None:
+                        row[f"edge_realizable_p_converge{suffix}"] = edge_realizable_p_converge
+                    if edge_realizable_p_fill_entry is not None:
+                        row[f"edge_realizable_p_fill_entry{suffix}"] = edge_realizable_p_fill_entry
+                    if edge_realizable_p_fill_exit is not None:
+                        row[f"edge_realizable_p_fill_exit{suffix}"] = edge_realizable_p_fill_exit
+                    if edge_realizable_hold_cost is not None:
+                        row[f"edge_realizable_hold_cost{suffix}"] = edge_realizable_hold_cost
+                    if edge_realizable_p_realize_samples_min is not None:
+                        row[f"edge_realizable_p_realize_samples_min{suffix}"] = edge_realizable_p_realize_samples_min
+                    if "p_realize_missing" in v2_meta:
+                        row[f"edge_realizable_p_realize_missing{suffix}"] = bool(v2_meta.get("p_realize_missing"))
+                    if "p_realize_low_sample" in v2_meta:
+                        row[f"edge_realizable_p_realize_low_sample{suffix}"] = bool(v2_meta.get("p_realize_low_sample"))
+                    if target_exit_price is None:
+                        target_exit_price = _first_numeric(v2_meta.get("target_exit_price"))
+                        if target_exit_price is not None:
+                            row[f"edge_realizable_target_exit_price{suffix}"] = target_exit_price
+                    if delta_exit is None:
+                        delta_exit = _first_numeric(v2_meta.get("delta_exit"))
+                        if delta_exit is not None:
+                            row[f"edge_realizable_delta_exit{suffix}"] = delta_exit
+            if edge_realizable_v2_val is not None and math.isfinite(edge_realizable_v2_val):
+                edge_realizable_score_v2_val = edge_realizable_score(edge_realizable_v2_val, time_structure, penalty_side)
+                if edge_realizable_score_v2_val is not None and math.isfinite(edge_realizable_score_v2_val):
+                    row[f"edge_realizable_score_v2{suffix}"] = edge_realizable_score_v2_val
+
+        if not edge_tradeability_enabled:
+            return
+
+        signal_lcb = to_float(row.get(f"edge_signal_lcb{suffix}"))
+        path_lcb = to_float(row.get(f"edge_path_p_reach_lcb{suffix}"))
+        tradeability_profit_value = _first_numeric(
+            row.get(f"edge_tradeability_profit_value{suffix}"),
+            row.get(f"edge_tradeability_edge_lcb{suffix}"),
+        )
+        tradeability_pass = row.get(f"edge_tradeability_pass{suffix}")
+        needs_tradeability = (
+            signal_lcb is None
+            or path_lcb is None
+            or tradeability_profit_value is None
+            or tradeability_pass is None
+        )
+        if not needs_tradeability:
+            return
+
+        candidate_ref: Dict[str, Any] = {
+            "strategy": "lcb_global" if lcb_global_enabled else "main",
+            "q_raw": q_raw_side,
+            "q_calibrated": q_cal_side,
+            "q_edge": q_edge_side,
+            "trend_pct": trend_pct,
+            "trend_consistency_up": trend_consistency_up,
+            "exec_fee_cost": exec_fee_cost,
+            "edge_realizable": edge_realizable_val,
+            "edge_realizable_v2": edge_realizable_v2_val,
+            "edge_realizable_v2_raw": edge_realizable_v2_val,
+            "edge_realizable_hold_cost": edge_realizable_hold_cost,
+            "edge_realizable_exec_audit_gate_pass": True,
+            "lcb_global_signal_lcb_min": lcb_global_signal_lcb_min,
+            "lcb_global_path_lcb_min": lcb_global_path_lcb_min,
+            "lcb_global_edge_lcb_min": _resolve_lcb_global_edge_lcb_min(days_to_event),
+        }
+        signal_meta = compute_signal_advantage(
+            q_raw=q_raw_side,
+            q_calibrated=q_cal_side,
+            q_edge=q_edge_side,
+            trend_pct=trend_pct,
+            trend_consistency_up=trend_consistency_up,
+            model_spread=to_float(row.get("q_round_model_spread")),
+            signal_z=float(edge_tradeability_signal_z),
+        )
+        signal_alpha = _first_numeric(signal_meta.get("signal_alpha"))
+        signal_lcb = _first_numeric(signal_meta.get("signal_lcb"))
+        if signal_lcb is not None:
+            row[f"edge_signal_lcb{suffix}"] = signal_lcb
+        for key_name, meta_key in (
+            ("edge_signal_alpha", "signal_alpha"),
+            ("edge_signal_sigma", "signal_sigma"),
+            ("edge_signal_confidence", "signal_confidence"),
+        ):
+            val = _first_numeric(signal_meta.get(meta_key))
+            if val is not None:
+                row[f"{key_name}{suffix}"] = val
+        path_meta = estimate_path_probability(
+            signal_alpha=signal_alpha,
+            spread=spread,
+            depth_ratio=depth_ratio,
+            hours_to_settle=hours_to_settle_val,
+            calibration_bucket_key=edge_realizable_bucket_key or None,
+            signal_z=float(edge_tradeability_signal_z),
+        )
+        edge_input_val = edge_realizable_v2_val
+        edge_semantics = "realized_v2"
+        if edge_input_val is None or not math.isfinite(edge_input_val):
+            edge_input_val = edge_realizable_val
+            edge_semantics = "raw_exec"
+        edge_floor_meta = estimate_tradeable_edge_floor(
+            edge_raw=edge_input_val,
+            p_reach=path_meta.get("p_reach"),
+            p_reach_lcb=path_meta.get("p_reach_lcb"),
+            p_reach_ucb=path_meta.get("p_reach_ucb"),
+            spread=spread,
+            fee_cost=exec_fee_cost,
+            hold_cost=edge_realizable_hold_cost,
+            slippage_buffer=edge_tradeability_slippage_buffer,
+            edge_semantics=edge_semantics,
+        )
+        policy_eval = dict(edge_tradeability_policy) if isinstance(edge_tradeability_policy, dict) else {}
+        if lcb_global_enabled:
+            policy_eval["signal_lcb_min"] = max(0.0, float(lcb_global_signal_lcb_min))
+            policy_eval["path_lcb_min"] = min(1.0, max(0.0, float(lcb_global_path_lcb_min)))
+            edge_lcb_min_now = _resolve_lcb_global_edge_lcb_min(days_to_event)
+            if edge_lcb_min_now is not None and math.isfinite(edge_lcb_min_now):
+                policy_eval["edge_lcb_min"] = float(edge_lcb_min_now)
+        policy_meta = evaluate_tradeability(
+            policy=policy_eval,
+            key="|".join(
+                [
+                    str(row.get("slug") or "").strip(),
+                    event_date_key,
+                    str(row.get("outcome") or "").strip(),
+                    side,
+                    str(candidate_ref.get("strategy") or "main"),
+                ]
+            ),
+            signal_lcb=signal_lcb,
+            path_lcb=path_meta.get("p_reach_lcb"),
+            edge_lcb=edge_floor_meta.get("edge_lcb_tradeable"),
+            v2_value=edge_realizable_v2_val,
+            exec_audit_gate_pass=True,
+            enforce_path_gate=bool(edge_floor_meta.get("path_gate_enforced", True)),
+        )
+
+        side_values: Dict[str, Any] = {
+            f"edge_path_p_reach{suffix}": _first_numeric(path_meta.get("p_reach")),
+            f"edge_path_p_reach_lcb{suffix}": _first_numeric(path_meta.get("p_reach_lcb")),
+            f"edge_path_p_reach_ucb{suffix}": _first_numeric(path_meta.get("p_reach_ucb")),
+            f"edge_path_sample_n{suffix}": path_meta.get("path_sample_n"),
+            f"edge_path_bucket_key{suffix}": path_meta.get("path_bucket_key"),
+            f"edge_path_bucket_key_used{suffix}": path_meta.get("path_bucket_key_used"),
+            f"edge_path_fallback_rank{suffix}": path_meta.get("path_fallback_rank"),
+            f"edge_path_source{suffix}": path_meta.get("path_source"),
+            f"edge_path_calibration_path{suffix}": path_meta.get("path_calibration_path"),
+            f"edge_path_calibration_generated_at{suffix}": path_meta.get("path_calibration_generated_at"),
+            f"edge_tradeability_input_semantics{suffix}": edge_semantics,
+            f"edge_tradeability_edge_expected{suffix}": _first_numeric(edge_floor_meta.get("edge_expected_tradeable")),
+            f"edge_tradeability_profit_value{suffix}": _first_numeric(edge_floor_meta.get("edge_lcb_tradeable")),
+            f"edge_tradeability_edge_lcb{suffix}": _first_numeric(edge_floor_meta.get("edge_lcb_tradeable")),
+            f"edge_tradeability_edge_ucb{suffix}": _first_numeric(edge_floor_meta.get("edge_ucb_tradeable")),
+            f"edge_tradeability_miss_cost{suffix}": _first_numeric(edge_floor_meta.get("edge_miss_cost")),
+            f"edge_tradeability_slippage_buffer{suffix}": _first_numeric(edge_floor_meta.get("edge_slippage_buffer")),
+            f"edge_tradeability_edge_floor_mode{suffix}": edge_floor_meta.get("edge_floor_mode"),
+            f"edge_tradeability_mode{suffix}": policy_meta.get("mode"),
+            f"edge_tradeability_policy_enforce{suffix}": policy_meta.get("enforce"),
+            f"edge_tradeability_canary_sampled{suffix}": policy_meta.get("canary_sampled"),
+            f"edge_tradeability_pass{suffix}": policy_meta.get("pass"),
+            f"edge_tradeability_blocked{suffix}": policy_meta.get("blocked"),
+            f"edge_tradeability_shadow_block{suffix}": policy_meta.get("shadow_block"),
+            f"edge_tradeability_reasons{suffix}": policy_meta.get("reasons_csv"),
+            f"edge_tradeability_signal_lcb_min{suffix}": _first_numeric(policy_meta.get("signal_lcb_min")),
+            f"edge_tradeability_path_lcb_min{suffix}": _first_numeric(policy_meta.get("path_lcb_min")),
+            f"edge_tradeability_profit_min{suffix}": _first_numeric(policy_meta.get("edge_lcb_min")),
+            f"edge_tradeability_edge_lcb_min{suffix}": _first_numeric(policy_meta.get("edge_lcb_min")),
+            f"edge_tradeability_path_gate_enforced{suffix}": policy_meta.get("path_gate_enforced"),
+        }
+        for key_name, value in side_values.items():
+            if value is None:
+                continue
+            row[key_name] = value
+
+    _compute_runtime_for_side("YES", ask_yes, spread_yes, q_entry, q_round, q_raw_canonical, time_yes, pen_yes)
+    _compute_runtime_for_side("NO", ask_no, spread_no, q_entry_no, q_round_no, q_raw_no, time_no, pen_no)
+
 
 def _compose_fact_from_snapshots(
     conn: sqlite3.Connection,
@@ -32833,9 +33895,29 @@ def _compose_fact_from_snapshots(
     market_tick_latest_map: Optional[Dict[Tuple[str, str], str]] = None,
     platt: Optional[Dict[str, Any]] = None,
 ) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], str]]:
-    payload_model, meta_model, created_model, model_id = _load_latest_snapshot(conn, "model_snapshots", slug, event_date)
-    payload_market, meta_market, created_market, market_id = _load_latest_snapshot(conn, "market_snapshots", slug, event_date)
+    payload_model, meta_model, created_model, model_id = _load_latest_snapshot(
+        conn,
+        "model_snapshots",
+        slug,
+        event_date,
+        run_date_max=run_date,
+    )
+    payload_market, meta_market, created_market, market_id = _load_latest_snapshot(
+        conn,
+        "market_snapshots",
+        slug,
+        event_date,
+        run_date_max=run_date,
+    )
     if payload_model is None or payload_market is None:
+        return None
+    try:
+        snapshot_window_sec = float(os.environ.get("PM_SCORE_COMPOSE_WINDOW_SEC", "10800") or 10800.0)
+    except (TypeError, ValueError):
+        snapshot_window_sec = 10800.0
+    if not math.isfinite(snapshot_window_sec) or snapshot_window_sec <= 0:
+        snapshot_window_sec = 10800.0
+    if not _snapshot_time_delta_ok_ui(created_model, created_market, snapshot_window_sec):
         return None
     time_structure_min = 0.1
     try:
@@ -32876,6 +33958,12 @@ def _compose_fact_from_snapshots(
             ):
                 if mrow.get(key) is not None:
                     merged[key] = mrow.get(key)
+        if event_date and merged.get("event_date") is None:
+            merged["event_date"] = _normalize_date_key(event_date)
+        if run_date and merged.get("run_date") is None:
+            merged["run_date"] = _normalize_date_key(run_date)
+        _apply_market_quote_fallback_for_side_in_place(merged, "YES")
+        _apply_market_quote_fallback_for_side_in_place(merged, "NO")
         _compute_edge_fields_in_place(merged, time_structure_min)
         merged_rows.append(merged)
     if not merged_rows:
@@ -33008,8 +34096,23 @@ def _materialize_facts_from_snapshots_for_run_date(conn: sqlite3.Connection, run
             platt=platt,
         )
         if not composed:
-            continue
-        item, run_payload, as_of = composed
+            fallback_row = query_latest_event_run_for_run_date(conn, slug, event_date, run_date_val)
+            if fallback_row is None:
+                continue
+            item = build_run_item(
+                conn,
+                fallback_row,
+                trade_map,
+                fills_map,
+                auto_orders_map,
+                market_tick_latest_map,
+                platt=platt,
+            )
+            run_payload = safe_json_loads(fallback_row["payload_json"])
+            _attach_fact_provenance_from_run_payload(item, run_payload)
+            as_of = str(fallback_row["created_at"] or "")
+        else:
+            item, run_payload, as_of = composed
         fact_id = upsert_event_fact_from_run_item(
             conn,
             run_date=run_date,
@@ -33056,8 +34159,23 @@ def _materialize_facts_from_snapshots_for_range(conn: sqlite3.Connection, start_
             platt=platt,
         )
         if not composed:
-            continue
-        item, run_payload, as_of = composed
+            fallback_row = query_latest_event_run_for_run_date(conn, slug, event_date, run_date_val)
+            if fallback_row is None:
+                continue
+            item = build_run_item(
+                conn,
+                fallback_row,
+                trade_map,
+                fills_map,
+                auto_orders_map,
+                market_tick_latest_map,
+                platt=platt,
+            )
+            run_payload = safe_json_loads(fallback_row["payload_json"])
+            _attach_fact_provenance_from_run_payload(item, run_payload)
+            as_of = str(fallback_row["created_at"] or "")
+        else:
+            item, run_payload, as_of = composed
         fact_id = upsert_event_fact_from_run_item(
             conn,
             run_date=run_date_val,
@@ -33122,6 +34240,7 @@ def _backfill_facts_from_event_run_rows(conn: sqlite3.Connection, rows: List[sql
             platt=platt,
         )
         run_payload = safe_json_loads(row["payload_json"])
+        _attach_fact_provenance_from_run_payload(item, run_payload)
         upsert_event_fact_from_run_item(
             conn,
             run_date=str(row["run_date"] or ""),
@@ -33610,6 +34729,16 @@ def query_facts(date: str, include_history: bool) -> List[Dict[str, Any]]:
                 continue
             if isinstance(payload, dict):
                 _slim_fact_payload_for_ui(payload)
+                distribution = normalize_distribution_rows(payload.get("distribution") or payload.get("rows") or [])
+                if distribution:
+                    payload["distribution"] = distribution
+                    _hydrate_distribution_market_fields_in_place(
+                        conn,
+                        distribution,
+                        str(payload.get("slug") or ""),
+                        _normalize_date_key(str(payload.get("event_date") or "")),
+                        _normalize_date_key(str(payload.get("run_date") or "")),
+                    )
                 _hydrate_fact_market_updated_at(payload, market_tick_latest_map)
                 _hydrate_fact_market_top_label(payload)
                 try:
@@ -33717,6 +34846,16 @@ def query_facts_paged(
                 continue
             if isinstance(payload, dict):
                 _slim_fact_payload_for_ui(payload)
+                distribution = normalize_distribution_rows(payload.get("distribution") or payload.get("rows") or [])
+                if distribution:
+                    payload["distribution"] = distribution
+                    _hydrate_distribution_market_fields_in_place(
+                        conn,
+                        distribution,
+                        str(payload.get("slug") or ""),
+                        _normalize_date_key(str(payload.get("event_date") or "")),
+                        _normalize_date_key(str(payload.get("run_date") or "")),
+                    )
                 _hydrate_fact_market_updated_at(payload, market_tick_latest_map)
                 _hydrate_fact_market_top_label(payload)
                 try:
@@ -33798,6 +34937,16 @@ def query_facts_range(days: int, end_date: str) -> List[Dict[str, Any]]:
                 continue
             if isinstance(payload, dict):
                 _slim_fact_payload_for_ui(payload)
+                distribution = normalize_distribution_rows(payload.get("distribution") or payload.get("rows") or [])
+                if distribution:
+                    payload["distribution"] = distribution
+                    _hydrate_distribution_market_fields_in_place(
+                        conn,
+                        distribution,
+                        str(payload.get("slug") or ""),
+                        _normalize_date_key(str(payload.get("event_date") or "")),
+                        _normalize_date_key(str(payload.get("run_date") or "")),
+                    )
                 _hydrate_fact_market_updated_at(payload, market_tick_latest_map)
                 _hydrate_fact_market_top_label(payload)
                 try:
@@ -37678,11 +38827,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/auto-trade-trace":
             date = params.get("date", [""])[0]
             limit_raw = params.get("limit", ["20"])[0]
+            readonly_raw = params.get("readonly", [""])[0]
             try:
                 limit = int(limit_raw)
             except ValueError:
                 limit = 20
-            self._send_json(auto_trade_trace(date, limit=limit))
+            readonly = str(readonly_raw or "").strip().lower() in {"1", "true", "yes", "on"}
+            self._send_json(auto_trade_trace(date, limit=limit, readonly=readonly))
             return
 
         if path == "/api/auto-trade-restart":

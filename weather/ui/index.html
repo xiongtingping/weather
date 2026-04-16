@@ -14492,9 +14492,11 @@
     const fallbackBase = 'http://127.0.0.1:3002';
     const host = location.hostname || '';
     const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+    const sameOriginBase = /^https?:/i.test(String(location.origin || '')) ? String(location.origin) : '';
     const API_BASE = window.API_BASE
-      || (isLocalHost ? fallbackBase : '')
-      || (location.protocol === 'file:' ? fallbackBase : '');
+      || sameOriginBase
+      || (location.protocol === 'file:' ? fallbackBase : '')
+      || (isLocalHost ? fallbackBase : '');
     let apiBaseNoticeShown = false;
     const DEFAULT_FETCH_TIMEOUT_MS = 30000;
     const RUNS_FETCH_TIMEOUT_MS = 20000;
@@ -30689,6 +30691,64 @@
     }
     function getAutoTradeTraceCounts(runDate = '') {
       const targetDate = String(runDate || autoTradeTraceRunDate || window.__latestDate || '').trim();
+      const meta = window.__autoTradeTraceMeta && typeof window.__autoTradeTraceMeta === 'object'
+        ? window.__autoTradeTraceMeta
+        : null;
+      const toCount = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? Math.max(0, Math.round(num)) : 0;
+      };
+      const resolveMetaCounts = () => {
+        if (!meta || meta.ok !== true) return null;
+        const metaDate = String(meta.run_date || '').trim();
+        if (targetDate && metaDate && metaDate !== targetDate) return null;
+        const viewRaw = meta.entry_blocker_views && typeof meta.entry_blocker_views === 'object'
+          ? meta.entry_blocker_views
+          : null;
+        const lastCompleted = viewRaw && viewRaw.last_completed && typeof viewRaw.last_completed === 'object'
+          ? viewRaw.last_completed
+          : null;
+        const lastCompletedDate = lastCompleted ? String(lastCompleted.run_date || '').trim() : '';
+        const lastCompletedMeta = lastCompleted && lastCompleted.meta && typeof lastCompleted.meta === 'object'
+          ? lastCompleted.meta
+          : null;
+        const blockerMeta = meta.entry_blocker_meta && typeof meta.entry_blocker_meta === 'object'
+          ? meta.entry_blocker_meta
+          : null;
+        const preferred = (
+          lastCompletedMeta
+          && (!targetDate || !lastCompletedDate || lastCompletedDate === targetDate)
+        )
+          ? lastCompletedMeta
+          : blockerMeta;
+        if (!preferred || typeof preferred !== 'object') return null;
+        const candidate = toCount(
+          preferred.all_candidate_total
+          ?? preferred.entry_total
+          ?? (preferred.lcb_pass_total || 0) + (preferred.blocked_total || 0)
+        );
+        const passed = toCount(
+          preferred.lcb_pass_total
+          ?? ((meta.entry_ok_counts && meta.entry_ok_counts.lcb_global) || 0)
+        );
+        const blocked = toCount(
+          preferred.blocked_total
+          ?? ((preferred.lcb_blocked_total || 0) + (preferred.untradable_drop_total || 0))
+          ?? ((meta.not_ok_counts && meta.not_ok_counts.lcb_global) || 0)
+        );
+        if (candidate <= 0 && passed <= 0 && blocked <= 0) return null;
+        return {
+          total: passed,
+          lcb: passed,
+          mirror: 0,
+          live_position: 0,
+          blocked_total: blocked,
+          blocked_lcb: blocked,
+          candidate_lcb: Math.max(candidate, passed + blocked),
+        };
+      };
+      const metaCounts = resolveMetaCounts();
+      if (metaCounts) return metaCounts;
       const items = Array.isArray(window.__autoTradeTraceItems) ? window.__autoTradeTraceItems : [];
       const notOkItems = Array.isArray(window.__autoTradeTraceNotOkItems) ? window.__autoTradeTraceNotOkItems : [];
       const matchDate = (item) => (
@@ -30728,6 +30788,26 @@
         blocked_lcb: blockedLcb,
         candidate_lcb: lcb + blockedLcb,
       };
+    }
+    function refreshLcbRatingBoard() {
+      const scoreStats = window.__lastGoodScoreStats && typeof window.__lastGoodScoreStats === 'object'
+        ? window.__lastGoodScoreStats
+        : null;
+      const traceMeta = window.__autoTradeTraceMeta && typeof window.__autoTradeTraceMeta === 'object'
+        ? window.__autoTradeTraceMeta
+        : null;
+      if (!scoreStats || !traceMeta || typeof renderLcbRatingBoard !== 'function') return;
+      const nextCard = renderLcbRatingBoard(scoreStats, traceMeta, { embedded: true });
+      if (!nextCard) return;
+      const existing = document.getElementById('section-lcb-rating');
+      if (existing && existing.parentNode) {
+        existing.parentNode.replaceChild(nextCard, existing);
+        return;
+      }
+      const ratingMount = document.getElementById('ratingBiasMount');
+      if (ratingMount) {
+        ratingMount.appendChild(nextCard);
+      }
     }
     function updateAutoTradeTraceCounts(runDate = '') {
       const counts = getAutoTradeTraceCounts(runDate);
@@ -31726,6 +31806,39 @@
         `;
       };
       const blockerViewHtml = viewList.slice(0, 2).map((view) => renderBlockerView(view)).join('');
+      const formatGateVal = (val, isPct = false) => {
+        const num = toFiniteNumberOrNaN(val);
+        if (!Number.isFinite(num)) return '—';
+        return isPct ? `${(num * 100).toFixed(1)}%` : num.toFixed(4);
+      };
+      const gateClass = (status, passed, isLegacyEntry) => {
+        const st = String(status || '').toLowerCase();
+        if (st === 'fail' || passed === false) return isLegacyEntry ? 'warn' : 'fail';
+        if (st === 'pass' || st === 'off' || passed === true) return 'ok';
+        return 'warn';
+      };
+      const gateMark = (status, passed, isLegacyEntry) => {
+        const st = String(status || '').toLowerCase();
+        if (st === 'bypass') return '≈';
+        if (st === 'missing') return '?';
+        if (st === 'fail' || passed === false) return isLegacyEntry ? '!' : '✕';
+        return '✓';
+      };
+      const buildGateChip = (label, gateObj, isPct = false, isLegacyEntry = false) => {
+        const gate = gateObj && typeof gateObj === 'object' ? gateObj : {};
+        const cls = gateClass(gate.status, gate.pass, isLegacyEntry);
+        const mark = gateMark(gate.status, gate.pass, isLegacyEntry);
+        const valueText = formatGateVal(gate.value, isPct);
+        const minText = formatGateVal(gate.min, isPct);
+        const body = `${label} ${mark} ${valueText}/≥${minText}`;
+        return `<span class="trace-gate-chip ${cls}">${escapeHtml(body)}</span>`;
+      };
+      const statusToClass = (raw) => {
+        const text = String(raw || '').trim().toLowerCase();
+        if (text === 'ok') return 'ok';
+        if (text === 'bad' || text === 'blocked') return 'blocked';
+        return 'pending';
+      };
       const rows = filtered.slice(0, maxItems).map((item) => {
         const titleHtml = titleLinkForItem(item);
         const side = String(item.side || '').toUpperCase();
@@ -31737,13 +31850,142 @@
         const metaText = [side, outcome, strategyLabel].filter(Boolean).join(' · ');
         const reasons = Array.isArray(item.entry_reasons) ? item.entry_reasons : [];
         const reasonHtml = formatAutoTradeReasonHtml(reasons, { tone: 'fail', showFailLabel: true, failLabel: '未达标', emptyLabel: '未达标' });
+        const tradeMeta = item.trade_info && typeof item.trade_info === 'object' ? item.trade_info : {};
+        const holdingSize = toFiniteNumberOrNaN(tradeMeta.position_size);
+        const fillCount = toFiniteNumberOrNaN(tradeMeta.fills_count);
+        const gateLegacyMode = (
+          (Number.isFinite(holdingSize) && holdingSize > 1e-6)
+          || (Number.isFinite(fillCount) && fillCount > 0)
+        );
+        const askVal = toFiniteNumberOrNaN(item.ask);
+        const bidVal = toFiniteNumberOrNaN(item.bid);
+        const spreadVal = toFiniteNumberOrNaN(item.spread);
+        const realizableV2Val = toFiniteNumberOrNaN(item.edge_realizable_v2);
+        const lcbEdgeVal = toFiniteNumberOrNaN(
+          item.edge_tradeability_profit_value ?? item.edge_tradeability_edge_lcb
+        );
+        const marketParts = [];
+        if (Number.isFinite(askVal) || Number.isFinite(bidVal)) {
+          marketParts.push(`盘口 ${Number.isFinite(bidVal) ? bidVal.toFixed(4) : '—'}~${Number.isFinite(askVal) ? askVal.toFixed(4) : '—'}`);
+        }
+        if (Number.isFinite(spreadVal)) {
+          marketParts.push(`spread ${spreadVal.toFixed(4)}`);
+        }
+        if (Number.isFinite(realizableV2Val)) {
+          marketParts.push(`可兑现V2 ${realizableV2Val.toFixed(4)}`);
+        }
+        if (Number.isFinite(lcbEdgeVal)) {
+          marketParts.push(`盈利头 ${lcbEdgeVal.toFixed(4)}`);
+        }
+        const marketMetaHtml = marketParts.length
+          ? `<div class="trace-event-meta trace-event-market">${marketParts.map((part) => `<span>${escapeHtml(part)}</span>`).join(' · ')}</div>`
+          : '';
+        const gateRaw = item.tradeability_gate && typeof item.tradeability_gate === 'object'
+          ? item.tradeability_gate
+          : null;
+        const gateChips = [];
+        if (gateRaw) {
+          gateChips.push(buildGateChip('信号下界', gateRaw.signal_lcb, false, gateLegacyMode));
+          gateChips.push(buildGateChip('路径下界', gateRaw.path_lcb, true, gateLegacyMode));
+          gateChips.push(buildGateChip('盈利头', gateRaw.edge_lcb, false, gateLegacyMode));
+        }
+        const gateMetaHtml = gateChips.length
+          ? `<div class="trace-event-meta trace-event-gates">${gateChips.join('')}</div>`
+          : '';
+        const trace = item.trace && typeof item.trace === 'object' ? item.trace : {};
+        const steps = Array.isArray(trace.steps) ? trace.steps : [];
+        const flowStatusRaw = String(trace.flow_status || '').trim().toLowerCase();
+        const flowStatus = flowStatusRaw === 'ok'
+          ? 'ok'
+          : (flowStatusRaw === 'blocked'
+            ? 'blocked'
+            : (
+              gateRaw && gateRaw.overall && gateRaw.overall.pass === false
+                ? 'blocked'
+                : 'pending'
+            ));
+        const flowLabel = flowStatus === 'ok'
+          ? '通畅'
+          : (flowStatus === 'blocked' ? '阻断' : '待处理');
+        const resolvedCurrent = (() => {
+          const flowStep = String(trace.flow_step || '').trim();
+          if (!steps.length) {
+            if (flowStep) return { label: flowStep, detail: '' };
+            if (gateRaw && gateRaw.overall && gateRaw.overall.pass === false) {
+              return { label: '决策', detail: 'LCB门禁未通过' };
+            }
+            if (reasons.length) return { label: '入场筛选', detail: String(reasons[0] || '') };
+            return { label: '入场筛选', detail: '' };
+          }
+          if (flowStep) {
+            const exact = steps.find((step) => String(step && step.label || '') === flowStep);
+            if (exact) return { label: flowStep, detail: exact && exact.detail ? String(exact.detail) : '' };
+          }
+          const last = steps[steps.length - 1];
+          if (last && last.label) return { label: String(last.label), detail: last.detail ? String(last.detail) : '' };
+          return { label: flowStep || '入场筛选', detail: '' };
+        })();
+        const currentLabel = String(resolvedCurrent.label || '').trim();
+        const currentIndex = currentLabel ? steps.findIndex((step) => String(step && step.label || '') === currentLabel) : -1;
+        const currentCoreText = resolvedCurrent.detail
+          ? `${resolvedCurrent.label} · ${resolvedCurrent.detail}`
+          : (resolvedCurrent.label || '—');
+        const currentText = currentIndex >= 0
+          ? `${currentIndex + 1}/${steps.length} · ${currentCoreText}`
+          : currentCoreText;
+        const stepHtml = steps.map((step, idx) => {
+          const label = String(step && step.label || '');
+          const statusRaw = step && step.status ? String(step.status) : '';
+          const statusLower = statusRaw.trim().toLowerCase();
+          const statusClass = statusToClass(statusLower);
+          const isLast = idx === steps.length - 1;
+          const currentClass = label && label === currentLabel ? ' current' : '';
+          const isSkip = statusLower === 'skip' || statusLower === 'skipped';
+          const stateLabel = isSkip
+            ? '跳过'
+            : (statusClass === 'ok' ? '完成' : (statusClass === 'blocked' ? '阻断' : '待处理'));
+          return `<span class="trace-node ${statusClass}${currentClass}${isLast ? ' is-last' : ''}"><span class="trace-node-state ${statusClass}">${escapeHtml(stateLabel)}</span>${escapeHtml(label)}</span>`;
+        }).join('');
+        const bottleneckText = simplifyTraceErrorText(String(
+          trace.bottleneck
+          || ((gateRaw && gateRaw.overall && gateRaw.overall.pass === false) ? 'LCB门禁未通过' : '')
+          || reasons[0]
+          || ''
+        ));
+        const bottleneckTone = bottleneckText ? 'warn' : '';
+        const bottleneckClass = bottleneckTone ? `trace-bottleneck ${bottleneckTone}` : 'trace-bottleneck';
+        const bottleneckHtml = bottleneckText
+          ? `<div class="${bottleneckClass}">卡点：${escapeHtml(bottleneckText)}</div>`
+          : '';
+        const eventPositionSummary = String(item.event_live_position_summary || '').trim();
+        const eventPositionHtml = eventPositionSummary
+          ? `<div class="trace-bottleneck">事件持仓：${escapeHtml(eventPositionSummary)}</div>`
+          : '';
+        const decision = item.entry_decision && typeof item.entry_decision === 'object' ? item.entry_decision : null;
+        const decisionDetail = simplifyTraceErrorText(String(
+          (decision && (decision.reason_detail || decision.reason_text))
+          || ''
+        ).trim());
+        const decisionDetailHtml = decisionDetail && decisionDetail !== bottleneckText
+          ? `<div class="trace-bottleneck">${escapeHtml(`决策说明：${decisionDetail}`)}</div>`
+          : '';
         return `
           <div class="reason-event-item">
             <div class="reason-event-head">
               <div class="reason-event-title">${titleHtml}</div>
               ${metaText ? `<div class="reason-event-meta">${escapeHtml(metaText)}</div>` : ''}
             </div>
+            ${marketMetaHtml}
+            ${gateMetaHtml}
+            <div class="trace-flow">
+              <span class="trace-flow-pill ${flowStatus}">流程${flowLabel}</span>
+              <div class="trace-current">当前步骤：${escapeHtml(currentText)}</div>
+            </div>
+            ${stepHtml ? `<div class="trace-steps"><div class="trace-flowchart">${stepHtml}</div></div>` : ''}
+            ${bottleneckHtml}
+            ${eventPositionHtml}
             <div class="reason-list">${reasonHtml}</div>
+            ${decisionDetailHtml}
           </div>
         `;
       }).join('');
@@ -32184,7 +32426,6 @@
       document.querySelectorAll('.trace-node.current, .trace-current, .trace-bottleneck').forEach(replaceThrottleText);
     }
     async function refreshAutoTradeTrace(opts = {}) {
-      if (window.__systemPaused) return;
       if (autoTradeTraceInFlight) return;
       const now = Date.now();
       const throttleMs = 800;
@@ -32219,8 +32460,12 @@
       };
       let shouldRender = true;
       try {
+        const readonly = Boolean(window.__systemPaused);
+        const traceUrl = readonly
+          ? `/api/auto-trade-trace?date=${encodeURIComponent(runDate)}&limit=0&readonly=1`
+          : `/api/auto-trade-trace?date=${encodeURIComponent(runDate)}&limit=0`;
         const res = await fetchJSON(
-          `/api/auto-trade-trace?date=${encodeURIComponent(runDate)}&limit=0`,
+          traceUrl,
           {
             timeoutMs: 20000,
             retryCount: 1,
@@ -32275,6 +32520,7 @@
           shouldRender = true;
         }
         updateAutoTradeTraceCounts(runDate);
+        refreshLcbRatingBoard();
         if (shouldRender) {
           renderAutoTradeTraceMount(runDate);
         } else {
@@ -32319,6 +32565,7 @@
           ? window.__autoTradeTraceNotOkItems
           : [];
         updateAutoTradeTraceCounts(runDate);
+        refreshLcbRatingBoard();
         renderAutoTradeTraceMount(runDate);
       } finally {
         autoTradeTraceInFlight = false;

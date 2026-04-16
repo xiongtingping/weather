@@ -17,6 +17,9 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from edge_calibration_runtime import predict_q_calibrated
+from scripts.calibration_dataset_utils import days_to_event as dataset_days_to_event
+from scripts.calibration_dataset_utils import load_first_q_settled_dataset
+from scripts.calibration_dataset_utils import load_joined_open_market_dataset
 
 
 @dataclass
@@ -39,28 +42,8 @@ def _to_float(value: Any) -> Optional[float]:
     return float(num)
 
 
-def _parse_ts(value: Any) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except Exception:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
 def _days_to_event(event_date: str, created_at: str) -> Optional[float]:
-    ts = _parse_ts(created_at)
-    if ts is None:
-        return None
-    try:
-        ev_day = datetime.strptime(str(event_date or "")[:10], "%Y-%m-%d").date()
-    except Exception:
-        return None
-    return float((ev_day - ts.date()).days)
+    return dataset_days_to_event(event_date, created_at)
 
 
 def _normalize_unit(unit: Optional[str]) -> Optional[str]:
@@ -390,7 +373,6 @@ def _resolve_actual_label(
 ) -> Optional[str]:
     if actual is None or not math.isfinite(actual):
         return None
-    hits: List[str] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -399,13 +381,8 @@ def _resolve_actual_label(
             continue
         hit = _bucket_hit(float(actual), outcome, rounding_rule)
         if hit is True:
-            hits.append(outcome)
-    if not hits:
-        return None
-    if len(hits) == 1:
-        return hits[0]
-    hits.sort()
-    return hits[0]
+            return outcome
+    return None
 
 
 def _top1_from_open_snapshot(
@@ -498,9 +475,9 @@ def main() -> None:
 
     conn = sqlite3.connect(str(db_path))
     _ensure_eval_table(conn)
-    rows = _load_labeled_samples(conn, since_iso, int(args.limit))
-    if not rows:
-        out = {"ok": False, "error": "no_labeled_samples", "since": since_iso}
+    settled_events = load_first_q_settled_dataset(conn, since_iso, int(args.limit))
+    if not settled_events:
+        out = {"ok": False, "error": "no_settled_event_dataset", "since": since_iso}
         print(json.dumps(out, ensure_ascii=False))
         raise SystemExit(3)
 
@@ -511,35 +488,55 @@ def main() -> None:
     cand_probs: List[float] = []
     champ_probs: List[float] = []
 
-    for row in rows:
-        q_raw = _to_float(row.get("q_raw"))
-        label = row.get("label")
-        if q_raw is None or label not in {0, 1}:
+    for event in settled_events:
+        rows_event = event.get("rows")
+        if not isinstance(rows_event, list) or not rows_event:
             continue
-        kwargs = {
-            "q_raw": q_raw,
-            "spread": row.get("spread"),
-            "depth_ratio": row.get("depth_ratio"),
-            "tick_age_sec": row.get("tick_age_sec"),
-            "days_to_event": row.get("days_to_event"),
-            "decision_ts": row.get("created_at"),
-        }
-        cand_pred = predict_q_calibrated(bundle=candidate_bundle, **kwargs)
-        champ_pred = predict_q_calibrated(bundle=champion_bundle, **kwargs)
-        cand_p = _to_float(cand_pred.get("q_calibrated_mean"))
-        champ_p = _to_float(champ_pred.get("q_calibrated_mean"))
-        if cand_p is None:
-            cand_p = q_raw
-        if champ_p is None:
-            champ_p = q_raw
-        cand_metric_rows.append((cand_p, int(label)))
-        champ_metric_rows.append((champ_p, int(label)))
-        cand_probs.append(cand_p)
-        champ_probs.append(champ_p)
-        pnl = _to_float(row.get("realized_pnl"))
-        if pnl is not None:
-            cand_roi_pairs.append((cand_p, pnl))
-            champ_roi_pairs.append((champ_p, pnl))
+        actual_label = _resolve_actual_label(
+            rows_event,
+            _to_float(event.get("settlement_actual")),
+            str(event.get("rounding_rule") or ""),
+        )
+        if not actual_label:
+            continue
+        created_at = str(event.get("created_at") or "")
+        event_date = str(event.get("event_date") or "")
+        dte = _days_to_event(event_date, created_at)
+        for row in rows_event:
+            if not isinstance(row, dict):
+                continue
+            outcome = str(row.get("outcome") or "").strip()
+            q_raw = _to_float(row.get("q_raw"))
+            if q_raw is None:
+                q_raw = _to_float(row.get("q_round"))
+            if not outcome or q_raw is None:
+                continue
+            label = 1 if outcome == actual_label else 0
+            kwargs = {
+                "q_raw": q_raw,
+                "spread": _to_float(row.get("spread")),
+                "depth_ratio": _to_float(row.get("depth_ratio_yes")) or _to_float(row.get("depth_ratio")),
+                "tick_age_sec": _to_float(row.get("tick_age_sec")),
+                "days_to_event": dte,
+                "decision_ts": created_at,
+            }
+            cand_pred = predict_q_calibrated(bundle=candidate_bundle, **kwargs)
+            champ_pred = predict_q_calibrated(bundle=champion_bundle, **kwargs)
+            cand_p = _to_float(cand_pred.get("q_calibrated_mean"))
+            champ_p = _to_float(champ_pred.get("q_calibrated_mean"))
+            if cand_p is None:
+                cand_p = q_raw
+            if champ_p is None:
+                champ_p = q_raw
+            cand_metric_rows.append((cand_p, int(label)))
+            champ_metric_rows.append((champ_p, int(label)))
+            cand_probs.append(cand_p)
+            champ_probs.append(champ_p)
+
+    if not cand_metric_rows:
+        out = {"ok": False, "error": "settled_dataset_empty_after_labeling", "since": since_iso}
+        print(json.dumps(out, ensure_ascii=False))
+        raise SystemExit(4)
 
     cand_metrics = _metric_summary(cand_metric_rows)
     champ_metrics = _metric_summary(champ_metric_rows)
@@ -547,11 +544,16 @@ def main() -> None:
     champ_roi = _roi_stats(champ_roi_pairs)
     psi = _population_stability_index(champ_probs, cand_probs, bins=10)
 
-    open_events = _load_open_first_snapshots(conn, since_iso, int(args.open_limit_events))
+    open_events = load_joined_open_market_dataset(
+        conn,
+        since_iso,
+        int(args.open_limit_events),
+        require_settlement=True,
+    )
     if not open_events:
         out = {"ok": False, "error": "no_open_first_snapshot_dataset", "since": since_iso}
         print(json.dumps(out, ensure_ascii=False))
-        raise SystemExit(4)
+        raise SystemExit(5)
     cand_top1_hits: List[int] = []
     champ_top1_hits: List[int] = []
     market_top1_hits: List[int] = []
@@ -597,7 +599,7 @@ def main() -> None:
     if top1_event_n <= 0:
         out = {"ok": False, "error": "open_top1_dataset_empty", "since": since_iso}
         print(json.dumps(out, ensure_ascii=False))
-        raise SystemExit(5)
+        raise SystemExit(6)
 
     cand_top1 = _top1_metric_summary(cand_top1_hits)
     champ_top1 = _top1_metric_summary(champ_top1_hits)

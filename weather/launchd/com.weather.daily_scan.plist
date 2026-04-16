@@ -8,7 +8,7 @@
     <array>
       <string>/bin/zsh</string>
       <string>-lc</string>
-      <string>/Users/xiong/weather/scripts/daily_scan_and_settlement.sh</string>
+      <string>/Users/xiong/weather/weather/scripts/daily_scan_and_settlement.sh</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -30,8 +30,8 @@
       <integer>8192</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/xiong/weather/data/logs/daily_scan.out.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/daily_scan.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/xiong/weather/data/logs/daily_scan.err.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/daily_scan.err.log</string>
   </dict>
 </plist>

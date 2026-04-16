@@ -1286,66 +1286,123 @@ async function main() {
       }
       try {
         const startedAt = Date.now();
-        const params = {};
         const after = env("PM_CLOB_TRADES_AFTER", "");
         const before = env("PM_CLOB_TRADES_BEFORE", "");
-        if (after) params.after = after;
-        if (before) params.before = before;
+        const makerAddress = env("PM_CLOB_TRADES_MAKER_ADDRESS", "");
+        const marketSingle = env("PM_CLOB_TRADES_MARKET", "");
+        const assetSingle = env("PM_CLOB_TRADES_ASSET_ID", "");
+        const parseCsv = (raw) => String(raw || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        const requestedMarkets = parseCsv(env("PM_CLOB_TRADES_MARKETS", ""));
+        const requestedAssetIds = parseCsv(env("PM_CLOB_TRADES_ASSET_IDS", ""));
+        const baseParams = {};
+        if (after) baseParams.after = after;
+        if (before) baseParams.before = before;
+        if (makerAddress) baseParams.maker_address = makerAddress;
+        const requestParamsList = [];
+        if (requestedAssetIds.length) {
+          for (const assetId of requestedAssetIds) {
+            requestParamsList.push({ ...baseParams, asset_id: assetId });
+          }
+        } else if (requestedMarkets.length) {
+          for (const market of requestedMarkets) {
+            requestParamsList.push({ ...baseParams, market });
+          }
+        } else {
+          const params = { ...baseParams };
+          if (marketSingle) params.market = marketSingle;
+          if (assetSingle) params.asset_id = assetSingle;
+          requestParamsList.push(params);
+        }
+        const seenTradeIds = new Set();
         let trades = [];
         let complete = true;
         let partialError = "";
         let budgetExhausted = false;
         let pageCount = 0;
         let nextCursor = undefined;
-        if (Number.isFinite(maxPages) && maxPages > 0) {
-          let cursor = undefined;
-          complete = false;
-          for (let page = 0; page < maxPages; page += 1) {
-            if (hasBudget && Date.now() - startedAt >= budgetMs) {
-              budgetExhausted = true;
-              break;
-            }
-            try {
-              const pageRes = await client.getTradesPaginated(params, cursor);
-              if (pageRes?.error) {
-                throw new Error(String(pageRes.error));
-              }
-              const pageTrades = Array.isArray(pageRes?.trades) ? pageRes.trades : [];
-              trades = trades.concat(pageTrades);
-              pageCount += 1;
-              nextCursor = pageRes?.next_cursor;
-              if (!nextCursor || nextCursor === "LTE=" || pageTrades.length === 0) {
-                complete = true;
+        for (let paramsIndex = 0; paramsIndex < requestParamsList.length; paramsIndex += 1) {
+          const params = requestParamsList[paramsIndex] || {};
+          let localComplete = true;
+          let localNextCursor = undefined;
+          if (Number.isFinite(maxPages) && maxPages > 0) {
+            let cursor = undefined;
+            localComplete = false;
+            for (let page = 0; page < maxPages; page += 1) {
+              if (hasBudget && Date.now() - startedAt >= budgetMs) {
+                budgetExhausted = true;
+                complete = false;
                 break;
               }
-              cursor = nextCursor;
-            } catch (err) {
-              const msg = err && err.message ? err.message : String(err || "fetch_trades_failed");
-              if (trades.length) {
-                partialError = msg;
-                break;
+              try {
+                const pageRes = await client.getTradesPaginated(params, cursor);
+                if (pageRes?.error) {
+                  throw new Error(String(pageRes.error));
+                }
+                const pageTrades = Array.isArray(pageRes?.trades) ? pageRes.trades : [];
+                for (const trade of pageTrades) {
+                  const tradeId = String(
+                    trade?.id || trade?.tradeID || trade?.tradeId || ""
+                  ).trim();
+                  const dedupeKey = tradeId || JSON.stringify(trade);
+                  if (seenTradeIds.has(dedupeKey)) continue;
+                  seenTradeIds.add(dedupeKey);
+                  trades.push(trade);
+                }
+                pageCount += 1;
+                localNextCursor = pageRes?.next_cursor;
+                nextCursor = requestParamsList.length === 1 ? localNextCursor : null;
+                if (!localNextCursor || localNextCursor === "LTE=" || pageTrades.length === 0) {
+                  localComplete = true;
+                  break;
+                }
+                cursor = localNextCursor;
+              } catch (err) {
+                const msg = err && err.message ? err.message : String(err || "fetch_trades_failed");
+                if (trades.length) {
+                  partialError = msg;
+                  localComplete = false;
+                  break;
+                }
+                throw err;
               }
-              throw err;
             }
+            if (!localComplete && pageCount < 1) {
+              localComplete = true;
+            }
+          } else {
+            const res = await client.getTrades(params);
+            if (res?.error) {
+              throw new Error(String(res.error));
+            }
+            const pageTrades = Array.isArray(res)
+              ? res
+              : Array.isArray(res?.trades)
+                ? res.trades
+                : Array.isArray(res?.data)
+                  ? res.data
+                  : [];
+            for (const trade of pageTrades) {
+              const tradeId = String(
+                trade?.id || trade?.tradeID || trade?.tradeId || ""
+              ).trim();
+              const dedupeKey = tradeId || JSON.stringify(trade);
+              if (seenTradeIds.has(dedupeKey)) continue;
+              seenTradeIds.add(dedupeKey);
+              trades.push(trade);
+            }
+            localComplete = true;
+            pageCount += 1;
+            localNextCursor = undefined;
+            nextCursor = requestParamsList.length === 1 ? undefined : null;
           }
-          if (!complete && pageCount < 1) {
-            complete = true;
+          if (budgetExhausted) break;
+          if (!localComplete) {
+            complete = false;
+            if (partialError) break;
           }
-        } else {
-          const res = await client.getTrades(params);
-          if (res?.error) {
-            throw new Error(String(res.error));
-          }
-          trades = Array.isArray(res)
-            ? res
-            : Array.isArray(res?.trades)
-              ? res.trades
-              : Array.isArray(res?.data)
-                ? res.data
-                : [];
-          complete = true;
-          pageCount = 1;
-          nextCursor = undefined;
         }
         if (budgetExhausted && !partialError) {
           partialError = "budget_exhausted";

@@ -32,6 +32,76 @@ PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then
   PY="python3"
 fi
+SCAN_DAYS_ARG="--days-ahead -1"
+
+_facts_materialize_window_from_scan() {
+  local run_date="${1:-}"
+  local days_arg="${2:-}"
+  local include_yesterday="${3:-0}"
+  "$PY" - "$ROOT/data/archive.db" "$run_date" "$days_arg" "$include_yesterday" <<'PY'
+import sqlite3
+import sys
+from datetime import date, timedelta
+
+db_path, run_date_raw, days_arg_raw, include_yesterday_raw = sys.argv[1:5]
+run_date_text = str(run_date_raw or "").strip().split("T", 1)[0]
+try:
+    run_day = date.fromisoformat(run_date_text)
+except Exception:
+    print("")
+    print("1")
+    raise SystemExit(0)
+
+include_yesterday = str(include_yesterday_raw or "").strip().lower() in {"1", "true", "yes", "on"}
+days_ahead = 0
+parts = str(days_arg_raw or "").strip().split()
+if len(parts) >= 2:
+    try:
+        days_ahead = int(parts[1])
+    except Exception:
+        days_ahead = 0
+
+end_day = run_day + timedelta(days=max(0, days_ahead))
+if days_ahead < 0:
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=1.0)
+        cur = conn.cursor()
+        row = cur.execute(
+            """
+            SELECT MAX(event_date)
+            FROM (
+              SELECT event_date FROM model_snapshots WHERE run_date = ?
+              UNION ALL
+              SELECT event_date FROM market_snapshots WHERE run_date = ?
+              UNION ALL
+              SELECT event_date FROM event_runs WHERE run_date = ?
+            )
+            """,
+            (run_date_text, run_date_text, run_date_text),
+        ).fetchone()
+        candidate_text = str((row[0] if row else "") or "").strip().split("T", 1)[0]
+        if candidate_text:
+            candidate_day = date.fromisoformat(candidate_text)
+            if candidate_day > end_day:
+                end_day = candidate_day
+    except Exception:
+        pass
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+
+start_day = run_day - timedelta(days=1) if include_yesterday else run_day
+if end_day < start_day:
+    end_day = start_day
+days = max(1, (end_day - start_day).days + 1)
+print(end_day.isoformat())
+print(days)
+PY
+}
 
 is_launchd() {
   local ppid
@@ -258,7 +328,7 @@ fi
 if [ "$AUTO_SCAN_BLOCKING" != "0" ]; then
   echo "Running scan before starting server... (log: $SCAN_LOG)"
   started_at="$(now_text)"
-  PYTHONUNBUFFERED=1 "$PY" "$ROOT/scan_weather_market.py" --scan-weather-today --days-ahead -1 --no-update-models --archive $INSECURE_ARG >> "$SCAN_LOG" 2>&1 &
+  PYTHONUNBUFFERED=1 "$PY" "$ROOT/scan_weather_market.py" --scan-weather-today $SCAN_DAYS_ARG --no-update-models --archive $INSECURE_ARG >> "$SCAN_LOG" 2>&1 &
   SCAN_PID=$!
   echo "$SCAN_PID" > "$ROOT/data/scan.pid"
   write_scan_state "1" "$started_at" "" "" "$SCAN_PID"
@@ -277,12 +347,19 @@ if [ "$AUTO_SCAN_BLOCKING" != "0" ]; then
   fi
   echo "Materializing facts from snapshots..."
   RUN_DATE="$(date '+%Y-%m-%d')"
-  "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$RUN_DATE" >> "$SCAN_LOG" 2>&1 || true
+  facts_window="$(_facts_materialize_window_from_scan "$RUN_DATE" "$SCAN_DAYS_ARG" "${PM_SCAN_INCLUDE_YESTERDAY:-0}")"
+  FACTS_END_DATE="$(printf '%s\n' "$facts_window" | sed -n '1p')"
+  FACTS_DAYS="$(printf '%s\n' "$facts_window" | sed -n '2p')"
+  if [ -z "${FACTS_END_DATE:-}" ] || ! [[ "${FACTS_DAYS:-}" =~ ^[0-9]+$ ]]; then
+    FACTS_END_DATE="$RUN_DATE"
+    FACTS_DAYS=1
+  fi
+  "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$FACTS_END_DATE" --facts-days "$FACTS_DAYS" >> "$SCAN_LOG" 2>&1 || true
 else
   echo "Starting scan in background... (log: $SCAN_LOG)"
   (
     started_at="$(now_text)"
-    PYTHONUNBUFFERED=1 "$PY" "$ROOT/scan_weather_market.py" --scan-weather-today --days-ahead -1 --no-update-models --archive $INSECURE_ARG >> "$SCAN_LOG" 2>&1 &
+    PYTHONUNBUFFERED=1 "$PY" "$ROOT/scan_weather_market.py" --scan-weather-today $SCAN_DAYS_ARG --no-update-models --archive $INSECURE_ARG >> "$SCAN_LOG" 2>&1 &
     scan_pid=$!
     echo "$scan_pid" > "$ROOT/data/scan.pid"
     write_scan_state "1" "$started_at" "" "" "$scan_pid"
@@ -296,7 +373,14 @@ else
     if [ "$scan_status" -eq 0 ]; then
       echo "Materializing facts from snapshots..." >> "$SCAN_LOG"
       RUN_DATE="$(date '+%Y-%m-%d')"
-      "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$RUN_DATE" >> "$SCAN_LOG" 2>&1 || true
+      facts_window="$(_facts_materialize_window_from_scan "$RUN_DATE" "$SCAN_DAYS_ARG" "${PM_SCAN_INCLUDE_YESTERDAY:-0}")"
+      FACTS_END_DATE="$(printf '%s\n' "$facts_window" | sed -n '1p')"
+      FACTS_DAYS="$(printf '%s\n' "$facts_window" | sed -n '2p')"
+      if [ -z "${FACTS_END_DATE:-}" ] || ! [[ "${FACTS_DAYS:-}" =~ ^[0-9]+$ ]]; then
+        FACTS_END_DATE="$RUN_DATE"
+        FACTS_DAYS=1
+      fi
+      "$PY" "$ROOT/ui/server.py" --materialize-facts --facts-date "$FACTS_END_DATE" --facts-days "$FACTS_DAYS" >> "$SCAN_LOG" 2>&1 || true
     fi
   ) &
 fi

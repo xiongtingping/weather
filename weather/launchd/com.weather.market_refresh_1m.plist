@@ -8,7 +8,7 @@
     <array>
       <string>/bin/zsh</string>
       <string>-lc</string>
-      <string>/Users/xiong/weather/scripts/market_refresh_1m.sh</string>
+      <string>/Users/xiong/weather/weather/scripts/market_refresh_1m.sh</string>
     </array>
     <key>StartInterval</key>
     <integer>60</integer>
@@ -25,8 +25,8 @@
       <integer>8192</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/xiong/weather/data/logs/market_refresh_1m.out.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/market_refresh_1m.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/xiong/weather/data/logs/market_refresh_1m.err.log</string>
+    <string>/Users/xiong/weather/weather/data/logs/market_refresh_1m.err.log</string>
   </dict>
 </plist>

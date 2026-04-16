@@ -4,9 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import scan_weather_market as s
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+POLYMARKET_ORDER_SCRIPT = ROOT_DIR / "scripts" / "polymarket_order.mjs"
 
 
 def _load_orders(conn, only_missing: bool, limit: Optional[int]) -> List[Tuple[Any, ...]]:
@@ -55,7 +60,7 @@ def main() -> None:
     with s.open_db() as conn:
         rows = _load_orders(conn, only_missing=not args.include_all, limit=args.limit or None)
 
-    cmd_base = ["node", "/Users/xiong/weather/scripts/polymarket_order.mjs", "get-order", "--order-id"]
+    cmd_base = ["node", str(POLYMARKET_ORDER_SCRIPT), "get-order", "--order-id"]
 
     by_status: Dict[str, int] = {}
     updated = 0

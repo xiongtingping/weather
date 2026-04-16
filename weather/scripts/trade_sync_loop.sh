@@ -9,6 +9,10 @@ if [ -f "$ROOT/.env" ]; then
   . "$ROOT/.env"
   set +a
 fi
+if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
+  . "$ROOT/scripts/lib/load_launchctl_env.sh"
+  load_polymarket_launchctl_env
+fi
 
 if [[ "${PM_DATA_ONLY_MODE:-0}" =~ ^(1|true|yes|on)$ ]] || [[ "${PM_ACCOUNT_REQUESTS_DISABLED:-0}" =~ ^(1|true|yes|on)$ ]]; then
   echo "[trade_sync_loop] account-requests disabled; skip trade sync loop"
