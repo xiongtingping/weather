@@ -27290,15 +27290,6 @@
           if (Number.isFinite(askVal) || Number.isFinite(bidVal)) {
             marketParts.push(`盘口 ${bidText}~${askText}`);
           }
-          const comboLegRaw = String(
-            item.lcb_combo_leg
-            || (
-              item.entry_decision
-              && item.entry_decision.details
-              && item.entry_decision.details.lcb_combo_leg
-            )
-            || ''
-          ).trim().toLowerCase();
           const comboRatioVal = toFiniteNumberOrNaN(
             item.strategy_size_ratio_extra
             || (
@@ -27310,19 +27301,8 @@
           const comboPctText = Number.isFinite(comboRatioVal)
             ? `(${(comboRatioVal * 100).toFixed(0)}%)`
             : '';
-          const comboLegLabelMap = {
-            yes_top: 'COMBO_YES_PEAK',
-            combo_yes_peak: 'COMBO_YES_PEAK',
-            no_near: 'COMBO_NO_ADJACENT',
-            combo_no_adjacent: 'COMBO_NO_ADJACENT',
-            no_far: 'COMBO_NO_REMOTE',
-            combo_no_remote: 'COMBO_NO_REMOTE',
-          };
-          const comboLegLabel = comboLegLabelMap[comboLegRaw] || '';
-          if (comboLegLabel) {
-            marketParts.push(`组合腿 ${comboLegLabel}${comboPctText}`);
-          } else if (comboLegRaw === 'lcb') {
-            marketParts.push(`组合腿 LCB${comboPctText}`);
+          if (String(item.strategy || '').trim().toLowerCase() === 'lcb_global') {
+            marketParts.push(`LCB${comboPctText}`);
           }
           const lcbEdgeVal = toFiniteNumberOrNaN(
             item.edge_tradeability_profit_value ?? item.edge_tradeability_edge_lcb
@@ -31314,15 +31294,6 @@
         if (Number.isFinite(askVal) || Number.isFinite(bidVal)) {
           marketParts.push(`盘口 ${bidText}~${askText}`);
         }
-        const comboLegRaw = String(
-          item.lcb_combo_leg
-          || (
-            item.entry_decision
-            && item.entry_decision.details
-            && item.entry_decision.details.lcb_combo_leg
-          )
-          || ''
-        ).trim().toLowerCase();
         const comboRatioVal = toFiniteNumberOrNaN(
           item.strategy_size_ratio_extra
           || (
@@ -31334,19 +31305,8 @@
         const comboPctText = Number.isFinite(comboRatioVal)
           ? `(${(comboRatioVal * 100).toFixed(0)}%)`
           : '';
-        const comboLegLabelMap = {
-          yes_top: 'COMBO_YES_PEAK',
-          combo_yes_peak: 'COMBO_YES_PEAK',
-          no_near: 'COMBO_NO_ADJACENT',
-          combo_no_adjacent: 'COMBO_NO_ADJACENT',
-          no_far: 'COMBO_NO_REMOTE',
-          combo_no_remote: 'COMBO_NO_REMOTE',
-        };
-        const comboLegLabel = comboLegLabelMap[comboLegRaw] || '';
-        if (comboLegLabel) {
-          marketParts.push(`组合腿 ${comboLegLabel}${comboPctText}`);
-        } else if (comboLegRaw === 'lcb') {
-          marketParts.push(`组合腿 LCB${comboPctText}`);
+        if (String(item.strategy || '').trim().toLowerCase() === 'lcb_global') {
+          marketParts.push(`LCB${comboPctText}`);
         }
         const lcbEdgeVal = toFiniteNumberOrNaN(
           item.edge_tradeability_profit_value ?? item.edge_tradeability_edge_lcb

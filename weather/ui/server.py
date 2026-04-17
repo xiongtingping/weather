@@ -31454,19 +31454,6 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
 }
 
 
-def _ssot_normalize_lcb_combo_role(role: Any) -> str:
-    role_norm = str(role or "").strip().lower()
-    alias_map = {
-        "yes_top": "combo_yes_peak",
-        "combo_yes_peak": "combo_yes_peak",
-        "no_near": "combo_no_adjacent",
-        "combo_no_adjacent": "combo_no_adjacent",
-        "no_far": "combo_no_remote",
-        "combo_no_remote": "combo_no_remote",
-    }
-    return str(alias_map.get(role_norm) or "")
-
-
 def _ssot_candidate_requires_plain_lcb_path_gate(
     candidate: Optional[Mapping[str, Any]],
     policy: Mapping[str, Any],
@@ -31476,10 +31463,7 @@ def _ssot_candidate_requires_plain_lcb_path_gate(
     if not bool(policy.get("lcb_global_enabled")):
         return False
     strategy = str(candidate.get("strategy") or "lcb_global").strip().lower()
-    if strategy != "lcb_global":
-        return False
-    role_hint = _ssot_normalize_lcb_combo_role(candidate.get("lcb_q_combo_role_hint"))
-    return role_hint not in {"combo_yes_peak", "combo_no_adjacent", "combo_no_remote"}
+    return strategy == "lcb_global"
 
 
 def _ssot_candidate_is_plain_lcb_peak_no(
@@ -31879,10 +31863,6 @@ def _ssot_candidate_from_row(
         "side": side,
         "outcome": outcome,
         "strategy": "lcb_global" if _env_bool("PM_LCB_GLOBAL_ENABLED", True) else "main",
-        "lcb_combo_leg": "lcb" if _env_bool("PM_LCB_GLOBAL_ENABLED", True) else "",
-        "lcb_q_combo_enabled": bool(_side_value("lcb_q_combo_enabled")),
-        "lcb_q_combo_role_hint": str(_side_value("lcb_q_combo_role_hint") or ""),
-        "lcb_q_combo_q_peak_outcome": str(market_top_label or ""),
         "edge_score": edge_score,
         "exec_edge_entry": exec_edge_entry,
         "exec_edge_exit": exec_edge_exit,

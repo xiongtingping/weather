@@ -23,21 +23,6 @@ DATA_DIR = ROOT / "data"
 DB_PATH = DATA_DIR / "archive.db"
 STATE_PATH = DATA_DIR / "daily_trade_sms_summary_state.json"
 ENV_PATH = ROOT / ".env"
-COMBO_ROLE_ALIAS_MAP = {
-    "yes_top": "combo_yes_peak",
-    "combo_yes_peak": "combo_yes_peak",
-    "no_near": "combo_no_adjacent",
-    "combo_no_adjacent": "combo_no_adjacent",
-    "no_far": "combo_no_remote",
-    "combo_no_remote": "combo_no_remote",
-}
-COMBO_ROLE_LABELS = {
-    "combo_yes_peak": "combo_yes_peak",
-    "combo_no_adjacent": "combo_no_adjacent",
-    "combo_no_remote": "combo_no_remote",
-}
-
-
 def _load_env(path: Path) -> None:
     if not path.exists():
         return
@@ -272,31 +257,18 @@ def _load_daily_stats(
     buy_bucket_keys = set()
     sell_bucket_keys = set()
 
-    def _normalize_combo_role(role: str) -> str:
-        return str(COMBO_ROLE_ALIAS_MAP.get(str(role or "").strip().lower()) or "")
-
-    def _classify_auto_entry_strategy(strategy: str, combo_role: str) -> str:
+    def _classify_auto_entry_strategy(strategy: str) -> str:
         strategy_l = str(strategy or "").strip().lower()
-        combo_role_l = _normalize_combo_role(combo_role)
         if strategy_l in {"lcb", "main", "lcb_global", "lcb_global_main"}:
-            if combo_role_l in COMBO_ROLE_LABELS:
-                return combo_role_l
             return "lcb"
-        strategy_role_l = _normalize_combo_role(strategy_l)
-        if strategy_role_l in COMBO_ROLE_LABELS:
-            return strategy_role_l
-        if combo_role_l in COMBO_ROLE_LABELS:
-            return combo_role_l
         return "other"
 
     query = """
     WITH decision_map AS (
-      SELECT order_id, lcb_combo_leg, lcb_q_combo_role, strategy_detail
+      SELECT order_id, strategy_detail
       FROM (
         SELECT
           json_extract(details_json, '$.order_id') AS order_id,
-          lower(trim(COALESCE(json_extract(details_json, '$.lcb_combo_leg'), ''))) AS lcb_combo_leg,
-          lower(trim(COALESCE(json_extract(details_json, '$.lcb_q_combo_role'), ''))) AS lcb_q_combo_role,
           lower(trim(COALESCE(json_extract(details_json, '$.strategy'), ''))) AS strategy_detail,
           id,
           ROW_NUMBER() OVER (
@@ -321,7 +293,6 @@ def _load_daily_stats(
       f.outcome,
       f.outcome_side,
       lower(trim(COALESCE(ao.strategy, dm.strategy_detail, ''))) AS strategy,
-      lower(trim(COALESCE(dm.lcb_combo_leg, ''))) AS lcb_combo_leg
     FROM edge_trade_fills f
     LEFT JOIN auto_orders ao
       ON ao.order_id = f.order_id
@@ -332,7 +303,7 @@ def _load_daily_stats(
       AND f.slug LIKE 'highest-temperature-in-%'
     """
     rows = cur.execute(query, (start_utc, window_end_utc)).fetchall()
-    for fill_id, order_id, trade_id, trade_side, price, size, slug, event_date, outcome, outcome_side, strategy, lcb_combo_leg in rows:
+    for fill_id, order_id, trade_id, trade_side, price, size, slug, event_date, outcome, outcome_side, strategy in rows:
         trade_side_u = str(trade_side or "").strip().upper()
         strategy_l = str(strategy or "").strip().lower()
         slug_l = str(slug or "").strip()
@@ -368,13 +339,11 @@ def _load_daily_stats(
     order_rows = cur.execute(
         """
         WITH decision_map AS (
-          SELECT order_id, lcb_combo_leg, lcb_q_combo_role, strategy_detail
+          SELECT order_id, strategy_detail
           FROM (
             SELECT
               json_extract(details_json, '$.order_id') AS order_id,
-              lower(trim(COALESCE(json_extract(details_json, '$.lcb_combo_leg'), ''))) AS lcb_combo_leg,
-              lower(trim(COALESCE(json_extract(details_json, '$.lcb_q_combo_role'), ''))) AS lcb_q_combo_role,
-              lower(trim(COALESCE(json_extract(details_json, '$.strategy'), ''))) AS strategy_detail,
+                  lower(trim(COALESCE(json_extract(details_json, '$.strategy'), ''))) AS strategy_detail,
               id,
               ROW_NUMBER() OVER (
                 PARTITION BY json_extract(details_json, '$.order_id')
@@ -393,9 +362,7 @@ def _load_daily_stats(
           ao.outcome,
           ao.side,
           lower(trim(COALESCE(ao.strategy, dm.strategy_detail, ''))) AS strategy,
-          lower(trim(COALESCE(dm.lcb_combo_leg, ''))) AS lcb_combo_leg,
-          lower(trim(COALESCE(dm.lcb_q_combo_role, ''))) AS lcb_q_combo_role
-        FROM auto_orders ao
+            FROM auto_orders ao
         LEFT JOIN decision_map dm
           ON dm.order_id = ao.order_id
         WHERE created_at >= ?
@@ -404,7 +371,7 @@ def _load_daily_stats(
         """,
         (start_utc, window_end_utc),
     ).fetchall()
-    for action, slug, event_date, outcome, side, strategy, lcb_combo_leg, lcb_q_combo_role in order_rows:
+    for action, slug, event_date, outcome, side, strategy in order_rows:
         action_l = str(action or "").strip().lower()
         bucket_key = (
             str(slug or "").strip(),
@@ -417,15 +384,9 @@ def _load_daily_stats(
         if action_l == "entry":
             stats.entry_order_submit_count += 1
             entry_order_bucket_keys.add(bucket_key)
-            strategy_class = _classify_auto_entry_strategy(strategy, lcb_q_combo_role)
+            strategy_class = _classify_auto_entry_strategy(strategy)
             if strategy_class == "lcb":
                 stats.entry_lcb_count += 1
-            elif strategy_class == "combo_yes_peak":
-                stats.entry_yes_top_count += 1
-            elif strategy_class == "combo_no_adjacent":
-                stats.entry_no_near_count += 1
-            elif strategy_class == "combo_no_remote":
-                stats.entry_no_far_count += 1
             else:
                 stats.entry_other_auto_count += 1
         elif action_l == "exit":
@@ -734,9 +695,7 @@ def _build_message(report_date_local: date, stats: DailyStats) -> str:
         f"进入: 总{entry_total_count} | 自动{stats.entry_order_submit_count} | 手动{stats.entry_manual_count}",
         (
             "自动策略: "
-            f"lcb={stats.entry_lcb_count} | combo_yes_peak={stats.entry_yes_top_count} "
-            f"| combo_no_adjacent={stats.entry_no_near_count} "
-            f"| combo_no_remote={stats.entry_no_far_count} | 其他={stats.entry_other_auto_count}"
+            f"lcb={stats.entry_lcb_count} | 其他={stats.entry_other_auto_count}"
         ),
         (
             f"持仓: {stats.open_positions_count} | 花费: {_fmt_usdc(stats.buy_notional)} "

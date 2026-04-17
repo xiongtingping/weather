@@ -178,13 +178,13 @@ class MarketTickFreshnessTests(unittest.TestCase):
             )
         )
 
-    def test_effective_stop_loss_edge_confirm_disabled_for_combo_stop_loss_only(self) -> None:
+    def test_effective_stop_loss_edge_confirm_disabled_for_lcb_stop_loss_only(self) -> None:
         self.assertFalse(
             _effective_stop_loss_edge_confirm_enabled(
                 True,
                 lcb_exit_context_active=True,
                 lcb_ignore_edge_confirm=True,
-                combo_stop_loss_only=True,
+                lcb_stop_loss_only=True,
             )
         )
 
@@ -202,16 +202,16 @@ class MarketTickFreshnessTests(unittest.TestCase):
             _effective_stop_loss_edge_confirm_fail_open_on_missing(
                 True,
                 lcb_exit_context_active=True,
-                combo_stop_loss_only=False,
+                lcb_stop_loss_only=False,
             )
         )
 
-    def test_effective_stop_loss_fail_open_kept_for_combo_stop_loss_only(self) -> None:
+    def test_effective_stop_loss_fail_open_kept_for_lcb_stop_loss_only(self) -> None:
         self.assertTrue(
             _effective_stop_loss_edge_confirm_fail_open_on_missing(
                 True,
                 lcb_exit_context_active=True,
-                combo_stop_loss_only=True,
+                lcb_stop_loss_only=True,
             )
         )
 
@@ -753,7 +753,7 @@ class MarketTickFreshnessTests(unittest.TestCase):
             "ask": None,
             "order_price": None,
         }
-        self.assertTrue(_candidate_is_plain_lcb_pinned_tail_no(candidate, combo_enabled=False))
+        self.assertTrue(_candidate_is_plain_lcb_pinned_tail_no(candidate))
 
     def test_plain_lcb_pinned_tail_no_q_only_prefilter_skips_non_extreme_missing_quote(self) -> None:
         candidate = {
@@ -765,7 +765,7 @@ class MarketTickFreshnessTests(unittest.TestCase):
             "ask": None,
             "order_price": None,
         }
-        self.assertFalse(_candidate_is_plain_lcb_pinned_tail_no(candidate, combo_enabled=False))
+        self.assertFalse(_candidate_is_plain_lcb_pinned_tail_no(candidate))
 
     def test_plain_lcb_pinned_tail_no_prefilter_hits_bid_only_high_confidence(self) -> None:
         candidate = {
@@ -778,7 +778,7 @@ class MarketTickFreshnessTests(unittest.TestCase):
             "bid": 0.998,
             "order_price": 0.9985,
         }
-        self.assertTrue(_candidate_is_plain_lcb_pinned_tail_no(candidate, combo_enabled=False))
+        self.assertTrue(_candidate_is_plain_lcb_pinned_tail_no(candidate))
 
     def test_plain_lcb_zero_prob_yes_prefilter_hits(self) -> None:
         candidate = {
@@ -788,7 +788,7 @@ class MarketTickFreshnessTests(unittest.TestCase):
             "q_round": 0.0,
             "q_raw": 0.0,
         }
-        self.assertTrue(_candidate_is_plain_lcb_zero_prob_yes(candidate, combo_enabled=False))
+        self.assertTrue(_candidate_is_plain_lcb_zero_prob_yes(candidate))
 
     def test_plain_lcb_zero_prob_yes_prefilter_skips_non_zero(self) -> None:
         candidate = {
@@ -798,7 +798,7 @@ class MarketTickFreshnessTests(unittest.TestCase):
             "q_round": 0.02,
             "q_raw": 0.02,
         }
-        self.assertFalse(_candidate_is_plain_lcb_zero_prob_yes(candidate, combo_enabled=False))
+        self.assertFalse(_candidate_is_plain_lcb_zero_prob_yes(candidate))
 
     def test_dump_reason_list_or_blank_clears_empty(self) -> None:
         self.assertEqual(_dump_reason_list_or_blank([]), "")
