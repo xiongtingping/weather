@@ -25009,6 +25009,54 @@ def top_bucket_from_distribution(distribution: List[Dict[str, Any]], q_key: str)
     return best_label, best_q
 
 
+def posterior_main_from_fact_payload(
+    payload: Mapping[str, Any],
+    distribution: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[str, Optional[float]]:
+    """Return the UI main posterior bucket from the fact payload SSOT.
+
+    Prefer the corrected equal-weight top bucket when present; otherwise use the
+    normalized distribution top by q_round. The probability comes from that same
+    bucket, preferring q_calibrated because this is the posterior displayed in
+    the UI, then falling back to raw_q_calibrated/q_round.
+    """
+    if distribution is not None:
+        dist = distribution
+    else:
+        dist = normalize_distribution_rows(payload.get("rows") or payload.get("distribution") or [])
+    label = ""
+    corrected = payload.get("corrected_top_bucket")
+    if isinstance(corrected, Mapping):
+        label = str(corrected.get("equal") or "").strip()
+    elif isinstance(corrected, str):
+        label = corrected.strip()
+    if not label:
+        label = str(payload.get("corrected_top_bucket_equal") or "").strip()
+    if not label:
+        diag = payload.get("bucket_diag") or payload.get("bucket_diagnostics") or {}
+        corrected_top3 = diag.get("corrected_top3") if isinstance(diag, Mapping) else None
+        equal_top3 = corrected_top3.get("equal") if isinstance(corrected_top3, Mapping) else None
+        if isinstance(equal_top3, list) and equal_top3 and isinstance(equal_top3[0], Mapping):
+            label = str(equal_top3[0].get("label") or "").strip()
+    if not label:
+        label, _ = top_bucket_from_distribution(dist, "q_round")
+    if not label:
+        return "", None
+    matched = None
+    for row in dist:
+        if str(row.get("outcome") or "") == label:
+            matched = row
+            break
+    q_val = None
+    if matched:
+        q_val = to_float(matched.get("q_calibrated"))
+        if q_val is None:
+            q_val = to_float(matched.get("raw_q_calibrated"))
+        if q_val is None:
+            q_val = to_float(matched.get("q_round"))
+    return label, q_val
+
+
 def top_bucket_from_distribution_weighted(
     distribution: List[Dict[str, Any]],
     models: List[str],
@@ -32642,6 +32690,7 @@ def build_run_item(
         except Exception:
             q_cal_na_reason = None
     top_label, top_q = top_bucket_from_distribution(distribution, "q_round")
+    posterior_main_label, posterior_main_q = posterior_main_from_fact_payload(payload, distribution)
     market_label = market_top_label(distribution)
     corrected_top_bucket = build_weight_map(
         {
@@ -32873,8 +32922,10 @@ def build_run_item(
         "resolution_source": str(row["resolution_source"] or ""),
         "settlement_actual": row["settlement_actual"],
         "market_closed": int(row["market_closed"] or 0),
-        "city_most_likely_label": str(row["city_most_likely_label"] or ""),
-        "city_most_likely_q": row["city_most_likely_q"],
+        "city_most_likely_label": posterior_main_label or str(row["city_most_likely_label"] or ""),
+        "city_most_likely_q": posterior_main_q if posterior_main_q is not None else row["city_most_likely_q"],
+        "posterior_main_label": posterior_main_label,
+        "posterior_main_q": posterior_main_q,
         "model_info": model_info,
         "model_provenance": payload.get("model_provenance") or {},
         "model_cache_age_sec": cache_age_sec,
