@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="1180" viewBox="0 0 1900 1180">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#1f2937" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ea580c"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 800 34px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 18px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #475569; }
+      .lane-title { font: 800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; }
+      .box-title { font: 800 19px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #111827; }
+      .box-text { font: 500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #334155; }
+      .small { font: 500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #475569; }
+      .mono { font: 600 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; fill: #1e293b; }
+      .arrow { stroke: #334155; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .arrow-blue { stroke: #2563eb; stroke-width: 2.4; fill: none; marker-end: url(#arrowBlue); }
+      .arrow-orange { stroke: #ea580c; stroke-width: 2.6; fill: none; marker-end: url(#arrowOrange); }
+      .dash { stroke-dasharray: 7 6; }
+      .lane-blue { fill: #eef6ff; stroke: #2563eb; }
+      .lane-teal { fill: #ecfeff; stroke: #0891b2; }
+      .lane-purple { fill: #f5f3ff; stroke: #7c3aed; }
+      .lane-orange { fill: #fff7ed; stroke: #ea580c; }
+      .lane-green { fill: #ecfdf5; stroke: #059669; }
+      .lane-slate { fill: #f1f5f9; stroke: #64748b; }
+      .card { fill: #ffffff; stroke-width: 2; rx: 13; filter: url(#shadow); }
+      .chip { fill: #ffffff; stroke-width: 1.5; rx: 8; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1900" height="1180"/>
+
+  <text class="title" x="950" y="54" text-anchor="middle">Polymarket 天气市场自动交易架构流程图</text>
+  <text class="subtitle" x="950" y="86" text-anchor="middle">按当前代码库真实链路绘制：launchd 编排 → 采集刷新 → SSOT → 交易决策 → CLOB V2 执行 → UI 观测</text>
+
+  <!-- Lane backgrounds -->
+  <rect class="lane-blue dash" x="32" y="120" width="1836" height="175" rx="18" fill="#eef6ff" stroke="#2563eb" stroke-width="2"/>
+  <rect class="lane-teal dash" x="32" y="315" width="1836" height="170" rx="18" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/>
+  <rect class="lane-purple dash" x="32" y="505" width="1836" height="220" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <rect class="lane-orange dash" x="32" y="745" width="1836" height="195" rx="18" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+  <rect class="lane-slate dash" x="32" y="960" width="1836" height="160" rx="18" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+
+  <text class="lane-title" x="62" y="155" fill="#1d4ed8">1. launchd 进程编排层</text>
+  <text class="lane-title" x="62" y="350" fill="#0e7490">2. 采集与刷新层</text>
+  <text class="lane-title" x="62" y="540" fill="#6d28d9">3. SSOT 数据层：data/archive.db</text>
+  <text class="lane-title" x="62" y="780" fill="#c2410c">4. 交易队列、决策与 CLOB V2 执行</text>
+  <text class="lane-title" x="62" y="995" fill="#334155">5. UI、健康观测与硬口径</text>
+
+  <!-- Launchd service cards -->
+  <rect class="card lane-blue" x="72" y="175" width="250" height="82"/>
+  <text class="box-title" x="197" y="205" text-anchor="middle">盘口 WS</text>
+  <text class="mono" x="197" y="232" text-anchor="middle">com.weather.market_ws</text>
+
+  <rect class="card lane-blue" x="352" y="175" width="270" height="82"/>
+  <text class="box-title" x="487" y="205" text-anchor="middle">市场刷新</text>
+  <text class="mono" x="487" y="232" text-anchor="middle">market_refresh_1m</text>
+
+  <rect class="card lane-blue" x="652" y="175" width="250" height="82"/>
+  <text class="box-title" x="777" y="205" text-anchor="middle">模型扫描</text>
+  <text class="mono" x="777" y="232" text-anchor="middle">model_scan</text>
+
+  <rect class="card lane-blue" x="932" y="175" width="285" height="82"/>
+  <text class="box-title" x="1074" y="205" text-anchor="middle">入场任务</text>
+  <text class="mono" x="1074" y="232" text-anchor="middle">auto_trade_entry_1m</text>
+
+  <rect class="card lane-blue" x="1247" y="175" width="250" height="82"/>
+  <text class="box-title" x="1372" y="205" text-anchor="middle">交易引擎</text>
+  <text class="mono" x="1372" y="232" text-anchor="middle">trade_engine</text>
+
+  <rect class="card lane-blue" x="1527" y="175" width="280" height="82"/>
+  <text class="box-title" x="1667" y="205" text-anchor="middle">Watcher / UI</text>
+  <text class="mono" x="1667" y="232" text-anchor="middle">auto_trade_watcher / ui</text>
+
+  <!-- Acquisition cards -->
+  <rect class="card lane-teal" x="72" y="372" width="330" height="82"/>
+  <text class="box-title" x="237" y="402" text-anchor="middle">Polymarket WebSocket</text>
+  <text class="mono" x="237" y="429" text-anchor="middle">market_ws_listener.py</text>
+
+  <rect class="card lane-teal" x="455" y="372" width="360" height="82"/>
+  <text class="box-title" x="635" y="402" text-anchor="middle">Gamma / CLOB REST 刷新</text>
+  <text class="mono" x="635" y="429" text-anchor="middle">market_refresh_1m.sh</text>
+
+  <rect class="card lane-teal" x="868" y="372" width="360" height="82"/>
+  <text class="box-title" x="1048" y="402" text-anchor="middle">天气模型与站点映射</text>
+  <text class="mono" x="1048" y="429" text-anchor="middle">model_scan.sh</text>
+
+  <rect class="card lane-teal" x="1280" y="372" width="420" height="82"/>
+  <text class="box-title" x="1490" y="402" text-anchor="middle">统一扫描 / facts 构建入口</text>
+  <text class="mono" x="1490" y="429" text-anchor="middle">scan_weather_market.py</text>
+
+  <!-- SSOT table cards -->
+  <rect class="card lane-purple" x="72" y="565" width="285" height="114"/>
+  <text class="box-title" x="214" y="596" text-anchor="middle">市场与盘口</text>
+  <text class="mono" x="214" y="625" text-anchor="middle">event_market_ticks</text>
+  <text class="mono" x="214" y="651" text-anchor="middle">market_tokens</text>
+
+  <rect class="card lane-purple" x="392" y="565" width="300" height="114"/>
+  <text class="box-title" x="542" y="596" text-anchor="middle">规则与事实快照</text>
+  <text class="mono" x="542" y="625" text-anchor="middle">event_runs</text>
+  <text class="mono" x="542" y="651" text-anchor="middle">event_fact_latest</text>
+
+  <rect class="card lane-purple" x="727" y="565" width="310" height="114"/>
+  <text class="box-title" x="882" y="596" text-anchor="middle">历史与校准</text>
+  <text class="mono" x="882" y="625" text-anchor="middle">event_fact_history</text>
+  <text class="mono" x="882" y="651" text-anchor="middle">model_scores / weights</text>
+
+  <rect class="card lane-purple" x="1072" y="565" width="330" height="114"/>
+  <text class="box-title" x="1237" y="596" text-anchor="middle">交易任务状态</text>
+  <text class="mono" x="1237" y="625" text-anchor="middle">auto_trade_jobs</text>
+  <text class="mono" x="1237" y="651" text-anchor="middle">auto_trade_runs</text>
+
+  <rect class="card lane-purple" x="1437" y="565" width="330" height="114"/>
+  <text class="box-title" x="1602" y="596" text-anchor="middle">阻断与订单 SSOT</text>
+  <text class="mono" x="1602" y="625" text-anchor="middle">auto_trade_decisions</text>
+  <text class="mono" x="1602" y="651" text-anchor="middle">auto_orders / edge_trades</text>
+
+  <!-- Trading / execution cards -->
+  <rect class="card lane-orange" x="72" y="805" width="275" height="96"/>
+  <text class="box-title" x="210" y="836" text-anchor="middle">生成入场任务</text>
+  <text class="mono" x="210" y="865" text-anchor="middle">auto_trade_entry_1m.sh</text>
+  <text class="small" x="210" y="889" text-anchor="middle">写入 auto_trade_jobs</text>
+
+  <rect class="card lane-orange" x="397" y="805" width="300" height="96"/>
+  <text class="box-title" x="547" y="836" text-anchor="middle">消费任务</text>
+  <text class="mono" x="547" y="865" text-anchor="middle">trade_engine_loop.sh</text>
+  <text class="small" x="547" y="889" text-anchor="middle">按事件分批执行</text>
+
+  <rect class="card lane-orange" x="747" y="805" width="345" height="96"/>
+  <text class="box-title" x="920" y="836" text-anchor="middle">自动交易决策</text>
+  <text class="mono" x="920" y="865" text-anchor="middle">run_auto_trades_for_date</text>
+  <text class="small" x="920" y="889" text-anchor="middle">execute_auto_trades</text>
+
+  <rect class="card lane-orange" x="1142" y="805" width="340" height="96"/>
+  <text class="box-title" x="1312" y="836" text-anchor="middle">硬门槛</text>
+  <text class="small" x="1312" y="862" text-anchor="middle">入场：edge_tradeability LCB</text>
+  <text class="small" x="1312" y="886" text-anchor="middle">退出：hold_edge_realizable + risk</text>
+
+  <rect class="card lane-green" x="1532" y="805" width="275" height="96"/>
+  <text class="box-title" x="1670" y="836" text-anchor="middle">CLOB V2 执行</text>
+  <text class="mono" x="1670" y="865" text-anchor="middle">polymarket_order.mjs</text>
+  <text class="small" x="1670" y="889" text-anchor="middle">balance / allowance / order</text>
+
+  <!-- UI and invariant cards -->
+  <rect class="card lane-slate" x="72" y="1020" width="390" height="70"/>
+  <text class="box-title" x="267" y="1048" text-anchor="middle">UI Server</text>
+  <text class="mono" x="267" y="1075" text-anchor="middle">ui/server.py</text>
+
+  <rect class="card lane-slate" x="505" y="1020" width="380" height="70"/>
+  <text class="box-title" x="695" y="1048" text-anchor="middle">单一只读快照</text>
+  <text class="mono" x="695" y="1075" text-anchor="middle">/api/ui_snapshot</text>
+
+  <rect class="card lane-slate" x="928" y="1020" width="420" height="70"/>
+  <text class="box-title" x="1138" y="1048" text-anchor="middle">健康与条件口径</text>
+  <text class="mono" x="1138" y="1075" text-anchor="middle">/api/auto-trade-health / criteria</text>
+
+  <rect class="card lane-slate" x="1390" y="1010" width="420" height="90"/>
+  <text class="box-title" x="1600" y="1038" text-anchor="middle">当前硬规则</text>
+  <text class="small" x="1600" y="1064" text-anchor="middle">阻断原因唯一来源：auto_trade_decisions</text>
+  <text class="small" x="1600" y="1087" text-anchor="middle">UI 不复算交易口径，只读 archive.db</text>
+
+  <!-- Arrows launchd to acquisition / trading / UI -->
+  <path class="arrow-blue" d="M 197 257 L 197 372"/>
+  <path class="arrow-blue" d="M 487 257 L 595 372"/>
+  <path class="arrow-blue" d="M 777 257 L 985 372"/>
+  <path class="arrow-blue" d="M 1074 257 L 210 805"/>
+  <path class="arrow-blue" d="M 1372 257 L 547 805"/>
+  <path class="arrow-blue" d="M 1667 257 L 267 1020"/>
+
+  <!-- Acquisition to SSOT -->
+  <path class="arrow" d="M 237 454 L 214 565"/>
+  <path class="arrow" d="M 635 454 L 542 565"/>
+  <path class="arrow" d="M 1048 454 L 882 565"/>
+  <path class="arrow" d="M 1490 454 L 1237 565"/>
+  <path class="arrow" d="M 1490 454 L 1602 565"/>
+
+  <!-- SSOT to trading -->
+  <path class="arrow-orange" d="M 1237 679 L 210 805"/>
+  <path class="arrow-orange" d="M 542 679 L 920 805"/>
+  <path class="arrow-orange" d="M 214 679 L 920 805"/>
+  <path class="arrow-orange" d="M 882 679 L 920 805"/>
+  <path class="arrow-orange" d="M 1602 679 L 1312 805"/>
+
+  <!-- Trading flow -->
+  <path class="arrow-orange" d="M 347 853 L 397 853"/>
+  <path class="arrow-orange" d="M 697 853 L 747 853"/>
+  <path class="arrow-orange" d="M 1092 853 L 1142 853"/>
+  <path class="arrow-orange" d="M 1482 853 L 1532 853"/>
+
+  <!-- Execution back to SSOT and UI -->
+  <path class="arrow" d="M 1670 805 C 1720 750 1720 720 1602 679"/>
+  <path class="arrow" d="M 1602 679 C 1580 840 1510 940 1600 1010"/>
+  <path class="arrow" d="M 542 679 C 520 850 455 945 695 1020"/>
+  <path class="arrow" d="M 1602 679 C 1330 760 1200 910 1138 1020"/>
+  <path class="arrow" d="M 214 679 C 210 810 220 925 267 1020"/>
+
+  <!-- External labels -->
+  <rect class="chip" x="72" y="118" width="340" height="38" fill="#ffffff" stroke="#2563eb"/>
+  <text class="small" x="242" y="143" text-anchor="middle">外部输入：Polymarket WS / CLOB / Gamma / 天气源</text>
+  <rect class="chip" x="1445" y="746" width="362" height="38" fill="#ffffff" stroke="#059669"/>
+  <text class="small" x="1626" y="771" text-anchor="middle">外部执行：Polymarket CLOB V2 生产环境</text>
+</svg>

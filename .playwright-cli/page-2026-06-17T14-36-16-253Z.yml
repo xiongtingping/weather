@@ -1,0 +1,141 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "事件视图" [ref=e8] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "更新/健康" [ref=e9] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+        - link "顶部" [ref=e11] [cursor=pointer]:
+          - /url: "#top"
+      - generic [ref=e12]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e14] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e15]: 总开关
+          - generic [ref=e16]: 开启
+        - generic [ref=e19]:
+          - button "同步" [ref=e20] [cursor=pointer]
+          - button "模型" [ref=e21] [cursor=pointer]
+          - button "盘口" [ref=e22] [cursor=pointer]
+          - button "刷新" [ref=e23] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e24] [cursor=pointer]
+          - button "日志" [ref=e26] [cursor=pointer]
+          - group [ref=e27]:
+            - generic "控制中心" [ref=e28] [cursor=pointer]: 控
+  - main [ref=e29]:
+    - generic [ref=e30]:
+      - status [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e33]:
+            - generic [ref=e34]: 新鲜度
+            - generic [ref=e35]: 等待数据…时效口径
+            - generic [ref=e36]:
+              - generic [ref=e38]:
+                - generic [ref=e39]: 模型
+                - generic [ref=e40]: —
+              - generic [ref=e43]:
+                - generic [ref=e44]: 盘口
+                - generic [ref=e45]: —
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - generic [ref=e49] [cursor=pointer]:
+                - generic [ref=e50]: 健康检查
+                - generic [ref=e51]: 展开
+                - button "复制" [ref=e52]
+              - generic: —
+            - group [ref=e53]:
+              - generic "追涨触发统计" [ref=e54] [cursor=pointer]:
+                - generic [ref=e55]: 追涨触发统计
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - generic [ref=e59]: 自动交易执行
+          - generic [ref=e60]: —
+          - generic [ref=e61]: —
+          - generic [ref=e63]: SSOT口径
+        - generic [ref=e64]:
+          - generic [ref=e65]: 自动交易：—
+          - generic [ref=e66]: 成交同步：—
+          - generic [ref=e67]: 最后触发：—
+      - generic [ref=e68]:
+        - generic [ref=e69]:
+          - generic [ref=e71]:
+            - generic [ref=e73]: 等待刷新
+            - generic [ref=e74]: —
+          - generic [ref=e77]: 目标桶兑现 开 1.00x
+        - generic [ref=e78]:
+          - button "auto_trade_watcher" [ref=e79] [cursor=pointer]
+          - button "残留清理" [ref=e80] [cursor=pointer]
+          - button "0.1 Kelly / 10u" [ref=e81] [cursor=pointer]
+          - generic [ref=e82]:
+            - checkbox "模拟模式" [checked] [ref=e83]
+            - text: 模拟模式
+          - generic [ref=e84] [cursor=pointer]:
+            - checkbox "执行开关 关闭"
+            - generic [ref=e86]: 执行开关 关闭
+    - generic [ref=e88]: 当天事件视图（事实层）
+  - button "/agentation v1.3.2 Output Detail Standard Marker Colour Purple Blue Cyan Green Yellow Orange Red Clear after output Block page interactions" [ref=e90] [cursor=pointer]:
+    - img [ref=e92]
+    - generic:
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button:
+          - img
+    - generic:
+      - generic:
+        - generic: /agentation
+        - generic: v1.3.2
+        - button "Switch to light mode":
+          - img
+      - generic:
+        - generic:
+          - generic:
+            - text: Output Detail
+            - generic:
+              - img
+          - button "Standard":
+            - generic: Standard
+      - generic:
+        - generic: Marker Colour
+        - generic:
+          - generic:
+            - generic "Purple"
+          - generic:
+            - generic "Blue"
+          - generic:
+            - generic "Cyan"
+          - generic:
+            - generic "Green"
+          - generic:
+            - generic "Yellow"
+          - generic:
+            - generic "Orange"
+          - generic:
+            - generic "Red"
+      - generic:
+        - generic:
+          - checkbox "Clear after output"
+          - generic:
+            - text: Clear after output
+            - generic:
+              - img
+        - generic:
+          - checkbox "Block page interactions"
+          - generic: Block page interactions

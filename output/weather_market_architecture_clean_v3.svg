@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1400" viewBox="0 0 1400 1400">
+  <defs>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#334155"/>
+    </marker>
+    <marker id="pArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7c3aed"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 800 32px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
+      .sub { font: 500 17px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #475569; }
+      .box { fill: #fff; stroke-width: 2.4; rx: 16; filter: url(#shadow); }
+      .label { font: 800 21px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
+      .text { font: 500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #334155; }
+      .small { font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #475569; }
+      .mono { font: 650 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; fill: #1f2937; }
+      .blue { stroke: #2563eb; }
+      .cyan { stroke: #0891b2; }
+      .purple { stroke: #7c3aed; }
+      .orange { stroke: #ea580c; }
+      .green { stroke: #059669; }
+      .slate { stroke: #64748b; }
+      .line { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #7c3aed; stroke-width: 2.4; fill: none; stroke-dasharray: 7 7; marker-end: url(#pArrow); }
+      .chip { fill: #fff; stroke: #2563eb; stroke-width: 1.6; rx: 8; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1400" height="1400"/>
+  <text class="title" x="56" y="55">天气市场自动交易架构流程图（真实代码库）</text>
+  <text class="sub" x="56" y="86">主链路自上而下；launchd、校准、UI 都是旁路，不混入下单箭头。</text>
+
+  <rect x="56" y="118" width="1288" height="96" rx="16" fill="#eff6ff" stroke="#2563eb" stroke-width="2" stroke-dasharray="8 7"/>
+  <text class="label" x="86" y="153">launchd 托管层：只负责启动 / 调度</text>
+  <rect class="chip" x="86" y="168" width="340" height="30"/>
+  <text class="mono" x="104" y="189">market_ws / refresh_1m / model_scan</text>
+  <rect class="chip" x="456" y="168" width="385" height="30"/>
+  <text class="mono" x="474" y="189">auto_trade_entry_1m / trade_engine / watcher</text>
+  <rect class="chip" x="872" y="168" width="168" height="30"/>
+  <text class="mono" x="890" y="189">weather.ui</text>
+  <rect class="chip" x="1072" y="168" width="170" height="30"/>
+  <text class="mono" x="1090" y="189">hourly / daily</text>
+
+  <!-- Main flow -->
+  <rect class="box blue" x="410" y="252" width="580" height="92"/>
+  <text class="label" x="440" y="286">1. 外部输入</text>
+  <text class="text" x="440" y="318">Polymarket WS、Gamma / CLOB REST、天气模型与站点观测</text>
+
+  <path class="line" d="M700 344 L700 388"/>
+  <rect class="box cyan" x="410" y="388" width="580" height="120"/>
+  <text class="label" x="440" y="422">2. 采集 / 归一化</text>
+  <text class="mono" x="440" y="453">market_ws_listener.py</text>
+  <text class="mono" x="700" y="453">market_refresh_1m.sh</text>
+  <text class="mono" x="440" y="484">model_scan.sh</text>
+  <text class="mono" x="700" y="484">scan_weather_market.py</text>
+
+  <path class="line" d="M700 508 L700 552"/>
+  <rect class="box purple" x="410" y="552" width="580" height="180"/>
+  <text class="label" x="440" y="586">3. SSOT 数据层：data/archive.db</text>
+  <text class="mono" x="440" y="618">event_fact_latest</text>
+  <text class="small" x="700" y="618">UI / 交易共用主快照</text>
+  <text class="mono" x="440" y="648">event_market_ticks</text>
+  <text class="small" x="700" y="648">盘口快照</text>
+  <text class="mono" x="440" y="678">event_runs / market_tokens</text>
+  <text class="small" x="700" y="678">规则与 token 映射</text>
+  <text class="mono" x="440" y="708">auto_trade_decisions / auto_orders / edge_trades</text>
+
+  <rect class="box purple" x="56" y="572" width="285" height="138"/>
+  <text class="label" x="86" y="606">校准 / 复盘旁路</text>
+  <text class="mono" x="86" y="636">q_calibrated_writeback</text>
+  <text class="mono" x="86" y="664">feedback_loop_hourly</text>
+  <text class="mono" x="86" y="692">daily_scan</text>
+  <path class="dash" d="M341 641 L410 641"/>
+
+  <rect class="box slate" x="1058" y="572" width="286" height="138"/>
+  <text class="label" x="1088" y="606">UI 只读旁路</text>
+  <text class="mono" x="1088" y="636">event_fact_latest</text>
+  <text class="mono" x="1088" y="664">auto_trade_decisions</text>
+  <text class="mono" x="1088" y="692">auto_orders / trades</text>
+  <path class="line" d="M990 641 L1058 641"/>
+
+  <path class="line" d="M700 732 L700 776"/>
+  <rect class="box orange" x="410" y="776" width="580" height="160"/>
+  <text class="label" x="440" y="810">4. 交易队列与决策</text>
+  <text class="mono" x="440" y="842">auto_trade_entry_1m.sh</text>
+  <text class="small" x="700" y="842">生成 auto_trade_jobs</text>
+  <text class="mono" x="440" y="872">trade_engine_loop.sh</text>
+  <text class="small" x="700" y="872">消费任务</text>
+  <text class="mono" x="440" y="902">run_auto_trades_for_date / execute_auto_trades</text>
+  <text class="small" x="440" y="925">入场：edge_tradeability LCB；退出：hold_edge_realizable + risk。</text>
+
+  <path class="line" d="M700 936 L700 980"/>
+  <rect class="box green" x="410" y="980" width="580" height="120"/>
+  <text class="label" x="440" y="1014">5. CLOB V2 执行</text>
+  <text class="mono" x="440" y="1046">scripts/polymarket_order.mjs</text>
+  <text class="text" x="440" y="1076">余额 / allowance、限价单、撤单、open orders / positions 查询</text>
+
+  <path class="line" d="M700 1100 L700 1144"/>
+  <rect class="box slate" x="410" y="1144" width="580" height="128"/>
+  <text class="label" x="440" y="1178">6. 回写、观测与展示</text>
+  <text class="mono" x="440" y="1210">ui/server.py</text>
+  <text class="mono" x="700" y="1210">/api/ui_snapshot</text>
+  <text class="mono" x="440" y="1240">/api/auto-trade-health</text>
+  <text class="mono" x="700" y="1240">/api/auto-trade-criteria</text>
+
+  <rect x="56" y="1310" width="1288" height="58" rx="14" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+  <text class="small" x="86" y="1335">读图顺序：中间主链路自上而下。左侧只给 SSOT 供数，右侧只展示；二者都不参与实时下单判断。</text>
+  <text class="small" x="86" y="1360">硬口径：前端只读 archive.db；执行阻断原因唯一来源是 auto_trade_decisions。</text>
+</svg>

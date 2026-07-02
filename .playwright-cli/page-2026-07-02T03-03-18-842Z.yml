@@ -1,0 +1,50 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - generic [ref=e5]: 刷新失败，请稍后重试
+  - button "返回顶部"
+  - banner [ref=e6]:
+    - generic [ref=e9]:
+      - navigation "页面导航" [ref=e10]:
+        - generic [ref=e11]:
+          - link "事件视图" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "更新/健康" [ref=e13] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+        - link "顶部" [ref=e15] [cursor=pointer]:
+          - /url: "#top"
+      - generic [ref=e16]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e18] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e19]: 总开关
+          - generic [ref=e20]: 开启
+        - generic [ref=e23]:
+          - button "同步" [ref=e24] [cursor=pointer]
+          - button "模型" [ref=e25] [cursor=pointer]
+          - button "盘口" [ref=e26] [cursor=pointer]
+          - button "刷新" [ref=e27] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e28] [cursor=pointer]
+          - button "日志" [ref=e30] [cursor=pointer]
+          - group [ref=e31]:
+            - generic "控制中心" [ref=e32] [cursor=pointer]: 控
+  - main [ref=e33]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e38]: 自动交易执行
+          - generic [ref=e39]: —
+        - generic [ref=e40]:
+          - generic [ref=e41]: 同步—
+          - generic [ref=e43]:
+            - strong [ref=e44]: 成交
+            - text: 暂无
+      - generic [ref=e46]:
+        - button "触发一次" [ref=e47] [cursor=pointer]
+        - generic [ref=e48] [cursor=pointer]:
+          - checkbox "关闭"
+          - generic [ref=e50]: 关闭
+    - generic [ref=e51]:
+      - generic [ref=e52]:
+        - text: 当前/未来事件视图（事实层）
+        - generic [ref=e53]: 加载中…
+      - generic [ref=e55]: 事件加载失败，请稍后重试。

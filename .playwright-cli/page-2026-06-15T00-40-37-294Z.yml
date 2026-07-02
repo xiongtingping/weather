@@ -1,0 +1,90 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - navigation "页面导航" [ref=e6]:
+        - generic [ref=e7]:
+          - link "事件视图" [ref=e8] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "策略配置" [ref=e9] [cursor=pointer]:
+            - /url: "#strategySection"
+          - link "更新/健康" [ref=e10] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+        - link "顶部" [ref=e12] [cursor=pointer]:
+          - /url: "#top"
+      - generic [ref=e13]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e15] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e16]: 总开关
+          - generic [ref=e17]: 开启
+        - generic [ref=e20]:
+          - button "同步" [ref=e21] [cursor=pointer]
+          - button "模型" [ref=e22] [cursor=pointer]
+          - button "盘口" [ref=e23] [cursor=pointer]
+          - button "刷新" [ref=e24] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e25] [cursor=pointer]
+          - button "日志" [ref=e27] [cursor=pointer]
+          - group [ref=e28]:
+            - generic "控制中心" [ref=e29] [cursor=pointer]: 控
+  - main [ref=e30]:
+    - generic [ref=e31]:
+      - status [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]: 新鲜度
+            - generic [ref=e36]: 等待数据…时效口径
+            - generic [ref=e37]:
+              - generic [ref=e39]:
+                - generic [ref=e40]: 模型
+                - generic [ref=e41]: —
+              - generic [ref=e44]:
+                - generic [ref=e45]: 盘口
+                - generic [ref=e46]: —
+          - generic [ref=e48]:
+            - generic [ref=e49]:
+              - generic [ref=e50] [cursor=pointer]:
+                - generic [ref=e51]: 健康检查
+                - generic [ref=e52]: 展开
+                - button "复制" [ref=e53]
+              - generic: —
+            - group [ref=e54]:
+              - generic "追涨触发统计" [ref=e55] [cursor=pointer]:
+                - generic [ref=e56]: 追涨触发统计
+      - generic [ref=e57]:
+        - generic [ref=e59]: 自动买卖检测
+        - generic [ref=e60]: —
+        - generic [ref=e61]: —
+        - generic [ref=e63]: 事件口径
+        - generic [ref=e64]:
+          - generic [ref=e65]: 自动交易：—
+          - generic [ref=e66]: 成交同步：—
+          - generic [ref=e67]: 最后触发：—
+      - generic [ref=e68]:
+        - generic [ref=e69]:
+          - generic [ref=e70]:
+            - generic "页面数据状态：刷新中 · 06-15 08:40" [ref=e71]:
+              - generic [ref=e73]: 刷新中
+              - generic "页面数据最后刷新/失败时间" [ref=e74]: 06-15 08:40
+            - generic [ref=e76]: 加载中...
+          - generic [ref=e78]: LCB全市场 开 1.00x
+        - generic [ref=e79]:
+          - button "auto_trade_watcher" [ref=e80] [cursor=pointer]
+          - button "残留清理" [ref=e81] [cursor=pointer]
+          - generic [ref=e82]:
+            - checkbox "模拟模式" [checked] [ref=e83]
+            - text: 模拟模式
+          - generic [ref=e84] [cursor=pointer]:
+            - checkbox "自动交易 关闭"
+            - generic [ref=e86]: 自动交易 关闭
+    - generic [ref=e87]:
+      - generic [ref=e88]: 自动交易策略配置
+      - generic [ref=e90]:
+        - generic [ref=e91]:
+          - generic [ref=e92]: 策略配置面板
+          - button "展开" [ref=e93] [cursor=pointer]
+        - generic [ref=e94]: 默认折叠 · 展开后可调整自动交易参数
+    - generic [ref=e96]:
+      - text: 当天事件视图（事实层）
+      - generic [ref=e97]: 加载中…

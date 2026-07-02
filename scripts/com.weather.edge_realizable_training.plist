@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.weather.edge_realizable_training</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/xiong/weather/scripts/auto_train_edge_realizable.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/xiong/weather/logs/edge_realizable_training.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/xiong/weather/logs/edge_realizable_training_error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/xiong/weather</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

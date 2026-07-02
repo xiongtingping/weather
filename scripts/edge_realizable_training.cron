@@ -1,0 +1,22 @@
+# edge_realizable 校准模型自动训练 - cron 配置
+#
+# 每周日凌晨 3:00 自动训练
+#
+# 安装方法：
+#   crontab -e
+#   添加以下行：
+#   0 3 * * 0 /Users/xiong/weather/scripts/auto_train_edge_realizable.sh >> /Users/xiong/weather/logs/cron_edge_realizable.log 2>&1
+#
+# 或使用 launchd（推荐 macOS）：
+#   cp com.weather.edge_realizable_training.plist ~/Library/LaunchAgents/
+#   launchctl load ~/Library/LaunchAgents/com.weather.edge_realizable_training.plist
+
+# Cron 表达式说明：
+# 分 时 日 月 周
+# 0  3  *  *  0    = 每周日 3:00
+# 0  3  *  *  *    = 每天 3:00
+# 0  3  1  *  *    = 每月1号 3:00
+# 0  */6 * *  *    = 每6小时
+
+# 推荐配置：
+0 3 * * 0 /Users/xiong/weather/scripts/auto_train_edge_realizable.sh >> /Users/xiong/weather/logs/cron_edge_realizable.log 2>&1

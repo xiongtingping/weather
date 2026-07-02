@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.weather.auto_trade_entry_1m</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PM_EDGE_REALIZABLE_V2_ENABLED</key>
+      <string>1</string>
+      <key>PM_EDGE_REALIZABLE_V2_GATE_ENTRY</key>
+      <string>1</string>
+    </dict>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/Users/xiong/weather/scripts/auto_trade_entry_1m.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Entry loop is intentionally periodic, not KeepAlive. -->
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>SoftResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/xiong/weather</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/xiong/weather/data/logs/auto_trade_entry_1m.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/xiong/weather/data/logs/auto_trade_entry_1m.err.log</string>
+  </dict>
+</plist>

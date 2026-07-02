@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>最高温度跟单模拟（Paper）</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1116; color: #e8ecf2; }
+    .wrap { padding: 16px; max-width: 1400px; margin: 0 auto; }
+    .h1 { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 12px; color: #9aa4b2; }
+    .btn { border: 1px solid #30384a; background: #1a2233; color: #d8e2f0; border-radius: 8px; padding: 8px 10px; cursor: pointer; text-decoration: none; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .card { background: #151a25; border: 1px solid #293041; border-radius: 10px; padding: 10px; }
+    .k { font-size: 12px; color: #95a2b8; margin-bottom: 6px; }
+    .v { font-size: 18px; font-weight: 700; }
+    .warn { color: #ffd166; }
+    .good { color: #7ce38b; }
+    .bad { color: #ff7d7d; }
+    .signal { margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #253046; padding: 6px 4px; text-align: left; }
+    th { color: #9eb0cd; font-weight: 600; position: sticky; top: 0; background: #111623; }
+    .table-box { border: 1px solid #263042; border-radius: 10px; overflow: auto; max-height: 62vh; background: #111623; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .muted { color: #9aa4b2; }
+    .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .input { background: #101826; border: 1px solid #2b3650; color: #dbe7ff; border-radius: 8px; padding: 7px 8px; width: 88px; }
+    .small { font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="h1">
+      <div>
+        <div class="title">最高温度临近结算分布策略 · 跟单模拟（Paper）</div>
+        <div class="sub">仅验证策略，不真实下单；按你的账户金额分配每笔模拟仓位</div>
+      </div>
+      <div class="toolbar">
+        <label class="small muted">days <input id="days" class="input" type="number" min="7" max="365" value="153" /></label>
+        <label class="small muted">limit <input id="limit" class="input" type="number" min="20" max="500" value="120" /></label>
+        <button id="btnRefresh" class="btn">刷新</button>
+        <a class="btn" href="/index.html">返回主面板</a>
+      </div>
+    </div>
+
+    <div id="signal" class="card signal"></div>
+
+    <div id="summaryRow" class="row"></div>
+
+    <div class="card" style="margin-bottom:10px;">
+      <div class="k">模拟配置</div>
+      <div id="cfg" class="small muted"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:10px;">
+      <div class="k">持仓估值（Paper）</div>
+      <div id="positions" class="small"></div>
+    </div>
+
+    <div class="toolbar">
+      <button id="btnPrev" class="btn">上一页</button>
+      <button id="btnNext" class="btn">下一页</button>
+      <span id="pager" class="small muted"></span>
+      <span id="asof" class="small muted" style="margin-left:auto"></span>
+    </div>
+
+    <div class="table-box">
+      <table>
+        <thead>
+          <tr>
+            <th>时间(UTC)</th>
+            <th>事件</th>
+            <th>Outcome</th>
+            <th>源动作</th>
+            <th>源价</th>
+            <th>P_true(YES)</th>
+            <th>Edge</th>
+            <th>模拟名义</th>
+            <th>模拟数量</th>
+            <th>状态</th>
+            <th>买卖价差PnL</th>
+            <th>累计PnL</th>
+            <th>近结算</th>
+          </tr>
+        </thead>
+        <tbody id="orders"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const state = { page: 1, limit: 120, days: 153, pages: 1 };
+
+    const money = (v) => Number.isFinite(v) ? v.toFixed(2) : '--';
+    const num = (v, d = 4) => Number.isFinite(v) ? v.toFixed(d) : '--';
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function card(k, v, cls='') {
+      return `<div class="card"><div class="k">${esc(k)}</div><div class="v ${cls}">${esc(v)}</div></div>`;
+    }
+
+    async function load(refresh=false) {
+      state.days = Number(document.getElementById('days').value || 153);
+      state.limit = Number(document.getElementById('limit').value || 120);
+      const q = new URLSearchParams({ days: String(state.days), page: String(state.page), limit: String(state.limit) });
+      if (refresh) q.set('refresh', '1');
+      const res = await fetch(`/api/london-follow-sim?${q.toString()}`);
+      const data = await res.json();
+      render(data);
+    }
+
+    function render(data) {
+      const ok = !!data.ok;
+      const signal = data.signal || {};
+      const result = data.result || {};
+      const counts = data.counts || {};
+      const account = data.account || {};
+      const cfg = data.config || {};
+      const pg = data.pagination || {};
+      const edgePass = Number(counts.edge_gate_passed || 0);
+      const edgeFail = Number(counts.edge_gate_failed || 0);
+      state.pages = Number(pg.pages || 1);
+
+      const biasClass = signal.bias === 'short_yes' ? 'warn' : signal.bias === 'long_yes' ? 'good' : '';
+      document.getElementById('signal').innerHTML = ok
+        ? `<div class="k">短线提示（${esc(String(signal.window_hours || '--'))}h）</div>
+           <div class="v ${biasClass}">${esc(signal.message || '—')}</div>
+           <div class="small muted">confidence=${num(Number(signal.confidence),3)} | net_short_yes=${money(Number(signal.net_short_yes_notional))}</div>`
+        : `<div class="v bad">加载失败：${esc(data.error || 'unknown')}</div>`;
+
+      document.getElementById('summaryRow').innerHTML = [
+        card('模拟订单', `${counts.sim_orders || 0}`),
+        card('Filled / Skipped', `${counts.filled || 0} / ${counts.skipped || 0}`),
+        card('Edge通过/拦截', `${edgePass} / ${edgeFail}`, edgeFail > 0 ? 'warn' : ''),
+        card('已实现PnL', money(Number(result.realized_pnl)), Number(result.realized_pnl) >= 0 ? 'good' : 'bad'),
+        card('未实现PnL(估)', money(Number(result.unrealized_pnl_est)), Number(result.unrealized_pnl_est) >= 0 ? 'good' : 'bad'),
+        card('总PnL(估)', money(Number(result.total_pnl_est)), Number(result.total_pnl_est) >= 0 ? 'good' : 'bad'),
+        card('每笔模拟名义', money(Number(account.sim_notional_per_order))),
+      ].join('');
+
+      document.getElementById('cfg').textContent = `enabled=${cfg.enabled} | mode=${cfg.mode} | all_highest_temp=${cfg.all_highest_temp} | lookback_days=${cfg.lookback_days} | near_settlement=${cfg.require_near_settlement} (${cfg.near_before_hours}h / ${cfg.near_after_hours}h) | edge_cost=${cfg.edge_cost_buffer} | edge_require_prob=${cfg.edge_require_prob} | edge_apply_yes=${cfg.edge_apply_yes} | no_price_min=${cfg.no_price_min} | yes_price_max=${cfg.yes_price_max} | balance_pct=${cfg.balance_pct} | fixed=${cfg.order_fixed_usdc} | min/max=${cfg.order_min_usdc}/${cfg.order_max_usdc}`;
+
+      const pos = Array.isArray(data.open_positions) ? data.open_positions : [];
+      document.getElementById('positions').innerHTML = pos.length
+        ? pos.slice(0, 16).map((p) => `${esc(p.event_key)} | ${esc(p.outcome)} | qty=${num(Number(p.qty),3)} | avg=${num(Number(p.avg_price),4)} | mark=${num(Number(p.mark_price_est),4)} | unreal=${money(Number(p.unrealized_pnl_est))}`).join('<br/>')
+        : '<span class="muted">无持仓</span>';
+
+      const rows = Array.isArray(data.orders) ? data.orders : [];
+      const tbody = document.getElementById('orders');
+      tbody.innerHTML = rows.map((r) => {
+        const rp = Number(r.realized_pnl || 0);
+        const cum = Number(r.realized_pnl_cum || 0);
+        const near = r.near_settlement ? `Y(${num(Number(r.hours_to_settlement),1)}h)` : `N(${num(Number(r.hours_to_settlement),1)}h)`;
+        const edge = Number(r.edge_value);
+        const pTrue = Number(r.p_yes_true);
+        return `<tr>
+          <td class="mono">${esc(r.source_time_utc || '')}</td>
+          <td class="mono">${esc(r.event_key || '')}</td>
+          <td>${esc(r.outcome || '')}</td>
+          <td>${esc(r.source_side || '')}</td>
+          <td>${num(Number(r.source_price),4)}</td>
+          <td>${Number.isFinite(pTrue) ? num(pTrue,4) : '--'}</td>
+          <td class="${Number.isFinite(edge) ? (edge >= 0 ? 'good' : 'bad') : ''}">${Number.isFinite(edge) ? num(edge,4) : '--'}</td>
+          <td>${money(Number(r.sim_notional_filled || r.sim_notional_target))}</td>
+          <td>${num(Number(r.sim_size_filled || r.sim_size_target),4)}</td>
+          <td>${esc(r.status || '')}${r.skip_reason ? ` (${esc(r.skip_reason)})` : ''}${r.edge_gate_reason ? ` · ${esc(r.edge_gate_reason)}` : ''}</td>
+          <td class="${rp >= 0 ? 'good':'bad'}">${money(rp)}</td>
+          <td class="${cum >= 0 ? 'good':'bad'}">${money(cum)}</td>
+          <td>${esc(near)}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('pager').textContent = `page ${pg.page || 1} / ${pg.pages || 1} · total ${pg.total || 0}`;
+      document.getElementById('asof').textContent = `as_of: ${data.as_of || '--'}${data.cached ? ' (cache)' : ''}`;
+      document.getElementById('btnPrev').disabled = (state.page <= 1);
+      document.getElementById('btnNext').disabled = (state.page >= state.pages);
+    }
+
+    document.getElementById('btnRefresh').addEventListener('click', async () => {
+      state.page = 1;
+      await load(true);
+    });
+    document.getElementById('btnPrev').addEventListener('click', async () => {
+      if (state.page > 1) state.page -= 1;
+      await load(false);
+    });
+    document.getElementById('btnNext').addEventListener('click', async () => {
+      if (state.page < state.pages) state.page += 1;
+      await load(false);
+    });
+
+    setInterval(() => { load(false).catch(() => {}); }, 15000);
+    load(false).catch((err) => {
+      document.getElementById('signal').innerHTML = `<div class="v bad">加载失败：${esc(err?.message || err)}</div>`;
+    });
+  </script>
+</body>
+</html>

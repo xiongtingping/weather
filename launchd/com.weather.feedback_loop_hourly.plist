@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.weather.feedback_loop_hourly</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>-lc</string>
+      <string>/Users/xiong/weather/scripts/feedback_loop_hourly.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PM_OPTIMIZER_AUTO_APPLY</key>
+      <string>1</string>
+    </dict>
+    <key>SoftResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>8192</integer>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>/Users/xiong/weather</string>
+    <key>StandardOutPath</key>
+    <string>/Users/xiong/weather/data/logs/feedback_loop_hourly.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/xiong/weather/data/logs/feedback_loop_hourly.err.log</string>
+  </dict>
+</plist>
