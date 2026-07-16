@@ -9,7 +9,8 @@ from typing import Dict, List, Mapping, Tuple
 ROLE_PRIOR = "prior"
 ROLE_CALIBRATION = "calibration"
 ROLE_LIKELIHOOD = "likelihood/evidence"
-ROLE_MODEL_EVIDENCE = "model_evidence"
+ROLE_FORECAST_WEAK_LIKELIHOOD = "forecast_weak_likelihood"
+ROLE_MODEL_EVIDENCE = ROLE_FORECAST_WEAK_LIKELIHOOD
 ROLE_BACKGROUND = "background_prior/residual"
 ROLE_DISPLAY_TRADEABILITY = "display/tradeability"
 
@@ -58,7 +59,7 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         contract_role=ROLE_PRIOR,
         implemented_roles=(ROLE_PRIOR,),
         usage="Polymarket settlement display page, not a sensor origin; build historical bucket hit distribution only after settlement_actual is parsed from the finalized page.",
-        modules=("bayesian_probability_runtime.build_historical_bayesian_context",),
+        modules=("posterior_pipeline_entry_runtime.build_historical_bayesian_context",),
         fields=(
             "event_runs.settlement_actual",
             "event_daily_temps.settlement_actual",
@@ -108,7 +109,7 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         contract_role=ROLE_CALIBRATION,
         implemented_roles=(ROLE_CALIBRATION,),
         usage="Adjust active model weights using historical Brier performance.",
-        modules=("bayesian_probability_runtime.build_historical_bayesian_context",),
+        modules=("posterior_pipeline_entry_runtime.build_historical_bayesian_context",),
         fields=(
             "q_bayes_model_weight_multipliers",
             "q_bayes_bias_correction_enabled",
@@ -128,13 +129,14 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         modules=(
             "scan_weather_market.fetch_observed_nowcast_value",
             "scan_weather_market._build_weather_likelihood_features",
-            "bayesian_probability_runtime.apply_bayesian_probability_update",
+            "posterior_pipeline_entry_runtime.apply_bayesian_probability_update",
         ),
         fields=(
             "q_observed_nowcast",
             "observed_nowcast_value",
             "weather_likelihood_features.observed_temp",
-            "q_bayes_nowcast_evidence",
+            "metar_strong_likelihood.observed_nowcast_anchor",
+            "layer_contributions.metar_strong_likelihood",
             "wu_settlement_page",
             "twc_provider",
             "zuuu_metar_observed",
@@ -211,7 +213,8 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         fields=(
             "weather_likelihood_features",
             "weather_likelihood_feature_quality",
-            "q_bayes_physical_likelihood_evidence",
+            "metar_strong_likelihood.state_probs",
+            "metar_strong_likelihood.remaining_warming_by_state",
             "q_bayes_physical_likelihood_prob",
             "q_bayes_physical_likelihood_hard_reasons",
             "q_bayes_physical_likelihood_component_groups",
@@ -338,7 +341,7 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         temporal_class="realtime",
         contract_role=ROLE_LIKELIHOOD,
         implemented_roles=(ROLE_LIKELIHOOD,),
-        usage="Highest-priority D0 realization evidence: current temperature, observed same-day max, 24h/12h/6h/3h/2h/1h/45m/30m/15m/10m/5m/3m/2m/1m temperature momentum, warming rate, and distance to the local peak window decide whether physical heating potential is actually being realized. Clear sky/radiation potential cannot amplify high-temp buckets when this trajectory or momentum is weak, flat, stale, or contradicted.",
+        usage="Highest-priority D0 realization evidence: current temperature, observed same-day max, full-day METAR peak platform, multi-horizon momentum, dewpoint/cloud/rain/wind/pressure state, and a dynamically updated peak-time posterior decide whether physical heating potential is actually being realized. The forecast peak window is weak timing context only and can neither cut off late warming support nor finalize the observed daily peak.",
         modules=(
             "scan_weather_market.fetch_zuuu_metar_raw_awc_features",
             "scan_weather_market._build_weather_likelihood_features",
@@ -369,6 +372,9 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
             "temperature_momentum_sustained_warming",
             "observation_hour_local",
             "hours_to_peak_window",
+            "predicted_peak_time_prior",
+            "predicted_peak_time_posterior",
+            "observed_peak_platform",
             "peak_estimator_mu_c",
             "high_temp_amplification_guard",
         ),
@@ -381,6 +387,9 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
             "warming_rate_must_be_positive_and_sustained",
             "flat_or_falling_trajectory_blocks_high_temp_amplification",
             "stale_trajectory_cannot_confirm_realization",
+            "forecast_peak_window_is_weak_prior_only",
+            "forecast_peak_window_cannot_finalize_daily_peak",
+            "observed_peak_platform_uses_full_canonical_metar_day",
             "current_temp_gap_guard_current_lt_soft_forecast_minus_2_and_rise_lte_0",
         ),
         evidence_class="observed_realization",
@@ -396,7 +405,7 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         modules=(
             "scan_weather_market.fetch_zuuu_metar_raw_awc_features",
             "scan_weather_market._build_weather_likelihood_features",
-            "bayesian_probability_runtime.apply_bayesian_probability_update",
+            "posterior_pipeline_entry_runtime.apply_bayesian_probability_update",
         ),
         fields=(
             "zuuu_metar_raw_awc_latest_raw",
@@ -476,8 +485,8 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
             "weather_com_forecast_peak_source",
             "settlement_source_forecast_peak_c",
             "wu_forecast_peak_c",
-            "q_bayes_wu_forecast_evidence",
-            "q_bayes_settlement_forecast_evidence",
+            "q_bayes_weather_com_forecast_prob",
+            "forecast_weak_likelihood.source_distributions.weather_com_forecast",
         ),
         safeguards=(
             "provider_dedup_required",
@@ -504,7 +513,8 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
             "wu_forecast_peak",
             "wu_forecast_peak_c",
             "settlement_source_forecast_peak_c",
-            "q_bayes_wu_forecast_evidence",
+            "q_bayes_wu_forecast_prob",
+            "forecast_weak_likelihood.source_distributions.wu_forecast",
             "weather_likelihood_features.wu_forecast_peak_c",
         ),
         safeguards=(
@@ -526,16 +536,16 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         usage="Candidate independent strong-soft airport forecast peak channel P_taf_peak; keep disabled until AWC/WU quality alerts are visible and created_at walk-forward calibration approves a non-zero weight.",
         modules=(
             "scan_weather_market.fetch_zuuu_taf_forecast_peak_metrics",
-            "bayesian_probability_runtime.apply_bayesian_probability_update",
+            "posterior_pipeline_entry_runtime.apply_bayesian_probability_update",
             "scripts.backtest_ensemble_qm_bucket_probabilities",
         ),
         fields=(
             "taf_forecast_peak_c",
             "taf_forecast_peak_at",
             "taf_forecast_peak_raw",
-            "q_bayes_taf_peak_evidence",
             "q_bayes_taf_peak_prob",
             "q_bayes_taf_peak_source",
+            "forecast_weak_likelihood.source_distributions.taf_forecast_peak",
         ),
         safeguards=(
             "strong_soft_forecast_only",
@@ -557,14 +567,15 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         usage="Supply P_climo_regime as a slow-variable background layer, weak prior shrinkage, regime label, calibration stratification feature, and risk gate input using visible historical Tmax baseline plus a Sichuan Basin heat-mechanism model: subtropical-high/warm-ridge proxy, low-level warm airmass, clear-sky shortwave radiation, boundary-layer growth, weak ventilation, humidity/cloud/precip suppression, southwest-vortex precip regime, and post-cool rebound setup when available. It is not a strong likelihood, does not decide the target bucket alone, is capped by single-bucket pp impact, and is zero-weighted within 2h of the local peak window.",
         modules=(
             "climo_regime_runtime.load_climo_regime_context",
-            "bayesian_probability_runtime.apply_bayesian_probability_update",
+            "posterior_pipeline_entry_runtime.apply_bayesian_probability_update",
             "scripts.backtest_ensemble_qm_bucket_probabilities",
         ),
         fields=(
             "climo_regime_features",
             "q_bayes_climo_regime_prob",
-            "q_bayes_climo_regime_evidence",
-            "q_bayes_climo_regime_evidence_raw",
+            "prior_distribution",
+            "layer_contributions.prior",
+            "root_prior_weather_type_adjustment",
             "q_bayes_climo_regime_pp_delta",
             "q_bayes_climo_regime_pp_cap",
             "q_bayes_climo_regime_pp_max_delta",
@@ -621,12 +632,13 @@ BAYESIAN_DATA_ROLE_CONTRACT: Tuple[BayesianDataRole, ...] = (
         contract_role=ROLE_MODEL_EVIDENCE,
         implemented_roles=(ROLE_MODEL_EVIDENCE,),
         usage="Contribute the weighted per-model bucket distribution as explicit model evidence.",
-        modules=("bayesian_probability_runtime.apply_bayesian_probability_update",),
+        modules=("posterior_pipeline_entry_runtime.apply_bayesian_probability_update",),
         fields=(
             "per_model_q",
             "active_models",
             "q_model_round",
-            "q_bayes_model_evidence",
+            "forecast_weak_likelihood.source_distributions.model_ensemble",
+            "layer_contributions.forecast_weak_likelihood",
         ),
         safeguards=("dirichlet_model_evidence_only", "no_market_quote_substitution"),
         evidence_class="model_distribution",

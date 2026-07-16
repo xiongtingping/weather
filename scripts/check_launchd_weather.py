@@ -51,12 +51,23 @@ WEATHER_LEGACY_MONITORS = {
     "com.weather.auto_trade_watcher",
     "system/com.weather.auto_trade_watcher",
     "system/com.weather.monitor_daemon",
+    "system/com.weather.target_rule_shadow_capture",
+    "system/com.weather.market_finality_shadow_capture",
+    "system/com.weather.physical_final_source_shadow_capture",
+    "system/com.weather.settlement_final_source_shadow_capture",
+    "com.weather.amsc_p10_shadow_source_sidecar",
+    "gui/501/com.weather.amsc_p10_shadow_source_sidecar",
 }
 WEATHER_LEGACY_MONITOR_PLISTS = {
     LAUNCH_DAEMONS / "com.weather.auto_trade_watcher.plist",
     LAUNCH_DAEMONS / "com.weather.monitor_daemon.plist",
     LAUNCH_AGENTS / "com.weather.auto_trade_watcher.plist",
     LAUNCH_AGENTS / "com.weather.monitor_daemon.plist",
+    LAUNCH_DAEMONS / "com.weather.target_rule_shadow_capture.plist",
+    LAUNCH_DAEMONS / "com.weather.market_finality_shadow_capture.plist",
+    LAUNCH_DAEMONS / "com.weather.physical_final_source_shadow_capture.plist",
+    LAUNCH_DAEMONS / "com.weather.settlement_final_source_shadow_capture.plist",
+    LAUNCH_AGENTS / "com.weather.amsc_p10_shadow_source_sidecar.plist",
 }
 
 WEATHER_SCHEDULED = {
@@ -1025,8 +1036,8 @@ def _audit_refresh_coordinator_config() -> dict[str, Any]:
             "weather_refresh_register_entrypoint \"model_scan\" \"model\"",
             "weather_refresh_skip_if_live_ssot \"model_scan\"",
             "weather_scan_lane_acquire \"model_scan\"",
-            "weather_refresh_db_writer_acquire \"model_scan\"",
-            "weather_refresh_db_writer_acquire \"model_scan_awc_fact_refresh\"",
+            "coordinator_child_writer_boundary:model_scan",
+            "coordinator_child_writer_boundary:model_scan_awc_fact_refresh",
             "weather_refresh_awc_refresh_allowed \"model_scan_awc_fact_refresh\"",
         ],
         "scripts/market_refresh_1m.sh": [
@@ -1036,7 +1047,7 @@ def _audit_refresh_coordinator_config() -> dict[str, Any]:
             "weather_scan_lane_acquire \"market_refresh\"",
             "weather_refresh_db_writer_acquire \"market_refresh\"",
             "weather_scan_lane_acquire \"weather_discovery\"",
-            "weather_refresh_db_writer_acquire \"market_refresh_discovery\"",
+            "coordinator_child_writer_boundary:market_refresh_discovery",
             "PM_WEATHER_DISCOVERY_KICK_MODEL_SCAN",
         ],
         "scripts/market_refresh_frequent.sh": [
@@ -1064,7 +1075,7 @@ def _audit_refresh_coordinator_config() -> dict[str, Any]:
             "weather_refresh_register_entrypoint \"model_scan_hourly\" \"model\"",
             "weather_refresh_skip_if_live_ssot \"model_scan_hourly\"",
             "weather_scan_lane_acquire \"model_scan_hourly\"",
-            "weather_refresh_db_writer_acquire \"model_scan_hourly\"",
+            "Do not hold the archive writer lock around the network/model scan",
         ],
         "scripts/daily_scan_and_settlement.sh": [
             "weather_refresh_coordinator.sh",

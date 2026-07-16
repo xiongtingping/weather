@@ -1,3 +1,16 @@
+---
+status: accepted
+authority: L2
+owner: weather-system
+effective_from: 2026-07-11
+implementation_symbols:
+  - scripts/lib/weather_refresh_coordinator.sh
+  - scripts/check_launchd_weather.py
+verification_gates:
+  - python3 scripts/check_launchd_weather.py
+last_verified_commit: working-tree-2026-07-11
+---
+
 # Refresh Coordinator
 
 本系统的刷新任务必须先经过 `scripts/lib/weather_refresh_coordinator.sh` 仲裁，避免 live SSOT、AWC、模型扫描、市场刷新、数据源刷新和 facts materialize 同时争写 `data/archive.db`。
@@ -45,6 +58,7 @@
 1. 入口先调用 `weather_refresh_skip_if_live_ssot <owner>`；live/AWC 关键窗口直接退出。
 2. 需要长任务互斥时调用 `weather_scan_lane_acquire <owner>`；等待期间由 lane 函数持续复检 live/AWC。
 3. 只有实际写 `data/archive.db` 的阶段调用 `weather_refresh_db_writer_acquire <owner>`；只读探测或独立 JSON 输出不得占 DB writer。
+   当 shell 父进程只负责 lane 而把写库交给 Python child 时，父进程不得先持有 db_writer，否则 child 会等待其父进程而形成锁循环；脚本必须以 `coordinator_child_writer_boundary:<owner>` 注释声明该边界，由 child 在实际事务中取得写入所有权。
 4. AWC/live SSOT 是最高优先级，可以抢占 `PM_HARD_SOURCE_PREEMPT_NONCRITICAL_OWNERS` 中登记的非关键 owner。
 5. facts materialize 不再由多个刷新脚本默认顺手执行；默认由数据源入口负责，扫描后的 materialize 需要同时打开 `PM_FACTS_MATERIALIZE_AFTER_SCAN=1` 和 `PM_REFRESH_COORDINATOR_ALLOW_SCAN_FACTS_MATERIALIZE=1`。
 6. AWC fact 刷新默认归 live/hard-source 主链路；非 live AWC 兜底需要显式打开 `PM_REFRESH_COORDINATOR_ALLOW_NONLIVE_AWC_REFRESH=1`，且仍要通过 live critical、统一 lane 和 DB writer。

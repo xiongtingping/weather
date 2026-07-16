@@ -16,6 +16,9 @@ LEGACY_MONITOR_SYSTEM_LABELS=(
 LEGACY_MONITOR_GUI_LABELS=(
   "gui/${UID_VALUE}/com.weather.auto_trade_watcher"
   "gui/${UID_VALUE}/com.weather.monitor_daemon"
+  "gui/${UID_VALUE}/com.weather.amsc_zuuu_metar_taf_poll"
+  "gui/${UID_VALUE}/com.weather.official_nwp_prewarm"
+  "gui/${UID_VALUE}/com.weather.amsc_p10_shadow_source_sidecar"
 )
 LEGACY_MONITOR_PLISTS=(
   "/Library/LaunchDaemons/com.weather.auto_trade_watcher.plist"
@@ -24,10 +27,30 @@ LEGACY_MONITOR_PLISTS=(
 LEGACY_MONITOR_AGENT_PLISTS=(
   "/Users/${USER_NAME}/Library/LaunchAgents/com.weather.auto_trade_watcher.plist"
   "/Users/${USER_NAME}/Library/LaunchAgents/com.weather.monitor_daemon.plist"
+  "/Users/${USER_NAME}/Library/LaunchAgents/com.weather.amsc_zuuu_metar_taf_poll.plist"
+  "/Users/${USER_NAME}/Library/LaunchAgents/com.weather.official_nwp_prewarm.plist"
+  "/Users/${USER_NAME}/Library/LaunchAgents/com.weather.amsc_p10_shadow_source_sidecar.plist"
+)
+RETIRED_FINAL_LABEL_SYSTEM_LABELS=(
+  "system/com.weather.target_rule_shadow_capture"
+  "system/com.weather.market_finality_shadow_capture"
+  "system/com.weather.physical_final_source_shadow_capture"
+  "system/com.weather.settlement_final_source_shadow_capture"
+)
+RETIRED_FINAL_LABEL_PLISTS=(
+  "/Library/LaunchDaemons/com.weather.target_rule_shadow_capture.plist"
+  "/Library/LaunchDaemons/com.weather.market_finality_shadow_capture.plist"
+  "/Library/LaunchDaemons/com.weather.physical_final_source_shadow_capture.plist"
+  "/Library/LaunchDaemons/com.weather.settlement_final_source_shadow_capture.plist"
 )
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run with sudo: sudo $0" >&2
+  exit 1
+fi
+
+if [ "$USER_NAME" = "root" ]; then
+  echo "Refusing to install ${MONITOR_LABEL} as root. Set PM_LAUNCHD_USER to the logged-in account that owns the AMSC session." >&2
   exit 1
 fi
 
@@ -134,8 +157,27 @@ for legacy_plist in "${LEGACY_MONITOR_AGENT_PLISTS[@]}"; do
   rm -f "$legacy_plist"
 done
 
+# Forward target/finality/X/S capture is supervised as one bounded child of
+# this monitor.  Retire the former independent system daemons before the
+# monitor is reloaded so one target can never be captured by two schedulers.
+for retired_label in "${RETIRED_FINAL_LABEL_SYSTEM_LABELS[@]}"; do
+  launchctl bootout "$retired_label" >/dev/null 2>&1 || true
+  launchctl disable "$retired_label" >/dev/null 2>&1 || true
+done
+for retired_plist in "${RETIRED_FINAL_LABEL_PLISTS[@]}"; do
+  launchctl bootout system "$retired_plist" >/dev/null 2>&1 || true
+  rm -f "$retired_plist"
+done
+
 if [ ! -f "$dst" ]; then
   echo "Generate plist failed: $dst" >&2
+  exit 1
+fi
+
+installed_user="$(/usr/libexec/PlistBuddy -c 'Print :UserName' "$dst" 2>/dev/null || true)"
+installed_group="$(/usr/libexec/PlistBuddy -c 'Print :GroupName' "$dst" 2>/dev/null || true)"
+if [ "$installed_user" != "$USER_NAME" ] || [ "$installed_group" != "$GROUP_NAME" ]; then
+  echo "Generated plist identity mismatch: expected ${USER_NAME}:${GROUP_NAME}, got ${installed_user:-<missing>}:${installed_group:-<missing>}." >&2
   exit 1
 fi
 
@@ -154,5 +196,23 @@ if ! launchctl bootstrap system "$dst"; then
 fi
 launchctl enable "system/${MONITOR_LABEL}" || true
 launchctl kickstart -k "system/${MONITOR_LABEL}" || true
+
+monitor_pid=""
+for _ in {1..10}; do
+  monitor_pid="$(launchctl print "system/${MONITOR_LABEL}" 2>/dev/null | awk '/^[[:space:]]+pid = [0-9]+$/ { print $3; exit }')"
+  [ -n "$monitor_pid" ] && break
+  sleep 0.2
+done
+if [ -n "$monitor_pid" ]; then
+  monitor_owner="$(ps -o user= -p "$monitor_pid" | tr -d '[:space:]')"
+  if [ "$monitor_owner" != "$USER_NAME" ]; then
+    echo "Monitor started as ${monitor_owner:-<unknown>}, expected ${USER_NAME}; stopping it." >&2
+    launchctl bootout system "$dst" >/dev/null 2>&1 || true
+    exit 1
+  fi
+else
+  echo "Monitor did not expose a running pid after bootstrap." >&2
+  exit 1
+fi
 
 echo "Installed and started ${MONITOR_LABEL} from ${dst}."

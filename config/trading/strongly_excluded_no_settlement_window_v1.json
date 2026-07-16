@@ -1,0 +1,16 @@
+{
+  "schema": "strongly_excluded_no_settlement_window_policy_v1",
+  "policy_id": "zuuu_resolution_day_final_3h_v1",
+  "approval_state": "approved",
+  "station_id": "ZUUU",
+  "resolution_timezone": "Asia/Shanghai",
+  "window_open_local_time": "21:00:00",
+  "window_close_local_time": "23:59:59.999999",
+  "applies_only_to_strategy_leg": "strongly_excluded_no",
+  "boundary": {
+    "does_not_modify_posterior": true,
+    "does_not_read_market_price": true,
+    "does_not_use_ev_edge_or_fair_value": true,
+    "top_yes_and_second_yes_are_not_time_gated": true
+  }
+}

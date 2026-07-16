@@ -1,0 +1,9 @@
+{
+  "schema": "dynamic_three_leg_production_activation_v1",
+  "state": "disabled",
+  "strategy_artifact_sha256": "",
+  "cutover_artifact_sha256": "",
+  "risk_reservation_write_authorized": false,
+  "live_decision_write_authorized": false,
+  "live_submit_authorized": false
+}

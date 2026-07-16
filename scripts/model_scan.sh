@@ -140,7 +140,6 @@ _model_scan_materialize_stale_facts() {
   local reason="${1:-fact_stale_yield}"
   local live_reason
   local lane_acquired_here=0
-  local db_writer_acquired_here=0
   if ! weather_refresh_facts_materialize_allowed "model_scan_yield" "$ROOT/data/model_scan.log" "model_scan"; then
     return 0
   fi
@@ -183,16 +182,6 @@ _model_scan_materialize_stale_facts() {
     fi
     lane_acquired_here=1
   fi
-  if [ "${WEATHER_REFRESH_DB_WRITER_LOCK_ACQUIRED:-0}" != "1" ]; then
-    if ! weather_refresh_db_writer_acquire "model_scan_facts_materialize" "${PM_MODEL_SCAN_FACTS_MATERIALIZE_ON_YIELD_DB_LOCK_WAIT_SEC:-0}" "$ROOT/data/model_scan.log" "model_scan"; then
-      if [ "$lane_acquired_here" -eq 1 ]; then
-        weather_scan_lane_release
-      fi
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] facts_materialize_on_yield skipped db_writer busy reason=${reason}" >> "$ROOT/data/model_scan.log"
-      return 0
-    fi
-    db_writer_acquired_here=1
-  fi
   run_date="$(TZ=America/New_York date '+%Y-%m-%d')"
   facts_days_arg="--days-ahead ${PM_MODEL_SCAN_FACTS_ON_YIELD_DAYS_AHEAD:-${PM_SCAN_FAST_DAYS_AHEAD:-2}}"
   facts_window="$(_facts_materialize_window_from_scan "$run_date" "$facts_days_arg" "${PM_MODEL_SCAN_FACTS_INCLUDE_YESTERDAY:-0}")"
@@ -213,9 +202,6 @@ _model_scan_materialize_stale_facts() {
   set -e
   if [ "$facts_rc" -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] facts_materialize_on_yield failed reason=${reason} rc=${facts_rc}" >> "$ROOT/data/model_scan.log"
-  fi
-  if [ "$db_writer_acquired_here" -eq 1 ]; then
-    weather_refresh_db_writer_release
   fi
   if [ "$lane_acquired_here" -eq 1 ]; then
     weather_scan_lane_release
@@ -495,7 +481,6 @@ _model_scan_run_awc_fact_refresh() {
   local awc_fact_refresh_rc=0
   local lock_acquired=0
   local lane_acquired_here=0
-  local db_writer_acquired_here=0
   local awc_date="${MODEL_WEATHER_LIKELIHOOD_EVENT_DATE:-}"
   local stamp_file=""
   local stamp_start_ts=""
@@ -559,22 +544,12 @@ _model_scan_run_awc_fact_refresh() {
     fi
     lane_acquired_here=1
   fi
-  if [ "${WEATHER_REFRESH_DB_WRITER_LOCK_ACQUIRED:-0}" != "1" ]; then
-    if ! weather_refresh_db_writer_acquire "model_scan_awc_fact_refresh" "${PM_MODEL_SCAN_AWC_FACT_REFRESH_DB_LOCK_WAIT_SEC:-0}" "$ROOT/data/model_scan.log" "model_scan"; then
-      if [ "$lock_acquired" -eq 1 ]; then
-        rm -rf "$lock_dir" 2>/dev/null || true
-      fi
-      if [ "$lane_acquired_here" -eq 1 ]; then
-        weather_scan_lane_release
-      fi
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] awc_fact_refresh db_writer busy phase=${phase}" >> "$ROOT/data/model_scan.log"
-      return 75
-    fi
-    db_writer_acquired_here=1
-  fi
   if [ -n "${stamp_file:-}" ] && [ -n "${stamp_start_ts:-}" ]; then
     echo "$stamp_start_ts" > "$stamp_file" 2>/dev/null || true
   fi
+  # coordinator_child_writer_boundary:model_scan_awc_fact_refresh
+  # The ui/server child owns the archive transaction/write queue.  Holding
+  # db_writer in this parent would make that child wait on its own parent.
   echo "---- $(date '+%Y-%m-%d %H:%M:%S') awc_fact_refresh start phase=${phase} (event_date=${MODEL_WEATHER_LIKELIHOOD_EVENT_DATE} timeout=${PM_MODEL_SCAN_AWC_FACT_REFRESH_TIMEOUT_SEC}s) ----" >> "$ROOT/data/model_scan.log"
   set +e
   run_with_timeout "${PM_MODEL_SCAN_AWC_FACT_REFRESH_TIMEOUT_SEC}" "$ROOT/data/model_scan.log" \
@@ -584,9 +559,6 @@ _model_scan_run_awc_fact_refresh() {
   set -e
   if [ "$lock_acquired" -eq 1 ]; then
     rm -rf "$lock_dir" 2>/dev/null || true
-  fi
-  if [ "$db_writer_acquired_here" -eq 1 ]; then
-    weather_refresh_db_writer_release
   fi
   if [ "$lane_acquired_here" -eq 1 ]; then
     weather_scan_lane_release
@@ -602,7 +574,6 @@ _model_scan_run_precip_nowcast_fact_refresh() {
   local timeout_sec="${PM_MODEL_SCAN_PRECIP_NOWCAST_FACT_REFRESH_TIMEOUT_SEC:-60}"
   local live_reason=""
   local lane_acquired_here=0
-  local db_writer_acquired_here=0
   live_reason="$(weather_refresh_live_ssot_critical_reason "model_scan_precip_nowcast_refresh" 2>/dev/null || true)"
   if [ -n "${live_reason:-}" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] precip_nowcast_fact_refresh skipped phase=${phase} live=${live_reason}" >> "$ROOT/data/model_scan.log"
@@ -624,25 +595,12 @@ _model_scan_run_precip_nowcast_fact_refresh() {
     fi
     lane_acquired_here=1
   fi
-  if [ "${WEATHER_REFRESH_DB_WRITER_LOCK_ACQUIRED:-0}" != "1" ]; then
-    if ! weather_refresh_db_writer_acquire "model_scan_precip_nowcast_refresh" "${PM_MODEL_SCAN_PRECIP_NOWCAST_FACT_REFRESH_DB_LOCK_WAIT_SEC:-0}" "$ROOT/data/model_scan.log" "model_scan"; then
-      if [ "$lane_acquired_here" -eq 1 ]; then
-        weather_scan_lane_release
-      fi
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] precip_nowcast_fact_refresh db_writer busy phase=${phase}" >> "$ROOT/data/model_scan.log"
-      return 75
-    fi
-    db_writer_acquired_here=1
-  fi
   echo "---- $(date '+%Y-%m-%d %H:%M:%S') precip_nowcast_fact_refresh start phase=${phase} (event_date=${nowcast_date} timeout=${timeout_sec}s) ----" >> "$ROOT/data/model_scan.log"
   set +e
   run_with_timeout "${timeout_sec}" "$ROOT/data/model_scan.log" \
     "$PY" "$ROOT/ui/server.py" --refresh-precip-nowcast-facts --facts-date "$nowcast_date" --write-scope "${PM_ARCHIVE_WRITE_SCOPE:-chengdu_zuuu}"
   nowcast_rc="$?"
   set -e
-  if [ "$db_writer_acquired_here" -eq 1 ]; then
-    weather_refresh_db_writer_release
-  fi
   if [ "$lane_acquired_here" -eq 1 ]; then
     weather_scan_lane_release
   fi
@@ -1001,6 +959,15 @@ if [ "${MODEL_WEATHER_LIKELIHOOD_STALE_BYPASS}" = "1" ]; then
   PM_MODEL_SCAN_WEATHER_STALE_DAYS_AHEAD="$(normalize_int_range "${PM_MODEL_SCAN_WEATHER_STALE_DAYS_AHEAD:-${PM_MODEL_SCAN_WEATHER_STALE_DEFAULT_DAYS_AHEAD}}" "${PM_MODEL_SCAN_WEATHER_STALE_DEFAULT_DAYS_AHEAD}" 0 1)"
   PM_MODEL_SCAN_WEATHER_STALE_NO_UPDATE_MODELS="${PM_MODEL_SCAN_WEATHER_STALE_NO_UPDATE_MODELS:-1}"
   PM_MODEL_SCAN_WEATHER_STALE_PRIORITY_ENABLED="${PM_MODEL_SCAN_WEATHER_STALE_PRIORITY_ENABLED:-0}"
+  if [ "${WEATHER_DISCOVERY_SIGNAL_ACTIVE}" = "1" ]; then
+    # A current-day likelihood refresh must not hide a newly discovered next-day
+    # market.  Keep the stale refresh bounded, but force one-day lookahead and
+    # priority selection so the discovery row can become a modeled fact.
+    PM_MODEL_SCAN_WEATHER_STALE_DAYS_AHEAD="$(normalize_int_range "${PM_MODEL_SCAN_NEW_MARKET_SIGNAL_DAYS_AHEAD:-1}" 1 1 1)"
+    PM_MODEL_SCAN_WEATHER_STALE_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_NEW_MARKET_SIGNAL_MAX_EVENTS_PER_RUN:-2}" 2 3)"
+    PM_MODEL_SCAN_WEATHER_STALE_PRIORITY_ENABLED=1
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] new market signal preserves future coverage during weather-stale refresh days_ahead=${PM_MODEL_SCAN_WEATHER_STALE_DAYS_AHEAD} max_events=${PM_MODEL_SCAN_WEATHER_STALE_MAX_EVENTS_PER_RUN}" >> "$ROOT/data/model_scan.log"
+  fi
   export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="${PM_MODEL_SCAN_WEATHER_STALE_MAX_EVENTS_PER_RUN}"
   export PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="${PM_MODEL_SCAN_WEATHER_STALE_MAX_EVENTS_PER_RUN}"
   export PM_SCAN_FAST_DAYS_AHEAD="${PM_MODEL_SCAN_WEATHER_STALE_DAYS_AHEAD}"
@@ -1518,19 +1485,6 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 echo "$$" > "$LOCK_PID_FILE"
 model_lock_acquired=1
-: "${PM_DB_WRITER_LOCK_WAIT_SEC:=90}"
-: "${PM_DB_WRITER_LOCK_POLL_SEC:=1}"
-: "${PM_MODEL_SCAN_DB_LOCK_ENABLED:=1}"
-if ! [[ "${PM_DB_WRITER_LOCK_WAIT_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_WAIT_SEC}" -lt 0 ]; then
-  PM_DB_WRITER_LOCK_WAIT_SEC=90
-fi
-if ! [[ "${PM_DB_WRITER_LOCK_POLL_SEC}" =~ ^[0-9]+$ ]] || [ "${PM_DB_WRITER_LOCK_POLL_SEC}" -lt 1 ]; then
-  PM_DB_WRITER_LOCK_POLL_SEC=1
-fi
-if [ "${PM_MODEL_SCAN_DB_LOCK_ENABLED}" != "1" ]; then
-  PM_MODEL_SCAN_DB_LOCK_ENABLED=0
-fi
-db_lock_acquired=0
 release_model_scan_lock() {
   if [ "${model_lock_acquired:-0}" -ne 1 ]; then
     return 0
@@ -1544,17 +1498,9 @@ release_model_scan_lock() {
   fi
   model_lock_acquired=0
 }
-release_db_writer_lock() {
-  if [ "${db_lock_acquired:-0}" -ne 1 ]; then
-    return 0
-  fi
-  weather_refresh_db_writer_release
-  db_lock_acquired=0
-}
 cleanup_locks() {
   weather_scan_lane_release
   release_model_scan_lock
-  release_db_writer_lock
 }
 trap cleanup_locks EXIT
 model_scan_lane_wait_default=70
@@ -1565,14 +1511,11 @@ PM_MODEL_SCAN_LANE_WAIT_SEC="$(normalize_positive_int_max "${PM_MODEL_SCAN_LANE_
 if ! weather_scan_lane_acquire "model_scan" "$PM_MODEL_SCAN_LANE_WAIT_SEC" "$ROOT/data/model_scan.log" "model_scan"; then
   exit 0
 fi
-if [ "${PM_MODEL_SCAN_DB_LOCK_ENABLED}" = "1" ]; then
-  if ! weather_refresh_db_writer_acquire "model_scan" "$PM_DB_WRITER_LOCK_WAIT_SEC" "$ROOT/data/model_scan.log" "model_scan"; then
-    exit 0
-  fi
-  db_lock_acquired=1
-else
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [model_scan] db_writer lock disabled for whole run; live SSOT owns write priority" >> "$ROOT/data/model_scan.log"
-fi
+# coordinator_child_writer_boundary:model_scan
+# The Python scan and fact writers own the archive write queue themselves.
+# Holding that queue in this parent shell causes every spawned writer to wait
+# on its parent until the watchdog kills it; the scan lane above serializes
+# the workflow without creating a parent/child DB-lock cycle.
 
 if [ "${MODEL_WEATHER_LIKELIHOOD_STALE_BYPASS:-0}" = "1" ] \
   && [ "${PM_MODEL_SCAN_AWC_FACT_REFRESH_ENABLED:-0}" = "1" ] \

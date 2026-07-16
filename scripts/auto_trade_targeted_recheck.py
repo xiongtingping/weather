@@ -19,6 +19,17 @@ if REPO_ROOT not in os.sys.path:
     os.sys.path.insert(0, REPO_ROOT)
 
 
+def _connect_ro() -> sqlite3.Connection:
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
 def _load_stale_events(conn: sqlite3.Connection, run_date: str) -> List[Tuple[str, str, int]]:
     cur = conn.cursor()
     cur.execute(
@@ -186,8 +197,7 @@ def main() -> int:
     else:
         run_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
 
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with _connect_ro() as conn:
         stale_events = _load_stale_events(conn, run_date)
 
     if not stale_events:
@@ -201,8 +211,7 @@ def main() -> int:
     ok_count = 0
     fail_count = 0
     fallback_count = 0
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with _connect_ro() as conn:
         for slug, event_date, cnt in stale_events:
             payload = _load_fact_payload(conn, run_date, slug, event_date)
             if not payload:
@@ -269,8 +278,7 @@ def main() -> int:
                 fail_count += 1
                 print(f"event_fail slug={slug} date={event_date} err={err}")
 
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with _connect_ro() as conn:
         cur = conn.cursor()
         cur.execute(
             """

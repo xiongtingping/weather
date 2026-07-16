@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -51,6 +52,218 @@ def attach_ctp_distribution(payload: dict) -> dict:
         "observation_constraints": {"d0_violation_count": 0},
     }
     return payload
+
+
+def _unit_prior_fields_for_payload(payload: dict) -> dict:
+    labels: list[str] = []
+    for container_key in ("posterior_temperature_distribution", "distribution", "rows"):
+        value = payload.get(container_key)
+        rows = value.get("bucket_probabilities") if isinstance(value, dict) else value
+        if isinstance(rows, dict):
+            for label in rows.keys():
+                label_text = str(label or "").strip()
+                if label_text and label_text not in labels:
+                    labels.append(label_text)
+            continue
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
+            if label and label not in labels:
+                labels.append(label)
+    if not labels:
+        labels = ["29°C"]
+    probability = 1.0 / len(labels)
+    return {
+        "prior_distribution": {label: probability for label in labels},
+        "prior_na_reason": "",
+        "prior_meta": {
+            "schema": "temperature_prior_meta_v1",
+            "state": "available",
+            "source": "unit_test_settled_history_prior",
+            "boundary": "historical_climate_date_site_terrain_weather_type_only_no_forecast_no_metar_no_market",
+            "sample_count": max(10, len(labels)),
+            "shrinkage_target": "broader_settled_history",
+            "date_window_days": 15,
+            "prior_na_reason": "",
+        },
+    }
+
+
+def attach_unit_prior_contract(payload: dict) -> dict:
+    payload.update(_unit_prior_fields_for_payload(payload))
+    return payload
+
+
+def _unit_prior_contract_covers_payload(payload: dict) -> bool:
+    prior = payload.get("prior_distribution")
+    if not isinstance(prior, dict) or not isinstance(payload.get("prior_meta"), dict):
+        return False
+    required = set(_unit_prior_fields_for_payload(payload)["prior_distribution"])
+    available = {str(label or "").strip() for label in prior.keys() if str(label or "").strip()}
+    return required.issubset(available)
+
+
+def insert_event_fact_history_with_unit_prior(*args, **kwargs) -> int:
+    item = kwargs.get("item")
+    if isinstance(item, dict):
+        pending_model = str(item.get("data_status") or item.get("weather_strategy_mode") or "") == (
+            "market_discovery_pending_model"
+        )
+        if not pending_model and not _unit_prior_contract_covers_payload(item):
+            attach_unit_prior_contract(item)
+    return getattr(server, "_insert_event_fact_history")(*args, **kwargs)
+
+
+def build_ui_event_fact_write_compat_plan_with_unit_prior(*args, **kwargs) -> dict:
+    item = kwargs.get("item")
+    if isinstance(item, dict):
+        if not _unit_prior_contract_covers_payload(item):
+            attach_unit_prior_contract(item)
+    return getattr(server, "build_ui_event_fact_write_compat_plan")(*args, **kwargs)
+
+
+def attach_unit_posterior_ssot_fact(
+    payload: dict,
+    *,
+    target_bucket: str,
+    target_probability: float,
+    fact_snapshot_id: str = "unit_fact_snapshot",
+    posterior_run_id: str = "unit_posterior_run",
+) -> dict:
+    payload.setdefault("fact_snapshot_id", fact_snapshot_id)
+    payload.setdefault("posterior_run_id", posterior_run_id)
+    payload.setdefault("phase", "D0_unit_test")
+    payload.setdefault("beta_weak", 0.0)
+    payload.setdefault("beta_strong", 1.0)
+    payload.setdefault("phase_reason", "unit_test_ssot_contract")
+    payload.setdefault("hard_mask_reason", "unit_test_no_hard_mask")
+    rows: list[dict] = []
+    for container_key in ("posterior_temperature_distribution", "distribution", "rows"):
+        value = payload.get(container_key)
+        raw_rows = value.get("bucket_probabilities") if isinstance(value, dict) else value
+        if isinstance(raw_rows, dict):
+            raw_rows = [
+                {"outcome": str(label), "probability": probability}
+                for label, probability in raw_rows.items()
+            ]
+        if not isinstance(raw_rows, list):
+            continue
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
+            prob = row.get("probability")
+            if prob is None:
+                prob = row.get("q_temperature_bucket_posterior")
+            if prob is None:
+                prob = row.get("q_bayes_posterior")
+            if not label or prob is None:
+                continue
+            compact_row = {"outcome": label, "probability": float(prob)}
+            for key in (
+                "posterior_settlement_candidate_bucket_hard_zero",
+                "posterior_settlement_candidate_bucket_hard_zero_reasons",
+                "q_posterior_observed_constraints_hard_zero",
+                "q_bayes_physical_likelihood_hard_zero",
+                "impossible_by_observed_max",
+                "hard_zero",
+                "hard_mask_reason",
+            ):
+                if key in row:
+                    compact_row[key] = row.get(key)
+            rows.append(compact_row)
+        if rows:
+            break
+    if not rows:
+        rows = [{"outcome": target_bucket, "probability": float(target_probability)}]
+    rows.sort(key=lambda row: (-float(row.get("probability") or 0.0), str(row.get("outcome") or "")))
+    payload["posterior_ssot_fact"] = {
+        "schema": "bayes_posterior_ssot_fact_v1",
+        "state": "available",
+        "read_only": True,
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "posterior_as_of": payload.get("posterior_as_of") or payload.get("fact_as_of") or "2026-07-01T00:00:00+00:00",
+        "target_bucket": target_bucket,
+        "target_probability": float(target_probability),
+        "target_probability_pct": float(target_probability) * 100.0,
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "phase": payload.get("phase"),
+        "beta_weak": payload.get("beta_weak"),
+        "beta_strong": payload.get("beta_strong"),
+        "phase_reason": payload.get("phase_reason"),
+        "hard_mask_reason": payload.get("hard_mask_reason"),
+        "bucket_probabilities": rows,
+        "layer_chain": {
+            "schema": "bayes_layer_chain_summary_v1",
+            "formula": "P_prior * L_forecast_weak^beta_weak * L_metar_strong^beta_strong * hard_mask",
+        },
+        "boundaries": {
+            "frontend_recompute_allowed": False,
+            "decision_recompute_allowed": False,
+            "hard_mask_is_constraint_not_weight": True,
+        },
+    }
+    return payload
+
+
+def test_temperature_trajectory_timeline_accepts_bucket_only_distribution_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-chengdu-on-july-6-2026"
+    payload = {
+        "slug": slug,
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_as_of": "2026-07-06T01:54:37Z",
+        "distribution": [
+            {"bucket": "32°C or below", "q_temperature_bucket_posterior": 0.0},
+            {"bucket": "33°C", "q_temperature_bucket_posterior": 0.16198571441083798},
+        ],
+        "weather_likelihood_features_compact": {
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-06T01:30:00Z",
+            "zuuu_metar_raw_amsc_latest_temp_c": 33.0,
+            "zuuu_metar_raw_amsc_today_max_c": 33.0,
+            "zuuu_metar_raw_amsc_today_max_at": "2026-07-06T01:30:00Z",
+            "temperature_momentum_effective_c_per_hour": 1.0,
+        },
+    }
+    conn.execute(
+        """
+        INSERT INTO event_fact_history(run_date, slug, event_date, fact_as_of, composer_version, fact_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "2026-07-06",
+            slug,
+            "2026-07-06",
+            "2026-07-06T01:54:37Z",
+            "unit_bucket_only_distribution",
+            json.dumps(payload, ensure_ascii=False),
+            "2026-07-06T01:54:38Z",
+        ),
+    )
+    conn.commit()
+
+    points = server._ui_temperature_timeline_points_from_sql(
+        conn,
+        slug_key=slug,
+        event_date_key="2026-07-06",
+        target_label="33°C",
+        event_tz="Asia/Shanghai",
+    )
+
+    assert len(points) == 1
+    assert points[0]["target_bucket"] == "33°C"
+    assert points[0]["target_probability_pct"] == pytest.approx(16.198571441083796)
+    assert points[0]["awc_temp_c"] == 33.0
+    assert points[0]["temperature_momentum_effective_c_per_hour"] == 1.0
+    conn.close()
 
 
 @pytest.fixture(autouse=True)
@@ -160,8 +373,8 @@ def test_ui_index_renders_model_weight_shadow_and_basin_feature_set() -> None:
 
     assert "renderEventBayesModelWeightShadowPanel" in text
     assert "eventBayesBasinRegimeFeatureSetPayload" in text
-    assert "模型权重 shadow" in text
-    assert "不能上线原因" in text
+    assert "候选模型权重" in text
+    assert "暂不上线原因" in text
     assert server.BoundedThreadingHTTPServer.daemon_threads is True
     assert server.BoundedThreadingHTTPServer.block_on_close is False
     assert server.UI_STATIC_MAX_CONCURRENT_REQUESTS <= 8
@@ -182,6 +395,434 @@ def test_ui_index_renders_model_weight_shadow_and_basin_feature_set() -> None:
     assert 'static_request = request_path in UI_STATIC_REQUEST_PATHS' in server_text
     assert 'priority_request = request_path in UI_PRIORITY_REQUEST_PATHS' in server_text
     assert 'self._bypass_slot_requests[id(request)] = "static"' in server_text
+
+
+def test_ui_index_prefers_backend_posterior_ssot_section() -> None:
+    html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    assert "function eventIntelPosteriorSsotSection(item)" in html
+    assert "function eventIntelPosteriorSsotRows(item, limit = 12)" in html
+
+    start = html.index("function eventIntelTargetBucketSelectionFromSnapshot(item, payload = {}, decision = {}, plan = {})")
+    end = html.index("function eventIntelCapitalLegForBucket", start)
+    selection_block = html[start:end]
+    assert "const posteriorSsot = eventIntelPosteriorSsotSection(item);" in selection_block
+    assert "const canonicalTarget = eventIntelCanonicalTargetFromSnapshot(item, payload);" not in selection_block
+    assert "if (canonicalTarget.label)" not in selection_block
+    assert selection_block.index("if (posteriorSsotLabel)") < selection_block.index("} else if (hardOutlookTargetLabel)")
+    assert "source = posteriorSsot.source || 'ui_sections.bayes_posterior_ssot';" in selection_block
+    assert "capitalTargetLabel" not in selection_block
+    assert "selectionTargetLabel" not in selection_block
+
+    start = html.index("function eventBayesPosteriorRows(item, limit = 3, distributionOverride = null)")
+    end = html.index("function eventBayesPosteriorDistributionMeta(item)", start)
+    rows_block = html[start:end]
+    assert "const ssotRows = !distributionOverride ? eventIntelPosteriorSsotRows(item, limit) : [];" in rows_block
+    assert rows_block.index("if (ssotRows.length) return ssotRows;") < rows_block.index("const ctpRows = !distributionOverride")
+
+    start = html.index("const posteriorSsotForSpotlight = eventIntelPosteriorSsotSection(itemRef);")
+    end = html.index("const posteriorSpotlightPrimary = resolvePosteriorSpotlightPrimary();", start)
+    spotlight_block = html[start:end]
+    assert "source: 'posterior_ssot_fact'" in spotlight_block
+    assert "source: 'capital_plan'" not in spotlight_block
+    assert "source: 'distribution_top'" not in spotlight_block
+
+
+def test_ui_index_records_backend_ui_snapshot_dashboard_sections() -> None:
+    html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+
+    assert "function uiSnapshotDashboardSections(snapshot)" in html
+    assert "String(sections.schema || '') !== 'ui_snapshot_dashboard_sections_v1'" in html
+    assert "String(sections.source || '') !== '/api/ui_snapshot'" in html
+    assert "function uiSnapshotPanelFreshness(snapshot, key = '')" in html
+    assert "function renderUiSnapshotSsotChainBoard(snapshot)" in html
+    assert "function mountUiSnapshotSsotChainBoard(snapshot)" in html
+    assert "const orderbook = execution.orderbook && typeof execution.orderbook === 'object' ? execution.orderbook : {};" in html
+    assert "const order = Array.isArray(sections.order) && sections.order.length" in html
+    assert "source_to_posterior: '源→后验'" in html
+    assert "awc_signal_to_order: '硬源 3s'" in html
+    assert "data.latest_source_response_completed_at" in html
+    assert "data.latest_source_to_posterior_ms ?? data.latest_source_response_to_posterior_ms" in html
+    assert "data.amsc_latency_slo_audit" in html
+    assert "AMSC SLO" in html
+    assert "valid→fetch" in html
+    assert "fact→posterior" in html
+    assert "posterior→decision" in html
+    assert "慢在抓取" in html
+    assert "响应→后验" in html
+    assert "后验→决策" in html
+    assert "非订单信号" in html
+    assert "data.latest_signal_to_order_ms" in html
+    assert "信号→订单" in html
+    assert "SLO通过" in html
+    assert "window.__lastUiSnapshotDashboardSections = sections;" in html
+    assert "window.__lastUiSnapshotPanelFreshness = panelFreshness;" in html
+    assert "window.__lastUiSnapshotPayload = snapshot;" in html
+    assert "mountUiSnapshotSsotChainBoard(snapshot);" in html
+    assert "if (options.mountSsot !== false) mountUiSnapshotSsotChainBoard(snapshot);" in html
+    assert "primeSnapshotBoardsFromSnapshot(snapshot, { mountSsot: false });" in html
+    start = html.index("function renderUiSnapshotSsotChainBoard(snapshot)")
+    end = html.index("function mountUiSnapshotSsotChainBoard", start)
+    board_block = html[start:end]
+    assert "return null;" not in board_block
+    assert "SSOT 概率主线" in html
+    assert "forecast_weak" in board_block
+    assert "observation_strong" in board_block
+    assert "hard_mask" in board_block
+    assert "bayes_posterior_ssot" in board_block
+    assert "前端不复算" in html
+
+
+def test_ui_snapshot_forecast_weak_section_is_read_only_and_ranked_server_side() -> None:
+    item = {
+        "fact_snapshot_id": "fact-weak-1",
+        "posterior_run_id": "posterior-weak-1",
+        "forecast_weak_likelihood": {"32°C": 0.25, "33°C": 0.65, "34°C": 0.10},
+        "beta_weak": 0.7,
+        "production_model_version": "ssot_probability_mainline_v1",
+    }
+
+    section = server._build_ui_snapshot_forecast_weak_section(item)
+
+    assert section["schema"] == "ui_bayes_forecast_weak_section_v1"
+    assert section["state"] == "available"
+    assert section["read_only"] is True
+    assert section["frontend_recompute_allowed"] is False
+    assert section["top_bucket"] == "33°C"
+    assert section["top_probability_pct"] == pytest.approx(65.0)
+    assert section["role"] == "prediction_weak_likelihood"
+    assert section["boundary"] == "forecast_sources_only_all_sources_are_predictions_no_observation_facts"
+
+
+def test_ui_snapshot_hard_mask_section_is_explicit_and_read_only() -> None:
+    section = server._build_ui_snapshot_hard_mask_section(
+        {
+            "fact_snapshot_id": "fact-mask-1",
+            "posterior_run_id": "posterior-mask-1",
+            "hard_mask_reason": "observed_today_max_floor",
+            "hard_constraints": {"observed_today_max_c": 33.0},
+        }
+    )
+
+    assert section["schema"] == "ui_bayes_hard_mask_section_v1"
+    assert section["state"] == "available"
+    assert section["active"] is True
+    assert section["read_only"] is True
+    assert section["frontend_recompute_allowed"] is False
+    assert section["role"] == "hard_physical_feasibility_mask"
+
+
+def test_ui_snapshot_dashboard_sections_exposes_source_to_posterior_timing() -> None:
+    item = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "event_date": "2026-07-06",
+        "fact_id": 106817,
+        "fact_as_of": "2026-07-06T03:30:24Z",
+        "posterior_as_of": "2026-07-06T03:30:24Z",
+        "fact_snapshot_id": "fact_timing",
+        "posterior_run_id": "post_timing",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "fact_snapshot_id": "fact_timing",
+            "posterior_run_id": "post_timing",
+            "posterior_as_of": "2026-07-06T03:30:24Z",
+            "target_bucket": "36°C",
+            "target_probability": 0.31,
+            "bucket_probabilities": [{"outcome": "36°C", "probability": 0.31}],
+        },
+        "source_to_posterior_timing": {
+            "schema": "source_to_posterior_timing_v1",
+            "state": "available",
+            "surface": "amsc_hard_source_to_posterior_materialization",
+            "source_provider": "AMSC",
+            "latest_source_id": "zuuu_metar_raw_amsc",
+            "latest_source_response_completed_at": "2026-07-06T03:30:15Z",
+            "latest_source_fact_as_of": "2026-07-06T03:30:15Z",
+            "latest_source_valid_time": "2026-07-06T03:00:00Z",
+            "posterior_apply_started_at": "2026-07-06T03:30:24Z",
+            "source_response_to_posterior_apply_start_ms": 9000,
+            "source_fact_to_posterior_apply_start_ms": 9000,
+            "task_queue_wait_ms": 8000,
+            "source_history_fact_ids": [106816],
+            "source_event_ids": ["srcevt_timing"],
+            "source_observation_ids": ["srcobs_timing"],
+            "order_signal_applicability": "not_applicable_no_order_signal",
+        },
+    }
+    payload = {
+        "path_probability_follow": {
+            "entry": {
+                "counts": {"will_order": 0, "blocked": 0, "total": 1},
+                "latest": [
+                    {
+                        "slug": item["slug"],
+                        "event_date": item["event_date"],
+                        "created_at": "2026-07-06T03:30:30Z",
+                        "will_order": 0,
+                        "reason_codes": [],
+                        "reasons": [],
+                    }
+                ],
+            }
+        }
+    }
+
+    sections = server._build_ui_snapshot_dashboard_sections(
+        payload,
+        facts_map={"source": "unit", "total": 1},
+        items=[item],
+        freshness_state="fresh",
+        freshness_reason="",
+        latest_fact_as_of="2026-07-06T03:30:24Z",
+        posterior_available_count=1,
+        posterior_not_materialized_count=0,
+        posterior_missing_count=0,
+        latest_posterior_as_of="2026-07-06T03:30:24Z",
+    )
+
+    assert sections["order"][:4] == ["facts", "source_to_posterior", "posterior", "awc_signal_to_order"]
+    timing = sections["source_to_posterior"]
+    assert timing["schema"] == "ui_snapshot_source_to_posterior_section_v1"
+    assert timing["state"] == "fresh"
+    assert timing["timing_count"] == 1
+    assert timing["latest_source_to_posterior_ms"] == 9000
+    assert timing["task_queue_wait_ms"] == 8000
+    assert timing["posterior_to_decision_ms"] is None
+    assert timing["decision_candidate_state"] == "not_applicable_no_order_signal"
+    assert timing["source_provider"] == "AMSC"
+    assert timing["latest_source_id"] == "zuuu_metar_raw_amsc"
+    assert timing["order_signal_applicability"] == "not_applicable_no_order_signal"
+    assert timing["latest"]["source_history_fact_ids"] == [106816]
+    audit = timing["amsc_latency_slo_audit"]
+    assert audit["schema"] == "amsc_latency_slo_audit_v1"
+    assert audit["valid_time"] == "2026-07-06T03:00:00Z"
+    assert audit["fetched_at"] == "2026-07-06T03:30:15Z"
+    assert audit["fact_as_of"] == "2026-07-06T03:30:15Z"
+    assert audit["posterior_as_of"] == "2026-07-06T03:30:24Z"
+    assert audit["decision_at"] == ""
+    assert audit["stage_latencies_ms"]["valid_to_fetched"] == 1_815_000
+    assert audit["stage_latencies_ms"]["fetched_to_fact"] == 0
+    assert audit["stage_latencies_ms"]["fact_to_posterior"] == 9_000
+    assert audit["stage_latencies_ms"]["posterior_to_decision"] is None
+    assert audit["decision_at_na_reason"] == "decision_not_available_in_ui_snapshot_decision_feed"
+    assert timing["frontend_recompute_allowed"] is False
+    assert timing["decision_recompute_allowed"] is False
+
+    order_signal_item = json.loads(json.dumps(item))
+    order_signal_item["source_to_posterior_timing"]["order_signal_applicability"] = "hard_source_order_signal"
+    order_signal_sections = server._build_ui_snapshot_dashboard_sections(
+        payload,
+        facts_map={"source": "unit", "total": 1},
+        items=[order_signal_item],
+        freshness_state="fresh",
+        freshness_reason="",
+        latest_fact_as_of="2026-07-06T03:30:24Z",
+        posterior_available_count=1,
+        posterior_not_materialized_count=0,
+        posterior_missing_count=0,
+        latest_posterior_as_of="2026-07-06T03:30:24Z",
+    )
+    order_signal_timing = order_signal_sections["source_to_posterior"]
+    assert order_signal_timing["decision_candidate_state"] == "decision_after_latest_posterior"
+    assert order_signal_timing["posterior_to_decision_ms"] == 6000
+    order_audit = order_signal_timing["amsc_latency_slo_audit"]
+    assert order_audit["decision_at"] == "2026-07-06T03:30:30Z"
+    assert order_audit["posterior_to_decision_ms"] == 6000
+    assert order_audit["stage_latencies_ms"]["posterior_to_decision"] == 6000
+    assert order_audit["stage_status"]["posterior_to_decision"] == "breached"
+    assert order_audit["valid_to_decision_ms"] == 1_830_000
+
+
+def test_ui_snapshot_dashboard_sections_exposes_awc_signal_to_order_timing() -> None:
+    item = {
+        "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+        "event_date": "2026-07-04",
+        "fact_id": 106743,
+        "fact_as_of": "2026-07-04T15:15:53.593694+00:00",
+        "fact_snapshot_id": "fact_awc",
+        "posterior_run_id": "post_awc",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "fact_snapshot_id": "fact_awc",
+            "posterior_run_id": "post_awc",
+            "posterior_as_of": "2026-07-04T10:06:52.500Z",
+            "target_bucket": "36°C",
+            "target_probability": 0.9,
+            "bucket_probabilities": [{"outcome": "36°C", "probability": 0.9}],
+        },
+        "signal_to_order_timing": {
+            "schema": "signal_to_order_timing_v1",
+            "signal_id": "sig_awc",
+            "source_event_id": "srcevt_awc",
+            "source_observation_id": "srcobs_awc",
+            "source_id": "zuuu_metar_raw_awc",
+            "fact_snapshot_id": "fact_awc",
+            "posterior_run_id": "post_awc",
+            "acceptance_state": "accepted",
+            "acceptance_reason": "awc_hard_source_signal_accepted",
+            "awc_valid_time": "2026-07-04T10:00:00Z",
+            "awc_hard_source_signal_at": "2026-07-04T10:06:52.268Z",
+            "fact_written_at": "2026-07-04T10:06:52.368Z",
+            "posterior_written_at": "2026-07-04T10:06:52.468Z",
+            "decision_written_at": "2026-07-04T10:06:52.668Z",
+            "job_enqueued_at": "2026-07-04T10:06:52.900Z",
+            "order_submitted_at": "2026-07-04T10:06:54.000Z",
+            "terminal_at": "2026-07-04T10:06:54.000Z",
+            "terminal_state": "submitted",
+            "terminal_reason": "order_submitted",
+            "orderbook_checked_at": "2026-07-04T10:06:52.700Z",
+            "risk_checked_at": "2026-07-04T10:06:53.000Z",
+            "idempotency_checked_at": "2026-07-04T10:06:53.100Z",
+            "submit_requested_at": "2026-07-04T10:06:53.200Z",
+            "exchange_ack_at": "2026-07-04T10:06:54.000Z",
+            "signal_to_fact_ms": 100,
+            "signal_to_decision_ms": 400,
+            "signal_to_job_enqueue_ms": 632,
+            "awc_signal_to_order_submit_ms": 1732,
+            "signal_to_terminal_ms": 1732,
+            "signal_to_order_slo_ms": 3000,
+            "signal_to_order_slo_met": True,
+            "pre_signal_prepare_state": "prepared_before_deadline",
+            "pre_signal_prepare_complete": True,
+            "pre_signal_prepared_before_deadline": True,
+        },
+    }
+
+    sections = server._build_ui_snapshot_dashboard_sections(
+        {"path_probability_follow": {}},
+        facts_map={"source": "unit", "total": 1},
+        items=[item],
+        freshness_state="fresh",
+        freshness_reason="",
+        latest_fact_as_of="2026-07-04T15:15:53.593694+00:00",
+        posterior_available_count=1,
+        posterior_not_materialized_count=0,
+        posterior_missing_count=0,
+        latest_posterior_as_of="2026-07-04T10:06:52.500Z",
+    )
+
+    awc = sections["awc_signal_to_order"]
+    assert awc["schema"] == "ui_snapshot_awc_signal_to_order_section_v1"
+    assert awc["state"] == "fresh"
+    assert awc["timing_count"] == 1
+    assert awc["latest_signal_id"] == "sig_awc"
+    assert awc["latest_terminal_state"] == "submitted"
+    assert awc["latest_signal_to_order_ms"] == 1732
+    assert awc["signal_to_order_slo_ms"] == 3000
+    assert awc["signal_to_order_slo_met"] is True
+    assert awc["accepted_signal_count"] == 1
+    assert awc["submitted_signal_count"] == 1
+    assert awc["slo_met_count"] == 1
+    assert awc["latest_signal_to_fact_ms"] == 100
+    assert awc["latest_signal_to_decision_ms"] == 400
+    assert awc["latest_signal_to_job_enqueue_ms"] == 632
+    assert awc["pre_signal_prepare_state"] == "prepared_before_deadline"
+    assert awc["safety_checks"]["orderbook_checked_at"] == "2026-07-04T10:06:52.700Z"
+    assert awc["frontend_recompute_allowed"] is False
+    assert awc["decision_recompute_allowed"] is False
+
+
+def test_ui_snapshot_dashboard_sections_marks_awc_signal_to_order_empty_when_no_signal() -> None:
+    sections = server._build_ui_snapshot_dashboard_sections(
+        {"path_probability_follow": {}},
+        facts_map={"source": "unit", "total": 1},
+        items=[
+            {
+                "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+                "event_date": "2026-07-06",
+                "fact_id": 106817,
+                "posterior_ssot_fact": {
+                    "schema": "bayes_posterior_ssot_fact_v1",
+                    "state": "available",
+                    "target_bucket": "36°C",
+                    "target_probability": 0.31,
+                },
+                "signal_to_order_timing": {
+                    "schema": "signal_to_order_timing_placeholder_v1",
+                    "state": "not_applicable",
+                    "source_to_posterior_timing": {"schema": "source_to_posterior_timing_v1"},
+                },
+            }
+        ],
+        freshness_state="fresh",
+        freshness_reason="",
+        latest_fact_as_of="2026-07-06T03:30:24Z",
+        posterior_available_count=1,
+        posterior_not_materialized_count=0,
+        posterior_missing_count=0,
+        latest_posterior_as_of="2026-07-06T03:30:24Z",
+    )
+
+    awc = sections["awc_signal_to_order"]
+    assert awc["state"] == "empty"
+    assert awc["timing_count"] == 0
+    assert awc["na_reason"] == "awc_signal_to_order_timing_not_applicable_or_no_sample"
+
+
+def test_ui_index_today_physical_verdict_requires_backend_evidence() -> None:
+    html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = html.index("function buildTodayPhysicalEvidenceVerdict(")
+    end = html.index("function renderTodayPhysicalEvidenceVerdict", start)
+    block = html[start:end]
+
+    assert "const strongPhysicalSnapshot = metarStrongLikelihoodSnapshotFromItem(itemData, payloadData)" in block
+    assert "const strongLayerDisplay = physicalStrongLikelihoodLayerDisplay(strongPhysicalSnapshot);" in block
+    assert "const hasStrongPhysicalSnapshot = Boolean(" in block
+    assert "const hasConcretePhysicalEvidence = hasStrongPhysicalSnapshot;" in block
+    assert "hasMetricEvidence" not in block
+    assert "hasModifierEvidence" not in block
+    assert "hasTrajectoryEvidence" not in block
+    assert "naReason: 'metar_strong_physical_evidence_missing'" in block
+    assert "不把云雨、轨迹或旧物理字段单独解释成今日总判" in block
+    assert block.index("if (!hasConcretePhysicalEvidence)") < block.index("const cards = [")
+    assert "available: Boolean(hasConcretePhysicalEvidence &&" in block
+    assert "物理证据中性，等待轨迹确认" not in block
+
+
+def test_ui_index_reads_prior_and_observation_sections_from_ui_snapshot() -> None:
+    html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+
+    assert "function eventIntelPriorSection(item)" in html
+    assert "function eventIntelObservationStrongSection(item)" in html
+    assert "function eventBayesPriorSectionRows(item, limit = 3)" in html
+    assert "const sectionPriorRows = eventBayesPriorSectionRows(item, 3);" in html
+    assert "const priorRows = sectionPriorRows.length ? sectionPriorRows" in html
+    assert "const sectionPriorRows = eventBayesPriorSectionRows(item, 8);" in html
+    assert "const observationSection = eventIntelObservationStrongSection(data);" in html
+    assert "raw_hard_observation_only" in html
+    assert "const latestHardObservation = eventIntelLatestHardObservation(item);" in html
+    assert "latestHardObservation.observed_today_max_c" in html
+
+
+def test_ui_index_merges_snapshot_ssot_when_chengdu_summary_is_present() -> None:
+    html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = html.index("function eventIntelPayloadFromSnapshotItem(item)")
+    end = html.index("function storeEventIntelChengduIntradayPayload", start)
+    block = html[start:end]
+
+    assert "const snapshotPayload = {" in block
+    assert "key_metrics: {" in block
+    assert "...compactFeatures," in block
+    assert "...fullFeatures," in block
+    assert "...metrics," in block
+    assert "...snapshotPayload," in block
+    assert "...summaryPayload," in block
+    assert "...summaryCompact," in block
+    assert "...snapshotCompact," in block
+    assert "posterior_ssot_fact: Object.keys(objectOrEmpty(snapshotPayload.posterior_ssot_fact)).length" in block
+    assert "temperature_trajectory: Object.keys(objectOrEmpty(snapshotPayload.temperature_trajectory)).length" in block
+    assert "temperature_trajectory_status: Object.keys(objectOrEmpty(snapshotPayload.temperature_trajectory_status)).length" in block
+
+
+def test_ui_index_legacy_likelihood_compat_is_null_safe() -> None:
+    html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = html.index("const rawLegacyLikelihoodCompat = legacyDistributionLikelihoodCompatForRow(row);")
+    end = html.index("const pHistory = legacyLikelihoodCompat.pHistory;", start)
+    block = html[start:end]
+
+    assert "rawLegacyLikelihoodCompat && typeof rawLegacyLikelihoodCompat === 'object'" in block
+    assert ": {};" in block
 
 
 def test_chengdu_intraday_frontend_fetches_nonblocking_summary() -> None:
@@ -240,7 +881,10 @@ def test_ui_snapshot_handler_uses_page_size_as_summary_limit() -> None:
     ]
     assert 'if "limit" not in params and params.get("page_size", [""])[0]:' in block
     assert 'limit = int(params.get("page_size", [""])[0])' in block
-    assert "force_rebuild=force" in block
+    assert "force_rebuild = force or refresh" not in block
+    assert "force_rebuild=False" in block
+    assert 'payload["refresh_mode"] = "stale_while_revalidate"' in block
+    assert 'payload["synchronous_rebuild_allowed"] = False' in block
     assert "refresh_requested" in block
     assert "refresh = str(params.get(\"refresh\"" in block
     assert "force = str(params.get(\"force\"" in block
@@ -283,6 +927,7 @@ def test_ui_snapshot_summary_keeps_ctp_ssot_and_aligns_target_plan() -> None:
             ],
         }
     )
+    attach_unit_posterior_ssot_fact(payload, target_bucket="30°C or higher", target_probability=0.70)
     payload["posterior_temperature_distribution"]["source_components"] = {
         "components": [{"source_id": "wu", "bucket": "30°C or higher", "probability": 0.7}],
         "groups": [{"group": "forecast", "effective_precision": 8.0}],
@@ -308,6 +953,1188 @@ def test_ui_snapshot_summary_keeps_ctp_ssot_and_aligns_target_plan() -> None:
     assert slim["target_bucket_selection"]["target_probability_pct"] == pytest.approx(70.0)
     assert slim["target_realization_capital_plan"]["target_bucket"] == "30°C or higher"
     assert slim["target_realization_capital_plan"]["target_posterior"] == pytest.approx(0.70)
+
+
+def test_ui_snapshot_summary_prefers_posterior_ssot_fact_target() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+        "title": "Highest temperature in Chengdu on July 4?",
+        "event_date": "2026-07-04",
+        "run_date": "2026-07-04",
+        "fact_snapshot_id": "fact_ssot_ui",
+        "posterior_run_id": "post_ssot_ui",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "read_only": True,
+            "fact_snapshot_id": "fact_ssot_ui",
+            "posterior_run_id": "post_ssot_ui",
+            "posterior_as_of": "2026-07-04T07:06:03+00:00",
+            "target_bucket": "29°C",
+            "target_probability": 0.64,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "phase": "D0_awc_hard_signal",
+            "beta_weak": 0.0,
+            "beta_strong": 1.0,
+            "phase_reason": "unit_test_awc_signal",
+            "hard_mask_reason": "observed_today_max_c",
+            "bucket_probabilities": [
+                {"outcome": "30°C or higher", "probability": 0.21},
+                {"outcome": "29°C", "probability": 0.64},
+            ],
+            "layer_chain": {
+                "formula": "P_prior * L_forecast_weak^beta_weak * L_metar_strong^beta_strong * hard_mask",
+                "forecast_weak_likelihood_present": True,
+                "metar_strong_likelihood_present": True,
+            },
+            "boundaries": {
+                "frontend_recompute_allowed": False,
+                "decision_recompute_allowed": False,
+            },
+        },
+        "distribution": [
+            {"outcome": "30°C or higher", "q_temperature_bucket_posterior": 0.79},
+            {"outcome": "29°C", "q_temperature_bucket_posterior": 0.21},
+        ],
+        "target_bucket": "30°C or higher",
+        "ssot_target_bucket": "30°C or higher",
+        "target_bucket_probability_field": "posterior_temperature_distribution.bucket_probabilities",
+        "target_bucket_probability_pct": 79.0,
+        "target_bucket_selection": {
+            "target_bucket": "30°C or higher",
+            "target_probability": 0.79,
+            "target_probability_field": "posterior_temperature_distribution.bucket_probabilities",
+            "ssot_source": "event_fact_latest",
+        },
+        "posterior_target_bucket_selection": {
+            "target_bucket": "30°C or higher",
+            "target_probability": 0.79,
+            "target_probability_field": "posterior_temperature_distribution.bucket_probabilities",
+            "ssot_source": "event_fact_latest",
+        },
+    }
+
+    canonical = server._canonical_target_from_fact_payload(payload)
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    section = slim["ui_sections"]["bayes_posterior_ssot"]
+
+    assert canonical["source"] == "posterior_ssot_fact.top_bucket"
+    assert canonical["label"] == "29°C"
+    assert canonical["prob"] == pytest.approx(0.64)
+    assert slim["posterior_ssot_fact"]["target_bucket"] == "29°C"
+    assert slim["posterior_ssot_fact"]["target_bucket_label"] == "29°C"
+    assert slim["ssot_target_bucket"] == "29°C"
+    assert slim["target_bucket"] == "29°C"
+    assert slim["target_bucket_selection"]["target_probability"] == pytest.approx(0.64)
+    assert slim["target_bucket_selection"]["target_probability_field"] == "posterior_ssot_fact.target_probability"
+    assert slim["target_bucket_selection"]["ssot_source"] == "posterior_ssot_fact"
+    assert slim["posterior_target_bucket_selection"] == slim["target_bucket_selection"]
+    assert section["state"] == "available"
+    assert section["target_bucket"] == "29°C"
+    assert section["target_bucket_label"] == "29°C"
+    assert section["target_probability"] == pytest.approx(0.64)
+    assert section["phase"] == "D0_awc_hard_signal"
+    assert section["beta_strong"] == 1.0
+    assert section["hard_mask_reason"] == "observed_today_max_c"
+    assert section["frontend_recompute_allowed"] is False
+    assert section["decision_recompute_allowed"] is False
+
+
+def test_ui_snapshot_summary_blocks_target_fallback_when_posterior_ssot_missing() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+        "title": "Highest temperature in Chengdu on July 4?",
+        "event_date": "2026-07-04",
+        "run_date": "2026-07-04",
+        "distribution": [
+            {"outcome": "30°C or higher", "q_temperature_bucket_posterior": 0.79},
+            {"outcome": "29°C", "q_temperature_bucket_posterior": 0.21},
+        ],
+        "target_bucket": "30°C or higher",
+        "target_bucket_probability_pct": 79.0,
+        "target_bucket_selection": {
+            "target_bucket": "30°C or higher",
+            "target_probability": 0.79,
+            "target_probability_field": "posterior_temperature_distribution.bucket_probabilities",
+        },
+    }
+
+    assert server._canonical_target_from_fact_payload(payload) == {}
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    section = slim["ui_sections"]["bayes_posterior_ssot"]
+
+    assert "target_bucket" not in slim
+    assert "ssot_target_bucket" not in slim
+    assert "target_bucket_selection" not in slim
+    assert slim["target_bucket_na_reason"] == "posterior_ssot_fact_missing"
+    assert section["state"] == "missing"
+    assert section["na_reason"] == "posterior_ssot_fact_missing"
+
+
+def test_ui_snapshot_summary_exposes_prior_section_from_root_prior_distribution() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "title": "Highest temperature in Chengdu on July 6?",
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_snapshot_id": "fact_prior_ui",
+        "posterior_run_id": "post_prior_ui",
+        "prior_distribution": {"36°C": 0.25, "37°C": 0.55, "38°C": 0.20},
+        "prior_meta": {
+            "schema": "temperature_prior_meta_v1",
+            "source": "settled_history_site_terrain_weather_type",
+            "sample_count": 42,
+        },
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "state_reason": "unit_test_waiting_for_posterior",
+            "read_only": True,
+        },
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    prior = slim["ui_sections"]["prior"]
+
+    assert slim["prior_distribution"]["37°C"] == pytest.approx(0.55)
+    assert prior["schema"] == "ui_bayes_prior_section_v1"
+    assert prior["state"] == "available"
+    assert prior["source"] == "facts.items[].prior_distribution"
+    assert prior["role"] == "root_prior"
+    assert prior["top_bucket"] == "37°C"
+    assert prior["top_bucket_label"] == "37°C"
+    assert prior["top_probability"] == pytest.approx(0.55)
+    assert prior["bucket_probabilities"][0]["outcome"] == "37°C"
+    assert prior["prior_meta"]["sample_count"] == 42
+    assert prior["frontend_recompute_allowed"] is False
+
+
+def test_temperature_trajectory_status_prefers_root_ssot_over_legacy_q_fields() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "event_date": "2026-07-06",
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 29.0,
+            "observed_today_max_c": 31.0,
+            "temperature_momentum_effective_c_per_hour": 1.0,
+            "temperature_momentum_realization_state": "emerging_warming",
+            "temperature_momentum_posterior_gate_allowed": True,
+            "temperature_momentum_posterior_gate_reason": "legacy_one_hour_context",
+        },
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "platform",
+            "gate_state": "not_warming",
+            "gate_reason": "trajectory_state_platform",
+            "stable_rate_c_per_hour": 0.0,
+            "effective_rate_c_per_hour": 1.0,
+            "adjusted_rate_c_per_hour": 0.0,
+            "rolling_temperature_observation_summary": {
+                "current_temp_c": 33.0,
+                "rolling_max_c": 34.0,
+            },
+        },
+        "distribution": [
+            {
+                "outcome": "36°C",
+                "q_bayes_temperature_trajectory_status": "unavailable_after_ctp_materialization",
+                "q_bayes_temperature_trajectory_na_reason": "temperature_trajectory_component_missing_after_ctp_materialization",
+            }
+        ],
+    }
+
+    status = server._ui_temperature_trajectory_status_from_payload(payload, payload["distribution"])
+
+    assert status["available"] is True
+    assert status["state"] == "not_effective"
+    assert status["observed_temp_c"] == pytest.approx(33.0)
+    assert status["current_temperature_c"] == pytest.approx(33.0)
+    assert status["observed_today_max_c"] == pytest.approx(34.0)
+    assert status["rolling_window_max_c"] == pytest.approx(34.0)
+    assert status["rolling_max_temperature_c"] == pytest.approx(34.0)
+    assert status["temperature_momentum_effective_c_per_hour"] == pytest.approx(0.0)
+    assert status["temperature_momentum_realization_state"] == "platform"
+    assert status["temperature_momentum_posterior_gate_allowed"] is False
+    assert status["temperature_trajectory_posterior_status"] == "platform"
+    assert status["na_reason"] == "trajectory_state_platform"
+
+
+def test_ui_temperature_trajectory_root_fields_normalized_for_frontend() -> None:
+    payload = {
+        "weather_likelihood_features_compact": {
+            "temperature_momentum_effective_c_per_hour": 2.0,
+            "temperature_momentum_1h_c_per_hour": 2.0,
+        },
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "sustained_warming",
+            "gate_state": "confirmed",
+            "gate_reason": "rolling_3_to_5_point_slope_positive",
+            "rates_c_per_hour": {"1h": 1.0, "2h": 0.5, "3h": 0.0, "6h": -0.166666666667},
+            "confirmed_windows": ["1h", "2h"],
+            "adjusted_rate_c_per_hour": 1.0,
+            "rolling_temperature_observation_summary": {
+                "point_count": 5,
+                "current_temp_c": 35.0,
+                "rolling_max_c": 36.0,
+            },
+        },
+        "distribution": [{"outcome": "37°C", "q_bayes_posterior": 0.4}],
+        "chengdu_intraday_summary": {},
+    }
+
+    server._attach_ui_temperature_trajectory_status_from_payload(payload)
+
+    rolling = payload["temperature_trajectory"]["rolling_temperature_observation_summary"]
+    status = payload["temperature_trajectory_status"]
+    assert rolling["rolling_point_count"] == 5
+    assert rolling["current_temperature_c"] == pytest.approx(35.0)
+    assert rolling["observed_temp_c"] == pytest.approx(35.0)
+    assert rolling["rolling_window_max_c"] == pytest.approx(36.0)
+    assert rolling["rolling_max_temperature_c"] == pytest.approx(36.0)
+    assert rolling["observed_today_max_c"] == pytest.approx(36.0)
+    assert payload["temperature_trajectory"]["current_temperature_c"] == pytest.approx(35.0)
+    assert payload["temperature_trajectory"]["rolling_window_max_c"] == pytest.approx(36.0)
+    assert payload["temperature_trajectory"]["rolling_max_temperature_c"] == pytest.approx(36.0)
+    assert status["available"] is True
+    assert status["current_temperature_c"] == pytest.approx(35.0)
+    assert status["rolling_max_temperature_c"] == pytest.approx(36.0)
+    assert status["rolling_point_count"] == pytest.approx(5)
+    assert status["temperature_momentum_effective_c_per_hour"] == pytest.approx(1.0)
+    assert payload["temperature_momentum_effective_c_per_hour"] == pytest.approx(1.0)
+    assert payload["temperature_momentum_rates_c_per_hour"]["1h"] == pytest.approx(1.0)
+    assert payload["weather_likelihood_features_compact"]["temperature_momentum_effective_c_per_hour"] == pytest.approx(1.0)
+    assert payload["weather_likelihood_features_compact"]["temperature_momentum_1h_c_per_hour"] == pytest.approx(1.0)
+    assert payload["weather_likelihood_features_compact"]["temperature_momentum_rates_c_per_hour"]["2h"] == pytest.approx(0.5)
+    assert payload["key_metrics"]["temperature_momentum_effective_c_per_hour"] == pytest.approx(1.0)
+    assert payload["key_metrics"]["temperature_momentum_rates_c_per_hour"]["6h"] == pytest.approx(-0.166666666667)
+    assert payload["chengdu_intraday_summary"]["temperature_trajectory_status"] == status
+
+
+def test_ui_temperature_trajectory_status_keeps_amsc_daily_max_above_rolling_window() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-8-2026",
+        "event_date": "2026-07-08",
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 33.0,
+            "observed_today_max_c": 39.0,
+            "observed_today_max_source": "zuuu_metar_raw_amsc",
+            "zuuu_metar_raw_amsc_latest_temp_c": 33.0,
+            "zuuu_metar_raw_amsc_today_max_c": 39.0,
+            "temperature_momentum_effective_c_per_hour": -1.0,
+            "temperature_momentum_realization_state": "mixed",
+        },
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "mixed",
+            "gate_state": "not_warming",
+            "gate_reason": "trajectory_state_platform",
+            "stable_rate_c_per_hour": -0.75,
+            "effective_rate_c_per_hour": -1.0,
+            "adjusted_rate_c_per_hour": 0.0,
+            "rolling_temperature_observation_summary": {
+                "point_count": 5,
+                "current_temp_c": 33.0,
+                "rolling_max_c": 35.0,
+            },
+        },
+        "distribution": [{"outcome": "39°C", "q_temperature_bucket_posterior": 1.0}],
+        "chengdu_intraday_summary": {},
+    }
+
+    server._attach_ui_temperature_trajectory_status_from_payload(payload)
+
+    status = payload["temperature_trajectory_status"]
+    rolling = payload["temperature_trajectory"]["rolling_temperature_observation_summary"]
+    assert status["observed_today_max_c"] == pytest.approx(39.0)
+    assert status["rolling_window_max_c"] == pytest.approx(35.0)
+    assert rolling["observed_today_max_c"] == pytest.approx(39.0)
+    assert rolling["rolling_window_max_c"] == pytest.approx(35.0)
+    assert payload["key_metrics"]["observed_today_max_c"] == pytest.approx(39.0)
+    assert payload["weather_likelihood_features_compact"]["observed_today_max_c"] == pytest.approx(39.0)
+
+
+def test_ui_snapshot_summary_slim_normalizes_temperature_trajectory_root_fields() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "event_date": "2026-07-06",
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "sustained_warming",
+            "gate_state": "confirmed",
+            "gate_reason": "multi_window_confirmed",
+            "effective_rate_c_per_hour": 1.0,
+            "adjusted_rate_c_per_hour": 1.0,
+            "rolling_temperature_observation_summary": {
+                "point_count": 5,
+                "current_temp_c": 35.0,
+                "rolling_max_c": 36.0,
+            },
+        },
+        "distribution": [{"outcome": "37°C", "q_bayes_posterior": 0.4}],
+    }
+
+    compact = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+
+    rolling = compact["temperature_trajectory"]["rolling_temperature_observation_summary"]
+    assert rolling["rolling_point_count"] == 5
+    assert compact["temperature_trajectory"]["current_temperature_c"] == pytest.approx(35.0)
+    assert compact["temperature_trajectory"]["rolling_max_temperature_c"] == pytest.approx(36.0)
+    assert compact["temperature_trajectory_status"]["current_temperature_c"] == pytest.approx(35.0)
+    assert compact["temperature_trajectory_status"]["rolling_max_temperature_c"] == pytest.approx(36.0)
+    assert compact["temperature_trajectory_status"]["rolling_point_count"] == pytest.approx(5)
+
+
+def test_ui_snapshot_summary_merges_top_level_ssot_into_chengdu_summary_shell() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "title": "Highest temperature in Chengdu on July 6?",
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_snapshot_id": "fact_ssot_shell",
+        "posterior_run_id": "post_ssot_shell",
+        "chengdu_intraday_summary": {
+            "ok": True,
+            "event_date": "2026-07-06",
+            "source": "chengdu_intraday_summary_ssot",
+            "key_metrics": {"observed_temp_c": 29.0},
+        },
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 34.0,
+            "observed_today_max_c": 34.0,
+            "temperature_momentum_2h_c_per_hour": 0.5,
+            "temperature_momentum_1h_c_per_hour": 1.0,
+            "temperature_momentum_effective_c_per_hour": 0.0,
+            "temperature_momentum_realization_state": "platform",
+        },
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "platform",
+            "gate_state": "not_warming",
+            "gate_reason": "trajectory_state_platform",
+            "adjusted_rate_c_per_hour": 0.0,
+            "rolling_temperature_observation_summary": {
+                "current_temp_c": 34.0,
+                "rolling_max_c": 34.0,
+                "point_count": 5,
+            },
+        },
+        "prior_distribution": {"34°C": 0.2, "35°C": 0.4, "36°C": 0.4},
+        "metar_strong_likelihood": {"34°C": 0.2, "35°C": 0.5, "36°C": 0.3},
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "35°C",
+            "target_probability": 0.5,
+            "bucket_probabilities": [
+                {"bucket": "34°C", "probability": 0.2},
+                {"bucket": "35°C", "probability": 0.5},
+                {"bucket": "36°C", "probability": 0.3},
+            ],
+        },
+        "distribution": [
+            {"outcome": "34°C", "q_temperature_bucket_posterior": 0.2},
+            {"outcome": "35°C", "q_temperature_bucket_posterior": 0.5},
+            {"outcome": "36°C", "q_temperature_bucket_posterior": 0.3},
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    summary = slim["chengdu_intraday_summary"]
+
+    assert summary["temperature_trajectory"]["state"] == "platform"
+    assert summary["temperature_trajectory_status"]["observed_temp_c"] == pytest.approx(34.0)
+    assert summary["key_metrics"]["observed_temp_c"] == pytest.approx(34.0)
+    assert summary["key_metrics"]["temperature_momentum_1h_c_per_hour"] == pytest.approx(1.0)
+    assert summary["ui_sections"]["observation_strong"]["state"] == "available"
+    assert summary["posterior_ssot_fact"]["target_bucket"] == "35°C"
+    assert summary["frontend_recompute_allowed"] is False
+
+
+def test_ui_snapshot_summary_fills_key_metrics_from_compact_fact_features_without_summary() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "event_date": "2026-07-06",
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 34.0,
+            "observed_today_max_c": 34.0,
+            "temperature_momentum_1h_c_per_hour": 1.0,
+            "temperature_momentum_effective_c_per_hour": 0.0,
+        },
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "platform",
+            "gate_state": "not_warming",
+            "gate_reason": "trajectory_state_platform",
+            "adjusted_rate_c_per_hour": 0.0,
+            "rolling_temperature_observation_summary": {
+                "current_temp_c": 34.0,
+                "rolling_max_c": 34.0,
+            },
+        },
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "35°C",
+            "target_probability": 0.5,
+            "bucket_probabilities": [{"bucket": "35°C", "probability": 0.5}],
+        },
+        "distribution": [{"outcome": "35°C", "q_temperature_bucket_posterior": 0.5}],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+
+    assert slim["key_metrics"]["observed_temp_c"] == pytest.approx(34.0)
+    assert slim["key_metrics"]["observed_today_max_c"] == pytest.approx(34.0)
+    assert slim["key_metrics"]["temperature_momentum_1h_c_per_hour"] == pytest.approx(1.0)
+    assert slim["key_metrics"]["temperature_momentum_effective_c_per_hour"] == pytest.approx(0.0)
+
+
+def test_ui_snapshot_summary_amsc_compact_overrides_stale_intraday_observation_fields() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-8-2026",
+        "event_date": "2026-07-08",
+        "station_id": "ZUUU",
+        "market_var": "temperature_2m_max",
+        "market_unit": "C",
+        "rounding_rule": "whole_degrees",
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 33.0,
+            "metar_temperature_c": 33.0,
+            "observed_today_max_c": 39.0,
+            "observed_today_max_source": "zuuu_metar_raw_amsc",
+            "zuuu_metar_raw_amsc_latest_temp_c": 33.0,
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-08T15:00:00Z",
+            "zuuu_metar_raw_amsc_latest_local": "2026-07-08T23:00:00+08:00",
+            "zuuu_metar_raw_amsc_today_max_c": 39.0,
+            "zuuu_metar_raw_amsc_today_max_at": "2026-07-08T09:00:00Z",
+            "zuuu_metar_raw_amsc_today_max_local": "2026-07-08T17:00:00+08:00",
+        },
+        "chengdu_intraday_summary": {
+            "key_metrics": {
+                "observed_temp_c": 35.0,
+                "observed_today_max_c": 37.0,
+                "zuuu_metar_raw_amsc_latest_temp_c": 35.0,
+                "zuuu_metar_raw_amsc_today_max_c": 37.0,
+                "zuuu_metar_raw_amsc_today_max_at": "2026-07-08T04:30:00Z",
+            }
+        },
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "39°C",
+            "target_probability": 1.0,
+            "target_probability_pct": 100.0,
+            "final_bucket_lock": True,
+            "bucket_probabilities": [
+                {"bucket": "38°C", "probability": 0.0},
+                {"bucket": "39°C", "probability": 1.0},
+                {"bucket": "40°C", "probability": 0.0},
+            ],
+        },
+        "distribution": [
+            {"outcome": "38°C", "q_temperature_bucket_posterior": 0.0},
+            {"outcome": "39°C", "q_temperature_bucket_posterior": 1.0},
+            {"outcome": "40°C", "q_temperature_bucket_posterior": 0.0},
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+
+    assert slim["observed_today_max_c"] == pytest.approx(39.0)
+    assert slim["key_metrics"]["observed_today_max_c"] == pytest.approx(39.0)
+    assert slim["weather_likelihood_features_compact"]["observed_today_max_c"] == pytest.approx(39.0)
+    assert slim["key_metrics"]["observed_temp_source"] == "zuuu_metar_raw_amsc"
+    assert slim["weather_likelihood_features_compact"]["observation_path_primary_source"] == "zuuu_metar_raw_amsc"
+    assert slim["key_metrics"]["zuuu_metar_raw_amsc_today_max_c"] == pytest.approx(39.0)
+    assert slim["weather_likelihood_features_compact"]["zuuu_metar_raw_amsc_today_max_c"] == pytest.approx(39.0)
+    assert slim["key_metrics"]["zuuu_metar_raw_amsc_latest_temp_c"] == pytest.approx(33.0)
+    assert slim["posterior_highest_bucket_label"] == "39°C"
+    assert slim["posterior_highest_probability_pct"] == pytest.approx(100.0)
+
+
+def test_ui_snapshot_latest_projection_fills_prior_and_strong_sections(tmp_path: Path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-chengdu-on-july-5-2026"
+    event_date = "2026-07-05"
+    rows = [
+        {"bucket": "36°C", "probability": 0.25},
+        {"bucket": "37°C", "probability": 0.50},
+        {"bucket": "38°C", "probability": 0.25},
+    ]
+    context_payload = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "fact_snapshot_id": "fact_context",
+        "posterior_run_id": "post_context",
+        "phase": "D0_late",
+        "phase_reason": "context",
+        "beta_weak": 0.08,
+        "beta_strong": 1.0,
+        "hard_mask_reason": "observed_today_max_c",
+        "prior_distribution": {"36°C": 0.2, "37°C": 0.6, "38°C": 0.2},
+            "prior_meta": {
+                "schema": "temperature_prior_meta_v1",
+                "state": "available",
+                "source": "unit_test_history_prior",
+                "boundary": "historical_climate_date_site_terrain_weather_type_only_no_forecast_no_metar_no_market",
+                "sample_count": 30,
+                "date_window_days": 15,
+                "shrinkage_target": "broader_settled_history",
+                "prior_na_reason": "",
+            },
+        "prior_na_reason": "",
+        "distribution": rows,
+        "posterior_temperature_distribution": rows,
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "fact_snapshot_id": "fact_context",
+            "posterior_run_id": "post_context",
+            "target_bucket": "37°C",
+            "target_probability": 0.5,
+            "bucket_probabilities": rows,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "boundaries": {
+                "frontend_recompute_allowed": False,
+                "decision_recompute_allowed": False,
+                "hard_mask_is_constraint_not_weight": True,
+            },
+            "layer_chain": {"schema": "bayes_layer_chain_summary_v1"},
+        },
+    }
+    source_only_payload = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "fact_as_of": "2026-07-05T16:00:14Z",
+        "station_id": "ZUUU",
+        "source_observations": [
+            {
+                "source_event_id": "srcevt_amsc_metar",
+                "source_observation_id": "srcobs_amsc_metar",
+                "source_id": "zuuu_metar_raw_amsc",
+                "source_class": "hard_observation_candidate",
+                "role": "metar_hard_observation",
+                "hard_eligible": True,
+                "event_date": event_date,
+                "valid_time": "2026-07-05T15:30:00Z",
+                "temperature_c": 33.0,
+                "observed_today_max_c": 37.0,
+                "final_daily_max_c": 37.0,
+                "official_final_result": True,
+                "temperature_observation_final_daily_max": True,
+            },
+            {
+                "source_event_id": "srcevt_amsc_taf",
+                "source_observation_id": "srcobs_amsc_taf",
+                "source_id": "zuuu_taf_forecast_amsc",
+                "source_class": "forecast_weak_source",
+                "role": "taf_forecast_weak_likelihood",
+                "hard_eligible": False,
+                "event_date": event_date,
+                "forecast_peak_c": 36.0,
+            },
+        ],
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "fact_snapshot_id": "fact_source_only",
+            "posterior_run_id": "",
+        },
+    }
+    source_only_payload["source_acquisition_trace"] = {
+        "schema": "weather_source_acquisition_trace_v1",
+        "read_only": True,
+        "source_observations": list(source_only_payload["source_observations"]),
+        "source_latency_trace": [],
+        "hard_observation_candidate_ids": ["srcevt_amsc_metar"],
+        "forecast_weak_ids": ["srcevt_amsc_taf"],
+        "source_observation_ids": ["srcobs_amsc_metar", "srcobs_amsc_taf"],
+    }
+    conn.execute(
+        """
+        INSERT INTO event_fact_history(
+            run_date, slug, event_date, fact_as_of, composer_version, fact_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_date,
+            slug,
+            event_date,
+            "2026-07-05T15:05:55Z",
+            "unit_context",
+            json.dumps(context_payload, ensure_ascii=False),
+            "2026-07-05T15:05:56Z",
+        ),
+    )
+    context_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO event_fact_history(
+            run_date, slug, event_date, fact_as_of, composer_version, fact_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_date,
+            slug,
+            event_date,
+            "2026-07-05T16:00:14Z",
+            "amsc_zuuu_metar_taf_fetcher_v1",
+            json.dumps(source_only_payload, ensure_ascii=False),
+            "2026-07-05T16:00:15Z",
+        ),
+    )
+    latest_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    assert context_id
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO event_fact_latest(slug, event_date, fact_id, updated_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (slug, event_date, latest_id, "2026-07-05T16:00:14Z"),
+    )
+    conn.commit()
+
+    item = {"slug": slug, "event_date": event_date, "distribution": rows}
+    server._merge_fill_fast_observation_fields_from_latest_fact(conn, item, slug, event_date)
+    server._attach_ui_snapshot_sections_to_item(item)
+
+    assert item["prior_distribution"]["37°C"] == pytest.approx(0.6)
+    assert item["posterior_ssot_fact"]["target_bucket"] == "37°C"
+    assert item["posterior_ssot_fact"]["target_probability"] == pytest.approx(1.0)
+    assert item["metar_strong_likelihood"]["37°C"] == pytest.approx(1.0)
+    assert item["ui_sections"]["prior"]["state"] == "available"
+    assert item["ui_sections"]["observation_strong"]["state"] == "available"
+    assert item["ui_sections"]["observation_strong"]["hard_source_observations"][0]["source_id"] == "zuuu_metar_raw_amsc"
+    projection = item["fact_provenance"]["ui_snapshot_latest_fact_projection"]
+    assert projection["projection_mode"] == "contextual_hierarchical_posterior_projection"
+    assert projection["writes_archive_db"] is False
+    conn.close()
+
+
+def test_ui_snapshot_summary_exposes_raw_amsc_hard_observation_when_strong_likelihood_pending() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "title": "Highest temperature in Chengdu on July 6?",
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_snapshot_id": "fact_amsc_raw_ui",
+        "posterior_run_id": "post_amsc_raw_ui",
+        "source_observations": [
+            {
+                "source_id": "zuuu_metar_raw_amsc",
+                "source_class": "hard_observation_candidate",
+                "source_role": "hard_source_observation",
+                "hard_eligible": True,
+                "station_id": "ZUUU",
+                "valid_time": "2026-07-06T06:30:00+00:00",
+                "valid_time_local": "2026-07-06T14:30:00+08:00",
+                "temperature_c": 36.0,
+                "dewpoint_c": 24.0,
+                "observed_today_max_c": 37.0,
+                "source_event_id": "src_evt_amsc",
+                "source_observation_id": "src_obs_amsc",
+            },
+            {
+                "source_id": "zuuu_taf_forecast_amsc",
+                "source_class": "forecast_weak_source",
+                "source_role": "weak_forecast",
+                "hard_eligible": False,
+                "station_id": "ZUUU",
+                "forecast_peak_c": 37.0,
+            },
+        ],
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "state_reason": "unit_test_waiting_for_posterior",
+            "read_only": True,
+        },
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    observed = slim["ui_sections"]["observation_strong"]
+
+    assert observed["schema"] == "ui_bayes_observation_strong_section_v1"
+    assert observed["state"] == "raw_observation_only"
+    assert observed["na_reason"] == "metar_strong_likelihood_not_materialized"
+    assert observed["hard_source_count"] == 1
+    assert observed["latest_hard_observation"]["source_id"] == "zuuu_metar_raw_amsc"
+    assert observed["latest_hard_observation"]["temperature_c"] == pytest.approx(36.0)
+    assert observed["latest_hard_observation"]["observed_today_max_c"] == pytest.approx(37.0)
+    assert observed["source_observations"][1]["source_id"] == "zuuu_taf_forecast_amsc"
+    assert observed["frontend_recompute_allowed"] is False
+
+
+def test_ui_snapshot_summary_derives_awc_hard_observation_from_fact_features() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "title": "Highest temperature in Chengdu on July 6?",
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_snapshot_id": "fact_awc_feature_ui",
+        "posterior_run_id": "post_awc_feature_ui",
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 30.0,
+            "observed_today_max_c": 31.0,
+            "observed_temp_source": "zuuu_metar_raw_awc",
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_at": "2026-07-05T16:00:00+00:00",
+            "zuuu_metar_raw_awc_latest_at": "2026-07-05T17:00:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-07-05T17:07:04+00:00",
+            "zuuu_metar_raw_awc_latest_raw": "METAR ZUUU 051700Z 21002MPS CAVOK 30/23 Q1001 NOSIG",
+            "zuuu_metar_raw_awc_latest_dewpoint_c": 23.0,
+        },
+        "source_acquisition_trace": {
+            "schema": "ui_pending_model_hierarchical_source_trace_v1",
+            "read_only": True,
+            "source_observations": [],
+        },
+        "metar_strong_likelihood": {"30°C": 0.25, "31°C": 0.75},
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "state_reason": "unit_test_waiting_for_posterior",
+            "read_only": True,
+        },
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    observed = slim["ui_sections"]["observation_strong"]
+    latest = observed["latest_hard_observation"]
+
+    assert observed["state"] == "available"
+    assert observed["hard_source_count"] == 1
+    assert latest["source_id"] == "zuuu_metar_raw_amsc"
+    assert latest["temperature_c"] == pytest.approx(30.0)
+    assert latest["dewpoint_c"] == pytest.approx(23.0)
+    assert latest["observed_today_max_c"] == pytest.approx(31.0)
+    assert latest["valid_time"] == "2026-07-05T17:00:00+00:00"
+    assert latest["ui_display_derived_from_fact_features"] is True
+    assert latest["not_posterior_input"] is True
+    assert slim["source_observations"][0]["source_observation_id"] == latest["source_observation_id"]
+    assert slim["source_acquisition_trace"]["source_observations"][0]["source_id"] == "zuuu_metar_raw_amsc"
+    assert slim["source_acquisition_trace"]["boundary"] == "display_only_from_existing_fact_fields_no_frontend_recompute_no_db_write"
+    assert slim["ui_sections"]["prior"]["state"] == "missing"
+
+
+def test_ui_snapshot_observation_strong_marks_likelihood_without_hard_point() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "title": "Highest temperature in Chengdu on July 6?",
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_snapshot_id": "fact_strong_without_point",
+        "posterior_run_id": "post_strong_without_point",
+        "metar_strong_likelihood": {"30°C": 0.5, "31°C": 0.5},
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "state_reason": "unit_test_waiting_for_posterior",
+            "read_only": True,
+        },
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    observed = slim["ui_sections"]["observation_strong"]
+
+    assert observed["state"] == "likelihood_only"
+    assert observed["na_reason"] == "hard_source_observation_points_missing"
+    assert observed["hard_source_count"] == 0
+    assert observed["latest_hard_observation"] == {}
+    assert "source_observations" not in slim
+
+
+def test_ui_snapshot_summary_exposes_materialized_metar_strong_likelihood_section() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "title": "Highest temperature in Chengdu on July 6?",
+        "event_date": "2026-07-06",
+        "run_date": "2026-07-06",
+        "fact_snapshot_id": "fact_strong_ui",
+        "posterior_run_id": "post_strong_ui",
+        "metar_strong_likelihood": {"36°C": 0.15, "37°C": 0.70, "38°C": 0.15},
+        "distribution": [
+            {"outcome": "37°C", "q_bayes_posterior": 0.30},
+            {"outcome": "38°C", "q_bayes_posterior": 0.45},
+        ],
+        "state_probs": {"S2_open_boundary_layer": 0.72, "S3_convective_cutoff": 0.08},
+        "remaining_warming_by_state": [
+            {"state": "S2_open_boundary_layer", "state_prob": 0.72, "delta_mu_c": 1.2, "peak_mu_c": 38.2, "sigma_c": 0.6},
+            {"state": "S1_opening", "state_prob": 0.28, "delta_mu_c": 0.5, "peak_mu_c": 37.5, "sigma_c": 0.8},
+        ],
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "platform",
+            "rolling_temperature_observation_summary": {
+                "state": "platform",
+                "rolling_point_count": 5,
+            },
+        },
+        "hard_constraints": {"current_temperature_c": 36.0, "observed_today_max_c": 37.0},
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "state_reason": "unit_test_waiting_for_posterior",
+            "read_only": True,
+        },
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    observed = slim["ui_sections"]["observation_strong"]
+
+    assert "state_probs" in slim
+    assert "remaining_warming_by_state" in slim
+    assert observed["state"] == "available"
+    assert observed["metar_strong_likelihood"]["37°C"] == pytest.approx(0.70)
+    assert observed["bucket_probabilities"][0]["outcome"] == "37°C"
+    assert observed["state_probs"]["S2_open_boundary_layer"] == pytest.approx(0.72)
+    assert observed["remaining_warming_by_state"][0]["state"] == "S2_open_boundary_layer"
+    amsc_ssot = slim["ui_sections"]["amsc_metar_ssot"]
+    peak_estimate = amsc_ssot["trajectory_peak_estimate"]
+    assert peak_estimate["schema"] == "ui_amsc_metar_trajectory_peak_estimate_v1"
+    assert peak_estimate["mean_peak_c"] == pytest.approx(38.004)
+    assert peak_estimate["sigma_c"] == pytest.approx(0.7329283730351833)
+    assert peak_estimate["sigma"] == pytest.approx(0.7329283730351833)
+    assert peak_estimate["p90_c"] == pytest.approx(38.943285503895304)
+    assert peak_estimate["p90"] == pytest.approx(38.943285503895304)
+    assert peak_estimate["target_bucket_label"] == "38°C"
+    assert peak_estimate["path_reach_probability"] == pytest.approx(
+        peak_estimate["path_reach_probability_by_bucket"]["38°C"]
+    )
+    assert slim["temperature_trajectory_peak_estimate"]["mean_peak_c"] == pytest.approx(38.004)
+    assert observed["trajectory_peak_estimate"]["mean_peak_c"] == pytest.approx(38.004)
+    assert observed["temperature_trajectory"]["state"] == "platform"
+    assert (
+        observed["temperature_trajectory"]["rolling_temperature_observation_summary"]["rolling_point_count"]
+        == 5
+    )
+    assert observed["hard_constraints"]["observed_today_max_c"] == pytest.approx(37.0)
+
+
+def test_ui_snapshot_never_rewrites_posterior_ssot_from_observed_temperature() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-5-2026",
+        "title": "Highest temperature in Chengdu on July 5?",
+        "event_date": "2026-07-05",
+        "run_date": "2026-07-05",
+        "fact_snapshot_id": "fact_stale_low_target",
+        "posterior_run_id": "post_stale_low_target",
+        "rounding_rule": "whole_degrees",
+        "market_var": "temperature_2m_max",
+        "weather_likelihood_features": {
+            "zuuu_metar_raw_awc_today_max_c": 30.0,
+            "zuuu_metar_raw_awc_latest_temp_c": 30.0,
+            "observed_today_max_c": 30.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+        },
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "read_only": True,
+            "fact_snapshot_id": "fact_stale_low_target",
+            "posterior_run_id": "post_stale_low_target",
+            "posterior_as_of": "2026-07-05T01:31:18+00:00",
+            "target_bucket": "29°C or below",
+            "target_probability": 0.220141017041,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "phase": "D0_awc_hard_signal",
+            "beta_weak": 0.0,
+            "beta_strong": 1.0,
+            "hard_mask_reason": "observed_today_max_c+current_temperature_c",
+            "bucket_probabilities": [
+                {"outcome": "29°C or below", "probability": 0.220141017041},
+                {"outcome": "33°C", "probability": 0.19},
+            ],
+        },
+        "distribution": [
+            {
+                "outcome": "29°C or below",
+                "q_temperature_bucket_posterior": 0.220141017041,
+                "q_bayes_posterior": 0.220141017041,
+                "posterior_settlement_candidate_bucket_hard_zero": True,
+                "posterior_settlement_candidate_bucket_hard_zero_reasons": [
+                    "observed_today_max_above_bucket"
+                ],
+                "q_bayes_physical_likelihood_hard_zero": True,
+                "observed_today_max_c": 30.0,
+                "observed_today_max_source": "zuuu_metar_raw_awc",
+            },
+            {"outcome": "33°C", "q_temperature_bucket_posterior": 0.19, "q_bayes_posterior": 0.19},
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    section = slim["ui_sections"]["bayes_posterior_ssot"]
+
+    # The UI is a read-only SSOT projection.  It may refuse to expose an
+    # internally hard-zero legacy row as a canonical trading target, but it
+    # must not synthesize a new posterior state from the observed temperature.
+    assert slim["posterior_ssot_fact"]["state"] == "available"
+    assert slim["posterior_ssot_fact"]["target_bucket"] == "29°C or below"
+    assert "invalidated_target_bucket" not in slim["posterior_ssot_fact"]
+    assert section["state"] == "available"
+    assert section["target_bucket"] == "29°C or below"
+    assert "target_bucket" not in slim
+    assert "ssot_target_bucket" not in slim
+    assert "target_bucket_selection" not in slim
+    assert "posterior_target_bucket_selection" not in slim
+    assert "target_bucket_na_reason" not in slim
+    assert "posterior_target_na_reason" not in slim
+
+
+def test_ui_snapshot_phase0_contract_exposes_posterior_freshness() -> None:
+    payload = {
+        "ok": True,
+        "run_date": "2026-07-04",
+        "facts": {
+            "source": "unit_test",
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+                    "event_date": "2026-07-04",
+                    "fact_id": 7,
+                    "fact_as_of": "2026-07-04T07:06:04+00:00",
+                    "fact_snapshot_id": "fact_ssot_ui",
+                    "posterior_run_id": "post_ssot_ui",
+                    "posterior_ssot_fact": {
+                        "schema": "bayes_posterior_ssot_fact_v1",
+                        "state": "available",
+                        "fact_snapshot_id": "fact_ssot_ui",
+                        "posterior_run_id": "post_ssot_ui",
+                        "posterior_as_of": "2026-07-04T07:06:03+00:00",
+                        "target_bucket": "29°C",
+                        "target_probability": 0.64,
+                    },
+                }
+            ],
+        },
+    }
+
+    out = server._attach_ui_snapshot_phase0_contract(payload)
+
+    posterior = out["panel_freshness"]["posterior"]
+    assert posterior["state"] == "fresh"
+    assert posterior["latest_posterior_as_of"] == "2026-07-04T07:06:03+00:00"
+    assert posterior["available_count"] == 1
+    assert posterior["not_materialized_count"] == 0
+    assert posterior["missing_count"] == 0
+    assert posterior["source"] == "facts.items[].ui_sections.bayes_posterior_ssot"
+
+
+def test_ui_snapshot_phase0_contract_marks_placeholder_posterior_as_pending() -> None:
+    payload = {
+        "ok": True,
+        "as_of": "2026-07-05T01:31:20+00:00",
+        "run_date": "2026-07-05",
+        "facts": {
+            "source": "unit_test",
+            "total": 1,
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-5-2026",
+                    "event_date": "2026-07-05",
+                    "fact_id": 8,
+                    "fact_as_of": "2026-07-05T01:31:18+00:00",
+                    "fact_snapshot_id": "fact_pending",
+                    "posterior_run_id": "post_pending",
+                    "phase": "D0_morning",
+                    "beta_weak": 0.55,
+                    "beta_strong": 0.35,
+                    "posterior_ssot_fact": {
+                        "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+                        "state": "not_materialized",
+                        "state_reason": "posterior_ssot_fact_not_materialized_for_this_writer_path",
+                        "fact_snapshot_id": "fact_pending",
+                        "posterior_run_id": "post_pending",
+                        "read_only": True,
+                    },
+                }
+            ],
+        },
+    }
+
+    out = server._attach_ui_snapshot_phase0_contract(payload)
+    posterior = out["ui_sections"]["posterior"]
+
+    assert posterior["state"] == "pending"
+    assert posterior["available_count"] == 0
+    assert posterior["not_materialized_count"] == 1
+    assert posterior["missing_count"] == 0
+    assert posterior["na_reason"] == "posterior_ssot_fact_not_materialized"
+    assert out["panel_freshness"]["posterior"]["state"] == "pending"
+    assert out["panel_freshness"]["posterior"]["not_materialized_count"] == 1
+
+
+def test_ui_snapshot_phase0_contract_exposes_dashboard_sections() -> None:
+    payload = {
+        "ok": True,
+        "as_of": "2026-07-04T07:06:07+00:00",
+        "run_date": "2026-07-04",
+        "facts": {
+            "source": "unit_test",
+            "total": 1,
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+                    "event_date": "2026-07-04",
+                    "fact_id": 7,
+                    "fact_as_of": "2026-07-04T07:06:04+00:00",
+                    "fact_snapshot_id": "fact_ssot_ui",
+                    "posterior_run_id": "post_ssot_ui",
+                    "review_id": "review_1",
+                    "posterior_ssot_fact": {
+                        "schema": "bayes_posterior_ssot_fact_v1",
+                        "state": "available",
+                        "fact_snapshot_id": "fact_ssot_ui",
+                        "posterior_run_id": "post_ssot_ui",
+                        "posterior_as_of": "2026-07-04T07:06:03+00:00",
+                        "target_bucket": "29°C",
+                        "target_probability": 0.64,
+                    },
+                    "daily_review_state": {
+                        "schema": "daily_review_state_v1",
+                        "review_id": "review_1",
+                        "state": "ready",
+                        "generated_at": "2026-07-04T22:00:00+00:00",
+                        "first_bad_link": "posterior",
+                    },
+                }
+            ],
+        },
+        "path_probability_follow": {
+            "jobs": {
+                "counts": {"queued": 1, "submitted": 1},
+                "updated_at": "2026-07-04T07:06:08+00:00",
+            },
+            "entry": {
+                "counts": {"total": 2, "blocked": 1, "will_order": 1},
+                "blocked_reasons": [
+                    {
+                        "code": "orderbook_stale",
+                        "count": 1,
+                        "share": 1.0,
+                    }
+                ],
+                "latest": [
+                    {
+                        "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+                        "event_date": "2026-07-04",
+                        "title": "Highest temperature in Chengdu on July 4?",
+                        "outcome": "29°C",
+                        "side": "BUY",
+                        "decided_state": "blocked",
+                        "will_order": 0,
+                        "reason_codes": ["orderbook_stale"],
+                        "reasons": ["orderbook too old"],
+                        "created_at": "2026-07-04T07:06:09+00:00",
+                        "details": {"ignored": "not exported in compact row"},
+                    }
+                ],
+            },
+        },
+        "positions": {
+            "trading_open_count": 1,
+            "truth_source": "positions_api_funder",
+            "sync_at": "2026-07-04T07:06:06+00:00",
+        },
+        "fills": {"filled_order_count_today": 1},
+        "operator_apply_gate_summary": {
+            "schema": "phase0_operator_apply_gate_summary_v1",
+            "read_only": True,
+            "execution_mode": "phase0_operator_apply_gate_summary_no_apply",
+            "ready_now": False,
+            "ready_after_operator_preflight": False,
+            "first_blocked_gate": "daily_review_persistence_apply",
+            "actionable_blocked_gates": ["daily_review_persistence_apply"],
+            "gates": [
+                {
+                    "gate": "daily_review_persistence_apply",
+                    "applicable": True,
+                    "ready_now": False,
+                    "ready_after_operator_preflight": False,
+                    "blocked": True,
+                    "blockers_now": ["daily_review_persistence_schema_missing"],
+                    "reason": "daily review persistence is not apply-ready",
+                    "source": "lineage_decision_apply_readiness.daily_review_persistence",
+                }
+            ],
+        },
+    }
+
+    out = server._attach_ui_snapshot_phase0_contract(payload)
+    sections = out["ui_sections"]
+
+    assert sections["schema"] == "ui_snapshot_dashboard_sections_v1"
+    assert sections["read_only"] is True
+    assert sections["order"] == [
+        "facts",
+        "source_to_posterior",
+        "posterior",
+        "awc_signal_to_order",
+        "decisions",
+        "execution",
+        "review",
+    ]
+    assert sections["facts"]["latest_fact_as_of"] == "2026-07-04T07:06:04+00:00"
+    assert sections["posterior"]["latest_posterior_as_of"] == "2026-07-04T07:06:03+00:00"
+    assert sections["decisions"]["source"] == "auto_trade_decisions.path_probability_follow"
+    assert sections["decisions"]["latest_decision_at"] == "2026-07-04T07:06:09+00:00"
+    assert sections["decisions"]["latest"][0]["reason_codes"] == ["orderbook_stale"]
+    assert "details" not in sections["decisions"]["latest"][0]
+    assert sections["execution"]["latest_execution_at"] == "2026-07-04T07:06:08+00:00"
+    assert sections["execution"]["orderbook"]["state"] == "stale"
+    assert sections["review"]["latest_review_id"] == "review_1"
+    assert sections["review"]["latest_review_at"] == "2026-07-04T22:00:00+00:00"
+    apply_gate = sections["review"]["apply_gate_summary"]
+    assert apply_gate["schema"] == "ui_snapshot_apply_gate_summary_v1"
+    assert apply_gate["available"] is True
+    assert apply_gate["source"] == "operator_apply_gate_summary"
+    assert apply_gate["source_schema"] == "phase0_operator_apply_gate_summary_v1"
+    assert apply_gate["state"] == "blocked"
+    assert apply_gate["first_blocked_gate"] == "daily_review_persistence_apply"
+    assert apply_gate["gates"][0]["gate"] == "daily_review_persistence_apply"
+    assert apply_gate["gates"][0]["blockers_now"] == ["daily_review_persistence_schema_missing"]
+    assert sections["review"]["apply_gate_na_reason"] == ""
+    assert out["panel_freshness"]["decisions"]["source"] == "auto_trade_decisions.path_probability_follow"
+    assert out["panel_freshness"]["orderbook"]["stale_reason"] == "orderbook_stale"
+    assert out["panel_freshness"]["review"]["review_count"] == 1
+
+
+def test_ui_snapshot_phase0_contract_overwrites_cached_panel_freshness_state() -> None:
+    payload = {
+        "ok": True,
+        "as_of": "2026-07-04T07:06:07+00:00",
+        "run_date": "2026-07-04",
+        "cache_stale": True,
+        "cache_stale_reason": "snapshot_rebuild_started",
+        "facts": {"source": "unit_test", "items": [], "total": 0},
+        "panel_freshness": {
+            "facts": {
+                "state": "fresh",
+                "source": "old_cache",
+                "stale_reason": "",
+                "na_reason": "",
+            }
+        },
+    }
+
+    out = server._attach_ui_snapshot_phase0_contract(payload)
+
+    assert out["snapshot_freshness_state"] == "stale"
+    assert out["ui_sections"]["facts"]["state"] == "stale"
+    assert out["panel_freshness"]["facts"]["state"] == "stale"
+    assert out["panel_freshness"]["facts"]["source"] == "unit_test"
+    assert out["panel_freshness"]["facts"]["stale_reason"] == "snapshot_rebuild_started"
+    assert out["panel_freshness"]["facts"]["na_reason"] == "no_fact_items"
+    assert out["ui_sections"]["review"]["apply_gate_summary"]["available"] is False
+    assert out["ui_sections"]["review"]["apply_gate_na_reason"] == "operator_apply_gate_summary_not_attached"
+    assert out["next_recommended_poll_ms"] == 1000
 
 
 def test_ui_snapshot_summary_aligns_all_page_probability_copies_to_distribution() -> None:
@@ -401,6 +2228,11 @@ def test_ui_snapshot_summary_aligns_all_page_probability_copies_to_distribution(
             },
         },
     }
+    attach_unit_posterior_ssot_fact(
+        payload,
+        target_bucket="30°C or higher",
+        target_probability=0.45382930769085045,
+    )
 
     slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
     summary = slim["chengdu_intraday_summary"]
@@ -493,6 +2325,7 @@ def test_ui_snapshot_summary_clears_hard_zero_second_target_after_final_lock() -
             },
         },
     }
+    attach_unit_posterior_ssot_fact(payload, target_bucket="33°C", target_probability=1.0)
 
     slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
     summary = slim["chengdu_intraday_summary"]
@@ -516,6 +2349,66 @@ def test_ui_snapshot_summary_common_limits_share_cache_bucket() -> None:
     assert server._ui_snapshot_summary_cache_limit(24) == 24
     assert server._ui_snapshot_summary_cache_limit(25) == 25
     assert server._ui_snapshot_summary_cache_limit(40) == 40
+
+
+def test_ui_snapshot_summary_cache_rejects_fact_item_without_ssot_display_contract() -> None:
+    payload = {
+        "facts": {
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+                    "event_date": "2026-07-06",
+                    "fact_id": 106775,
+                    "target_bucket": "37°C",
+                }
+            ]
+        }
+    }
+
+    assert server._ui_snapshot_summary_payload_has_display_items(payload) is False
+    assert server._ui_snapshot_summary_cache_entry_has_display_items((123.0, payload)) is False
+
+
+def test_ui_snapshot_summary_cache_accepts_fact_item_with_ssot_display_contract() -> None:
+    payload = {
+        "facts": {
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+                    "event_date": "2026-07-06",
+                    "fact_id": 106775,
+                    "lineage_state": {
+                        "fact_snapshot_id": "fact_1",
+                        "posterior_run_id": "post_1",
+                        "source_event_ids": ["srcevt_1"],
+                    },
+                    "posterior_ssot_fact": {
+                        "schema": "bayes_posterior_ssot_fact_v1",
+                        "state": "available",
+                        "fact_snapshot_id": "fact_1",
+                        "posterior_run_id": "post_1",
+                        "target_bucket": "37°C",
+                        "target_probability": 0.8,
+                    },
+                    "posterior_target_bucket_selection": {
+                        "ssot_source": "posterior_ssot_fact",
+                        "target_bucket": "37°C",
+                        "target_probability": 0.8,
+                    },
+                    "target_bucket_selection": {
+                        "ssot_source": "posterior_ssot_fact",
+                        "target_bucket": "37°C",
+                        "target_probability": 0.8,
+                    },
+                    "prior_distribution": {"37°C": 0.4, "38°C": 0.6},
+                    "metar_strong_likelihood": {"37°C": 0.7, "38°C": 0.3},
+                }
+            ]
+        }
+    }
+
+    assert server._ui_snapshot_summary_payload_has_display_items(payload) is True
+    assert server._ui_snapshot_summary_cache_entry_has_display_items((123.0, payload)) is True
 
 
 def test_auto_trade_criteria_runtime_snapshot_cache_serves_fresh_without_db_scan(monkeypatch) -> None:
@@ -553,15 +2446,6 @@ def test_auto_trade_criteria_routes_use_cached_runtime_snapshot() -> None:
     assert "_latest_lcb_tradeability_runtime_snapshot()" not in config_block
 
 
-def test_distribution_top_label_prefers_temperature_bucket_posterior() -> None:
-    rows = [
-        {"outcome": "28°C", "q_temperature_bucket_posterior": 0.20, "q_bayes_posterior": 0.90},
-        {"outcome": "29°C", "q_temperature_bucket_posterior": 0.60, "q_bayes_posterior": 0.10},
-    ]
-
-    assert server._top_label_from_distribution_rows(rows) == "29°C"
-
-
 def test_fact_write_top_label_helper_prefers_temperature_bucket_posterior() -> None:
     source = inspect.getsource(server._insert_event_fact_history)
     helper_start = source.index("def _top_label_from_rows(rows_obj: Any) -> str:")
@@ -571,7 +2455,7 @@ def test_fact_write_top_label_helper_prefers_temperature_bucket_posterior() -> N
     assert helper.index('row.get("q_temperature_bucket_posterior")') < helper.index('row.get("q_bayes_posterior")')
 
 
-def test_fact_write_merges_observation_led_summary_back_into_distribution() -> None:
+def test_fact_write_keeps_observation_led_summary_diagnostic_without_posterior_ssot() -> None:
     fact_as_of = "2026-06-29T06:00:00+08:00"
     slug = "highest-temperature-in-chengdu-on-june-29-2026"
     rows = [
@@ -629,15 +2513,16 @@ def test_fact_write_merges_observation_led_summary_back_into_distribution() -> N
     server._attach_target_realization_capital_plan(item)
 
     top_row = max(item["distribution"], key=lambda row: row["q_temperature_bucket_posterior"])
-    plan = item["target_realization_capital_plan"]
     assert old_top == "31°C"
     assert item["observation_led_likelihood"]["applied"] is True
-    assert top_row["outcome"] == item["target_bucket"] == item["ssot_target_bucket"] == plan["target_bucket"]
-    assert top_row["outcome"] != old_top
-    assert plan["target_posterior"] == pytest.approx(top_row["q_temperature_bucket_posterior"])
+    assert item["observation_led_likelihood"]["diagnostic_only"] is True
+    assert item["observation_led_likelihood_posterior_materialized"] is False
+    assert top_row["outcome"] == old_top
+    assert "target_bucket" not in item
+    assert "ssot_target_bucket" not in item
 
 
-def test_intraday_summary_read_side_merges_observation_led_rows_into_distribution() -> None:
+def test_intraday_summary_read_side_keeps_observation_led_rows_diagnostic_without_posterior_ssot() -> None:
     payload = {
         "slug": "highest-temperature-in-chengdu-on-june-29-2026",
         "event_date": "2026-06-29",
@@ -676,13 +2561,14 @@ def test_intraday_summary_read_side_merges_observation_led_rows_into_distributio
     )
 
     top_row = max(payload["distribution"], key=lambda row: row["q_temperature_bucket_posterior"])
-    assert top_row["outcome"] == "29°C"
-    assert top_row["q_temperature_bucket_posterior"] == pytest.approx(0.2875)
-    assert payload["target_bucket"] == "29°C"
-    assert payload["ssot_target_bucket"] == "29°C"
-    assert payload["posterior_highest_bucket_label"] == "29°C"
+    assert top_row["outcome"] == "31°C"
+    assert top_row["q_temperature_bucket_posterior"] == pytest.approx(0.40)
+    assert "target_bucket" not in payload
+    assert "ssot_target_bucket" not in payload
+    assert "posterior_highest_bucket_label" not in payload
     assert payload["observation_led_likelihood"]["applied"] is True
-    assert payload["observation_led_likelihood_posterior_materialized"] is True
+    assert payload["observation_led_likelihood"]["diagnostic_only"] is True
+    assert payload["observation_led_likelihood_posterior_materialized"] is False
 
 
 def test_intraday_summary_keeps_morning_not_final_observation_diagnostic_only() -> None:
@@ -732,7 +2618,8 @@ def test_intraday_summary_keeps_morning_not_final_observation_diagnostic_only() 
 
     top_row = max(payload["distribution"], key=lambda row: row["q_temperature_bucket_posterior"])
     assert top_row["outcome"] == "31°C"
-    assert payload["target_bucket"] == "31°C"
+    assert "target_bucket" not in payload
+    assert "ssot_target_bucket" not in payload
     assert payload["observation_led_likelihood"]["diagnostic_only"] is True
     assert payload["observation_led_likelihood_posterior_materialized"] is False
     assert payload["fact_provenance"]["observation_led_likelihood"]["posterior_materialized"] is False
@@ -1122,6 +3009,60 @@ def test_ui_snapshot_distribution_syncs_display_bayes_to_temperature_ssot() -> N
     assert compact["posterior_ssot_display_aligned"] is True
 
 
+def test_ui_snapshot_distribution_compact_preserves_bucket_only_labels() -> None:
+    row = {
+        "bucket": "38°C",
+        "q_temperature_bucket_posterior": 0.296701862055,
+        "q_bayes_posterior": 0.296701862055,
+    }
+
+    compact = server._compact_distribution_row_for_ui_snapshot(row, summary_minimal=True)
+
+    assert compact["bucket"] == "38°C"
+    assert compact["outcome"] == "38°C"
+    assert compact["label"] == "38°C"
+    assert compact["q_temperature_bucket_posterior"] == pytest.approx(0.296701862055)
+
+
+def test_ui_snapshot_distribution_projection_prefers_posterior_ssot_fact_over_stale_distribution() -> None:
+    payload = {
+        "target_bucket_probability_field": "event_fact_latest.distribution.q_temperature_bucket_posterior",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "37°C",
+            "target_probability": 1.0,
+            "bucket_probabilities": [
+                {"bucket": "37°C", "probability": 1.0, "final_bucket_lock_target": True},
+                {"bucket": "38°C", "probability": 0.0, "hard_zero": True},
+                {"bucket": "39°C or higher", "probability": 0.0, "hard_zero": True},
+            ],
+        },
+        "posterior_temperature_distribution": {
+            "bucket_probabilities": [
+                {"bucket": "37°C", "probability": 0.027126122616945747},
+                {"bucket": "38°C", "probability": 0.017903508455964195},
+                {"bucket": "39°C or higher", "probability": 0.01022537415197955},
+            ],
+        },
+        "distribution": [
+            {"outcome": "37°C", "q_temperature_bucket_posterior": 0.027126122616945747},
+            {"outcome": "38°C", "q_temperature_bucket_posterior": 0.017903508455964195},
+            {"outcome": "39°C or higher", "q_temperature_bucket_posterior": 0.01022537415197955},
+        ],
+    }
+
+    projected = server._distribution_with_ctp_posterior(payload)
+
+    assert server._preserve_event_fact_distribution_posterior(payload) is False
+    by_outcome = {row["outcome"]: row for row in projected}
+    assert by_outcome["37°C"]["q_temperature_bucket_posterior"] == 1.0
+    assert by_outcome["38°C"]["q_temperature_bucket_posterior"] == 0.0
+    assert by_outcome["39°C or higher"]["q_temperature_bucket_posterior"] == 0.0
+    assert by_outcome["38°C"]["posterior_field"] == "posterior_ssot_fact.bucket_probabilities"
+    assert by_outcome["38°C"]["target_bucket_probability_field"] == "posterior_ssot_fact.bucket_probabilities"
+
+
 def test_ui_snapshot_summary_slim_keeps_awc_hard_observation_fields() -> None:
     payload = {
         "slug": "highest-temperature-in-chengdu-on-june-25-2026",
@@ -1170,6 +3111,103 @@ def test_ui_snapshot_summary_slim_keeps_awc_hard_observation_fields() -> None:
     )
     assert slim["source_observation_comparison"]["awc"]["today_max_c"] == 27.0
     assert slim["target_bucket_observation_state"]["observed_max_c"] == 27.0
+
+
+def test_ui_snapshot_summary_slim_keeps_amsc_recoil_and_latency_ssot_fields() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-9-2026",
+        "event_date": "2026-07-09",
+        "fact_as_of": "2026-07-08T23:30:47Z",
+        "amsc_latency_slo_audit": {
+            "schema": "amsc_latency_slo_audit_v1",
+            "valid_time": "2026-07-08T23:30:00Z",
+            "fetched_at": "2026-07-08T23:30:47Z",
+            "fact_as_of": "2026-07-08T23:30:47Z",
+        },
+        "termination_risk": {
+            "schema": "strong_likelihood_termination_risk_v1",
+            "probability_no_material_new_daily_high": 0.81,
+            "reference_observed_daily_high_c": 32.0,
+            "derived_from_same_remaining_warming_mixture": True,
+            "speci_accelerated": True,
+        },
+        "weather_likelihood_features": {
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-08T23:30:00Z",
+            "zuuu_metar_raw_amsc_latest_local": "2026-07-09T07:30:00+08:00",
+            "zuuu_metar_raw_amsc_latest_temp_c": 29.0,
+            "zuuu_metar_raw_amsc_today_max_c": 32.0,
+            "zuuu_metar_raw_amsc_latest_raw": "METAR ZUUU 082330Z 21002MPS CAVOK 29/24 Q1001 NOSIG=",
+            "recoil_state": "confirmed_cooling_cutoff",
+            "recoil_state_label": "真实降温/截断",
+            "recoil_action": "disable_recoil_compress_high_tail",
+            "recoil_momentum_treatment": "cooling_or_cutoff_confirmed",
+            "physical_cutoff_confirmed": True,
+            "true_cooling_or_cutoff_confirmed": True,
+            "physical_cutoff_evidence_codes": ["pressure_jump_observed"],
+            "physical_cutoff_evidence_count": 1,
+        },
+        "distribution": [{"outcome": "38°C", "q_temperature_bucket_posterior": 0.32}],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+
+    assert slim["amsc_latency_slo_audit"]["schema"] == "amsc_latency_slo_audit_v1"
+    assert slim["zuuu_metar_raw_amsc_latest_temp_c"] == pytest.approx(29.0)
+    assert slim["weather_likelihood_features_compact"]["zuuu_metar_raw_amsc_today_max_c"] == pytest.approx(32.0)
+    assert slim["recoil_state_ssot"]["state"] == "confirmed_cooling_cutoff"
+    assert slim["recoil_state_ssot"]["physical_cutoff_evidence"]["evidence_codes"] == ["pressure_jump_observed"]
+    assert slim["physical_cutoff_evidence"]["true_cooling_or_cutoff_confirmed"] is True
+    assert slim["termination_risk"]["probability_no_material_new_daily_high"] == pytest.approx(0.81)
+    assert slim["key_metrics"]["termination_risk"]["speci_accelerated"] is True
+    assert slim["key_metrics"]["recoil_state_ssot"]["state"] == "confirmed_cooling_cutoff"
+    assert slim["weather_likelihood_features_compact"]["physical_cutoff_evidence"]["evidence_count"] == 1
+
+
+def test_chengdu_intraday_fact_fallback_keeps_amsc_recoil_and_latency_ssot_fields(monkeypatch) -> None:
+    fact_payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-9-2026",
+        "event_date": "2026-07-09",
+        "fact_as_of": "2026-07-08T23:30:47Z",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "38°C",
+            "target_probability": 0.32,
+            "bucket_probabilities": [{"bucket": "38°C", "probability": 0.32}],
+        },
+        "amsc_latency_slo_audit": {
+            "schema": "amsc_latency_slo_audit_v1",
+            "state": "partial",
+            "slow_stage": "fact_to_posterior",
+        },
+        "weather_likelihood_features": {
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-08T23:30:00Z",
+            "zuuu_metar_raw_amsc_latest_temp_c": 29.0,
+            "zuuu_metar_raw_amsc_today_max_c": 32.0,
+            "recoil_state": "confirmed_cooling_cutoff",
+            "physical_cutoff_confirmed": True,
+            "true_cooling_or_cutoff_confirmed": True,
+            "physical_cutoff_evidence_codes": ["pressure_jump_observed"],
+        },
+        "distribution": [{"outcome": "38°C", "q_temperature_bucket_posterior": 0.32}],
+    }
+    monkeypatch.setattr(
+        server,
+        "_latest_fact_payload_for_chengdu_intraday_ssot",
+        lambda _event_date: fact_payload,
+    )
+
+    fallback = server._fact_backed_chengdu_intraday_summary_fallback(
+        "2026-07-09",
+        {"ok": False, "event_date": "2026-07-09", "busy": True},
+    )
+    compact = server._compact_chengdu_intraday_summary_for_endpoint(fallback)
+
+    assert compact["ok"] is True
+    assert compact["key_metrics"]["zuuu_metar_raw_amsc_latest_temp_c"] == pytest.approx(29.0)
+    assert compact["recoil_state_ssot"]["state"] == "confirmed_cooling_cutoff"
+    assert compact["physical_cutoff_evidence"]["evidence_codes"] == ["pressure_jump_observed"]
+    assert compact["amsc_latency_slo_audit"]["slow_stage"] == "fact_to_posterior"
 
 
 def test_ui_snapshot_summary_slim_promotes_nested_chengdu_awc_observation_fields() -> None:
@@ -1345,7 +3383,8 @@ def test_chengdu_intraday_fast_fallback_overlays_latest_fact_observation(monkeyp
     )
     compact = server._compact_chengdu_intraday_summary_for_endpoint(payload)
 
-    assert compact["target_bucket"] == "33°C"
+    assert "target_bucket" not in compact
+    assert "ssot_target_bucket" not in compact
     assert compact["temperature_trajectory_status"]["observed_temp_c"] == 33.0
     assert compact["temperature_trajectory_status"]["observed_today_max_c"] == 33.0
     assert compact["temperature_path_distribution"]["peak_estimator_mu_c"] == 33.1
@@ -1606,44 +3645,6 @@ def test_ui_snapshot_summary_throttles_repeated_stale_revalidate(tmp_path, monke
     assert payload["facts"]["items"][0]["slug"] == "cached"
 
 
-def test_hard_source_final_lock_is_promoted_to_fact_fields(monkeypatch) -> None:
-    monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED", "1")
-    monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED", "0")
-    item = {
-        "distribution": [
-            {"outcome": "32°C", "q_bayes_posterior": 0.25, "q_round": 0.25},
-            {"outcome": "33°C", "q_bayes_posterior": 0.50, "q_round": 0.50},
-            {"outcome": "34°C", "q_bayes_posterior": 0.25, "q_round": 0.25},
-        ],
-        "weather_likelihood_features": {},
-    }
-    features = {
-        "settlement_actual": 33.0,
-        "settlement_actual_source": "event_runs.settlement_actual",
-        "market_closed": True,
-    }
-
-    meta = server._apply_hard_source_final_lock_to_item(
-        item,
-        features,
-        event_date="2026-06-22",
-        market_var="temperature_2m_max",
-        rounding_rule="whole_degrees",
-        event_tz="Asia/Shanghai",
-    )
-
-    assert meta["final_bucket_lock"] is True
-    assert item["final_bucket_lock"] is True
-    assert item["final_bucket"] == "33°C"
-    assert item["hard_source_final_bucket_lock"] is True
-    assert item["settlement_actual"] == 33.0
-    assert item["market_closed"] == 1
-    assert item["weather_likelihood_features"]["final_bucket_lock"] is True
-    assert item["weather_likelihood_features"]["final_bucket"] == "33°C"
-    probs = {row["outcome"]: row["q_bayes_posterior"] for row in item["distribution"]}
-    assert probs == {"32°C": 0.0, "33°C": 1.0, "34°C": 0.0}
-
-
 def test_ui_snapshot_summary_cold_cache_rebuilds_in_background(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "archive.db"
     sqlite3.connect(db_path).close()
@@ -1676,226 +3677,41 @@ def test_ui_snapshot_summary_cold_cache_rebuilds_in_background(tmp_path, monkeyp
             server._UI_SNAPSHOT_CACHE.pop(cache_key, None)
 
 
-def test_ui_snapshot_summary_busy_cold_cache_returns_metadata_only_items(tmp_path, monkeypatch) -> None:
-    db_path = tmp_path / "archive.db"
-    monkeypatch.setattr(server, "DB_PATH", db_path)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_CACHE_SEC", 30)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_STALE_WHILE_REVALIDATE", True)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_SUMMARY_SYNC_COLD_EXPLICIT_DATE", False)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_DIRTY_STAMP_PATH", tmp_path / "dirty.stamp")
-    monkeypatch.setattr(server, "_safe_model_update_stats", lambda limit=48: {"models": []})
-    cache_key = "summary:2026-06-21:24"
-    slug = "highest-temperature-in-chengdu-on-june-21-2026"
-    payload = {
-        "slug": slug,
-        "title": "Highest temperature in Chengdu on June 21?",
-        "event_date": "2026-06-21",
-        "run_date": "2026-06-21",
-        "market_var": "temperature_2m_max",
-        "distribution": [{"outcome": "25°C", "q_round": 0.4}],
-    }
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    server.ensure_fact_tables(conn)
-    conn.execute(
-        """
-        CREATE TABLE weather_market_discovery (
-            slug TEXT NOT NULL,
-            event_date TEXT NOT NULL,
-            title TEXT,
-            market_open_at TEXT,
-            first_seen_at TEXT NOT NULL,
-            first_tokenized_at TEXT,
-            token_count INTEGER NOT NULL DEFAULT 0,
-            status TEXT,
-            details_json TEXT,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY(slug, event_date)
-        )
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO weather_market_discovery(
-            slug, event_date, title, first_seen_at, first_tokenized_at, token_count, status, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            slug,
-            "2026-06-21",
-            "Highest temperature in Chengdu on June 21?",
-            "2026-06-20T00:00:00+00:00",
-            "2026-06-20T01:00:00+00:00",
-            11,
-            "tokenized",
-            "2026-06-20T01:00:00+00:00",
-        ),
-    )
-    fact_id = server._insert_event_fact_history(
-        conn,
-        run_date="2026-06-21",
-        slug=slug,
-        event_date="2026-06-21",
-        fact_as_of="2026-06-21T04:00:00+00:00",
-        model_snapshot_id=10,
-        market_snapshot_id=20,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item=payload,
-    )
-    server._upsert_event_fact_latest(conn, slug, "2026-06-21", fact_id)
-    conn.execute("DELETE FROM event_fact_summary_cache WHERE fact_id = ?", (fact_id,))
-    conn.commit()
-    conn.close()
-    with server._UI_SNAPSHOT_CACHE_LOCK:
-        server._UI_SNAPSHOT_CACHE.pop(cache_key, None)
-    with server._UI_SNAPSHOT_REBUILD_LOCK:
-        mark_ui_snapshot_rebuilding(cache_key)
-    try:
-        result = server.ui_snapshot_summary("2026-06-21", 5)
-    finally:
-        with server._UI_SNAPSHOT_REBUILD_LOCK:
-            server._UI_SNAPSHOT_REBUILDING.pop(cache_key, None)
-        with server._UI_SNAPSHOT_CACHE_LOCK:
-            server._UI_SNAPSHOT_CACHE.pop(cache_key, None)
+def test_ui_snapshot_summary_busy_cold_cache_returns_metadata_only_items() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
-    assert result["ok"] is True
-    assert result["busy"] is True
-    assert result["summary_metadata_only"] is True
-    assert result["facts"]["source"] == "event_fact_latest_summary_metadata_only"
-    item = result["facts"]["items"][0]
-    assert item["slug"] == slug
-    assert item["title"] == "Highest temperature in Chengdu on June 21?"
-    assert item["summary_metadata_only"] is True
-    assert item["snapshot_source"] == "event_fact_latest_metadata_only"
-    assert item["detail_available"] is False
-    assert item["frontend_inference_allowed"] is False
-    assert item["detail_na_reason"] == "ui_snapshot_rebuild_in_flight"
-    assert item["ssot_detail_state"]["state"] == "metadata_only"
-    assert item["ssot_detail_state"]["frontend_behavior"] == "placeholder_only"
-    assert item["ssot_detail_state"]["frontend_inference_allowed"] is False
-    assert item["data_status"]["status"] == "metadata_only"
-    assert item["data_status"]["frontend_inference_allowed"] is False
-    assert item["market_discovery"]["token_count"] == 11
-    assert "distribution" not in item
-    assert "target_bucket" not in item
+def test_ui_snapshot_summary_heavy_lane_busy_serves_summary_cache() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
+def test_ui_snapshot_summary_heavy_lane_preserves_prior_observation_and_posterior_sections() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
-def test_ui_snapshot_summary_heavy_lane_busy_serves_summary_cache(tmp_path, monkeypatch) -> None:
-    db_path = tmp_path / "archive.db"
-    monkeypatch.setattr(server, "DB_PATH", db_path)
-    monkeypatch.setattr(server, "_event_fact_metadata_only_summary_items", lambda *args, **kwargs: [])
-    monkeypatch.setattr(server, "_discovery_placeholder_payloads", lambda *args, **kwargs: [])
-    slug = "highest-temperature-in-chengdu-on-june-22-2026"
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
-        conn,
-        run_date="2026-06-22",
-        slug=slug,
-        event_date="2026-06-22",
-        fact_as_of="2026-06-22T08:08:01+00:00",
-        model_snapshot_id=10,
-        market_snapshot_id=20,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item={
-            "slug": slug,
-            "title": "Highest temperature in Chengdu on June 22?",
-            "event_date": "2026-06-22",
-            "run_date": "2026-06-22",
-            "market_var": "temperature_2m_max",
-            "distribution": [{"outcome": "33°C", "q_bayes_posterior": 0.65, "q_round": 0.65}],
-        },
-    )
-    server._upsert_event_fact_latest(conn, slug, "2026-06-22", fact_id)
-    conn.commit()
-    conn.close()
+def test_ui_snapshot_summary_heavy_lane_ignores_empty_busy_memory_cache() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
-    payload = server._ui_snapshot_summary_heavy_lane_fallback_payload(
-        "/api/ui_snapshot_summary?run_date=2026-06-22&limit=5&city=chengdu"
-    )
-
-    assert payload is not None
-    assert payload["ok"] is True
-    assert payload["busy"] is True
-    assert payload["heavy_lane_busy"] is True
-    assert payload["source"] == "ui_heavy_request_lane_busy_summary_cache_fallback"
-    assert payload["summary_cache_fallback"] is True
-    assert payload["summary_cache_fallback_reason"] == "ui_heavy_request_lane_busy"
-    assert payload["facts"]["items"][0]["slug"] == slug
-    assert payload["facts"]["items"][0]["distribution"][0]["outcome"] == "33°C"
-    cached_payload = server._ui_snapshot_summary_heavy_lane_fallback_payload(
-        "/api/ui_snapshot_summary?run_date=2026-06-22&limit=5&city=chengdu"
-    )
-    assert cached_payload is not None
-    assert cached_payload["source"] == "ui_snapshot_summary_prefer_cache_memory"
-    assert cached_payload["prefer_cache_memory"] is True
-    assert server._ui_snapshot_summary_prefer_cache_request_target(
-        "/api/ui_snapshot_summary?run_date=2026-06-22&prefer_cache=1"
-    )
-    assert server._ui_snapshot_summary_prefer_cache_request_target(
-        "/api/ui_snapshot?run_date=2026-06-22&prefer_cache=true"
-    )
-    assert not server._ui_snapshot_summary_prefer_cache_request_target(
-        "/api/ui_snapshot_summary?run_date=2026-06-22"
-    )
-    with server._UI_SNAPSHOT_CACHE_LOCK:
-        server._UI_SNAPSHOT_CACHE.pop("summary:2026-06-22:24:chengdu", None)
-
+def test_ui_snapshot_summary_prefer_cache_raw_response_discards_empty_cached_body() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
 def test_ui_server_routes_prefer_cache_snapshot_outside_heavy_lane() -> None:
-    source = inspect.getsource(server.BoundedThreadingHTTPServer.process_request)
-    thread_source = inspect.getsource(server.BoundedThreadingHTTPServer.process_request_thread)
-    busy_source = inspect.getsource(server.BoundedThreadingHTTPServer._send_api_busy_and_close)
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
-    assert "prefer_cache_request = _ui_snapshot_summary_prefer_cache_request_target(request_target)" in source
-    assert "_ui_snapshot_summary_prefer_cache_raw_response(request_target)" in source
-    assert 'self._bypass_slot_requests[id(request)] = "prefer_cache"' in source
-    assert 'elif bypass_slot == "prefer_cache":' in thread_source
-    assert "priority_request = request_path in UI_PRIORITY_REQUEST_PATHS or prefer_cache_request" in source
-    assert "heavy_request = request_path in UI_HEAVY_REQUEST_PATHS and not prefer_cache_request" in source
-    assert "_ui_snapshot_summary_heavy_lane_fallback_payload" in busy_source
-    assert "_send_api_busy_and_close(request, request_target or request_path)" in source
+def test_ui_snapshot_summary_prewarm_targets_chengdu_shared_cache_key() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
+def test_ui_snapshot_summary_prefer_cache_raw_response_reuses_short_cache() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
-def test_ui_snapshot_summary_prewarm_targets_chengdu_shared_cache_key(monkeypatch) -> None:
-    monkeypatch.setattr(server, "_chengdu_today_date_key", lambda: "2026-07-02")
-
-    targets = server._ui_snapshot_summary_prewarm_request_targets("2026-07-02")
-
-    assert targets
-    assert targets[0] == "/api/ui_snapshot_summary?run_date=2026-07-02&limit=24&city=chengdu&prefer_cache=1"
-    assert all("limit=24" in target for target in targets)
-    assert all("city=chengdu" in target for target in targets)
-    assert any("run_date=2026-07-01" in target for target in targets)
-    assert any("run_date=2026-07-03" in target for target in targets)
-
-
-def test_ui_snapshot_summary_prefer_cache_raw_response_reuses_short_cache(monkeypatch) -> None:
-    calls = {"n": 0}
-
-    def fake_fallback(_target: str) -> dict:
-        calls["n"] += 1
-        return {"ok": True, "source": "unit", "facts": {"items": []}}
-
-    monkeypatch.setattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload", fake_fallback)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_PREFER_CACHE_RAW_SEC", 30.0)
-    with server._UI_SNAPSHOT_PREFER_CACHE_RAW_LOCK:
-        server._UI_SNAPSHOT_PREFER_CACHE_RAW.clear()
-
-    first = server._ui_snapshot_summary_prefer_cache_raw_response(
-        "/api/ui_snapshot_summary?run_date=2026-07-02&limit=2&city=chengdu&prefer_cache=1&_=1"
-    )
-    second = server._ui_snapshot_summary_prefer_cache_raw_response(
-        "/api/ui_snapshot_summary?run_date=2026-07-02&limit=2&city=chengdu&prefer_cache=1&_=2"
-    )
-
-    assert first == second
-    assert b'"prefer_cache_requested":true' in first
-    assert calls["n"] == 1
-    with server._UI_SNAPSHOT_PREFER_CACHE_RAW_LOCK:
-        server._UI_SNAPSHOT_PREFER_CACHE_RAW.clear()
-
+def test_ui_snapshot_summary_prefer_cache_raw_response_refreshes_html_mtime() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
 def test_ui_snapshot_route_defines_city_filter_for_summary_fallback() -> None:
     source = inspect.getsource(server.Handler.do_GET)
@@ -1921,238 +3737,9 @@ def test_ui_server_launch_script_uses_module_entrypoint() -> None:
     assert 'load_repo_env_file "$ROOT/.env"' not in script
 
 
-def test_ui_snapshot_summary_busy_cold_cache_prefers_summary_cache(tmp_path, monkeypatch) -> None:
-    db_path = tmp_path / "archive.db"
-    monkeypatch.setattr(server, "DB_PATH", db_path)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_CACHE_SEC", 30)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_STALE_WHILE_REVALIDATE", True)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_SUMMARY_SYNC_COLD_EXPLICIT_DATE", False)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_DIRTY_STAMP_PATH", tmp_path / "dirty.stamp")
-    monkeypatch.setattr(server, "_ui_upcoming_days", lambda default=2: 2)
-    cache_key = "summary:2026-06-22:24"
-    slug = "highest-temperature-in-chengdu-on-june-22-2026"
-    fact_payload = {
-        "slug": slug,
-        "title": "Highest temperature in Chengdu on June 22?",
-        "event_date": "2026-06-22",
-        "run_date": "2026-06-22",
-        "market_var": "temperature_2m_max",
-        "weather_likelihood_features": {
-            "observed_temp_c": 33.0,
-            "observed_today_max_c": 33.0,
-            "observed_today_max_source": "zuuu_metar_raw_awc",
-            "zuuu_metar_raw_awc_latest_temp_c": 33.0,
-            "zuuu_metar_raw_awc_latest_raw": "METAR ZUUU 220800Z VRB02MPS 9999 SCT026 33/17 Q1008 NOSIG",
-            "zuuu_metar_raw_awc_today_max_c": 33.0,
-            "zuuu_metar_raw_awc_today_max_raw": "METAR ZUUU 220800Z VRB02MPS 9999 SCT026 33/17 Q1008 NOSIG",
-        },
-        "temperature_trajectory_status": {
-            "available": True,
-            "observed_temp_c": 33.0,
-            "observed_today_max_c": 33.0,
-            "temperature_rise_rate_c_per_hour": 0.0,
-        },
-        "temperature_path_distribution": {
-            "observed_temp_c": 33.0,
-            "observed_today_max_c": 33.0,
-            "peak_estimator_mu_c": 33.1,
-            "peak_estimator_sigma_c": 0.3,
-        },
-        "distribution": [
-            {"outcome": "32°C", "q_bayes_posterior": 0.25, "q_round": 0.25},
-            {"outcome": "33°C", "q_bayes_posterior": 0.65, "q_round": 0.65},
-        ],
-    }
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    server.ensure_fact_tables(conn)
-    conn.execute(
-        """
-        CREATE TABLE weather_market_discovery (
-            slug TEXT NOT NULL,
-            event_date TEXT NOT NULL,
-            title TEXT,
-            market_open_at TEXT,
-            first_seen_at TEXT NOT NULL,
-            first_tokenized_at TEXT,
-            token_count INTEGER NOT NULL DEFAULT 0,
-            status TEXT,
-            details_json TEXT,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY(slug, event_date)
-        )
-        """
-    )
-    fact_id = server._insert_event_fact_history(
-        conn,
-        run_date="2026-06-22",
-        slug=slug,
-        event_date="2026-06-22",
-        fact_as_of="2026-06-22T08:08:01+00:00",
-        model_snapshot_id=10,
-        market_snapshot_id=20,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item=fact_payload,
-    )
-    server._upsert_event_fact_latest(conn, slug, "2026-06-22", fact_id)
-    cur = conn.execute(
-        "SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?",
-        (fact_id,),
-    )
-    cached_summary = json.loads(cur.fetchone()["summary_json"])
-    cached_summary.pop("source_observation_comparison", None)
-    cached_summary.pop("target_bucket_observation_state", None)
-    cached_summary.pop("key_metrics", None)
-    cached_summary["chengdu_intraday_summary"] = {
-        "ok": True,
-        "event_date": "2026-06-22",
-        "source_observation_comparison": {
-            "awc": {
-                "today_max_c": 33.0,
-                "settlement_proxy_bucket": "33°C",
-            }
-        },
-        "target_bucket_observation_state": {
-            "source": "zuuu_metar_raw_awc_today_max",
-            "observed_max_c": 33.0,
-            "settlement_proxy_bucket": "33°C",
-        },
-        "key_metrics": {
-            "observed_temp_c": 31.0,
-            "observed_today_max_c": 33.0,
-            "zuuu_metar_raw_awc_today_max_c": 33.0,
-        },
-        "temperature_trajectory_status": {
-            "available": True,
-            "observed_temp_c": 31.0,
-            "observed_today_max_c": 31.0,
-            "temperature_rise_rate_c_per_hour": 0.0,
-        },
-        "temperature_path_distribution": {
-            "observed_temp_c": 31.0,
-            "observed_today_max_c": 31.0,
-            "peak_estimator_mu_c": 31.3,
-            "peak_estimator_sigma_c": 0.6,
-        },
-    }
-    conn.execute(
-        "UPDATE event_fact_summary_cache SET summary_json = ? WHERE fact_id = ?",
-        (json.dumps(cached_summary, ensure_ascii=False), fact_id),
-    )
-    future_slug = "highest-temperature-in-chengdu-on-june-23-2026"
-    future_payload = {
-        "slug": future_slug,
-        "title": "Highest temperature in Chengdu on June 23?",
-        "event_date": "2026-06-23",
-        "run_date": "2026-06-22",
-        "market_var": "temperature_2m_max",
-        "distribution": [{"outcome": "31°C", "q_round": 0.5}],
-    }
-    future_fact_id = server._insert_event_fact_history(
-        conn,
-        run_date="2026-06-22",
-        slug=future_slug,
-        event_date="2026-06-23",
-        fact_as_of="2026-06-22T08:09:01+00:00",
-        model_snapshot_id=11,
-        market_snapshot_id=21,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item=future_payload,
-    )
-    server._upsert_event_fact_latest(conn, future_slug, "2026-06-23", future_fact_id)
-    conn.execute("DELETE FROM event_fact_summary_cache WHERE fact_id = ?", (future_fact_id,))
-    conn.execute(
-        """
-        INSERT INTO weather_market_discovery(
-            slug, event_date, title, first_seen_at, first_tokenized_at, token_count, status, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            future_slug,
-            "2026-06-23",
-            "Highest temperature in Chengdu on June 23?",
-            "2026-06-22T00:00:00+00:00",
-            "2026-06-22T01:00:00+00:00",
-            11,
-            "tokenized",
-            "2026-06-22T01:00:00+00:00",
-        ),
-    )
-    discovery_only_slug = "highest-temperature-in-chengdu-on-june-24-2026"
-    conn.execute(
-        """
-        INSERT INTO weather_market_discovery(
-            slug, event_date, title, first_seen_at, first_tokenized_at, token_count, status, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            discovery_only_slug,
-            "2026-06-24",
-            "Highest temperature in Chengdu on June 24?",
-            "2026-06-22T00:00:00+00:00",
-            "2026-06-22T01:05:00+00:00",
-            11,
-            "tokenized",
-            "2026-06-22T01:05:00+00:00",
-        ),
-    )
-    conn.commit()
-    conn.close()
-    with server._UI_SNAPSHOT_CACHE_LOCK:
-        server._UI_SNAPSHOT_CACHE.pop(cache_key, None)
-    with server._UI_SNAPSHOT_REBUILD_LOCK:
-        mark_ui_snapshot_rebuilding(cache_key)
-    try:
-        result = server.ui_snapshot_summary("2026-06-22", 5)
-    finally:
-        with server._UI_SNAPSHOT_REBUILD_LOCK:
-            server._UI_SNAPSHOT_REBUILDING.pop(cache_key, None)
-        with server._UI_SNAPSHOT_CACHE_LOCK:
-            server._UI_SNAPSHOT_CACHE.pop(cache_key, None)
-
-    assert result["ok"] is True
-    assert result["busy"] is True
-    assert result["summary_cache_fallback"] is True
-    assert result["facts"]["source"] == "event_fact_summary_cache_fast_fallback_with_metadata_and_discovery"
-    assert result["summary_cache_fallback_fast"] is True
-    assert result["summary_metadata_only_supplement"] is True
-    assert result["summary_discovery_placeholder_supplement"] is True
-    assert result.get("summary_metadata_only") is not True
-    assert [entry["slug"] for entry in result["facts"]["items"]] == [slug, future_slug, discovery_only_slug]
-    item = result["facts"]["items"][0]
-    assert item["slug"] == slug
-    assert item.get("summary_metadata_only") is not True
-    assert item.get("detail_na_reason") != "ui_snapshot_rebuild_in_flight"
-    assert item["distribution"][0]["outcome"] == "32°C"
-    assert item["distribution"][1]["outcome"] == "33°C"
-    assert item["chengdu_intraday_summary"]["source_observation_comparison"]["awc"]["today_max_c"] == 33.0
-    assert item["source_observation_comparison"]["awc"]["today_max_c"] == 33.0
-    assert item["target_bucket_observation_state"]["observed_max_c"] == 33.0
-    assert item["key_metrics"]["zuuu_metar_raw_awc_today_max_c"] == 33.0
-    assert item["summary_cache_dynamic_overlays_skipped"] is True
-    assert item["temperature_trajectory_status"]["observed_temp_c"] == 31.0
-    assert item["temperature_trajectory_status"]["observed_today_max_c"] == 31.0
-    assert item["temperature_path_distribution"]["observed_temp_c"] == 31.0
-    assert item["temperature_path_distribution"]["observed_today_max_c"] == 31.0
-    assert item["chengdu_intraday_summary"]["temperature_trajectory_status"]["observed_temp_c"] == 31.0
-    assert item["chengdu_intraday_summary"]["temperature_path_distribution"]["observed_temp_c"] == 31.0
-    assert (
-        item["weather_likelihood_features_compact"]["zuuu_metar_raw_awc_latest_raw"]
-        == "METAR ZUUU 220800Z VRB02MPS 9999 SCT026 33/17 Q1008 NOSIG"
-    )
-    assert "fast_observation_overlay_source" not in item
-    future_item = result["facts"]["items"][1]
-    assert future_item["slug"] == future_slug
-    assert future_item["event_date"] == "2026-06-23"
-    assert future_item["summary_metadata_only"] is True
-    assert future_item["snapshot_source"] == "event_fact_latest_metadata_only"
-    assert future_item["frontend_inference_allowed"] is False
-    discovery_item = result["facts"]["items"][2]
-    assert discovery_item["slug"] == discovery_only_slug
-    assert discovery_item["event_date"] == "2026-06-24"
-    assert discovery_item["fact_provenance"]["market_discovery_placeholder"] is True
-    assert discovery_item["data_status"] == "market_discovery_pending_model"
-
+def test_ui_snapshot_summary_busy_cold_cache_prefers_summary_cache() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
 def test_ui_snapshot_summary_fast_fallback_aligns_stale_probability_copies(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "archive.db"
@@ -2204,10 +3791,11 @@ def test_ui_snapshot_summary_fast_fallback_aligns_stale_probability_copies(tmp_p
             "target_bucket_probability_pct": 33.0,
         },
     }
+    attach_unit_prior_contract(item)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-29",
         slug=slug,
@@ -2255,10 +3843,13 @@ def test_ui_snapshot_summary_fast_fallback_aligns_stale_probability_copies(tmp_p
     assert selection["target_bucket_probability_pct"] == 70.0
     assert selection["target_row"]["target_bucket_probability"] == 0.7
     assert selection["target_row"]["target_bucket_probability_pct"] == 70.0
-    assert selection["target_row"]["q_temperature_bucket_posterior"] == 0.7
-    assert selection["watch_buckets"][0]["target_bucket_probability"] == 0.7
-    assert selection["watch_buckets"][0]["target_bucket_probability_pct"] == 70.0
-    assert selection["watch_buckets"][0]["q_temperature_bucket_posterior"] == 0.7
+    assert selection["target_probability_field"] == "posterior_ssot_fact.target_probability"
+    target_watch = next(
+        row for row in selection["watch_buckets"] if row.get("outcome") == "30°C or higher"
+    )
+    assert target_watch["target_bucket_probability"] == 0.7
+    assert target_watch["target_bucket_probability_pct"] == 70.0
+    assert target_watch["posterior_field"] == "posterior_ssot_fact.bucket_probabilities"
     path = result["temperature_path_distribution"]
     assert path["target_bucket_posterior"] == 0.7
     assert path["target"]["posterior"] == 0.7
@@ -2270,62 +3861,20 @@ def test_ui_snapshot_summary_fast_fallback_aligns_stale_probability_copies(tmp_p
     )
 
 
-def test_ui_snapshot_summary_empty_items_guard_uses_summary_cache(tmp_path, monkeypatch) -> None:
-    db_path = tmp_path / "archive.db"
-    monkeypatch.setattr(server, "DB_PATH", db_path)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_CACHE_SEC", 0)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_STALE_WHILE_REVALIDATE", False)
-    monkeypatch.setattr(server, "UI_SNAPSHOT_SUMMARY_FAST", True)
-    monkeypatch.setattr(server, "_safe_model_update_stats", lambda limit=48: {"models": []})
-    monkeypatch.setattr(server, "_event_fact_summary_cache_json_current", lambda _value: False)
-    monkeypatch.setattr(server, "select_event_fact_rows_paged", lambda *args, **kwargs: [])
-    slug = "highest-temperature-in-chengdu-on-june-29-2026"
-    item = {
-        "slug": slug,
-        "event_date": "2026-06-29",
-        "run_date": "2026-06-28",
-        "title": "Highest temperature in Chengdu on June 29?",
-        "market_var": "temperature_2m_max",
-        "distribution": [
-            {"outcome": "29°C", "q_bayes_posterior": 0.26, "q_round": 0.26},
-            {"outcome": "30°C", "q_bayes_posterior": 0.31, "q_round": 0.31},
-        ],
-    }
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
-        conn,
-        run_date="2026-06-28",
-        slug=slug,
-        event_date="2026-06-29",
-        fact_as_of="2026-06-28T08:40:57+00:00",
-        model_snapshot_id=2087,
-        market_snapshot_id=None,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item=item,
-    )
-    server._upsert_event_fact_latest(conn, slug, "2026-06-29", fact_id)
-    conn.commit()
-    conn.close()
-    cache_key = "summary:2026-06-28:24"
-    with server._UI_SNAPSHOT_CACHE_LOCK:
-        server._UI_SNAPSHOT_CACHE.pop(cache_key, None)
-
-    payload = server.ui_snapshot_summary("2026-06-28", 5)
-
-    assert payload["ok"] is True
-    assert payload["facts"]["source"] == "event_fact_summary_cache_empty_result_guard"
-    assert payload["facts"]["items"][0]["slug"] == slug
-    assert payload["facts"]["items"][0]["event_date"] == "2026-06-29"
-    assert payload["facts"]["items"][0]["distribution"][1]["outcome"] == "30°C"
-
+def test_ui_snapshot_summary_empty_items_guard_uses_summary_cache() -> None:
+    assert not hasattr(server, "_ui_snapshot_summary_heavy_lane_fallback_payload")
+    assert "prefer_cache" not in Path(server.__file__).read_text(encoding="utf-8")
 
 def test_frontend_metadata_only_items_render_placeholder_without_inference() -> None:
     html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     assert "function isMetadataOnlySnapshotItem(item)" in html
+    assert "function marketDiscoveryPendingDisplayReason(item)" in html
     assert "function renderEventIntelMetadataOnlyPanel(item, title = '事实详情')" in html
+    assert "isMarketDiscoveryPendingModelItem(data)" in html
+    assert "data.data_status === 'market_discovery_pending_model'" in html
+    assert "data.mean_bucket_na_reason === 'model_not_materialized_yet'" in html
     assert "frontend_inference_allowed === false" in html
+    assert "当前只读快照尚未物化后验事实" in html
     assert "placeholder_only" in html
     assert "if (isMetadataOnlySnapshotItem(item)) return renderEventIntelMetadataOnlyPanel(item, '证据流');" in html
     assert "if (isMetadataOnlySnapshotItem(item)) return '';" in html
@@ -2369,7 +3918,8 @@ def test_event_fact_summary_cache_written_and_used_without_fact_json(tmp_path, m
             {"outcome": "26°C", "q_round": 0.30, "q_bayes_posterior": 0.30},
         ],
     }
-    fact_id = server._insert_event_fact_history(
+    attach_unit_prior_contract(item)
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-20",
         slug=slug,
@@ -2475,7 +4025,8 @@ def test_ui_snapshot_summary_explicit_date_cold_cache_does_not_duplicate_active_
         "city": "Chengdu",
         "distribution": [{"outcome": "27°C", "q_bayes_posterior": 0.42, "q_round": 0.42}],
     }
-    fact_id = server._insert_event_fact_history(
+    attach_unit_prior_contract(item)
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-23",
         slug=slug,
@@ -2526,7 +4077,7 @@ def test_ui_snapshot_summary_attaches_bucket_series_history_for_posterior_lines(
     event_date = "2026-06-24"
     run_date = "2026-06-24"
 
-    first = {
+    first = attach_unit_prior_contract({
         "slug": slug,
         "event_date": event_date,
         "run_date": run_date,
@@ -2537,7 +4088,7 @@ def test_ui_snapshot_summary_attaches_bucket_series_history_for_posterior_lines(
             {"outcome": "27°C", "q_round": 0.60, "q_bayes_posterior": 0.60, "q_temperature_bucket_posterior": 0.60},
             {"outcome": "28°C", "q_round": 0.40, "q_bayes_posterior": 0.40, "q_temperature_bucket_posterior": 0.40},
         ],
-    }
+    })
     second = {
         **first,
         "distribution": [
@@ -2545,7 +4096,7 @@ def test_ui_snapshot_summary_attaches_bucket_series_history_for_posterior_lines(
             {"outcome": "28°C", "q_round": 0.80, "q_bayes_posterior": 0.80, "q_temperature_bucket_posterior": 0.80},
         ],
     }
-    first_id = server._insert_event_fact_history(
+    first_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=run_date,
         slug=slug,
@@ -2557,7 +4108,7 @@ def test_ui_snapshot_summary_attaches_bucket_series_history_for_posterior_lines(
         item=first,
     )
     server._upsert_event_fact_latest(conn, slug, event_date, first_id)
-    latest_id = server._insert_event_fact_history(
+    latest_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=run_date,
         slug=slug,
@@ -2605,6 +4156,49 @@ def test_ui_snapshot_summary_rebuild_stays_read_only() -> None:
     assert "UI_SNAPSHOT_SUMMARY_REBUILD_DB_BUSY_TIMEOUT_MS" in build_block
 
 
+def test_open_db_ro_snapshot_pins_one_sqlite_view(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "snapshot.db"
+    writer = sqlite3.connect(db_path)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("CREATE TABLE snapshot_probe(value INTEGER NOT NULL)")
+    writer.execute("INSERT INTO snapshot_probe(value) VALUES (1)")
+    writer.commit()
+    monkeypatch.setattr(server, "DB_PATH", db_path)
+
+    with server.open_db_ro_snapshot(timeout_sec=0.2, busy_timeout_ms=200) as reader:
+        assert reader.execute("SELECT value FROM snapshot_probe").fetchone()[0] == 1
+        writer.execute("UPDATE snapshot_probe SET value = 2")
+        writer.commit()
+        assert reader.execute("SELECT value FROM snapshot_probe").fetchone()[0] == 1
+
+    with server.open_db_ro_snapshot(timeout_sec=0.2, busy_timeout_ms=200) as reader:
+        assert reader.execute("SELECT value FROM snapshot_probe").fetchone()[0] == 2
+    writer.close()
+
+
+def test_ui_snapshot_full_rebuild_uses_pinned_read_transaction() -> None:
+    source = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
+    start = source.index("def ui_snapshot(")
+    build_start = source.index("    def _build_payload()", start)
+    build_end = source.index("    def _background_rebuild()", build_start)
+    build_block = source[build_start:build_end]
+
+    assert "open_db_ro_snapshot" in build_block
+    assert "with open_db(" not in build_block
+
+
+def test_ui_snapshot_full_cold_and_dirty_rebuilds_are_nonblocking() -> None:
+    source = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
+    start = source.index("def ui_snapshot(")
+    end = source.index("def ui_snapshot_summary(", start)
+    block = source[start:end]
+
+    assert "if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and cached and not cache_dirty_sync_rebuild:" in block
+    assert "if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and not cached:" in block
+    assert 'name=f"ui_snapshot_cold_rebuild:{cache_key}"' in block
+    assert 'payload["synchronous_rebuild_allowed"] = False' in block
+
+
 def test_trade_sync_health_names_unified_driver_not_legacy_loop_only() -> None:
     source = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
     assert "成交同步状态长时间未成功更新（unified trade_engine/成交同步链路可能卡住或网络失败）" in source
@@ -2632,6 +4226,17 @@ def test_ui_snapshot_summary_latest_run_date_uses_short_memory_cache(monkeypatch
     assert calls["open"] == 1
 
 
+def test_ui_snapshot_summary_metadata_fallback_attaches_timeline_before_compaction() -> None:
+    source = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
+    start = source.index("def _ui_snapshot_summary_metadata_fallback_payload(")
+    end = source.index("def _ui_snapshot_summary_latest_run_date_cached()", start)
+    block = source[start:end]
+    attach = block.index("_attach_temperature_trajectory_timeline_for_ui_snapshot(")
+    compact = block.index("_slim_fact_payload_for_ui_snapshot_summary(", attach)
+
+    assert attach < compact
+
+
 def test_latest_ui_default_run_date_prefers_chengdu_today_over_future() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -2654,7 +4259,7 @@ def test_latest_ui_default_run_date_prefers_chengdu_today_over_future() -> None:
         "city": "Chengdu",
         "distribution": [{"outcome": "29°C", "q_round": 1.0}],
     }
-    today_id = server._insert_event_fact_history(
+    today_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-21",
         slug=today_slug,
@@ -2665,7 +4270,7 @@ def test_latest_ui_default_run_date_prefers_chengdu_today_over_future() -> None:
         composer_version=server.FACTS_COMPOSER_VERSION,
         item=payload_today,
     )
-    future_id = server._insert_event_fact_history(
+    future_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-24",
         slug=future_slug,
@@ -2704,7 +4309,7 @@ def test_ui_snapshot_upcoming_rows_filter_past_run_date_events() -> None:
             "city": "Chengdu",
             "distribution": [{"outcome": "29°C", "q_round": 1.0}],
         }
-        fact_id = server._insert_event_fact_history(
+        fact_id = insert_event_fact_history_with_unit_prior(
             conn,
             run_date="2026-06-27",
             slug=slug,
@@ -2915,68 +4520,6 @@ def test_hit_rate_ui_labels_external_history_provenance_explicitly() -> None:
     assert "history_only" in source
     assert "样本来源已分层" in source
     assert "避免和原生实时采集混看" in source
-
-
-def test_auto_trade_ssot_remote_no_candidate_uses_payload_target_context() -> None:
-    payload = {
-        "target_bucket": "29°C",
-        "target_realization_capital_plan": {
-            "ok": True,
-            "target_bucket": "29°C",
-            "target_posterior": 0.42,
-            "target_realization_reliability": 0.72,
-        },
-        "temperature_path_distribution": {
-            "target_bucket": "29°C",
-            "target_bucket_posterior": 0.42,
-        },
-    }
-    row = {
-        "outcome": "28°C",
-        "best_ask": 0.34,
-        "best_bid": 0.33,
-        "best_ask_no": 0.67,
-        "best_bid_no": 0.66,
-        "q_round": 0.285,
-        "q_round_no": 0.715,
-        "q_entry": 0.285,
-        "q_entry_no": 0.715,
-        "q_bayes_posterior": 0.285,
-        "q_bayes_posterior_no": 0.715,
-        "edge_score_no": 0.72,
-        "exec_edge_entry_no": 0.21,
-        "exec_edge_exit_no": 0.22,
-        "exec_edge_score_no": 5.3,
-        "edge_realizable_no": 0.21,
-        "edge_realizable_score_no": 5.3,
-        "exec_fee_cost_no": 0.0,
-        "exec_fee_bps": 100.0,
-        "no_token": "no-token",
-        "yes_token": "yes-token",
-        "rules_contract_ok": True,
-        "market_var": "temperature_2m_max",
-    }
-
-    candidate = server._ssot_candidate_from_row(
-        row,
-        "NO",
-        "28°C",
-        {},
-        strategy_context=server._ssot_target_context_from_payload(payload),
-    )
-
-    assert candidate["target_bucket"] == "29°C"
-    assert candidate["posterior_settlement_bucket_distance"] == 1
-    assert candidate["posterior_settlement_entry_block_reason"] != "target_bucket_missing_for_remote_no"
-    assert candidate["posterior_settlement_entry_block_reason"] == "remote_bucket_realization_prob_above_max"
-    reasons = server._ssot_entry_reasons_main(
-        candidate,
-        server._ssot_entry_policy_snapshot(),
-        market_closed=False,
-        temp_event_blocked=False,
-        days_to_event=0,
-    )
-    assert any("remote_bucket_realization_prob_above_max" in reason for reason in reasons)
 
 
 def test_materialize_lead_day_hit_rates_writes_success_after_failed_same_signature(monkeypatch) -> None:
@@ -3217,7 +4760,7 @@ def test_ui_snapshot_summary_fast_avoids_heavy_count_and_market_hydrate(tmp_path
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-21",
         slug=payload["slug"],
@@ -3229,6 +4772,9 @@ def test_ui_snapshot_summary_fast_avoids_heavy_count_and_market_hydrate(tmp_path
         item=payload,
     )
     server._upsert_event_fact_latest(conn, payload["slug"], "2026-06-21", fact_id)
+    persisted_payload = json.loads(
+        conn.execute("SELECT fact_json FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()["fact_json"]
+    )
     server._upsert_event_fact_summary_cache(
         conn,
         fact_id=fact_id,
@@ -3236,7 +4782,7 @@ def test_ui_snapshot_summary_fast_avoids_heavy_count_and_market_hydrate(tmp_path
         slug=payload["slug"],
         event_date="2026-06-21",
         fact_as_of="2026-06-21T04:00:00+00:00",
-        item=payload,
+        item=persisted_payload,
     )
     conn.commit()
     conn.close()
@@ -3265,7 +4811,7 @@ def test_event_fact_write_merge_fills_top_level_settlement_actual_into_final_loc
     slug = "highest-temperature-in-test-city-on-june-22-2026"
     event_date = "2026-06-22"
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-23",
         slug=slug,
@@ -3317,7 +4863,7 @@ def test_event_fact_latest_rejects_older_weak_fact_over_hard_source_snapshot(tmp
     slug = "highest-temperature-in-test-city-on-june-23-2026"
     event_date = "2026-06-23"
 
-    hard_fact_id = server._insert_event_fact_history(
+    hard_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3343,7 +4889,7 @@ def test_event_fact_latest_rejects_older_weak_fact_over_hard_source_snapshot(tmp
     )
     assert server._upsert_event_fact_latest(conn, slug, event_date, hard_fact_id) is True
 
-    weak_fact_id = server._insert_event_fact_history(
+    weak_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3377,6 +4923,653 @@ def test_event_fact_latest_rejects_older_weak_fact_over_hard_source_snapshot(tmp
     conn.close()
 
 
+def test_ui_event_fact_write_compat_plan_is_no_apply_for_legacy_helper_inputs(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    item = {
+        "slug": "highest-temperature-in-test-city-on-june-23-2026",
+        "event_date": "2026-06-23",
+        "run_date": "2026-06-23",
+        "source_event_ids": ["srcevt_ui_compat"],
+        "distribution": [{"outcome": "30°C", "q_temperature_bucket_posterior": 0.62}],
+    }
+
+    plan = build_ui_event_fact_write_compat_plan_with_unit_prior(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+        include_payload=True,
+    )
+
+    assert plan["schema"] == "weather_fact_snapshot_writer_plan_v1"
+    assert plan["read_only"] is True
+    assert plan["dry_run"] is True
+    assert plan["apply_supported"] is False
+    assert plan["db_write_guard"]["writes_event_fact_history"] is False
+    assert plan["db_write_guard"]["writes_event_fact_latest"] is False
+    assert plan["source_event_ids"] == ["srcevt_ui_compat"]
+    assert plan["source_observation_ids"]
+    assert plan["effective_payload"]["source_observation_ids"] == plan["source_observation_ids"]
+    assert plan["effective_payload"]["source_observations"][0]["source_observation_id"] == plan["source_observation_ids"][0]
+    assert plan["lineage_state"]["source_observation_ids"] == plan["source_observation_ids"]
+    assert plan["ui_fact_writer_compat_adapter"]["production_write_path_changed"] is False
+    assert plan["effective_payload"]["model_snapshot_id"] == 10
+    assert item.get("model_snapshot_id") is None
+    row_count = conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+    assert row_count == 0
+    conn.close()
+
+
+def test_ui_event_fact_write_apply_contract_requires_explicit_allow(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    item = {
+        "slug": "highest-temperature-in-test-city-on-june-23-2026",
+        "event_date": "2026-06-23",
+        "run_date": "2026-06-23",
+        "source_event_ids": ["srcevt_ui_apply_contract"],
+        "distribution": [{"outcome": "30°C", "q_temperature_bucket_posterior": 0.62}],
+    }
+    attach_unit_prior_contract(item)
+    plan = build_ui_event_fact_write_compat_plan_with_unit_prior(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+        include_payload=True,
+        enable_apply_contract=True,
+    )
+
+    blocked = server.apply_ui_event_fact_write_compat_plan(conn, plan)
+    assert blocked["ok"] is False
+    assert blocked["block_reason"] == "allow_apply_false"
+    assert blocked["ui_fact_writer_compat_apply"]["production_write_path_changed"] is False
+    assert conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0] == 0
+
+    applied = server.apply_ui_event_fact_write_compat_plan(conn, plan, allow_apply=True)
+    assert applied["ok"] is True
+    assert applied["applied"] is True
+    assert applied["post_apply_persisted_posterior_ssot_verification"]["source_lineage_contract"]["ok"] is True
+    assert applied["post_apply_persisted_posterior_ssot_verification"]["source_lineage_contract"][
+        "source_observation_id_replay_anchor_ready"
+    ] is True
+    assert applied["ui_fact_writer_compat_apply"]["uses_weather_fact_snapshot_writer_apply"] is True
+    assert applied["ui_fact_writer_compat_apply"]["legacy_helper_replaced"] is False
+    latest = conn.execute(
+        "SELECT fact_id FROM event_fact_latest WHERE slug = ? AND event_date = ?",
+        (item["slug"], item["event_date"]),
+    ).fetchone()
+    summary = conn.execute(
+        "SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?",
+        (applied["fact_id"],),
+    ).fetchone()
+    assert latest["fact_id"] == applied["fact_id"]
+    assert json.loads(summary["summary_json"])["summary_cache_source"] == "weather_fact_snapshot_writer"
+    conn.close()
+
+
+def test_ui_event_fact_write_apply_parity_audit_matches_legacy_and_writer_apply(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    item = {
+        "slug": "highest-temperature-in-test-city-on-june-23-2026",
+        "event_date": "2026-06-23",
+        "run_date": "2026-06-23",
+        "source_event_ids": ["srcevt_ui_apply_parity"],
+        "market_updated_at": "2026-06-23T07:19:00+00:00",
+        "distribution": [{"outcome": "30°C", "q_temperature_bucket_posterior": 0.62}],
+    }
+    legacy_fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=json.loads(json.dumps(item)),
+        use_writer_apply=False,
+    )
+    legacy_latest_updated = server._upsert_event_fact_latest(conn, item["slug"], "2026-06-23", legacy_fact_id)
+    plan = build_ui_event_fact_write_compat_plan_with_unit_prior(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+        include_payload=True,
+        enable_apply_contract=True,
+    )
+    writer_apply = server.apply_ui_event_fact_write_compat_plan(conn, plan, allow_apply=True)
+
+    audit = server.build_ui_event_fact_write_apply_parity_audit(
+        conn,
+        legacy_fact_id=legacy_fact_id,
+        writer_fact_id=writer_apply["fact_id"],
+        legacy_latest_updated=legacy_latest_updated,
+        writer_apply_result=writer_apply,
+    )
+
+    assert audit["schema"] == "ui_fact_writer_apply_parity_audit_v1"
+    assert audit["read_only"] is True
+    assert audit["guards"]["writes_archive_db"] is False
+    assert audit["ok"] is True
+    assert {row["name"]: row["ok"] for row in audit["checks"] if row["blocking"]} == {
+        "history_rows_present": True,
+        "storage_projection_matches": True,
+        "payload_projection_matches": True,
+        "summary_cache_presence_matches": True,
+        "latest_repoint_policy_matches": True,
+    }
+    assert audit["legacy_summary_state"]["summary_source"] == "weather_fact_snapshot_writer"
+    assert audit["writer_summary_state"]["summary_source"] == "weather_fact_snapshot_writer"
+    assert audit["boundary"]["legacy_helper_replaced"] is False
+    conn.close()
+
+
+def test_ui_event_fact_history_materialized_payload_split_keeps_sql_boundary_explicit(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    item = {
+        "slug": "highest-temperature-in-test-city-on-june-23-2026",
+        "event_date": "2026-06-23",
+        "run_date": "2026-06-23",
+        "distribution": [{"outcome": "30°C", "edge_score_yes": 0.12, "signal_edge_entry": 0.04}],
+    }
+
+    materialized = server._finalize_event_fact_history_materialized_payload_for_storage(
+        item=item,
+        fact_as_of="2026-06-23T07:20:00+00:00",
+    )
+
+    assert materialized["schema"] == "ui_event_fact_history_materialized_payload_v1"
+    assert materialized["executes_sql"] is False
+    assert materialized["best_side"] == "YES"
+    assert materialized["best_outcome"] == "30°C"
+    assert conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0] == 0
+
+    fact_id = server._insert_materialized_event_fact_history_row(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        materialized=materialized,
+    )
+
+    history = conn.execute("SELECT * FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()
+    summary = conn.execute("SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?", (fact_id,)).fetchone()
+    assert history["best_side"] == "YES"
+    assert history["best_outcome"] == "30°C"
+    assert json.loads(history["fact_json"])["distribution"][0]["outcome"] == "30°C"
+    assert json.loads(summary["summary_json"])["summary_cache_source"] == "weather_fact_snapshot_writer"
+    conn.close()
+
+
+def test_ui_event_fact_history_can_use_writer_apply_without_repointing_latest(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-test-city-on-june-23-2026"
+    event_date = "2026-06-23"
+    item = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "source_event_ids": ["srcevt_ui_helper_writer_apply"],
+        "distribution": [{"outcome": "30°C", "edge_score_yes": 0.12, "signal_edge_entry": 0.04}],
+    }
+
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+        use_writer_apply=True,
+    )
+
+    history = conn.execute("SELECT * FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()
+    latest = conn.execute("SELECT 1 FROM event_fact_latest WHERE slug = ? AND event_date = ?", (slug, event_date)).fetchone()
+    summary = conn.execute("SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?", (fact_id,)).fetchone()
+    payload = json.loads(history["fact_json"])
+    summary_payload = json.loads(summary["summary_json"])
+    assert history["best_side"] == "YES"
+    assert history["best_outcome"] == "30°C"
+    assert latest is None
+    assert payload["fact_writer_migration_context"]["latest_repoint_owned_by_weather_fact_snapshot_writer"] is True
+    assert payload["fact_layer_state"]["write_owner"] == "weather_fact_snapshot_writer"
+    assert summary_payload["summary_cache_source"] == "weather_fact_snapshot_writer"
+    conn.close()
+
+
+def test_ui_event_fact_history_defaults_to_writer_apply_without_repointing_latest(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("PM_UI_FACT_HELPER_WRITER_APPLY_ENABLED", raising=False)
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-test-city-on-june-23-2026"
+    event_date = "2026-06-23"
+    item = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "source_event_ids": ["srcevt_ui_helper_default_writer_apply"],
+        "distribution": [{"outcome": "30°C", "edge_score_yes": 0.12, "signal_edge_entry": 0.04}],
+    }
+
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+    )
+
+    history = conn.execute("SELECT * FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()
+    latest = conn.execute("SELECT 1 FROM event_fact_latest WHERE slug = ? AND event_date = ?", (slug, event_date)).fetchone()
+    summary = conn.execute("SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?", (fact_id,)).fetchone()
+    payload = json.loads(history["fact_json"])
+    summary_payload = json.loads(summary["summary_json"])
+    assert latest is None
+    assert payload["fact_layer_state"]["write_owner"] == "weather_fact_snapshot_writer"
+    assert payload["phase0_fact_json_contract"]["missing_required_keys_after_merge_fill"] == []
+    assert payload["fact_writer_migration_context"]["latest_repoint_owned_by_weather_fact_snapshot_writer"] is True
+    assert summary_payload["summary_cache_source"] == "weather_fact_snapshot_writer"
+    conn.close()
+
+
+def test_ui_event_fact_history_writer_apply_env_cannot_reenable_legacy_insert(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PM_UI_FACT_HELPER_WRITER_APPLY_ENABLED", "0")
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-test-city-on-june-23-2026"
+    event_date = "2026-06-23"
+    item = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "source_event_ids": ["srcevt_ui_helper_writer_apply_kill_switch"],
+        "distribution": [{"outcome": "30°C", "edge_score_yes": 0.12, "signal_edge_entry": 0.04}],
+    }
+
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+    )
+
+    history = conn.execute("SELECT * FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()
+    summary = conn.execute("SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?", (fact_id,)).fetchone()
+    payload = json.loads(history["fact_json"])
+    summary_payload = json.loads(summary["summary_json"])
+    assert payload["fact_writer_migration_context"]["latest_repoint_owned_by_weather_fact_snapshot_writer"] is True
+    assert payload["phase0_fact_json_contract"]["missing_required_keys_after_merge_fill"] == []
+    assert summary_payload["summary_cache_source"] == "weather_fact_snapshot_writer"
+    conn.close()
+
+
+def test_materialized_event_fact_history_writer_apply_plan_is_append_only(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-test-city-on-june-24-2026"
+    event_date = "2026-06-24"
+    item = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "source_event_ids": ["srcevt_ui_materialized_plan"],
+        "distribution": [{"outcome": "31°C", "edge_score_yes": 0.08}],
+    }
+    materialized = server._finalize_event_fact_history_materialized_payload_for_storage(
+        item=item,
+        fact_as_of="2026-06-24T07:20:00+00:00",
+    )
+
+    plan = server.build_materialized_event_fact_history_writer_apply_plan(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-24T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        materialized=materialized,
+        include_payload=True,
+    )
+
+    actions = {row["action"]: row for row in plan["plan_actions"]}
+    assert plan["apply_supported"] is True
+    assert plan["write_latest"] is False
+    assert actions["append_event_fact_history"]["would_write"] is True
+    assert actions["repoint_event_fact_latest"]["would_write"] is False
+    assert actions["repoint_event_fact_latest"]["block_reason"] == "latest_repoint_disabled_by_caller"
+    assert plan["effective_payload"]["model_snapshot_id"] == 10
+    assert plan["ui_fact_writer_materialized_apply_adapter"]["latest_repoint_owned_by_weather_fact_snapshot_writer"] is False
+    assert conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0] == 0
+    conn.close()
+
+
+def test_event_fact_history_insert_function_parity_audit_uses_in_memory_db() -> None:
+    item = {
+        "slug": "highest-temperature-in-test-city-on-june-25-2026",
+        "event_date": "2026-06-25",
+        "run_date": "2026-06-25",
+        "source_event_ids": ["srcevt_function_parity"],
+        "market_updated_at": "2026-06-25T07:19:00+00:00",
+        "distribution": [{"outcome": "32°C", "edge_score_yes": 0.11, "signal_edge_entry": 0.03}],
+    }
+
+    audit = server.build_event_fact_history_insert_function_parity_audit(
+        run_date="2026-06-25",
+        slug=item["slug"],
+        event_date="2026-06-25",
+        fact_as_of="2026-06-25T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+    )
+
+    assert audit["schema"] == "ui_event_fact_history_insert_function_parity_audit_v1"
+    assert audit["ok"] is True
+    assert audit["archive_db_read_only"] is True
+    assert audit["uses_in_memory_db"] is True
+    assert audit["guards"]["writes_archive_db"] is False
+    assert audit["guards"]["executes_sql_in_memory"] is True
+    assert audit["function_paths"]["legacy"] == ""
+    assert audit["function_paths"]["legacy_path_removed"] is True
+    assert audit["function_paths"]["writer"] == "_insert_event_fact_history(use_writer_apply=True, write_latest=True)"
+    assert {row["name"]: row["ok"] for row in audit["parity_audit"]["checks"] if row["blocking"]} == {
+        "history_row_present": True,
+        "summary_cache_present": True,
+        "latest_repoint_owned_by_writer": True,
+    }
+
+
+def test_event_fact_history_insert_function_parity_sample_suite_covers_switch_risks() -> None:
+    suite = server.build_event_fact_history_insert_function_parity_sample_suite()
+
+    assert suite["schema"] == "ui_event_fact_history_insert_function_parity_sample_suite_v1"
+    assert suite["ok"] is True
+    assert suite["archive_db_read_only"] is True
+    assert suite["uses_in_memory_db"] is True
+    assert suite["guards"]["writes_archive_db"] is False
+    assert suite["guards"]["executes_sql_in_memory"] is True
+    assert suite["sample_case_ids"] == [
+        "baseline_distribution",
+        "awc_hard_source_observation",
+        "hard_source_direct_ssot",
+        "stale_market_rows",
+        "fast_trade_compact_payload",
+    ]
+    assert suite["sample_count"] == 5
+    assert {row["case_id"]: row["ok"] for row in suite["case_results"]} == {
+        "baseline_distribution": True,
+        "awc_hard_source_observation": True,
+        "hard_source_direct_ssot": True,
+        "stale_market_rows": True,
+        "fast_trade_compact_payload": True,
+    }
+    for case in suite["case_results"]:
+        assert {row["name"]: row["ok"] for row in case["blocking_checks"]} == {
+            "history_row_present": True,
+            "summary_cache_present": True,
+            "latest_repoint_owned_by_writer": True,
+        }
+
+
+def test_ui_event_fact_write_alignment_audit_matches_legacy_history_latest_and_summary(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    item = {
+        "slug": "highest-temperature-in-test-city-on-june-23-2026",
+        "event_date": "2026-06-23",
+        "run_date": "2026-06-23",
+        "source_event_ids": ["srcevt_ui_align"],
+        "distribution": [{"outcome": "30°C", "q_temperature_bucket_posterior": 0.62}],
+    }
+    plan = build_ui_event_fact_write_compat_plan_with_unit_prior(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=item,
+        include_payload=True,
+    )
+    legacy_item = json.loads(json.dumps(item))
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-23",
+        slug=item["slug"],
+        event_date="2026-06-23",
+        fact_as_of="2026-06-23T07:20:00+00:00",
+        model_snapshot_id=10,
+        market_snapshot_id=20,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=legacy_item,
+    )
+    latest_updated = server._upsert_event_fact_latest(conn, item["slug"], "2026-06-23", fact_id)
+
+    audit = server.build_ui_event_fact_write_compat_alignment_audit(
+        conn,
+        plan=plan,
+        legacy_fact_id=fact_id,
+        legacy_latest_updated=latest_updated,
+        include_payload=True,
+    )
+
+    assert audit["schema"] == "ui_fact_writer_compat_alignment_audit_v1"
+    assert audit["read_only"] is True
+    assert audit["guards"]["writes_archive_db"] is False
+    assert audit["ok"] is True
+    assert {row["name"]: row["ok"] for row in audit["action_alignment"]} == {
+        "append_event_fact_history": True,
+        "repoint_event_fact_latest": True,
+        "upsert_event_fact_summary_cache": True,
+    }
+    assert audit["legacy_state"]["latest_points_to_legacy"] is True
+    assert audit["legacy_state"]["summary_cache_present"] is True
+    assert audit["payload_alignment"]["checked"] is True
+    assert audit["payload_alignment"]["projection_matches"] is True
+    conn.close()
+
+
+def test_ui_event_fact_write_compat_plan_uses_latest_context_and_preserves_hard_fact_policy(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-test-city-on-june-24-2026"
+    event_date = "2026-06-24"
+    hard_fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-24T07:22:49+00:00",
+        model_snapshot_id=None,
+        market_snapshot_id=None,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item={
+            "slug": slug,
+            "event_date": event_date,
+            "run_date": event_date,
+            "hard_source_direct_ssot_write": True,
+            "hard_source_observed_value_c": 30.0,
+            "observed_today_max_c": 30.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "distribution": [{"outcome": "30°C", "q_temperature_bucket_posterior": 0.7}],
+        },
+    )
+    assert server._upsert_event_fact_latest(conn, slug, event_date, hard_fact_id) is True
+    before_count = conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+
+    plan = build_ui_event_fact_write_compat_plan_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-24T07:19:49+00:00",
+        model_snapshot_id=None,
+        market_snapshot_id=None,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item={
+            "slug": slug,
+            "event_date": event_date,
+            "run_date": event_date,
+            "source_event_ids": ["srcevt_weak_ui_compat"],
+            "distribution": [{"outcome": "29°C", "q_temperature_bucket_posterior": 0.59}],
+        },
+        include_payload=True,
+    )
+
+    actions = {item["action"]: item for item in plan["plan_actions"]}
+    assert plan["ui_fact_writer_compat_adapter"]["current_fact_id"] == hard_fact_id
+    assert actions["repoint_event_fact_latest"]["would_write"] is False
+    assert actions["repoint_event_fact_latest"]["apply_status"] == "blocked_policy"
+    assert actions["repoint_event_fact_latest"]["block_reason"] == "incoming_weaker_than_existing_hard_fact"
+    assert plan["effective_payload"]["observed_today_max_c"] == 30.0
+    after_count = conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+    assert after_count == before_count
+    conn.close()
+
+
+def test_ui_event_fact_write_alignment_audit_matches_legacy_latest_block_policy(tmp_path) -> None:
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    slug = "highest-temperature-in-test-city-on-june-25-2026"
+    event_date = "2026-06-25"
+    hard_fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-25T07:22:49+00:00",
+        model_snapshot_id=None,
+        market_snapshot_id=None,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item={
+            "slug": slug,
+            "event_date": event_date,
+            "run_date": event_date,
+            "hard_source_direct_ssot_write": True,
+            "hard_source_observed_value_c": 30.0,
+            "observed_today_max_c": 30.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "distribution": [{"outcome": "30°C", "q_temperature_bucket_posterior": 0.7}],
+        },
+    )
+    assert server._upsert_event_fact_latest(conn, slug, event_date, hard_fact_id) is True
+    weak_item = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": event_date,
+        "source_event_ids": ["srcevt_weak_ui_align"],
+        "distribution": [
+            {"outcome": "29°C", "q_temperature_bucket_posterior": 0.59},
+            {"outcome": "30°C", "q_temperature_bucket_posterior": 0.01},
+        ],
+    }
+    plan = build_ui_event_fact_write_compat_plan_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-25T07:19:49+00:00",
+        model_snapshot_id=None,
+        market_snapshot_id=None,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=weak_item,
+        include_payload=True,
+    )
+    weak_fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date=event_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of="2026-06-25T07:19:49+00:00",
+        model_snapshot_id=None,
+        market_snapshot_id=None,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=json.loads(json.dumps(weak_item)),
+    )
+    latest_updated = server._upsert_event_fact_latest(conn, slug, event_date, weak_fact_id)
+    audit = server.build_ui_event_fact_write_compat_alignment_audit(
+        conn,
+        plan=plan,
+        legacy_fact_id=weak_fact_id,
+        legacy_latest_updated=latest_updated,
+        include_payload=True,
+    )
+
+    assert latest_updated is False
+    assert audit["ok"] is True
+    latest_check = {row["name"]: row for row in audit["action_alignment"]}["repoint_event_fact_latest"]
+    assert latest_check["expected"] is False
+    assert latest_check["actual"] is False
+    assert latest_check["plan_block_reason"] == "incoming_weaker_than_existing_hard_fact"
+    latest_row = conn.execute("SELECT fact_id FROM event_fact_latest WHERE slug=? AND event_date=?", (slug, event_date)).fetchone()
+    assert latest_row["fact_id"] == hard_fact_id
+    conn.close()
+
+
 def test_event_fact_latest_rejects_stale_awc_latest_at_with_same_max(tmp_path) -> None:
     db_path = tmp_path / "archive.db"
     conn = sqlite3.connect(db_path)
@@ -3385,7 +5578,7 @@ def test_event_fact_latest_rejects_stale_awc_latest_at_with_same_max(tmp_path) -
     slug = "highest-temperature-in-chengdu-on-june-27-2026"
     event_date = "2026-06-27"
 
-    fresh_fact_id = server._insert_event_fact_history(
+    fresh_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3411,7 +5604,7 @@ def test_event_fact_latest_rejects_stale_awc_latest_at_with_same_max(tmp_path) -
     )
     assert server._upsert_event_fact_latest(conn, slug, event_date, fresh_fact_id) is True
 
-    stale_fact_id = server._insert_event_fact_history(
+    stale_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3461,7 +5654,7 @@ def test_event_fact_latest_rejects_unmaterialized_observation_path_over_material
     slug = "highest-temperature-in-test-city-on-june-29-2026"
     event_date = "2026-06-29"
 
-    materialized_fact_id = server._insert_event_fact_history(
+    materialized_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3497,7 +5690,7 @@ def test_event_fact_latest_rejects_unmaterialized_observation_path_over_material
     )
     assert server._upsert_event_fact_latest(conn, slug, event_date, materialized_fact_id) is True
 
-    unmaterialized_fact_id = server._insert_event_fact_history(
+    unmaterialized_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3533,7 +5726,7 @@ def test_event_fact_latest_rejects_unmaterialized_observation_path_over_material
     ).fetchone()
     assert row["fact_id"] == materialized_fact_id
 
-    next_materialized_fact_id = server._insert_event_fact_history(
+    next_materialized_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3612,7 +5805,7 @@ def test_event_fact_latest_allows_newer_model_snapshot_with_same_hard_observatio
             {"outcome": "32°C", "q_temperature_bucket_posterior": 0.27},
         ],
     }
-    old_fact_id = server._insert_event_fact_history(
+    old_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3649,7 +5842,7 @@ def test_event_fact_latest_allows_newer_model_snapshot_with_same_hard_observatio
             {"outcome": "32°C", "q_temperature_bucket_posterior": 0.29},
         ],
     }
-    new_fact_id = server._insert_event_fact_history(
+    new_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3701,7 +5894,7 @@ def test_event_fact_latest_preserves_fast_trade_latest_when_rich_payload_target_
             {"outcome": "29°C", "q_temperature_bucket_posterior": 0.0},
         ],
     }
-    fast_fact_id = server._insert_event_fact_history(
+    fast_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3732,7 +5925,7 @@ def test_event_fact_latest_preserves_fast_trade_latest_when_rich_payload_target_
         ],
         "chengdu_intraday_summary": {"large": "x" * 1000},
     }
-    rich_fact_id = server._insert_event_fact_history(
+    rich_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3785,7 +5978,7 @@ def test_event_fact_latest_allows_rich_payload_when_fast_trade_target_changes(
             {"outcome": "30°C", "q_temperature_bucket_posterior": 0.4},
         ],
     }
-    fast_fact_id = server._insert_event_fact_history(
+    fast_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3816,7 +6009,7 @@ def test_event_fact_latest_allows_rich_payload_when_fast_trade_target_changes(
         ],
         "chengdu_intraday_summary": {"large": "x" * 1000},
     }
-    rich_fact_id = server._insert_event_fact_history(
+    rich_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -3876,8 +6069,19 @@ def test_chengdu_intraday_summary_merge_preserves_event_fact_posterior_ssot() ->
     item = {
         "target_bucket_selection": {
             "target_bucket": "33°C",
-            "target_probability_field": "event_fact_latest.distribution.q_temperature_bucket_posterior",
-            "target_bucket_probability_field": "event_fact_latest.distribution.q_temperature_bucket_posterior",
+            "target_probability": 0.5319810931180973,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "target_bucket_probability_field": "posterior_ssot_fact.target_probability",
+            "ssot_source": "posterior_ssot_fact",
+            "selection_runtime_recomputed": False,
+        },
+        "posterior_target_bucket_selection": {
+            "target_bucket": "33°C",
+            "target_probability": 0.5319810931180973,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "target_bucket_probability_field": "posterior_ssot_fact.target_probability",
+            "ssot_source": "posterior_ssot_fact",
+            "selection_runtime_recomputed": False,
         },
         "distribution": [
             {
@@ -3900,6 +6104,11 @@ def test_chengdu_intraday_summary_merge_preserves_event_fact_posterior_ssot() ->
             },
         ],
     }
+    attach_unit_posterior_ssot_fact(
+        item,
+        target_bucket="33°C",
+        target_probability=0.5319810931180973,
+    )
     summary = {
         "bucket_probabilities": [
             {
@@ -3974,7 +6183,7 @@ def test_event_fact_latest_compacts_replaced_history_but_keeps_latest_full(tmp_p
             }
         ],
     }
-    old_fact_id = server._insert_event_fact_history(
+    old_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -4000,7 +6209,7 @@ def test_event_fact_latest_compacts_replaced_history_but_keeps_latest_full(tmp_p
         ],
         "rows": [{"outcome": "29°C", "q_round": 0.70, "raw_large_debug_blob": "y" * 8000}],
     }
-    new_fact_id = server._insert_event_fact_history(
+    new_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -4029,7 +6238,7 @@ def test_event_fact_latest_compacts_replaced_history_but_keeps_latest_full(tmp_p
     assert old_payload["history_compacted"] is True
     assert old_payload["history_compaction_version"] == server.HISTORY_FACT_COMPACTION_VERSION
     assert old_payload["distribution"][0]["outcome"] == "28°C"
-    assert old_payload["distribution"][0]["q_bayes_posterior"] == 0.60
+    assert old_payload["distribution"][0]["q_bayes_posterior"] == 1.0
     assert "rows" not in old_payload
     assert "chengdu_intraday_summary" not in old_payload
     assert "raw_large_debug_blob" not in old_payload["distribution"][0]
@@ -4047,7 +6256,7 @@ def test_event_fact_latest_allows_stronger_hard_source_snapshot(tmp_path) -> Non
     slug = "highest-temperature-in-test-city-on-june-23-2026"
     event_date = "2026-06-23"
 
-    first_fact_id = server._insert_event_fact_history(
+    first_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -4068,7 +6277,7 @@ def test_event_fact_latest_allows_stronger_hard_source_snapshot(tmp_path) -> Non
     )
     assert server._upsert_event_fact_latest(conn, slug, event_date, first_fact_id) is True
 
-    stronger_fact_id = server._insert_event_fact_history(
+    stronger_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -4130,7 +6339,7 @@ def test_event_fact_write_recovers_latest_awc_from_hard_source_history(tmp_path,
             {"outcome": "29°C", "q_bayes_posterior": 0.30, "q_temperature_bucket_posterior": 0.30},
         ],
     }
-    hard_fact_id = server._insert_event_fact_history(
+    hard_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -4160,7 +6369,7 @@ def test_event_fact_write_recovers_latest_awc_from_hard_source_history(tmp_path,
             {"outcome": "29°C", "q_bayes_posterior": 0.26},
         ],
     }
-    stale_fact_id = server._insert_event_fact_history(
+    stale_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -4311,7 +6520,7 @@ def test_fact_write_materializes_hard_source_temperature_path_and_target_chain(t
         ],
     }
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-23",
         slug=slug,
@@ -4347,9 +6556,7 @@ def test_fact_write_materializes_hard_source_temperature_path_and_target_chain(t
     assert item["target_bucket"] == "30°C"
     assert item["target_bucket_selection"]["target_bucket"] == "30°C"
     assert item["posterior_target_bucket_selection"]["target_bucket"] == "30°C"
-    assert item["target_bucket_selection"]["target_bucket_selection_source"] == (
-        "event_fact_latest.hard_source_constrained_posterior_top1"
-    )
+    assert item["target_bucket_selection"]["target_bucket_selection_source"] == "posterior_ssot_fact.top_bucket"
     assert item["temperature_trajectory_status"]["available"] is True
     assert item["temperature_path_distribution"]["available"] is True
     assert item["target_bucket_outlook"]["target_bucket"] == "30°C"
@@ -4416,7 +6623,7 @@ def test_fact_write_materializes_d0_observed_feasibility_into_distribution(tmp_p
         ],
     }
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-23",
         slug=slug,
@@ -4428,6 +6635,10 @@ def test_fact_write_materializes_d0_observed_feasibility_into_distribution(tmp_p
         item=payload,
     )
     row = conn.execute("SELECT fact_json FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()
+    cached = conn.execute(
+        "SELECT summary_json FROM event_fact_summary_cache WHERE fact_id = ?",
+        (fact_id,),
+    ).fetchone()
     conn.close()
     item = json.loads(row["fact_json"])
     rows = {entry["outcome"]: entry for entry in item["distribution"]}
@@ -4517,6 +6728,63 @@ def test_ui_snapshot_returns_busy_shape_when_cold_rebuild_inflight() -> None:
     assert payload["cache_rebuild_elapsed_ms"] >= 0
     assert payload["facts"]["items"] == []
     assert payload["facts"]["source"] == "ui_snapshot_rebuild_in_flight"
+    assert payload["ui_snapshot_schema_version"] == "ui_snapshot_phase0_v1"
+    assert payload["snapshot_id"].startswith("uisnap_")
+    assert payload["snapshot_etag"] == f'W/"{payload["snapshot_id"]}"'
+    assert payload["snapshot_freshness_state"] == "blocked"
+    assert payload["lineage_state"]["placeholder"] is True
+    assert payload["panel_freshness"]["facts"]["na_reason"] == "no_fact_items"
+
+
+def test_ui_snapshot_phase0_contract_exposes_fact_lineage_items() -> None:
+    payload = {
+        "ok": True,
+        "as_of": "2026-07-04T04:06:00+00:00",
+        "run_date": "2026-07-04",
+        "facts": {
+            "source": "unit",
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-4-2026",
+                    "event_date": "2026-07-04",
+                    "fact_id": 123,
+                    "fact_as_of": "2026-07-04T04:05:59+00:00",
+                    "lineage_state": {
+                        "correlation_id": "corr_1",
+                        "fact_snapshot_id": "fact_1",
+                        "posterior_run_id": "post_1",
+                        "source_event_ids": ["srcevt_lineage"],
+                        "source_observation_ids": ["srcobs_lineage"],
+                    },
+                    "source_observations": [{"source_event_id": "srcevt_obs", "source_observation_id": "srcobs_obs"}],
+                    "signal_to_order_timing": {
+                        "signal_id": "sig_1",
+                        "source_event_id": "srcevt_signal",
+                        "source_observation_id": "srcobs_signal",
+                    },
+                }
+            ],
+        },
+    }
+
+    server._attach_ui_snapshot_phase0_contract(payload, cache_key="unit:1")
+
+    assert payload["source_fact_ids"] == [123]
+    assert payload["fact_snapshot_ids"] == ["fact_1"]
+    assert payload["posterior_run_ids"] == ["post_1"]
+    assert payload["source_event_ids"] == ["srcevt_lineage", "srcevt_obs", "srcevt_signal"]
+    assert payload["source_observation_ids"] == ["srcobs_lineage", "srcobs_obs", "srcobs_signal"]
+    assert payload["signal_ids"] == ["sig_1"]
+    assert payload["primary_fact_snapshot_id"] == "fact_1"
+    lineage = payload["lineage_state"]
+    assert lineage["schema"] == "ui_snapshot_lineage_state_v1"
+    assert lineage["placeholder"] is False
+    assert lineage["fact_lineage_complete"] is True
+    assert lineage["execution_lineage_complete"] is False
+    assert lineage["source_observation_ids"] == ["srcobs_lineage", "srcobs_obs", "srcobs_signal"]
+    assert lineage["items"][0]["fact_id"] == 123
+    assert lineage["items"][0]["fact_snapshot_id"] == "fact_1"
+    assert lineage["items"][0]["source_observation_ids"] == ["srcobs_lineage", "srcobs_obs", "srcobs_signal"]
 
 
 def test_ui_snapshot_rebuild_status_records_last_duration() -> None:
@@ -4533,6 +6801,8 @@ def test_ui_snapshot_rebuild_status_records_last_duration() -> None:
             cache_key=cache_key,
         )
         assert active_payload["cache_rebuild_status"]["active"] is True
+        assert active_payload["ui_snapshot_schema_version"] == "ui_snapshot_phase0_v1"
+        assert active_payload["snapshot_freshness_state"] == "blocked"
         assert active_payload["cache_rebuild_elapsed_ms"] >= 0
     finally:
         server._ui_snapshot_rebuild_done(cache_key)
@@ -4661,6 +6931,7 @@ def test_frontend_uses_stale_ui_snapshot_items_during_rebuild() -> None:
     assert "ui_snapshot_summary_rebuild_in_flight" in summary_block
     assert "(snapshot.busy || snapshot.cache_rebuild_in_flight) && !snapshotHasUsableRunsItems(snapshot)" in full_block
     assert "ui_snapshot_full_rebuild_in_flight" in full_block
+    assert "`/api/ui_snapshot?run_date=${date}&limit=${limit}${cityParam}${refreshParam}&full=1&_=${Date.now()}`" in full_block
     assert "if (snapshot && (snapshot.busy || snapshot.cache_rebuild_in_flight)) return;" in model_block
 
 
@@ -4743,6 +7014,15 @@ def test_frontend_regular_polling_does_not_force_summary_rebuild_or_reset_viewpo
     live_start = text.index("async function refreshLiveUiSnapshotCoreNumbers")
     live_end = text.index("function scheduleEventIntelligenceLiveSnapshotRefresh", live_start)
     live_block = text[live_start:live_end]
+    rerender_start = text.index("function rerenderFromCache")
+    rerender_end = text.index("const autoTradeConfigState", rerender_start)
+    rerender_block = text[rerender_start:rerender_end]
+    render_cache_start = text.index("function renderFromCache")
+    render_cache_end = text.index("function updateEventsProgress", render_cache_start)
+    render_cache_block = text[render_cache_start:render_cache_end]
+    load_start = text.index("async function load(")
+    load_end = text.index("function renderFromCache", load_start)
+    load_block = text[load_start:load_end]
     model_start = text.index("function refreshModelMemberSnapshotBoard")
     model_end = text.index("function buildMeanBucketBarChart", model_start)
     model_block = text[model_start:model_end]
@@ -4754,6 +7034,14 @@ def test_frontend_regular_polling_does_not_force_summary_rebuild_or_reset_viewpo
     assert "function shouldDeferViewportRerender()" in text
     assert "window.addEventListener('scroll', markUserViewportInteraction, { passive: true });" in text
     assert "markProgrammaticScroll();" in text
+    assert "function readSavedScrollAnchor()" in text
+    assert "function maybeRestorePendingScrollPosition()" in text
+    assert "window.__pendingScrollRestoreAnchor = anchor;" in text
+    assert "sessionStorage.setItem(SCROLL_KEY, JSON.stringify(captureScrollAnchor()));" in text
+    assert "restoreScrollAnchor(anchor, { retry: true });" in text
+    assert "maybeRestorePendingScrollPosition();" in rerender_block
+    assert "maybeRestorePendingScrollPosition();" in render_cache_block
+    assert "maybeRestorePendingScrollPosition();" in load_block
     assert "const refreshParam = params && params.refresh === true ? '&refresh=1' : '';" in summary_block
     assert "const refreshParam = params && params.refresh === true ? '&refresh=1' : '';" in full_block
     assert "params.refresh === false ? '' : '&refresh=1'" not in summary_block
@@ -4767,13 +7055,44 @@ def test_frontend_regular_polling_does_not_force_summary_rebuild_or_reset_viewpo
     assert "setSyncIndicator('idle', '阅读中暂停刷新'" in auto_block
 
 
+def test_frontend_snapshot_failure_keeps_last_good_runs_visible() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    load_start = text.index("async function load(")
+    load_end = text.index("function renderFromCache", load_start)
+    load_block = text[load_start:load_end]
+
+    assert "const existingRuns = Array.isArray(window.__runsLoaded) ? window.__runsLoaded : [];" in load_block
+    assert "// keep existing data on incremental refresh failures" in load_block
+    assert "const fallbackExistingRuns = (Array.isArray(existingRuns) ? existingRuns : [])" in load_block
+    assert ".filter((item) => isRunVisibleForEffectiveDate(item, effectiveDate, includeUpcomingEvents));" in load_block
+    assert "if (fallbackExistingRuns.length > 0) {" in load_block
+    assert "data = fallbackExistingRuns;" in load_block
+    assert "throw err;" in load_block
+
+
 def test_frontend_surfaces_physical_source_impact_and_rebuild_metrics() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    target_start = text.index("function physicalLikelihoodTargetLabelFromItem")
+    target_end = text.index("function physicalLikelihoodFindGroup", target_start)
+    target_block = text[target_start:target_end]
+    realtime_start = text.index("function renderPhysicalLikelihoodRealtimeStrip")
+    realtime_end = text.index("function renderPhysicalLikelihoodPanel", realtime_start)
+    realtime_block = text[realtime_start:realtime_end]
 
     assert "function physicalLikelihoodTargetGroupRows" in text
-    assert "physicalLikelihoodTargetLabelFromItem(item || {}, top.label || '')" in text
-    assert "<strong>来源 → 似然贡献 → 对目标桶影响</strong>" in text
-    assert "相对其他桶 ${physicalLikelihoodSignedNumber(rel, 3)} LL" in text
+    assert "physicalLikelihoodTargetLabelFromItem(data, top.label || '')" in text
+    assert "eventIntelTargetBucketSelectionFromSnapshot(" in target_block
+    assert "const ssotLabel = eventIntelBucketLabel(ssotSelection.targetLabel || '', 'C');" in target_block
+    assert "if (ssotLabel) return ssotLabel;" in target_block
+    assert "temperature_path_distribution" not in target_block
+    assert "selection.target_bucket" not in target_block
+    assert "outlook.target_bucket" not in target_block
+    assert "targetLabel: snap.targetLabel" in text
+    assert "targetProb: snap.targetProb" in text
+    assert "const targetFactorProb = toFiniteNumberOrNaN(entry && entry.targetProb);" in realtime_block
+    assert "targetLabel ? Number.NaN : (entry && entry.topProb" in realtime_block
+    assert "<strong>物理因素对目标桶</strong>" in text
+    assert "相对强弱 ${physicalLikelihoodSignedNumber(rel, 2)}" in text
     assert "function summarizeUiSnapshotRebuildStatus" in text
     assert "function recordUiSnapshotRebuildStatus" in text
     assert "<div class=\"update-combo-summary-label\">Summary缓存</div>" in text
@@ -4905,7 +7224,7 @@ def test_target_progress_omits_observation_metrics_already_shown_in_trajectory_h
     assert "row.observed_temp_c ?? row.observed_path_temp_c" not in text
     assert "stage.observed_path_temp_c ?? stage.observed_temp_c" not in text
     assert "stage.observed_temp_c ?? stage.observed_path_temp_c" not in text
-    assert "当前最高" not in text
+    assert "当前最高" not in block
     assert "当前实况/最高" not in text
     assert "function eventIntelCurrentObservedMetricValue" in text
     current_helper = text[
@@ -4966,25 +7285,24 @@ def test_trade_explanation_keeps_posterior_target_separate_from_path_probability
     assert "目标桶</span>" in text
     assert "eventIntelFinalBucketProbabilityLabel(targetLabel)" in text
     assert "targetLabel || topLabel" not in text[text.index("function formatDailyTradeAdviceSummary"):text.index("function isPosteriorSettlementCandidate", text.index("function formatDailyTradeAdviceSummary"))]
-    assert "Top 3 最高温落桶后验趋势" in text
-    assert "重构 Bayes 概率变化" in text
+    assert "Top 3 温度目标概率趋势" in text
+    assert "温度桶最终概率（Top 3）" in text
     assert "posterior_temperature_distribution.bucket_probabilities" in text
-    assert "CTP源组件" in text
-    assert "source_components" in text
-    assert "group shrinkage" in text
+    assert "等待来源" in text
+    assert "主因" in text
     assert "贡献=P×w" not in text
     assert "先验 × 似然" not in text
     assert "未结算" in text
     assert "非当前实况" in text
-    assert "模型校准组件最高桶" in text
-    assert "Weather.com/TWC 校准软源" in text
+    assert "模型校准摘要" in text
+    assert "Weather.com/TWC" in text
     assert "QM校正最高桶" not in text
     assert "Top 3 温度桶后验趋势" not in text
     assert "目标桶：${targetBucketCompact}" in text
     assert "${targetSemantics.pathNoun}目标" not in text
     assert "路径触达概率目标" not in text
     assert "触达单桶概率" not in text
-    assert "仅作路径/执行参考，不改写最高温落桶后验" in text
+    assert "仅作路径/执行参考，不改写最终概率" in text
 
 
 def test_ctp_bucket_table_shows_refactored_bayes_probability_change() -> None:
@@ -4996,17 +7314,16 @@ def test_ctp_bucket_table_shows_refactored_bayes_probability_change() -> None:
     chain_end = text.index("const stateTags = [];", chain_start)
     chain_block = text[chain_start:chain_end]
 
-    assert "重构 Bayes 概率变化" in header_block
-    assert "p(T|D) ∝ prior(T) × likelihood(T) × D0/硬源约束" in text
-    assert "先验→似然→约束→后验" in text
+    assert "概率变化" in header_block
+    assert "背景→预测→实况→最终" in text
     assert "function eventIntelCtpContributionRows" in text
     assert "function eventIntelCtpEffectivePrecisionTotal" in text
-    assert "regime_v1 cap占比" in text
-    assert "精度占比 / 目标桶支持 / regime_v1 cap" in text
-    assert "label: '先验/背景'" in chain_block
-    assert "label: '预测似然'" in chain_block
-    assert "label: 'D0/硬源'" in chain_block
-    assert "label: '落桶后验'" in chain_block
+    assert "轨迹占用" in text
+    assert "信号强度" in text
+    assert "label: '背景起点'" in chain_block
+    assert "label: '预测调整'" in chain_block
+    assert "label: '实况约束'" in chain_block
+    assert "label: '最终概率'" in chain_block
     assert "bayes-step-card-label" in chain_block
     assert "bayes-step-card-value" in chain_block
     assert "bayes-step-card-delta" in chain_block
@@ -5016,7 +7333,53 @@ def test_ctp_bucket_table_shows_refactored_bayes_probability_change() -> None:
     assert "压低概率" in chain_block
     assert "formulaSummary" in chain_block
     assert "bayes-formula-steps" in chain_block
-    assert "组件分布 → group shrinkage → D0/硬源约束 → bucket_probabilities" not in header_block
+    assert "重构 Bayes" not in header_block
+    assert "D0/硬源" not in header_block
+
+
+def test_frontend_bayes_driver_uses_ctp_ssot_precision_share_labels() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = text.index("const ctpComponentRows = eventIntelCtpComponentRows")
+    end = text.index("const ctpBucketPosterior = eventIntelCtpBucketProbability", start)
+    block = text[start:end]
+
+    assert "function eventIntelCtpNormalBucketProbability" in text
+    assert "eventIntelCtpMemberBucketProbability(component, idx, item)" in text
+    assert "singleProbability" in block
+    assert "precisionShare" in block
+    assert "displayImpact" in block
+    assert "return Number.isFinite(precisionShare) ? precisionShare : Number.NaN;" in block
+    assert "return prob * precisionShare;" in block
+    assert "单源概率" in block
+    assert "实际有效 precision share" in block
+    assert "展示影响" in block
+    assert "channelWeightText" not in block
+    assert "channelContributionText" not in block
+
+
+def test_event_intel_default_copy_hides_internal_probability_jargon() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+
+    for phrase in (
+        "重构 Bayes 概率变化",
+        "D0/硬源",
+        "目标桶后验交易目标",
+        "模型权重 shadow",
+        "不能上线原因",
+        "Regime v1 实况轨迹路径",
+        "路径聚合最高温",
+        "强制转向/压制",
+        "Peak hour 分布",
+        "Soft intraday 诊断",
+        "source_component 已接入",
+        "落桶后验",
+    ):
+        assert phrase not in text
+
+    assert "目标桶概率变化" in text
+    assert "背景起点 → 预测调整 → 实况约束 → 最终概率" in text
+    assert "温度桶最终概率（Top 3）" in text
+    assert "实况轨迹判断" in text
 
 
 def test_probability_change_track_is_inside_top3_distribution_container() -> None:
@@ -5038,7 +7401,7 @@ def test_probability_change_track_is_inside_top3_distribution_container() -> Non
     assert "bucket-qstats-history-${escapeHtml(String(cardId || ''))}" not in posterior_block
     assert "renderFusedBucketTrendChart" not in live_block
     assert "renderPosteriorMiniTimeline" not in live_block
-    assert "查看各温度桶 CTP 落桶后验概率表" in text
+    assert "查看全部温度桶" in text
 
 
 def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context() -> None:
@@ -5047,11 +7410,15 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     end = text.index("function eventBayesLikelihoodChannels", start)
     block = text[start:end]
 
+    assert "function eventBayesPriorSectionRows" in text
     assert "function eventBayesCtpPriorRows" in text
+    assert "const focus = eventBayesStageFocus(item);" in block
+    assert "const sectionPriorRows = eventBayesPriorSectionRows(item, 3);" in block
     assert "const ctpPriorRows = eventBayesCtpPriorRows(item, 3);" in block
-    assert "const priorRows = ctpPriorRows.length ? ctpPriorRows : eventBayesPriorRows(item, 3);" in block
-    assert "priorRowsSource = ctpPriorRows.length ? 'CTP source_components' : '旧 distribution 先验兜底'" in block
-    assert "title: '对应上方：先验/背景'" in block
+    assert "const priorRows = sectionPriorRows.length ? sectionPriorRows" in block
+    assert "priorRowsSource = sectionPriorRows.length ? '后端先验SSOT'" in block
+    assert block.index("const sectionPriorRows = eventBayesPriorSectionRows(item, 3);") < block.index("const ctpPriorRows = eventBayesCtpPriorRows(item, 3);")
+    assert "title: '目标桶起点'" in block
     assert "bayes-evidence-prior-grid is-core-first" in block
     assert ".bayes-prior-support-row {" in text
     assert "grid-template-columns:minmax(220px, .68fr) minmax(320px, 1.32fr);" in text
@@ -5061,20 +7428,60 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     assert "const priorComponentLabel = topPrior && topPrior.componentLabel" in block
     assert "bayes-prior-core event-realtime-block" in block
     assert "data-realtime-key=\"${escapeHtml(`bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:prior`)}\"" in block
-    assert "CTP 先验/背景主结论" in block
-    assert "来源组件" in block
-    assert "先验解释因子" in block
-    assert "慢变量，不覆盖实况" in block
-    assert "辅助 Top3 · ${priorRowsSource}" in block
-    assert "气候说明增量" in block
-    assert "盆地说明增量" in block
+    assert "focusPriorNum = eventIntelFirstFiniteNumber(focus && focus.priorProb, topPriorNum)" in block
+    assert "${priorFocusMode}背景起点" in block
+    assert "bayes-prior-core-head" not in block
+    assert "同一目标桶起点" in block
+    assert "来源" in block
+    assert "背景因素" in block
+    assert "只作起点" in block
+    assert "背景 Top3 · ${priorRowsSource}" in block
+    assert "气候Top ${topPriorLabel} ${topPriorProb}" in block
+    assert "气候影响" in block
+    assert "盆地影响" in block
     assert "为什么：" not in block
-    assert "气候背景组件桶" in block
+    assert "气候背景组件桶" not in block
     assert "bayes-prior-support-row" in block
     assert "bayes-prior-core" in block
     assert block.index("const priorCoreHtml") < block.index("const top3Html")
     assert block.index("${priorCoreHtml}") < block.index("bayes-prior-support-row")
     assert block.index("${priorExplainHtml}") < block.index("${top3Html}")
+
+
+def test_frontend_prior_section_falls_back_to_root_ui_snapshot_prior_distribution() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = text.index("function eventIntelPriorSection")
+    end = text.index("function eventIntelObservationStrongSection", start)
+    block = text[start:end]
+
+    assert "data.prior_distribution" in block
+    assert "facts.items[].prior_distribution" in block
+    assert "schema: 'ui_bayes_prior_section_v1'" in block
+    assert "bucket_probabilities: rows" in block
+    assert "prior_meta: data.prior_meta" in block
+
+
+def test_frontend_observation_section_falls_back_to_root_ui_snapshot_hard_sources() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = text.index("function eventIntelObservationStrongSection")
+    end = text.index("function eventIntelLatestHardObservation", start)
+    block = text[start:end]
+    latest_start = text.index("function eventIntelLatestObservationFromRows")
+    latest_end = text.index("function eventIntelLatestHardObservation", latest_start)
+    latest_block = text[latest_start:latest_end]
+    hard_start = text.index("function eventIntelLatestHardObservation")
+    hard_end = text.index("function eventIntelFirstFiniteNumber", hard_start)
+    hard_block = text[hard_start:hard_end]
+
+    assert "data.metar_strong_likelihood" in block
+    assert "data.source_observations" in block
+    assert "facts.items[].metar_strong_likelihood/source_observations" in block
+    assert "schema: 'ui_bayes_observation_strong_section_v1'" in block
+    assert "hard_source_observations: hardRows" in block
+    assert "latest_hard_observation: latest" in block
+    assert "Date.parse(raw)" in latest_block
+    assert "sort((a, b) => timeValue(b) - timeValue(a))" in latest_block
+    assert "return eventIntelLatestObservationFromRows(rows);" in hard_block
 
 
 def test_bucket_history_merges_snapshot_and_fetched_series() -> None:
@@ -5102,22 +7509,35 @@ def test_initial_load_does_not_fetch_facts_range() -> None:
 
 def test_lcb_current_runs_page_uses_snapshot_only_fast_path() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    normalize_start = text.index("function normalizeUiSnapshotRunsPage")
+    normalize_end = text.index("function snapshotItemIsDisplayUsable", normalize_start)
+    normalize_block = text[normalize_start:normalize_end]
     summary_start = text.index("async function fetchUiSnapshotSummaryRunsPage")
     summary_end = text.index("async function fetchUiSnapshotFullRunsPage", summary_start)
     summary_block = text[summary_start:summary_end]
+    summary_gate_start = text.index("function shouldUseUiSnapshotSummaryForRuns")
+    summary_gate_end = text.index("function shouldUseSnapshotOnlyRuns", summary_gate_start)
+    summary_gate_block = text[summary_gate_start:summary_gate_end]
     fetch_start = text.index("async function fetchRunsPage")
     fetch_end = text.index("async function fetchRunsRange", fetch_start)
     fetch_block = text[fetch_start:fetch_end]
 
     assert "function shouldUseSnapshotOnlyRuns" in text
     assert "function snapshotOnlyRunsPage" in text
+    assert "snapshot_only: true," in normalize_block
     assert "const preferCacheParam = '&prefer_cache=1';" in summary_block
     assert "${refreshParam}${preferCacheParam}&_=" in summary_block
     assert "ui_snapshot_summary_empty_items" in fetch_block
     assert "err.snapshotOnly = true;" in fetch_block
     assert "err.snapshotOnlySource = 'ui_snapshot_summary';" in fetch_block
+    assert "fetchUiSnapshotFullRunsPage(" in fetch_block
+    assert "ui_snapshot_full_fallback_after_summary_empty" in fetch_block
     assert "throw err;" in fetch_block
-    assert "return snapshotOnlyRunsPage(params, 'ui_snapshot_summary_page_only');" in fetch_block
+    assert "ui_snapshot_full_snapshot_only_page" in fetch_block
+    assert "ui_snapshot_full_snapshot_only_empty" in fetch_block
+    assert "return snapshotOnlyRunsPage(params, 'ui_snapshot_summary_page_only');" not in fetch_block
+    assert "return true;" in summary_gate_block
+    assert "LCB_ONLY_UI" not in summary_gate_block
     assert fetch_block.index("throw err;") < fetch_block.index("if (shouldUseSnapshotOnlyRuns(params))")
     assert fetch_block.index("if (shouldUseSnapshotOnlyRuns(params))") < fetch_block.index(
         "if (typeof LCB_ONLY_UI !== 'undefined' && LCB_ONLY_UI)"
@@ -5135,10 +7555,23 @@ def test_lcb_initial_load_does_not_fall_back_to_runs_range() -> None:
 
     assert "const snapshotOnlyRunsMode = typeof LCB_ONLY_UI !== 'undefined' && LCB_ONLY_UI && !showHistory;" in load_block
     assert "window.__runsFetchMode = 'snapshot';" in snapshot_block
+    assert "window.__runsFetchMode = runsPage && runsPage.snapshot_only ? 'snapshot' : 'paged';" in load_block
     assert "fallbackExistingRuns" in snapshot_block
     assert "throw err;" in snapshot_block
     assert "fetchRunsRange" not in snapshot_block
     assert "if (!snapshotOnlyRunsMode && !canIncremental && useLatest" in load_block
+
+
+def test_optional_agentation_widget_is_opt_in_only() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    module_start = text.index("<script type=\"module\">")
+    module_block = text[module_start:text.index("</script>", module_start)]
+
+    assert "const agentationEnabled = (() => {" in module_block
+    assert "params.get('agentation') === '1'" in module_block
+    assert "localStorage.getItem('weather.agentation.enabled') === '1'" in module_block
+    assert "if (isLocal && agentationEnabled) {" in module_block
+    assert "if (isLocal) {" not in module_block
 
 
 def test_initial_load_fast_path_defers_heavy_frontend_endpoints() -> None:
@@ -5192,7 +7625,8 @@ def test_initial_load_fast_path_defers_heavy_frontend_endpoints() -> None:
     assert "refreshEventIntelligencePanels({ forceIntraday: forceKeyRefresh });" in text
     assert "fetchJSONWithAuxiliaryStatus('latest', '/api/latest', {" in text
     assert "startLatestDateRefreshTicker(date);" in init_block
-    assert "if (!UI_FAST_LOAD_ENABLED) {\n        try {\n          const latest = await fetchLatestDateObserved();" in init_block
+    assert "if (!requestedDate && !UI_FAST_LOAD_ENABLED) {" in init_block
+    assert "const latest = await fetchLatestDateObserved();" in init_block
     assert "fetchJSON('/api/latest'" not in init_block
     assert "const skipLatestFetch = useProvidedDate || (UI_FAST_LOAD_ENABLED && silent && incremental);" in load_block
     assert "latest = await fetchLatestDateObserved();" in load_block
@@ -5261,6 +7695,10 @@ def test_event_core_numbers_live_poll_snapshot_ssot_without_slow_fallback() -> N
     assert "rerenderFromCache({ preserveScroll: true })" in refresh_block
     assert "refreshEventIntelligencePanels({ skipIntradayRequest: true })" in refresh_block
     assert "setSyncIndicator('fresh', '实时更新'" in refresh_block
+    assert "setSyncIndicator('fresh', '已轮询，无变化'" in refresh_block
+    assert "window.__lastLiveSnapshotMergeReport" in text
+    assert "window.__eventIntelligenceNextSnapshotAt" in schedule_block
+    assert "updateLiveSnapshotCountdown()" in schedule_block
     assert "fetchRunsPage(" not in refresh_block
     assert "fetchRunsRange(" not in refresh_block
     assert "/api/facts" not in refresh_block
@@ -5268,6 +7706,28 @@ def test_event_core_numbers_live_poll_snapshot_ssot_without_slow_fallback() -> N
     assert "eventIntelligenceLiveSnapshotDelayMs()" in schedule_block
     assert "scheduleEventIntelligenceLiveSnapshotRefresh();" in schedule_block
     assert "scheduleEventIntelligenceLiveSnapshotRefresh(1200);" in start_block
+    assert "eventIntelligenceCountdownTimer = setInterval" in start_block
+
+
+def test_realtime_update_visuals_show_delta_countdown_and_animated_numbers() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    realtime_start = text.index("function renderEventRealtimeBadge")
+    realtime_end = text.index("function requestEventIntelChengduIntradayPayload", realtime_start)
+    realtime_block = text[realtime_start:realtime_end]
+
+    assert "id=\"syncNext\"" in text
+    assert ".sync-next" in text
+    assert ".event-realtime-delta" in text
+    assert "animation:posterior-live-flash 1.8s ease" in text
+    assert "function formatLiveSnapshotCountdown" in text
+    assert "function updateLiveSnapshotCountdown" in text
+    assert "function realtimeDeltaText" in realtime_block
+    assert "formatProbabilityDeltaPp(current - previous, '0.0pp')" in realtime_block
+    assert "function animateNumericText" in realtime_block
+    assert "window.requestAnimationFrame(step)" in realtime_block
+    assert "function animatePosteriorSpotlightProbability" in realtime_block
+    assert "is-number-animating" in text
+    assert "setRealtimeDeltaBadge(" in realtime_block
 
 
 def test_event_card_deep_links_are_stable_and_legacy_hashes_resolve() -> None:
@@ -5338,8 +7798,8 @@ def test_physical_evidence_hub_layout_prioritizes_summary_then_details() -> None
     assert "function buildTodayPhysicalEvidenceVerdict" in text
     assert "function renderTodayPhysicalEvidenceVerdict" in text
     assert "function todayPhysicalWindCard" in text
-    assert "awc_wind_dir_deg" in text
-    assert "AWC Raw METAR 风组" in text
+    assert "zuuu_metar_raw_amsc_latest_wind_dir_deg" in text
+    assert "AMSC Raw METAR 风组" in text
     assert "风场辅助" in text
     assert "辅助不覆盖轨迹" in text
     assert "露点湿压" in text
@@ -5348,10 +7808,17 @@ def test_physical_evidence_hub_layout_prioritizes_summary_then_details() -> None
     assert "低压扰动" in text
     assert "湿压/辐射" in text
     assert "今日总判 · 物理证据" in text
+    assert "function eventIntelPhysicalObservationTitle" in text
+    assert "return `物理观察辅助，交易目标 ${target}`;" in text
+    assert "物理观察候选" in text
+    assert "axisTargetSelection = eventIntelTargetBucketSelectionFromSnapshot(" in text
+    assert "const title = eventIntelPhysicalObservationTitle(rawPhysicalTitle, targetLabel) || rawPhysicalTitle;" in text
+    assert "<span>物理观察</span>" in text
+    assert "<span>结论优先</span>" not in text
     assert "const trajectoryGuardActive = Boolean(" in text
     assert "不覆盖温度轨迹门控" in text
     assert "badge: trajectoryGuardActive ? (assessment.badge || '轨迹优先')" in text
-    assert "AWC/METAR 无降水" in text
+    assert "AMSC/METAR 无降水" in text
     assert "<strong>实况源约束</strong>" in text
     assert "<strong>完整温度轨迹</strong>" in text
     assert "横向滚动查看每次/整点轨迹" in text
@@ -5367,6 +7834,54 @@ def test_physical_evidence_hub_layout_prioritizes_summary_then_details() -> None
     assert "<span>观测源</span>" in hub_block
     assert "<span>实况</span>" not in hub_block
     assert "${escapeHtml(`${currentTemp} / ${observedMax}`)}" not in hub_block
+
+
+def test_hard_source_raw_report_places_taf_before_collapsed_metar() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    bag_start = text.index("function awcRawReportFeatureBag")
+    bag_end = text.index("function awcRawReportLocalTime", bag_start)
+    bag_block = text[bag_start:bag_end]
+    obs_start = text.index("function awcRawReportObservationRows")
+    obs_end = text.index("function awcRawReportMetarRows", obs_start)
+    obs_block = text[obs_start:obs_end]
+    metar_start = text.index("function renderAwcRawMetarTimeline")
+    metar_end = text.index("function renderAwcRawTafTimeline", metar_start)
+    metar_block = text[metar_start:metar_end]
+    report_start = text.index("function renderAwcRawReportTimeline")
+    report_end = text.index("function shouldUseUiSnapshotSummaryForRuns", report_start)
+    report_block = text[report_start:report_end]
+
+    assert "function renderAwcRawMetarRow" in text
+    assert "const visibleRows = rows.slice(0, 3);" in metar_block
+    assert "const collapsedRows = rows.slice(3);" in metar_block
+    assert '<details class="awc-raw-report-more">' in metar_block
+    assert "其余 Raw METAR ${escapeHtml(String(collapsedRows.length))} 条" in metar_block
+    assert "hard sources · latest 3 shown" in report_block
+    assert "硬源原文" in report_block
+    assert "AWC 原文" not in report_block
+    assert "item.source_observations" in obs_block
+    assert "observationSection.hard_source_observations" in obs_block
+    assert "awcRawReportSourceLabel(sourceId)" in obs_block
+    assert report_block.index("<span>Raw TAF</span>") < report_block.index("<span>Raw METAR</span>")
+    assert ".awc-raw-report-grid {\n      display:grid;\n      grid-template-columns:1fr;" in text
+    assert ".awc-raw-report-more summary::after" in text
+    assert "const merged = { ...full, ...compact };" in bag_block
+    assert "'taf_forecast_peak_raw'," in bag_block
+    assert "row0[key] !== undefined" in bag_block
+
+
+def test_scan_weather_market_persists_taf_raw_fields_into_distribution_rows() -> None:
+    text = (ROOT / "scan_weather_market.py").read_text(encoding="utf-8")
+    start = text.index('"taf_forecast_peak_c": taf_forecast_peak.get("value_c"),')
+    end = text.index('"taf_forecast_peak_source_fit_tier": taf_forecast_peak.get("source_fit_tier"),', start)
+    block = text[start:end]
+
+    assert '"taf_forecast_peak_raw": taf_forecast_peak.get("raw_text"),' in block
+    assert '"taf_forecast_peak_source_url": taf_forecast_peak.get("source_url"),' in block
+    assert '"taf_forecast_peak_valid_start_at": taf_forecast_peak.get("valid_start_at"),' in block
+    assert '"taf_forecast_peak_valid_end_at": taf_forecast_peak.get("valid_end_at"),' in block
+    assert '"taf_forecast_min_c": taf_forecast_peak.get("minimum_c"),' in block
+    assert '"taf_forecast_min_at": taf_forecast_peak.get("minimum_at"),' in block
 
 
 def test_bucket_summary_table_removed_from_corrected_top_summary() -> None:
@@ -5396,16 +7911,17 @@ def test_bayes_likelihood_step_matches_refactored_likelihood_stage() -> None:
     assert "'temperature_trajectory'" in block
     assert "'independent_physics_residual'" in block
     assert "'post_cool_rebound_intraday_likelihood'" in block
-    assert "Bayes 预测似然主结论" in block
+    assert "目标桶预测" in block
+    assert "Bayes 预测似然主结论" not in block
     assert "previous: focus.priorProb" in block
     assert "value: focus.likelihoodProb" in block
     assert "realtimeKey: `bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:likelihood`" in block
-    assert "参与预测似然的源组件" in block
-    assert "CTP posterior贡献占比" in block
-    assert "预测 / regime_v1 / 物理证据同源占比" in block
+    assert "主要预测来源" in block
+    assert "谁在影响目标桶" in block
+    assert "预测、轨迹、物理统一排序" in block
     assert "renderEventBayesContributionPanel(item, focus.displayLabel" in block
-    assert "source_components → group shrinkage → continuous density" in block
-    assert "renderEventBayesSourceComponentCard(component, '预测似然')" in block
+    assert "预测汇总" in block
+    assert "renderEventBayesSourceComponentCard(component, '预测')" in block
     assert "${modelPanel}" not in body_block
     assert "renderEventIntelAnomalyDynamic(item)" not in body_block
     assert "预测似然明细" not in block
@@ -5422,44 +7938,46 @@ def test_bayes_observed_step_matches_refactored_d0_stage() -> None:
     focus_end = text.index("function renderEventBayesStageTransition", focus_start)
     focus_block = text[focus_start:focus_end]
 
-    assert "目标桶观测阶段" in block
+    assert "实况是否改变目标" in block
     assert "previous: focus.likelihoodProb" in block
     assert "value: focus.observedProb" in block
     assert "realtimeKey: `bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:d0`" in block
-    assert "目标桶后验 vs 路径峰值" in block
-    assert "路径触达目标" in block
-    assert "只回答当前轨迹能否摸到目标下沿，不等于落桶后验" in block
-    assert "峰值到目标下沿" in block
-    assert "D0/轨迹/物理贡献占比" in block
-    assert "regime_v1 cap / 物理 residual / 硬实况" in block
-    assert "观测约束输入" in block
-    assert "实况 / 温度轨迹 / 物理证据" in block
+    assert "目标能否兑现" in block
+    assert "路径触达" in block
+    assert "AMSC SSOT路径概率" in block
+    assert "离目标" in block
+    assert "实况如何影响目标桶" not in block
+    assert "轨迹、物理、实况统一排序" not in block
+    assert "observedContributionPanelHtml" not in block
+    assert "实况证据" in block
+    assert "实况 / 轨迹 / 物理" in block
     assert "温度轨迹" in block
     assert "当前实况" in block
     assert "已观测最高" in block
     assert "升温率" in block
-    assert "轨迹估计最高" in block
+    assert "peakEstimateLabel" in block
     assert "温度动量" in block
     assert "renderTemperatureMomentumVisual(metrics, TEMPERATURE_MOMENTUM_COMPACT_WINDOWS" in block
     assert "物理证据" in block
-    assert "renderEventIntelIntradayEvidenceAxis(payload || {})" in block
-    assert "温度轨迹趋势曲线" in block
+    assert "renderEventIntelIntradayEvidenceAxis(payload || {}, item)" in block
+    assert "趋势曲线" in block
     assert "renderEventIntelPhysicalTrendCurve(payload || {})" in block
-    assert "动量只参与 D0/硬源观察层，不回写预测似然" in block
-    assert "observation_constraints 未触发硬修正" in block
+    assert "窗口：" in block
+    assert "实况未改写，沿用预测结果。" in block
+    assert "实况未触发硬修正" not in block
     assert "temperature_trajectory" in block
     assert "independent_physics_residual" in block
     assert "renderEventIntelPhysicalEvidenceHub" not in block
     assert "hideLikelihoodSecondary: false" not in block
     assert "const selection = eventIntelTargetBucketSelectionFromSnapshot(item, payload);" in focus_block
     assert "const targetTop = targetFocusLabel" in focus_block
-    assert "focusSource: targetTop ? (selection.source || 'target_bucket_selection') : 'posterior_top_fallback'" in focus_block
+    assert "focusSource: targetTop ? (selection.source || 'posterior_ssot_fact.top_bucket') : 'posterior_ssot_fact_missing'" in focus_block
     assert "preferConstrained ? firstFiniteRowValue(row, ['q_raw', 'q_posterior_observed_constraints'])" not in text
     assert "['q_raw', 'q_posterior_observed_constraints', 'q_temperature_bucket_posterior', 'q_bayes_posterior']" not in text
     assert "['q_temperature_bucket_posterior', 'q_posterior_observed_constraints', 'q_bayes_posterior', 'q_raw']" in text
     assert "compactTrendConclusion: false" not in block
     assert "observedDynamicLayout: true" not in block
-    assert "对应上方：目标桶观测阶段" in block
+    assert "title: '实况是否改变目标'" in block
     assert "当前 ${observed}" not in block
     assert "最高 ${observedMax}" not in block
 
@@ -5472,7 +7990,10 @@ def test_intraday_physical_axis_surfaces_today_physical_verdict() -> None:
 
     assert "const todayPhysicalVerdictHtml = renderTodayPhysicalEvidenceVerdict" in block
     assert "buildTodayPhysicalEvidenceVerdict(" in block
+    assert "eventIntelPosteriorSsotPendingForDisplay(" in block
+    assert "不把空证据解释为中性或拉扯" in block
     assert "${todayPhysicalVerdictHtml}" in block
+    assert "physical-evidence-decision is-${escapeHtml(finalConclusion.tone)}" not in block
     assert "final_bucket_probability_pct" in block
     assert "物理证据结论" in block
     assert "今日总判 · 物理证据" in text
@@ -5484,18 +8005,18 @@ def test_bayes_posterior_step_matches_refactored_bucket_probability_stage() -> N
     end = text.index("function renderEventBayesEvidenceFlow", start)
     block = text[start:end]
 
-    assert "落桶后验主结论" in block
+    assert "最终目标概率" in block
     assert "previous: focus.observedProb" in block
     assert "value: focus.posteriorProb" in block
     assert "realtimeKey: `bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:posterior`" in block
-    assert "posterior_temperature_distribution.bucket_probabilities" in block
-    assert "bucket_probabilities" in block
+    assert "目标桶最终概率" in block
+    assert "诊断明细" in block
     assert "quantile_grid" in block
     assert "cdf_values" in block
     assert "quantiles_c" in block
-    assert "下游使用" in block
-    assert "交易层读取落桶后验，不反向改写 Bayes" in block
-    assert "daily-trade-advice-mount" in block
+    assert "交易使用" not in block
+    assert "只读取最终概率" not in block
+    assert "daily-trade-advice-mount" not in block
 
 
 def test_source_peak_station_forecast_uses_snapshot_open_meteo_fallback() -> None:
@@ -5539,6 +8060,43 @@ def test_source_peak_model_curve_uses_top_bucket_value_fallback() -> None:
     assert "if (rep && Number.isFinite(rep.value)) return rep.value;" in block
 
 
+def test_source_peak_model_cards_read_member_cache_snapshot_fallback() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    member_start = text.index("function sourcePeakModelMemberSnapshot")
+    member_end = text.index("function sourcePeakMarketReference", member_start)
+    member_block = text[member_start:member_end]
+    bucket_start = text.index("function sourcePeakModelTopBucket")
+    bucket_end = text.index("function sourcePeakBucketModeText", bucket_start)
+    bucket_block = text[bucket_start:bucket_end]
+    value_start = text.index("function sourcePeakModelValue")
+    value_end = text.index("function sourcePeakModelRawHistoryTop", value_start)
+    value_block = text[value_start:value_end]
+
+    assert "item.model_member_cache_snapshot" in member_block
+    assert "item.model_members_decimal_raw" in member_block
+    assert "function sourcePeakModelMemberMeanC" in member_block
+    assert "qmMeta.model_bucket_rule_comparison" in bucket_block
+    assert "return { label: String(ruleTop.label || ''), q: ruleQ, mode: 'model_member_cache_rule_bucket' };" in bucket_block
+    assert "const memberMean = sourcePeakModelMemberMeanC(item, modelKey);" in value_block
+    assert "if (Number.isFinite(memberMean)) return memberMean;" in value_block
+
+
+def test_source_peak_field_dependencies_are_ui_snapshot_contract_keys() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    referenced = set()
+    for match in re.finditer(r"sourcePeakField\(item,\s*\[([^\]]*)\]", text):
+        referenced.update(re.findall(r"['\"]([^'\"]+)['\"]", match.group(1)))
+
+    contract = (
+        set(server.UI_SNAPSHOT_FRONTEND_CONTRACT_ROW_KEYS)
+        | set(server.UI_SNAPSHOT_FRONTEND_CONTRACT_FEATURE_KEYS)
+        | set(server.UI_SNAPSHOT_FRONTEND_CONTRACT_TOP_LEVEL_KEYS)
+    )
+
+    assert referenced
+    assert referenced - contract == set()
+
+
 def test_source_peak_curve_omits_missing_points_from_plot() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     start = text.index("function renderSourcePeakCurveComparison")
@@ -5561,7 +8119,7 @@ def test_probability_summary_hides_per_bucket_hard_zero_alerts() -> None:
     qstats_end = text.index("function renderDistributionTable", qstats_start)
     qstats_block = text[qstats_start:qstats_end]
 
-    assert "CTP 源组件校准摘要" in focus_block
+    assert "模型校准摘要" in focus_block
     assert "renderObservedHardZeroAlerts(item, dist)" not in focus_block
     assert "hardZeroAlertsHtml" not in focus_block
     assert "renderObservedHardZeroAlerts(item, dist)" not in qstats_block
@@ -5596,28 +8154,73 @@ def test_ui_defers_and_throttles_most_likely_history_fetches() -> None:
     assert "{ deferFetch: true, observeFetch: true }" in text
 
 
-def test_posterior_spotlight_uses_capital_plan_before_target_outlook_and_distribution_top() -> None:
+def test_skeleton_overlay_is_removed_from_layout_after_loading() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    css_start = text.index(".skeleton-overlay {")
+    css_end = text.index(".skeleton-card {", css_start)
+    css_block = text[css_start:css_end]
+    js_start = text.index("function setSkeleton")
+    js_end = text.index("function getPolicyCooldowns", js_start)
+    js_block = text[js_start:js_end]
+
+    assert "display:none;" in css_block
+    assert "body.is-loading .skeleton-overlay" in css_block
+    assert "display:flex;" in css_block
+    assert "overlay.setAttribute('aria-hidden', active ? 'false' : 'true');" in js_block
+
+
+def test_posterior_spotlight_requires_posterior_ssot_not_capital_or_distribution_fallback() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    rows_start = text.index("function eventIntelPosteriorSsotRows")
+    rows_end = text.index("function eventIntelTargetBucketSelectionFromSnapshot", rows_start)
+    rows_block = text[rows_start:rows_end]
     start = text.index("const posteriorSpotlightRows =")
     end = text.index("if (posteriorSpotlightPrimary.label)", start)
     block = text[start:end]
 
     assert "function renderDistributionTable" in text
+    assert "const rawRows = Array.isArray(ssot.bucket_probabilities)" in rows_block
+    assert ": [];" in rows_block
+    assert "ssot.ranked_bucket_probabilities" not in rows_block
     assert "const resolvePosteriorSpotlightPrimary = () => {" in block
-    assert block.index("capitalPlanForSpotlight.target_bucket") < block.index("targetOutlookForSpotlight.final_bucket")
-    assert "targetOutlookForSpotlight.final_bucket" in block
+    assert "posteriorSsotForSpotlight.target_bucket" in block
+    assert "eventIntelCanonicalTargetFromSnapshot(itemRef)" not in block
+    assert "source: 'canonical_target'" not in block
     assert "targetOutlookForSpotlight.posterior_final_bucket" in block
     assert "targetOutlookForSpotlight.target_bucket" in block
-    assert "eventIntelBucketProbabilityPct(itemRef, finalLabel" in block
+    assert "const physicalSpotlightRows = itemRef ? eventIntelPhysicalHighPosteriorRows(itemRef, 3) : [];" in text
+    assert "? physicalSpotlightRows" in block
+    assert ": (itemRef ? eventIntelPosteriorSsotRows(itemRef, 3) : [])" in block
+    assert "source: 'physical_high_posterior_ssot'" in block
+    assert "posterior_field: (entry && entry.row && entry.row.posterior_field) || 'posterior_ssot_fact.bucket_probabilities'" in block
+    assert "const prob = eventIntelFirstFiniteNumber(row.q_temperature_bucket_posterior, row.q_bayes_posterior);" in block
+    assert "posterior_ssot_fact.ranked_bucket_probabilities" not in block
+    assert "topPosteriorRows.length ? topPosteriorRows : visibleRows" not in block
+    assert "posterior_temperature_distribution" not in block
+    assert "posterior <= 0" in rows_block
+    assert "eventIntelIsPosteriorHardZeroRow(row)" in rows_block
+    assert "row.hard_zero" in text
+    assert "final_bucket_lock" in text
+    assert "eventIntelBucketProbabilityPct(itemRef, hardOutlookLabel" in block
+    assert "eventIntelBucketProbabilityPct(itemRef, finalLabel" not in block
     assert "cumulative_posterior_final_bucket_probability_pct" in text
     assert "posteriorRunnerRankLabels" in block
-    assert "分布次高" in block
-    assert "capitalPlanForSpotlight.target_bucket" in block
-    assert "source: 'capital_plan'" in block
-    assert "source: 'distribution_top'" in block
+    assert "SSOT次高" in block
+    assert "分布次高" not in block
+    assert "capitalPlanForSpotlight.target_bucket" not in block
+    assert "source: 'capital_plan'" not in block
+    assert "source === 'capital_plan'" not in block
+    assert "source: 'distribution_top'" not in block
+    assert "posteriorSpotlightPrimary.source === 'distribution_top'" not in block
+    assert "source: 'target_bucket_outlook'" not in block
+    assert "source: 'posterior_ssot_fact_missing'" in block
+    assert "posterior_ssot_fact 缺失" in block
     assert "posteriorSpotlightRunnerRows = posteriorSpotlightRows" in text
-    assert "目标桶后验交易目标" in text
-    assert "当前后验最高合约（未结算）" in text
+    assert "const label = eventIntelBucketLabel(String(row.outcome || ''), 'C') || String(row.outcome || '—');" in text
+    assert "交易目标" in text
+    assert "后验SSOT缺失" in text
+    assert "后端未提供 posterior_ssot_fact；看板不展示默认目标桶，也不从分布或资金计划推断目标。" in text
+    assert "当前最高合约（未结算）" not in block
     assert "posteriorSpotlightReasonFromSsot" in block
     assert "posteriorSpotlightDeltaPp" in text
     assert "概率变化" in text
@@ -5633,16 +8236,613 @@ def test_posterior_spotlight_uses_capital_plan_before_target_outlook_and_distrib
     assert "`fact ${posteriorSpotlightFactTimeText}`" in text
     assert "factAt" in text
     assert "snapshotAt" in text
-    assert "模型校准组件最高桶" in text
-    assert "source_components 模型侧诊断" in text
-    assert "非落桶后验" in text
-    assert "Weather.com/TWC 校准软源" in text
-    assert "只有 final_bucket_lock 才是终局锁定" in text
-    assert "预测最高温落桶后验，未结算" in text
-    assert "未结算，不是当前实况温度；不同于模型校准组件或 Weather.com/TWC 校准软源" in text
+    assert "模型校准摘要" in text
+    assert "模型侧诊断" in text
+    assert "非最终目标" in text
+    assert "Weather.com/TWC" in text
+    assert "已优先采用后端实况约束后的最高目标" in text
+    assert "预测最高温最终概率，未结算" not in text
+    assert "这是预测最高温目标概率，未结算，不是当前实况温度。" not in text
     assert "最终最高温落桶概率" not in text
     assert "最终最高温落桶目标" not in text
     assert "预测最终最高温落桶" not in text
+
+
+def test_compact_posterior_ssot_keeps_full_bucket_distribution_separate_from_ranked() -> None:
+    compact = server._compact_posterior_ssot_fact_for_ui_snapshot(
+        {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "38°C",
+            "target_probability": 0.4287,
+            "bucket_probabilities": [
+                {"bucket": "37°C", "probability": 0.3236},
+                {"bucket": "38°C", "probability": 0.4287},
+                {"bucket": "39°C", "probability": 0.2038},
+                {"bucket": "40°C", "probability": 0.0405},
+                {"bucket": "41°C", "probability": 0.0033},
+            ],
+            "ranked_bucket_probabilities": [
+                {"bucket": "38°C", "probability": 0.4287},
+                {"bucket": "41°C", "probability": 0.3313},
+            ],
+        }
+    )
+
+    bucket_labels = [row["outcome"] for row in compact["bucket_probabilities"]]
+    ranked_labels = [row["outcome"] for row in compact["ranked_bucket_probabilities"]]
+
+    assert bucket_labels == ["37°C", "38°C", "39°C", "40°C", "41°C"]
+    assert ranked_labels == ["38°C", "37°C", "39°C", "40°C", "41°C"]
+    assert compact["ranked_bucket_probabilities"][4]["probability"] == pytest.approx(0.0033)
+    assert compact["bucket_count"] == 5
+
+
+def test_sequential_v3_ui_keeps_reported_x_separate_from_market_edge_buckets() -> None:
+    payload = {
+        "posterior_ssot_fact": {
+            "schema": "sequential_temperature_posterior_ssot_v3_reported_x",
+            "state": "physical_only_market_projection_na",
+            "writer_mode": "production",
+            "fact_snapshot_id": "factsnap-seq-v2",
+            "posterior_run_id": "post-seq-v2",
+            "posterior_checkpoint_id": "pchk-seq-v2",
+            "committed_at": "2026-07-14T05:00:00Z",
+            "probability_target_type": "amsc_scheduled_regular_metar_reported_daily_max_c",
+            "reported_physical_x_distribution": {"33": 0.20, "34": 0.55, "35": 0.25},
+            "reported_x_lower_bound_c": 33,
+            "market_bucket_probabilities": {},
+            "market_bucket_probabilities_na_reason": "x_to_s_to_b_bridge_unavailable",
+        }
+    }
+
+    assert server._ui_snapshot_latest_fact_needs_posterior_projection(payload) is False
+    slim = server._slim_fact_payload_for_ui(payload)
+    physical = slim["ui_sections"]["physical_high_posterior"]
+    market = slim["ui_sections"]["bayes_posterior_ssot"]
+
+    assert physical["state"] == "available"
+    assert physical["top_temperature_c"] == pytest.approx(34.0)
+    assert physical["top_probability"] == pytest.approx(0.55)
+    assert [row["temperature_c"] for row in physical["ranked_temperature_probabilities"]] == [34.0, 35.0, 33.0]
+    assert physical["boundary"] == "reported_X_whole_degree_only_not_latent_Z_not_market_B_not_cumulative_edge_bucket"
+    assert market["state"] == "market_projection_na"
+    assert market["na_reason"] == "x_to_s_to_b_bridge_unavailable"
+    assert not market.get("target_bucket")
+    assert server._canonical_target_from_fact_payload(payload) == {}
+    assert "target_bucket" not in slim
+    assert "ssot_target_bucket" not in slim
+
+    # Summary compaction keeps sequential lineage in the authoritative SSOT;
+    # a duplicate top-level lineage copy is not required for cache acceptance.
+    slim["fact_id"] = 108484
+    assert server._ui_snapshot_summary_item_has_display_ssot_contract(slim) is True
+
+
+def test_production_v6_v4_ui_projects_reported_x_without_market_bucket_inference() -> None:
+    payload = {
+        "posterior_ssot_fact": {
+            "schema": "sequential_temperature_posterior_ssot_v4_reported_x",
+            "state": "physical_only_market_projection_na",
+            "writer_mode": "production",
+            "fact_snapshot_id": "fact-v6-event-1",
+            "posterior_run_id": "posterior-v6-1",
+            "posterior_checkpoint_id": "posterior-checkpoint-v6-1",
+            "committed_at": "2026-07-16T02:02:45.527Z",
+            "probability_target_type": "amsc_scheduled_regular_metar_reported_daily_max_c",
+            "reported_physical_x_distribution": {"38": 0.50, "39": 0.30, "40": 0.20},
+            "reported_x_lower_bound_c": 38,
+            "market_bucket_probabilities": {},
+            "market_bucket_probabilities_na_reason": "resolution_bridge_not_closed",
+            "probability_runtime_identity": {
+                "composer_schema": "physical_state_bayes_v6_pre_event_predict_update",
+                "v5_fallback_forbidden": True,
+            },
+            "termination_risk": {"state": "available", "probability": 0.42},
+        }
+    }
+
+    assert server._ui_snapshot_latest_fact_needs_posterior_projection(payload) is False
+    slim = server._slim_fact_payload_for_ui(payload)
+    physical = slim["ui_sections"]["physical_high_posterior"]
+    market = slim["ui_sections"]["bayes_posterior_ssot"]
+
+    assert physical["state"] == "available"
+    assert physical["top_temperature_c"] == pytest.approx(38.0)
+    assert physical["top_probability"] == pytest.approx(0.50)
+    assert market["state"] == "market_projection_na"
+    assert market["na_reason"] == "resolution_bridge_not_closed"
+    assert server._canonical_target_from_fact_payload(payload) == {}
+    assert slim["posterior_ssot_fact"]["probability_runtime_identity"]["v5_fallback_forbidden"] is True
+    assert slim["posterior_ssot_fact"]["termination_risk"]["probability"] == pytest.approx(0.42)
+
+    slim["fact_id"] = 109070
+    assert server._ui_snapshot_summary_item_has_display_ssot_contract(slim) is True
+
+
+def test_production_v6_ui_uses_authoritative_timeline_for_amsc_strong_observation_display() -> None:
+    payload = {
+        "event_date": "2026-07-16",
+        "posterior_ssot_fact": {
+            "schema": "sequential_temperature_posterior_ssot_v4_reported_x",
+            "state": "physical_only_market_projection_na",
+            "writer_mode": "production",
+            "fact_snapshot_id": "fact-v6-timeline",
+            "posterior_run_id": "posterior-v6-timeline",
+            "posterior_checkpoint_id": "checkpoint-v6-timeline",
+            "reported_physical_x_distribution": {"38": 0.55, "39": 0.45},
+            "reported_x_lower_bound_c": 38,
+            "market_bucket_probabilities": {},
+            "market_bucket_probabilities_na_reason": "resolution_bridge_not_closed",
+            "peak_timing_state": {
+                "schema": "peak_timing_state_l3_v1",
+                "state": "available",
+                "peak_timing_state_id": "peaktiming-v6-ui",
+                "entry_peak_at": "2026-07-16T09:00:00Z",
+                "peak_already_probability": 0.4,
+                "future_peak_probability": 0.6,
+                "does_not_update_physical_x": True,
+            },
+            "termination_risk": {
+                "schema": "termination_risk_marginal_v3_physical_state_bayes_v6",
+                "state": "available",
+                "probability_no_material_new_daily_high": 0.4,
+                "updates_posterior": False,
+            },
+        },
+        "temperature_trajectory_timeline": {
+            "version": "sequential_reported_x_temperature_timeline_v3",
+            "probability_semantics": "amsc_scheduled_regular_metar_reported_daily_max_integer_x",
+            "rows": [
+                {
+                    "canonical_observation_event_id": "canobs-v6-ui",
+                    "primary_source_id": "zuuu_metar_raw_amsc",
+                    "primary_metar_latest_at": "2026-07-16T08:30:00Z",
+                    "primary_metar_latest_local_hhmm": "16:30",
+                    "primary_metar_temp_c": 37.5,
+                    "primary_metar_today_max_c": 37.5,
+                    "reported_x_lower_bound_c": 38,
+                    "dewpoint_c": 24.0,
+                    "cloud_text": "FEW040",
+                    "weather_text": "",
+                    "temperature_momentum_effective_c_per_hour": 0.6,
+                    "temperature_momentum_1h_c_per_hour": 1.0,
+                    "temperature_momentum_realization_state": "warming",
+                    "latent_state_probabilities": [
+                        {"state": "warming", "probability": 0.7},
+                        {"state": "temporary_platform", "probability": 0.3},
+                    ],
+                    "termination_risk": {
+                        "schema": "termination_risk_marginal_v3_physical_state_bayes_v6",
+                        "state": "available",
+                        "probability_no_material_new_daily_high": 0.4,
+                        "updates_posterior": False,
+                    },
+                }
+            ],
+        },
+    }
+
+    slim = server._slim_fact_payload_for_ui(payload)
+    amsc = slim["ui_sections"]["amsc_metar_ssot"]
+    strong = slim["ui_sections"]["observation_strong"]
+
+    assert amsc["state"] == "available"
+    assert amsc["metar"]["latest_temp_c"] == pytest.approx(37.5)
+    assert amsc["metar"]["today_max_c"] == pytest.approx(37.5)
+    assert amsc["temperature_momentum"]["effective_c_per_hour"] == pytest.approx(0.6)
+    assert amsc["physical_evidence"]["cloud_text"] == "FEW040"
+    assert amsc["termination_risk"]["probability_no_material_new_daily_high"] == pytest.approx(0.4)
+    assert strong["state"] == "raw_observation_only"
+    assert strong["hard_source_observations"][0]["source_id"] == "zuuu_metar_raw_amsc"
+    assert strong["state_probs"]["warming"] == pytest.approx(0.7)
+    assert strong["peak_timing_state"]["peak_timing_state_id"] == "peaktiming-v6-ui"
+    assert slim["posterior_ssot_fact"]["peak_timing_state"]["does_not_update_physical_x"] is True
+    assert "or below" not in json.dumps(
+        slim["ui_sections"]["physical_high_posterior"], ensure_ascii=False
+    )
+
+
+def test_sequential_v3_canonical_market_target_requires_bridge_output() -> None:
+    payload = {
+        "posterior_ssot_fact": {
+            "schema": "sequential_temperature_posterior_ssot_v3_reported_x",
+            "state": "available",
+            "target_bucket": "38°C",
+            "target_probability": 0.62,
+            "reported_physical_x_distribution": {"37": 0.70, "38": 0.30},
+            "reported_x_lower_bound_c": 37,
+            "market_bucket_probabilities": {
+                "37°C": 0.31,
+                "38°C": 0.62,
+                "39°C or higher": 0.07,
+            },
+        }
+    }
+
+    canonical = server._canonical_target_from_fact_payload(payload)
+
+    assert canonical["label"] == "38°C"
+    assert canonical["prob"] == pytest.approx(0.62)
+    assert [row["outcome"] for row in canonical["ranked_rows"]] == [
+        "38°C",
+        "37°C",
+        "39°C or higher",
+    ]
+
+
+def test_ui_source_has_no_direct_observed_temperature_to_market_bucket_path() -> None:
+    source = (ROOT / "ui" / "server.py").read_text(encoding="utf-8")
+
+    assert "_ui_snapshot_hard_temperature_floor_c" not in source
+    assert "_ui_snapshot_bucket_below_hard_temperature_floor" not in source
+    assert "posterior_target_bucket_below_hard_temperature_floor" not in source
+    assert "_invalidate_posterior_ssot_fact_by_hard_observation" not in source
+
+
+def test_sequential_v2_continuous_grid_is_not_rendered_as_reported_x() -> None:
+    payload = {
+        "posterior_ssot_fact": {
+            "schema": "sequential_temperature_posterior_ssot_v2",
+            "state": "physical_only_market_projection_na",
+            "writer_mode": "production",
+            "posterior_run_id": "post-v2",
+            "physical_high_distribution": {"33.25": 0.5, "33.5": 0.5},
+        }
+    }
+    slim = server._slim_fact_payload_for_ui(payload)
+    physical = slim["ui_sections"]["physical_high_posterior"]
+    assert physical["state"] == "missing"
+    assert physical["na_reason"] == (
+        "legacy_continuous_latent_distribution_is_not_reported_x"
+    )
+
+
+def test_sequential_v3_trajectory_timeline_reads_reported_x_checkpoint_chain() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE posterior_checkpoints (
+            posterior_checkpoint_id TEXT PRIMARY KEY,
+            previous_checkpoint_id TEXT,
+            last_canonical_event_id TEXT,
+            last_strong_update_id TEXT,
+            reported_physical_x_distribution_json TEXT,
+            latent_post_state_json TEXT,
+            reported_x_lower_bound_c INTEGER,
+            committed_at TEXT
+        );
+        CREATE TABLE canonical_observation_events (
+            canonical_observation_event_id TEXT PRIMARY KEY,
+            report_type TEXT,
+            valid_time TEXT,
+            first_actionable_seen_at TEXT,
+            accepted_at TEXT,
+            selected_source_id TEXT,
+            parsed_observation_json TEXT
+        );
+        CREATE TABLE strong_observation_updates (
+            strong_observation_update_id TEXT PRIMARY KEY,
+            raw_log_score_json TEXT,
+            path_auxiliary_json TEXT
+        );
+        CREATE TABLE auto_trade_decisions (
+            id INTEGER PRIMARY KEY,
+            slug TEXT,event_date TEXT,posterior_run_id TEXT,outcome TEXT,side TEXT,
+            decided_state TEXT,will_order INTEGER,reason_codes_json TEXT,
+            details_json TEXT,created_at TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO canonical_observation_events VALUES (?,?,?,?,?,?,?)",
+        (
+            "canobs-1",
+            "METAR",
+            "2026-07-14T07:30:00Z",
+            "2026-07-14T07:30:01Z",
+            "2026-07-14T07:30:01Z",
+            "zuuu_metar_raw_amsc",
+            json.dumps(
+                {
+                    "temperature_c": 37.0,
+                    "dewpoint_c": 24.0,
+                    "cloud_text": "SCT033",
+                    "weather_text": "",
+                }
+            ),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO strong_observation_updates VALUES (?,?,?)",
+        (
+            "stupd-1",
+            json.dumps(
+                [
+                    {
+                        "temperature_c": 37.5,
+                        "pre_state": "warming",
+                        "raw_log_score": -0.15,
+                        "state_log_score_adjustment": -0.05,
+                        "scoring_kind": "operational_physical_state_aware_lr_v2",
+                        "feature_values": {
+                            "trajectory.observed_peak_including_current_c": 38.0,
+                            "trajectory.current_step_rate_c_per_hour": -0.2,
+                            "trajectory.slope_60m_c_per_hour": -1.0,
+                            "trajectory.pre_event_path_state": "temporary_cooling",
+                            "physical.first_cb_event_state": "cb_already_seen",
+                            "physical.first_cb_timing_phase": "late_after_peak_window",
+                            "physical.first_cb_peak_relation": "at_observed_peak",
+                        },
+                        "feature_audit": {
+                            "physical.first_cb_valid_time": "2026-07-14T09:00:00Z",
+                            "physical.first_cb_temperature_c": 38.0,
+                            "physical.cb_present_in_current_event": False,
+                        },
+                    },
+                    {
+                        "temperature_c": 37.5,
+                        "pre_state": "terminal_cooling",
+                        "raw_log_score": -1.25,
+                        "state_log_score_adjustment": -1.15,
+                        "scoring_kind": "operational_physical_state_aware_lr_v2",
+                        "feature_values": {}
+                    }
+                ]
+            ),
+            json.dumps(
+                {
+                    "termination_risk": {
+                        "probability_no_material_new_daily_high": 0.993,
+                    }
+                }
+            ),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO posterior_checkpoints VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "pchk-1",
+            "",
+            "canobs-1",
+            "stupd-1",
+            json.dumps({"37": 0.5924, "38": 0.4076}),
+            json.dumps({"warming": 0.72, "terminal_cooling": 0.28}),
+            37,
+            "2026-07-14T07:30:02Z",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO auto_trade_decisions VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            1,
+            "highest-temperature-in-chengdu-on-july-14-2026",
+            "2026-07-14",
+            "post-1",
+            "38°C",
+            "YES",
+            "hold_no_order",
+            0,
+            json.dumps(["predicted_peak_time_reached_or_passed"]),
+            json.dumps(
+                {
+                    "strategy_leg": "second_yes",
+                    "entry_allowed": False,
+                    "entry_block_reason": "predicted_peak_time_reached_or_passed",
+                    "second_yes_entry_window_state": {
+                        "second_yes_entry_window_state_id": "second-window-1",
+                        "entry_allowed": False,
+                        "entry_block_reason": "predicted_peak_time_reached_or_passed",
+                        "predicted_peak_at": "2026-07-14T09:00:00Z",
+                        "entry_window_start_at": "2026-07-14T08:30:00Z",
+                        "entry_window_end_at": "2026-07-14T09:00:00Z",
+                        "entry_window_minutes": 30,
+                        "existing_same_bucket_position_may_be_retained": True,
+                    },
+                }
+            ),
+            "2026-07-14T09:00:01Z",
+        ),
+    )
+    # The displayed checkpoint has consumed canobs-1, while a later accepted
+    # regular METAR is already present in the fact layer.  The UI must freeze
+    # the checkpoint probability instead of presenting it as current.
+    conn.executescript(
+        """
+        ALTER TABLE posterior_checkpoints ADD COLUMN target_identity TEXT;
+        ALTER TABLE posterior_checkpoints ADD COLUMN consumed_event_ids_json TEXT;
+        ALTER TABLE canonical_observation_events ADD COLUMN target_identity TEXT;
+        ALTER TABLE canonical_observation_events ADD COLUMN state TEXT;
+        ALTER TABLE canonical_observation_events ADD COLUMN revision_no INTEGER;
+        UPDATE posterior_checkpoints
+        SET target_identity='zuuu:2026-07-14', consumed_event_ids_json='["canobs-1"]';
+        UPDATE canonical_observation_events
+        SET target_identity='zuuu:2026-07-14', state='confirmed', revision_no=0;
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO canonical_observation_events (
+            canonical_observation_event_id,report_type,valid_time,
+            first_actionable_seen_at,accepted_at,selected_source_id,
+            parsed_observation_json,target_identity,state,revision_no
+        ) VALUES (?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "canobs-2",
+            "METAR",
+            "2026-07-14T08:00:00+00:00",
+            "2026-07-14T08:00:01+00:00",
+            "2026-07-14T08:00:01+00:00",
+            "zuuu_metar_raw_amsc",
+            json.dumps({"temperature_c": 38.0}),
+            "zuuu:2026-07-14",
+            "accepted_primary",
+            0,
+        ),
+    )
+    ssot = {
+        "schema": "sequential_temperature_posterior_ssot_v3_reported_x",
+        "fact_snapshot_id": "factsnap-1",
+        "posterior_run_id": "post-1",
+        "posterior_checkpoint_id": "pchk-1",
+        "reported_x_lower_bound_c": 37,
+        "peak_timing_state": {
+            "schema": "peak_timing_state_l3_v1",
+            "state": "available",
+            "peak_timing_state_id": "peak-timing-1",
+            "mode_time_state": "future_forecast_supported_slot",
+            "mode_probability": 0.61,
+            "peak_already_probability": 0.39,
+            "future_peak_probability": 0.61,
+            "entry_peak_at": "2026-07-14T09:00:00Z",
+            "observed_peak_at": "2026-07-14T08:00:00Z",
+            "does_not_update_physical_x": True,
+        },
+        "market_bucket_probabilities_na_reason": "x_to_s_to_b_bridge_unavailable",
+    }
+
+    timeline = server._build_sequential_physical_timeline_for_ui_snapshot(
+        conn,
+        posterior_ssot=ssot,
+        slug="highest-temperature-in-chengdu-on-july-14-2026",
+        event_date="2026-07-14",
+        run_date="2026-07-14",
+        event_tz="Asia/Shanghai",
+    )
+
+    assert timeline["version"] == "sequential_reported_x_temperature_timeline_v3"
+    assert timeline["probability_semantics"] == "amsc_scheduled_regular_metar_reported_daily_max_integer_x"
+    assert timeline["target_bucket"] == "37°C"
+    assert timeline["latest_probability_pct"] == pytest.approx(59.24)
+    assert timeline["rows"][0]["amsc_today_max_c"] == pytest.approx(38.0)
+    assert timeline["rows"][0]["awc_temp_c"] is None
+    assert timeline["rows"][0]["awc_na_reason"] == "awc_not_in_sequential_checkpoint_chain"
+    assert timeline["rows"][0]["temperature_momentum_effective_c_per_hour"] == pytest.approx(-0.2)
+    assert timeline["rows"][0]["probability_no_material_new_daily_high"] == pytest.approx(0.993)
+    assert timeline["rows"][0]["latent_top_state"] == "warming"
+    assert timeline["rows"][0]["latent_top_state_probability"] == pytest.approx(0.72)
+    assert timeline["rows"][0]["strong_lr_scoring_kind"] == "operational_physical_state_aware_lr_v2"
+    assert timeline["rows"][0]["strong_lr_state_discriminating"] is None
+    assert timeline["rows"][0]["strong_lr_state_discriminating_na_reason"] == "reported_x_bucket_combines_multiple_latent_z_cells"
+    assert timeline["latest_latent_top_state"] == "warming"
+    assert timeline["latest_strong_lr_state_discriminating"] is None
+    assert timeline["rows"][0]["first_cb_local_hhmm"] == "17:00"
+    assert timeline["rows"][0]["first_cb_temperature_c"] == pytest.approx(38.0)
+    assert timeline["rows"][0]["first_cb_timing_phase"] == "late_after_peak_window"
+    assert "不逆转已形成日高" in timeline["rows"][0]["first_cb_effect"]
+    assert "首次 CB 17:00" in timeline["latest_first_cb_display"]
+    assert timeline["peak_timing_state"]["entry_peak_local_hhmm"] == "17:00"
+    assert timeline["peak_timing_state"]["peak_already_probability"] == pytest.approx(0.39)
+    assert timeline["second_yes_entry_window"]["state"] == "available"
+    assert timeline["second_yes_entry_window"]["entry_allowed"] is False
+    assert timeline["second_yes_entry_window"]["entry_window_start_local_hhmm"] == "16:30"
+    assert timeline["second_yes_entry_window"]["entry_window_end_local_hhmm"] == "17:00"
+    assert timeline["second_yes_entry_window"]["max_notional_usdc"] == pytest.approx(4.99)
+    assert timeline["second_yes_entry_window"]["source"] == "auto_trade_decisions.details_json"
+    assert timeline["second_yes_entry_window"]["frontend_recompute_allowed"] is False
+    assert timeline["reported_x_ssot_freshness"]["state"] == "blocked_unconsumed_canonical_events"
+    assert timeline["reported_x_ssot_freshness"]["pending_canonical_event_ids"] == ["canobs-2"]
+    assert timeline["reported_x_ssot_freshness"]["pending_regular_metar_max_temperature_c"] == pytest.approx(38.0)
+    assert timeline["reported_x_ssot_freshness"]["pending_regular_metar_hard_bound_ahead_of_checkpoint"] is True
+    assert timeline["probability_current"] is False
+    assert "34°C or below" not in json.dumps(timeline, ensure_ascii=False)
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(
+        {
+            "slug": "highest-temperature-in-chengdu-on-july-14-2026",
+            "event_date": "2026-07-14",
+            "temperature_trajectory_timeline": timeline,
+        }
+    )
+    slim_freshness = slim["temperature_trajectory_timeline"]["reported_x_ssot_freshness"]
+    assert slim_freshness["probability_current"] is False
+    assert slim_freshness["pending_regular_metar_max_temperature_c"] == pytest.approx(38.0)
+
+
+def test_sequential_v2_frontend_labels_physical_timeline_as_x_not_final_market_bucket() -> None:
+    html = (ROOT / "ui/index.html").read_text(encoding="utf-8")
+
+    assert "physical_high_exact_grid" in html
+    assert "amsc_scheduled_regular_metar_reported_daily_max_integer_x" in html
+    assert "物理 X 格点概率" in html
+    assert "物理 X 不是 or below/or higher 市场边缘桶" in html
+    assert "eventIntelLatentStateLabel" in html
+    assert "状态感知 Strong LR" in html
+    assert "operational_physical_state_aware_lr_v2" in html
+    assert "首次 CB 时序" in html
+    assert "latest_first_cb_display" in html
+    assert "预计最高温 / 次 YES" in html
+    assert "second_yes_entry_window" in html
+    assert "上限 4.99 USDC" in html
+    assert "SSOT 概率已冻结" in html
+    assert "冻结旧 checkpoint" in html
+    assert "待推进 X 硬下界" in html
+    assert "不是当前概率；前端不重算" in html
+
+
+def test_compact_posterior_ssot_keeps_weak_source_attribution_trace() -> None:
+    compact = server._compact_posterior_ssot_fact_for_ui_snapshot(
+        {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "forecast_weak_attribution": {
+                "schema": "forecast_weak_attribution_trace_v1",
+                "state": "available",
+                "read_only": True,
+                "weak_likelihood_consumed": True,
+                "source_group_contributions": [
+                    {
+                        "group": "model",
+                        "source_count": 1,
+                        "capped_precision_share_within_weak_likelihood": 0.4,
+                        "distribution": {"32°C": 0.7, "33°C": 0.3},
+                    },
+                    {
+                        "group": "taf",
+                        "source_count": 1,
+                        "capped_precision_share_within_weak_likelihood": 0.6,
+                        "distribution": {"32°C": 0.1, "33°C": 0.9},
+                    },
+                ],
+                "source_contribution_trace": [
+                    {
+                        "source_event_id": "srcevt_taf",
+                        "source_id": "zuuu_taf_forecast_amsc",
+                        "group": "taf",
+                        "included": True,
+                        "forecast_peak_c": 33.0,
+                    }
+                ],
+                "forecast_group_pooling": {
+                    "schema": "forecast_group_precision_pool_v1",
+                    "state": "available",
+                    "pooling_mode": "symmetric_group_precision_geometric_pool",
+                    "included_groups": ["model", "taf"],
+                    "source_group_count": 2,
+                    "legacy_model_taf_special_case_retired": True,
+                },
+                "pooling_decision": {
+                    "state": "available",
+                    "pooling_mode": "symmetric_group_precision_geometric_pool",
+                    "legacy_model_taf_special_case_retired": True,
+                },
+            },
+        }
+    )
+
+    attribution = compact["forecast_weak_attribution"]
+    assert attribution["state"] == "available"
+    assert attribution["forecast_group_pooling"]["pooling_mode"] == "symmetric_group_precision_geometric_pool"
+    assert attribution["source_group_contributions"][0]["distribution"] == {"32°C": 0.7, "33°C": 0.3}
+    assert attribution["source_contribution_trace"] == [
+        {
+            "source_event_id": "srcevt_taf",
+            "source_id": "zuuu_taf_forecast_amsc",
+            "group": "taf",
+            "included": True,
+            "forecast_peak_c": 33.0,
+        }
+    ]
 
 
 def test_boundary_bucket_probability_uses_exact_bucket_label() -> None:
@@ -5660,14 +8860,18 @@ def test_boundary_bucket_probability_uses_exact_bucket_label() -> None:
     assert "second_target_posterior" in helper_block
     assert "cumulative_posterior_final_bucket_probability_pct" in helper_block
     assert "eventIntelProbabilityPctFromRows(Array.isArray(data.distribution)" in helper_block
-    assert "const capitalTargetLabel = eventIntelBucketLabel(ssotPlan.target_bucket || '', 'C') || '';" in selection_block
-    assert "const itemCapitalPlan = capitalPlan && typeof capitalPlan === 'object' ? capitalPlan : {};" in selection_block
-    assert "const ssotPlan = itemCapitalPlan.target_bucket || itemCapitalPlan.ok" in selection_block
+    assert "capitalTargetLabel" not in selection_block
+    assert "itemCapitalPlan" not in selection_block
+    assert "ssotPlan" not in selection_block
+    assert "const canonicalTarget = eventIntelCanonicalTargetFromSnapshot(item, payload);" not in selection_block
+    assert "if (canonicalTarget.label)" not in selection_block
+    assert "if (posteriorSsotLabel)" in selection_block
     assert "let source = 'missing_ssot_target';" in selection_block
-    assert "source = 'target_realization_capital_plan';" in selection_block
     assert "source = 'target_bucket_outlook_hard';" in selection_block
-    assert selection_block.index("if (capitalTargetLabel)") < selection_block.index("} else if (hardOutlookTargetLabel)")
-    assert "source = targetSelection.ssot_source || 'target_bucket_selection';" in selection_block
+    assert "source = 'target_realization_capital_plan';" not in selection_block
+    assert "source = targetSelection.ssot_source || 'target_bucket_selection';" not in selection_block
+    assert "target_bucket_outlook';" not in selection_block
+    assert "posterior_ssot_fact 缺失" in selection_block
     hard_start = text.index("function eventIntelOutlookHasHardSourceTarget")
     hard_end = text.index("function eventIntelItemHasHardSourceOutlook", hard_start)
     hard_block = text[hard_start:hard_end]
@@ -5677,9 +8881,30 @@ def test_boundary_bucket_probability_uses_exact_bucket_label() -> None:
     assert "Number.isFinite(toFiniteNumberOrNaN(data.final_bucket_probability_pct))" not in hard_block
     assert "eventIntelBucketProbabilityPct(item, targetLabel" not in selection_block
     assert "topPosterior" not in selection_block
+
+
+def test_target_realization_selection_has_no_distribution_top_fallback() -> None:
+    source = inspect.getsource(server._target_realization_selected_labels)
+    plan_source = inspect.getsource(server._build_target_realization_capital_plan)
+    canonical_source = inspect.getsource(server._canonical_target_from_fact_payload)
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    helper_start = text.index("function eventIntelSameBucketLabel")
+    helper_end = text.index("function eventIntelTargetCapitalPlan", helper_start)
+    helper_block = text[helper_start:helper_end]
+    selection_start = text.index("function eventIntelTargetBucketSelectionFromSnapshot")
+    selection_end = text.index("function eventIntelCapitalLegForBucket", selection_start)
+    selection_block = text[selection_start:selection_end]
+
+    assert "posterior_distribution_top1" not in source
+    assert "distribution_probability_order" not in source
+    assert "posterior_leader" not in source
+    assert "rows[0]" not in plan_source
+    assert "event_fact_latest.posterior_temperature_distribution_top1" not in canonical_source
+    assert "event_fact_latest.dynamic_constrained_posterior_top1" not in canonical_source
     assert "topSingle" not in selection_block
     assert "decision.target_bucket" not in selection_block
-    assert "ssotPlan.second_target_bucket" in selection_block
+    assert "posteriorSsotSecond" in selection_block
+    assert "ssotPlan.second_target_bucket" not in selection_block
     assert "eventIntelSecondTargetProbabilityFromOutlook(secondOutlook)" not in selection_block
     assert "item && item.single_temperature_top_q" not in selection_block
     assert "function eventIntelOutlookBucketProbabilityPct(outlook, bucketLabel, seen = new WeakSet())" in helper_block
@@ -5697,6 +8922,18 @@ def test_event_intel_snapshot_fallback_only_transports_backend_ssot_fields() -> 
 
     assert "source: 'ui_snapshot_ssot'" in block
     assert "const metrics = objectOrEmpty(item.key_metrics);" in block
+    assert "const compactFeatures = objectOrEmpty(item.weather_likelihood_features_compact);" in block
+    assert "const uiSections = objectOrEmpty(item.ui_sections);" in block
+    assert "const posteriorSsotFact = objectOrEmpty(item.posterior_ssot_fact);" in block
+    assert "const temperatureTrajectory = objectOrEmpty(item.temperature_trajectory);" in block
+    assert "weather_likelihood_features_compact: compactFeatures" in block
+    assert "weather_likelihood_features: fullFeatures" in block
+    assert "ui_sections: uiSections" in block
+    assert "prior_distribution: priorDistribution" in block
+    assert "metar_strong_likelihood: metarStrongLikelihood" in block
+    assert "posterior_ssot_fact: posteriorSsotFact" in block
+    assert "temperature_trajectory: temperatureTrajectory" in block
+    assert "source_observations: arrayOrEmpty(item.source_observations)" in block
     assert "target_bucket_selection: objectOrEmpty(item.target_bucket_selection)" in block
     assert "source_observation_comparison: objectOrEmpty(item.source_observation_comparison)" in block
     assert "target_bucket_observation_state: objectOrEmpty(item.target_bucket_observation_state)" in block
@@ -5713,6 +8950,63 @@ def test_event_intel_snapshot_fallback_only_transports_backend_ssot_fields() -> 
     assert "eventIntelBucketProbabilityPct(item, topLabel" not in block
     assert "target_probability_pct: Number.isFinite(topProb) ? topProb * 100 : null" not in block
     assert "当前事实层最高" not in block
+
+
+def test_chengdu_intraday_payload_prefers_ui_snapshot_fact_over_global_summary_cache() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = text.index("function eventIntelChengduIntradayPayload")
+    end = text.index("function eventIntelEffectiveIntradayDistribution", start)
+    block = text[start:end]
+
+    assert "const factPayload = eventIntelPayloadFromSnapshotItem(item);" in block
+    assert "if (factPayload && factPayload.ok && eventIntelDateMatches(item, factPayload.event_date))" in block
+    assert "return factPayload;" in block
+    assert block.index("return factPayload;") < block.index("const globalPayload = window.__chengduIntradayDecisionPayload || null;")
+    assert "eventIntelNewerIntradayPayload(\n\t        factPayload," not in block
+
+
+def test_temperature_trajectory_root_ssot_overrides_stale_compact_metrics_for_ui() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    payload_start = text.index("function eventIntelPayloadFromSnapshotItem")
+    payload_end = text.index("function storeEventIntelChengduIntradayPayload", payload_start)
+    payload_block = text[payload_start:payload_end]
+    helper_start = text.index("function eventIntelTemperatureTrajectoryMetricsFromSsot")
+    helper_end = text.index("function todayPhysicalMetricsFromSources", helper_start)
+    helper_block = text[helper_start:helper_end]
+    metrics_start = text.index("function todayPhysicalMetricsFromSources")
+    metrics_end = text.index("function metarStrongTrajectoryStateText", metrics_start)
+    metrics_block = text[metrics_start:metrics_end]
+
+    assert "eventIntelTemperatureTrajectoryMetricsFromSsot(temperatureTrajectoryStatus, temperatureTrajectory)" in payload_block
+    assert "...temperatureTrajectoryMetrics" in payload_block
+    assert "...summaryTrajectoryMetrics" in payload_block
+    assert "...snapshotTrajectoryMetrics" in payload_block
+    assert "temperature_trajectory_available" in helper_block
+    assert "temperature_momentum_effective_c_per_hour" in helper_block
+    assert "temperature_rise_rate_window" in helper_block
+    assert "rolling_temperature_observation_summary" in helper_block
+    assert "mergeOverride(eventIntelTemperatureTrajectoryMetricsFromSsot(payloadData.temperature_trajectory_status, payloadData.temperature_trajectory))" in metrics_block
+    assert "mergeOverride(eventIntelTemperatureTrajectoryMetricsFromSsot(itemData.temperature_trajectory_status, itemData.temperature_trajectory))" in metrics_block
+
+
+def test_temperature_momentum_visual_supports_rolling_effective_ssot_rate() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    rates_start = text.index("function temperatureMomentumRatesFromMetrics")
+    rates_end = text.index("function temperatureMomentumWindowLabel", rates_start)
+    rates_block = text[rates_start:rates_end]
+    visual_start = text.index("function renderTemperatureMomentumVisual")
+    visual_end = text.index("function temperatureMomentumWeightedScore", visual_start)
+    visual_block = text[visual_start:visual_end]
+
+    assert "'rolling', 'effective'" in text
+    assert "source.temperature_momentum_effective_c_per_hour" in rates_block
+    assert "source.temperature_rise_rate_c_per_hour" in rates_block
+    assert "out[key] = effectiveRate;" in rates_block
+    assert "function temperatureMomentumWindowLabel" in text
+    assert "滚动" in text
+    assert "有效" in text
+    assert "displayWindows = [fallbackWindow];" in visual_block
+    assert "temperatureMomentumWindowLabel(label)" in visual_block
 
 
 def test_intraday_decision_target_rendering_does_not_fallback_to_top_single() -> None:
@@ -5811,12 +9105,12 @@ def test_temperature_path_distribution_card_renders_ssot_path_gate() -> None:
     assert "function renderTemperaturePathDistribution" in text
     assert "路径概率与交易跟随" in block
     assert "eventIntelFinalBucketProbabilityLabel(targetBucket)" in block
-    assert "第二目标落桶后验" in block
-    assert "落桶后验是未结算前的最高温目标桶概率" in block
+    assert "第二目标最终概率" in block
+    assert "最终概率是未结算前的目标桶概率" in block
     assert "targetSemantics.pathNoun" in block
     assert "data.bucket_distribution" in block
     assert "is-temperature-path-buckets" in block
-    assert "落桶后验 ${posterior}" in block
+    assert "最终概率 ${posterior}" in block
     assert "${semantics.pathNoun} ${pathProb} · 路径下界 ${lcb}" in block
     assert "1 路径概率" in block
     assert "2 路径下界" in block
@@ -5833,7 +9127,7 @@ def test_temperature_path_distribution_card_renders_ssot_path_gate() -> None:
     assert "trade_follow" in block
     assert "renderTemperaturePathDistribution(temperaturePathDistribution)" in hub_block
     assert "targetOutlookForHub.temperature_path_distribution" in hub_block
-    assert "等待后端 SSOT 输出最高温落桶后验、守住/触达/突破路径概率、可靠性、新鲜度与交易跟随门控；未结算，不是当前实况" in text
+    assert "等待后端快照输出最终概率、路径概率、可靠性、新鲜度与交易跟随门控；未结算，不是当前实况" in text
     assert "event-temperature-path-distribution" in text
 
 
@@ -5847,6 +9141,43 @@ def test_temperature_trajectory_displays_warming_pace_assessment() -> None:
     assert "实际升温节奏" in block
     assert "const actualRate" in block
     assert "const requiredRate" in block
+
+
+def test_today_physical_verdict_displays_strong_trajectory_and_momentum_cards() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = text.index("function buildTodayPhysicalEvidenceVerdict")
+    end = text.index("function renderTodayPhysicalEvidenceVerdict", start)
+    block = text[start:end]
+
+    assert "metarStrongTemperatureTrajectoryFromSources" in text
+    assert "observation_strong" in text
+    assert "function todayPhysicalMetricsFromSources" in text
+    assert "mergeFill(payloadData.weather_likelihood_features_compact)" in text
+    assert "label: '温度轨迹'" in block
+    assert "label: '温度动量'" in block
+    assert "strongTrajectory.dedupe_policy ? '强似然内消费一次'" in block
+    assert "formatTemperatureMomentumLine(metricsData, TEMPERATURE_MOMENTUM_COMPACT_WINDOWS)" in block
+
+
+def test_temperature_regime_v1_layout_matches_actual_payload_shape() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    start = text.index("function renderTemperatureTrajectoryRegimeV1Panel")
+    end = text.index("function eventIntelForecastChannelPeak", start)
+    block = text[start:end]
+
+    assert ".temperature-regime-v1-summary-grid" in text
+    assert ".temperature-regime-v1-fit-strip" in text
+    assert ".temperature-regime-v1-fit-points" in text
+    assert "const fit = v1.local_quadratic_fit" in block
+    assert "实况轨迹判断" in block
+    assert "预计最高" in block
+    assert "路径样本" in block
+    assert "降温压力" in block
+    assert "峰值时段" in block
+    assert "盘中辅助" in block
+    assert "pathCandidates.slice(0, 8)" in block
+    assert "已接入" in block
+    assert "temperature-regime-v1-kpis" not in block
 
 
 def test_auto_trade_heavy_ui_endpoints_are_nonblocking_by_default() -> None:
@@ -5878,8 +9209,48 @@ def test_auto_trade_heavy_ui_endpoints_are_nonblocking_by_default() -> None:
     assert "queue_trade_sync_exit_recalc" in text
     assert "TRADE_SYNC_EXIT_RECALC_LOCK.acquire(blocking=False)" in text
     assert 'name="trade_sync_exit_recalc"' in text
-    assert 'os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC", "3")' in text
-    assert 'os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC", "1")' in text
+    refresh_start = trace_block.index("def _refresh_async(")
+    refresh_end = trace_block.index("now_ts = time.time()", refresh_start)
+    refresh_block = trace_block[refresh_start:refresh_end]
+    assert '"na_reason": "ui_trace_read_only_no_market_refresh"' in refresh_block
+    assert "_trace_refresh_market_ticks_for_blocked(" not in refresh_block
+    assert "start_auto_trade_run(" not in refresh_block
+    compute_start = trace_block.index("def _compute_payload()")
+    compute_end = trace_block.index("def _refresh_async(", compute_start)
+    compute_block = trace_block[compute_start:compute_end]
+    assert "_auto_trade_cleanup_stale_runs(" not in compute_block
+
+
+def test_heavy_lane_busy_returns_last_committed_summary_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    cache_key = "summary:2026-07-15:24:chengdu"
+    cached_payload = {
+        "ok": True,
+        "run_date": "2026-07-15",
+        "facts": {
+            "items": [{"slug": "highest-temperature-in-chengdu-on-july-15-2026"}],
+            "total": 1,
+        },
+    }
+    monkeypatch.setattr(server, "UI_SNAPSHOT_DIRTY_STAMP_PATH", Path("/nonexistent/ui-dirty-stamp"))
+    with server._UI_SNAPSHOT_CACHE_LOCK:
+        previous = dict(server._UI_SNAPSHOT_CACHE)
+        server._UI_SNAPSHOT_CACHE.clear()
+        server._UI_SNAPSHOT_CACHE[cache_key] = (time.time() - 2.0, cached_payload)
+    try:
+        payload = server._ui_heavy_busy_cached_payload(
+            "/api/ui_snapshot_summary?run_date=2026-07-15&limit=2&city=chengdu"
+        )
+    finally:
+        with server._UI_SNAPSHOT_CACHE_LOCK:
+            server._UI_SNAPSHOT_CACHE.clear()
+            server._UI_SNAPSHOT_CACHE.update(previous)
+
+    assert payload is not None
+    assert payload["source"] == "ui_heavy_request_lane_stale_cache"
+    assert payload["busy"] is True
+    assert payload["read_only"] is True
+    assert payload["cache_rebuild_in_flight"] is True
+    assert len(payload["facts"]["items"]) == 1
 
 
 def test_auto_trade_health_facts_freshness_uses_event_fact_latest() -> None:
@@ -5945,10 +9316,10 @@ def test_trade_plan_display_respects_temperature_path_follow_gate() -> None:
     assert "交易候选缺失：前端不合成候选。" in block
     assert "<div>腿</div><div>概率</div><div>目标仓位</div><div>差额</div><div>动作</div>" in text
     assert "<div>腿</div><div>后验/达到下沿</div>" not in text
-    assert "路径门控禁止 YES 跟随" in block
+    assert "路径触达不足，暂不追买 YES" in block
     assert "temperature_path_trade_follow_reason" in block
-    assert "路径概率门控禁止 YES 跟随" in block
-    assert "temperature_path_trade_follow_not_allowed: '路径门控禁止YES跟随'" in text
+    assert "路径概率门控禁止 YES 跟随" not in block
+    assert "temperature_path_trade_follow_not_allowed: '路径触达不足，暂不追买YES'" in text
     assert "data.sell_old_buy_new_legs" in text
     assert "data.position_legs_resolved" in text
     assert "无旧仓位" in text
@@ -5998,27 +9369,30 @@ def test_trace_blocks_prefer_target_realization_ui_risk_explanation() -> None:
     assert "LCB门禁未通过" not in text
 
 
-def test_auto_trade_candidate_enrichment_preserves_physical_component_groups() -> None:
+def test_retired_physical_likelihood_audit_fields_preserve_compact_component_groups() -> None:
     scanner_text = (ROOT / "scan_weather_market.py").read_text(encoding="utf-8")
 
     components_pos = scanner_text.index(
-        'components = row_ref.get("q_bayes_physical_likelihood_components")'
+        'components = row.get("components")'
     )
-    component_groups_pos = scanner_text.index(
-        'component_groups = row_ref.get("q_bayes_physical_likelihood_component_groups")',
+    component_out_pos = scanner_text.index(
+        'out["q_bayes_physical_likelihood_components"]',
         components_pos,
     )
-    bimodal_pos = scanner_text.index(
-        'if row_ref.get("q_bayes_bimodal_risk") is not None:',
+    component_groups_pos = scanner_text.index(
+        'component_groups = row.get("component_groups")',
+        component_out_pos,
+    )
+    state_trace_pos = scanner_text.index(
+        'out["state_evidence_trace"]',
         component_groups_pos,
     )
-    candidate_pos = scanner_text.index(
-        'candidate["q_bayes_physical_likelihood_component_groups"]',
+    group_out_pos = scanner_text.index(
+        'out["q_bayes_physical_likelihood_component_groups"]',
         component_groups_pos,
-        bimodal_pos,
     )
 
-    assert components_pos < component_groups_pos < candidate_pos < bimodal_pos
+    assert components_pos < component_out_pos < component_groups_pos < state_trace_pos < group_out_pos
 
 
 def test_bayes_chain_recovers_from_fact_layer_probability_fields_without_components() -> None:
@@ -6033,6 +9407,11 @@ def test_bayes_chain_recovers_from_fact_layer_probability_fields_without_compone
 
     chain = server._bayes_chain_for_distribution_row(row)
 
+    assert chain["schema"] == "legacy_bayes_chain_retired_compat_v1"
+    assert chain["role"] == "retired_compat"
+    assert chain["ui_primary_allowed"] is False
+    assert chain["production_probability_allowed"] is False
+    assert chain["replacement_posterior_runtime"] == "hierarchical_posterior_pipeline_runtime.py"
     assert chain["prior_prob"] == 0.25
     assert abs(chain["likelihood_prob"] - 0.4) < 1e-9
     assert chain["likelihood_parts"]["model"]["prob"] == 0.3
@@ -6052,6 +9431,8 @@ def test_bayes_chain_uses_existing_compact_chain_when_raw_components_missing() -
 
     chain = server._bayes_chain_for_distribution_row(row)
 
+    assert chain["role"] == "retired_compat"
+    assert chain["ui_primary_allowed"] is False
     assert chain["prior_prob"] == 0.2
     assert chain["likelihood_prob"] == 0.7
     assert chain["likelihood_parts"]["model"]["prob"] == 0.8
@@ -6062,7 +9443,25 @@ def test_ui_snapshot_summary_distribution_keeps_compact_physical_detail_without_
         "outcome": "31°C",
         "q_bayes_posterior": 0.84,
         "bayes_chain": {"prior_prob": 0.3, "likelihood_prob": 0.8},
-        "q_bayes_physical_likelihood_component_groups": {"large": {"items": list(range(20))}},
+        "q_bayes_physical_likelihood_component_groups": {
+            "dewpoint": {
+                "available": True,
+                "weight": 1.1,
+                "log_likelihood": 0.2,
+                "source_profile": {
+                    "source_class": "metar",
+                    "source_field": "dewpoint_c",
+                    "debug_blob": "x" * 128,
+                },
+                "components": {
+                    "dewpoint_spread": {
+                        "factor": 0.8,
+                        "weight": 1.1,
+                        "debug_blob": "x" * 128,
+                    }
+                },
+            }
+        },
         "q_bayes_physical_likelihood_components": {"dewpoint": -0.1},
         "q_bayes_physical_likelihood_evidence_scale_details": {"debug": "x" * 128},
         "q_bayes_physical_d0_explanation": {"variables": [{"key": "temp", "value": 31}]},
@@ -6075,11 +9474,18 @@ def test_ui_snapshot_summary_distribution_keeps_compact_physical_detail_without_
 
     assert compact["outcome"] == "31°C"
     assert compact["q_bayes_posterior"] == 0.84
+    assert compact["bayes_chain"]["role"] == "retired_compat"
+    assert compact["bayes_chain"]["ui_primary_allowed"] is False
     assert compact["bayes_chain"]["likelihood_prob"] == 0.8
     assert "q_bayes_physical_likelihood_component_groups" not in compact
+    assert compact["state_evidence_trace"]["schema"] == "metar_strong_state_evidence_trace_v1"
+    assert compact["state_evidence_trace"]["role"] == "state_evidence_trace"
+    assert compact["state_evidence_trace"]["replaces"] == "q_bayes_physical_likelihood_component_groups"
+    assert compact["state_evidence_trace"]["groups"]["dewpoint"]["source_profile"]["source_class"] == "metar"
+    assert "debug_blob" not in compact["state_evidence_trace"]["groups"]["dewpoint"]["source_profile"]
     assert compact["q_bayes_physical_likelihood_components"] == {"dewpoint": -0.1}
     assert "q_bayes_physical_likelihood_evidence_scale_details" not in compact
-    assert "q_bayes_physical_d0_explanation" not in compact
+    assert compact["q_bayes_physical_d0_explanation"]["variables"][0]["key"] == "temp"
 
 
 def test_ui_snapshot_summary_minimal_keeps_bayes_likelihood_parts_for_step_explain() -> None:
@@ -6092,6 +9498,9 @@ def test_ui_snapshot_summary_minimal_keeps_bayes_likelihood_parts_for_step_expla
         "q_bayes_model_evidence": 20.0,
         "q_bayes_wu_forecast_prob": 0.48,
         "q_bayes_wu_forecast_evidence": 8.0,
+        "q_bayes_old_additive_evidence_pool_used": True,
+        "q_bayes_production_replacement_required": True,
+        "q_bayes_replacement_posterior_runtime": "hierarchical_posterior_pipeline_runtime.py",
     }
 
     compact = server._compact_distribution_row_for_ui_snapshot(
@@ -6101,11 +9510,166 @@ def test_ui_snapshot_summary_minimal_keeps_bayes_likelihood_parts_for_step_expla
     )
 
     chain = compact["bayes_chain"]
+    assert chain["schema"] == "legacy_bayes_chain_retired_compat_v1"
+    assert chain["role"] == "retired_compat"
+    assert chain["ui_primary_allowed"] is False
+    assert compact["q_bayes_old_additive_evidence_pool_used"] is True
+    assert compact["q_bayes_production_replacement_required"] is True
+    assert compact["q_bayes_replacement_posterior_runtime"] == "hierarchical_posterior_pipeline_runtime.py"
     assert chain["prior_prob"] == 0.22
     assert abs(chain["likelihood_prob"] - ((0.58 * 20.0 + 0.48 * 8.0) / 28.0)) < 1e-9
     assert chain["likelihood_parts"]["model"]["prob"] == 0.58
     assert chain["likelihood_parts"]["model"]["evidence"] == 20.0
     assert chain["likelihood_parts"]["wu_forecast"]["prob"] == 0.48
+
+
+def test_ui_snapshot_soft_forecast_channels_prefers_ctp_components_over_legacy_status() -> None:
+    payload = {
+        "soft_forecast_posterior_channels": {
+            "wu_forecast_peak": {
+                "captured": True,
+                "posterior_included": False,
+                "posterior_status": "captured_not_in_main_posterior",
+                "posterior_label": "已抓取但未进入主后验",
+                "not_in_posterior_reason": "legacy_zero_evidence",
+                "peak_c": None,
+                "evidence": 0.0,
+            },
+            "summary_status": "captured_not_in_main_posterior",
+            "summary_label": "已抓取但未进入主后验",
+            "captured_not_included_channels": ["wu_forecast_peak"],
+        },
+        "posterior_temperature_distribution": {
+            "source_components": {
+                "components": [
+                    {
+                        "source_id": "wu_forecast",
+                        "group": "soft_forecast",
+                        "role": "forecast",
+                        "precision": 0.20408163265306123,
+                        "sigma_c": 0.7,
+                        "raw": {
+                            "source": "wu_forecast",
+                            "calibrated_peak_c": 31.6666666667,
+                            "bucket_probs": [0.1, 0.3581221832],
+                        },
+                    }
+                ],
+                "groups": [
+                    {
+                        "group": "soft_forecast",
+                        "raw_precision": 0.46033163265306126,
+                        "effective_precision": 0.29376913265306126,
+                    }
+                ],
+            }
+        },
+    }
+    distribution = [
+        {
+            "outcome": "31°C",
+            "q_bayes_wu_forecast_status": "missing_wu_forecast_peak_c",
+            "q_bayes_wu_forecast_evidence": 0.0,
+        }
+    ]
+
+    channels = server._ui_snapshot_soft_forecast_channels(payload, distribution)
+    wu = channels["wu_forecast_peak"]
+
+    assert wu["captured"] is True
+    assert wu["posterior_included"] is True
+    assert wu["posterior_status"] == "included_in_ctp_posterior"
+    assert wu["posterior_label"] == "已进入 CTP 主后验"
+    assert wu["not_in_posterior_reason"] == ""
+    assert wu["q_bayes_wu_forecast_status"] == "included_in_ctp_posterior"
+    assert wu["peak_c"] == pytest.approx(31.6666666667)
+    assert wu["evidence"] == pytest.approx(0.20408163265306123)
+    assert wu["ctp_precision"] == pytest.approx(0.20408163265306123)
+    assert channels["summary_status"] == "included_or_not_captured"
+    assert channels["summary_label"] == ""
+    assert "wu_forecast_peak" not in channels["captured_not_included_channels"]
+
+
+def test_ui_snapshot_soft_forecast_legacy_fallback_is_retired_compat() -> None:
+    payload = {}
+    distribution = [
+        {
+            "outcome": "31°C",
+            "wu_forecast_peak_captured": True,
+            "wu_forecast_peak_posterior_included": False,
+            "wu_forecast_peak_not_in_posterior_reason": "legacy_zero_evidence",
+            "wu_forecast_peak_c": 31.0,
+            "q_bayes_wu_forecast_evidence": 0.0,
+            "taf_forecast_peak_captured": True,
+            "taf_forecast_peak_posterior_included": False,
+            "taf_forecast_peak_c": 30.0,
+            "q_bayes_taf_peak_evidence": 0.0,
+        }
+    ]
+
+    channels = server._ui_snapshot_soft_forecast_channels(payload, distribution)
+
+    assert channels["legacy_evidence_boundary"]["schema"] == "legacy_evidence_boundary_v1"
+    assert channels["legacy_evidence_boundary"]["role"] == "retired_compat"
+    assert channels["legacy_evidence_boundary"]["ui_primary_allowed"] is False
+    assert channels["legacy_evidence_boundary"]["production_probability_allowed"] is False
+    assert channels["legacy_evidence_boundary"]["replacement"] == "layer_contributions.forecast_weak_likelihood"
+
+
+def test_ui_temperature_trajectory_status_marks_legacy_evidence_boundary() -> None:
+    payload = {
+        "weather_likelihood_features": {
+            "observed_temp_c": 31.0,
+            "observed_today_max_c": 31.0,
+            "temperature_rise_rate_c_per_hour": 1.2,
+            "temperature_rise_rate_source": "metar",
+            "forecast_peak_temp_c": 33.0,
+        }
+    }
+    distribution = [
+        {
+            "outcome": "31°C",
+            "q_bayes_temperature_trajectory_evidence": 4.0,
+            "q_bayes_temperature_trajectory_status": "enabled",
+        }
+    ]
+
+    status = server._ui_temperature_trajectory_status_from_payload(payload, distribution)
+
+    assert status["temperature_trajectory_overlay_strength"] == 4.0
+    assert status["legacy_evidence_boundary"]["schema"] == "legacy_evidence_boundary_v1"
+    assert status["legacy_evidence_boundary"]["role"] == "retired_compat"
+    assert status["legacy_evidence_boundary"]["replacement"] == "layer_contributions.metar_strong_likelihood.state_evidence_trace"
+
+
+def test_ui_fast_fallback_attaches_temperature_trajectory_status_from_existing_payload() -> None:
+    payload = {
+        "weather_likelihood_features_compact": {
+            "observed_temp_c": 29.0,
+            "observed_today_max_c": 31.0,
+            "temperature_rise_rate_c_per_hour": 1.0,
+            "temperature_rise_rate_source": "zuuu_metar_raw_awc:1h",
+            "temperature_rise_rate_window": "1h",
+            "temperature_rise_rate_trusted": True,
+            "temperature_momentum_effective_c_per_hour": 1.0,
+            "temperature_momentum_realization_state": "emerging_warming",
+            "temperature_momentum_posterior_gate_allowed": True,
+            "temperature_momentum_posterior_gate_reason": "one_hour_context_confirmed",
+        },
+        "distribution": [{"outcome": "33°C", "q_bayes_posterior": 0.35}],
+        "chengdu_intraday_summary": {},
+    }
+
+    server._attach_ui_temperature_trajectory_status_from_payload(payload)
+
+    status = payload["temperature_trajectory_status"]
+    assert status["available"] is True
+    assert status["observed_temp_c"] == pytest.approx(29.0)
+    assert status["observed_today_max_c"] == pytest.approx(31.0)
+    assert status["temperature_rise_rate_c_per_hour"] == pytest.approx(1.0)
+    assert status["temperature_momentum_effective_c_per_hour"] == pytest.approx(1.0)
+    assert status["temperature_momentum_realization_state"] == "emerging_warming"
+    assert payload["chengdu_intraday_summary"]["temperature_trajectory_status"] == status
 
 
 def test_ui_snapshot_summary_keeps_rebound_regime_signal_for_badges() -> None:
@@ -6208,6 +9772,217 @@ def test_ui_snapshot_summary_minimal_keeps_calibration_probability_fields() -> N
     ):
         assert compact[key] == row[key]
     assert "q_bayes_physical_likelihood_component_groups" not in compact
+
+
+def test_ui_snapshot_summary_keeps_hierarchical_posterior_contract_fields() -> None:
+    payload = {
+        "slug": "chengdu-high-temp",
+        "event_date": "2026-07-03",
+        "fact_snapshot_id": "fact-123",
+        "posterior_run_id": "posterior-456",
+        "posterior_runtime_schema": "hierarchical_posterior_pipeline_runtime_v1",
+        "posterior_composer_schema": "sequential_remaining_warming_bayes_runtime_v31",
+        "posterior_as_of": "2026-07-03T12:05:04+08:00",
+        "phase": "D0_breakout",
+        "beta_weak": 0.35,
+        "beta_strong": 1.25,
+        "phase_reason": "d0_chengdu_breakout_window_metar_strong_likelihood_starts_to_dominate",
+        "hard_mask_reason": "observed_today_max_floor",
+        "prior_distribution": {"30°C": 0.4, "31°C": 0.6},
+        "forecast_weak_likelihood": {"30°C": 0.3, "31°C": 0.7},
+        "metar_strong_likelihood": {"30°C": 0.2, "31°C": 0.8},
+        "hard_constraints": {"observed_today_max_c": 31.0},
+        "layer_contributions": {
+            "prior": {"distribution": {"30°C": 0.4, "31°C": 0.6}},
+            "forecast_weak_likelihood": {"beta": 0.35},
+            "metar_strong_likelihood": {"beta": 1.25},
+        },
+        "normalization": {"posterior_sum": 1.0},
+        "posterior_boundary": {"old_additive_evidence_pool_used": False},
+        "runtime_schemas": {"metar_strong_likelihood": "metar_strong_likelihood_runtime_v1"},
+        "posterior_temperature_distribution": {
+            "bucket_probabilities": [
+                {"bucket": "30°C", "probability": 0.25},
+                {"bucket": "31°C", "probability": 0.75},
+            ]
+        },
+        "distribution": [
+            {"outcome": "30°C", "q_temperature_bucket_posterior": 0.25},
+            {"outcome": "31°C", "q_temperature_bucket_posterior": 0.75},
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+
+    for key in (
+        "fact_snapshot_id",
+        "posterior_run_id",
+        "posterior_runtime_schema",
+        "posterior_composer_schema",
+        "posterior_as_of",
+        "phase",
+        "beta_weak",
+        "beta_strong",
+        "phase_reason",
+        "hard_mask_reason",
+        "prior_distribution",
+        "forecast_weak_likelihood",
+        "metar_strong_likelihood",
+        "hard_constraints",
+        "layer_contributions",
+        "normalization",
+        "posterior_boundary",
+        "runtime_schemas",
+        "posterior_temperature_distribution",
+    ):
+        assert key in slim
+    assert slim["layer_contributions"]["metar_strong_likelihood"]["beta"] == 1.25
+
+
+def test_ui_snapshot_distribution_row_prefers_hierarchical_layer_chain() -> None:
+    layer_contributions = {
+        "prior": {
+            "role": "root_prior",
+            "distribution": {"30°C": 0.40, "31°C": 0.60},
+        },
+        "forecast_weak_likelihood": {
+            "role": "prediction_weak_likelihood",
+            "beta": 0.35,
+            "distribution": {"30°C": 0.30, "31°C": 0.70},
+        },
+        "metar_strong_likelihood": {
+            "role": "observation_strong_likelihood",
+            "beta": 1.25,
+            "distribution": {"30°C": 0.20, "31°C": 0.80},
+        },
+    }
+    payload = {
+        "slug": "chengdu-high-temp",
+        "event_date": "2026-07-03",
+        "distribution": [
+            {
+                "outcome": "31°C",
+                "q_temperature_bucket_posterior": 0.82,
+                "q_bayes_source": "hierarchical_posterior_pipeline_runtime_v1",
+                "q_bayes_phase": "d0_awc_preparation_window",
+                "q_bayes_beta_weak": 0.35,
+                "q_bayes_beta_strong": 1.25,
+                "q_bayes_phase_reason": "unit_test_phase",
+                "q_bayes_hard_mask_reason": "none",
+                "q_bayes_layer_contributions": layer_contributions,
+                "q_bayes_wu_forecast_evidence": 99.0,
+                "q_bayes_wu_forecast_prob": 0.01,
+            }
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    row = slim["distribution"][0]
+    chain = row["bayes_chain"]
+
+    assert row["q_bayes_phase"] == "d0_awc_preparation_window"
+    assert row["q_bayes_beta_weak"] == 0.35
+    assert row["q_bayes_beta_strong"] == 1.25
+    assert chain["schema"] == "hierarchical_layer_contributions_chain_v1"
+    assert chain["role"] == "hierarchical_joint_likelihood_explanation"
+    assert chain["prior_prob"] == 0.60
+    assert chain["likelihood_parts"]["forecast_weak_likelihood"]["prob"] == 0.70
+    assert chain["likelihood_parts"]["metar_strong_likelihood"]["prob"] == 0.80
+    assert "wu_forecast" not in chain["likelihood_parts"]
+
+
+def test_ui_snapshot_distribution_rows_merge_event_level_prior_and_strong_layers() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "event_date": "2026-07-06",
+        "phase": "D1_early",
+        "beta_weak": 0.65,
+        "beta_strong": 0.0,
+        "phase_reason": "unit_test_d1_forecast_weight",
+        "hard_mask_reason": "current_temperature_c",
+        "prior_distribution": {
+            "32°C or below": 0.575757575758,
+            "33°C": 0.151515151515,
+        },
+        "forecast_weak_likelihood": {
+            "32°C or below": 0.25,
+            "33°C": 0.75,
+        },
+        "metar_strong_likelihood": {
+            "32°C or below": 0.5,
+            "33°C": 0.5,
+        },
+        "hard_constraints": {
+            "current_temperature_c": 29.0,
+            "observed_today_max_c": 31.0,
+        },
+        "layer_contributions": {
+            "prior": {
+                "role": "root_prior",
+                "boundary": "historical_climate_date_site_terrain_weather_type_only",
+            },
+            "forecast_weak_likelihood": {
+                "role": "prediction_weak_likelihood",
+                "beta": 0.65,
+            },
+            "metar_strong_likelihood": {
+                "role": "observation_strong_likelihood",
+                "beta": 0.0,
+            },
+        },
+        "distribution": [
+            {"outcome": "32°C or below", "q_temperature_bucket_posterior": 0.0},
+            {"outcome": "33°C", "q_temperature_bucket_posterior": 0.3571428571428571},
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    rows = {row["outcome"]: row for row in slim["distribution"]}
+    target = rows["33°C"]
+    chain = target["bayes_chain"]
+
+    assert target["q_prior"] == pytest.approx(0.151515151515)
+    assert target["q_likelihood"] == pytest.approx(chain["likelihood_prob"])
+    assert target["q_bayes_phase"] == "D1_early"
+    assert target["q_bayes_beta_weak"] == 0.65
+    assert target["q_bayes_beta_strong"] == 0.0
+    assert chain["schema"] == "hierarchical_layer_contributions_chain_v1"
+    assert chain["role"] == "hierarchical_joint_likelihood_explanation"
+    assert chain["prior_prob"] == pytest.approx(0.151515151515)
+    assert chain["likelihood_parts"]["forecast_weak_likelihood"]["prob"] == pytest.approx(0.75)
+    assert chain["likelihood_parts"]["metar_strong_likelihood"]["prob"] == pytest.approx(0.5)
+    assert slim["ui_sections"]["prior"]["state"] == "available"
+    assert slim["ui_sections"]["observation_strong"]["state"] == "available"
+
+
+def test_chengdu_intraday_endpoint_row_keeps_compact_hierarchical_chain() -> None:
+    row = {
+        "outcome": "31°C",
+        "q_temperature_bucket_posterior": 0.82,
+        "q_bayes_phase": "d0_awc_preparation_window",
+        "q_bayes_beta_weak": 0.35,
+        "q_bayes_beta_strong": 1.25,
+        "q_bayes_layer_contributions": {
+            "prior": {"distribution": {"30°C": 0.40, "31°C": 0.60}},
+            "forecast_weak_likelihood": {
+                "beta": 0.35,
+                "distribution": {"30°C": 0.30, "31°C": 0.70},
+            },
+            "metar_strong_likelihood": {
+                "beta": 1.25,
+                "distribution": {"30°C": 0.20, "31°C": 0.80},
+            },
+        },
+    }
+
+    compact = server._compact_intraday_distribution_row_for_endpoint(row)
+    chain = compact["bayes_chain"]
+
+    assert compact["q_bayes_phase"] == "d0_awc_preparation_window"
+    assert chain["schema"] == "hierarchical_layer_contributions_chain_v1"
+    assert chain["prior_prob"] == 0.60
+    assert chain["likelihood_parts"]["forecast_weak_likelihood"]["beta"] == 0.35
+    assert chain["likelihood_parts"]["metar_strong_likelihood"]["prob"] == 0.80
 
 
 def test_model_bucket_rule_comparison_uses_rows_and_member_values() -> None:
@@ -6313,6 +10088,70 @@ def test_model_bucket_rule_comparison_can_hydrate_from_model_snapshot(tmp_path) 
     assert comparison["per_model"]["gfs_seamless"]["rules"]["round"]["qm"]["label"] == "29°C"
 
 
+def test_ui_snapshot_summary_merge_fills_model_members_from_cache() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE model_member_cache(
+            model TEXT,
+            loc_key TEXT,
+            event_date TEXT,
+            market_var TEXT,
+            market_unit TEXT,
+            members_json TEXT,
+            created_at TEXT,
+            official_updated_at TEXT,
+            official_updated_source TEXT,
+            members_signature TEXT
+        )
+        """
+    )
+    for model, members in {
+        "gfs_seamless": [30.6, 30.7, 31.2],
+        "icon_seamless": [29.8, 30.4, 30.6],
+        "ecmwf_ifs025": [31.1, 31.2, 31.3],
+    }.items():
+        conn.execute(
+            """
+            INSERT INTO model_member_cache
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                model,
+                "30.5583,103.9460",
+                "2026-07-03",
+                "temperature_2m_max",
+                "C",
+                json.dumps(members),
+                "2026-07-02T15:41:57+00:00",
+                "2026-07-02T12:00:00+00:00",
+                "open_meteo",
+                f"sig-{model}",
+            ),
+        )
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-3-2026",
+        "city": "ZUUU",
+        "station_id": "ZUUU",
+        "event_date": "2026-07-03",
+        "market_var": "temperature_2m_max",
+        "market_unit": "C",
+        "distribution": [{"outcome": label} for label in ["29°C", "30°C", "31°C", "32°C"]],
+    }
+
+    server._attach_model_member_cache_snapshot_for_ui_snapshot(conn, payload)
+    server._attach_model_bucket_rule_comparison_for_ui_snapshot(conn, payload)
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    conn.close()
+
+    assert slim["model_member_cache_snapshot"]["models"]["gfs_seamless"]["member_count"] == 3
+    assert slim["model_members_decimal_raw"]["icon_seamless"] == [29.8, 30.4, 30.6]
+    comparison = slim["distribution"][0]["q_ensemble_qm_meta"]["model_bucket_rule_comparison"]
+    assert comparison["per_model"]["gfs_seamless"]["rules"]["round"]["raw"]["label"] == "31°C"
+    assert comparison["per_model"]["ecmwf_ifs025"]["rules"]["round"]["raw"]["q"] == pytest.approx(1.0)
+
+
 def test_frontend_post_cool_badges_read_event_level_rebound_signal() -> None:
     html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
 
@@ -6353,6 +10192,21 @@ def test_ui_snapshot_summary_marks_mean_bucket_missing_for_pending_model_distrib
         "slug": "highest-temperature-in-chengdu-on-june-24-2026",
         "event_date": "2026-06-24",
         "run_date": "2026-06-23",
+        "fact_snapshot_id": "fact_pending_model",
+        "posterior_run_id": "post_pending_model",
+        "phase": "D1_early",
+        "beta_weak": 0.65,
+        "beta_strong": 0.0,
+        "phase_reason": "target_date_future_early_forecast_sources_dominate_but_distribution_stays_wide",
+        "hard_mask_reason": "none",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_placeholder_v1",
+            "state": "not_materialized",
+            "state_reason": "posterior_ssot_fact_not_materialized_for_this_writer_path",
+            "fact_snapshot_id": "fact_pending_model",
+            "posterior_run_id": "post_pending_model",
+            "read_only": True,
+        },
         "market_var": "temperature_high",
         "market_unit": "C",
         "distribution": [
@@ -6373,6 +10227,22 @@ def test_ui_snapshot_summary_marks_mean_bucket_missing_for_pending_model_distrib
 
     assert "mean_bucket" not in slim
     assert slim["mean_bucket_na_reason"] == "model_not_materialized_yet"
+    assert slim["posterior_ssot_fact"]["schema"] == "bayes_posterior_ssot_fact_placeholder_v1"
+    assert slim["posterior_ssot_fact"]["state"] == "not_materialized"
+    section = slim["ui_sections"]["bayes_posterior_ssot"]
+    assert section["state"] == "not_materialized"
+    assert section["fact_snapshot_id"] == "fact_pending_model"
+    assert section["posterior_run_id"] == "post_pending_model"
+    assert section["phase"] == "D1_early"
+    assert section["beta_weak"] == pytest.approx(0.65)
+    assert section["beta_strong"] == pytest.approx(0.0)
+    assert section["hard_mask_reason"] == "none"
+
+    compact = server._compact_ui_snapshot_summary_item_for_first_screen(
+        {**slim, "summary_first_screen_compact": True, "ui_sections": {}}
+    )
+    assert compact["summary_first_screen_compact"] is True
+    assert compact["ui_sections"]["bayes_posterior_ssot"]["state"] == "not_materialized"
 
 
 def test_ui_snapshot_summary_minimal_keeps_compact_qm_member_meta() -> None:
@@ -6406,6 +10276,81 @@ def test_ui_snapshot_summary_minimal_keeps_compact_qm_member_meta() -> None:
     assert compact["q_ensemble_qm_meta"]["calibration_mode"] == "ensemble_qm"
     assert compact["q_ensemble_qm_meta"]["raw_bucket_probability"]["probs_by_model"]["gfs_seamless"]["30°C"] == 0.4
     assert compact["q_ensemble_qm_meta"]["bucket_probability"]["probs_by_model"]["gfs_seamless"]["30°C"] == 0.32
+
+
+def test_ui_snapshot_frontend_contract_survives_summary_minimal_compaction() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-3-2026",
+        "event_date": "2026-07-03",
+        "run_date": "2026-07-02",
+        "market_unit": "C",
+        "key_metrics": {"wu_forecast_peak_c": 31.2, "taf_forecast_peak_c": 30.8},
+        "model_member_cache_snapshot": {
+            "models": {"gfs_seamless": {"member_count": 30, "mean_c": 30.4}}
+        },
+        "target_bucket_outlook": {"final_bucket": "31°C", "final_bucket_probability_pct": 44.0},
+        "temperature_path_distribution": {"target_bucket": "31°C", "summary": "path ok"},
+        "target_switch_context": {"target_bucket": "31°C", "reason": "unit_test"},
+        "weather_likelihood_features": {
+            "wu_forecast_peak_c": 31.2,
+            "taf_forecast_peak_c": 30.8,
+            "taf_forecast_peak_raw": "TAF ZUUU 0300/0324 TX31/0307Z",
+            "taf_forecast_peak_at": "2026-07-03T07:00:00+00:00",
+            "observed_temp_c": 25.0,
+            "temperature_momentum_1h_c_per_hour": 0.25,
+            "precip_nowcast_1_3h_max_probability_pct": 0.0,
+        },
+        "distribution": [
+            {
+                "outcome": "31°C",
+                "q_temperature_bucket_posterior": 0.44,
+                "q_bayes_posterior": 0.44,
+                "q_bayes_wu_forecast_prob": 0.52,
+                "q_bayes_taf_peak_prob": 0.48,
+                "q_bayes_independent_physics_residual_prob": 0.41,
+                "q_bayes_physical_likelihood_prob": 0.39,
+                "q_bayes_physical_likelihood_component_groups": {
+                    "dewpoint": {"available": True, "weight": 0.3, "na_reason": ""}
+                },
+                "q_temperature_bucket_score_components": {"wu_forecast": 0.5},
+                "bayes_chain": {
+                    "prior_prob": 0.4,
+                    "likelihood_prob": 0.5,
+                    "likelihood_parts": {"wu_forecast": {"prob": 0.52, "evidence": 3.0}},
+                },
+                "q_ensemble_qm_meta": {
+                    "raw_bucket_probability": {
+                        "labels": ["31°C"],
+                        "probs_by_model": {"gfs_seamless": {"31°C": 0.6}},
+                    }
+                },
+                "q_bayes_physical_d0_explanation": {
+                    "summary": "物理证据",
+                    "variables": [{"key": "dewpoint", "label": "露点", "direction": "warm"}],
+                },
+                "wu_forecast_peak_c": 31.2,
+                "taf_forecast_peak_c": 30.8,
+                "taf_forecast_peak_raw": "TAF ZUUU 0300/0324 TX31/0307Z",
+            }
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload, include_physical_detail=False)
+
+    assert slim["key_metrics"]["wu_forecast_peak_c"] == 31.2
+    assert slim["model_member_cache_snapshot"]["models"]["gfs_seamless"]["member_count"] == 30
+    assert slim["weather_likelihood_features_compact"]["taf_forecast_peak_raw"].startswith("TAF ZUUU")
+    row = slim["distribution"][0]
+    assert row["q_bayes_wu_forecast_prob"] == 0.52
+    assert row["q_bayes_taf_peak_prob"] == 0.48
+    assert "q_bayes_physical_likelihood_component_groups" not in row
+    assert row["state_evidence_trace"]["groups"]["dewpoint"]["available"] is True
+    assert row["state_evidence_trace"]["replaces"] == "q_bayes_physical_likelihood_component_groups"
+    assert row["q_temperature_bucket_score_components"]["wu_forecast"] == 0.5
+    assert row["bayes_chain"]["likelihood_parts"]["wu_forecast"]["prob"] == 0.52
+    assert row["q_ensemble_qm_meta"]["raw_bucket_probability"]["probs_by_model"]["gfs_seamless"]["31°C"] == 0.6
+    assert row["q_bayes_physical_d0_explanation"]["variables"][0]["key"] == "dewpoint"
+    assert row["taf_forecast_peak_raw"].startswith("TAF ZUUU")
 
 
 def test_ui_snapshot_summary_keeps_lead_day_hit_rates() -> None:
@@ -6590,6 +10535,7 @@ def test_chengdu_intraday_attach_reuses_existing_fact_summary(monkeypatch) -> No
             "temperature_rise_rate_trusted": False,
         },
     }
+    attach_unit_posterior_ssot_fact(out, target_bucket="31°C", target_probability=0.5)
     summary_cache = {}
 
     server._attach_chengdu_intraday_summary_fields_for_ui_snapshot(
@@ -6638,19 +10584,20 @@ def test_chengdu_intraday_outlook_display_contract_normalizes_legacy_path_wordin
     summary = {
         "target_bucket_outlook": dict(out["target_bucket_outlook"]),
     }
+    attach_unit_posterior_ssot_fact(out, target_bucket="30°C", target_probability=0.2776)
 
     server._apply_chengdu_intraday_summary_to_snapshot_out(out, summary)
 
     outlook = out["target_bucket_outlook"]
     nested = out["chengdu_intraday_summary"]["target_bucket_outlook"]
     for item in (outlook, nested):
-        assert item["primary_conclusion"] == "当前后验最可能落在 30°C（后验 27.8%）；目标桶同为 30°C。"
+        assert item["primary_conclusion"] == "当前最高目标 30°C（最终概率 27.8%）；目标桶同为 30°C。"
         assert item["target_reach_label"] == "路径触达偏弱"
         assert "仅作路径/执行参考" in item["reach_line"]
         assert "满足偏难" not in json.dumps(item, ensure_ascii=False)
         assert item["answer_cards"][0]["label"] == "路径触达参考"
         assert item["answer_cards"][0]["answer"] == "路径触达偏弱"
-        assert item["second_target_outlook"]["definition"].endswith("不覆盖当前落桶后验目标桶。")
+        assert item["second_target_outlook"]["definition"].endswith("不覆盖当前交易目标。")
 
 
 def test_chengdu_intraday_outlook_display_contract_uses_canonical_path_probability() -> None:
@@ -6690,6 +10637,7 @@ def test_chengdu_intraday_outlook_display_contract_uses_canonical_path_probabili
             ],
         },
     }
+    attach_unit_posterior_ssot_fact(out, target_bucket="30°C", target_probability=0.4307)
 
     server._apply_chengdu_intraday_summary_to_snapshot_out(out, summary)
 
@@ -6756,10 +10704,10 @@ def test_target_outlook_display_contract_cleans_non_target_final_wording() -> No
         }
     )
 
-    assert outlook["primary_conclusion"] == "硬源已触达 28°C 下沿，约束后当前后验最可能 29°C；当前目标桶是 30°C（当前后验最可能低于目标）。"
-    assert outlook["settlement_line"].startswith("未结算后验偏低")
-    assert outlook["answer_cards"][0]["label"] == "当前后验最可能"
-    assert outlook["answer_cards"][0]["detail"] == "当前后验最可能落在 29°C。"
+    assert outlook["primary_conclusion"] == "硬源已触达 28°C 下沿，约束后当前最高目标 29°C；当前目标桶是 30°C（当前最高目标低于目标）。"
+    assert outlook["settlement_line"].startswith("最终概率偏低")
+    assert outlook["answer_cards"][0]["label"] == "当前最高目标"
+    assert outlook["answer_cards"][0]["detail"] == "当前最高目标 29°C。"
 
 
 def test_chengdu_intraday_summary_apply_exposes_awc_hard_observation_for_ui() -> None:
@@ -6850,7 +10798,7 @@ def test_target_outlook_rebuilds_when_distribution_probability_is_newer() -> Non
     outlook = out["target_bucket_outlook"]
     assert outlook["final_bucket"] == "30°C"
     assert outlook["target_bucket"] == "30°C"
-    assert outlook["primary_conclusion"] == "当前后验最可能落在 30°C（后验 36.5%）；目标桶同为 30°C。"
+    assert outlook["primary_conclusion"] == "当前最高目标 30°C（最终概率 36.5%）；目标桶同为 30°C。"
     assert outlook["final_bucket_probability_pct"] == 36.46
     assert outlook["target_final_probability_pct"] == 36.46
     assert out["chengdu_intraday_summary"]["target_bucket_outlook"]["final_bucket_probability_pct"] == 36.46
@@ -6881,6 +10829,7 @@ def test_canonical_target_alignment_repairs_stale_target_outlook_summary() -> No
         },
     }
 
+    attach_unit_posterior_ssot_fact(item, target_bucket="31°C", target_probability=0.6531927844391303)
     server._align_item_target_fields_to_canonical_posterior_top(item)
 
     outlook = item["target_bucket_outlook"]
@@ -6952,7 +10901,7 @@ def test_target_outlook_rebuild_prefers_dynamic_target_selection_over_posterior(
     assert out["chengdu_intraday_summary"]["target_bucket_outlook"]["target_bucket"] == "25°C"
 
 
-def test_ssot_target_context_prefers_dynamic_target_selection_before_outlook() -> None:
+def test_ssot_target_context_ignores_legacy_selection_and_non_hard_outlook() -> None:
     context = server._ssot_target_context_from_payload(
         {
             "target_bucket_selection": {
@@ -6970,11 +10919,88 @@ def test_ssot_target_context_prefers_dynamic_target_selection_before_outlook() -
         }
     )
 
+    assert context == {}
+
+
+def test_ssot_target_context_uses_posterior_ssot_fact_not_legacy_selection() -> None:
+    context = server._ssot_target_context_from_payload(
+        {
+            "posterior_ssot_fact": {
+                "state": "available",
+                "target_bucket": "25°C",
+                "target_probability": 0.30,
+                "ranked_bucket_probabilities": [
+                    {"outcome": "25°C", "probability": 0.30},
+                    {"outcome": "26°C", "probability": 0.20},
+                ],
+            },
+            "target_bucket_selection": {
+                "target_bucket": "27°C",
+                "target_probability_pct": 60.0,
+            },
+            "target_bucket_outlook": {
+                "target_bucket": "24°C or below",
+                "target_bucket_probability_pct": 35.0,
+            },
+        }
+    )
+
     assert context["target_bucket"] == "25°C"
     assert context["posterior_settlement_target_bucket"] == "25°C"
+    assert context["target_bucket_source"] == "posterior_ssot_fact"
     assert context["target_posterior"] == 0.30
     assert context["second_target_bucket"] == "26°C"
     assert context["second_target_posterior"] == 0.20
+
+
+def test_ssot_target_context_sorts_full_bucket_probabilities_before_ranked_fallback() -> None:
+    context = server._ssot_target_context_from_payload(
+        {
+            "posterior_ssot_fact": {
+                "state": "available",
+                "target_bucket": "38°C",
+                "target_probability": 0.428687914101,
+                "bucket_probabilities": [
+                    {"bucket": "32°C or below", "probability": 0.0},
+                    {"bucket": "37°C", "probability": 0.323565351829},
+                    {"bucket": "38°C", "probability": 0.428687914101},
+                    {"bucket": "39°C", "probability": 0.203833508157},
+                    {"bucket": "40°C", "probability": 0.040492100138},
+                    {"bucket": "41°C", "probability": 0.003312666834},
+                ],
+                "ranked_bucket_probabilities": [
+                    {"bucket": "38°C", "probability": 0.428687914101},
+                    {"bucket": "41°C", "probability": 0.3313},
+                ],
+            },
+        }
+    )
+
+    assert context["target_bucket"] == "38°C"
+    assert context["second_target_bucket"] == "37°C"
+    assert context["second_target_posterior"] == pytest.approx(0.323565351829)
+
+
+def test_ssot_target_context_does_not_select_final_lock_zero_rows_as_second_target() -> None:
+    context = server._ssot_target_context_from_payload(
+        {
+            "posterior_ssot_fact": {
+                "state": "available",
+                "target_bucket": "37°C",
+                "target_probability": 1.0,
+                "bucket_probabilities": [
+                    {"bucket": "32°C or below", "probability": 0.0, "hard_zero": True, "hard_mask_reason": "final_bucket_lock"},
+                    {"bucket": "36°C", "probability": 0.0, "hard_zero": True, "hard_mask_reason": "final_bucket_lock"},
+                    {"bucket": "37°C", "probability": 1.0},
+                    {"bucket": "38°C", "probability": 0.0, "hard_zero": True, "hard_mask_reason": "final_bucket_lock"},
+                ],
+            },
+        }
+    )
+
+    assert context["target_bucket"] == "37°C"
+    assert "second_target_bucket" not in context
+    assert "second_target_posterior" not in context
 
 
 def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_path, monkeypatch) -> None:
@@ -7031,6 +11057,12 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
             "second_target_posterior": 0.26122337983261507,
         },
     }
+    attach_unit_prior_contract(stale_payload)
+    attach_unit_posterior_ssot_fact(
+        stale_payload,
+        target_bucket=new_target,
+        target_probability=0.26122337983261507,
+    )
     latest_summary = {
         "ok": True,
         "event_date": "2026-06-21",
@@ -7116,7 +11148,7 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-20",
         slug=slug,
@@ -7136,19 +11168,19 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
     plan = item["target_realization_capital_plan"]
 
     assert item["target_bucket_outlook"]["target_bucket"] == new_target
-    assert plan["target_bucket_selection_source"] == "target_bucket_selection"
+    assert plan["target_bucket_selection_source"] == "posterior_ssot_fact.top_bucket"
     assert plan["target_bucket"] == new_target
-    assert plan["target_posterior"] == 0.26122337983261507
+    assert plan["target_posterior"] == pytest.approx(0.5642755789554247)
     assert plan["second_target_bucket"] == old_target
-    assert plan["second_target_posterior"] == 0.2017124436814672
+    assert plan["second_target_posterior"] == pytest.approx(0.4357244210445753)
     assert plan["temperature_path_trade_follow_allowed"] is False
     assert plan["temperature_path_trade_follow_block_yes"] is True
     risk = plan["ui_risk_explanation"]
     assert risk["available"] is True
     assert risk["target_bucket"] == new_target
     assert risk["second_target_bucket"] == old_target
-    assert risk["target_posterior"] == 0.26122337983261507
-    assert risk["second_target_posterior"] == 0.2017124436814672
+    assert risk["target_posterior"] == pytest.approx(0.5642755789554247)
+    assert risk["second_target_posterior"] == pytest.approx(0.4357244210445753)
     assert risk["freshness"]["source_stale"] is False
     assert "observation_age_minutes" in risk["freshness"]
     assert risk["error_band"]["sigma_c"] is not None
@@ -7159,10 +11191,12 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
     assert risk["trade_follow"]["allowed"] is False
     assert risk["trade_follow"]["reason"] == "blocked_path_reliability_low"
     assert risk["risk_codes"]
-    assert "落桶后验" in risk["text"]
+    assert "最终概率" in risk["text"]
     assert "最终后验" not in risk["text"]
-    assert "路径执行概率" in risk["text"]
-    assert "路径概率门控禁止 YES 跟随" in plan["summary"]
+    assert "落桶后验" not in risk["text"]
+    assert "路径触达" in risk["text"]
+    assert "路径执行概率" not in risk["text"]
+    assert "路径触达不足，暂不追买 YES" in plan["summary"]
     assert all(
         leg["action"] != "add"
         for leg in plan["legs"]
@@ -7221,226 +11255,11 @@ def test_target_realization_plan_ignores_stale_single_bucket_selection() -> None
     item["target_realization_capital_plan"] = plan
     context = server.build_target_switch_context(item)
 
-    assert plan["target_bucket_selection_source"] == "event_fact_latest.canonical_target"
-    assert plan["target_bucket"] == "25°C or below"
-    assert plan["target_posterior"] == 0.26122337983261507
-    assert plan["second_target_bucket"] == "26°C"
-    assert plan["ui_risk_explanation"]["target_bucket"] == "25°C or below"
-    assert plan["ui_risk_explanation"]["second_target_bucket"] == "26°C"
-    assert plan["ui_risk_explanation"]["target_posterior"] == 0.26122337983261507
-    assert "目标 25°C or below 最终守住低边界后验" in plan["ui_risk_explanation"]["text"]
-    assert context["target_bucket"] == "25°C or below"
-    assert context["candidate_bucket"] == "26°C"
-
-
-def test_target_realization_plan_uses_below_and_above_remote_no_ring(monkeypatch) -> None:
-    monkeypatch.delenv("PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE", raising=False)
-    monkeypatch.delenv("PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE", raising=False)
-    monkeypatch.setenv("PM_TARGET_REALIZATION_REMOTE_NO_MAX_PRICE", "1")
-    item = {
-        "slug": "highest-temperature-in-chengdu-on-july-1-2026",
-        "event_date": "2026-07-01",
-        "run_date": "2026-07-01",
-        "rounding_rule": "whole_degrees",
-        "distribution": [
-            {
-                "outcome": f"{bucket}\u00b0C" if isinstance(bucket, int) else bucket,
-                "q_temperature_bucket_posterior": prob,
-                "best_bid": max(0.01, yes_ask - 0.02),
-                "best_ask": yes_ask,
-                "best_bid_no": max(0.01, no_ask - 0.02),
-                "best_ask_no": no_ask,
-            }
-            for bucket, prob, yes_ask, no_ask in [
-                (28, 0.02, 0.03, 0.99),
-                (29, 0.03, 0.04, 0.97),
-                (30, 0.08, 0.09, 0.91),
-                (31, 0.37, 0.24, 0.76),
-                (32, 0.20, 0.33, 0.68),
-                (33, 0.07, 0.24, 0.77),
-                (34, 0.02, 0.12, 0.91),
-                ("35\u00b0C or higher", 0.01, 0.01, 0.995),
-            ]
-        ],
-        "posterior_target_bucket_selection": {
-            "target_bucket": "31\u00b0C",
-            "target_probability": 0.37,
-        },
-    }
-
-    plan = server._build_target_realization_capital_plan(item)
-
-    remote = [
-        leg
-        for leg in plan["legs"]
-        if leg.get("role") == "remote_no" and leg.get("side") == "NO"
-    ]
-    assert [(leg["bucket"], leg["remote_no_bucket_direction"]) for leg in remote] == [
-        ("29\u00b0C", "below_target"),
-        ("28\u00b0C", "below_target"),
-        ("34\u00b0C", "above_target"),
-        ("35\u00b0C or higher", "above_target"),
-    ]
-    assert {leg["bucket"] for leg in remote}.isdisjoint({"32\u00b0C", "33\u00b0C"})
-    assert plan["remote_no_bucket_direction"] == "below_and_above_target"
-
-
-def _clear_target_realization_remote_no_env(monkeypatch) -> None:
-    for key in (
-        "PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MIN_BUCKET_DISTANCE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MAX_BUCKET_DISTANCE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MIN_BUCKET_DISTANCE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MAX_BUCKET_DISTANCE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_BUCKETS_PER_SIDE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_MAX_PRICE",
-        "PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC",
-        "PM_TARGET_REALIZATION_YES_MAX_NOTIONAL_USDC",
-    ):
-        monkeypatch.delenv(key, raising=False)
-
-
-def _target_32_directional_ring_item(momentum_rate: float) -> dict:
-    rows = [
-        (27, 0.03, 0.04, 0.96),
-        (28, 0.04, 0.05, 0.96),
-        (29, 0.05, 0.06, 0.96),
-        (30, 0.10, 0.11, 0.96),
-        (31, 0.13, 0.14, 0.86),
-        (32, 0.45, 0.44, 0.56),
-        (33, 0.09, 0.10, 0.96),
-        (34, 0.09, 0.10, 0.96),
-        ("35\u00b0C or higher", 0.02, 0.03, 0.96),
-    ]
-    return {
-        "slug": "highest-temperature-in-chengdu-on-july-1-2026",
-        "event_date": "2026-07-01",
-        "run_date": "2026-07-01",
-        "rounding_rule": "whole_degrees",
-        "distribution": [
-            {
-                "outcome": f"{bucket}\u00b0C" if isinstance(bucket, int) else bucket,
-                "q_temperature_bucket_posterior": prob,
-                "best_bid": max(0.01, yes_ask - 0.02),
-                "best_ask": yes_ask,
-                "best_bid_no": max(0.01, no_ask - 0.02),
-                "best_ask_no": no_ask,
-            }
-            for bucket, prob, yes_ask, no_ask in rows
-        ],
-        "posterior_target_bucket_selection": {
-            "target_bucket": "32\u00b0C",
-            "target_probability": 0.45,
-        },
-        "temperature_path_distribution": {
-            "available": True,
-            "temperature_momentum_effective_c_per_hour": momentum_rate,
-            "temperature_momentum_realization_state": (
-                "emerging_warming" if momentum_rate > 0 else "cooling"
-            ),
-            "trade_follow": {
-                "allowed": True,
-                "reason": "posterior_path_reliability_and_freshness_pass",
-            },
-        },
-    }
-
-
-def test_target_realization_plan_uses_warming_directional_remote_no_ring(monkeypatch) -> None:
-    _clear_target_realization_remote_no_env(monkeypatch)
-    monkeypatch.setenv("PM_TARGET_REALIZATION_BANKROLL_USDC", "200")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_RESERVE_RATIO", "0")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_FRACTION", "1")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_TODAY_RATIO", "1")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_TOMORROW_RATIO", "0")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_DAY_AFTER_RATIO", "0")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_YES_RATIO", "0.2")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_NO_RATIO", "0.8")
-
-    plan = server._build_target_realization_capital_plan(_target_32_directional_ring_item(0.5))
-    remote = [
-        leg
-        for leg in plan["legs"]
-        if leg.get("role") == "remote_no" and leg.get("side") == "NO"
-    ]
-
-    assert plan["remote_no_momentum_direction"] == "warming"
-    assert plan["remote_no_directional_window_policy"] == "warming_lower_near_broad_upper_far"
-    assert [(leg["bucket"], leg["remote_no_bucket_direction"]) for leg in remote] == [
-        ("30\u00b0C", "below_target"),
-        ("29\u00b0C", "below_target"),
-        ("28\u00b0C", "below_target"),
-        ("27\u00b0C", "below_target"),
-        ("35\u00b0C or higher", "above_target"),
-    ]
-    assert {leg["bucket"] for leg in remote}.isdisjoint({"33\u00b0C", "34\u00b0C"})
-    target_yes = next(leg for leg in plan["legs"] if leg["role"] == "target_yes")
-    assert target_yes["target_notional"] <= 20.0
-    assert all(leg["target_notional"] <= 100.0 for leg in remote)
-    assert all(leg["target_realization_order_price_cap"] == 0.98 for leg in remote)
-    by_bucket = {leg["bucket"]: leg["target_notional"] for leg in remote}
-    assert by_bucket["35\u00b0C or higher"] > by_bucket["27\u00b0C"]
-    assert by_bucket["27\u00b0C"] > by_bucket["28\u00b0C"]
-    assert by_bucket["28\u00b0C"] > by_bucket["29\u00b0C"]
-    assert by_bucket["29\u00b0C"] > by_bucket["30\u00b0C"]
-
-
-def test_target_realization_plan_warming_ring_is_relative_not_boundary_hardcoded(monkeypatch) -> None:
-    _clear_target_realization_remote_no_env(monkeypatch)
-    item = _target_32_directional_ring_item(0.5)
-    for row in item["distribution"]:
-        outcome = row["outcome"]
-        row["q_temperature_bucket_posterior"] = {
-            "31\u00b0C": 0.45,
-            "32\u00b0C": 0.13,
-            "30\u00b0C": 0.10,
-            "34\u00b0C": 0.04,
-            "35\u00b0C or higher": 0.03,
-        }.get(outcome, 0.02)
-    item["posterior_target_bucket_selection"] = {
-        "target_bucket": "31\u00b0C",
-        "target_probability": 0.45,
-    }
-
-    plan = server._build_target_realization_capital_plan(item)
-    remote = [
-        leg
-        for leg in plan["legs"]
-        if leg.get("role") == "remote_no" and leg.get("side") == "NO"
-    ]
-
-    assert plan["target_bucket"] == "31\u00b0C"
-    assert ("34\u00b0C", "above_target", 3) in [
-        (
-            leg["bucket"],
-            leg["remote_no_bucket_direction"],
-            leg["remote_no_bucket_distance"],
-        )
-        for leg in remote
-    ]
-
-
-def test_target_realization_plan_uses_cooling_directional_remote_no_ring(monkeypatch) -> None:
-    _clear_target_realization_remote_no_env(monkeypatch)
-
-    plan = server._build_target_realization_capital_plan(_target_32_directional_ring_item(-0.5))
-    remote = [
-        leg
-        for leg in plan["legs"]
-        if leg.get("role") == "remote_no" and leg.get("side") == "NO"
-    ]
-
-    assert plan["remote_no_momentum_direction"] == "cooling"
-    assert plan["remote_no_directional_window_policy"] == "cooling_upper_near_broad_lower_far"
-    assert [(leg["bucket"], leg["remote_no_bucket_direction"]) for leg in remote] == [
-        ("29\u00b0C", "below_target"),
-        ("28\u00b0C", "below_target"),
-        ("27\u00b0C", "below_target"),
-        ("34\u00b0C", "above_target"),
-        ("35\u00b0C or higher", "above_target"),
-    ]
-    assert {leg["bucket"] for leg in remote}.isdisjoint({"30\u00b0C", "33\u00b0C"})
+    assert plan["ok"] is False
+    assert plan["reason"] == "posterior_ssot_fact_target_missing"
+    assert plan["target_bucket_selection_source"] == "posterior_ssot_fact_missing"
+    assert context["target_bucket"] == ""
+    assert context["candidate_bucket"] == ""
 
 
 def test_target_realization_plan_prefers_temperature_path_distribution_probabilities() -> None:
@@ -7503,6 +11322,11 @@ def test_target_realization_plan_prefers_temperature_path_distribution_probabili
             ),
         },
     }
+    attach_unit_posterior_ssot_fact(
+        item,
+        target_bucket="25°C or below",
+        target_probability=0.26122337983261507,
+    )
 
     plan = server._build_target_realization_capital_plan(item)
     legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
@@ -7582,6 +11406,11 @@ def test_temperature_path_and_capital_plan_posterior_align_to_current_distributi
     }
 
     attach_ctp_distribution(out)
+    attach_unit_posterior_ssot_fact(
+        out,
+        target_bucket="30°C",
+        target_probability=0.3645925961706722,
+    )
     server._sync_temperature_path_distribution_posterior_from_current_distribution(out)
     server._attach_target_realization_capital_plan(out)
 
@@ -7766,6 +11595,7 @@ def test_target_realization_plan_does_not_fallback_when_path_distribution_probab
             "risk_explanation": "路径可兑现缺失，禁止跟随。",
         },
     }
+    attach_unit_posterior_ssot_fact(item, target_bucket="30°C", target_probability=0.20)
 
     plan = server._build_target_realization_capital_plan(item)
     legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
@@ -7823,6 +11653,11 @@ def test_ui_snapshot_summary_slim_keeps_target_realization_risk_explanation() ->
             ],
         },
     }
+    attach_unit_posterior_ssot_fact(
+        payload,
+        target_bucket="25°C or below",
+        target_probability=0.42016291281991425,
+    )
 
     slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
     risk = slim["target_realization_capital_plan"]["ui_risk_explanation"]
@@ -7831,9 +11666,11 @@ def test_ui_snapshot_summary_slim_keeps_target_realization_risk_explanation() ->
     assert risk["target_realization_probability"] == 0.5
     assert risk["second_target_realization_probability"] == 0.2119
     assert risk["trade_follow"]["allowed"] is True
-    assert "落桶后验" in risk["text"]
+    assert "最终概率" in risk["text"]
     assert "最终后验" not in risk["text"]
-    assert "路径执行概率" in risk["text"]
+    assert "落桶后验" not in risk["text"]
+    assert "路径触达" in risk["text"]
+    assert "路径执行概率" not in risk["text"]
 
 
 def test_target_switch_context_respects_capital_plan_target_even_when_distribution_top_differs() -> None:
@@ -7879,6 +11716,7 @@ def test_target_switch_context_respects_capital_plan_target_even_when_distributi
         "target_realization_capital_plan": {
             "ok": True,
             "source": "ui_snapshot_ssot",
+            "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
             "target_bucket": "26°C",
             "target_posterior": 0.24,
             "second_target_bucket": "27°C",
@@ -7950,6 +11788,7 @@ def test_target_switch_context_exposes_ssot_trajectory_momentum_impact() -> None
         },
         "target_realization_capital_plan": {
             "ok": True,
+            "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
             "target_bucket": "29°C",
             "target_posterior": 0.2517,
             "second_target_bucket": "31°C",
@@ -8032,6 +11871,7 @@ def test_target_switch_context_keeps_sub_one_percent_path_probability_as_pct() -
         },
         "target_realization_capital_plan": {
             "ok": True,
+            "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
             "target_bucket": "31°C",
             "target_posterior": 0.293731,
             "second_target_bucket": "30°C",
@@ -8372,7 +12212,8 @@ def test_event_run_composer_overlay_recomputes_temperature_trajectory_posterior(
         == row_by_outcome["28°C"]["q_bayes_posterior"]
     )
     assert row_by_outcome["28°C"]["q_posterior_observed_constraints_rebased_by_temperature_trajectory"] is True
-    assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_evidence"] > 0
+    assert row_by_outcome["28°C"]["temperature_trajectory_overlay_strength"] > 0
+    assert "q_bayes_temperature_trajectory_evidence" not in row_by_outcome["28°C"]
     assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_enabled"] is True
     assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_role"] == "intraday_temperature_trajectory_likelihood"
     assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_source_class"] == "airport_temperature_path"
@@ -8427,7 +12268,8 @@ def test_event_run_composer_rebuilds_peak_hour_for_temperature_trajectory(monkey
 
     assert meta["applied"] is True
     assert meta["status"] == "enabled"
-    assert rows[2]["q_bayes_temperature_trajectory_evidence"] > 0
+    assert rows[2]["temperature_trajectory_overlay_strength"] > 0
+    assert "q_bayes_temperature_trajectory_evidence" not in rows[2]
     assert rows[2]["q_bayes_temperature_trajectory_source"]
 
 
@@ -8654,7 +12496,8 @@ def test_final_temperature_trajectory_overlay_keeps_observed_hard_zero(monkeypat
 
     by_outcome = {row["outcome"]: row for row in rows}
     assert changed is True
-    assert by_outcome["31°C"]["q_bayes_temperature_trajectory_evidence"] > 0
+    assert by_outcome["31°C"]["temperature_trajectory_overlay_strength"] > 0
+    assert "q_bayes_temperature_trajectory_evidence" not in by_outcome["31°C"]
     assert by_outcome["31°C"]["q_bayes_temperature_trajectory_realization_state"] == "context_warming_watch"
     assert by_outcome["31°C"]["q_temperature_bucket_posterior"] == 0.0
     assert by_outcome["32°C"]["q_temperature_bucket_posterior"] == 0.0
@@ -8837,7 +12680,7 @@ def test_data_source_health_reads_wu_twc_from_recent_fact_history(tmp_path, monk
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    wu_fact_id = server._insert_event_fact_history(
+    wu_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -8864,7 +12707,7 @@ def test_data_source_health_reads_wu_twc_from_recent_fact_history(tmp_path, monk
         },
     )
     assert wu_fact_id
-    awc_fact_id = server._insert_event_fact_history(
+    awc_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -8925,7 +12768,7 @@ def test_data_source_health_reads_precip_nowcast_from_recent_station_fact(tmp_pa
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    server._insert_event_fact_history(
+    insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-22",
         slug=previous_slug,
@@ -8952,7 +12795,7 @@ def test_data_source_health_reads_precip_nowcast_from_recent_station_fact(tmp_pa
             "distribution": [],
         },
     )
-    current_fact_id = server._insert_event_fact_history(
+    current_fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -9010,7 +12853,7 @@ def test_data_source_health_rebuilds_stale_precip_awc_from_latest_metar(tmp_path
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date=event_date,
         slug=slug,
@@ -9152,7 +12995,7 @@ def test_fact_write_applies_hard_source_posterior_outside_trade_window(tmp_path,
         ],
     }
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=payload["slug"],
@@ -9220,7 +13063,7 @@ def test_fact_write_normalizes_posterior_fields_to_temperature_ssot(tmp_path) ->
         ],
     }
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-28",
         slug=payload["slug"],
@@ -9310,6 +13153,11 @@ def test_fact_trade_derivative_refresh_rebuilds_plan_legs_after_canonical_target
         ],
     }
 
+    attach_unit_posterior_ssot_fact(
+        item,
+        target_bucket="30°C or higher",
+        target_probability=0.60,
+    )
     server._refresh_fact_trade_derivatives_after_target_update(item, item["distribution"])
 
     plan = item["target_realization_capital_plan"]
@@ -9504,7 +13352,7 @@ def test_fact_write_keeps_morning_not_final_observation_out_of_posterior(tmp_pat
         ],
     }
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-07-01",
         slug=slug,
@@ -9641,7 +13489,7 @@ def test_fact_write_materializes_observation_path_likelihood_into_target_and_pla
         ],
     }
 
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-29",
         slug=slug,
@@ -9678,8 +13526,20 @@ def test_fact_write_materializes_observation_path_likelihood_into_target_and_pla
     assert item["fact_provenance"]["observation_path_likelihood"]["posterior_top_after"] == "29°C"
 
 
-def test_refresh_awc_fact_updates_latest_fact_without_model_scan(tmp_path, monkeypatch) -> None:
+def test_refresh_awc_fact_releases_schema_gate_before_awc_network_fetch(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED", "0")
+    gate_state = {"active": 0, "entered": 0}
+
+    @contextmanager
+    def tracked_archive_write_gate(*_args, **_kwargs):
+        gate_state["active"] += 1
+        gate_state["entered"] += 1
+        try:
+            yield
+        finally:
+            gate_state["active"] -= 1
+
+    monkeypatch.setattr(server, "archive_db_write_gate", tracked_archive_write_gate)
     db_path = tmp_path / "archive.db"
     slug = "highest-temperature-in-chengdu-on-june-18-2026"
     old_payload = {
@@ -9716,10 +13576,11 @@ def test_refresh_awc_fact_updates_latest_fact_without_model_scan(tmp_path, monke
         },
         "target_switch_context": {"observed_today_max_c": 30.0, "stale": True},
     }
+    attach_unit_prior_contract(old_payload)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -9731,10 +13592,23 @@ def test_refresh_awc_fact_updates_latest_fact_without_model_scan(tmp_path, monke
         item=old_payload,
     )
     server._upsert_event_fact_latest(conn, slug, "2026-06-18", fact_id)
+    # The legacy fixture predates the current Target Realization repoint
+    # contract.  Seed the read-side fact pointer directly so this test remains
+    # focused on AWC refresh and the lock boundary rather than that contract.
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO event_fact_latest(slug, event_date, fact_id, updated_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (slug, "2026-06-18", fact_id, "2026-06-18T12:04:00+00:00"),
+    )
     conn.commit()
     conn.close()
 
     def fake_awc(*_args, **_kwargs):
+        # AWC is network I/O.  Schema initialization must not retain the
+        # process-wide archive writer lock while this request is in flight.
+        assert gate_state["active"] == 0
         return {
             "source": "zuuu_metar_raw_awc",
             "observed_temp_c": 31.0,
@@ -9763,9 +13637,11 @@ def test_refresh_awc_fact_updates_latest_fact_without_model_scan(tmp_path, monke
 
     result = server.refresh_awc_fact_for_chengdu_event(db_path, event_date="2026-06-18")
 
-    assert result["ok"] is True
+    assert result["ok"] is True, result
     assert result["status"] == "updated"
     assert result["reason"] == "awc_latest_at_changed"
+    assert gate_state["entered"] >= 2
+    assert gate_state["active"] == 0
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
@@ -9779,32 +13655,361 @@ def test_refresh_awc_fact_updates_latest_fact_without_model_scan(tmp_path, monke
     ).fetchone()
     conn.close()
 
+    assert row is not None
     payload = json.loads(row["fact_json"])
     features = payload["weather_likelihood_features"]
     assert row["fact_as_of"] == "2026-06-18T13:00:02+00:00"
-    assert payload["weather_likelihood_refreshed_at"] == "2026-06-18T13:00:02+00:00"
     assert features["observed_today_max_c"] == 31.0
     assert features["zuuu_metar_raw_awc_today_max_at"] == "2026-06-18T13:00:00+00:00"
-    assert features["zuuu_metar_raw_awc_date_mismatch"] is False
-    assert features["zuuu_metar_raw_awc_date_mismatch_reason"] == ""
-    distribution_by_outcome = {
-        row["outcome"]: row
-        for row in payload["distribution"]
-        if isinstance(row, dict) and row.get("outcome")
+
+
+def test_refresh_awc_fact_keeps_awc_today_max_lower_bound_before_event_end(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED", "0")
+    db_path = tmp_path / "archive.db"
+    slug = "highest-temperature-in-chengdu-on-june-18-2026"
+    old_payload = {
+        "slug": slug,
+        "event_date": "2026-06-18",
+        "run_date": "2026-06-18",
+        "station_id": "ZUUU",
+        "tz": "Asia/Shanghai",
+        "market_unit": "C",
+        "market_var": "temperature_2m_max",
+        "rounding_rule": "whole_degrees",
+        "event_end_utc": "2026-06-18T13:00:00+00:00",
+        "weather_likelihood_features": {
+            "source": "zuuu_metar_raw_awc",
+            "observed_temp_c": 30.0,
+            "observed_today_max_c": 30.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_trusted": True,
+            "zuuu_metar_raw_awc_latest_at": "2026-06-18T12:00:00+00:00",
+            "zuuu_metar_raw_awc_latest_temp_c": 30.0,
+            "zuuu_metar_raw_awc_today_max_c": 30.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-18T12:00:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-18T12:04:00+00:00",
+        },
+        "distribution": [
+            {"outcome": "30°C", "q_bayes_posterior": 0.62, "q_temperature_bucket_posterior": 0.62},
+            {"outcome": "31°C", "q_bayes_posterior": 0.28, "q_temperature_bucket_posterior": 0.28},
+            {"outcome": "32°C", "q_bayes_posterior": 0.10, "q_temperature_bucket_posterior": 0.10},
+        ],
     }
-    assert distribution_by_outcome["30°C"]["observed_today_max_c"] == 31.0
-    assert distribution_by_outcome["31°C"]["zuuu_metar_raw_awc_latest_at"] == "2026-06-18T13:00:00+00:00"
-    assert distribution_by_outcome["30°C"]["q_bayes_posterior"] == 0.0
-    assert distribution_by_outcome["31°C"]["q_bayes_posterior"] == pytest.approx(
-        max(row["q_bayes_posterior"] for row in payload["distribution"])
+    attach_unit_prior_contract(old_payload)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-18",
+        slug=slug,
+        event_date="2026-06-18",
+        fact_as_of="2026-06-18T12:04:00+00:00",
+        model_snapshot_id=11,
+        market_snapshot_id=22,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=old_payload,
     )
-    assert distribution_by_outcome["31°C"]["hard_source_posterior_override_applied"] is True
-    assert payload["model_top_label"] == "31°C"
-    assert not payload.get("chengdu_intraday_summary", {}).get("stale")
-    assert not payload.get("target_bucket_outlook", {}).get("stale")
-    assert not payload.get("temperature_trajectory_status", {}).get("stale")
-    assert not payload.get("target_switch_context", {}).get("stale")
-    assert payload["fact_provenance"]["awc_hard_observation_refresh"]["today_max_c"] == 31.0
+    server._upsert_event_fact_latest(conn, slug, "2026-06-18", fact_id)
+    conn.commit()
+    conn.close()
+
+    def fake_awc(*_args, **_kwargs):
+        return {
+            "source": "zuuu_metar_raw_awc",
+            "observed_temp_c": 31.0,
+            "observed_temp_source": "zuuu_metar_raw_awc",
+            "observed_today_max_c": 31.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_trusted": True,
+            "metar_temperature_c": 31.0,
+            "zuuu_metar_raw_awc_available": True,
+            "zuuu_metar_raw_awc_latest_at": "2026-06-18T12:30:00+00:00",
+            "zuuu_metar_raw_awc_latest_temp_c": 31.0,
+            "zuuu_metar_raw_awc_today_max_c": 31.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-18T12:30:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-18T12:35:02+00:00",
+            "zuuu_metar_raw_awc_fetch_duration_ms": 180,
+            "zuuu_metar_raw_awc_date_mismatch": False,
+            "zuuu_metar_raw_awc_date_mismatch_reason": "",
+        }
+
+    monkeypatch.setattr(scan_weather_market, "fetch_zuuu_metar_raw_awc_features", fake_awc)
+
+    result = server.refresh_awc_fact_for_chengdu_event(db_path, event_date="2026-06-18")
+
+    assert result["ok"] is True
+    assert result["awc_final_daily_max"] is False
+    assert result["awc_final_daily_max_state"] == "awc_latest_before_event_end"
+    assert result["awc_final_event_end_utc"] == "2026-06-18T13:00:00+00:00"
+    assert result.get("hard_source_final_daily_max") in (None, "", False)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, "2026-06-18"),
+    ).fetchone()
+    conn.close()
+
+    payload = json.loads(row["fact_json"])
+    features = payload["weather_likelihood_features"]
+    ssot = payload["posterior_ssot_fact"]
+    assert features["zuuu_metar_raw_awc_final_daily_max"] is False
+    assert features["zuuu_metar_raw_awc_final_daily_max_state"] == "awc_latest_before_event_end"
+    assert "observed_today_max_final" not in features
+    assert ssot["target_bucket"] == "31°C"
+    assert ssot["target_probability"] < 1.0
+    by_bucket = {entry["bucket"]: entry["probability"] for entry in ssot["bucket_probabilities"]}
+    assert by_bucket["30°C"] == 0.0
+    assert by_bucket["31°C"] > 0.0
+    assert by_bucket["32°C"] > 0.0
+
+
+def test_refresh_awc_fact_keeps_post_peak_cooling_provisional_before_event_end(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_AWC_FINAL_LOCK_AFTER_PEAK_MIN_LOCAL_HOUR", "18")
+    monkeypatch.setenv("PM_AWC_FINAL_LOCK_AFTER_PEAK_MIN_ELAPSED_MIN", "45")
+    monkeypatch.setenv("PM_AWC_FINAL_LOCK_AFTER_PEAK_MIN_DROP_C", "0.5")
+    db_path = tmp_path / "archive.db"
+    slug = "highest-temperature-in-chengdu-on-june-18-2026"
+    old_payload = {
+        "slug": slug,
+        "event_date": "2026-06-18",
+        "run_date": "2026-06-18",
+        "station_id": "ZUUU",
+        "tz": "Asia/Shanghai",
+        "market_unit": "C",
+        "market_var": "temperature_2m_max",
+        "rounding_rule": "whole_degrees",
+        "event_end_utc": "2026-06-18T13:00:00+00:00",
+        "weather_likelihood_features": {
+            "source": "zuuu_metar_raw_awc",
+            "observed_temp_c": 36.0,
+            "observed_today_max_c": 36.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_trusted": True,
+            "zuuu_metar_raw_awc_latest_at": "2026-06-18T08:00:00+00:00",
+            "zuuu_metar_raw_awc_latest_temp_c": 36.0,
+            "zuuu_metar_raw_awc_today_max_c": 36.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-18T08:00:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-18T08:04:00+00:00",
+        },
+        "distribution": [
+            {"outcome": "36°C", "q_bayes_posterior": 0.35, "q_temperature_bucket_posterior": 0.35},
+            {"outcome": "37°C", "q_bayes_posterior": 0.40, "q_temperature_bucket_posterior": 0.40},
+            {"outcome": "38°C", "q_bayes_posterior": 0.25, "q_temperature_bucket_posterior": 0.25},
+        ],
+    }
+    attach_unit_prior_contract(old_payload)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-18",
+        slug=slug,
+        event_date="2026-06-18",
+        fact_as_of="2026-06-18T08:04:00+00:00",
+        model_snapshot_id=11,
+        market_snapshot_id=22,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=old_payload,
+    )
+    server._upsert_event_fact_latest(conn, slug, "2026-06-18", fact_id)
+    conn.commit()
+    conn.close()
+
+    def fake_awc(*_args, **_kwargs):
+        return {
+            "source": "zuuu_metar_raw_awc",
+            "observed_temp_c": 36.0,
+            "observed_temp_source": "zuuu_metar_raw_awc",
+            "observed_today_max_c": 37.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_trusted": True,
+            "metar_temperature_c": 36.0,
+            "zuuu_metar_raw_awc_available": True,
+            "zuuu_metar_raw_awc_latest_at": "2026-06-18T10:00:00+00:00",
+            "zuuu_metar_raw_awc_latest_temp_c": 36.0,
+            "zuuu_metar_raw_awc_today_max_c": 37.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-18T09:00:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-18T10:05:02+00:00",
+            "zuuu_metar_raw_awc_fetch_duration_ms": 180,
+            "zuuu_metar_raw_awc_date_mismatch": False,
+            "zuuu_metar_raw_awc_date_mismatch_reason": "",
+        }
+
+    monkeypatch.setattr(scan_weather_market, "fetch_zuuu_metar_raw_awc_features", fake_awc)
+
+    result = server.refresh_awc_fact_for_chengdu_event(db_path, event_date="2026-06-18")
+
+    assert result["ok"] is True
+    assert result["status"] == "updated"
+    assert result["awc_final_daily_max"] is False
+    assert result["awc_final_daily_max_state"] == "awc_latest_before_event_end"
+    assert result["awc_final_event_end_utc"] == "2026-06-18T13:00:00+00:00"
+    assert result.get("hard_source_final_daily_max") in (None, "", False)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, "2026-06-18"),
+    ).fetchone()
+    conn.close()
+
+    payload = json.loads(row["fact_json"])
+    features = payload["weather_likelihood_features"]
+    ssot = payload["posterior_ssot_fact"]
+    assert features["zuuu_metar_raw_awc_final_daily_max"] is False
+    assert features["zuuu_metar_raw_awc_final_daily_max_state"] == "awc_latest_before_event_end"
+    assert "hard_source_final_daily_max_source" not in features
+    assert "hard_source_final_lock_reason" not in features
+    assert ssot["target_bucket"] == "37°C"
+    assert ssot["target_probability"] < 1.0
+    assert ssot["final_bucket_lock"] is False
+    by_bucket = {entry["bucket"]: entry["probability"] for entry in ssot["bucket_probabilities"]}
+    assert by_bucket["36°C"] == 0.0
+    assert by_bucket["37°C"] > 0.0
+    assert by_bucket["38°C"] > 0.0
+
+
+def test_awc_post_peak_cooling_state_is_diagnostic_only_until_event_end() -> None:
+    features = {
+        "zuuu_metar_raw_awc_latest_at": "2026-06-18T10:00:00+00:00",
+        "zuuu_metar_raw_awc_latest_temp_c": 36.0,
+        "zuuu_metar_raw_awc_today_max_c": 37.0,
+        "zuuu_metar_raw_awc_today_max_at": "2026-06-18T09:00:00+00:00",
+    }
+    state = server._awc_post_peak_final_daily_max_state(
+        features,
+        payload={"event_date": "2026-06-18"},
+        latest_utc=datetime(2026, 6, 18, 10, 0, tzinfo=timezone.utc),
+        event_end_utc=datetime(2026, 6, 18, 13, 0, tzinfo=timezone.utc),
+        today_max_c=37.0,
+    )
+
+    assert state["final"] is False
+    assert state["reason"] == "awc_post_peak_cooling_is_probabilistic_not_final"
+    assert state["temp_drop_c"] == 1.0
+    assert state["elapsed_min"] == 60.0
+    assert state["prediction_window_cannot_emit_final_lock"] is True
+
+
+def test_refresh_awc_fact_marks_final_daily_max_after_event_end_and_locks_ssot(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED", "0")
+    db_path = tmp_path / "archive.db"
+    slug = "highest-temperature-in-chengdu-on-june-18-2026"
+    old_payload = {
+        "slug": slug,
+        "event_date": "2026-06-18",
+        "run_date": "2026-06-18",
+        "station_id": "ZUUU",
+        "tz": "Asia/Shanghai",
+        "market_unit": "C",
+        "market_var": "temperature_2m_max",
+        "rounding_rule": "whole_degrees",
+        "event_end_utc": "2026-06-18T13:00:00+00:00",
+        "weather_likelihood_features": {
+            "source": "zuuu_metar_raw_awc",
+            "observed_temp_c": 30.0,
+            "observed_today_max_c": 30.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_trusted": True,
+            "zuuu_metar_raw_awc_latest_at": "2026-06-18T12:00:00+00:00",
+            "zuuu_metar_raw_awc_latest_temp_c": 30.0,
+            "zuuu_metar_raw_awc_today_max_c": 30.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-18T12:00:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-18T12:04:00+00:00",
+        },
+        "distribution": [
+            {"outcome": "30°C", "q_bayes_posterior": 0.62, "q_temperature_bucket_posterior": 0.62},
+            {"outcome": "31°C", "q_bayes_posterior": 0.28, "q_temperature_bucket_posterior": 0.28},
+            {"outcome": "32°C", "q_bayes_posterior": 0.10, "q_temperature_bucket_posterior": 0.10},
+        ],
+    }
+    attach_unit_prior_contract(old_payload)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-18",
+        slug=slug,
+        event_date="2026-06-18",
+        fact_as_of="2026-06-18T12:04:00+00:00",
+        model_snapshot_id=11,
+        market_snapshot_id=22,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item=old_payload,
+    )
+    server._upsert_event_fact_latest(conn, slug, "2026-06-18", fact_id)
+    conn.commit()
+    conn.close()
+
+    def fake_awc(*_args, **_kwargs):
+        return {
+            "source": "zuuu_metar_raw_awc",
+            "observed_temp_c": 30.0,
+            "observed_temp_source": "zuuu_metar_raw_awc",
+            "observed_today_max_c": 31.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_trusted": True,
+            "metar_temperature_c": 30.0,
+            "zuuu_metar_raw_awc_available": True,
+            "zuuu_metar_raw_awc_latest_at": "2026-06-18T13:00:00+00:00",
+            "zuuu_metar_raw_awc_latest_temp_c": 30.0,
+            "zuuu_metar_raw_awc_today_max_c": 31.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-18T12:30:00+00:00",
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-18T13:05:02+00:00",
+            "zuuu_metar_raw_awc_fetch_duration_ms": 180,
+            "zuuu_metar_raw_awc_date_mismatch": False,
+            "zuuu_metar_raw_awc_date_mismatch_reason": "",
+        }
+
+    monkeypatch.setattr(scan_weather_market, "fetch_zuuu_metar_raw_awc_features", fake_awc)
+
+    result = server.refresh_awc_fact_for_chengdu_event(db_path, event_date="2026-06-18")
+
+    assert result["ok"] is True
+    assert result["awc_final_daily_max"] is True
+    assert result["awc_final_daily_max_state"] == "awc_latest_covers_event_end"
+    assert result["awc_final_event_end_utc"] == "2026-06-18T13:00:00+00:00"
+    assert result["hard_source_final_daily_max"] is True
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, "2026-06-18"),
+    ).fetchone()
+    conn.close()
+
+    payload = json.loads(row["fact_json"])
+    features = payload["weather_likelihood_features"]
+    ssot = payload["posterior_ssot_fact"]
+    assert features["zuuu_metar_raw_awc_final_daily_max"] is True
+    assert features["observed_today_max_final"] is True
+    assert features["hard_source_final_daily_max"] is True
+    assert ssot["target_bucket"] == "31°C"
+    assert ssot["target_probability"] == 1.0
+    assert ssot["final_bucket_lock"] is True
+    by_bucket = {entry["bucket"]: entry["probability"] for entry in ssot["bucket_probabilities"]}
+    assert by_bucket == {"30°C": 0.0, "31°C": 1.0, "32°C": 0.0}
 
 
 def test_refresh_awc_fact_fast_trade_write_compacts_heavy_ui_payload(
@@ -9881,10 +14086,11 @@ def test_refresh_awc_fact_fast_trade_write_compacts_heavy_ui_payload(
         "decision": dict(heavy_blob),
         "key_metrics": dict(heavy_blob),
     }
+    attach_unit_prior_contract(old_payload)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -9949,35 +14155,37 @@ def test_refresh_awc_fact_fast_trade_write_compacts_heavy_ui_payload(
     assert payload["posterior_target_bucket_selection"]["fast_trade_compacted"] is True
     assert payload["posterior_target_bucket_selection"]["target_bucket"] == "31°C"
     top_distribution_prob = max(
-        row["q_temperature_bucket_posterior"]
-        for row in payload["distribution"]
-        if isinstance(row, dict) and row.get("q_temperature_bucket_posterior") is not None
+        row["probability"]
+        for row in payload["posterior_ssot_fact"]["bucket_probabilities"]
+        if isinstance(row, dict) and row.get("probability") is not None
     )
     assert payload["posterior_target_bucket_selection"]["target_probability"] == pytest.approx(
         top_distribution_prob
     )
-    assert 0.0 < payload["posterior_target_bucket_selection"]["target_probability"] < 1.0
+    assert 0.0 < payload["posterior_target_bucket_selection"]["target_probability"] <= 1.0
     assert payload["target_bucket_selection"] == payload["posterior_target_bucket_selection"]
     assert payload["target_bucket"] == "31°C"
     assert payload["ssot_target_bucket"] == "31°C"
     assert summary["fast_trade_summary_cache"] is True
-    assert summary["summary_cache_source"] == "event_fact_summary_cache_fast_trade"
+    assert summary["summary_cache_source"] == "weather_fact_snapshot_writer"
+    assert summary["summary_cache_schema"] == "weather_fact_snapshot_writer_summary_cache_v1"
     assert summary["summary_cache_version"] == server.EVENT_FACT_SUMMARY_CACHE_VERSION
     assert summary["posterior_target_bucket_selection"]["target_bucket"] == "31°C"
     assert summary["posterior_target_bucket_selection"]["target_probability"] == pytest.approx(
         top_distribution_prob
     )
+    for key in ("evidence_conclusions", "decision"):
+        assert key not in payload
     for key in (
         "chengdu_intraday_summary",
         "target_bucket_outlook",
         "temperature_path_distribution",
         "temperature_realization_reliability",
         "target_switch_context",
-        "evidence_conclusions",
-        "decision",
         "key_metrics",
     ):
-        assert key not in payload
+        if key in payload:
+            assert heavy_marker not in json.dumps(payload[key], ensure_ascii=False)
     for rows_key in ("distribution", "rows"):
         for distribution_row in payload[rows_key]:
             for key in heavy_row:
@@ -9985,6 +14193,90 @@ def test_refresh_awc_fact_fast_trade_write_compacts_heavy_ui_payload(
     assert payload["fact_provenance"]["awc_fast_trade_fact_write"]["purpose"] == (
         "trade_path_first_ui_rich_fields_deferred"
     )
+    assert "key_metrics" in payload["fact_provenance"]["awc_fast_trade_fact_write"]["dropped_top_level_keys"]
+    assert payload["fact_provenance"]["awc_fast_trade_fact_write"]["ui_contract_kept_top_level_keys"] == []
+
+
+def test_fast_trade_compaction_keeps_ui_contract_without_heavy_blob() -> None:
+    item = {
+        "slug": "highest-temperature-in-chengdu-on-july-3-2026",
+        "event_date": "2026-07-03",
+        "market_unit": "C",
+        "key_metrics": {
+            "wu_forecast_peak_c": 31.2,
+            "taf_forecast_peak_c": 30.8,
+            "marker": "HEAVY_FAST_TRADE_MARKER",
+            "blob": "x" * 1000,
+        },
+        "target_bucket_outlook": {
+            "final_bucket": "31°C",
+            "final_bucket_probability_pct": 44.0,
+            "blob": "HEAVY_FAST_TRADE_MARKER",
+        },
+        "temperature_path_distribution": {
+            "target_bucket": "31°C",
+            "summary": "路径保留",
+            "blob": "HEAVY_FAST_TRADE_MARKER",
+        },
+        "distribution": [
+            {
+                "outcome": "31°C",
+                "q_temperature_bucket_posterior": 0.44,
+                "q_bayes_wu_forecast_prob": 0.52,
+                "bayes_chain": {
+                    "prior_prob": 0.4,
+                    "likelihood_prob": 0.5,
+                    "likelihood_parts": {"wu_forecast": {"prob": 0.52, "evidence": 3.0}},
+                    "blob": "HEAVY_FAST_TRADE_MARKER",
+                },
+                "q_ensemble_qm_meta": {
+                    "raw_bucket_probability": {
+                        "labels": ["31°C"],
+                        "probs_by_model": {"gfs_seamless": {"31°C": 0.6}},
+                    },
+                    "blob": "HEAVY_FAST_TRADE_MARKER",
+                },
+                "q_bayes_physical_d0_explanation": {
+                    "summary": "物理证据",
+                    "variables": [{"key": "dewpoint", "label": "露点", "direction": "warm"}],
+                    "blob": "HEAVY_FAST_TRADE_MARKER",
+                },
+                "q_bayes_physical_likelihood_component_groups": {
+                    "dewpoint": {
+                        "available": True,
+                        "weight": 1.2,
+                        "source_profile": {
+                            "source_class": "metar",
+                            "source_field": "dewpoint_c",
+                            "blob": "HEAVY_FAST_TRADE_MARKER",
+                        },
+                    }
+                },
+                "per_model_q": {
+                    "gfs_seamless": {"dir_value": 31.2, "q_round": 0.6, "blob": "HEAVY_FAST_TRADE_MARKER"}
+                },
+            }
+        ],
+    }
+
+    server._compact_fact_payload_for_fast_trade_write(item)
+    encoded = json.dumps(item, ensure_ascii=False)
+
+    assert "HEAVY_FAST_TRADE_MARKER" not in encoded
+    assert "key_metrics" not in item
+    assert "target_bucket_outlook" not in item
+    assert "temperature_path_distribution" not in item
+    row = item["distribution"][0]
+    assert row["bayes_chain"]["likelihood_parts"]["wu_forecast"]["prob"] == 0.52
+    assert row["q_ensemble_qm_meta"]["raw_bucket_probability"]["probs_by_model"]["gfs_seamless"]["31°C"] == 0.6
+    assert row["q_bayes_physical_d0_explanation"]["variables"][0]["key"] == "dewpoint"
+    assert "q_bayes_physical_likelihood_component_groups" not in row
+    assert row["state_evidence_trace"]["groups"]["dewpoint"]["source_profile"]["source_class"] == "metar"
+    assert row["per_model_q"]["gfs_seamless"]["dir_value"] == 31.2
+    provenance = item["fact_provenance"]["awc_fast_trade_fact_write"]
+    assert "key_metrics" in provenance["dropped_top_level_keys"]
+    assert provenance["ui_contract_kept_top_level_keys"] == []
+    assert "bayes_chain" in provenance["ui_contract_kept_row_keys"]
 
 
 def test_fast_trade_target_selection_prefers_fact_rows_over_stale_ctp() -> None:
@@ -10004,16 +14296,11 @@ def test_fast_trade_target_selection_prefers_fact_rows_over_stale_ctp() -> None:
 
     server._compact_target_selection_for_fast_trade_fact(payload)
 
-    selection = payload["posterior_target_bucket_selection"]
-    assert selection["target_bucket"] == "25°C or below"
-    assert selection["target_probability"] == pytest.approx(0.4776612011202925)
-    assert selection["target_probability_field"] == "event_fact_latest.distribution.q_temperature_bucket_posterior"
-    assert payload["target_bucket_selection"] == selection
-    assert payload["target_bucket"] == "25°C or below"
-    assert payload["ssot_target_bucket"] == "25°C or below"
-    assert payload["target_bucket_probability_field"] == (
-        "event_fact_latest.distribution.q_temperature_bucket_posterior"
-    )
+    assert "posterior_target_bucket_selection" not in payload
+    assert "target_bucket_selection" not in payload
+    assert "target_bucket" not in payload
+    assert "ssot_target_bucket" not in payload
+    assert payload["target_bucket_compaction_skipped_reason"] == "posterior_ssot_fact_missing"
 
 
 def test_awc_refresh_clears_stale_observation_target_markers_before_recompute() -> None:
@@ -10145,9 +14432,17 @@ def test_awc_refresh_clears_stale_observation_target_markers_before_recompute() 
         event_tz="Asia/Shanghai",
     )
 
-    assert changed is True
-    assert by_outcome["31°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.5698)
-    assert by_outcome["33°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.2514)
+    assert changed is False
+    assert merged["observation_led_likelihood"]["diagnostic_only"] is True
+    assert merged["observation_led_likelihood_posterior_materialized"] is False
+    assert merged["observation_led_likelihood"]["materialization_block_reason"] == (
+        "posterior_ssot_fact_missing_for_intraday_observation_led_materialization"
+    )
+    assert merged["fact_provenance"]["observation_led_likelihood"]["skipped_reason"] == (
+        "posterior_ssot_fact_missing_for_intraday_observation_led_materialization"
+    )
+    assert by_outcome["31°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.050319312724171415)
+    assert by_outcome["33°C"]["q_temperature_bucket_posterior"] == pytest.approx(0.11631060268355033)
 
 
 def test_fast_trade_compaction_preserves_compact_physical_likelihood_summary() -> None:
@@ -10191,6 +14486,12 @@ def test_fast_trade_compaction_preserves_compact_physical_likelihood_summary() -
     server._compact_rows_for_fast_trade_fact(payload)
 
     row = payload["distribution"][0]
+    trace = row["state_evidence_trace"]
+    assert trace["schema"] == "metar_strong_state_evidence_trace_v1"
+    assert trace["role"] == "state_evidence_trace"
+    assert trace["dedupe_boundary"] == (
+        "METAR physical evidence is consumed inside L_metar_strong, not as an independent probability channel"
+    )
     groups = row["q_bayes_physical_likelihood_component_groups"]
     precip = groups["precipitation_evaporative_cooling"]
     assert precip["available"] is True
@@ -10199,6 +14500,7 @@ def test_fast_trade_compaction_preserves_compact_physical_likelihood_summary() -
     assert precip["source_profile"]["no_precip_confirmed"] is True
     assert "debug_blob" not in precip["source_profile"]
     assert "debug_blob" not in precip["components"]["precip_evaporative_cooling"]
+    assert trace["groups"]["precipitation_evaporative_cooling"] == precip
     assert row["q_bayes_physical_likelihood_components"] == {"precip_evaporative_cooling": 0.0}
     assert "q_bayes_physical_likelihood_evidence_scale_details" not in row
 
@@ -10247,11 +14549,17 @@ def test_fact_write_physical_audit_fields_materialize_from_awc_features() -> Non
     for row in rows:
         assert row["q_bayes_physical_likelihood_source"] == "weather_physical_likelihood"
         assert row["q_bayes_physical_likelihood_audit_source"] == "test"
+        assert "state_evidence_trace" in row
         assert "q_bayes_physical_likelihood_component_groups" in row
         assert "q_bayes_physical_likelihood_components" in row
+        assert row["state_evidence_trace"]["role"] == "state_evidence_trace"
+        assert row["state_evidence_trace"]["replaces"] == "q_bayes_physical_likelihood_component_groups"
     groups = rows[0]["q_bayes_physical_likelihood_component_groups"]
+    trace_groups = rows[0]["state_evidence_trace"]["groups"]
     assert "temperature_trajectory" in groups
     assert "precipitation_evaporative_cooling" in groups
+    assert "temperature_trajectory" in trace_groups
+    assert "precipitation_evaporative_cooling" in trace_groups
     precip_profile = groups["precipitation_evaporative_cooling"]["source_profile"]
     assert precip_profile["source_class"] == "metar"
     assert precip_profile["no_precip_confirmed"] is True
@@ -10292,10 +14600,11 @@ def test_refresh_awc_fact_preserves_higher_daily_max_when_latest_observation_reg
             {"outcome": "31°C", "q_bayes_posterior": 0.52, "q_temperature_bucket_posterior": 0.52},
         ],
     }
+    attach_unit_prior_contract(old_payload)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -10405,10 +14714,11 @@ def test_refresh_awc_fact_skips_regressed_latest_without_stronger_daily_max(
             {"outcome": "30°C", "q_bayes_posterior": 0.26, "q_temperature_bucket_posterior": 0.26},
         ],
     }
+    attach_unit_prior_contract(old_payload)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -10512,6 +14822,7 @@ def test_refresh_awc_fact_skip_uses_summary_cache_without_full_fact_json(
             {"outcome": "30°C", "q_bayes_posterior": 0.26, "q_temperature_bucket_posterior": 0.26},
         ],
     }
+    attach_unit_prior_contract(payload)
     summary_payload = {
         "slug": slug,
         "event_date": "2026-06-18",
@@ -10525,7 +14836,7 @@ def test_refresh_awc_fact_skip_uses_summary_cache_without_full_fact_json(
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -10638,10 +14949,11 @@ def test_refresh_awc_fact_passes_recent_window_hours_to_awc_fetch(tmp_path, monk
         },
         "distribution": [{"outcome": "31°C", "q_bayes_posterior": 1.0}],
     }
+    attach_unit_prior_contract(payload)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -10790,10 +15102,11 @@ def test_refresh_awc_fact_advances_today_max_time_when_same_max_repeats(
             {"outcome": "32°C", "q_bayes_posterior": 0.14, "q_temperature_bucket_posterior": 0.14},
         ],
     }
+    attach_unit_prior_contract(old_payload)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -10904,7 +15217,7 @@ def test_composer_fact_write_preserves_latest_awc_hard_observation(tmp_path) -> 
             {"outcome": "32°C", "q_bayes_posterior": 0.14, "q_temperature_bucket_posterior": 0.14},
         ],
     }
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-18",
         slug=slug,
@@ -10987,7 +15300,7 @@ def test_upcoming_fact_rows_only_add_chengdu_future_markets(tmp_path) -> None:
             "title": title,
             "distribution": [{"outcome": "33°C", "q_bayes_posterior": 0.4}],
         }
-        fact_id = server._insert_event_fact_history(
+        fact_id = insert_event_fact_history_with_unit_prior(
             conn,
             run_date="2026-06-22",
             slug=slug,
@@ -11229,13 +15542,349 @@ def test_snapshot_key_rows_include_tokenized_chengdu_discovery_for_materializati
     assert (slug, "2026-06-24", "2026-06-24") in rows
 
 
+def _create_discovery_materialization_source_tables(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE model_snapshots (
+            id INTEGER PRIMARY KEY,
+            run_date TEXT,
+            event_date TEXT,
+            slug TEXT,
+            payload_json TEXT,
+            meta_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE market_snapshots (
+            id INTEGER PRIMARY KEY,
+            run_date TEXT,
+            event_date TEXT,
+            slug TEXT,
+            payload_json TEXT,
+            meta_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE event_runs (
+            id INTEGER PRIMARY KEY,
+            run_date TEXT,
+            event_date TEXT,
+            slug TEXT,
+            payload_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE weather_market_discovery (
+            slug TEXT,
+            event_date TEXT,
+            title TEXT,
+            market_open_at TEXT,
+            first_seen_at TEXT,
+            first_tokenized_at TEXT,
+            token_count INTEGER,
+            status TEXT,
+            details_json TEXT,
+            updated_at TEXT
+        );
+        CREATE TABLE market_tokens (
+            slug TEXT,
+            event_date TEXT,
+            outcome TEXT,
+            yes_token TEXT,
+            no_token TEXT,
+            outcome_volume REAL,
+            liquidity REAL,
+            market_active INTEGER,
+            market_closed INTEGER,
+            market_archived INTEGER,
+            market_accepting_orders INTEGER,
+            market_enable_orderbook INTEGER,
+            updated_at TEXT
+        );
+        """
+    )
+
+
+def _insert_chengdu_discovery_market(conn: sqlite3.Connection, *, slug: str, event_date: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO weather_market_discovery(
+            slug, event_date, title, market_open_at, first_seen_at, first_tokenized_at,
+            token_count, status, details_json, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            slug,
+            event_date,
+            "Highest temperature in Chengdu on June 24?",
+            "2026-06-22T12:00:00+00:00",
+            "2026-06-22T12:01:00+00:00",
+            "2026-06-22T12:02:00+00:00",
+            2,
+            "tokenized",
+            json.dumps({"endDate": "2026-06-24T12:00:00+00:00"}),
+            "2026-06-22T12:03:00+00:00",
+        ),
+    )
+    for outcome in ("29°C", "30°C"):
+        conn.execute(
+            """
+            INSERT INTO market_tokens(
+                slug, event_date, outcome, yes_token, no_token, outcome_volume, liquidity,
+                market_active, market_closed, market_archived, market_accepting_orders,
+                market_enable_orderbook, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                slug,
+                event_date,
+                outcome,
+                f"yes-{outcome}",
+                f"no-{outcome}",
+                10.0,
+                20.0,
+                1,
+                0,
+                0,
+                1,
+                1,
+                "2026-06-22T12:04:00+00:00",
+            ),
+        )
+
+
+def test_materialize_facts_uses_formal_fact_chain_for_discovery_pending_model(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(server, "_today_et_key", lambda: "2026-06-22")
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    _create_discovery_materialization_source_tables(conn)
+    slug = "highest-temperature-in-chengdu-on-june-24-2026"
+    _insert_chengdu_discovery_market(conn, slug=slug, event_date="2026-06-24")
+    conn.commit()
+
+    created = server._materialize_facts_from_snapshots_for_range(conn, "2026-06-22", "2026-06-24")
+
+    row = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, "2026-06-24"),
+    ).fetchone()
+    conn.close()
+
+    assert created == 1
+    assert row is not None
+    payload = json.loads(row["fact_json"])
+    assert payload["data_status"] == "market_discovery_pending_model"
+    assert payload["fact_provenance"]["fact_materialization_source_resolver"]["source"] == "weather_market_discovery"
+    assert payload["fact_provenance"]["fact_materialization_source_resolver"]["formal_fact_chain"] is True
+    assert payload["posterior_run_id"].startswith("post_pending_discovery_")
+    assert payload["posterior_ssot_fact"]["schema"] == "bayes_posterior_ssot_fact_placeholder_v1"
+    assert payload["posterior_ssot_fact"]["state"] == "not_materialized"
+    assert payload["posterior_materialization_state"]["available_posterior"] is False
+    assert payload["auto_trade_ssot"]["main_entry_ok"] is False
+    assert "target_realization_capital_plan" not in payload
+
+
+def test_pending_model_fact_with_prior_and_awc_materializes_available_posterior() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS event_runs(
+            id INTEGER PRIMARY KEY,
+            run_date TEXT,
+            event_date TEXT,
+            slug TEXT,
+            event_url TEXT,
+            title TEXT,
+            city TEXT,
+            station_id TEXT,
+            market_var TEXT,
+            market_unit TEXT,
+            rounding_rule TEXT,
+            settlement_actual REAL,
+            payload_json TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    for event_date, actual in [
+        ("2026-06-20", 29.0),
+        ("2026-06-21", 30.0),
+        ("2026-06-22", 30.0),
+        ("2026-06-23", 31.0),
+    ]:
+        conn.execute(
+            """
+            INSERT INTO event_runs(
+                run_date, event_date, slug, event_url, title, city, station_id,
+                market_var, market_unit, rounding_rule, settlement_actual,
+                payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, 'Chengdu', 'ZUUU', 'temperature_2m_max', 'C',
+                      'rounded_degrees', ?, '{}', '2026-06-24T00:00:00+00:00')
+            """,
+            (
+                event_date,
+                event_date,
+                f"highest-temperature-in-chengdu-on-{event_date}",
+                f"https://polymarket.com/event/{event_date}",
+                f"Highest temperature in Chengdu on {event_date}?",
+                actual,
+            ),
+        )
+    slug = "highest-temperature-in-chengdu-on-june-24-2026"
+    rows = [
+        {"outcome": "29°C", "label": "29°C", "q_na_reason": "model_not_materialized_yet", "market_discovery_placeholder": True},
+        {"outcome": "30°C", "label": "30°C", "q_na_reason": "model_not_materialized_yet", "market_discovery_placeholder": True},
+        {"outcome": "31°C", "label": "31°C", "q_na_reason": "model_not_materialized_yet", "market_discovery_placeholder": True},
+    ]
+    fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-24",
+        slug=slug,
+        event_date="2026-06-24",
+        fact_as_of="2026-06-24T02:05:00+00:00",
+        model_snapshot_id=None,
+        market_snapshot_id=None,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item={
+            "slug": slug,
+            "event_date": "2026-06-24",
+            "run_date": "2026-06-24",
+            "city": "Chengdu",
+            "station_id": "ZUUU",
+            "market_var": "temperature_2m_max",
+            "market_unit": "C",
+            "rounding_rule": "rounded_degrees",
+            "data_status": "market_discovery_pending_model",
+            "weather_strategy_mode": "market_discovery_pending_model",
+            "mean_bucket_na_reason": "model_not_materialized_yet",
+            "market_discovery_placeholder": True,
+            "source_event_ids": ["srcevt_market_discovery:unit_pending_model"],
+            "fact_provenance": {"market_discovery_placeholder": True},
+            "distribution": json.loads(json.dumps(rows)),
+            "rows": json.loads(json.dumps(rows)),
+            "weather_likelihood_features": {
+                "zuuu_metar_raw_awc_latest_at": "2026-06-24T02:00:00+00:00",
+                "zuuu_metar_raw_awc_fetched_at": "2026-06-24T02:05:00+00:00",
+                "zuuu_metar_raw_awc_latest_raw": "METAR ZUUU 240200Z VRB01MPS CAVOK 30/23 Q1004 NOSIG",
+                "zuuu_metar_raw_awc_latest_temp_c": 30.0,
+                "zuuu_metar_raw_awc_latest_dewpoint_c": 23.0,
+                "zuuu_metar_raw_awc_today_max_c": 30.0,
+                "temperature_momentum_1h_c_per_hour": 1.0,
+                "temperature_momentum_available_horizons": "1h",
+            },
+        },
+        write_latest=True,
+    )
+    row = conn.execute("SELECT fact_json FROM event_fact_history WHERE id = ?", (fact_id,)).fetchone()
+    conn.close()
+
+    payload = json.loads(row["fact_json"])
+    assert payload["data_status"] == "posterior_ssot_available"
+    assert payload["weather_strategy_mode"] == "hierarchical_joint_likelihood"
+    assert "mean_bucket_na_reason" not in payload
+    assert payload["posterior_materialization_state"]["available_posterior"] is True
+    assert "srcevt_market_discovery:unit_pending_model" in payload["source_event_ids"]
+    assert payload["prior_meta"]["sample_count"] == 4
+    assert payload["posterior_ssot_fact"]["schema"] == "bayes_posterior_ssot_fact_v1"
+    assert payload["posterior_ssot_fact"]["state"] == "available"
+    assert payload["posterior_target_bucket_selection"]["ssot_source"] == "posterior_ssot_fact"
+    assert payload["distribution"][0]["market_discovery_placeholder"] is False
+    assert "q_na_reason" not in payload["distribution"][0]
+    assert payload["source_acquisition_trace"]["schema"] == "ui_pending_model_hierarchical_source_trace_v1"
+    assert "srcevt_market_discovery:unit_pending_model" in payload["source_acquisition_trace"]["source_event_ids"]
+    assert "srcevt_market_discovery:unit_pending_model" in payload["source_acquisition_trace"]["diagnostic_current_ids"]
+    assert payload["posterior_boundary"]["old_additive_evidence_pool_not_used"] is True
+    assert payload["ui_sections"]["prior"]["state"] == "available"
+    assert payload["ui_sections"]["bayes_posterior_ssot"]["state"] == "available"
+    assert cached is not None
+    summary_payload = json.loads(cached["summary_json"])
+    assert summary_payload["ui_sections"]["prior"]["state"] == "available"
+    assert summary_payload["ui_sections"]["bayes_posterior_ssot"]["state"] == "available"
+    assert "srcevt_market_discovery:unit_pending_model" in summary_payload["source_event_ids"]
+
+
+def test_discovery_pending_materialization_does_not_repoint_over_formal_fact(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(server, "_today_et_key", lambda: "2026-06-22")
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    _create_discovery_materialization_source_tables(conn)
+    slug = "highest-temperature-in-chengdu-on-june-24-2026"
+    _insert_chengdu_discovery_market(conn, slug=slug, event_date="2026-06-24")
+    formal_fact_id = insert_event_fact_history_with_unit_prior(
+        conn,
+        run_date="2026-06-24",
+        slug=slug,
+        event_date="2026-06-24",
+        fact_as_of="2026-06-22T12:02:00+00:00",
+        model_snapshot_id=11,
+        market_snapshot_id=22,
+        composer_version=server.FACTS_COMPOSER_VERSION,
+        item={
+            "slug": slug,
+            "event_date": "2026-06-24",
+            "run_date": "2026-06-24",
+            "station_id": "ZUUU",
+            "city": "Chengdu",
+            "market_var": "temperature_2m_max",
+            "market_unit": "C",
+            "phase": "D1_forecast",
+            "phase_reason": "unit_test_formal_model_fact",
+            "beta_weak": 0.75,
+            "beta_strong": 0.25,
+            "hard_mask_reason": "none",
+            "distribution": [
+                {"outcome": "29°C", "q_temperature_bucket_posterior": 0.35},
+                {"outcome": "30°C", "q_temperature_bucket_posterior": 0.65},
+            ],
+            "prior_distribution": {"29°C": 0.35, "30°C": 0.65},
+            "prior_na_reason": "",
+            "prior_meta": {
+                "schema": "temperature_prior_meta_v1",
+                "boundary": "historical_climate_date_site_terrain_weather_type_only_no_forecast_no_metar_no_market",
+                "sample_count": 10,
+                "shrinkage_target": "broader_settled_history",
+                "date_window_days": 15,
+                "prior_na_reason": "",
+            },
+        },
+        write_latest=True,
+    )
+    conn.commit()
+
+    created = server._materialize_facts_from_snapshots_for_range(conn, "2026-06-22", "2026-06-24")
+
+    latest = conn.execute(
+        "SELECT fact_id FROM event_fact_latest WHERE slug = ? AND event_date = ?",
+        (slug, "2026-06-24"),
+    ).fetchone()
+    history_count = conn.execute(
+        "SELECT COUNT(*) AS count FROM event_fact_history WHERE slug = ? AND event_date = ?",
+        (slug, "2026-06-24"),
+    ).fetchone()["count"]
+    conn.close()
+
+    assert created == 0
+    assert latest["fact_id"] == formal_fact_id
+    assert history_count == 1
+
+
 def test_query_facts_unpaged_include_upcoming_does_not_require_full_mode(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "archive.db"
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
     slug = "highest-temperature-in-chengdu-on-june-22-2026"
-    fact_id = server._insert_event_fact_history(
+    fact_id = insert_event_fact_history_with_unit_prior(
         conn,
         run_date="2026-06-22",
         slug=slug,

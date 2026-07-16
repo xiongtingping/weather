@@ -1,0 +1,111 @@
+- generic [active] [ref=f1e1]:
+  - generic:
+    - generic: 加载中
+  - generic [ref=f1e5]: 检测到数据陈旧或扫描阻塞，请查看顶部红色告警
+  - button "返回顶部"
+  - banner [ref=f1e6]:
+    - generic [ref=f1e9]:
+      - navigation "页面导航" [ref=f1e10]:
+        - generic [ref=f1e11]:
+          - link "事件视图" [ref=f1e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "更新/健康" [ref=f1e13] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+        - link "顶部" [ref=f1e15] [cursor=pointer]:
+          - /url: "#top"
+      - generic [ref=f1e16]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=f1e18] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=f1e19]: 总开关
+          - generic [ref=f1e20]: 开启
+        - generic [ref=f1e23]:
+          - button "同步" [ref=f1e24] [cursor=pointer]
+          - button "模型" [ref=f1e25] [cursor=pointer]
+          - button "盘口" [ref=f1e26] [cursor=pointer]
+          - button "刷新" [ref=f1e27] [cursor=pointer]
+          - button "声音开" [pressed] [ref=f1e28] [cursor=pointer]
+          - button "日志" [ref=f1e30] [cursor=pointer]
+          - group [ref=f1e31]:
+            - generic "控制中心" [ref=f1e32] [cursor=pointer]: 控
+  - main [ref=f1e33]:
+    - generic [ref=f1e34]:
+      - generic [ref=f1e35]:
+        - generic [ref=f1e36]:
+          - generic [ref=f1e38]: 自动交易执行
+          - generic [ref=f1e39]: —
+        - generic [ref=f1e40]:
+          - generic [ref=f1e41]: 同步—
+          - generic [ref=f1e43]:
+            - strong [ref=f1e44]: 成交
+            - text: 暂无
+        - alert "❗ 数据陈旧告警 · 盘口快照中位时效 19.2h · 最旧盘口快照 19.2h · 归档日 2026-07-06" [ref=f1e45]
+      - generic [ref=f1e47]:
+        - button "触发一次" [ref=f1e48] [cursor=pointer]
+        - generic [ref=f1e49] [cursor=pointer]:
+          - checkbox "关闭"
+          - generic [ref=f1e51]: 关闭
+    - generic [ref=f1e53]:
+      - text: 当前/未来事件视图（事实层）
+      - generic [ref=f1e54]: 加载中…
+  - button "/agentation v1.3.2 Output Detail Standard Marker Colour Purple Blue Cyan Green Yellow Orange Red Clear after output Block page interactions" [ref=f1e69] [cursor=pointer]:
+    - img [ref=f1e71]
+    - generic:
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button [disabled]:
+          - img
+      - generic:
+        - button:
+          - img
+      - generic:
+        - button:
+          - img
+    - generic:
+      - generic:
+        - generic: /agentation
+        - generic: v1.3.2
+        - button "Switch to light mode":
+          - img
+      - generic:
+        - generic:
+          - generic:
+            - text: Output Detail
+            - generic:
+              - img
+          - button "Standard":
+            - generic: Standard
+      - generic:
+        - generic: Marker Colour
+        - generic:
+          - generic:
+            - generic "Purple"
+          - generic:
+            - generic "Blue"
+          - generic:
+            - generic "Cyan"
+          - generic:
+            - generic "Green"
+          - generic:
+            - generic "Yellow"
+          - generic:
+            - generic "Orange"
+          - generic:
+            - generic "Red"
+      - generic:
+        - generic:
+          - checkbox "Clear after output"
+          - generic:
+            - text: Clear after output
+            - generic:
+              - img
+        - generic:
+          - checkbox "Block page interactions"
+          - generic: Block page interactions

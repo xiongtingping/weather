@@ -8,12 +8,15 @@ it appends new event_fact_history rows and repoints event_fact_latest.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +28,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 from bayesian_likelihood_runtime import estimate_peak_temperature_from_features  # noqa: E402
 from chengdu_intraday_summary import _physical_weather_modifier  # noqa: E402
+from archive_db_write_queue import connect_archive_db_rw  # noqa: E402
+from source_observation_runtime import build_source_observation  # noqa: E402
 from temperature_posterior_backtest import _ctp_probs, _posterior_temperature_distribution  # noqa: E402
 
 
@@ -36,7 +41,9 @@ REQUIRED_POSTERIOR_KEYS = {
     "bucket_probabilities",
 }
 
-SUMMARY_CACHE_VERSION = "event_fact_summary_cache_v6_awc_raw_observation_compact"
+SUMMARY_CACHE_VERSION = "event_fact_summary_cache_v7_posterior_ssot_sections"
+CTP_MATERIALIZER_COMPOSER_VERSION = "continuous_temperature_posterior_v1_materialized_latest"
+CTP_MATERIALIZER_SOURCE_ID = "ctp_latest_materializer"
 
 ROW_PROBABILITY_FIELDS = (
     "q_bayes_posterior",
@@ -243,11 +250,7 @@ def _sync_row_like_block_probability(
             _set_probability_field(block, key, yes_prob)
         else:
             _set_probability_field(block, key, q_prob)
-    if side == "NO":
-        for key in ("prob_for_size", "remote_no_sizing_probability"):
-            if key in block:
-                block[key] = 1.0 - yes_prob
-    elif "prob_for_size" in block:
+    if side != "NO" and "prob_for_size" in block:
         block["prob_for_size"] = yes_prob
     if "posterior_field" in block:
         block["posterior_field"] = "posterior_temperature_distribution.bucket_probabilities"
@@ -326,123 +329,6 @@ def _walk_sync_probability_blocks(value: Any, probs: Mapping[str, float], ranked
             _walk_sync_probability_blocks(child, probs, ranked)
 
 
-def _rescale_capital_plan_from_probabilities(plan: Dict[str, Any], probs: Mapping[str, float]) -> None:
-    legs = plan.get("legs")
-    if not isinstance(legs, list):
-        return
-    yes_pool = _to_float(plan.get("yes_pool_usdc")) or 0.0
-    no_pool = _to_float(plan.get("no_pool_usdc")) or 0.0
-    kelly_fraction = _to_float(plan.get("kelly_fraction"))
-    if kelly_fraction is None:
-        kelly_fraction = 1.0
-    yes_cap = _to_float(plan.get("yes_single_leg_max_notional_usdc")) or 20.0
-    env_no_cap = _to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC"))
-    if env_no_cap is not None and env_no_cap > 0:
-        no_cap = float(env_no_cap)
-    else:
-        no_cap = max(100.0, float(_to_float(plan.get("remote_no_single_leg_max_notional_usdc")) or 0.0))
-    plan["remote_no_single_leg_max_notional_usdc"] = no_cap
-    target_bucket = str(plan.get("target_bucket") or "").strip()
-    second_bucket = str(plan.get("second_target_bucket") or "").strip()
-    target_prob = max(0.0, min(1.0, float(probs.get(target_bucket, 0.0)))) if target_bucket in probs else None
-    second_prob = max(0.0, min(1.0, float(probs.get(second_bucket, 0.0)))) if second_bucket in probs else None
-    dual_gap_pp = None
-    dual_max_gap_pp = _to_float(plan.get("yes_dual_head_max_gap_pp"))
-    if dual_max_gap_pp is None:
-        dual_max_gap_pp = _to_float(os.environ.get("PM_TARGET_REALIZATION_DUAL_YES_MAX_GAP_PP"))
-    if dual_max_gap_pp is None:
-        dual_max_gap_pp = 8.0
-    if target_prob is not None and second_prob is not None:
-        dual_gap_pp = abs(float(target_prob) - float(second_prob)) * 100.0
-    dual_active = bool(
-        second_bucket
-        and dual_gap_pp is not None
-        and dual_gap_pp <= float(dual_max_gap_pp) + 1e-9
-    )
-    plan["yes_dual_head_active"] = dual_active
-    plan["yes_dual_head_gap_pp"] = dual_gap_pp
-    plan["yes_dual_head_max_gap_pp"] = float(dual_max_gap_pp)
-    remote_indices: List[int] = []
-    remote_weight_sum = 0.0
-    for idx, leg in enumerate(legs):
-        if not isinstance(leg, dict):
-            continue
-        label = _bucket_label(leg)
-        if label not in probs:
-            continue
-        prob = max(0.0, min(1.0, float(probs[label])))
-        side = str(leg.get("side") or "").strip().upper()
-        role = str(leg.get("role") or "").strip()
-        reliability = _to_float(leg.get("target_realization_reliability"))
-        if reliability is None:
-            reliability = 1.0
-        price = _to_float(leg.get("price"))
-        current_notional = _to_float(leg.get("current_notional")) or 0.0
-        if role == "remote_no" and side == "NO":
-            remote_indices.append(idx)
-            remote_weight_sum += max(0.0, min(1.0, 1.0 - prob))
-            continue
-        if side != "YES" or role not in {"target_yes", "second_target_yes"}:
-            continue
-        if role == "second_target_yes" and not dual_active:
-            leg["yes_dual_head_active"] = False
-            leg["yes_dual_head_gap_pp"] = dual_gap_pp
-            leg["yes_dual_head_max_gap_pp"] = float(dual_max_gap_pp)
-            leg["block_reason"] = "second_target_gap_too_wide"
-            leg["target_notional_before_caps"] = 0.0
-            leg["target_notional"] = 0.0
-            leg["delta_notional"] = -current_notional
-            if price is not None and price > 1e-9:
-                leg["target_size"] = 0.0
-                leg["delta_size"] = -current_notional / price
-            leg["action"] = "over_target" if current_notional > 0.50 else "hold"
-            continue
-        target_notional_before_caps = max(0.0, yes_pool * float(kelly_fraction) * prob * float(reliability))
-        target_notional = min(target_notional_before_caps, yes_cap) if yes_cap > 0 else target_notional_before_caps
-        delta = target_notional - current_notional
-        leg["target_notional_before_caps"] = target_notional_before_caps
-        leg["target_notional_cap_usdc"] = yes_cap
-        leg["target_notional_cap_applied"] = bool(yes_cap > 0 and target_notional_before_caps > yes_cap + 1e-9)
-        leg["target_notional"] = target_notional
-        leg["delta_notional"] = delta
-        leg["yes_dual_head_active"] = dual_active if role == "second_target_yes" else leg.get("yes_dual_head_active")
-        leg["yes_dual_head_gap_pp"] = dual_gap_pp if role in {"target_yes", "second_target_yes"} else leg.get("yes_dual_head_gap_pp")
-        leg["yes_dual_head_max_gap_pp"] = float(dual_max_gap_pp) if role in {"target_yes", "second_target_yes"} else leg.get("yes_dual_head_max_gap_pp")
-        if price is not None and price > 1e-9:
-            leg["target_size"] = target_notional / price
-            leg["delta_size"] = delta / price
-        leg["action"] = "add" if delta > 0.50 else "over_target" if delta < -0.50 else "hold"
-    if not remote_indices or remote_weight_sum <= 1e-12:
-        return
-    remote_pool = max(0.0, no_pool * float(kelly_fraction))
-    plan["remote_no_sizing_pool_usdc"] = remote_pool
-    for idx in remote_indices:
-        leg = legs[idx]
-        if not isinstance(leg, dict):
-            continue
-        label = _bucket_label(leg)
-        prob = max(0.0, min(1.0, float(probs.get(label, 0.0))))
-        weight = max(0.0, min(1.0, 1.0 - prob))
-        price = _to_float(leg.get("price"))
-        current_notional = _to_float(leg.get("current_notional")) or 0.0
-        target_notional_before_caps = remote_pool * weight / remote_weight_sum
-        target_notional = min(target_notional_before_caps, no_cap) if no_cap > 0 else target_notional_before_caps
-        delta = target_notional - current_notional
-        leg["remote_no_sizing_mode"] = "ring_probability_weighted_by_no_posterior"
-        leg["remote_no_sizing_weight"] = weight
-        leg["remote_no_sizing_weight_sum"] = remote_weight_sum
-        leg["remote_no_sizing_pool_usdc"] = remote_pool
-        leg["target_notional_before_caps"] = target_notional_before_caps
-        leg["target_notional_cap_usdc"] = no_cap
-        leg["target_notional_cap_applied"] = bool(no_cap > 0 and target_notional_before_caps > no_cap + 1e-9)
-        leg["target_notional"] = target_notional
-        leg["delta_notional"] = delta
-        if price is not None and price > 1e-9:
-            leg["target_size"] = target_notional / price
-            leg["delta_size"] = delta / price
-        leg["action"] = "add" if delta > 0.50 else "over_target" if delta < -0.50 else "hold"
-
-
 def _recompute_candidate_edge_fields(block: Dict[str, Any]) -> None:
     q_entry = _to_float(block.get("q_entry") or block.get("q_bayes_posterior"))
     ask = _to_float(block.get("ask") or block.get("best_ask"))
@@ -480,7 +366,6 @@ def _sync_posterior_probability_aliases(
             _walk_sync_probability_blocks(value, probs, ranked)
     plan = payload.get("target_realization_capital_plan")
     if isinstance(plan, dict):
-        _rescale_capital_plan_from_probabilities(plan, probs)
         plan["posterior_aliases_synced_by_ctp_materializer"] = True
     ssot = payload.get("auto_trade_ssot")
     if isinstance(ssot, dict):
@@ -602,9 +487,18 @@ def _refresh_peak_estimator(payload: Dict[str, Any]) -> bool:
         old_peak = features.get("peak_estimator") if isinstance(features.get("peak_estimator"), Mapping) else {}
         next_peak = dict(peak)
         old_regime = old_peak.get("observed_temperature_trajectory_regime_v1") if isinstance(old_peak, Mapping) else {}
-        new_regime = peak.get("observed_temperature_trajectory_regime_v1")
+        new_regime = next_peak.get("observed_temperature_trajectory_regime_v1")
+        peak_source = str(next_peak.get("source") or "").strip()
+        if (
+            isinstance(old_regime, Mapping)
+            and old_regime
+            and not isinstance(new_regime, Mapping)
+            and peak_source not in {"locked_trusted_observed", "locked_observed"}
+        ):
+            next_peak["observed_temperature_trajectory_regime_v1"] = dict(old_regime)
+            new_regime = next_peak.get("observed_temperature_trajectory_regime_v1")
         peak_changed = dict(old_peak) != next_peak
-        sync_changed = _sync_regime_v1_momentum_fields(features, peak)
+        sync_changed = _sync_regime_v1_momentum_fields(features, next_peak)
         if not peak_changed and not sync_changed:
             continue
         features["peak_estimator"] = next_peak
@@ -915,6 +809,10 @@ def _temperature_trajectory_component_meta(
     posterior: Mapping[str, Any],
     payload: Mapping[str, Any],
 ) -> Dict[str, Any]:
+    features = _payload_likelihood_features(payload)
+    peak = features.get("peak_estimator") if isinstance(features.get("peak_estimator"), Mapping) else {}
+    if str(peak.get("source") or "").strip() in {"locked_trusted_observed", "locked_observed"}:
+        return {}
     source_components = posterior.get("source_components") if isinstance(posterior, Mapping) else None
     candidates: List[Mapping[str, Any]] = []
     if isinstance(source_components, Mapping):
@@ -941,6 +839,15 @@ def _temperature_trajectory_component_meta(
         precision = _to_float(component.get("precision"))
         if precision is None:
             precision = _to_float(raw.get("precision"))
+        regime_precision = _to_float(
+            regime.get("precision")
+            if regime.get("precision") is not None
+            else regime.get("effective_evidence")
+            if regime.get("effective_evidence") is not None
+            else regime.get("evidence")
+        )
+        if regime_precision is not None:
+            precision = regime_precision
         mean_c = _to_float(component.get("mean_c"))
         if mean_c is None:
             mean_c = _to_float(raw.get("mean_c") if raw.get("mean_c") is not None else raw.get("path_mu_c"))
@@ -1002,6 +909,42 @@ def _temperature_trajectory_component_meta(
             "dedupe_policy": raw.get("dedupe_policy") or regime.get("dedupe_policy") or "",
             "weaker_than_hard_source": True,
         }
+    regime = _available_regime_v1(payload)
+    if regime:
+        precision = _to_float(
+            regime.get("precision")
+            if regime.get("precision") is not None
+            else regime.get("effective_evidence")
+            if regime.get("effective_evidence") is not None
+            else regime.get("evidence")
+        )
+        evidence_base = _to_float(regime.get("evidence_base"))
+        evidence_scale = _to_float(regime.get("evidence_scale"))
+        return {
+            "enabled": precision is not None and precision > 0.0,
+            "evidence": precision,
+            "evidence_base": evidence_base,
+            "evidence_scale": evidence_scale,
+            "source": regime.get("source") or "observed_temperature_trajectory_regime_v1",
+            "status": "enabled" if precision is not None and precision > 0.0 else "zero_scaled",
+            "mu_c": _to_float(regime.get("mean_c") if regime.get("mean_c") is not None else regime.get("path_mu_c")),
+            "sigma_c": _to_float(
+                regime.get("sigma_c") if regime.get("sigma_c") is not None else regime.get("path_sigma_c")
+            ),
+            "path_mu_c": _to_float(regime.get("path_mu_c")),
+            "path_sigma_c": _to_float(regime.get("path_sigma_c")),
+            "rate_c_per_hour": _to_float(regime.get("rate_hat_c_per_hour")),
+            "rate_hat_c_per_hour": _to_float(regime.get("rate_hat_c_per_hour")),
+            "accel_hat_c_per_hour2": _to_float(regime.get("accel_hat_c_per_hour2")),
+            "forcing_turn_probability": regime.get("forcing_turn_probability"),
+            "forcing_onset_probs": regime.get("forcing_onset_probs"),
+            "forcing_contributors": regime.get("forcing_contributors"),
+            "regime_probs": regime.get("regime_probs"),
+            "role": regime.get("role") or "observed_realization",
+            "source_class": regime.get("source_class") or "airport_temperature_path",
+            "dedupe_policy": regime.get("dedupe_policy") or "",
+            "weaker_than_hard_source": True,
+        }
     return {}
 
 
@@ -1049,6 +992,85 @@ def _inactive_temperature_trajectory_meta(payload: Mapping[str, Any]) -> Dict[st
         "source_class": "airport_temperature_path",
         "peak_estimator_source": peak_source,
     }
+
+
+def _write_temperature_trajectory_overlay_fields(
+    payload: Dict[str, Any],
+    meta: Mapping[str, Any],
+    *,
+    active: bool,
+) -> None:
+    strength = _to_float(meta.get("evidence"))
+    strength_base = _to_float(meta.get("evidence_base"))
+    strength_scale = _to_float(meta.get("evidence_scale"))
+    if strength is None:
+        strength = 0.0
+    payload["temperature_trajectory_overlay_strength"] = float(strength)
+    if strength_base is not None:
+        payload["temperature_trajectory_overlay_strength_base"] = float(strength_base)
+    else:
+        payload.pop("temperature_trajectory_overlay_strength_base", None)
+    if strength_scale is not None:
+        payload["temperature_trajectory_overlay_strength_scale"] = float(strength_scale)
+    else:
+        payload.pop("temperature_trajectory_overlay_strength_scale", None)
+    overlay = {
+        "schema": "temperature_trajectory_overlay_strength_v1",
+        "role": "metar_strong_likelihood_internal_diagnostic",
+        "active": bool(active),
+        "strength": float(strength),
+        "strength_base": strength_base,
+        "strength_scale": strength_scale,
+        "source": meta.get("source"),
+        "status": meta.get("status"),
+        "na_reason": meta.get("na_reason"),
+        "replacement": "layer_contributions.metar_strong_likelihood",
+        "production_probability_allowed": False,
+    }
+    payload["temperature_trajectory_overlay"] = {
+        key: value
+        for key, value in overlay.items()
+        if value not in (None, "")
+    }
+
+
+def _drop_temperature_trajectory_source_components(posterior: Any) -> None:
+    if not isinstance(posterior, dict):
+        return
+    source_components = posterior.get("source_components")
+    if not isinstance(source_components, dict):
+        return
+
+    def _is_temperature_trajectory_component(item: Any) -> bool:
+        if not isinstance(item, Mapping):
+            return False
+        raw = item.get("raw") if isinstance(item.get("raw"), Mapping) else {}
+        return bool(
+            str(item.get("group") or "") == "temperature_trajectory"
+            or str(item.get("source_id") or "") == "temperature_trajectory"
+            or str(raw.get("source") or "") == "observed_temperature_trajectory_regime_v1"
+        )
+
+    components = source_components.get("components")
+    if isinstance(components, list):
+        source_components["components"] = [
+            item for item in components if not _is_temperature_trajectory_component(item)
+        ]
+    groups = source_components.get("groups")
+    if isinstance(groups, list):
+        next_groups: List[Any] = []
+        for group in groups:
+            if _is_temperature_trajectory_component(group):
+                continue
+            if isinstance(group, dict):
+                members = group.get("members")
+                if isinstance(members, list):
+                    group = dict(group)
+                    group["members"] = [
+                        member for member in members if not _is_temperature_trajectory_component(member)
+                    ]
+            next_groups.append(group)
+        source_components["groups"] = next_groups
 
 
 def _probability_matches(value: Any, expected: float, *, tolerance: float = 1e-9) -> bool:
@@ -1185,8 +1207,8 @@ def _payload_needs_top_level_ctp_sync(payload: Mapping[str, Any]) -> bool:
                 return True
             if plan_prob is None or abs(float(plan_prob) - expected_prob) > 1e-9:
                 return True
-    evidence = _to_float(payload.get("q_bayes_temperature_trajectory_evidence"))
-    if evidence is None or evidence <= 0.0:
+    strength = _to_float(payload.get("temperature_trajectory_overlay_strength"))
+    if strength is None or strength <= 0.0:
         return True
     return False
 
@@ -1224,11 +1246,13 @@ def _ensure_summary_cache_table(conn: sqlite3.Connection) -> None:
 
 
 def _summary_cache_exists(conn: sqlite3.Connection, fact_id: int) -> bool:
-    _ensure_summary_cache_table(conn)
-    row = conn.execute(
-        "SELECT 1 FROM event_fact_summary_cache WHERE fact_id = ? LIMIT 1",
-        (int(fact_id),),
-    ).fetchone()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM event_fact_summary_cache WHERE fact_id = ? LIMIT 1",
+            (int(fact_id),),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
     return bool(row)
 
 
@@ -1239,40 +1263,76 @@ def _upsert_summary_cache(
     row: sqlite3.Row,
     payload: Mapping[str, Any],
     created_at: str,
-) -> bool:
+) -> Dict[str, Any]:
     if int(fact_id or 0) <= 0 or not isinstance(payload, Mapping):
-        return False
-    _ensure_summary_cache_table(conn)
-    summary = dict(payload)
-    summary.setdefault("slug", row["slug"])
-    summary.setdefault("event_date", row["event_date"])
-    summary.setdefault("run_date", row["run_date"] or row["event_date"])
-    summary.setdefault("fact_as_of", row["fact_as_of"])
-    summary["summary_cache_source"] = "event_fact_summary_cache"
-    summary["summary_cache_version"] = SUMMARY_CACHE_VERSION
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO event_fact_summary_cache(
-            fact_id, slug, event_date, run_date, fact_as_of, summary_json, created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            int(fact_id),
-            str(row["slug"] or ""),
-            str(row["event_date"] or ""),
-            str(row["run_date"] or row["event_date"] or ""),
-            str(row["fact_as_of"] or ""),
-            json.dumps(summary, ensure_ascii=False, separators=(",", ":")),
-            created_at,
-        ),
+        return {"ok": False, "block_reason": "invalid_fact_or_payload"}
+    import weather_fact_snapshot_writer
+
+    plan = weather_fact_snapshot_writer.build_fact_summary_cache_repair_plan(
+        fact_id=int(fact_id),
+        slug=str(row["slug"] or ""),
+        event_date=str(row["event_date"] or ""),
+        run_date=str(row["run_date"] or row["event_date"] or ""),
+        fact_as_of=str(row["fact_as_of"] or ""),
+        payload=payload,
+        write_reason="ctp_materializer_summary_cache_repair",
+        enable_apply_contract=True,
     )
-    return True
+    result = weather_fact_snapshot_writer.apply_fact_summary_cache_repair_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=False,
+        created_at=created_at,
+    )
+    return dict(result)
 
 
 def _posterior_probs(posterior: Mapping[str, Any]) -> Dict[str, float]:
     payload = {"posterior_temperature_distribution": posterior}
     return _ctp_probs(payload)
+
+
+def _posterior_from_distribution_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    rows = payload.get("distribution")
+    if not isinstance(rows, list):
+        return {}
+    raw_probs: List[Tuple[str, float]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        label = _bucket_label(row)
+        if not label:
+            continue
+        prob = None
+        for key in ROW_PROBABILITY_FIELDS:
+            prob = _to_float(row.get(key))
+            if prob is not None:
+                break
+        if prob is None:
+            continue
+        raw_probs.append((label, max(0.0, float(prob))))
+    total = sum(prob for _label, prob in raw_probs)
+    if total <= 0.0:
+        return {}
+    bucket_probabilities = [
+        {"outcome": label, "bucket": label, "probability": float(prob) / total}
+        for label, prob in raw_probs
+    ]
+    return {
+        "version": "continuous_temperature_posterior_v1_materialized_from_distribution",
+        "target_variable": "settlement_daily_max_c",
+        "status": "ok",
+        "bucket_probabilities": bucket_probabilities,
+        "cdf_values": [],
+        "grid": [],
+        "quantiles_c": {},
+        "quantile_grid": [],
+        "source_components": {},
+        "calibration": {},
+        "observation_constraints": {"d0_violation_count": 0},
+        "fallback_source": "distribution_probability_fields",
+    }
 
 
 def _materialize_payload(payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1283,6 +1343,11 @@ def _materialize_payload(payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], Di
     regime_replay_needed = bool(regime_replay_reason)
     force_replay = bool(peak_refreshed or regime_replay_needed)
     posterior = _posterior_temperature_distribution(out, force_replay=force_replay)
+    if not isinstance(posterior, Mapping) or not REQUIRED_POSTERIOR_KEYS.issubset(posterior.keys()):
+        fallback_posterior = _posterior_from_distribution_payload(out)
+        if fallback_posterior:
+            posterior = fallback_posterior
+            out["ctp_replay_reason"] = out.get("ctp_replay_reason") or "distribution_probability_fields_fallback"
     if not isinstance(posterior, Mapping) or not REQUIRED_POSTERIOR_KEYS.issubset(posterior.keys()):
         return out, {
             "ok": False,
@@ -1336,9 +1401,9 @@ def _materialize_payload(payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], Di
         out["ctp_replay_reason"] = "peak_estimator_refreshed_by_materializer"
     trajectory_meta = _temperature_trajectory_component_meta(posterior, out)
     if trajectory_meta:
-        out["q_bayes_temperature_trajectory_evidence"] = trajectory_meta.get("evidence")
-        out["q_bayes_temperature_trajectory_evidence_base"] = trajectory_meta.get("evidence_base")
-        out["q_bayes_temperature_trajectory_evidence_scale"] = trajectory_meta.get("evidence_scale")
+        _write_temperature_trajectory_overlay_fields(out, trajectory_meta, active=True)
+        for suffix in ("evidence", "evidence_base", "evidence_scale"):
+            out.pop(f"q_bayes_temperature_trajectory_{suffix}", None)
         out["q_bayes_temperature_trajectory_enabled"] = trajectory_meta.get("enabled")
         out["q_bayes_temperature_trajectory_source"] = trajectory_meta.get("source")
         out["q_bayes_temperature_trajectory_status"] = trajectory_meta.get("status")
@@ -1364,11 +1429,12 @@ def _materialize_payload(payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], Di
         out["q_bayes_temperature_trajectory_forcing_contributors"] = trajectory_meta.get("forcing_contributors")
         out["q_bayes_temperature_trajectory_regime_probs"] = trajectory_meta.get("regime_probs")
     else:
+        _drop_temperature_trajectory_source_components(out.get("posterior_temperature_distribution"))
         for key in list(out.keys()):
             if str(key).startswith("q_bayes_temperature_trajectory_"):
                 out.pop(key, None)
         inactive_meta = _inactive_temperature_trajectory_meta(out)
-        out["q_bayes_temperature_trajectory_evidence"] = inactive_meta.get("evidence")
+        _write_temperature_trajectory_overlay_fields(out, inactive_meta, active=False)
         out["q_bayes_temperature_trajectory_enabled"] = inactive_meta.get("enabled")
         out["q_bayes_temperature_trajectory_status"] = inactive_meta.get("status")
         out["q_bayes_temperature_trajectory_na_reason"] = inactive_meta.get("na_reason")
@@ -1403,6 +1469,218 @@ def _materialize_payload(payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], Di
     }
 
 
+def _row_value(row: Mapping[str, Any], key: str, default: Any = None) -> Any:
+    try:
+        return row[key]
+    except Exception:
+        if isinstance(row, Mapping):
+            return row.get(key, default)
+        return default
+
+
+def _strip_stale_writer_metadata(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    out = dict(payload or {})
+    for key in (
+        "fact_snapshot_id",
+        "source_observations",
+        "source_acquisition_trace",
+        "source_latency_trace",
+        "fact_layer_state",
+        "db_write_guard",
+        "lineage_state",
+        "phase0_fact_json_contract",
+    ):
+        out.pop(key, None)
+    return out
+
+
+def _materializer_source_trace(
+    *,
+    row: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    parent_raw_json: str,
+    created_at: str,
+) -> Dict[str, Any]:
+    fact_as_of = str(_row_value(row, "fact_as_of") or payload.get("fact_as_of") or "").strip()
+    event_date = str(_row_value(row, "event_date") or payload.get("event_date") or "").strip()
+    station_id = str(payload.get("station_id") or "ZUUU").strip()
+    raw_sha256 = hashlib.sha256(str(parent_raw_json or "").encode("utf-8")).hexdigest()
+    raw_ref = f"event_fact_history:{_row_value(row, 'id')}"
+    source_payload = {
+        "source_payload_schema": "ctp_materializer_source_payload_v1",
+        "parent_fact_id": _row_value(row, "id"),
+        "parent_fact_as_of": fact_as_of,
+        "write_reason": "ctp_latest_materialization",
+    }
+    observation_obj = build_source_observation(
+        source_id=CTP_MATERIALIZER_SOURCE_ID,
+        station_id=station_id,
+        event_date=event_date,
+        valid_time=fact_as_of or created_at,
+        fetched_at=created_at,
+        response_completed_at=created_at,
+        raw_ref=raw_ref,
+        raw_payload=parent_raw_json,
+        parser_version="ctp_materializer_source_trace_v1",
+        overrides={
+            "source_class": "unknown_source",
+            "role": "derived_posterior_materialization",
+            "hard_eligible": False,
+            "demotion_reason": "derived_materialization_not_weather_observation",
+        },
+        payload=source_payload,
+    )
+    observation = observation_obj.as_dict(include_payload=True)
+    source_event_id = observation_obj.source_event_id
+    source_observation_id = observation_obj.source_observation_id
+    return {
+        "schema": "ctp_materializer_source_trace_v1",
+        "read_only": True,
+        "trace_built_at": created_at,
+        "station_id": station_id,
+        "event_date": event_date,
+        "source_observations": [observation],
+        "source_event_ids": [source_event_id],
+        "source_observation_ids": [source_observation_id],
+        "source_latency_trace": [
+            {
+                "source_event_id": source_event_id,
+                "source_observation_id": source_observation_id,
+                "source_id": CTP_MATERIALIZER_SOURCE_ID,
+                "source_class": "unknown_source",
+                "role": "derived_posterior_materialization",
+                "station_id": station_id,
+                "event_date": event_date,
+                "valid_time": fact_as_of or created_at,
+                "fetched_at": created_at,
+                "raw_ref": raw_ref,
+                "raw_sha256": raw_sha256,
+                "hard_eligible": False,
+                "demotion_reason": "derived_materialization_not_weather_observation",
+            }
+        ],
+        "source_class_counts": {"unknown_source": 1},
+        "hard_observation_candidate_ids": [],
+        "diagnostic_current_ids": [],
+        "forecast_weak_ids": [],
+        "guards": {
+            "writes_archive_db": False,
+            "writes_facts_sqlite": False,
+            "writes_auto_trade_decisions": False,
+            "places_orders": False,
+            "historical_backfill": False,
+            "restarts_launchd": False,
+        },
+        "next_boundary": "weather_fact_snapshot_writer_apply_contract",
+    }
+
+
+def build_ctp_materialized_fact_snapshot_writer_apply_plan(
+    *,
+    row: Mapping[str, Any],
+    original_payload: Mapping[str, Any],
+    materialized_payload: Mapping[str, Any],
+    parent_raw_json: str,
+    created_at: str = "",
+) -> Dict[str, Any]:
+    import weather_fact_snapshot_writer
+
+    created_at_text = str(created_at or datetime.now(timezone.utc).isoformat())
+    slug = str(_row_value(row, "slug") or materialized_payload.get("slug") or "").strip()
+    event_date = str(_row_value(row, "event_date") or materialized_payload.get("event_date") or "").strip()
+    run_date = str(_row_value(row, "run_date") or materialized_payload.get("run_date") or event_date).strip()
+    fact_as_of = str(_row_value(row, "fact_as_of") or materialized_payload.get("fact_as_of") or created_at_text).strip()
+    payload_for_writer = _strip_stale_writer_metadata(materialized_payload)
+    payload_for_writer.update(
+        {
+            "slug": slug,
+            "event_date": event_date,
+            "run_date": run_date,
+            "fact_as_of": fact_as_of,
+            "composer_version": CTP_MATERIALIZER_COMPOSER_VERSION,
+            "parent_composer_version": str(_row_value(row, "composer_version") or ""),
+            "parent_fact_id": _row_value(row, "id"),
+            "parent_fact_as_of": fact_as_of,
+            "ctp_materializer_state": {
+                "schema": "ctp_materializer_state_v1",
+                "write_owner": "weather_fact_snapshot_writer",
+                "write_reason": "ctp_latest_materialization",
+                "source_id": CTP_MATERIALIZER_SOURCE_ID,
+                "parent_fact_id": _row_value(row, "id"),
+                "parent_fact_as_of": fact_as_of,
+                "fact_as_of_preserved_from_parent": True,
+                "created_at_represents_write_time_only": True,
+                "historical_backfill": False,
+            },
+        }
+    )
+    source_trace = _materializer_source_trace(
+        row=row,
+        payload=original_payload,
+        parent_raw_json=parent_raw_json,
+        created_at=created_at_text,
+    )
+    return weather_fact_snapshot_writer.build_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=payload_for_writer,
+        current_fact_id=int(_row_value(row, "id") or 0) or None,
+        current_fact_as_of=fact_as_of,
+        current_payload=original_payload,
+        source_acquisition_trace=source_trace,
+        composer_version=CTP_MATERIALIZER_COMPOSER_VERSION,
+        write_reason="ctp_latest_materialization",
+        posterior_run_id=str(
+            original_payload.get("posterior_run_id")
+            or (
+                original_payload.get("lineage_state", {}).get("posterior_run_id")
+                if isinstance(original_payload.get("lineage_state"), Mapping)
+                else ""
+            )
+            or ""
+        ),
+        include_payload=True,
+        enable_apply_contract=True,
+        write_latest=True,
+    )
+
+
+def _date_key(value: Any) -> str:
+    return str(value or "").strip().split("T", 1)[0]
+
+
+def _is_historical_event_date(event_date: Any, *, today_key: str) -> bool:
+    event_key = _date_key(event_date)
+    today = _date_key(today_key)
+    return bool(event_key and today and event_key < today)
+
+
+@contextmanager
+def _connect_run_db(db_path: Path, *, apply: bool, timeout_sec: float):
+    timeout_val = max(1.0, float(timeout_sec or 30.0))
+    busy_ms = int(max(1000.0, timeout_val * 1000.0))
+    if apply:
+        with connect_archive_db_rw(
+            db_path,
+            owner="materialize_ctp_latest_facts.apply",
+            timeout_sec=timeout_val,
+            busy_timeout_ms=busy_ms,
+            row_factory=True,
+        ) as conn:
+            yield conn
+        return
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=timeout_val)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute(f"PRAGMA busy_timeout={busy_ms}")
+        yield conn
+    finally:
+        conn.close()
+
+
 def _candidate_rows(conn: sqlite3.Connection, slug_like: str, limit: Optional[int]) -> List[sqlite3.Row]:
     limit_sql = " LIMIT ?" if limit is not None and limit > 0 else ""
     params: List[Any] = [slug_like]
@@ -1428,31 +1706,34 @@ def run(
     slug_like: str,
     limit: Optional[int],
     timeout_sec: float = 30.0,
+    allow_historical: bool = False,
 ) -> Dict[str, Any]:
-    conn = sqlite3.connect(str(db_path), timeout=max(1.0, float(timeout_sec or 30.0)))
-    conn.execute(f"PRAGMA busy_timeout={int(max(1000.0, float(timeout_sec or 30.0) * 1000.0))}")
-    conn.row_factory = sqlite3.Row
-    rows = _candidate_rows(conn, slug_like, limit)
-    history_cols = _table_columns(conn, "event_fact_history")
     now = datetime.now(timezone.utc).isoformat()
-    report: Dict[str, Any] = {
-        "ok": True,
-        "apply": bool(apply),
-        "db_path": str(db_path),
-        "slug_like": slug_like,
-        "scanned_latest_facts": len(rows),
-        "already_complete": 0,
-        "would_append_event_fact_history_rows": 0,
-        "applied_event_fact_history_rows": 0,
-        "would_upsert_event_fact_summary_cache_rows": 0,
-        "applied_event_fact_summary_cache_rows": 0,
-        "items": [],
-    }
-    try:
+    today_et = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    with _connect_run_db(db_path, apply=bool(apply), timeout_sec=float(timeout_sec or 30.0)) as conn:
+        rows = _candidate_rows(conn, slug_like, limit)
+        report: Dict[str, Any] = {
+            "ok": True,
+            "apply": bool(apply),
+            "allow_historical": bool(allow_historical),
+            "today_et": today_et,
+            "db_path": str(db_path),
+            "slug_like": slug_like,
+            "scanned_latest_facts": len(rows),
+            "already_complete": 0,
+            "would_append_event_fact_history_rows": 0,
+            "applied_event_fact_history_rows": 0,
+            "would_upsert_event_fact_summary_cache_rows": 0,
+            "applied_event_fact_summary_cache_rows": 0,
+            "historical_apply_blocked": 0,
+            "items": [],
+        }
         for row in rows:
-            payload = _json_obj(row["fact_json"])
+            raw_fact_json = row["fact_json"]
+            payload = _json_obj(raw_fact_json)
             if not payload or not isinstance(payload.get("distribution"), list):
                 continue
+            historical_event = _is_historical_event_date(row["event_date"], today_key=today_et)
             if (
                 _posterior_complete(payload)
                 and not _posterior_needs_regime_v1_replay(payload)
@@ -1474,16 +1755,34 @@ def run(
                         "ok": True,
                         "already_complete": True,
                         "summary_cache_missing": True,
+                        "historical_event": bool(historical_event),
                     }
-                    if apply and _upsert_summary_cache(
-                        conn,
-                        fact_id=int(row["id"]),
-                        row=row,
-                        payload=payload,
-                        created_at=now,
-                    ):
-                        item["summary_cache_upserted"] = True
-                        report["applied_event_fact_summary_cache_rows"] += 1
+                    if apply and historical_event and not allow_historical:
+                        item["summary_cache_upsert_blocked_reason"] = "historical_apply_requires_explicit_allow"
+                        report["historical_apply_blocked"] += 1
+                        report["ok"] = False
+                        report["items"].append(item)
+                        continue
+                    if apply:
+                        summary_result = _upsert_summary_cache(
+                            conn,
+                            fact_id=int(row["id"]),
+                            row=row,
+                            payload=payload,
+                            created_at=now,
+                        )
+                        if summary_result.get("ok") and summary_result.get("summary_cache_written"):
+                            item["summary_cache_upserted"] = True
+                            item["writer_apply_result_schema"] = summary_result.get("schema")
+                            item["write_owner"] = summary_result.get("write_owner")
+                            report["applied_event_fact_summary_cache_rows"] += 1
+                        else:
+                            item["summary_cache_upsert_blocked_reason"] = str(
+                                summary_result.get("block_reason")
+                                or summary_result.get("error")
+                                or "summary_cache_repair_writer_apply_failed"
+                            )
+                            report["ok"] = False
                     report["items"].append(item)
                 continue
             next_payload, meta = _materialize_payload(payload)
@@ -1501,52 +1800,54 @@ def run(
             report["would_append_event_fact_history_rows"] += 1
             if not apply:
                 continue
-            insert_cols = [col for col in history_cols if col != "id"]
-            values = []
-            for col in insert_cols:
-                if col == "fact_json":
-                    values.append(json.dumps(next_payload, ensure_ascii=False, separators=(",", ":")))
-                elif col == "created_at":
-                    values.append(now)
-                else:
-                    values.append(row[col])
-            placeholders = ",".join("?" for _ in insert_cols)
-            col_sql = ",".join(insert_cols)
-            cur = conn.execute(
-                f"INSERT INTO event_fact_history({col_sql}) VALUES ({placeholders})",
-                values,
-            )
-            new_fact_id = int(cur.lastrowid)
-            conn.execute(
-                """
-                UPDATE event_fact_latest
-                SET fact_id = ?, updated_at = ?
-                WHERE slug = ? AND event_date = ?
-                """,
-                (new_fact_id, now, row["slug"], row["event_date"]),
-            )
-            if _upsert_summary_cache(
-                conn,
-                fact_id=new_fact_id,
+            if historical_event and not allow_historical:
+                item["apply_blocked_reason"] = "historical_apply_requires_explicit_allow"
+                item["historical_event"] = True
+                report["historical_apply_blocked"] += 1
+                report["ok"] = False
+                continue
+            plan = build_ctp_materialized_fact_snapshot_writer_apply_plan(
                 row=row,
-                payload=next_payload,
+                original_payload=payload,
+                materialized_payload=next_payload,
+                parent_raw_json=str(raw_fact_json or ""),
                 created_at=now,
-            ):
+            )
+            import weather_fact_snapshot_writer
+
+            apply_result = weather_fact_snapshot_writer.apply_fact_snapshot_write_plan(
+                conn,
+                plan,
+                allow_apply=True,
+                commit=False,
+                created_at=now,
+            )
+            apply_summary = weather_fact_snapshot_writer.compact_fact_snapshot_writer_apply_result_for_lineage(
+                apply_result
+            )
+            item["writer_apply_result_summary"] = apply_summary
+            if not apply_result.get("ok"):
+                item["apply_blocked_reason"] = str(
+                    apply_result.get("block_reason") or apply_result.get("error") or "writer_apply_failed"
+                )
+                report["ok"] = False
+                continue
+            new_fact_id = int(apply_result.get("fact_id") or 0)
+            if apply_result.get("summary_cache_written"):
                 item["summary_cache_upserted"] = True
                 report["applied_event_fact_summary_cache_rows"] += 1
             report["would_upsert_event_fact_summary_cache_rows"] += 1
             item["new_fact_id"] = new_fact_id
+            item["writer_apply_result_schema"] = apply_result.get("schema")
+            item["write_owner"] = apply_result.get("write_owner")
+            item["latest_repointed"] = bool(apply_result.get("latest_repointed"))
+            item["post_apply_persisted_verification_ok"] = bool(
+                apply_summary.get("post_apply_persisted_verification_ok")
+            )
             report["applied_event_fact_history_rows"] += 1
         if apply:
             conn.commit()
-    except Exception as exc:
-        if apply:
-            conn.rollback()
-        report["ok"] = False
-        report["error"] = str(exc)
-    finally:
-        conn.close()
-    return report
+        return report
 
 
 def main() -> int:
@@ -1556,6 +1857,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--timeout-sec", type=float, default=30.0)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--allow-historical",
+        action="store_true",
+        help="Allow --apply to write materialized facts for event_date before ET today",
+    )
     args = parser.parse_args()
     report = run(
         Path(args.db),
@@ -1563,6 +1869,7 @@ def main() -> int:
         slug_like=str(args.slug_like),
         limit=int(args.limit) if int(args.limit or 0) > 0 else None,
         timeout_sec=float(args.timeout_sec or 30.0),
+        allow_historical=bool(args.allow_historical),
     )
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if report.get("ok") else 1

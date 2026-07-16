@@ -25,6 +25,12 @@ if str(ROOT) not in sys.path:
 
 DEFAULT_URL = "http://127.0.0.1:3002/api/ui_snapshot_summary?limit=24&refresh=1"
 DEFAULT_TOLERANCE = 5e-4
+REPORTED_PHYSICAL_X_SSOT_SCHEMAS = frozenset(
+    {
+        "sequential_temperature_posterior_ssot_v3_reported_x",
+        "sequential_temperature_posterior_ssot_v4_reported_x",
+    }
+)
 
 
 def _to_float(value: Any) -> float | None:
@@ -158,7 +164,52 @@ def _ctp_probability_map(item: Mapping[str, Any]) -> tuple[dict[str, float], str
     return out, source
 
 
+def _reported_x_probability_map(item: Mapping[str, Any]) -> tuple[dict[str, float], str, list[str]]:
+    ssot = item.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping):
+        return {}, "", []
+    schema = _label(ssot.get("schema"))
+    if schema not in REPORTED_PHYSICAL_X_SSOT_SCHEMAS:
+        return {}, "", []
+    raw_rows = ssot.get("reported_physical_x_distribution")
+    if isinstance(raw_rows, Mapping):
+        iterator: Sequence[Any] = [
+            {"temperature_c": temperature_c, "probability": probability}
+            for temperature_c, probability in raw_rows.items()
+        ]
+    elif isinstance(raw_rows, list):
+        iterator = raw_rows
+    else:
+        return {}, "", ["posterior_ssot_fact.reported_physical_x_distribution_missing"]
+    out: dict[str, float] = {}
+    warnings: list[str] = []
+    for index, row in enumerate(iterator):
+        if not isinstance(row, Mapping):
+            continue
+        temperature_c = _to_float(
+            row.get("temperature_c")
+            if row.get("temperature_c") is not None
+            else row.get("value_c")
+            if row.get("value_c") is not None
+            else row.get("x")
+        )
+        probability = _prob(
+            row.get("probability")
+            if row.get("probability") is not None
+            else row.get("mass")
+        )
+        if temperature_c is None or probability is None:
+            warnings.append(f"posterior_ssot_fact.reported_physical_x_distribution[{index}].invalid")
+            continue
+        label = f"{float(temperature_c):g}°C"
+        out[label] = float(probability)
+    return out, "posterior_ssot_fact.reported_physical_x_distribution", warnings
+
+
 def _canonical_probability_map(item: Mapping[str, Any]) -> tuple[dict[str, float], str, list[str]]:
+    reported_x_map, reported_x_source, reported_x_warnings = _reported_x_probability_map(item)
+    if reported_x_map:
+        return reported_x_map, reported_x_source, reported_x_warnings
     dist_map, dist_source, warnings = _distribution_probability_map(item)
     if dist_map:
         return dist_map, dist_source or "distribution.q_temperature_bucket_posterior", warnings
@@ -166,6 +217,118 @@ def _canonical_probability_map(item: Mapping[str, Any]) -> tuple[dict[str, float
     if ctp_map:
         return ctp_map, ctp_source or "posterior_temperature_distribution.bucket_probabilities", warnings
     return {}, "", warnings
+
+
+def _audit_reported_x_item(
+    item: Mapping[str, Any],
+    index: int,
+    *,
+    tolerance: float,
+) -> dict[str, Any] | None:
+    source_map, source_name, warnings = _reported_x_probability_map(item)
+    if not source_name:
+        return None
+    identity = _identity(item, index)
+    if not source_map:
+        return {
+            **identity,
+            "ok": True,
+            "skipped": True,
+            "skip_reason": "reported_physical_x_distribution_missing",
+            "checked_fields": 0,
+            "canonical_source": source_name,
+            "top_buckets": [],
+            "warnings": warnings,
+            "mismatches": [],
+        }
+
+    mismatches: list[dict[str, Any]] = []
+    checked_fields = 1
+    total = sum(source_map.values())
+    if abs(total - 1.0) > tolerance:
+        _append_mismatch(
+            mismatches,
+            field="posterior_ssot_fact.reported_physical_x_distribution.total_probability",
+            bucket="",
+            actual=total,
+            expected=1.0,
+            expected_source=source_name,
+            code="reported_x_probability_not_normalized",
+        )
+
+    sections = item.get("ui_sections")
+    sections_map = sections if isinstance(sections, Mapping) else {}
+    physical = sections_map.get("physical_high_posterior")
+    if not isinstance(physical, Mapping) or _label(physical.get("state")) != "available":
+        _append_mismatch(
+            mismatches,
+            field="ui_sections.physical_high_posterior.state",
+            bucket="",
+            actual=physical.get("state") if isinstance(physical, Mapping) else None,
+            expected="available",
+            expected_source=source_name,
+            code="reported_x_ui_section_unavailable",
+        )
+    else:
+        rows = physical.get("ranked_temperature_probabilities")
+        ui_map: dict[str, float] = {}
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                temperature_c = _to_float(row.get("temperature_c"))
+                probability = _prob(row.get("probability"))
+                if temperature_c is not None and probability is not None:
+                    ui_map[f"{float(temperature_c):g}°C"] = float(probability)
+        for bucket, expected in source_map.items():
+            checked_fields += 1
+            actual = ui_map.get(bucket)
+            if actual is None or abs(actual - expected) > tolerance:
+                _append_mismatch(
+                    mismatches,
+                    field="ui_sections.physical_high_posterior.ranked_temperature_probabilities",
+                    bucket=bucket,
+                    actual=actual,
+                    expected=expected,
+                    expected_source=source_name,
+                    code="reported_x_ui_probability_mismatch",
+                )
+        top = _top_buckets(source_map, 1)[0]
+        top_temperature = _to_float(str(top["bucket"]).replace("°C", ""))
+        actual_temperature = _to_float(physical.get("top_temperature_c"))
+        actual_probability = _prob(physical.get("top_probability"))
+        checked_fields += 2
+        if actual_temperature is None or abs(actual_temperature - float(top_temperature)) > tolerance:
+            _append_mismatch(
+                mismatches,
+                field="ui_sections.physical_high_posterior.top_temperature_c",
+                bucket=str(top["bucket"]),
+                actual=actual_temperature,
+                expected=top_temperature,
+                expected_source=source_name,
+                code="reported_x_ui_top_temperature_mismatch",
+            )
+        if actual_probability is None or abs(actual_probability - float(top["probability"])) > tolerance:
+            _append_mismatch(
+                mismatches,
+                field="ui_sections.physical_high_posterior.top_probability",
+                bucket=str(top["bucket"]),
+                actual=actual_probability,
+                expected=float(top["probability"]),
+                expected_source=source_name,
+                code="reported_x_ui_top_probability_mismatch",
+            )
+
+    return {
+        **identity,
+        "ok": not mismatches,
+        "skipped": False,
+        "checked_fields": checked_fields,
+        "canonical_source": source_name,
+        "top_buckets": _top_buckets(source_map, 3),
+        "warnings": warnings,
+        "mismatches": mismatches,
+    }
 
 
 def _top_buckets(source_map: Mapping[str, float], limit: int = 3) -> list[dict[str, Any]]:
@@ -648,6 +811,9 @@ def _check_capital_plan(
 
 
 def audit_item(item: Mapping[str, Any], index: int, *, tolerance: float = DEFAULT_TOLERANCE) -> dict[str, Any]:
+    reported_x_result = _audit_reported_x_item(item, index, tolerance=tolerance)
+    if reported_x_result is not None:
+        return reported_x_result
     source_map, source_name, warnings = _canonical_probability_map(item)
     identity = _identity(item, index)
     if not source_map:

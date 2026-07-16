@@ -93,6 +93,37 @@ def test_posterior_consistency_audit_accepts_aligned_snapshot() -> None:
     assert result["mismatches"] == []
 
 
+def test_posterior_consistency_audit_checks_busy_snapshot_when_items_are_present() -> None:
+    payload = _payload()
+    payload["busy"] = True
+    payload["facts"]["source"] = "event_fact_summary_cache_fast_fallback_city_filtered"
+
+    result = audit.audit_payload(payload, source="test")
+
+    assert result["ok"] is True
+    assert result["temporary"] is True
+    assert result["checked_items"] == 1
+    assert result["blockers"] == []
+
+
+def test_posterior_consistency_audit_blocks_empty_busy_snapshot() -> None:
+    result = audit.audit_payload(
+        {
+            "busy": True,
+            "facts": {
+                "source": "ui_snapshot_rebuild_in_flight",
+                "items": [],
+            },
+        },
+        source="test",
+    )
+
+    assert result["ok"] is False
+    assert result["temporary"] is True
+    assert result["blockers"] == ["ui_snapshot_rebuild_in_flight"]
+    assert result["checked_items"] == 0
+
+
 def test_posterior_consistency_audit_rejects_stale_path_posterior() -> None:
     result = audit.audit_payload(_payload(stale_path=True), source="test")
     mismatch_fields = {item["field"] for item in result["mismatches"]}

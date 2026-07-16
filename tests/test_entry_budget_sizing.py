@@ -9,14 +9,14 @@ from unittest.mock import patch
 
 import scan_weather_market as swm
 from scan_weather_market import (
-    _TARGET_REALIZATION_UI_PLAN_CACHE,
+    _TARGET_REALIZATION_FACT_PLAN_CACHE,
     _align_target_realization_plan_with_path_distribution,
     _apply_kelly_size_in_place,
     _apply_temperature_path_trade_follow_gate_to_plan,
     _auto_order_record_price,
     _bayes_bimodal_size_scale,
-    _entry_usable_edge_order_block_reason,
-    _load_target_realization_ui_plan,
+    _entry_order_policy_block_reason,
+    _load_target_realization_fact_plan,
     _estimate_buy_collateral_required_usdc,
     _max_buy_size_for_collateral_usdc,
     _merge_target_realization_probability_fields_from_ssot_leg,
@@ -127,164 +127,58 @@ class EntryBudgetSizingTests(unittest.TestCase):
         self.assertIn("--amount", payload.get("cmd"))
         self.assertIn("10.000000", payload.get("cmd"))
 
-    def test_direct_target_buy_order_forces_single_direct_attempt_timeout(self) -> None:
-        captured = {}
-
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-            captured["retries_on_errno24"] = retries_on_errno24
-
-            class _Result:
-                returncode = 0
-                stdout = '{"orderID":"oid-direct-buy","status":"submitted"}\n'
-                stderr = ""
-
-            return _Result()
-
+    def test_live_order_requires_durable_clob_service(self) -> None:
         with patch.dict(
             os.environ,
             {
-                "PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1",
-                "PM_AUTO_TRADE_DIRECT_ORDER_TIMEOUT_SEC": "60",
-                "PM_MAX_ORDER_USDC": "10",
-                "PM_AUTO_TRADE_ENTRY_BUDGET_RATIO": "1",
-                "PM_CLOB_TIMEOUT_MS": "60000",
-                "PM_CLOB_RETRY_MAX": "5",
-                "PM_CLOB_DIRECT_RETRIES": "3",
-                "PM_CLOB_DIRECT_FIRST": "0",
-                "HTTPS_PROXY": "http://127.0.0.1:7890",
+                "PM_AUTO_TRADE_DRY_RUN": "0",
+                "PM_CLOB_ORDER_SERVICE_ENABLED": "0",
+                "PM_CLOB_ALLOW_LEGACY_NODE_SUBMIT": "0",
             },
-            clear=True,
-        ):
-            with patch.object(swm, "ensure_system_proxy_settings", return_value=None):
-                with patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
-                    with patch.object(swm, "_resolve_node_bin", return_value="node"):
-                        with patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
-                            ok, payload = swm._run_node_order(
-                                "place-order",
-                                "direct-buy-token",
-                                "BUY",
-                                price=0.42,
-                                size=2.0,
-                                order_type="GTC",
-                            )
+            clear=False,
+        ), patch("scan_weather_market._run_node_subprocess") as node_submit:
+            ok, payload = _run_node_order(
+                "place-order",
+                "live-token",
+                "BUY",
+                price=0.50,
+                size=2,
+                order_type="GTC",
+            )
 
-        self.assertTrue(ok)
-        self.assertEqual(payload.get("orderID"), "oid-direct-buy")
-        self.assertTrue(payload.get("direct_target_order_context"))
-        self.assertGreaterEqual(float(captured["timeout"]), 4.5)
-        self.assertLessEqual(float(captured["timeout"]), 8.0)
-        self.assertEqual(captured["env"].get("PM_CLOB_FORCE_DIRECT"), "1")
-        self.assertNotIn("HTTPS_PROXY", captured["env"])
-        self.assertEqual(captured["env"].get("PM_CLOB_DIRECT_FIRST"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_DIRECT_RETRIES"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_RETRY_MAX"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_PLACE_ORDER_MAX_ATTEMPTS"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_PLACE_ORDER_SDK_RETRY_ON_ERROR"), "0")
-        self.assertEqual(captured["env"].get("PM_POLYMARKET_ORDER_WATCHDOG_CHILD"), "1")
-        self.assertLessEqual(int(captured["env"].get("PM_CLOB_TIMEOUT_MS", "9999")), 4500)
-        self.assertIn("--tick-size", captured["cmd"])
-        self.assertIn("0.01", captured["cmd"])
-        self.assertIn("--neg-risk", captured["cmd"])
-        self.assertIn("true", captured["cmd"])
-        clob_timeout_ms = int(captured["env"].get("PM_CLOB_TIMEOUT_MS", "0"))
-        hard_timeout_ms = int(captured["env"].get("PM_CLOB_PLACE_ORDER_HARD_TIMEOUT_MS", "0"))
-        self.assertGreater(hard_timeout_ms, clob_timeout_ms)
-        self.assertLessEqual(hard_timeout_ms, 5500)
+        self.assertFalse(ok)
+        self.assertEqual(payload["error"], "durable_clob_order_service_required")
+        node_submit.assert_not_called()
+
+    def test_direct_target_buy_order_forces_single_direct_attempt_timeout(self) -> None:
+        with patch.dict(os.environ, {"PM_CLOB_ALLOW_LEGACY_NODE_SUBMIT": "1"}, clear=True), \
+             patch.object(swm, "AUTO_TRADE_DRY_RUN", False), \
+             patch.object(swm, "_run_node_subprocess") as node_submit:
+            ok, payload = swm._run_node_order("place-order", "token", "BUY", price=0.42, size=2.0, order_type="GTC")
+        self.assertFalse(ok)
+        self.assertEqual(payload.get("error"), "durable_clob_order_service_required")
+        node_submit.assert_not_called()
+
 
     def test_direct_target_buy_order_default_timeout_covers_node_cold_start(self) -> None:
-        captured = {}
+        with patch.dict(os.environ, {"PM_CLOB_ALLOW_LEGACY_NODE_SUBMIT": "1"}, clear=True), \
+             patch.object(swm, "AUTO_TRADE_DRY_RUN", False), \
+             patch.object(swm, "_run_node_subprocess") as node_submit:
+            ok, payload = swm._run_node_order("place-order", "token", "BUY", price=0.42, size=2.0, order_type="GTC")
+        self.assertFalse(ok)
+        self.assertEqual(payload.get("error"), "durable_clob_order_service_required")
+        node_submit.assert_not_called()
 
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-
-            class _Result:
-                returncode = 0
-                stdout = '{"orderID":"oid-direct-buy","status":"submitted"}\n'
-                stderr = ""
-
-            return _Result()
-
-        with patch.dict(
-            os.environ,
-            {
-                "PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1",
-                "PM_MAX_ORDER_USDC": "10",
-                "PM_AUTO_TRADE_ENTRY_BUDGET_RATIO": "1",
-            },
-            clear=True,
-        ):
-            with patch.object(swm, "ensure_system_proxy_settings", return_value=None):
-                with patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
-                    with patch.object(swm, "_resolve_node_bin", return_value="node"):
-                        with patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
-                            ok, payload = swm._run_node_order(
-                                "place-order",
-                                "direct-buy-token",
-                                "BUY",
-                                price=0.42,
-                                size=2.0,
-                                order_type="GTC",
-                            )
-
-        self.assertTrue(ok)
-        self.assertEqual(payload.get("orderID"), "oid-direct-buy")
-        self.assertGreaterEqual(float(captured["timeout"]), 6.0)
-        self.assertLessEqual(float(captured["timeout"]), 6.0)
-        self.assertEqual(captured["env"].get("PM_POLYMARKET_ORDER_WATCHDOG_CHILD"), "1")
-        clob_timeout_ms = int(captured["env"].get("PM_CLOB_TIMEOUT_MS", "0"))
-        hard_timeout_ms = int(captured["env"].get("PM_CLOB_PLACE_ORDER_HARD_TIMEOUT_MS", "0"))
-        self.assertGreater(clob_timeout_ms, 0)
-        self.assertGreater(hard_timeout_ms, clob_timeout_ms)
-        self.assertLessEqual(hard_timeout_ms, 3500)
 
     def test_direct_target_buy_order_env_timeout_skips_parent_watchdog_floor(self) -> None:
-        captured = {}
+        with patch.dict(os.environ, {"PM_CLOB_ALLOW_LEGACY_NODE_SUBMIT": "1", "PM_AUTO_TRADE_DIRECT_ORDER_TIMEOUT_SEC": "4.5"}, clear=True), \
+             patch.object(swm, "AUTO_TRADE_DRY_RUN", False), \
+             patch.object(swm, "_run_node_subprocess") as node_submit:
+            ok, payload = swm._run_node_order("place-order", "token", "BUY", price=0.42, size=2.0, order_type="GTC")
+        self.assertFalse(ok)
+        self.assertEqual(payload.get("error"), "durable_clob_order_service_required")
+        node_submit.assert_not_called()
 
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-
-            class _Result:
-                returncode = 0
-                stdout = '{"orderID":"oid-direct-buy","status":"submitted"}\n'
-                stderr = ""
-
-            return _Result()
-
-        with patch.dict(
-            os.environ,
-            {
-                "PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1",
-                "PM_AUTO_TRADE_DIRECT_ORDER_TIMEOUT_SEC": "4.5",
-                "PM_MAX_ORDER_USDC": "10",
-                "PM_AUTO_TRADE_ENTRY_BUDGET_RATIO": "1",
-            },
-            clear=True,
-        ):
-            with patch.object(swm, "ensure_system_proxy_settings", return_value=None):
-                with patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
-                    with patch.object(swm, "_resolve_node_bin", return_value="node"):
-                        with patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
-                            ok, payload = swm._run_node_order(
-                                "place-order",
-                                "direct-buy-token",
-                                "BUY",
-                                price=0.42,
-                                size=2.0,
-                                order_type="GTC",
-                            )
-
-        self.assertTrue(ok)
-        self.assertEqual(payload.get("orderID"), "oid-direct-buy")
-        self.assertGreaterEqual(float(captured["timeout"]), 4.5)
-        self.assertLessEqual(float(captured["timeout"]), 4.5)
-        self.assertEqual(captured["env"].get("PM_AUTO_TRADE_DIRECT_ORDER_TIMEOUT_SEC"), "4.500")
-        self.assertEqual(captured["env"].get("PM_POLYMARKET_ORDER_WATCHDOG_CHILD"), "1")
 
     def test_direct_target_service_read_timeout_defers_confirmation(self) -> None:
         def _unexpected_timeout_confirm(**_kwargs):
@@ -331,69 +225,21 @@ class EntryBudgetSizingTests(unittest.TestCase):
         self.assertTrue(payload.get("timeout_expired"))
         self.assertTrue(payload.get("clob_order_service_timeout_confirm_deferred"))
         self.assertTrue(payload.get("order_submit_pending_confirmation"))
-        self.assertFalse(payload.get("clob_order_service_fallback_allowed"))
-        self.assertEqual(
-            payload.get("clob_order_service_fallback_blocked_reason"),
-            "service_may_have_submitted_order",
-        )
+        self.assertTrue(payload.get("reconcile_required"))
+        self.assertNotIn("clob_order_service_fallback_allowed", payload)
+        self.assertNotIn("clob_order_service_fallback_blocked_reason", payload)
         self.assertEqual(payload.get("cmd"), ["clob_order_service", "place-order"])
         self.assertIn("order_submit_ms", payload)
 
     def test_direct_target_proxy_fallback_overrides_global_force_direct(self) -> None:
-        captured = {}
+        with patch.dict(os.environ, {"PM_CLOB_ALLOW_LEGACY_NODE_SUBMIT": "1", "PM_AUTO_TRADE_DIRECT_PROXY_FALLBACK_ENABLED": "1"}, clear=True), \
+             patch.object(swm, "AUTO_TRADE_DRY_RUN", False), \
+             patch.object(swm, "_run_node_subprocess") as node_submit:
+            ok, payload = swm._run_node_order("place-order", "token", "BUY", price=0.42, size=2.0, order_type="GTC")
+        self.assertFalse(ok)
+        self.assertEqual(payload.get("error"), "durable_clob_order_service_required")
+        node_submit.assert_not_called()
 
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-
-            class _Result:
-                returncode = 0
-                stdout = '{"orderID":"oid-direct-buy","status":"submitted"}\n'
-                stderr = ""
-
-            return _Result()
-
-        with patch.dict(
-            os.environ,
-            {
-                "PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1",
-                "PM_AUTO_TRADE_DIRECT_PROXY_FALLBACK_ENABLED": "1",
-                "PM_CLOB_FORCE_DIRECT": "1",
-                "PM_MAX_ORDER_USDC": "10",
-                "PM_AUTO_TRADE_ENTRY_BUDGET_RATIO": "1",
-            },
-            clear=True,
-        ):
-            with patch.object(swm, "ensure_system_proxy_settings", return_value=None):
-                with patch.object(swm, "_detect_local_http_proxy_url", return_value="http://127.0.0.1:7890"):
-                    with patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
-                        with patch.object(swm, "_resolve_node_bin", return_value="node"):
-                            with patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
-                                ok, payload = swm._run_node_order(
-                                    "place-order",
-                                    "direct-buy-token",
-                                    "BUY",
-                                    price=0.42,
-                                    size=2.0,
-                                    order_type="GTC",
-                                )
-
-        self.assertTrue(ok)
-        self.assertEqual(payload.get("orderID"), "oid-direct-buy")
-        self.assertEqual(captured["env"].get("PM_CLOB_FAST_ALLOW_PROXY_FALLBACK"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_FORCE_DIRECT"), "0")
-        self.assertEqual(captured["env"].get("PM_CLOB_FORCE_PROXY"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_DIRECT_FIRST"), "0")
-        self.assertEqual(captured["env"].get("PM_CLOB_RETRY_MAX"), "2")
-        self.assertEqual(captured["env"].get("PM_CLOB_PLACE_ORDER_MAX_ATTEMPTS"), "2")
-        self.assertEqual(captured["env"].get("HTTPS_PROXY"), "http://127.0.0.1:7890")
-        self.assertEqual(captured["env"].get("GLOBAL_AGENT_HTTP_PROXY"), "http://127.0.0.1:7890")
-        self.assertGreaterEqual(float(captured["timeout"]), 12.0)
-        self.assertLessEqual(float(captured["timeout"]), 15.0)
-        self.assertGreaterEqual(
-            int(captured["env"].get("PM_CLOB_PLACE_ORDER_HARD_TIMEOUT_MS", "0")),
-            10000,
-        )
 
     def test_exec_failed_payload_preserves_timeout_stderr(self) -> None:
         exc = subprocess.TimeoutExpired(
@@ -838,69 +684,12 @@ class EntryBudgetSizingTests(unittest.TestCase):
         self.assertEqual(candidate.get("order_size_source"), "ui_snapshot_ssot_capital_plan")
 
     def test_load_target_realization_ui_plan_prefers_frozen_snapshot_file(self) -> None:
-        snapshot = {
-            "facts": {
-                "items": [
-                    {
-                        "slug": "chengdu-test",
-                        "event_date": "2026-06-17",
-                        "target_realization_capital_plan": {
-                            "ok": True,
-                            "version": "target_realization_capital_plan_v2",
-                            "target_bucket": "24°C or below",
-                            "target_posterior": 0.62,
-                            "ui_risk_explanation": {
-                                "available": True,
-                                "text": "目标 24°C or below posterior 62.00%，路径可兑现 70.0%。",
-                                "target_bucket": "24°C or below",
-                                "target_posterior": 0.62,
-                                "target_realization_probability": 0.70,
-                                "freshness": {"source_stale": False, "observation_age_minutes": 3.0},
-                                "reliability": {"state": "medium", "label": "Medium", "score": 0.66},
-                                "trade_follow": {"allowed": True, "reason": "posterior_path_reliability_and_freshness_pass"},
-                                "risk_codes": [],
-                            },
-                            "legs": [
-                                {
-                                    "role": "target_yes",
-                                    "bucket": "24°C or below",
-                                    "side": "YES",
-                                    "target_notional": 12.03,
-                                },
-                                {
-                                    "role": "remote_no",
-                                    "bucket": "27°C",
-                                    "side": "NO",
-                                    "target_notional": 97.43,
-                                },
-                            ],
-                        },
-                    }
-                ]
-            }
-        }
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump(snapshot, fh, ensure_ascii=False)
-            path = fh.name
-        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
-        _TARGET_REALIZATION_UI_PLAN_CACHE.clear()
-        with patch.dict(
-            os.environ,
-            {
-                "PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": path,
-                "PM_TARGET_REALIZATION_SSOT_URL": "http://127.0.0.1:9/should-not-be-used",
-            },
-            clear=False,
-        ):
-            legs, plan = _load_target_realization_ui_plan("chengdu-test", "2026-06-17")
-        self.assertAlmostEqual(float(legs[("24°C or below", "YES")]["target_notional"]), 12.03, places=9)
-        self.assertAlmostEqual(float(legs[("27°C", "NO")]["target_notional"]), 97.43, places=9)
-        self.assertEqual(str(plan.get("version") or ""), "target_realization_capital_plan_v2")
-        self.assertEqual(
-            plan["ui_risk_explanation"]["trade_follow"]["reason"],
-            "posterior_path_reliability_and_freshness_pass",
-        )
-        self.assertIn("路径可兑现", plan["ui_risk_explanation"]["text"])
+        _TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
+        with patch.dict(os.environ, {"PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": "/tmp/retired.json"}, clear=False):
+            legs, plan = _load_target_realization_fact_plan("chengdu-test", "2026-06-17")
+        self.assertEqual(legs, {})
+        self.assertEqual(plan, {})
+
 
     def test_align_plan_reads_full_temperature_path_bucket_distribution(self) -> None:
         plan = {
@@ -976,123 +765,12 @@ class EntryBudgetSizingTests(unittest.TestCase):
         )
 
     def test_load_target_realization_ui_plan_aligns_stale_plan_to_path_distribution(self) -> None:
-        snapshot = {
-            "facts": {
-                "items": [
-                    {
-                        "slug": "chengdu-test",
-                        "event_date": "2026-06-21",
-                        "temperature_path_distribution": {
-                            "available": True,
-                            "target_bucket": "25°C or below",
-                            "target_bucket_posterior": 0.42016291281991425,
-                            "target_bucket_path_probability": 0.5,
-                            "second_target_bucket": "26°C",
-                            "second_target_bucket_posterior": 0.2817846528381569,
-                            "second_target_bucket_path_probability": 0.2119,
-                            "target": {
-                                "bucket": "25°C or below",
-                                "posterior": 0.42016291281991425,
-                                "path_probability": 0.5,
-                                "path_probability_source": "temperature_path_distribution",
-                            },
-                            "second_target": {
-                                "bucket": "26°C",
-                                "posterior": 0.2817846528381569,
-                                "path_probability": 0.2119,
-                                "path_probability_source": "temperature_path_distribution",
-                            },
-                            "freshness": {"source_stale": False, "observation_age_minutes": 29.2},
-                            "reliability": {"state": "high", "label": "High", "score": 0.8115},
-                            "trade_follow": {
-                                "allowed": True,
-                                "reason": "posterior_path_reliability_and_freshness_pass",
-                            },
-                            "risk_explanation": (
-                                "目标 25°C or below posterior 42.02%，路径可兑现 50.0%。"
-                                " 第二目标 26°C posterior 28.18%，路径可兑现 21.19%。"
-                            ),
-                        },
-                        "target_realization_capital_plan": {
-                            "ok": True,
-                            "version": "target_realization_capital_plan_v2",
-                            "target_bucket": "25°C or below",
-                            "target_posterior": 0.26122337983261507,
-                            "second_target_bucket": "26°C",
-                            "second_target_posterior": 0.2017124436814672,
-                            "legs": [
-                                {
-                                    "role": "target_yes",
-                                    "bucket": "25°C or below",
-                                    "side": "YES",
-                                    "posterior": 0.26122337983261507,
-                                    "target_realization_path_probability": 0.3,
-                                    "target_realization_reliability": 0.3,
-                                    "target_notional": 12.03,
-                                },
-                                {
-                                    "role": "second_target_yes",
-                                    "bucket": "26°C",
-                                    "side": "YES",
-                                    "posterior": 0.2017124436814672,
-                                    "target_realization_path_probability": 0.0765,
-                                    "target_realization_reliability": 0.0765,
-                                    "target_notional": 4.2,
-                                },
-                            ],
-                        },
-                    }
-                ]
-            }
-        }
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump(snapshot, fh, ensure_ascii=False)
-            path = fh.name
-        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
-        _TARGET_REALIZATION_UI_PLAN_CACHE.clear()
-        with patch.dict(
-            os.environ,
-            {
-                "PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": path,
-                "PM_TARGET_REALIZATION_SSOT_URL": "http://127.0.0.1:9/should-not-be-used",
-            },
-            clear=False,
-        ):
-            legs, plan = _load_target_realization_ui_plan("chengdu-test", "2026-06-21")
+        _TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
+        with patch.dict(os.environ, {"PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": "/tmp/retired.json"}, clear=False):
+            legs, plan = _load_target_realization_fact_plan("chengdu-test", "2026-06-21")
+        self.assertEqual(legs, {})
+        self.assertEqual(plan, {})
 
-        self.assertTrue(plan["target_realization_path_distribution_aligned"])
-        self.assertAlmostEqual(float(plan["target_posterior"]), 0.42016291281991425, places=9)
-        self.assertAlmostEqual(float(plan["second_target_posterior"]), 0.2817846528381569, places=9)
-        self.assertAlmostEqual(
-            float(plan["ui_risk_explanation"]["target_realization_probability"]),
-            0.5,
-            places=9,
-        )
-        self.assertAlmostEqual(
-            float(plan["ui_risk_explanation"]["second_target_realization_probability"]),
-            0.2119,
-            places=9,
-        )
-        self.assertAlmostEqual(
-            float(legs[("25°C or below", "YES")]["posterior"]),
-            0.42016291281991425,
-            places=9,
-        )
-        self.assertAlmostEqual(
-            float(legs[("25°C or below", "YES")]["target_realization_path_probability"]),
-            0.5,
-            places=9,
-        )
-        self.assertAlmostEqual(
-            float(legs[("26°C", "YES")]["posterior"]),
-            0.2817846528381569,
-            places=9,
-        )
-        self.assertAlmostEqual(
-            float(legs[("26°C", "YES")]["target_realization_path_probability"]),
-            0.2119,
-            places=9,
-        )
 
     def test_align_stale_plan_clears_old_path_probability_when_path_distribution_missing(self) -> None:
         plan = {
@@ -1232,78 +910,22 @@ class EntryBudgetSizingTests(unittest.TestCase):
         blocked_candidate = {
             "strategy_family": "posterior_settlement",
             "entry_strategy_family": "posterior_settlement",
+            "target_probability_field": "posterior_ssot_fact.target_probability",
             "posterior_settlement_entry_allowed": False,
             "posterior_settlement_entry_block_reason": "temperature_path_trade_follow_not_allowed",
         }
         self.assertEqual(
-            _entry_usable_edge_order_block_reason(blocked_candidate),
+            _entry_order_policy_block_reason(blocked_candidate),
             "temperature_path_trade_follow_not_allowed",
         )
 
     def test_load_target_realization_ui_plan_applies_temperature_path_gate(self) -> None:
-        snapshot = {
-            "facts": {
-                "items": [
-                    {
-                        "slug": "chengdu-test",
-                        "event_date": "2026-06-21",
-                        "temperature_path_distribution": {
-                            "trade_follow": {
-                                "allowed": False,
-                                "reason": "blocked_path_reliability_low",
-                            }
-                        },
-                        "target_realization_capital_plan": {
-                            "ok": True,
-                            "version": "target_realization_capital_plan_v2",
-                            "target_bucket": "25°C or below",
-                            "second_target_bucket": "26°C",
-                            "legs": [
-                                {
-                                    "role": "target_yes",
-                                    "bucket": "25°C or below",
-                                    "side": "YES",
-                                    "action": "add",
-                                    "target_notional": 12.03,
-                                    "current_notional": 0.0,
-                                    "price": 0.53,
-                                },
-                                {
-                                    "role": "remote_no",
-                                    "bucket": "28°C",
-                                    "side": "NO",
-                                    "action": "add",
-                                    "target_notional": 97.43,
-                                    "price": 0.95,
-                                },
-                            ],
-                        },
-                    }
-                ]
-            }
-        }
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump(snapshot, fh, ensure_ascii=False)
-            path = fh.name
-        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
-        _TARGET_REALIZATION_UI_PLAN_CACHE.clear()
-        with patch.dict(
-            os.environ,
-            {
-                "PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": path,
-                "PM_TARGET_REALIZATION_SSOT_URL": "http://127.0.0.1:9/should-not-be-used",
-            },
-            clear=False,
-        ):
-            legs, plan = _load_target_realization_ui_plan("chengdu-test", "2026-06-21")
+        _TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
+        with patch.dict(os.environ, {"PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": "/tmp/retired.json"}, clear=False):
+            legs, plan = _load_target_realization_fact_plan("chengdu-test", "2026-06-21")
+        self.assertEqual(legs, {})
+        self.assertEqual(plan, {})
 
-        yes_leg = legs[("25°C or below", "YES")]
-        no_leg = legs[("28°C", "NO")]
-        self.assertFalse(plan["temperature_path_trade_follow_allowed"])
-        self.assertEqual(yes_leg["action"], "hold")
-        self.assertEqual(yes_leg["block_reason"], "temperature_path_trade_follow_not_allowed")
-        self.assertEqual(float(yes_leg["target_notional"]), 0.0)
-        self.assertEqual(no_leg["action"], "add")
 
     def test_local_fact_plan_without_path_distribution_uses_capital_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1336,6 +958,10 @@ class EntryBudgetSizingTests(unittest.TestCase):
             stale_payload = {
                 "slug": "chengdu-test",
                 "event_date": "2026-06-21",
+                "posterior_ssot_fact": {
+                    "state": "available",
+                    "target_bucket": "26°C",
+                },
                 "target_realization_capital_plan": {
                     "ok": True,
                     "version": "target_realization_capital_plan_v2",
@@ -1366,7 +992,7 @@ class EntryBudgetSizingTests(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            _TARGET_REALIZATION_UI_PLAN_CACHE.clear()
+            _TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
             with patch("scan_weather_market.DB_PATH", Path(db_path)), patch.dict(
                 os.environ,
                 {
@@ -1376,14 +1002,40 @@ class EntryBudgetSizingTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                legs, plan = _load_target_realization_ui_plan("chengdu-test", "2026-06-21")
+                legs, plan = _load_target_realization_fact_plan("chengdu-test", "2026-06-21")
 
             self.assertEqual(plan["ssot_load_source"], "event_fact_latest_local")
             self.assertEqual(plan["target_bucket"], "26°C")
             self.assertAlmostEqual(float(legs[("26°C", "YES")]["target_notional"]), 12.03, places=9)
             self.assertNotIn("target_realization_path_distribution_aligned", plan)
 
-    def test_local_fact_plan_aligns_stale_capital_plan_to_path_distribution(self) -> None:
+    def test_live_plan_loader_ignores_snapshot_file_and_ui_http(self) -> None:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump({"items": [{"slug": "chengdu-test", "event_date": "2026-06-21"}]}, fh)
+            path = fh.name
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+        _TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
+        with patch.dict(
+            os.environ,
+            {
+                "PM_AUTO_TRADE_DRY_RUN": "0",
+                "PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE": path,
+                "PM_TARGET_REALIZATION_SSOT_URL": "http://127.0.0.1:9/must-not-be-used",
+                "PM_TARGET_REALIZATION_SSOT_LOCAL_FACT_ENABLED": "1",
+            },
+            clear=False,
+        ), patch(
+            "scan_weather_market._load_target_realization_local_fact_plan",
+            return_value=None,
+        ) as local_loader, patch("scan_weather_market.requests.get") as http_get:
+            legs, plan = _load_target_realization_fact_plan("chengdu-test", "2026-06-21")
+
+        self.assertEqual(legs, {})
+        self.assertEqual(plan, {})
+        local_loader.assert_called_once_with("chengdu-test", "2026-06-21")
+        http_get.assert_not_called()
+
+    def test_local_fact_plan_uses_persisted_capital_plan_without_scanner_recompute(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "archive.db")
             conn = sqlite3.connect(db_path)
@@ -1414,6 +1066,10 @@ class EntryBudgetSizingTests(unittest.TestCase):
             payload = {
                 "slug": "chengdu-test",
                 "event_date": "2026-06-21",
+                "posterior_ssot_fact": {
+                    "state": "available",
+                    "target_bucket": "25°C or below",
+                },
                 "temperature_path_distribution": {
                     "trade_follow": {
                         "allowed": True,
@@ -1476,7 +1132,7 @@ class EntryBudgetSizingTests(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            _TARGET_REALIZATION_UI_PLAN_CACHE.clear()
+            _TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
             with patch("scan_weather_market.DB_PATH", Path(db_path)), patch.dict(
                 os.environ,
                 {
@@ -1486,20 +1142,20 @@ class EntryBudgetSizingTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                legs, plan = _load_target_realization_ui_plan("chengdu-test", "2026-06-21")
+                legs, plan = _load_target_realization_fact_plan("chengdu-test", "2026-06-21")
 
             self.assertEqual(plan["ssot_load_source"], "event_fact_latest_local")
-            self.assertTrue(plan["target_realization_path_distribution_aligned"])
-            self.assertAlmostEqual(float(plan["target_posterior"]), 0.42016291281991425, places=9)
-            self.assertAlmostEqual(float(plan["second_target_posterior"]), 0.2817846528381569, places=9)
+            self.assertNotIn("target_realization_path_distribution_aligned", plan)
+            self.assertAlmostEqual(float(plan["target_posterior"]), 0.26122337983261507, places=9)
+            self.assertAlmostEqual(float(plan["second_target_posterior"]), 0.2017124436814672, places=9)
             self.assertAlmostEqual(
                 float(legs[("25°C or below", "YES")]["target_realization_path_probability"]),
-                0.5,
+                0.3,
                 places=9,
             )
             self.assertAlmostEqual(
                 float(legs[("26°C", "YES")]["target_realization_path_probability"]),
-                0.2119,
+                0.0765,
                 places=9,
             )
 
@@ -1524,12 +1180,12 @@ class EntryBudgetSizingTests(unittest.TestCase):
     def test_auto_order_record_price_matches_clob_min_tick(self) -> None:
         self.assertAlmostEqual(float(_auto_order_record_price(0.0005)), 0.001, places=6)
 
-    def test_bayes_bimodal_size_scale_only_reduces_when_risk_flagged(self) -> None:
+    def test_bayes_bimodal_size_scale_is_retired_and_diagnostic_only(self) -> None:
         self.assertAlmostEqual(
             _bayes_bimodal_size_scale(
                 {"q_bayes_bimodal_risk": True, "q_bayes_bimodal_size_scale": 0.42}
             ),
-            0.42,
+            1.0,
             places=9,
         )
         self.assertAlmostEqual(
@@ -1539,13 +1195,7 @@ class EntryBudgetSizingTests(unittest.TestCase):
             1.0,
             places=9,
         )
-        self.assertAlmostEqual(
-            _bayes_bimodal_size_scale(
-                {"q_bayes_bimodal_risk": True, "q_bayes_bimodal_size_scale": 2.0}
-            ),
-            1.0,
-            places=9,
-        )
+        self.assertAlmostEqual(_bayes_bimodal_size_scale({"q_bayes_bimodal_risk": True, "q_bayes_bimodal_size_scale": 2.0}), 1.0, places=9)
         with patch.dict(os.environ, {"PM_BAYES_BIMODAL_SIZE_SCALE_ENABLED": "0"}, clear=False):
             self.assertAlmostEqual(
                 _bayes_bimodal_size_scale(

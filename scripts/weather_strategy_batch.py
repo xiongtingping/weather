@@ -675,7 +675,11 @@ def _apply_capital_plan_target_to_context(
     ssot_execution_context: Mapping[str, Any],
 ) -> None:
     plan = ssot_execution_context.get("target_realization_capital_plan")
-    if not isinstance(plan, Mapping) or plan.get("ok") is not True:
+    if (
+        not isinstance(plan, Mapping)
+        or plan.get("ok") is not True
+        or str(plan.get("version") or "").strip() != "strong_posterior_three_leg_strategy_v2"
+    ):
         return
     target_bucket = str(plan.get("target_bucket") or "").strip()
     if not target_bucket:
@@ -697,10 +701,12 @@ def _apply_capital_plan_target_to_context(
 def _capital_plan_leg_position_effect(role: str, side: str) -> Tuple[str, str]:
     role_key = str(role or "").strip()
     side_key = str(side or "").strip().upper()
-    if role_key == "remote_no" and side_key == "NO":
-        return "open_or_add_remote_no_side", "buy_remote_no_side"
-    if role_key == "second_target_yes" and side_key == "YES":
-        return "open_or_add_second_target_side", "buy_second_target_side"
+    if role_key == "top_yes_wave" and side_key == "YES":
+        return "open_or_add_top_yes_wave", "buy_top_yes_wave"
+    if role_key == "second_yes" and side_key == "YES":
+        return "open_or_add_second_yes", "buy_second_yes"
+    if role_key == "strongly_excluded_no" and side_key == "NO":
+        return "open_or_add_strongly_excluded_no", "buy_strongly_excluded_no"
     return "open_or_add_new_bucket_side", "buy_new_bucket_side"
 
 
@@ -716,173 +722,14 @@ def _target_realization_side_notional_cap_usdc(
     leg: Optional[Mapping[str, Any]] = None,
     plan: Optional[Mapping[str, Any]] = None,
 ) -> Optional[float]:
-    side_key = str(side or "").strip().upper()
     leg_ref = leg if isinstance(leg, Mapping) else {}
     plan_ref = plan if isinstance(plan, Mapping) else {}
-    env_key = (
-        "PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC"
-        if side_key == "NO"
-        else "PM_TARGET_REALIZATION_YES_MAX_NOTIONAL_USDC"
-    )
-    env_cap = _target_realization_env_float(env_key)
-    if env_cap is not None and env_cap > 0:
-        return env_cap
+    if str(plan_ref.get("version") or "").strip() != "strong_posterior_three_leg_strategy_v2":
+        return None
     cap = swm.to_float(leg_ref.get("target_notional_cap_usdc"))
     if cap is None:
-        plan_key = (
-            "remote_no_single_leg_max_notional_usdc"
-            if side_key == "NO"
-            else "yes_single_leg_max_notional_usdc"
-        )
-        cap = swm.to_float(plan_ref.get(plan_key))
-    default_cap = 100.0 if side_key == "NO" else 20.0
-    if cap is None or not math.isfinite(float(cap)) or float(cap) <= 0:
-        cap = default_cap
-    elif side_key == "NO":
-        cap = max(float(cap), default_cap)
-    return float(cap)
-
-
-def _target_realization_entry_price_cap(
-    side: str,
-    leg: Optional[Mapping[str, Any]] = None,
-    plan: Optional[Mapping[str, Any]] = None,
-) -> float:
-    side_key = str(side or "").strip().upper()
-    leg_ref = leg if isinstance(leg, Mapping) else {}
-    plan_ref = plan if isinstance(plan, Mapping) else {}
-    global_env = _target_realization_env_float("PM_TARGET_REALIZATION_MAX_ENTRY_PRICE")
-    global_default = 0.98 if global_env is None else global_env
-    cap = swm.to_float(leg_ref.get("target_realization_max_entry_price"))
-    if cap is None:
-        cap = swm.to_float(plan_ref.get("target_realization_max_entry_price"))
-    if side_key == "NO":
-        remote_env = _target_realization_env_float("PM_TARGET_REALIZATION_REMOTE_NO_MAX_PRICE")
-        if remote_env is not None:
-            cap = remote_env
-        else:
-            remote_cap = swm.to_float(leg_ref.get("target_realization_order_price_cap"))
-            if remote_cap is None:
-                remote_cap = swm.to_float(leg_ref.get("remote_no_max_price"))
-            if remote_cap is None:
-                remote_cap = swm.to_float(plan_ref.get("remote_no_max_price"))
-            if remote_cap is not None and math.isfinite(float(remote_cap)):
-                cap = max(float(remote_cap), float(global_default))
-    if cap is None or not math.isfinite(float(cap)):
-        cap = global_default
-    return float(min(1.0, max(0.0, float(cap))))
-
-
-def _target_realization_second_yes_allowed(plan: Mapping[str, Any]) -> bool:
-    active = plan.get("yes_dual_head_active") if isinstance(plan, Mapping) else None
-    if active is not None:
-        return bool(active)
-    target_posterior = swm.to_float(plan.get("target_posterior")) if isinstance(plan, Mapping) else None
-    second_posterior = swm.to_float(plan.get("second_target_posterior")) if isinstance(plan, Mapping) else None
-    if target_posterior is None or second_posterior is None:
-        return False
-    max_gap_pp = _target_realization_env_float("PM_TARGET_REALIZATION_DUAL_YES_MAX_GAP_PP")
-    if max_gap_pp is None:
-        max_gap_pp = swm.to_float(plan.get("yes_dual_head_max_gap_pp"))
-    if max_gap_pp is None or not math.isfinite(float(max_gap_pp)):
-        max_gap_pp = 8.0
-    return abs(float(target_posterior) - float(second_posterior)) * 100.0 <= float(max_gap_pp) + 1e-9
-
-
-def _target_realization_remote_no_distance_bounds(direction: str = "") -> Tuple[int, int]:
-    direction_key = str(direction or "").strip().lower()
-    if direction_key == "below_target":
-        min_raw = swm.to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MIN_BUCKET_DISTANCE"))
-        max_raw = swm.to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MAX_BUCKET_DISTANCE"))
-        default_min = 2.0
-        default_max = 10.0
-    elif direction_key == "above_target":
-        min_raw = swm.to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MIN_BUCKET_DISTANCE"))
-        max_raw = swm.to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MAX_BUCKET_DISTANCE"))
-        default_min = 3.0
-        default_max = 10.0
-    else:
-        min_raw = None
-        max_raw = None
-        default_min = 2.0
-        default_max = 10.0
-    if min_raw is None:
-        min_raw = swm.to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE"))
-    if max_raw is None:
-        max_raw = swm.to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE"))
-    if min_raw is None or not math.isfinite(float(min_raw)):
-        min_raw = default_min
-    min_distance = int(max(1, min(20, round(float(min_raw)))))
-    if max_raw is None or not math.isfinite(float(max_raw)):
-        max_raw = default_max
-    max_distance = int(max(min_distance, min(20, round(float(max_raw)))))
-    return min_distance, max_distance
-
-
-def _target_realization_remote_no_leg_allowed(
-    outcome: str,
-    target_bucket: str,
-) -> Tuple[bool, str, Optional[int], int, int]:
-    directional_distance = bucket_directional_distance(outcome, target_bucket)
-    if directional_distance is None:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_direction_unavailable", None, min_distance, max_distance
-    signed_distance = int(directional_distance)
-    if signed_distance == 0:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_must_not_be_target_bucket", 0, min_distance, max_distance
-    direction = "above_target" if signed_distance > 0 else "below_target"
-    min_distance, max_distance = _target_realization_remote_no_distance_bounds(direction)
-    distance = abs(signed_distance)
-    if distance < min_distance:
-        return False, "remote_no_bucket_not_far_enough", distance, min_distance, max_distance
-    if distance > max_distance:
-        return False, "remote_no_bucket_too_far", distance, min_distance, max_distance
-    return True, "", distance, min_distance, max_distance
-
-
-def _target_realization_remote_no_plan_leg_allowed(
-    leg: Mapping[str, Any],
-    target_bucket: str,
-    plan: Mapping[str, Any],
-) -> Tuple[bool, str, Optional[int], int, int, str]:
-    outcome = str(leg.get("bucket") or leg.get("outcome") or "").strip()
-    directional_distance = bucket_directional_distance(outcome, target_bucket)
-    if directional_distance is None:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_direction_unavailable", None, min_distance, max_distance, ""
-    signed_distance = int(directional_distance)
-    if signed_distance == 0:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_must_not_be_target_bucket", 0, min_distance, max_distance, ""
-    direction = "above_target" if signed_distance > 0 else "below_target"
-    fallback_min, fallback_max = _target_realization_remote_no_distance_bounds(direction)
-    min_raw = swm.to_float(leg.get("remote_no_min_bucket_distance"))
-    max_raw = swm.to_float(leg.get("remote_no_max_bucket_distance"))
-    if min_raw is None:
-        min_raw = swm.to_float(
-            plan.get(
-                "remote_no_upper_min_bucket_distance"
-                if direction == "above_target"
-                else "remote_no_lower_min_bucket_distance"
-            )
-        )
-    if max_raw is None:
-        max_raw = swm.to_float(
-            plan.get(
-                "remote_no_upper_max_bucket_distance"
-                if direction == "above_target"
-                else "remote_no_lower_max_bucket_distance"
-            )
-        )
-    min_distance = fallback_min if min_raw is None or not math.isfinite(float(min_raw)) else int(max(1, min(20, round(float(min_raw)))))
-    max_distance = fallback_max if max_raw is None or not math.isfinite(float(max_raw)) else int(max(min_distance, min(20, round(float(max_raw)))))
-    distance = abs(signed_distance)
-    if distance < min_distance:
-        return False, "remote_no_bucket_not_far_enough", distance, min_distance, max_distance, direction
-    if distance > max_distance:
-        return False, "remote_no_bucket_too_far", distance, min_distance, max_distance, direction
-    return True, "", distance, min_distance, max_distance, direction
+        cap = swm.to_float(leg_ref.get("max_notional_usdc"))
+    return float(cap) if cap is not None and math.isfinite(float(cap)) and float(cap) > 0 else None
 
 
 def _ssot_capital_plan_leg_candidate_rows(
@@ -894,19 +741,19 @@ def _ssot_capital_plan_leg_candidate_rows(
     fact_as_of: Any = None,
 ) -> List[Dict[str, Any]]:
     plan = ssot_execution_context.get("target_realization_capital_plan")
-    if not isinstance(plan, Mapping) or plan.get("ok") is not True:
+    if (
+        not isinstance(plan, Mapping)
+        or plan.get("ok") is not True
+        or str(plan.get("version") or "").strip() != "strong_posterior_three_leg_strategy_v2"
+    ):
         return []
     raw_legs = plan.get("legs")
     if not isinstance(raw_legs, list):
         return []
     target_bucket = str(plan.get("target_bucket") or fact.get("target_bucket") or "").strip()
     target_posterior = swm.to_float(plan.get("target_posterior"))
-    second_bucket = str(plan.get("second_target_bucket") or "").strip()
-    second_posterior = swm.to_float(plan.get("second_target_posterior"))
-    path_follow_allowed = ssot_execution_context.get("temperature_path_trade_follow_allowed")
-    path_follow_reason = str(
-        ssot_execution_context.get("temperature_path_trade_follow_reason") or ""
-    ).strip()
+    second_bucket = ""
+    second_posterior = None
     rows: List[Dict[str, Any]] = []
     for leg in raw_legs:
         if not isinstance(leg, Mapping):
@@ -923,33 +770,8 @@ def _ssot_capital_plan_leg_candidate_rows(
             or leg.get("target_realization_leg_role")
             or "capital_plan_leg"
         ).strip()
-        remote_no_distance = None
-        remote_no_min_distance = None
-        remote_no_max_distance = None
-        remote_no_direction = None
-        if role == "remote_no" and side == "NO":
-            (
-                allowed,
-                _reason,
-                remote_no_distance,
-                remote_no_min_distance,
-                remote_no_max_distance,
-                remote_no_direction,
-            ) = (
-                _target_realization_remote_no_plan_leg_allowed(leg, target_bucket, plan)
-            )
-            if not allowed:
-                continue
-        if role == "second_target_yes" and side == "YES" and not _target_realization_second_yes_allowed(plan):
-            continue
-        if (
-            side == "YES"
-            and role in {"target_yes", "second_target_yes", "new_bucket_entry"}
-            and (
-                leg.get("temperature_path_trade_follow_allowed") is False
-                or path_follow_allowed is False
-            )
-        ):
+        allowed_side = {"top_yes_wave": "YES", "second_yes": "YES", "strongly_excluded_no": "NO"}
+        if allowed_side.get(role) != side:
             continue
         plan_notional = swm.to_float(leg.get("target_notional"))
         if plan_notional is None:
@@ -968,15 +790,14 @@ def _ssot_capital_plan_leg_candidate_rows(
         price = swm.to_float(leg.get("price") or leg.get("ask") or leg.get("order_price"))
         if price is not None and (not math.isfinite(price) or price <= 0):
             price = None
-        price_cap = _target_realization_entry_price_cap(side, leg, plan)
-        if price is not None and price > price_cap + 1e-9:
-            continue
         size = swm.to_float(leg.get("target_size") or leg.get("delta_size"))
         if (size is None or notional_cap_applied) and price is not None and price > 0:
             size = float(plan_notional) / float(price)
         posterior = swm.to_float(leg.get("posterior"))
         prob_for_size = swm.to_float(leg.get("prob_for_size"))
         q_entry = prob_for_size if prob_for_size is not None else posterior
+        if side == "NO" and q_entry is not None:
+            q_entry = 1.0 - float(q_entry)
         edge_value = None
         if q_entry is not None and price is not None:
             edge_value = float(q_entry) - float(price)
@@ -1010,9 +831,6 @@ def _ssot_capital_plan_leg_candidate_rows(
             "target_realization_plan_notional_cap_usdc": notional_cap,
             "target_notional_cap_usdc": notional_cap,
             "target_realization_plan_notional_cap_applied": notional_cap_applied,
-            "target_realization_max_entry_price": price_cap,
-            "target_realization_order_price_cap": price_cap,
-            "remote_no_max_price": price_cap if role == "remote_no" and side == "NO" else None,
             "kelly_target_notional": float(plan_notional),
             "kelly_sizing_source": "ui_snapshot_ssot_capital_plan",
             "order_size_source": "ui_snapshot_ssot_capital_plan",
@@ -1039,15 +857,6 @@ def _ssot_capital_plan_leg_candidate_rows(
             "leg_bucket": outcome,
             "posterior_settlement_candidate_bucket": outcome,
             "posterior_settlement_candidate_bucket_prob": posterior,
-            "remote_bucket_realization_prob": posterior if role == "remote_no" else None,
-            "remote_no_bucket": outcome if role == "remote_no" else None,
-            "remote_no_bucket_direction": remote_no_direction if role == "remote_no" else None,
-            "remote_no_bucket_distance": remote_no_distance if role == "remote_no" else None,
-            "remote_no_min_bucket_distance": remote_no_min_distance if role == "remote_no" else None,
-            "remote_no_max_bucket_distance": remote_no_max_distance if role == "remote_no" else None,
-            "yes_dual_head_active": plan.get("yes_dual_head_active"),
-            "yes_dual_head_gap_pp": plan.get("yes_dual_head_gap_pp"),
-            "yes_dual_head_max_gap_pp": plan.get("yes_dual_head_max_gap_pp"),
             "q_bayes_physical_likelihood_enabled": True,
             "weather_likelihood_feature_count": 1,
             "edge_tradeability_profit_value": edge_value,
@@ -1081,15 +890,8 @@ def _ssot_capital_plan_leg_candidate_rows(
             "target_realization_path_probability_source": leg.get(
                 "target_realization_path_probability_source"
             ),
-            "temperature_path_trade_follow_allowed": (
-                leg.get("temperature_path_trade_follow_allowed")
-                if leg.get("temperature_path_trade_follow_allowed") is not None
-                else path_follow_allowed
-            ),
-            "temperature_path_trade_follow_reason": (
-                str(leg.get("temperature_path_trade_follow_reason") or "").strip()
-                or path_follow_reason
-            ),
+            "strong_physical_exclusion_kind": leg.get("physical_exclusion_kind"),
+            "strong_physical_exclusion_evidence": leg.get("physical_exclusion_evidence"),
             "resolution_source": fact.get("resolution_source"),
             "fact_as_of": fact_as_of,
         }
@@ -1099,7 +901,7 @@ def _ssot_capital_plan_leg_candidate_rows(
         rows.append(row_out)
     rows.sort(
         key=lambda item: (
-            0 if str(item.get("target_realization_leg_role") or "") != "remote_no" else 1,
+            {"top_yes_wave": 0, "second_yes": 1, "strongly_excluded_no": 2}.get(str(item.get("target_realization_leg_role") or ""), 9),
             -float(swm.to_float(item.get("target_realization_plan_notional")) or 0.0),
             str(item.get("outcome") or ""),
         )
@@ -1465,7 +1267,6 @@ def _ssot_blocked_main_candidate_rows(
                 "posterior_settlement_target_posterior": cand.get("target_posterior") or ssot.get("target_posterior"),
                 "second_target_bucket": cand.get("second_target_bucket") or ssot.get("second_target_bucket"),
                 "second_target_posterior": cand.get("second_target_posterior") or ssot.get("second_target_posterior"),
-                "remote_bucket_realization_prob": cand.get("remote_bucket_realization_prob"),
                 "q_bayes_physical_likelihood_enabled": True,
                 "weather_likelihood_feature_count": cand.get("weather_likelihood_feature_count") or 1,
                 "edge_tradeability_profit_value": cand.get("edge_tradeability_profit_value")
@@ -1659,7 +1460,7 @@ def _row_skipped_diagnostic(row: Mapping[str, Any], *, min_entry_edge: float = D
         return "d0_locked_no_new_edge"
     if rec == "shadow_only":
         return tier_reason or "shadow_only_edge_below_probe"
-    if block_reason == "variance_high" or bool(row.get("q_bayes_bimodal_risk")):
+    if block_reason == "variance_high":
         return "variance_high"
     if usable is not None and usable <= 0:
         return "entry_usable_edge_nonpositive"
@@ -2405,7 +2206,6 @@ def compact_batch_payload(batch: Mapping[str, Any]) -> Dict[str, Any]:
                 "posterior_settlement_candidate_bucket_prob": row.get(
                     "posterior_settlement_candidate_bucket_prob"
                 ),
-                "remote_no_bucket": row.get("remote_no_bucket"),
                 "target_realization_reliability": row.get(
                     "target_realization_reliability"
                 ),
@@ -2666,13 +2466,6 @@ def _entry_expected_targets_from_selected_rows(
                     "posterior_settlement_current_top_bucket",
                     "current_top_posterior",
                     "posterior_settlement_current_top_posterior",
-	            "remote_bucket_realization_prob",
-	            "remote_no_bucket",
-            "remote_no_bucket_direction",
-            "remote_no_bucket_distance",
-            "remote_no_min_bucket_distance",
-            "remote_no_max_bucket_distance",
-            "remote_no_max_price",
 	            "old_target_bucket",
 	            "leg_bucket",
             "target_realization_max_entry_price",

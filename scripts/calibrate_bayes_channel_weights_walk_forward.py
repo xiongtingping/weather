@@ -36,7 +36,7 @@ from scripts.backtest_physical_likelihood import (  # noqa: E402
     _to_float,
 )
 from bayesian_likelihood_runtime import _convert_temp  # noqa: E402
-from bayesian_probability_runtime import _normal_bucket_probs  # noqa: E402
+from posterior_pipeline_entry_runtime import _normal_bucket_probs  # noqa: E402
 
 try:
     from zoneinfo import ZoneInfo

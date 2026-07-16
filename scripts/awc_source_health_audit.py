@@ -145,7 +145,12 @@ def audit(args: argparse.Namespace) -> dict[str, Any]:
             if val is not None:
                 fetch_ms.append(val)
         top_timings = item.get("timings_ms") if isinstance(item.get("timings_ms"), Mapping) else {}
-        val = _number(top_timings.get("posterior_fast_precheck_ms") or top_timings.get("fast_precheck_total_ms"))
+        val = _number(
+            top_timings.get("posterior_fast_precheck_before_awc_ms")
+            or top_timings.get("fast_precheck_before_awc_total_ms")
+            or top_timings.get("posterior_fast_precheck_ms")
+            or top_timings.get("fast_precheck_total_ms")
+        )
         if val is not None:
             fast_precheck_ms.append(val)
 

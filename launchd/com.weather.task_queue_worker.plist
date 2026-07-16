@@ -5,6 +5,16 @@
     <key>Label</key>
     <string>com.weather.task_queue_worker</string>
 
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>TASK_QUEUE_IDLE_SLEEP_SEC</key>
+      <string>1</string>
+      <key>TASK_QUEUE_DB_WRITE_WAIT_SEC</key>
+      <string>0.25</string>
+      <key>AMSC_ZUUU_OFFICIAL_NWP_REQUIRE_PINNED_CONTEXT_POLICY</key>
+      <string>1</string>
+    </dict>
+
     <key>ProgramArguments</key>
     <array>
       <string>/Users/xiong/weather/.venv/bin/python</string>

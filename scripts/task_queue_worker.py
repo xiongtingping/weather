@@ -15,10 +15,63 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from archive_db_write_queue import connect_archive_db_rw  # noqa: E402
+
 DB_PATH = ROOT_DIR / "data" / "archive.db"
 LOG_PATH = ROOT_DIR / "data" / "task_queue_worker.log"
-DEFAULT_IDLE_SLEEP_SEC = 10
+
+
+def _connect_db(owner):
+    return connect_archive_db_rw(
+        DB_PATH,
+        owner=f"task_queue_worker.{owner}",
+        timeout_sec=10.0,
+        busy_timeout_ms=10000,
+        row_factory=True,
+        # A queue claim must not consume the AMSC source-to-posterior window
+        # while an unrelated writer owns the global gate. The durable task
+        # remains pending and is retried on the next fast poll.
+        queue_wait_sec=TASK_QUEUE_DB_WRITE_WAIT_SEC,
+    )
+
+def _env_float(name, default):
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    return max(0.1, value)
+
+DEFAULT_IDLE_SLEEP_SEC = _env_float("TASK_QUEUE_IDLE_SLEEP_SEC", "1")
+TASK_QUEUE_DB_WRITE_WAIT_SEC = _env_float("TASK_QUEUE_DB_WRITE_WAIT_SEC", "0.25")
 MISSING_TABLE_RETRY_SEC = int(os.environ.get("TASK_QUEUE_MISSING_TABLE_RETRY_SEC", "300"))
+
+
+def _compact_task_failure_detail(stdout: str, stderr: str) -> str:
+    """Preserve a structured task blocker instead of recording only exit 1."""
+
+    stream = str(stderr or "").strip()
+    if stream:
+        return stream[:500]
+    output = str(stdout or "").strip()
+    if not output:
+        return ""
+    try:
+        result = json.loads(output)
+    except (TypeError, ValueError):
+        return output[:500]
+    if not isinstance(result, dict):
+        return output[:500]
+    reason = str(result.get("block_reason") or result.get("error") or "").strip()
+    if reason:
+        return f"task_result:{reason}"[:500]
+    return json.dumps(
+        {key: result.get(key) for key in ("ok", "blocked", "skipped", "state") if key in result},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )[:500]
 
 # 任务类型到脚本的映射
 TASK_SCRIPTS = {
@@ -28,6 +81,7 @@ TASK_SCRIPTS = {
     "market_refresh": "scripts/market_refresh_1m.sh",
     "market_refresh_urgent": "scripts/market_refresh_urgent.sh",
     "feedback_loop": "scripts/feedback_loop_hourly.sh",
+    "amsc_posterior_materialize": "scripts/materialize_amsc_posterior_task.py",
 }
 
 class TaskQueueWorker:
@@ -97,40 +151,39 @@ class TaskQueueWorker:
             return None
         conn = None
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10.0)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            if not self._task_queue_table_exists(conn):
-                self._mark_queue_missing("no such table: task_queue")
-                return None
-            self._recover_queue_missing()
+            with _connect_db("get_next_task") as conn:
+                cur = conn.cursor()
+                if not self._task_queue_table_exists(conn):
+                    self._mark_queue_missing("no such table: task_queue")
+                    return None
+                self._recover_queue_missing()
 
-            # 获取优先级最高的待执行任务
-            cur.execute("""
-                SELECT * FROM task_queue
-                WHERE status = 'pending'
-                ORDER BY priority DESC, created_at ASC
-                LIMIT 1
-            """)
-
-            task = cur.fetchone()
-
-            if task:
-                task_id = task["id"]
-                # 标记为运行中
+                # 获取优先级最高的待执行任务
                 cur.execute("""
-                    UPDATE task_queue
-                    SET status = 'running',
-                        started_at = datetime('now'),
-                        worker_pid = ?
-                    WHERE id = ?
-                """, (os.getpid(), task_id))
-                conn.commit()
+                    SELECT * FROM task_queue
+                    WHERE status = 'pending'
+                    ORDER BY priority DESC, created_at ASC
+                    LIMIT 1
+                """)
 
-                self.log(f"Task #{task_id} ({task['task_type']}) acquired")
-                return dict(task)
+                task = cur.fetchone()
 
-            return None
+                if task:
+                    task_id = task["id"]
+                    # 标记为运行中
+                    cur.execute("""
+                        UPDATE task_queue
+                        SET status = 'running',
+                            started_at = datetime('now'),
+                            worker_pid = ?
+                        WHERE id = ?
+                    """, (os.getpid(), task_id))
+                    conn.commit()
+
+                    self.log(f"Task #{task_id} ({task['task_type']}) acquired")
+                    return dict(task)
+
+                return None
 
         except sqlite3.OperationalError as e:
             err_text = str(e).strip()
@@ -170,13 +223,22 @@ class TaskQueueWorker:
         self.log(f"Task #{task_id} executing: {script_path}")
 
         try:
+            env = os.environ.copy()
+            env["TASK_QUEUE_ID"] = str(task_id)
+            if task.get("payload_json") not in (None, ""):
+                env["TASK_PAYLOAD_JSON"] = str(task.get("payload_json") or "")
+            command = ["/bin/bash", str(script_full_path)]
+            if script_full_path.suffix == ".py":
+                command = [sys.executable, str(script_full_path)]
+
             # 执行脚本
             self.current_process = subprocess.Popen(
-                ["/bin/bash", str(script_full_path)],
+                command,
                 cwd=str(ROOT_DIR),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                env=env,
             )
 
             stdout, stderr = self.current_process.communicate()
@@ -189,8 +251,9 @@ class TaskQueueWorker:
                 self.log(f"Task #{task_id} completed successfully")
             else:
                 error_msg = f"Exit code {exit_code}"
-                if stderr:
-                    error_msg += f": {stderr[:500]}"
+                detail = _compact_task_failure_detail(stdout, stderr)
+                if detail:
+                    error_msg += f": {detail}"
                 self.mark_task_failed(task_id, error_msg)
                 self.log(f"Task #{task_id} failed: {error_msg}")
 
@@ -205,99 +268,93 @@ class TaskQueueWorker:
     def mark_task_completed(self, task_id):
         """标记任务为已完成"""
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10.0)
-            cur = conn.cursor()
-            cur.execute("""
-                UPDATE task_queue
-                SET status = 'completed',
-                    completed_at = datetime('now'),
-                    worker_pid = NULL
-                WHERE id = ?
-            """, (task_id,))
-            conn.commit()
-            conn.close()
+            with _connect_db("mark_task_completed") as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE task_queue
+                    SET status = 'completed',
+                        completed_at = datetime('now'),
+                        worker_pid = NULL
+                    WHERE id = ?
+                """, (task_id,))
+                conn.commit()
         except Exception as e:
             self.log(f"Error marking task {task_id} as completed: {e}")
 
     def mark_task_failed(self, task_id, error):
         """标记任务为失败"""
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10.0)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
+            with _connect_db("mark_task_failed") as conn:
+                cur = conn.cursor()
 
-            # 获取当前重试次数
-            cur.execute("SELECT retry_count, max_retries FROM task_queue WHERE id = ?", (task_id,))
-            row = cur.fetchone()
+                # 获取当前重试次数
+                cur.execute("SELECT retry_count, max_retries FROM task_queue WHERE id = ?", (task_id,))
+                row = cur.fetchone()
 
-            if row:
-                retry_count = row["retry_count"]
-                max_retries = row["max_retries"]
+                if row:
+                    retry_count = row["retry_count"]
+                    max_retries = row["max_retries"]
 
-                if retry_count < max_retries:
-                    # 重试
-                    cur.execute("""
-                        UPDATE task_queue
-                        SET status = 'pending',
-                            retry_count = retry_count + 1,
-                            error = ?,
-                            worker_pid = NULL
-                        WHERE id = ?
-                    """, (error, task_id))
-                    self.log(f"Task #{task_id} will retry ({retry_count + 1}/{max_retries})")
-                else:
-                    # 失败
-                    cur.execute("""
-                        UPDATE task_queue
-                        SET status = 'failed',
-                            completed_at = datetime('now'),
-                            error = ?,
-                            worker_pid = NULL
-                        WHERE id = ?
-                    """, (error, task_id))
-                    self.log(f"Task #{task_id} failed permanently after {max_retries} retries")
+                    if retry_count < max_retries:
+                        # 重试
+                        cur.execute("""
+                            UPDATE task_queue
+                            SET status = 'pending',
+                                retry_count = retry_count + 1,
+                                error = ?,
+                                worker_pid = NULL
+                            WHERE id = ?
+                        """, (error, task_id))
+                        self.log(f"Task #{task_id} will retry ({retry_count + 1}/{max_retries})")
+                    else:
+                        # 失败
+                        cur.execute("""
+                            UPDATE task_queue
+                            SET status = 'failed',
+                                completed_at = datetime('now'),
+                                error = ?,
+                                worker_pid = NULL
+                            WHERE id = ?
+                        """, (error, task_id))
+                        self.log(f"Task #{task_id} failed permanently after {max_retries} retries")
 
-            conn.commit()
-            conn.close()
+                conn.commit()
         except Exception as e:
             self.log(f"Error marking task {task_id} as failed: {e}")
 
     def cleanup_stale_tasks(self):
         """清理僵尸任务（worker 已死但任务仍标记为 running）"""
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10.0)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            if not self._task_queue_table_exists(conn):
-                self._mark_queue_missing("no such table: task_queue")
-                conn.close()
-                return
+            with _connect_db("cleanup_stale_tasks") as conn:
+                cur = conn.cursor()
+                if not self._task_queue_table_exists(conn):
+                    self._mark_queue_missing("no such table: task_queue")
+                    return
 
-            cur.execute("""
-                SELECT id, worker_pid FROM task_queue
-                WHERE status = 'running'
-            """)
+                cur.execute("""
+                    SELECT id, worker_pid FROM task_queue
+                    WHERE status = 'running'
+                """)
 
-            for row in cur.fetchall():
-                task_id = row["id"]
-                worker_pid = row["worker_pid"]
+                for row in cur.fetchall():
+                    task_id = row["id"]
+                    worker_pid = row["worker_pid"]
 
-                if worker_pid:
-                    try:
-                        os.kill(worker_pid, 0)  # 检查进程是否存在
-                    except OSError:
-                        # 进程不存在，重置任务
-                        self.log(f"Task #{task_id} worker {worker_pid} is dead, resetting...")
-                        cur.execute("""
-                            UPDATE task_queue
-                            SET status = 'pending',
-                                worker_pid = NULL,
-                                error = 'Worker died unexpectedly'
-                            WHERE id = ?
-                        """, (task_id,))
+                    if worker_pid:
+                        try:
+                            os.kill(worker_pid, 0)  # 检查进程是否存在
+                        except OSError:
+                            # 进程不存在，重置任务
+                            self.log(f"Task #{task_id} worker {worker_pid} is dead, resetting...")
+                            cur.execute("""
+                                UPDATE task_queue
+                                SET status = 'pending',
+                                    worker_pid = NULL,
+                                    error = 'Worker died unexpectedly'
+                                WHERE id = ?
+                            """, (task_id,))
 
-            conn.commit()
-            conn.close()
+                conn.commit()
         except Exception as e:
             self.log(f"Error cleaning up stale tasks: {e}")
 

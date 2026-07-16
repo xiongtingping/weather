@@ -56,6 +56,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--tz", default=os.environ.get("PM_WEATHER_DISCOVERY_TZ", "America/New_York"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="Persist cached token-bearing events and emit discovery signal without Gamma refresh.",
+    )
     return parser.parse_args()
 
 
@@ -123,19 +128,31 @@ def _ensure_discovery_table(conn: Any) -> None:
     )
 
 
-def _load_token_state() -> Dict[Tuple[str, str], Tuple[int, str]]:
+def _load_token_state(
+    keys: Iterable[Tuple[str, str]],
+) -> Dict[Tuple[str, str], Tuple[int, str]]:
     state: Dict[Tuple[str, str], Tuple[int, str]] = {}
+    wanted = sorted(
+        {
+            (str(slug or "").strip(), str(event_date or "").strip().split("T", 1)[0])
+            for slug, event_date in keys
+            if str(slug or "").strip() and str(event_date or "").strip()
+        }
+    )
+    if not wanted:
+        return state
+    predicates = " OR ".join("(slug = ? AND event_date = ?)" for _ in wanted)
+    params: List[str] = [value for pair in wanted for value in pair]
     try:
-        swm.init_db()
         with swm.open_db_ro_fast(timeout_sec=1.0, busy_timeout_ms=1000) as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT slug, event_date, COUNT(*) AS token_count, MAX(updated_at) AS updated_at
                 FROM market_tokens
-                WHERE slug IS NOT NULL AND slug != ''
-                  AND event_date IS NOT NULL AND event_date != ''
+                WHERE ({predicates})
                 GROUP BY slug, event_date
-                """
+                """,
+                params,
             ).fetchall()
     except Exception:
         return state
@@ -193,6 +210,7 @@ def _save_tokens_and_discovery(
     *,
     dry_run: bool,
     status: str,
+    conn: Optional[Any] = None,
 ) -> bool:
     slug = str(ev.get("slug") or "").strip()
     if not slug or not event_date:
@@ -208,57 +226,139 @@ def _save_tokens_and_discovery(
     }
     if dry_run:
         return bool(tokens)
-    swm.init_db()
-    with swm.open_db() as conn:
-        _ensure_discovery_table(conn)
-        if tokens:
-            swm._save_cached_market_tokens(conn, slug, event_date, tokens, now)
-        conn.execute(
-            """
-            INSERT INTO weather_market_discovery (
-                slug,
+    if conn is None:
+        with swm.open_db() as managed_conn:
+            # ``scan_weather_market.open_db`` is the generic default owner.
+            # Identify this bounded discovery write so the finalised current
+            # day's hard-source poll can yield to next-day coverage work.
+            setattr(managed_conn, "_archive_db_write_gate_owner", "market_refresh_discovery")
+            saved = _save_tokens_and_discovery(
+                ev,
                 event_date,
-                title,
-                market_open_at,
-                first_seen_at,
-                first_tokenized_at,
-                token_count,
-                status,
-                details_json,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(slug, event_date) DO UPDATE SET
-                title = COALESCE(NULLIF(excluded.title, ''), weather_market_discovery.title),
-                market_open_at = COALESCE(excluded.market_open_at, weather_market_discovery.market_open_at),
-                first_seen_at = COALESCE(weather_market_discovery.first_seen_at, excluded.first_seen_at),
-                first_tokenized_at = COALESCE(
-                    weather_market_discovery.first_tokenized_at,
-                    excluded.first_tokenized_at
-                ),
-                token_count = CASE
-                    WHEN excluded.token_count > COALESCE(weather_market_discovery.token_count, 0)
-                    THEN excluded.token_count
-                    ELSE weather_market_discovery.token_count
-                END,
-                status = excluded.status,
-                details_json = excluded.details_json,
-                updated_at = excluded.updated_at
-            """,
-            (
-                slug,
-                event_date,
-                str(ev.get("title") or slug),
-                market_open_at,
-                now,
-                now if tokens else None,
-                len(tokens),
-                status,
-                json.dumps(details, ensure_ascii=True, sort_keys=True),
-                now,
+                tokens,
+                dry_run=False,
+                status=status,
+                conn=managed_conn,
+            )
+            managed_conn.commit()
+            return saved
+    _ensure_discovery_table(conn)
+    if tokens:
+        swm._save_cached_market_tokens(conn, slug, event_date, tokens, now)
+    conn.execute(
+        """
+        INSERT INTO weather_market_discovery (
+            slug,
+            event_date,
+            title,
+            market_open_at,
+            first_seen_at,
+            first_tokenized_at,
+            token_count,
+            status,
+            details_json,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(slug, event_date) DO UPDATE SET
+            title = COALESCE(NULLIF(excluded.title, ''), weather_market_discovery.title),
+            market_open_at = COALESCE(excluded.market_open_at, weather_market_discovery.market_open_at),
+            first_seen_at = COALESCE(weather_market_discovery.first_seen_at, excluded.first_seen_at),
+            first_tokenized_at = COALESCE(
+                weather_market_discovery.first_tokenized_at,
+                excluded.first_tokenized_at
             ),
-        )
-        conn.commit()
+            token_count = CASE
+                WHEN excluded.token_count > COALESCE(weather_market_discovery.token_count, 0)
+                THEN excluded.token_count
+                ELSE weather_market_discovery.token_count
+            END,
+            status = excluded.status,
+            details_json = excluded.details_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            slug,
+            event_date,
+            str(ev.get("title") or slug),
+            market_open_at,
+            now,
+            now if tokens else None,
+            len(tokens),
+            status,
+            json.dumps(details, ensure_ascii=True, sort_keys=True),
+            now,
+        ),
+    )
     return bool(tokens)
+
+
+def _bootstrap_cached_events(
+    events: Iterable[Dict[str, Any]],
+    *,
+    start: date,
+    end: date,
+    max_events: int,
+    dry_run: bool,
+) -> Tuple[int, int, List[str]]:
+    """Persist usable cached market metadata before a slow Gamma refresh.
+
+    The market cache is a prior Gamma response containing outcome token ids.  It
+    is only used to repair discovery/token coverage; the later live refresh
+    remains authoritative for current market state.  This ordering prevents a
+    transient Gamma timeout from making an already-cached future market
+    invisible to the SSOT pipeline.
+    """
+    selected = _iter_window_events(events, start=start, end=end, max_events=max_events)
+    write_scope = str(os.environ.get("PM_ARCHIVE_WRITE_SCOPE") or "").strip().lower()
+    if write_scope == "chengdu_zuuu":
+        selected = [
+            ev
+            for ev in selected
+            if "-in-chengdu-" in str(ev.get("slug") or "").lower()
+            or "chengdu" in str(ev.get("title") or "").lower()
+        ]
+    if not selected:
+        return 0, 0, []
+
+    tokenized = 0
+    new_slugs: List[str] = []
+    token_state = _load_token_state(
+        (str(ev.get("slug") or ""), str(_event_date(ev) or "")) for ev in selected
+    )
+
+    def persist(conn: Optional[Any]) -> None:
+        nonlocal tokenized
+        for ev in selected:
+            slug = str(ev.get("slug") or "").strip()
+            event_date_text = _event_date(ev)
+            if not slug or not event_date_text:
+                continue
+            tokens = _parse_tokens_from_event(ev)
+            existing_count, _ = token_state.get((slug, event_date_text), (0, ""))
+            ok = _save_tokens_and_discovery(
+                ev,
+                event_date_text,
+                tokens,
+                dry_run=dry_run,
+                status="cache_bootstrap",
+                conn=conn,
+            )
+            if ok:
+                tokenized += 1
+                if existing_count <= 0:
+                    new_slugs.append(slug)
+
+    if dry_run:
+        persist(None)
+    else:
+        with swm.open_db() as conn:
+            # The two target tables are long-lived archive schema.  A full
+            # schema initialization here can exceed the launcher's 12-second
+            # budget before the cached future tokens are written.
+            setattr(conn, "_archive_db_write_gate_owner", "market_refresh_discovery")
+            persist(conn)
+            conn.commit()
+    return len(selected), tokenized, new_slugs
 
 
 def _iter_window_events(
@@ -303,9 +403,83 @@ def _iter_window_events(
     return selected
 
 
+def _write_new_market_signal(payload: Mapping[str, Any]) -> None:
+    signal_path = Path(
+        os.environ.get(
+            "PM_WEATHER_DISCOVERY_SIGNAL_PATH",
+            str(swm.DATA_DIR / "weather_discovery_new_market_signal.json"),
+        )
+    )
+    try:
+        signal_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = signal_path.with_suffix(signal_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(dict(payload), ensure_ascii=True, sort_keys=True), encoding="utf-8")
+        tmp.replace(signal_path)
+    except Exception:
+        pass
+
+
 def main() -> None:
     args = _parse_args()
     start, end = _window_dates(args.tz, args.days_ahead)
+    cached_events = swm._dedupe_weather_events(
+        list(swm._load_weather_events_cache(allow_stale=True) or [])
+        + list(swm._load_weather_events_good_cache() or [])
+    )
+    # Do this before the network fetch.  The launcher has a short timeout by
+    # design, so a slow Gamma response must not prevent known future markets
+    # (with their token ids already cached) from entering discovery.
+    cached_selected, cache_tokenized, cached_new_slugs = _bootstrap_cached_events(
+        cached_events,
+        start=start,
+        end=end,
+        max_events=max(0, int(args.max_events)),
+        dry_run=args.dry_run,
+    )
+    if cached_new_slugs and not args.dry_run:
+        # The live Gamma refresh below is intentionally best-effort and may
+        # exceed the fast launch budget.  Emit the discovery signal as soon as
+        # the cached token-bearing events have reached archive SSOT.
+        _write_new_market_signal(
+            {
+                "ok": True,
+                "updated_at": swm.utc_now_iso(),
+                "window": {"start": start.isoformat(), "end": end.isoformat()},
+                "cached_events": len(cached_events),
+                "cached_events_selected": cached_selected,
+                "cached_tokenized": cache_tokenized,
+                "events_from_gamma": 0,
+                "events_selected": 0,
+                "cache_count": 0,
+                "known_recent": 0,
+                "detail_fetches": 0,
+                "tokenized": 0,
+                "failed": 0,
+                "new_slugs": cached_new_slugs[:20],
+                "refreshed_slugs": [],
+                "warnings": ["gamma_refresh_pending"],
+                "dry_run": False,
+            }
+        )
+    if args.cache_only:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "mode": "cache_only",
+                    "updated_at": swm.utc_now_iso(),
+                    "window": {"start": start.isoformat(), "end": end.isoformat()},
+                    "cached_events": len(cached_events),
+                    "cached_events_selected": cached_selected,
+                    "cached_tokenized": cache_tokenized,
+                    "new_slugs": cached_new_slugs[:20],
+                    "dry_run": bool(args.dry_run),
+                },
+                ensure_ascii=True,
+                sort_keys=True,
+            )
+        )
+        return
     events, warnings = swm.fetch_weather_events_from_gamma()
     selected = _iter_window_events(
         events,
@@ -314,12 +488,14 @@ def main() -> None:
         max_events=max(0, int(args.max_events)),
     )
     cache_count = 0 if args.dry_run else _merge_weather_cache(events)
-    token_state = _load_token_state()
+    token_state = _load_token_state(
+        (str(ev.get("slug") or ""), str(_event_date(ev) or "")) for ev in selected
+    )
     detail_count = 0
     tokenized = 0
     known_recent = 0
     failed = 0
-    new_slugs: List[str] = []
+    new_slugs: List[str] = list(cached_new_slugs)
     refreshed_slugs: List[str] = []
 
     for ev in selected:
@@ -373,6 +549,9 @@ def main() -> None:
         "ok": True,
         "updated_at": swm.utc_now_iso(),
         "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "cached_events": len(cached_events),
+        "cached_events_selected": cached_selected,
+        "cached_tokenized": cache_tokenized,
         "events_from_gamma": len(events),
         "events_selected": len(selected),
         "cache_count": cache_count,
@@ -386,19 +565,7 @@ def main() -> None:
         "dry_run": bool(args.dry_run),
     }
     if new_slugs and not args.dry_run:
-        signal_path = Path(
-            os.environ.get(
-                "PM_WEATHER_DISCOVERY_SIGNAL_PATH",
-                str(swm.DATA_DIR / "weather_discovery_new_market_signal.json"),
-            )
-        )
-        try:
-            signal_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = signal_path.with_suffix(signal_path.suffix + ".tmp")
-            tmp.write_text(json.dumps(payload, ensure_ascii=True, sort_keys=True), encoding="utf-8")
-            tmp.replace(signal_path)
-        except Exception:
-            pass
+        _write_new_market_signal(payload)
     print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
 
 

@@ -31,11 +31,16 @@ labels=(
   "com.weather.market_ws"
   "com.weather.market_refresh_1m"
   "com.weather.model_scan"
+  "com.weather.model_scan_hourly"
   "com.weather.auto_trade_entry_1m"
   "com.weather.trade_engine"
+  "com.weather.target_realization_worker"
+  "com.weather.task_queue_worker"
   "com.weather.q_calibrated_writeback_hourly"
+  "com.weather.feedback_loop_hourly"
   "com.weather.daily_scan"
-  "com.weather.exit_retry_watch"
+  "com.weather.archive_db_auto_guard"
+  "com.weather.archive_db_governance_offpeak"
 )
 
 legacy_trade_labels=(
@@ -65,7 +70,7 @@ Commands:
   audit:ui-probability  Run UI page probability consistency audit (supports extra args)
   pipeline:tradeability Run full tradeability pipeline (calibrate+audits+dataset+strategy-gate)
   auto:run              Enqueue auto-trade job for today
-  auto:smoke-test       Real BUY then SELL (auto-select liquid target)
+  auto:smoke-test       Smoke-test preflight only; real BUY/SELL needs manual confirm phrase
   auto:restart-watcher  Kickstart auto-trade watcher
   clean-locks           Remove stale lock directories under data/
   kill-procs            Kill old python/node processes for this repo (best-effort)
@@ -118,26 +123,184 @@ _plist_path_for_label() {
   echo "${LA_DIR}/${label}.plist"
 }
 
+_bounded_kickstart() {
+  local domain_label="$1"
+  local child_pid=""
+  launchctl kickstart -k "$domain_label" >/dev/null 2>&1 &
+  child_pid=$!
+  for _ in $(seq 1 50); do
+    if ! kill -0 "$child_pid" 2>/dev/null; then
+      wait "$child_pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  # Terminating the launchctl client does not terminate the service it has
+  # already asked launchd to start. It only bounds maintenance recovery.
+  kill -TERM "$child_pid" 2>/dev/null || true
+  wait "$child_pid" 2>/dev/null || true
+  return 0
+}
+
 _bootstrap_label() {
   local label="$1"
   local plist="$(_plist_path_for_label "$label")"
   if [ ! -f "$plist" ]; then
     return 0
   fi
-  launchctl bootstrap "${GUI_DOMAIN}" "$plist" >/dev/null 2>&1 || true
+  # `stop` disables before bootout to prevent KeepAlive respawn. Re-enable
+  # before bootstrap; bootstrapping a disabled label is rejected by launchd.
   launchctl enable "${GUI_DOMAIN}/${label}" >/dev/null 2>&1 || true
+  launchctl bootstrap "${GUI_DOMAIN}" "$plist" >/dev/null 2>&1 || true
   case "$label" in
-    com.weather.daily_scan|com.weather.q_calibrated_writeback_hourly)
+    com.weather.daily_scan|com.weather.q_calibrated_writeback_hourly|com.weather.archive_db_auto_guard|com.weather.archive_db_governance_offpeak)
       return 0
       ;;
   esac
-  launchctl kickstart -k "${GUI_DOMAIN}/${label}" >/dev/null 2>&1 || true
+  _bounded_kickstart "${GUI_DOMAIN}/${label}"
+}
+
+_bounded_launchctl_client() {
+  local child_pid=""
+  launchctl "$@" >/dev/null 2>&1 &
+  child_pid=$!
+  for _ in $(seq 1 30); do
+    if ! kill -0 "$child_pid" 2>/dev/null; then
+      wait "$child_pid" 2>/dev/null || true
+      child_pid=""
+      break
+    fi
+    sleep 0.1
+  done
+  if [ -n "$child_pid" ]; then
+    kill -TERM "$child_pid" 2>/dev/null || true
+    wait "$child_pid" 2>/dev/null || true
+  fi
 }
 
 _bootout_label() {
   local label="$1"
-  launchctl stop "${GUI_DOMAIN}/${label}" >/dev/null 2>&1 || true
-  launchctl bootout "${GUI_DOMAIN}/${label}" >/dev/null 2>&1 || true
+  # launchctl clients can hang while a KeepAlive job is stopping.  A
+  # maintenance window must have a finite pause deadline; terminating the
+  # client does not undo a stop/bootout request already delivered to launchd.
+  # Disable first so KeepAlive cannot race the bounded bootout and respawn a
+  # writer while quiescence is being proven. `start` re-enables every label.
+  _bounded_launchctl_client disable "${GUI_DOMAIN}/${label}"
+  _bounded_launchctl_client stop "${GUI_DOMAIN}/${label}"
+  _bounded_launchctl_client bootout "${GUI_DOMAIN}/${label}"
+}
+
+_retire_target_realization_worker_children() {
+  local pattern="$ROOT/scan_weather_market.py.*--auto-trade-job-worker"
+  local pids=""
+  local pid=""
+
+  # The LaunchAgent is a supervising shell.  A child created before TERM
+  # forwarding was deployed can outlive launchctl bootout and keep archive.db
+  # write-capable.  `weatherctl stop` is the maintenance boundary for this
+  # repository, so it must not report success while that governed child lives.
+  for _ in $(seq 1 20); do
+    pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+    [ -z "$pids" ] && return 0
+    sleep 0.1
+  done
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    kill -TERM $pids 2>/dev/null || true
+  fi
+  for _ in $(seq 1 50); do
+    pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+    [ -z "$pids" ] && return 0
+    sleep 0.1
+  done
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    for pid in $pids; do
+      case "$(ps -p "$pid" -o command= 2>/dev/null || true)" in
+        *"$ROOT/scan_weather_market.py"*"--auto-trade-job-worker"*)
+          kill -KILL "$pid" 2>/dev/null || true
+          ;;
+      esac
+    done
+  fi
+  sleep 0.1
+  if pgrep -f "$pattern" >/dev/null 2>&1; then
+    echo "error: governed target-realization worker survived weatherctl stop" >&2
+    return 1
+  fi
+  return 0
+}
+
+_governed_writer_child_pids() {
+  local pattern=""
+  local pid=""
+  local cwd=""
+  local -a patterns=(
+    "$ROOT/scripts/market_ws_listener.py"
+    "$ROOT/scripts/market_ws_listener.sh"
+    "$ROOT/scripts/market_refresh_1m.sh"
+    "$ROOT/scripts/market_refresh_frequent.sh"
+    "$ROOT/scripts/market_refresh_urgent.sh"
+    "$ROOT/scripts/model_scan.sh"
+    "$ROOT/scripts/model_scan_hourly.sh"
+    "$ROOT/scripts/task_queue_worker.py"
+    "$ROOT/scripts/weather_strategy_batch.py"
+    "$ROOT/scripts/discover_weather_markets_fast.py"
+    "$ROOT/scripts/q_calibrated_writeback_hourly.sh"
+    "$ROOT/scripts/daily_scan_and_settlement.sh"
+    "$ROOT/scripts/archive_db_auto_guard.py"
+    "$ROOT/scripts/archive_db_rebuild_build.py"
+    "$ROOT/scripts/db_maintenance.sh"
+    "sqlite3 (data/archive[.]db|$ROOT/data/archive[.]db).*[.]backup"
+    "$ROOT/scripts/trade_engine_loop.sh"
+    "$ROOT/scan_weather_market.py"
+    "$ROOT/ui/server.py"
+  )
+  for pattern in "${patterns[@]}"; do
+    pgrep -f "$pattern" 2>/dev/null || true
+  done
+  # The module-form UI command has no repo path in argv.  Only claim it when
+  # its current working directory is this repository.
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+    if [ "$cwd" = "$ROOT" ] || [[ "$cwd" == "$ROOT/"* ]]; then
+      printf '%s\n' "$pid"
+    fi
+  done < <(pgrep -f '[Pp]ython.*-m ui[.]server' 2>/dev/null || true)
+}
+
+_retire_governed_writer_children() {
+  local pids=""
+  local pid=""
+  # launchctl bootout is asynchronous and several historical wrappers did not
+  # forward TERM.  Give them a short natural exit window, then retire only
+  # processes whose argv/cwd proves ownership by this repository.
+  for _ in $(seq 1 20); do
+    pids="$(_governed_writer_child_pids | sort -u | xargs 2>/dev/null || true)"
+    [ -z "$pids" ] && return 0
+    sleep 0.1
+  done
+  pids="$(_governed_writer_child_pids | sort -u | xargs 2>/dev/null || true)"
+  [ -z "$pids" ] || kill -TERM $pids 2>/dev/null || true
+  for _ in $(seq 1 50); do
+    pids="$(_governed_writer_child_pids | sort -u | xargs 2>/dev/null || true)"
+    [ -z "$pids" ] && return 0
+    sleep 0.1
+  done
+  pids="$(_governed_writer_child_pids | sort -u | xargs 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    for pid in $pids; do
+      kill -KILL "$pid" 2>/dev/null || true
+    done
+  fi
+  sleep 0.1
+  pids="$(_governed_writer_child_pids | sort -u | xargs 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    echo "error: governed archive writer children survived weatherctl stop: $pids" >&2
+    return 1
+  fi
+  return 0
 }
 
 cmd="${1:-}"
@@ -298,6 +461,8 @@ case "$cmd" in
     for label in "${legacy_trade_labels[@]}"; do
       _bootout_label "$label"
     done
+    _retire_target_realization_worker_children
+    _retire_governed_writer_children
     echo "ok"
     ;;
   restart)
@@ -471,7 +636,9 @@ PY
     echo ""
     ;;
   auto:smoke-test)
-    _curl_long "${UI_URL}/api/ops?start=1&cmd=auto_trade_smoke_test&enable=1&confirm=1" || true
+    _curl_long "${UI_URL}/api/ops?start=1&cmd=auto_trade_smoke_test&enable=1&intent=manual_smoke_test" || true
+    echo ""
+    echo "real smoke test requires adding confirm=<PM_AUTO_TRADE_SMOKE_TEST_CONFIRM_PHRASE> manually"
     echo ""
     ;;
   auto:restart-watcher)

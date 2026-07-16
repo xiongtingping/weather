@@ -256,7 +256,7 @@ def _posterior_target_rule_source_proof(
         nested_block.get("decision_ssot"),
     )
     posterior_direct_semantics_ok = bool(
-        decision_ssot == "posterior_temperature_distribution"
+        decision_ssot in {"posterior_temperature_distribution", "posterior_ssot_fact"}
         or _first_bool_true(
             target.get("posterior_target_direct"),
             target_row.get("posterior_target_direct"),
@@ -313,6 +313,203 @@ def _posterior_target_rule_source_proof(
         "posterior_direct_semantics_ok": bool(posterior_direct_semantics_ok),
         "target_row_found": bool(target_row),
         "nested_payload_present": bool(nested_payload),
+    }
+
+
+def _iter_nested_event_payloads(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    out: list[Mapping[str, Any]] = []
+    for item in payload.get("event_payloads") or []:
+        if not isinstance(item, Mapping):
+            continue
+        nested = item.get("payload")
+        if isinstance(nested, Mapping):
+            out.append(nested)
+    return out
+
+
+def _prob01(value: Any) -> Optional[float]:
+    parsed = _to_float(value)
+    if parsed is None:
+        return None
+    if parsed > 1.0 and parsed <= 100.0:
+        parsed = parsed / 100.0
+    if parsed < 0.0 or parsed > 1.0:
+        return None
+    return parsed
+
+
+def _posterior_ssot_fact_from_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    candidates: list[Any] = [
+        payload.get("posterior_ssot_fact"),
+        _target_block(payload).get("posterior_ssot_fact"),
+    ]
+    for target in _entry_targets(payload):
+        candidates.append(target.get("posterior_ssot_fact"))
+    for nested in _iter_nested_event_payloads(payload):
+        candidates.append(nested.get("posterior_ssot_fact"))
+        candidates.append(_target_block(nested).get("posterior_ssot_fact"))
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        state = str(candidate.get("state") or "").strip().lower()
+        if state and state not in {"available", "ready", "ok"}:
+            continue
+        if _first_text(candidate.get("target_bucket"), candidate.get("ssot_target_bucket")):
+            return candidate
+    return {}
+
+
+def _posterior_ssot_target_probability(ssot_fact: Mapping[str, Any]) -> Optional[float]:
+    for key in (
+        "target_probability",
+        "target_probability_pct",
+        "target_bucket_probability",
+        "target_bucket_probability_pct",
+        "posterior",
+    ):
+        prob = _prob01(ssot_fact.get(key))
+        if prob is not None:
+            return prob
+    return None
+
+
+def _consumer_probability(mapping: Mapping[str, Any]) -> Optional[float]:
+    for key in (
+        "target_probability",
+        "target_probability_pct",
+        "target_bucket_probability",
+        "target_bucket_probability_pct",
+        "target_posterior",
+        "new_target_posterior",
+    ):
+        prob = _prob01(mapping.get(key))
+        if prob is not None:
+            return prob
+    return None
+
+
+def _posterior_ssot_consumer_result(
+    *,
+    name: str,
+    mapping: Mapping[str, Any],
+    expected_bucket: str,
+    expected_probability: Optional[float],
+    expected_fact_snapshot_id: str,
+    expected_posterior_run_id: str,
+) -> dict[str, Any]:
+    decision_ssot = _first_text(mapping.get("decision_ssot"), mapping.get("ssot_source"))
+    used = _first_bool_true(mapping.get("posterior_ssot_fact_used"))
+    bucket = _first_text(mapping.get("target_bucket"), mapping.get("ssot_target_bucket"), mapping.get("outcome"))
+    probability = _consumer_probability(mapping)
+    probability_field = _first_text(
+        mapping.get("target_probability_field"),
+        mapping.get("target_bucket_probability_field"),
+        mapping.get("posterior_ssot_target_probability_field"),
+        mapping.get("posterior_target_source"),
+        mapping.get("target_source"),
+    )
+    fact_snapshot_id = _first_text(mapping.get("fact_snapshot_id"), mapping.get("posterior_target_fact_snapshot_id"))
+    posterior_run_id = _first_text(mapping.get("posterior_run_id"), mapping.get("posterior_target_posterior_run_id"))
+    issues: list[str] = []
+    if decision_ssot != "posterior_ssot_fact":
+        issues.append("consumer_not_marked_posterior_ssot_fact")
+    if not used:
+        issues.append("consumer_posterior_ssot_fact_used_missing")
+    if bucket and expected_bucket and bucket != expected_bucket:
+        issues.append("consumer_target_bucket_mismatch")
+    if expected_probability is not None and probability is not None and abs(probability - expected_probability) > 1e-9:
+        issues.append("consumer_target_probability_mismatch")
+    if probability_field and "posterior_ssot_fact" not in probability_field:
+        issues.append("consumer_probability_field_not_posterior_ssot_fact")
+    if expected_fact_snapshot_id:
+        if not fact_snapshot_id:
+            issues.append("consumer_fact_snapshot_id_missing")
+        elif fact_snapshot_id != expected_fact_snapshot_id:
+            issues.append("consumer_fact_snapshot_id_mismatch")
+    if expected_posterior_run_id:
+        if not posterior_run_id:
+            issues.append("consumer_posterior_run_id_missing")
+        elif posterior_run_id != expected_posterior_run_id:
+            issues.append("consumer_posterior_run_id_mismatch")
+    return {
+        "name": name,
+        "ok": not issues,
+        "decision_ssot": decision_ssot,
+        "posterior_ssot_fact_used": bool(used),
+        "target_bucket": bucket,
+        "target_probability": probability,
+        "target_probability_field": probability_field,
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "issues": issues,
+    }
+
+
+def _posterior_ssot_decision_chain_proof(
+    *,
+    payload: Mapping[str, Any],
+    order_details: Mapping[str, Any],
+) -> dict[str, Any]:
+    ssot_fact = _posterior_ssot_fact_from_payload(payload)
+    if not ssot_fact:
+        return {"ok": True, "status": "not_applicable", "reason": "posterior_ssot_fact_absent"}
+    expected_bucket = _first_text(ssot_fact.get("target_bucket"), ssot_fact.get("ssot_target_bucket"))
+    expected_probability = _posterior_ssot_target_probability(ssot_fact)
+    expected_fact_snapshot_id = _first_text(ssot_fact.get("fact_snapshot_id"))
+    expected_posterior_run_id = _first_text(ssot_fact.get("posterior_run_id"))
+    consumers: list[dict[str, Any]] = []
+    block = _target_block(payload)
+    if block:
+        consumers.append(
+            _posterior_ssot_consumer_result(
+                name="job.posterior_target_direct",
+                mapping=block,
+                expected_bucket=expected_bucket,
+                expected_probability=expected_probability,
+                expected_fact_snapshot_id=expected_fact_snapshot_id,
+                expected_posterior_run_id=expected_posterior_run_id,
+            )
+        )
+    for idx, target in enumerate(_entry_targets(payload)):
+        consumers.append(
+            _posterior_ssot_consumer_result(
+                name=f"job.entry_expected_targets[{idx}]",
+                mapping=target,
+                expected_bucket=expected_bucket,
+                expected_probability=expected_probability,
+                expected_fact_snapshot_id=expected_fact_snapshot_id,
+                expected_posterior_run_id=expected_posterior_run_id,
+            )
+        )
+    if order_details:
+        consumers.append(
+            _posterior_ssot_consumer_result(
+                name="auto_trade_decisions.details_json",
+                mapping=order_details,
+                expected_bucket=expected_bucket,
+                expected_probability=expected_probability,
+                expected_fact_snapshot_id=expected_fact_snapshot_id,
+                expected_posterior_run_id=expected_posterior_run_id,
+            )
+        )
+    issue_rows = [
+        {"consumer": row.get("name"), "issues": row.get("issues")}
+        for row in consumers
+        if row.get("issues")
+    ]
+    if not consumers:
+        issue_rows.append({"consumer": "posterior_target_job", "issues": ["posterior_ssot_consumer_missing"]})
+    return {
+        "ok": not issue_rows,
+        "status": "posterior_ssot_fact_present",
+        "schema": ssot_fact.get("schema"),
+        "fact_snapshot_id": expected_fact_snapshot_id,
+        "posterior_run_id": expected_posterior_run_id,
+        "target_bucket": expected_bucket,
+        "target_probability": expected_probability,
+        "target_probability_field": ssot_fact.get("target_probability_field"),
+        "consumer_results": consumers,
+        "issues": issue_rows,
     }
 
 
@@ -577,6 +774,14 @@ def audit(
             checks["job_enqueue_to_order_within_3s"] = False
             checks["worker_to_order_within_3s"] = False
             checks["order_submit_within_3s"] = False
+        posterior_ssot_decision_proof = _posterior_ssot_decision_chain_proof(
+            payload=payload,
+            order_details=order_details,
+        )
+        details["posterior_ssot_decision_proof"] = posterior_ssot_decision_proof
+        checks["posterior_ssot_fact_decision_chain_ok"] = bool(
+            posterior_ssot_decision_proof.get("ok")
+        )
 
     for name, passed in checks.items():
         if not passed:

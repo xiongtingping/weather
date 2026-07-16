@@ -124,10 +124,8 @@ def _wu_history_date_url(base: str, event_date: str) -> str:
     base = _normalize_url(base)
     if not base or not event_date:
         return ""
-    # WU station weather pages use /cn/chengdu/ZUUU, but historical daily date
-    # pages are served under /cn/chengdu/date/YYYY-MM-DD.
-    if re.search(r"/history/daily/cn/chengdu/ZUUU$", base, flags=re.I):
-        base = re.sub(r"/ZUUU$", "", base, flags=re.I)
+    # Keep the station identity in the daily-history URL.  Dropping ``ZUUU``
+    # silently changes the source into a generic Chengdu city page.
     return f"{base}/date/{event_date}"
 
 

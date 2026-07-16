@@ -102,3 +102,39 @@ def test_uncovered_awc_failure_still_blocks_when_latest_poll_failed(tmp_path: Pa
     assert report["ok"] is False
     assert "awc_failure_not_covered_by_posterior_fast_precheck" in report["blockers"]
     assert report["details"]["failure_coverage_recovered"] is False
+
+
+def test_awc_failure_is_covered_by_pre_awc_posterior_precheck_and_reports_its_latency(tmp_path: Path) -> None:
+    log = tmp_path / "poller.log"
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"generated_at": _iso(-1)}), encoding="utf-8")
+    _write_log(
+        log,
+        [
+            (
+                _iso(-30),
+                {
+                    "awc": {"ok": True, "status": "success"},
+                    "posterior_target_fast_precheck": {"ok": True, "status": "unchanged"},
+                },
+            ),
+            (
+                _iso(-2),
+                {
+                    "awc": {"ok": False, "status": "error", "error": "ReadTimeout"},
+                    "posterior_target_fast_precheck": {
+                        "ok": True,
+                        "stage": "fast_precheck_before_awc",
+                        "status": "unchanged",
+                    },
+                    "timings_ms": {"posterior_fast_precheck_before_awc_ms": 17.5},
+                },
+            )
+        ],
+    )
+
+    report = audit_module.audit(_args(log, state))
+
+    assert report["ok"] is True
+    assert report["details"]["covered_failures"] == 1
+    assert report["details"]["latency_ms"]["posterior_fast_precheck_p50"] == 17.5

@@ -1,0 +1,465 @@
+- generic [ref=e9]:
+  - generic [ref=e10]:
+    - text: i a a a a a
+    - banner [ref=e11]:
+      - generic [ref=e13]:
+        - link "The Weather Company" [ref=e14] [cursor=pointer]:
+          - /url: https://www.weathercompany.com/
+          - img "The Weather Company" [ref=e15]
+        - generic [ref=e16]:
+          - navigation [ref=e18]:
+            - list [ref=e20]:
+              - listitem [ref=e21]:
+                - link "Company" [ref=e22] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e23]:
+                - link "News" [ref=e24] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e25]:
+                - link "Resources" [ref=e26] [cursor=pointer]:
+                  - /url: javascript:void(0)
+          - navigation [ref=e28]:
+            - list [ref=e30]:
+              - listitem [ref=e31]:
+                - link "Weather Forecasting" [ref=e32] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e33]:
+                - link "Consumer Experiences" [ref=e34] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e35]:
+                - link "Advertising Solutions" [ref=e36] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e37]:
+                - link "Enterprise Solutions" [ref=e38] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e39]:
+                - link "Data Solutions" [ref=e40] [cursor=pointer]:
+                  - /url: javascript:void(0)
+        - generic [ref=e41]:
+          - link "Contact usa" [ref=e42] [cursor=pointer]:
+            - /url: https://www.weathercompany.com/contact/
+          - generic [ref=e43]:
+            - generic [ref=e44] [cursor=pointer]: i
+            - text: i e
+        - text: e i i
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - img "Graphic with dark blue background and light blue stroke outline of the water drop from The Weather Company Logo." [ref=e48]
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - link "The Weather Company a" [ref=e52] [cursor=pointer]:
+              - /url: https://www.weathercompany.com
+            - generic [ref=e53]: Weather data API free trial
+          - generic [ref=e54]:
+            - heading "Start free 30-day trial" [level=1] [ref=e55]
+            - paragraph [ref=e57]: Explore and evaluate a full range of APIs designed to propel your business forward.
+      - iframe [active] [ref=e62]:
+        - generic [ref=f2e1]:
+          - generic [ref=f2e10]:
+            - generic [ref=f2e30]:
+              - generic [ref=f2e35]:
+                - generic [ref=f2e41]:
+                  - paragraph [ref=f2e42]: Let’s get started
+                  - paragraph [ref=f2e43]
+                  - paragraph [ref=f2e44]
+                  - paragraph [ref=f2e45]: Thank you for your interest in a free, 30-day trial of The Weather Company APIs.* To get started, we’ll need your email address and some basic business information along with which APIs you’d like to try. Upon registration, you will receive an email with details for how to access your API key.
+                  - paragraph [ref=f2e46]
+                  - paragraph [ref=f2e47]: "* Access to the evaluation trial is limited solely to commercial enterprises. Individuals and non-commercial entities are NOT eligible and should not submit this form. By submitting this form, you represent and warrant that you are a commercial enterprise. The Weather Company reserves the right to verify eligibility, impose additional criteria, and deny or terminate access at its sole discretion."
+                - separator [ref=f2e52]
+                - paragraph [ref=f2e59]: Core APIs (default)
+                - generic [ref=f2e66]:
+                  - generic [ref=f2e67]: Navigation Mode
+                  - grid [ref=f2e71]:
+                    - rowgroup:
+                      - row "Product Product Description":
+                        - columnheader "Product":
+                          - generic [ref=f2e74]:
+                            - generic "Product" [ref=f2e75]
+                            - slider "Product column width" [ref=f2e76]: "250"
+                        - columnheader "Product Description":
+                          - generic [ref=f2e81]:
+                            - generic "Product Description" [ref=f2e82]
+                            - slider "Product Description column width" [ref=f2e83]: "301"
+                    - rowgroup [ref=f2e86]:
+                      - row "Standard Weather APIs 4km resolution of current conditions and 15 day hourly forecasts, plus severe weather alerts and high-resolution weather imagery" [ref=f2e87]:
+                        - rowheader "Standard Weather APIs" [ref=f2e88]:
+                          - generic [ref=f2e91]: Standard Weather APIs
+                        - gridcell "4km resolution of current conditions and 15 day hourly forecasts, plus severe weather alerts and high-resolution weather imagery" [ref=f2e92]:
+                          - generic [ref=f2e97]: 4km resolution of current conditions and 15 day hourly forecasts, plus severe weather alerts and high-resolution weather imagery
+                - separator [ref=f2e102]
+                - paragraph [ref=f2e109]: Additional Products
+                - generic [ref=f2e116]:
+                  - generic [ref=f2e117]: Navigation Mode
+                  - grid [ref=f2e121]:
+                    - rowgroup:
+                      - row "Product Product Description":
+                        - columnheader "Product":
+                          - generic [ref=f2e124]:
+                            - generic "Product" [ref=f2e125]
+                            - slider "Product column width" [ref=f2e126]: "250"
+                        - columnheader "Product Description":
+                          - generic [ref=f2e131]:
+                            - generic "Product Description" [ref=f2e132]
+                            - slider "Product Description column width" [ref=f2e133]: "301"
+                    - rowgroup [ref=f2e136]:
+                      - row "Agriculture Soil temperature and soil moisture, crop specific and model evapotranspiration, rainfall trends, frost potential" [ref=f2e137]:
+                        - rowheader "Agriculture" [ref=f2e138]:
+                          - generic [ref=f2e141]: Agriculture
+                        - gridcell "Soil temperature and soil moisture, crop specific and model evapotranspiration, rainfall trends, frost potential" [ref=f2e142]:
+                          - generic [ref=f2e147]: Soil temperature and soil moisture, crop specific and model evapotranspiration, rainfall trends, frost potential
+                      - row "Aviation Core The Aviation Core package provides government sourced, worldwide meteorological products for aviation." [ref=f2e148]:
+                        - rowheader "Aviation Core" [ref=f2e149]:
+                          - generic [ref=f2e152]: Aviation Core
+                        - gridcell "The Aviation Core package provides government sourced, worldwide meteorological products for aviation." [ref=f2e153]:
+                          - generic [ref=f2e158]: The Aviation Core package provides government sourced, worldwide meteorological products for aviation.
+                      - row "Aviation En-Route Aviation Enroute encompasses turbulence, icing, and proprietary hazard guidance layers globally." [ref=f2e159]:
+                        - rowheader "Aviation En-Route" [ref=f2e160]:
+                          - generic [ref=f2e163]: Aviation En-Route
+                        - gridcell "Aviation Enroute encompasses turbulence, icing, and proprietary hazard guidance layers globally." [ref=f2e164]:
+                          - generic [ref=f2e169]: Aviation Enroute encompasses turbulence, icing, and proprietary hazard guidance layers globally.
+                      - row "Aviation Enhanced Core Aviation Enhanced Core is a catalog of global radar and satellite mosaics mixed with TWC derived radar products." [ref=f2e170]:
+                        - rowheader "Aviation Enhanced Core" [ref=f2e171]:
+                          - generic [ref=f2e174]: Aviation Enhanced Core
+                        - gridcell "Aviation Enhanced Core is a catalog of global radar and satellite mosaics mixed with TWC derived radar products." [ref=f2e175]:
+                          - generic [ref=f2e180]: Aviation Enhanced Core is a catalog of global radar and satellite mosaics mixed with TWC derived radar products.
+                      - row "Renewable Energy Solar irradiance, hub height wind speed, wind direction and air density" [ref=f2e181]:
+                        - rowheader "Renewable Energy" [ref=f2e182]:
+                          - generic [ref=f2e185]: Renewable Energy
+                        - gridcell "Solar irradiance, hub height wind speed, wind direction and air density" [ref=f2e186]:
+                          - generic [ref=f2e191]: Solar irradiance, hub height wind speed, wind direction and air density
+                      - row "Seasonal Forecast Graphics of the anticipated temperature and precipitation anomalies over the next seven months" [ref=f2e192]:
+                        - rowheader "Seasonal Forecast" [ref=f2e193]:
+                          - generic [ref=f2e196]: Seasonal Forecast
+                        - gridcell "Graphics of the anticipated temperature and precipitation anomalies over the next seven months" [ref=f2e197]:
+                          - generic [ref=f2e202]: Graphics of the anticipated temperature and precipitation anomalies over the next seven months
+                      - row "Severe Weather Storm reports, hail swath forecasts, lightning intensity, wind shear, snow events, gridded data indicating smoke and fire activity" [ref=f2e203]:
+                        - rowheader "Severe Weather" [ref=f2e204]:
+                          - generic [ref=f2e207]: Severe Weather
+                        - gridcell "Storm reports, hail swath forecasts, lightning intensity, wind shear, snow events, gridded data indicating smoke and fire activity" [ref=f2e208]:
+                          - generic [ref=f2e213]: Storm reports, hail swath forecasts, lightning intensity, wind shear, snow events, gridded data indicating smoke and fire activity
+              - generic [ref=f2e218]:
+                - generic [ref=f2e224]:
+                  - generic [ref=f2e227]: "*First Name"
+                  - textbox "First Name" [ref=f2e232]
+                - generic [ref=f2e238]:
+                  - generic [ref=f2e241]: "*Last Name"
+                  - textbox "Last Name" [ref=f2e246]
+                - generic [ref=f2e252]:
+                  - generic [ref=f2e255]: "*Job Role"
+                  - textbox "Job Role" [ref=f2e260]
+                - generic [ref=f2e266]:
+                  - generic [ref=f2e269]: "*Company Name"
+                  - textbox "Company Name" [ref=f2e274]
+                - generic [ref=f2e280]:
+                  - generic [ref=f2e282]: "*Industry"
+                  - generic [ref=f2e286]:
+                    - combobox "Industry" [expanded] [active] [ref=f2e287] [cursor=pointer]:
+                      - generic [ref=f2e288]: Select an Option
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                    - listbox "Industry" [ref=f2e361]:
+                      - option "Airlines/Aviation" [ref=f2e362]:
+                        - generic "Airlines/Aviation" [ref=f2e364]
+                      - option "Automotive" [ref=f2e365]:
+                        - generic "Automotive" [ref=f2e367]
+                      - option "Aviation & Aerospace" [ref=f2e368]:
+                        - generic "Aviation & Aerospace" [ref=f2e370]
+                      - option "Banking" [ref=f2e371]:
+                        - generic "Banking" [ref=f2e373]
+                      - option "Building Materials" [ref=f2e374]:
+                        - generic "Building Materials" [ref=f2e376]
+                      - option "Business Supplies and Equipment" [ref=f2e377]:
+                        - generic "Business Supplies and Equipment" [ref=f2e379]
+                      - option "Chemicals" [ref=f2e380]:
+                        - generic "Chemicals" [ref=f2e382]
+                      - option "Civil Engineering" [ref=f2e383]:
+                        - generic "Civil Engineering" [ref=f2e385]
+                      - option "Commercial Real Estate" [ref=f2e386]:
+                        - generic "Commercial Real Estate" [ref=f2e388]
+                      - option "Computer Games" [ref=f2e389]:
+                        - generic "Computer Games" [ref=f2e391]
+                      - option "Computer Hardware" [ref=f2e392]:
+                        - generic "Computer Hardware" [ref=f2e394]
+                      - option "Computer Software" [ref=f2e395]:
+                        - generic "Computer Software" [ref=f2e397]
+                      - option "Construction" [ref=f2e398]:
+                        - generic "Construction" [ref=f2e400]
+                      - option "Consumer Electronics" [ref=f2e401]:
+                        - generic "Consumer Electronics" [ref=f2e403]
+                      - option "Consumer Goods" [ref=f2e404]:
+                        - generic "Consumer Goods" [ref=f2e406]
+                      - option "Consumer Services" [ref=f2e407]:
+                        - generic "Consumer Services" [ref=f2e409]
+                      - option "Cosmetics" [ref=f2e410]:
+                        - generic "Cosmetics" [ref=f2e412]
+                      - option "Dining" [ref=f2e413]:
+                        - generic "Dining" [ref=f2e415]
+                      - option "Education Management" [ref=f2e416]:
+                        - generic "Education Management" [ref=f2e418]
+                      - option "Electrical/Electronic Manufacturing" [ref=f2e419]:
+                        - generic "Electrical/Electronic Manufacturing" [ref=f2e421]
+                      - option "Energy" [ref=f2e422]:
+                        - generic "Energy" [ref=f2e424]
+                      - option "Entertainment" [ref=f2e425]:
+                        - generic "Entertainment" [ref=f2e427]
+                      - option "Event Services" [ref=f2e428]:
+                        - generic "Event Services" [ref=f2e430]
+                      - option "Facilities Services" [ref=f2e431]:
+                        - generic "Facilities Services" [ref=f2e433]
+                      - option "Farming" [ref=f2e434]:
+                        - generic "Farming" [ref=f2e436]
+                      - option "Financial Services" [ref=f2e437]:
+                        - generic "Financial Services" [ref=f2e439]
+                      - option "Food & Beverages" [ref=f2e440]:
+                        - generic "Food & Beverages" [ref=f2e442]
+                      - option "Gambling & Casinos" [ref=f2e443]:
+                        - generic "Gambling & Casinos" [ref=f2e445]
+                      - option "Government Administration" [ref=f2e446]:
+                        - generic "Government Administration" [ref=f2e448]
+                      - option "Health, Wellness, and Fitness" [ref=f2e449]:
+                        - generic "Health, Wellness, and Fitness" [ref=f2e451]
+                      - option "Higher Education" [ref=f2e452]:
+                        - generic "Higher Education" [ref=f2e454]
+                      - option "Hospital & Health Care" [ref=f2e455]:
+                        - generic "Hospital & Health Care" [ref=f2e457]
+                      - option "Hospitality" [ref=f2e458]:
+                        - generic "Hospitality" [ref=f2e460]
+                      - option "Information Services" [ref=f2e461]:
+                        - generic "Information Services" [ref=f2e463]
+                      - option "Information Technology and Services" [ref=f2e464]:
+                        - generic "Information Technology and Services" [ref=f2e466]
+                      - option "Insurance" [ref=f2e467]:
+                        - generic "Insurance" [ref=f2e469]
+                      - option "Internet" [ref=f2e470]:
+                        - generic "Internet" [ref=f2e472]
+                      - option "Law Enforcement" [ref=f2e473]:
+                        - generic "Law Enforcement" [ref=f2e475]
+                      - option "Legal Services" [ref=f2e476]:
+                        - generic "Legal Services" [ref=f2e478]
+                      - option "Leisure, Travel & Tourism" [ref=f2e479]:
+                        - generic "Leisure, Travel & Tourism" [ref=f2e481]
+                      - option "Logistics and Supply Chain" [ref=f2e482]:
+                        - generic "Logistics and Supply Chain" [ref=f2e484]
+                      - option "Machinery" [ref=f2e485]:
+                        - generic "Machinery" [ref=f2e487]
+                      - option "Management Consulting" [ref=f2e488]:
+                        - generic "Management Consulting" [ref=f2e490]
+                      - option "Maritime" [ref=f2e491]:
+                        - generic "Maritime" [ref=f2e493]
+                      - option "Marketing and Advertising" [ref=f2e494]:
+                        - generic "Marketing and Advertising" [ref=f2e496]
+                      - option "Medical Devices" [ref=f2e497]:
+                        - generic "Medical Devices" [ref=f2e499]
+                      - option "Mining & Metals" [ref=f2e500]:
+                        - generic "Mining & Metals" [ref=f2e502]
+                      - option "Newspapers" [ref=f2e503]:
+                        - generic "Newspapers" [ref=f2e505]
+                      - option "Oil & Energy" [ref=f2e506]:
+                        - generic "Oil & Energy" [ref=f2e508]
+                      - option "Online Media" [ref=f2e509]:
+                        - generic "Online Media" [ref=f2e511]
+                      - option "Other" [ref=f2e512]:
+                        - generic "Other" [ref=f2e514]
+                      - option "Package/Freight Delivery" [ref=f2e515]:
+                        - generic "Package/Freight Delivery" [ref=f2e517]
+                      - option "Packaging and Containers" [ref=f2e518]:
+                        - generic "Packaging and Containers" [ref=f2e520]
+                      - option "Paper & Forest Products" [ref=f2e521]:
+                        - generic "Paper & Forest Products" [ref=f2e523]
+                      - option "Pharmaceuticals" [ref=f2e524]:
+                        - generic "Pharmaceuticals" [ref=f2e526]
+                      - option "Primary/Secondary Education" [ref=f2e527]:
+                        - generic "Primary/Secondary Education" [ref=f2e529]
+                      - option "Publishing" [ref=f2e530]:
+                        - generic "Publishing" [ref=f2e532]
+                      - option "Real Estate" [ref=f2e533]:
+                        - generic "Real Estate" [ref=f2e535]
+                      - option "Renewables & Environment" [ref=f2e536]:
+                        - generic "Renewables & Environment" [ref=f2e538]
+                      - option "Restaurants" [ref=f2e539]:
+                        - generic "Restaurants" [ref=f2e541]
+                      - option "Retail" [ref=f2e542]:
+                        - generic "Retail" [ref=f2e544]
+                      - option "Security and Investigations" [ref=f2e545]:
+                        - generic "Security and Investigations" [ref=f2e547]
+                      - option "Semiconductors" [ref=f2e548]:
+                        - generic "Semiconductors" [ref=f2e550]
+                      - option "Shipping and Logistics" [ref=f2e551]:
+                        - generic "Shipping and Logistics" [ref=f2e553]
+                      - option "Sporting Goods" [ref=f2e554]:
+                        - generic "Sporting Goods" [ref=f2e556]
+                      - option "Sports" [ref=f2e557]:
+                        - generic "Sports" [ref=f2e559]
+                      - option "Staffing and Recruiting" [ref=f2e560]:
+                        - generic "Staffing and Recruiting" [ref=f2e562]
+                      - option "Supermarkets" [ref=f2e563]:
+                        - generic "Supermarkets" [ref=f2e565]
+                      - option "Telecommunications" [ref=f2e566]:
+                        - generic "Telecommunications" [ref=f2e568]
+                      - option "Transportation/Trucking/Railroad" [ref=f2e569]:
+                        - generic "Transportation/Trucking/Railroad" [ref=f2e571]
+                      - option "Utilities" [ref=f2e572]:
+                        - generic "Utilities" [ref=f2e574]
+                      - option "Warehousing" [ref=f2e575]:
+                        - generic "Warehousing" [ref=f2e577]
+                      - option "Weather Services" [ref=f2e578]:
+                        - generic "Weather Services" [ref=f2e580]
+                      - option "Wholesale" [ref=f2e581]:
+                        - generic "Wholesale" [ref=f2e583]
+                  - status
+                - generic [ref=f2e293]:
+                  - generic [ref=f2e294]: "*Country"
+                  - generic [ref=f2e299]:
+                    - combobox "Country" [ref=f2e302]
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                  - status
+                - generic [ref=f2e309]:
+                  - generic [ref=f2e310]: "*Email"
+                  - textbox "Email" [ref=f2e312]:
+                    - /placeholder: you@example.com
+                - generic [ref=f2e319]:
+                  - generic [ref=f2e320]: "*Confirm Email"
+                  - textbox "Confirm Email" [ref=f2e322]:
+                    - /placeholder: you@example.com
+                - generic [ref=f2e327]:
+                  - generic:
+                    - button "Send Verification Code" [disabled]:
+                      - generic: Send Verification Code
+                - generic [ref=f2e333]:
+                  - generic [ref=f2e336]: "*Verification Code"
+                  - textbox "Verification Code" [disabled] [ref=f2e341]
+                - paragraph [ref=f2e348]:
+                  - emphasis [ref=f2e349]: You can withdraw your marketing consent at any time by submitting an
+                  - link "opt-out request" [ref=f2e350] [cursor=pointer]:
+                    - /url: https://biz.weather.com/Opt-out-preference.html
+                    - emphasis [ref=f2e351]: opt-out request
+                  - emphasis [ref=f2e352]: . Also, you may unsubscribe from receiving marketing emails by clicking the unsubscribe link in each email. More information on our processing can be found in
+                  - link "The Weather Company Privacy Statement" [ref=f2e353] [cursor=pointer]:
+                    - /url: https://www.weathercompany.com/privacy-policy/
+                    - emphasis [ref=f2e354]: The Weather Company Privacy Statement
+                  - emphasis [ref=f2e355]: . By submitting this form, I acknowledge that I have read and understand The Weather Company Privacy Statement.
+            - contentinfo [ref=f2e357]:
+              - button "Next" [ref=f2e360] [cursor=pointer]
+          - generic:
+            - status
+          - generic [ref=f2e19]: Home
+      - paragraph
+  - contentinfo [ref=e63]:
+    - generic [ref=e64]:
+      - list [ref=e68]:
+        - listitem [ref=e69]:
+          - text: Weather Forecasting
+          - list [ref=e70]:
+            - listitem [ref=e71]:
+              - link "Enterprise Weather Forecast Services" [ref=e72] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/weather-forecast-services/
+            - listitem [ref=e73]:
+              - link "Proven Accuracy" [ref=e74] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/proven-accuracy/
+            - listitem [ref=e75]:
+              - link "GRAF" [ref=e76] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/global-high-resolution-atmospheric-forecasting/
+        - listitem [ref=e77]:
+          - text: Solutions
+          - list [ref=e78]:
+            - listitem [ref=e79]:
+              - link "Advertising" [ref=e80] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/advertising/
+            - listitem [ref=e81]:
+              - link "Aviation" [ref=e82] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/aviation/
+            - listitem [ref=e83]:
+              - link "Media" [ref=e84] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/media/
+            - listitem [ref=e85]:
+              - link "Weather Data APIs" [ref=e86] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/weather-data-apis/
+        - listitem [ref=e87]:
+          - text: Company
+          - list [ref=e88]:
+            - listitem [ref=e89]:
+              - link "About Us" [ref=e90] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/about-us/
+            - listitem [ref=e91]:
+              - link "Leadership" [ref=e92] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/leadership/
+            - listitem [ref=e93]:
+              - link "Careers" [ref=e94] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/careers/
+        - listitem [ref=e95]:
+          - text: News
+          - list [ref=e96]:
+            - listitem [ref=e97]:
+              - link "Newsroom" [ref=e98] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/news/
+            - listitem [ref=e99]:
+              - link "In the News" [ref=e100] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/news/in-the-news/
+        - listitem [ref=e101]:
+          - text: Resources
+          - list [ref=e102]:
+            - listitem [ref=e103]:
+              - link "Case Studies" [ref=e104] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/case-studies/
+            - listitem [ref=e105]:
+              - link "The Weather Company Blog" [ref=e106] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/blog/
+            - listitem [ref=e107]:
+              - link "Solution Sheets" [ref=e108] [cursor=pointer]:
+                - /url: https://www.weathercompany.com/solution-sheets/
+            - listitem [ref=e109]:
+              - link "API Documentation" [ref=e110] [cursor=pointer]:
+                - /url: https://developer.weather.com/
+      - generic [ref=e111]:
+        - generic [ref=e112]:
+          - list [ref=e113]:
+            - listitem [ref=e114]:
+              - link "g Linkedin" [ref=e115] [cursor=pointer]:
+                - /url: https://www.linkedin.com/company/weather-company/
+              - generic [ref=e116]: Follow us on LinkedIn
+          - generic [ref=e117]:
+            - generic [ref=e118]: © Copyright The Weather Company LLC 2014, 2026
+            - list [ref=e120]:
+              - listitem [ref=e121]:
+                - link "Privacy Policy" [ref=e122] [cursor=pointer]:
+                  - /url: https://weather.com/privacy/privacy-policy
+              - listitem [ref=e123]:
+                - text: "|"
+                - link "Accessibility" [ref=e124] [cursor=pointer]:
+                  - /url: https://www.weathercompany.com/accessibility/
+              - listitem [ref=e125]:
+                - text: "|"
+                - link "Report Security Incident" [ref=e126] [cursor=pointer]:
+                  - /url: mailto:security-report@weather.com
+              - listitem [ref=e127]:
+                - text: "|"
+                - link "Terms of Use" [ref=e128] [cursor=pointer]:
+                  - /url: https://weather.com/privacy/terms-of-use
+            - list [ref=e130]:
+              - listitem [ref=e131]:
+                - link "Cookie Preferences" [ref=e132] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=e133]: "| Do Not Sell My Personal Information"
+        - generic [ref=e134]:
+          - link "The Weather Company" [ref=e135] [cursor=pointer]:
+            - /url: https://www.weathercompany.com/
+            - img "The Weather Company" [ref=e136]
+          - generic [ref=e137]:
+            - link "The Weather Channel logo white" [ref=e138] [cursor=pointer]:
+              - /url: https://weather.onelink.me/2902176432/770lrwva
+              - img "The Weather Channel logo white" [ref=e139]
+            - link "Weather Underground logo white" [ref=e140] [cursor=pointer]:
+              - /url: https://go.onelink.me/939963580/pnz1yxw4
+              - img "Weather Underground logo white" [ref=e141]
+            - link "Storm Radar logo white" [ref=e142] [cursor=pointer]:
+              - /url: https://weather.onelink.me/RFZA/2udn93zj
+              - img "Storm Radar logo white" [ref=e143]
+        - link "Contact usa" [ref=e145] [cursor=pointer]:
+          - /url: https://www.weathercompany.com/contact/

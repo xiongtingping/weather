@@ -10,6 +10,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,6 +18,15 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from trade_exit_reason_contract import (  # noqa: E402
+    TARGET_REALIZATION_EXIT_REASON_CODES,
+    TARGET_REALIZATION_FAMILY,
+    exit_reason_family_for_code,
+)
+
 DEFAULT_DB = ROOT / "data" / "archive.db"
 FEEDBACK_SNAPSHOT_KIND = "exit_policy_audit"
 AUDIT_ENV_KEYS = (
@@ -115,9 +125,8 @@ LEGACY_EDGE_CODES = {
     "adj_pair_exec_edge_entry_missing",
 }
 
-TARGET_REALIZATION_EXIT_PREFIX = "target_realization_"
 EXIT_POLICY_PRIMARY_SOURCE = "target_realization_binary_settlement"
-EXIT_POLICY_FAMILY_CODES = {"target_realization_exit"}
+EXIT_POLICY_FAMILY_CODES = {TARGET_REALIZATION_FAMILY}
 LEGACY_EXIT_POLICY_FAMILY_CODES = {"edge_exit", "repricing_exit", "risk_exit"}
 LEGACY_EXIT_TRIGGER_CODES = {
     "edge_min",
@@ -277,7 +286,7 @@ def _truthy(value: Any) -> bool:
 
 def _is_target_realization_exit_code(raw_code: Any) -> bool:
     code = str(raw_code or "").strip().lower()
-    return bool(code and code.startswith(TARGET_REALIZATION_EXIT_PREFIX))
+    return code in TARGET_REALIZATION_EXIT_REASON_CODES
 
 
 def _is_legacy_exit_trigger_code(raw_code: Any) -> bool:
@@ -290,9 +299,7 @@ def _is_legacy_exit_trigger_code(raw_code: Any) -> bool:
 
 
 def _exit_reason_family_for_code(raw_code: Any) -> str:
-    if _is_target_realization_exit_code(raw_code):
-        return "target_realization_exit"
-    return ""
+    return exit_reason_family_for_code(raw_code)
 
 
 def _exit_policy_primary_edge_source(details: Mapping[str, Any]) -> str:
@@ -438,7 +445,7 @@ def _is_bayes_target_entry_row(
     source = str(details.get("decision_source") or details.get("entry_source") or "").strip().lower()
     if _truthy(details.get("posterior_target_direct")):
         return True
-    if str(details.get("decision_ssot") or "").strip() == "posterior_temperature_distribution":
+    if str(details.get("decision_ssot") or "").strip() in {"posterior_temperature_distribution", "posterior_ssot_fact"}:
         return True
     if str(details.get("entry_alpha_gate_source") or "").strip() == "posterior_settlement":
         return True
@@ -448,6 +455,24 @@ def _is_bayes_target_entry_row(
         strategy in {"posterior_target_direct", "target_realization_order_intent", "target_realization_binary_settlement", "posterior_settlement"}
         or source in {"posterior_target_direct", "target_realization_order_intent"}
     )
+
+
+def _posterior_target_direct_ssot_issue(details: Mapping[str, Any]) -> str:
+    decision_ssot = str(details.get("decision_ssot") or "").strip()
+    posterior_target_direct = _truthy(details.get("posterior_target_direct")) or (
+        str(details.get("strategy") or details.get("strategy_source") or "").strip().lower()
+        == "posterior_target_direct"
+    )
+    if decision_ssot == "posterior_temperature_distribution":
+        return "decision_ssot_legacy_posterior_temperature_distribution"
+    if posterior_target_direct and decision_ssot != "posterior_ssot_fact":
+        return "posterior_target_direct_decision_ssot_not_posterior_ssot_fact"
+    if posterior_target_direct and not _truthy(details.get("posterior_ssot_fact_used")):
+        return "posterior_target_direct_posterior_ssot_fact_used_missing"
+    probability_field = str(details.get("target_probability_field") or "").strip()
+    if posterior_target_direct and probability_field and "posterior_ssot_fact" not in probability_field:
+        return "posterior_target_direct_probability_field_not_posterior_ssot_fact"
+    return ""
 
 
 def _first_finite_float(*values: Any) -> Optional[float]:
@@ -729,6 +754,7 @@ def audit_recent_decisions(
     dry_run_entry_unusable_edge_order_rows = 0
     source_station_mismatch_rows = 0
     exit_policy_missing_rows = 0
+    posterior_target_direct_ssot_violations: List[Dict[str, Any]] = []
     legacy_exit_policy_semantic_violations: List[Dict[str, Any]] = []
     legacy_compacted_unverifiable_exit_rows = 0
     exit_policy_rows: List[Dict[str, Any]] = []
@@ -746,6 +772,7 @@ def audit_recent_decisions(
         "dry_run_entry_unusable_edge_order_rows": [],
         "source_station_mismatch_rows": [],
         "exit_policy_missing_rows": [],
+        "posterior_target_direct_ssot_violations": [],
         "legacy_exit_policy_semantic_violations": [],
         "dry_run_entry_state_violations": [],
         "entry_unusable_edge_order_violations": [],
@@ -767,6 +794,15 @@ def audit_recent_decisions(
             bayes_target_entry_rows += 1
             if len(examples["bayes_target_entry_rows"]) < 5:
                 examples["bayes_target_entry_rows"].append(_row_example(row, codes))
+            ssot_issue = _posterior_target_direct_ssot_issue(details_map)
+            if ssot_issue:
+                item = _row_example(row, codes)
+                item["issue"] = ssot_issue
+                item["decision_ssot"] = str(details_map.get("decision_ssot") or "")
+                item["target_probability_field"] = str(details_map.get("target_probability_field") or "")
+                posterior_target_direct_ssot_violations.append(item)
+                if len(examples["posterior_target_direct_ssot_violations"]) < 5:
+                    examples["posterior_target_direct_ssot_violations"].append(item)
         top_source_fit = details_map.get("source_fit_tier")
         prefixed_source_fit = (
             details_map.get("weather_strategy_source_fit_tier")
@@ -844,27 +880,6 @@ def audit_recent_decisions(
             if legacy_codes_hit and len(examples["legacy_edge_blocks"]) < 5:
                 examples["legacy_edge_blocks"].append(_row_example(row, legacy_codes_hit))
 
-        if action == "entry" and entry_only_realizable is True and not is_bayes_target_entry:
-            usable_edge = _to_float(details_map.get("entry_usable_edge"))
-            usable_na_reason = str(details_map.get("entry_usable_edge_na_reason") or "").strip()
-            if usable_edge is None and not usable_na_reason:
-                if will_order and (dry_run is True or _is_dry_run_decision_details(details_map)):
-                    pass
-                elif _is_legacy_q_entry_observation_row(
-                    details_map,
-                    reason_codes=codes,
-                    will_order=will_order,
-                ):
-                    legacy_q_entry_observation_rows += 1
-                    if len(examples["legacy_q_entry_observation_rows"]) < 5:
-                        examples["legacy_q_entry_observation_rows"].append(
-                            _row_example(row, codes)
-                        )
-                else:
-                    missing_entry_usable_edge_rows += 1
-                    if len(examples["missing_entry_usable_edge_rows"]) < 5:
-                        examples["missing_entry_usable_edge_rows"].append(_row_example(row, codes))
-
         if (
             dry_run is True
             and action == "entry"
@@ -876,28 +891,6 @@ def audit_recent_decisions(
             dry_run_entry_state_violations.append(item)
             if len(examples["dry_run_entry_state_violations"]) < 5:
                 examples["dry_run_entry_state_violations"].append(item)
-
-        if action == "entry" and will_order and not is_bayes_target_entry:
-            usable_edge = _to_float(details_map.get("entry_usable_edge"))
-            size_scale = _to_float(details_map.get("entry_usable_edge_size_scale"))
-            bad_edge = usable_edge is None or not math.isfinite(usable_edge) or usable_edge <= 1e-9
-            bad_scale = size_scale is None or not math.isfinite(size_scale) or size_scale <= 1e-9
-            if bad_edge or bad_scale:
-                item = _row_example(row, codes)
-                item["entry_usable_edge"] = usable_edge
-                item["entry_usable_edge_size_scale"] = size_scale
-                if (
-                    (dry_run is True or _is_dry_run_decision_details(details_map))
-                    and usable_edge is None
-                    and size_scale is None
-                ):
-                    dry_run_entry_unusable_edge_order_rows += 1
-                    if len(examples["dry_run_entry_unusable_edge_order_rows"]) < 5:
-                        examples["dry_run_entry_unusable_edge_order_rows"].append(item)
-                    continue
-                entry_unusable_edge_order_violations.append(item)
-                if len(examples["entry_unusable_edge_order_violations"]) < 5:
-                    examples["entry_unusable_edge_order_violations"].append(item)
 
         if action == "exit":
             legacy_compacted_unverifiable = _is_legacy_compacted_unverifiable_exit_details(
@@ -980,6 +973,8 @@ def audit_recent_decisions(
         "dry_run_entry_unusable_edge_order_rows": dry_run_entry_unusable_edge_order_rows,
         "source_station_mismatch_rows": source_station_mismatch_rows,
         "exit_policy_missing_rows": exit_policy_missing_rows,
+        "posterior_target_direct_ssot_violation_count": len(posterior_target_direct_ssot_violations),
+        "posterior_target_direct_ssot_violations": posterior_target_direct_ssot_violations,
         "exit_policy_rows": exit_policy_rows,
         "legacy_compacted_unverifiable_exit_rows": legacy_compacted_unverifiable_exit_rows,
         "legacy_exit_policy_semantic_violations": legacy_exit_policy_semantic_violations,
@@ -1302,7 +1297,6 @@ def run_audit(args: argparse.Namespace) -> Dict[str, Any]:
     else:
         ok = not term_hits
         ok = ok and not violations["dry_run_entry_state_violations"]
-        ok = ok and not violations["entry_unusable_edge_order_violations"]
         ok = ok and not violations["source_station_mismatch_rows"]
         ok = ok and not violations["exit_policy_missing_rows"]
         ok = ok and not violations["legacy_exit_policy_semantic_violations"]
@@ -1313,7 +1307,6 @@ def run_audit(args: argparse.Namespace) -> Dict[str, Any]:
                 and not violations["legacy_edge_block_counts"]
                 and not violations["missing_top_fit_rows"]
                 and not violations["missing_fit_na_reason_rows"]
-                and not violations["missing_entry_usable_edge_rows"]
             )
 
     return {
@@ -1334,8 +1327,8 @@ def run_audit(args: argparse.Namespace) -> Dict[str, Any]:
             "source_trust_tier is allowed only as a compatibility alias; source_fit_tier is the current decision-core term.",
             "When PM_AUTO_TRADE_ENTRY_ONLY_REALIZABLE=1, q/ask/spread/depth-style checks should be penalties/diagnostics, not entry hard blockers.",
             "Bayes target-bucket entry rows are audited by posterior/target realization semantics, not legacy entry_usable_edge hard gates.",
-            "entry_usable_edge must be present, or have entry_usable_edge_na_reason, for entry decisions in entry-only-realizable mode.",
-            "Entry orders must not submit when entry_usable_edge is nonpositive or entry_usable_edge_size_scale is zero.",
+            "entry_usable_edge and its size scale are diagnostic-only and must not authorize, block, or size production orders.",
+            "Entry orders require the exact posterior/SSOT/hard-source allowlist plus identity, freshness, funds, risk, mutual-exclusion, and idempotency guards.",
             "Exit decisions must include exit_policy_* audit fields; current strategy primary source is target_realization_binary_settlement and legacy edge/stop-loss/repricing semantics must not trigger exits.",
         ],
     }

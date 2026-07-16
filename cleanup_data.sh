@@ -2,134 +2,128 @@
 set -euo pipefail
 
 ROOT="/Users/xiong/weather"
-cd "$ROOT"
+DB_PATH="${PM_ARCHIVE_DB_PATH:-$ROOT/data/archive.db}"
+CONFIRM_PHRASE="RETENTION_APPLY_CONFIRMED"
+APPLY=0
+COMPACT=0
+CHECKPOINT=1
+CHENGDU_TICK_RETENTION="${PM_ARCHIVE_DB_CHENGDU_TICK_RETENTION:-0}"
+EXACT_COUNTS=0
+CONFIRMED=0
+EXTRA_ARGS=()
 
-echo "=== 数据清理脚本 ==="
-echo "时间: $(date '+%Y-%m-%d %H:%M:%S')"
-echo ""
+usage() {
+  cat <<EOF
+Usage: ./cleanup_data.sh [--dry-run] [--apply --confirm-retention-apply] [--compact] [archive_db_governance args...]
 
-# 检查数据库大小
-echo "【清理前】"
-du -sh data/archive.db
-echo ""
+Default mode is dry-run. Live retention deletes require one of:
+  --confirm-retention-apply
+  PM_CLEANUP_APPLY_CONFIRM=$CONFIRM_PHRASE
 
-# 1. 备份数据库
-BACKUP_FILE="data/archive.db.backup.$(date +%Y%m%d_%H%M%S)"
-echo "正在备份数据库到: $BACKUP_FILE"
-cp data/archive.db "$BACKUP_FILE"
-echo "✅ 备份完成"
-echo ""
-
-# 2. 检查是否有进程在使用数据库
-echo "检查数据库使用情况..."
-if lsof data/archive.db 2>/dev/null | grep -v "COMMAND" | head -5; then
-  echo "⚠️  警告：有进程正在使用数据库"
-  echo "建议先停止所有服务再清理"
-  read -p "是否继续？(y/N) " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "已取消清理"
-    exit 1
-  fi
-fi
-echo ""
-
-# 3. 清理历史数据
-echo "【清理历史数据】"
-sqlite3 data/archive.db << 'EOF'
--- 统计清理前的数据量
-SELECT '清理前统计:' as info;
-SELECT 'event_runs: ' || COUNT(*) || ' rows' FROM event_runs;
-SELECT 'event_fact_history: ' || COUNT(*) || ' rows' FROM event_fact_history;
-SELECT 'auto_trade_decisions: ' || COUNT(*) || ' rows' FROM auto_trade_decisions;
-SELECT 'market_snapshots: ' || COUNT(*) || ' rows' FROM market_snapshots;
-SELECT 'event_market_ticks: ' || COUNT(*) || ' rows' FROM event_market_ticks;
-SELECT 'model_snapshots: ' || COUNT(*) || ' rows' FROM model_snapshots;
-
--- 清理30天前的 event_runs
-DELETE FROM event_runs
-WHERE created_at < datetime('now', '-30 days');
-
--- 清理30天前的 event_fact_history
-DELETE FROM event_fact_history
-WHERE fact_as_of < datetime('now', '-30 days');
-
--- 清理30天前的 auto_trade_decisions
-DELETE FROM auto_trade_decisions
-WHERE created_at < datetime('now', '-30 days');
-
--- 清理30天前的 market_snapshots
-DELETE FROM market_snapshots
-WHERE created_at < datetime('now', '-30 days');
-
--- 清理7天前的 event_market_ticks
-DELETE FROM event_market_ticks
-WHERE created_at < datetime('now', '-7 days');
-
--- 清理30天前的 model_snapshots
-DELETE FROM model_snapshots
-WHERE created_at < datetime('now', '-30 days');
-
--- 统计清理后的数据量
-SELECT '清理后统计:' as info;
-SELECT 'event_runs: ' || COUNT(*) || ' rows' FROM event_runs;
-SELECT 'event_fact_history: ' || COUNT(*) || ' rows' FROM event_fact_history;
-SELECT 'auto_trade_decisions: ' || COUNT(*) || ' rows' FROM auto_trade_decisions;
-SELECT 'market_snapshots: ' || COUNT(*) || ' rows' FROM market_snapshots;
-SELECT 'event_market_ticks: ' || COUNT(*) || ' rows' FROM event_market_ticks;
-SELECT 'model_snapshots: ' || COUNT(*) || ' rows' FROM model_snapshots;
+This wrapper delegates archive.db retention to scripts/archive_db_governance.py.
+It does not run direct DELETE, VACUUM, or ANALYZE SQL itself.
 EOF
+}
 
-echo "✅ 历史数据清理完成"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --dry-run)
+      APPLY=0
+      ;;
+    --apply)
+      APPLY=1
+      ;;
+    --compact)
+      COMPACT=1
+      ;;
+    --no-checkpoint)
+      CHECKPOINT=0
+      ;;
+    --chengdu-tick-retention)
+      CHENGDU_TICK_RETENTION=1
+      ;;
+    --exact-table-counts)
+      EXACT_COUNTS=1
+      ;;
+    --confirm-retention-apply)
+      CONFIRMED=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      EXTRA_ARGS+=("$1")
+      ;;
+  esac
+  shift
+done
+
+cd "$ROOT"
+. "$ROOT/scripts/lib/resolve_project_python.sh"
+PY="$(resolve_project_python "$ROOT")" || {
+  echo "missing project python runtime"
+  exit 1
+}
+
+echo "=== archive.db retention policy wrapper ==="
+echo "time=$(date '+%Y-%m-%d %H:%M:%S')"
+echo "db=$DB_PATH"
+echo "policy_owner=scripts/archive_db_governance.py"
+echo "default_mode=dry_run"
 echo ""
 
-# 4. 压缩数据库
-echo "【压缩数据库】"
-echo "正在执行 VACUUM（可能需要几分钟）..."
-sqlite3 data/archive.db "VACUUM;"
-echo "✅ VACUUM 完成"
-echo ""
+ARGS=(--db "$DB_PATH")
+if [ "$CHENGDU_TICK_RETENTION" = "1" ]; then
+  ARGS+=(--chengdu-tick-retention)
+fi
+if [ "$EXACT_COUNTS" = "1" ]; then
+  ARGS+=(--exact-table-counts)
+fi
 
-# 5. 优化数据库
-echo "【优化数据库】"
-echo "正在执行 ANALYZE..."
-sqlite3 data/archive.db "ANALYZE;"
-echo "✅ ANALYZE 完成"
-echo ""
-
-# 6. 清理日志文件
-echo "【清理日志文件】"
-LOG_COUNT=$(find data -name "*.log" -mtime +7 2>/dev/null | wc -l)
-if [ "$LOG_COUNT" -gt 0 ]; then
-  echo "删除 $LOG_COUNT 个7天前的日志文件..."
-  find data -name "*.log" -mtime +7 -delete 2>/dev/null || true
-  echo "✅ 日志清理完成"
+if [ "$APPLY" = "1" ]; then
+  if [ "$CONFIRMED" != "1" ] && [ "${PM_CLEANUP_APPLY_CONFIRM:-}" != "$CONFIRM_PHRASE" ]; then
+    echo "refuse_apply_missing_confirmation=1"
+    echo "required_confirmation=$CONFIRM_PHRASE"
+    echo "rerun_hint=./cleanup_data.sh --apply --confirm-retention-apply"
+    exit 2
+  fi
+  ARGS+=(--apply)
+  if [ "$CHECKPOINT" = "1" ]; then
+    ARGS+=(--checkpoint)
+  fi
+  if [ "$COMPACT" = "1" ]; then
+    ARGS+=(--compact)
+  fi
+  if [ "${PM_CLEANUP_CREATE_BACKUP:-1}" = "1" ]; then
+    mkdir -p "$ROOT/data/backups"
+    BACKUP_FILE="$ROOT/data/backups/archive.before-retention.$(date +%Y%m%dT%H%M%S).db"
+    cp "$DB_PATH" "$BACKUP_FILE"
+    echo "backup_created=$BACKUP_FILE"
+  fi
 else
-  echo "没有需要清理的日志文件"
+  echo "dry_run_only=1"
+  echo "apply_requires=--apply --confirm-retention-apply"
 fi
-echo ""
 
-# 7. 清理缓存文件
-echo "【清理缓存文件】"
-if [ -f data/weather_events_cache.json ]; then
-  rm -f data/weather_events_cache.json
-  echo "✅ 删除 weather_events_cache.json"
+"$PY" "$ROOT/scripts/archive_db_governance.py" "${ARGS[@]}" "${EXTRA_ARGS[@]}"
+"$PY" "$ROOT/scripts/archive_db_governance.py" --db "$DB_PATH" --ensure-schema
+
+LOG_DIR="$ROOT/data/logs"
+LOG_COUNT=$(find "$LOG_DIR" -name "*.log" -mtime +7 2>/dev/null | wc -l | tr -d ' ')
+if [ "${PM_CLEANUP_DELETE_LOGS:-0}" = "1" ]; then
+  find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null || true
+  echo "deleted_old_logs=$LOG_COUNT"
+else
+  echo "old_logs_candidates=$LOG_COUNT"
+  echo "delete_old_logs_requires=PM_CLEANUP_DELETE_LOGS=1"
 fi
-if [ -f data/weather_events_cache.good.json ]; then
-  rm -f data/weather_events_cache.good.json
-  echo "✅ 删除 weather_events_cache.good.json"
+
+if [ "${PM_CLEANUP_DELETE_CACHE:-0}" = "1" ]; then
+  rm -f "$ROOT/data/weather_events_cache.json" "$ROOT/data/weather_events_cache.good.json"
+  echo "deleted_weather_event_caches=1"
+else
+  echo "delete_weather_event_caches_requires=PM_CLEANUP_DELETE_CACHE=1"
 fi
-echo ""
 
-# 8. 显示清理结果
-echo "【清理后】"
-du -sh data/archive.db
-echo ""
-
-echo "【备份文件】"
-ls -lh "$BACKUP_FILE"
-echo ""
-
-echo "=== 清理完成 ==="
-echo "如果系统运行正常，可以删除备份文件："
-echo "  rm $BACKUP_FILE"
+echo "=== retention wrapper complete ==="

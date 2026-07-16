@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Set, Tuple, Union
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode, quote
 import hashlib
+from archive_db_write_queue import archive_db_write_gate
 import socket
 
 import numpy as np
@@ -44,15 +45,9 @@ from edge_signal_runtime import compute_signal_advantage, enrich_signal_observab
 from edge_path_runtime import estimate_path_probability
 from edge_exec_runtime import estimate_tradeable_edge_floor
 from edge_policy_runtime import load_edge_policy_from_env, evaluate_tradeability
-from bayesian_probability_runtime import (
-    apply_bayesian_probability_update,
-    apply_hard_source_posterior_override_to_distribution,
-    build_historical_bayesian_context,
-)
 from bayesian_data_role_contract import audit_bayesian_data_role_contract
 from bayesian_likelihood_runtime import EVIDENCE_GROUPS, estimate_peak_temperature_from_features, precipitation_evidence_profile
-from climo_regime_runtime import load_climo_regime_context
-from regime_risk_runtime import load_post_cool_rebound_risk_context
+from sequential_bayes_execution_contract import validate_sequential_bayes_execution_context
 from bayes_tradeability_runtime import apply_bayes_tradeability_adjustment
 from lcb_stage_runtime import DEFAULT_ENTRY_STAGE_Z, resolve_lcb_stage_z
 from weather_ensemble_bias_correction import (
@@ -72,6 +67,69 @@ from posterior_settlement_runtime import (
     bucket_directional_distance as posterior_bucket_directional_distance,
     evaluate_realtime_target_adjustment,
     event_target_context as posterior_event_target_context,
+)
+from auto_trade_decision_writer import (
+    fill_missing_auto_trade_decision_run_id,
+    insert_auto_trade_decision,
+    insert_auto_trade_decision_payload,
+    insert_auto_trade_decision_rows,
+)
+from auto_trade_job_writer import (
+    claim_auto_trade_job_running,
+    delete_terminal_auto_trade_jobs_before,
+    insert_auto_trade_job,
+    link_running_auto_trade_job_run_id,
+    mark_running_auto_trade_job_failed,
+    mark_running_auto_trade_job_retrying,
+    mark_superseded_terminal_jobs_with_newer_active,
+    touch_running_auto_trade_job,
+    write_auto_trade_job_final_state,
+)
+from auto_order_ledger_writer import (
+    insert_auto_order_ignore,
+    merge_fill_auto_order_lineage_by_order_id,
+    update_auto_order_status_by_id,
+    update_auto_order_status_by_order_id,
+)
+from awc_hard_source_signal_ledger_writer import upsert_awc_hard_source_signal
+from edge_trade_ledger_writer import (
+    clear_balance_skip_after_no_position,
+    force_clear_expired_positions,
+    mark_no_orderbook_skip_details,
+    reconcile_exit_no_position_blockers,
+    reconcile_no_position_errors,
+    reconcile_past_no_position_entries,
+    reconcile_pending_entry_order_id,
+    residual_clear_edge_trade,
+    set_stop_loss_probe_at,
+    settled_reconcile_clear_position,
+    settled_reconcile_mark_open,
+    sync_position_clear_by_id,
+    sync_position_mark_entry_by_id,
+    update_position_size_from_fill,
+    update_edge_trade_by_key,
+    upsert_edge_trade_runtime_row,
+    upsert_shadow_position_from_fill,
+    upsert_synced_trade_position,
+)
+from signal_to_order_ledger_writer import (
+    SIGNAL_TO_ORDER_TERMINAL_RANK,
+    signal_to_order_timing_schema_status,
+    upsert_signal_to_order_timing,
+)
+from target_realization_execution_lock_writer import (
+    ensure_target_realization_execution_lock_schema,
+    has_active_target_realization_execution_lock,
+    upsert_target_realization_execution_lock,
+)
+from trade_exit_reason_contract import (
+    MARKET_ALPHA_TAKE_PROFIT_FAMILY,
+    MARKET_ALPHA_TAKE_PROFIT_REASON_CODES,
+    MARKET_ALPHA_TAKE_PROFIT_RUNTIME_ENABLED,
+    TARGET_REALIZATION_EXIT_REASON_CODES,
+    TARGET_REALIZATION_FAMILY,
+    exit_reason_family_for_code,
+    is_executable_exit_reason_code,
 )
 
 PATH_PROBABILITY_FOLLOW_FAMILY = "path_probability_follow"
@@ -767,6 +825,8 @@ Q_PLATT_STABLE_N = int(os.environ.get("PM_Q_PLATT_STABLE_N", "3"))
 Q_PLATT_STABLE_EPS_A = float(os.environ.get("PM_Q_PLATT_STABLE_EPS_A", "0.02"))
 Q_PLATT_STABLE_EPS_B = float(os.environ.get("PM_Q_PLATT_STABLE_EPS_B", "0.02"))
 Q_PLATT_CACHE: Dict[int, Dict[str, Any]] = {}
+Q_CALIBRATED_WRITEBACK_COMPOSER_VERSION = "q_calibrated_writeback_writer_v1"
+Q_CALIBRATED_WRITEBACK_SOURCE_ID = "q_calibrated_writeback_platt"
 DEFAULT_BYPASS_PROXY_SUFFIXES = {
     "polymarket.com",
     "weather.gov",
@@ -1680,7 +1740,6 @@ def _refresh_auto_trade_config() -> None:
     global MINUTE_EDGE_L_MAX, MINUTE_EDGE_L_EXIT, MINUTE_EDGE_FLIP_MIN_EDGE
     global MINUTE_EDGE_L_EXIT_CONSEC
     global AUTO_TRADE_REENTRY_COOLDOWN_SEC, AUTO_TRADE_MIN_HOLD_SEC
-    global AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY
     global AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY
     global MINUTE_EDGE_HEADROOM_EXIT
     AUTO_TRADE_DRY_RUN = os.environ.get("PM_AUTO_TRADE_DRY_RUN", "1").strip().lower() in {
@@ -1949,18 +2008,6 @@ def _refresh_auto_trade_config() -> None:
     _apply_bool(
         "entry_outcome_volume_refresh_missing_only",
         "PM_AUTO_TRADE_ENTRY_OUTCOME_VOLUME_REFRESH_MISSING_ONLY",
-    )
-    _apply_float(
-        "temperature_event_min_edge_score_display",
-        "PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY",
-        "AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY",
-        0,
-    )
-    _apply_float(
-        "temperature_event_min_edge_score_entry",
-        "PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY",
-        "AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY",
-        0,
     )
     _apply_float(
         "entry_spread_max",
@@ -3038,11 +3085,6 @@ def _refresh_auto_trade_config() -> None:
         "PM_AUTO_TRADE_ENTRY_EDGE_MIN_CONSECUTIVE",
         1,
     )
-    _apply_int(
-        "entry_market_on_rising_ask_n",
-        "PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK_N",
-        1,
-    )
     _apply_float("exit_lag_max", "PM_AUTO_TRADE_EXIT_LAG_MAX", "MINUTE_EDGE_L_EXIT", 0)
     _apply_int(
         "exit_lag_consecutive",
@@ -3175,7 +3217,6 @@ def _refresh_auto_trade_config() -> None:
     _apply_float("entry_depth_mult_min", "PM_ENTRY_DEPTH_MULT_MIN", None, 0)
     _apply_float("entry_depth_mult_max", "PM_ENTRY_DEPTH_MULT_MAX", None, 0)
     _apply_float("entry_depth_mult_slope", "PM_ENTRY_DEPTH_MULT_SLOPE", None, 0)
-    _apply_float("entry_market_on_rising_ask_eps", "PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK_EPS", None, 0)
     _apply_float("trend_limit_max_steps", "PM_TREND_LIMIT_MAX_STEPS", None, 0)
     _apply_float("trend_limit_force_edge", "PM_TREND_LIMIT_FORCE_EDGE_SCORE", None, 0)
     _apply_float("trend_limit_discount", "PM_TREND_LIMIT_DISCOUNT", None, 0)
@@ -3305,7 +3346,6 @@ def _refresh_auto_trade_config() -> None:
         0,
     )
     _apply_float("exec_fee_bps", "PM_AUTO_TRADE_EXEC_FEE_BPS", None, 0)
-    _apply_bool("entry_market_on_rising_ask", "PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK")
     _apply_bool("entry_lag_enabled", "PM_AUTO_TRADE_ENTRY_LAG_ENABLED")
     _apply_bool("entry_lag_limit_enabled", "PM_AUTO_TRADE_ENTRY_LAG_LIMIT_ENABLED")
     _apply_bool("entry_partial_topup_enabled", "PM_AUTO_TRADE_PARTIAL_TOPUP_ENABLED")
@@ -3359,21 +3399,21 @@ def _finite_float(value: Any) -> Optional[float]:
 def _soft_forecast_posterior_status(
     *,
     peak_c: Any,
-    evidence: Any,
+    posterior_signal: Any,
     status: Any = "",
     channel_status: Any = "",
     source: Any = "",
     captured_label: str = "已抓取但未进入主后验",
 ) -> Dict[str, Any]:
     peak_val = _finite_float(peak_c)
-    evidence_val = _finite_float(evidence)
-    if evidence_val is None:
-        evidence_val = 0.0
+    signal_val = _finite_float(posterior_signal)
+    if signal_val is None:
+        signal_val = 0.0
     raw_status = str(status or "").strip()
     raw_channel_status = str(channel_status or "").strip()
     source_text = str(source or "").strip()
     captured = peak_val is not None or bool(raw_status) or bool(raw_channel_status) or bool(source_text)
-    included = bool(captured and evidence_val > 1e-12)
+    included = bool(captured and signal_val > 1e-12)
     if included:
         posterior_status = "included_in_main_posterior"
         label = "已进入主后验"
@@ -3401,7 +3441,7 @@ def _soft_forecast_posterior_status(
         "posterior_status": posterior_status,
         "posterior_label": label,
         "not_in_posterior_reason": "" if included else reason,
-        "posterior_evidence": float(evidence_val),
+        "posterior_evidence": float(signal_val),
     }
 
 
@@ -3494,7 +3534,6 @@ ENTRY_HARD_REASON_CODES: Set[str] = {
     "manual_ignore_same_outcome",
     "target_switch_non_target_entry_suppressed",
     "post_peak_near_settlement_price_blocked",
-    "remote_bucket_realization_prob_above_max",
     "temperature_path_trade_follow_not_allowed",
     "target_realization_plan_notional_nonpositive",
     "clob_submit_failed",
@@ -3614,8 +3653,14 @@ def _normalize_entry_block_reason_codes(
     return hard_codes, soft_codes
 
 
-EXIT_REASON_FAMILY_CODES: Set[str] = {"target_realization_exit"}
-TARGET_REALIZATION_EXIT_CODE_PREFIX = "target_realization_"
+EXIT_REASON_FAMILY_CODES: Set[str] = {
+    TARGET_REALIZATION_FAMILY,
+    MARKET_ALPHA_TAKE_PROFIT_FAMILY,
+}
+ENTRY_ORDER_POLICY_GUARD_VERSION = "entry_order_policy_guard_v1_2026_07_05"
+ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON = "non_bayes_entry_candidate_disabled"
+EXIT_ORDER_POLICY_GUARD_VERSION = "exit_order_policy_guard_v1_2026_07_05"
+EXIT_ORDER_POLICY_LEGACY_BLOCK_REASON = "non_bayes_exit_candidate_disabled"
 EXIT_DECISION_REASON_CODES: Set[str] = {
     "exit_holdoff",
     "exit_exchange_min_size",
@@ -3662,23 +3707,7 @@ EXIT_OPERATIONAL_NON_BLOCKING_CODES: Set[str] = {
 
 
 def _exit_reason_family_for_code(raw_code: Any) -> str:
-    code = str(raw_code or "").strip().lower()
-    if not code:
-        return ""
-    if code in EXIT_REASON_FAMILY_CODES:
-        return code
-    if code.startswith(TARGET_REALIZATION_EXIT_CODE_PREFIX):
-        return "target_realization_exit"
-    if (
-        code in {"edge_min", "edge_exit", "hold_edge_realizable"}
-        or "hold_edge" in code
-        or "edge_min" in code
-        or code == "lag"
-        or "edge_lost" in code
-        or "edge_decay" in code
-    ):
-        return ""
-    return ""
+    return exit_reason_family_for_code(raw_code)
 
 
 def _normalize_exit_reason_family_codes(
@@ -3698,28 +3727,47 @@ def _normalize_exit_reason_family_codes(
     return families
 
 
-def _is_bayes_exit_reason_code(raw_code: Any) -> bool:
-    code = str(raw_code or "").strip().lower()
-    return bool(code and code.startswith(TARGET_REALIZATION_EXIT_CODE_PREFIX))
+def _declared_exit_reason_families(details: Optional[Mapping[str, Any]]) -> List[str]:
+    if not isinstance(details, Mapping):
+        return []
+    declared: List[str] = []
+    for key in (
+        "exit_reason_family",
+        "exit_reason_primary_family",
+        "exit_policy_primary_family",
+        "exit_reason_family_codes",
+        "exit_policy_family_codes",
+    ):
+        for value in _parse_reason_list(details.get(key)):
+            family = str(value or "").strip().lower()
+            if family and family not in declared:
+                declared.append(family)
+    return declared
 
 
-def _bayes_exit_reason_text(raw_code: Any, side: Any = "") -> str:
+def _target_realization_invalidation_code_for_side(side: Any) -> str:
+    return (
+        "target_realization_no_invalidated"
+        if str(side or "").strip().upper() == "NO"
+        else "target_realization_yes_target_invalidated"
+    )
+
+
+def _is_executable_exit_reason_code(raw_code: Any) -> bool:
+    return is_executable_exit_reason_code(raw_code)
+
+
+def _exit_reason_text(raw_code: Any, side: Any = "") -> str:
     code = str(raw_code or "").strip()
     side_text = str(side or "").strip().upper()
-    if code == "target_realization_switch_buy_exit_old":
-        return f"Bayes目标桶切换：旧{side_text or '持仓'}目标桶退出"
-    if code == "target_realization_exit_clear":
-        return f"Bayes目标桶不可兑现：{side_text or '持仓'}目标桶清仓"
-    if code == "target_realization_hard_zero_dead_market":
-        return "Bayes硬归零旧目标桶：等待结算归零/无可成交买盘"
-    if code == "target_realization_rebalance_over_target":
-        return "Bayes目标仓位超目标：执行减仓/再平衡"
-    if code.startswith(TARGET_REALIZATION_EXIT_CODE_PREFIX):
+    if code in TARGET_REALIZATION_EXIT_REASON_CODES:
+        return f"Bayes目标失效/结算：{side_text or '持仓'} {code}"
+    if code in MARKET_ALPHA_TAKE_PROFIT_REASON_CODES:
         return code
     return ""
 
 
-def _filter_bayes_exit_payload(
+def _filter_executable_exit_payload(
     reasons: Optional[Sequence[Any]],
     codes: Optional[Sequence[Any]],
     *,
@@ -3729,7 +3777,7 @@ def _filter_bayes_exit_payload(
     filtered_codes: List[str] = []
     removed_codes: List[str] = []
     for code in raw_codes:
-        if _is_bayes_exit_reason_code(code):
+        if _is_executable_exit_reason_code(code):
             if code not in filtered_codes:
                 filtered_codes.append(code)
         else:
@@ -3751,10 +3799,86 @@ def _filter_bayes_exit_payload(
             if reason not in filtered_reasons:
                 filtered_reasons.append(reason)
     for code in filtered_codes:
-        reason_text = _bayes_exit_reason_text(code, side=side)
+        reason_text = _exit_reason_text(code, side=side)
         if reason_text and reason_text not in filtered_reasons:
             filtered_reasons.append(reason_text)
     return filtered_reasons, filtered_codes, removed_codes
+
+
+def _exit_order_policy_allow_reason(
+    reason_codes: Optional[Sequence[Any]],
+    *,
+    details: Optional[Mapping[str, Any]] = None,
+) -> str:
+    codes = _parse_reason_list(reason_codes)
+    if not codes and isinstance(details, Mapping):
+        codes = _parse_reason_list(details.get("exit_reason_codes"))
+    executable_families = {
+        _exit_reason_family_for_code(code)
+        for code in codes
+        if _is_executable_exit_reason_code(code)
+    }
+    executable_families.discard("")
+    if len(executable_families) != 1:
+        return ""
+    expected_family = next(iter(executable_families))
+    if _declared_exit_reason_families(details) != [expected_family]:
+        return ""
+    if any(not _is_executable_exit_reason_code(code) for code in codes):
+        return ""
+    if expected_family == MARKET_ALPHA_TAKE_PROFIT_FAMILY:
+        return ""
+    if expected_family == TARGET_REALIZATION_FAMILY:
+        return expected_family
+    return ""
+
+
+def _exit_order_policy_block_reason(
+    reason_codes: Optional[Sequence[Any]],
+    *,
+    details: Optional[Mapping[str, Any]] = None,
+) -> str:
+    if _exit_order_policy_allow_reason(reason_codes, details=details):
+        return ""
+    return EXIT_ORDER_POLICY_LEGACY_BLOCK_REASON
+
+
+def _exit_order_policy_guard_details(
+    reason_codes: Optional[Sequence[Any]],
+    *,
+    reasons: Optional[Sequence[Any]] = None,
+    details: Optional[Mapping[str, Any]] = None,
+    block_reason: str = "",
+    side: Any = "",
+) -> Dict[str, Any]:
+    raw_codes = _parse_reason_list(reason_codes)
+    if not raw_codes and isinstance(details, Mapping):
+        raw_codes = _parse_reason_list(details.get("exit_reason_codes"))
+    raw_reasons = _parse_reason_list(reasons)
+    if not raw_reasons and isinstance(details, Mapping):
+        raw_reasons = _parse_reason_list(details.get("exit_reasons"))
+    filtered_reasons, filtered_codes, removed_codes = _filter_executable_exit_payload(
+        raw_reasons,
+        raw_codes,
+        side=side,
+    )
+    allow_reason = _exit_order_policy_allow_reason(filtered_codes, details=details)
+    return {
+        "exit_order_policy_guard_version": EXIT_ORDER_POLICY_GUARD_VERSION,
+        "exit_order_policy_allowed": bool(allow_reason),
+        "exit_order_policy_allow_reason": allow_reason,
+        "exit_order_policy_block_reason": str(block_reason or ""),
+        "exit_order_policy_boundary": "exact_exit_reason_family_and_code_allowlist",
+        "market_alpha_take_profit_runtime_enabled": bool(
+            MARKET_ALPHA_TAKE_PROFIT_RUNTIME_ENABLED
+        ),
+        "exit_order_policy_input_reason_codes": list(raw_codes),
+        "exit_order_policy_input_reasons": list(raw_reasons),
+        "exit_order_policy_allowed_reason_codes": list(filtered_codes),
+        "exit_order_policy_declared_families": _declared_exit_reason_families(details),
+        "exit_order_policy_allowed_reasons": list(filtered_reasons),
+        "exit_order_policy_removed_legacy_codes": list(removed_codes),
+    }
 
 
 def _dump_exit_reason_family_codes(reason_codes: Any) -> Optional[str]:
@@ -3784,7 +3908,7 @@ def _exit_trigger_reason_codes_from_decision(
             text = str(code or "").strip()
             if not text or text in out or text in EXIT_DECISION_REASON_CODES:
                 continue
-            if not _is_bayes_exit_reason_code(text):
+            if not _is_executable_exit_reason_code(text):
                 continue
             out.append(text)
     if not out:
@@ -3794,7 +3918,7 @@ def _exit_trigger_reason_codes_from_decision(
                 continue
             if text in EXIT_DECISION_REASON_CODES:
                 continue
-            if not _is_bayes_exit_reason_code(text):
+            if not _is_executable_exit_reason_code(text):
                 continue
             out.append(text)
     return out
@@ -3857,7 +3981,7 @@ def _build_exit_policy_audit(
     prev_edge_trigger_below_min = bool(
         prev_edge_trigger_value is not None and prev_edge_trigger_value < edge_min
     )
-    target_realization_triggered = bool("target_realization_exit" in families)
+    target_realization_triggered = bool(TARGET_REALIZATION_FAMILY in families)
     edge_triggered = False
     risk_triggered = False
     repricing_triggered = False
@@ -3965,7 +4089,6 @@ _EXPLICIT_SSOT_ENTRY_BLOCK_CONTEXT_FIELDS: Tuple[str, ...] = (
     "target_realization_batch_reason",
     "target_bucket",
     "target_posterior",
-    "remote_bucket_realization_prob",
     "token_id",
     "ssot_entry_reasons",
 )
@@ -4057,6 +4180,9 @@ def _compact_decision_details(
         "q_raw_static",
         "q_bayes_enabled",
         "q_bayes_source",
+        "q_bayes_old_additive_evidence_pool_used",
+        "q_bayes_production_replacement_required",
+        "q_bayes_replacement_posterior_runtime",
         "q_bayes_posterior",
         "q_bayes_lcb",
         "q_bayes_ucb",
@@ -4070,6 +4196,14 @@ def _compact_decision_details(
         "q_bayes_z",
         "q_bayes_z_stage",
         "q_bayes_z_source",
+        "q_bayes_phase",
+        "q_bayes_beta_weak",
+        "q_bayes_beta_strong",
+        "q_bayes_phase_reason",
+        "q_bayes_hard_mask_reason",
+        "q_bayes_layer_contributions",
+        "q_bayes_score_components",
+        "state_evidence_trace",
         "q_bayes_prior_strength",
         "q_bayes_prior_source",
         "q_bayes_historical_samples",
@@ -4077,128 +4211,73 @@ def _compact_decision_details(
         "q_bayes_historical_bucket_count",
         "q_bayes_bias_correction_enabled",
         "q_bayes_model_weight_multipliers",
-        "q_bayes_model_evidence",
-        "q_bayes_nowcast_evidence",
-        "q_bayes_observed_nowcast_evidence",
-        "q_bayes_wu_forecast_evidence",
-        "q_bayes_wu_forecast_evidence_base",
-        "q_bayes_wu_forecast_evidence_scale",
-        "q_bayes_wu_forecast_prob",
-        "q_bayes_wu_forecast_source",
-        "q_bayes_wu_forecast_peak_c",
-        "q_bayes_wu_forecast_sigma_c",
-        "q_bayes_wu_forecast_status",
+        "correlation_id",
+        "signal_id",
+        "order_intent_id",
+        "source_event_id",
+        "awc_valid_time",
+        "awc_hard_source_signal_at",
+        "signal_eligible",
+        "acceptance_state",
+        "acceptance_reason",
+        "hard_source_acceptance_state",
+        "hard_source_runtime_contract",
+        "hard_source_runtime_contract_version",
+        "signal_to_order_timing",
+        "signal_to_order_slo_ms",
+        "signal_to_fact_ms",
+        "signal_to_decision_ms",
+        "signal_to_job_enqueue_ms",
+        "signal_to_worker_ms",
+        "awc_signal_to_order_submit_ms",
+        "signal_to_order_slo_met",
+        "signal_to_order_slo_violation_reason",
+        "signal_to_order_terminal_state",
+        "signal_to_order_terminal_reason",
+        "signal_to_order_terminal_at",
+        "signal_to_terminal_ms",
+        "orderbook_checked_at",
+        "orderbook_check_source",
+        "orderbook_check_result",
+        "orderbook_refreshed_at",
+        "orderbook_refresh_started_at",
+        "risk_checked_at",
+        "risk_check_source",
+        "risk_check_result",
+        "idempotency_checked_at",
+        "idempotency_key",
+        "submit_requested_at",
+        "exchange_ack_at",
+        "order_ack_at",
+        "order_ack_status",
+        "exchange_post_started",
+        "exchange_post_started_at",
+        "order_submitted_at",
+        "order_submission_time_quality",
+        "signal_to_orderbook_ms",
+        "signal_to_risk_ms",
+        "signal_to_idempotency_ms",
+        "signal_to_submit_request_ms",
+        "signal_to_exchange_ack_ms",
+        "orderbook_to_risk_check_ms",
+        "risk_check_to_idempotency_ms",
+        "risk_check_to_submit_ms",
+        "idempotency_to_submit_request_ms",
+        "submit_request_to_exchange_ack_ms",
+        "signal_to_order_ledger_status",
+        "signal_to_order_ledger_schema_status",
+        "signal_to_order_ledger_prewrite",
+        "signal_to_order_ledger_result",
         "wu_forecast_peak_captured",
         "wu_forecast_peak_posterior_included",
         "wu_forecast_peak_posterior_status",
         "wu_forecast_peak_posterior_label",
         "wu_forecast_peak_not_in_posterior_reason",
-        "q_bayes_taf_peak_evidence",
-        "q_bayes_taf_peak_evidence_base",
-        "q_bayes_taf_peak_evidence_scale",
-        "q_bayes_taf_peak_prob",
-        "q_bayes_taf_peak_source",
-        "q_bayes_taf_peak_c",
-        "q_bayes_taf_peak_sigma_c",
-        "q_bayes_taf_peak_status",
-        "q_bayes_temperature_trajectory_evidence",
-        "q_bayes_temperature_trajectory_evidence_base",
-        "q_bayes_temperature_trajectory_evidence_scale",
-        "q_bayes_temperature_trajectory_enabled",
-        "q_bayes_temperature_trajectory_prob",
-        "q_bayes_temperature_trajectory_source",
-        "q_bayes_temperature_trajectory_status",
-        "q_bayes_temperature_trajectory_mu_c",
-        "q_bayes_temperature_trajectory_sigma_c",
-        "q_bayes_temperature_trajectory_path_mu_c",
-        "q_bayes_temperature_trajectory_path_sigma_c",
-        "q_bayes_temperature_trajectory_extrapolation_c",
-        "q_bayes_temperature_trajectory_blended_mu_c",
-        "q_bayes_temperature_trajectory_rate_c_per_hour",
-        "q_bayes_temperature_trajectory_rate_hat_c_per_hour",
-        "q_bayes_temperature_trajectory_accel_hat_c_per_hour2",
-        "q_bayes_temperature_trajectory_realization_state",
-        "q_bayes_temperature_trajectory_hours_to_peak_window",
-        "q_bayes_temperature_trajectory_role",
-        "q_bayes_temperature_trajectory_source_class",
-        "q_bayes_temperature_trajectory_dedupe_policy",
-        "q_bayes_temperature_trajectory_weaker_than_hard_source",
-        "q_bayes_post_cool_rebound_regime_prior_evidence",
-        "q_bayes_post_cool_rebound_regime_prior_evidence_raw",
-        "q_bayes_post_cool_rebound_regime_prior_evidence_base",
-        "q_bayes_post_cool_rebound_regime_prior_evidence_scale",
-        "q_bayes_post_cool_rebound_regime_prior_enabled",
-        "q_bayes_post_cool_rebound_regime_prior_prob",
-        "q_bayes_post_cool_rebound_regime_prior_source",
-        "q_bayes_post_cool_rebound_regime_prior_status",
-        "q_bayes_post_cool_rebound_regime_prior_state",
-        "q_bayes_post_cool_rebound_regime_prior_role",
-        "q_bayes_post_cool_rebound_regime_prior_source_class",
-        "q_bayes_post_cool_rebound_regime_prior_dedupe_policy",
-        "q_bayes_post_cool_rebound_regime_prior_weaker_than_hard_source",
-        "q_bayes_post_cool_rebound_regime_prior_target_peak_c",
-        "q_bayes_post_cool_rebound_regime_prior_pp_delta",
-        "q_bayes_post_cool_rebound_regime_prior_pp_cap",
-        "q_bayes_post_cool_rebound_regime_prior_pp_max_delta",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_raw",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_base",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_scale",
-        "q_bayes_post_cool_rebound_intraday_likelihood_enabled",
-        "q_bayes_post_cool_rebound_intraday_likelihood_prob",
-        "q_bayes_post_cool_rebound_intraday_likelihood_source",
-        "q_bayes_post_cool_rebound_intraday_likelihood_status",
-        "q_bayes_post_cool_rebound_intraday_likelihood_state",
-        "q_bayes_post_cool_rebound_intraday_likelihood_role",
-        "q_bayes_post_cool_rebound_intraday_likelihood_source_class",
-        "q_bayes_post_cool_rebound_intraday_likelihood_dedupe_policy",
-        "q_bayes_post_cool_rebound_intraday_likelihood_weaker_than_hard_source",
-        "q_bayes_post_cool_rebound_intraday_likelihood_target_peak_c",
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_delta",
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_cap",
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_max_delta",
-        "q_bayes_post_cool_rebound_risk_evidence",
-        "q_bayes_post_cool_rebound_risk_evidence_raw",
-        "q_bayes_post_cool_rebound_risk_evidence_base",
-        "q_bayes_post_cool_rebound_risk_evidence_scale",
-        "q_bayes_post_cool_rebound_risk_enabled",
-        "q_bayes_post_cool_rebound_risk_prob",
-        "q_bayes_post_cool_rebound_risk_source",
-        "q_bayes_post_cool_rebound_risk_status",
-        "q_bayes_post_cool_rebound_risk_state",
-        "q_bayes_post_cool_rebound_risk_target_peak_c",
-        "q_bayes_post_cool_rebound_risk_pp_delta",
-        "q_bayes_post_cool_rebound_risk_pp_cap",
-        "q_bayes_post_cool_rebound_risk_pp_max_delta",
         "taf_forecast_peak_captured",
         "taf_forecast_peak_posterior_included",
         "taf_forecast_peak_posterior_status",
         "taf_forecast_peak_posterior_label",
         "taf_forecast_peak_not_in_posterior_reason",
-        "q_bayes_physical_likelihood_evidence",
-        "q_bayes_independent_physics_residual_evidence",
-        "q_bayes_physical_likelihood_evidence_base",
-        "q_bayes_independent_physics_residual_evidence_base",
-        "q_bayes_physical_likelihood_evidence_scale",
-        "q_bayes_independent_physics_residual_evidence_scale",
-        "q_bayes_physical_likelihood_evidence_scale_reason",
-        "q_bayes_physical_likelihood_enabled",
-        "q_bayes_independent_physics_residual_enabled",
-        "q_bayes_physical_likelihood_source",
-        "q_bayes_independent_physics_residual_source",
-        "q_bayes_independent_physics_residual_role",
-        "q_bayes_independent_physics_residual_source_class",
-        "q_bayes_independent_physics_residual_dedupe_policy",
-        "q_bayes_independent_physics_residual_weaker_than_hard_source",
-        "q_bayes_physical_likelihood_prob",
-        "q_bayes_physical_likelihood_observed_prob",
-        "q_bayes_independent_physics_residual_prob",
-        "q_bayes_independent_physics_residual_observed_prob",
-        "q_bayes_physical_likelihood_hard_zero",
-        "q_bayes_physical_likelihood_hard_reasons",
-        "q_bayes_physical_likelihood_components",
-        "q_bayes_physical_likelihood_component_groups",
-        "q_bayes_physical_d0_explanation",
         "q_bayes_bimodal_risk",
         "q_bayes_bimodal_size_scale",
         "q_bayes_bimodal_size_scale_applied",
@@ -4268,6 +4347,8 @@ def _compact_decision_details(
         "ssot_target_bucket",
         "target_posterior",
         "decision_ssot",
+        "posterior_ssot_fact_used",
+        "target_probability_field",
         "decision_basis",
         "bayes_recomputed_async",
         "fact_recompute_async",
@@ -4317,9 +4398,6 @@ def _compact_decision_details(
         "target_adjustment_dedupe_key",
         "second_target_bucket",
         "second_target_posterior",
-        "remote_no_bucket",
-        "remote_no_reason",
-        "remote_bucket_realization_prob",
         "bucket_switch_reason",
         "posterior_settlement_candidate_bucket",
         "posterior_settlement_candidate_bucket_prob",
@@ -4529,134 +4607,30 @@ def _compact_decision_details(
         "q_bayes_z",
         "q_bayes_z_stage",
         "q_bayes_z_source",
+        "q_bayes_phase",
+        "q_bayes_beta_weak",
+        "q_bayes_beta_strong",
+        "q_bayes_phase_reason",
+        "q_bayes_hard_mask_reason",
+        "q_bayes_layer_contributions",
+        "q_bayes_score_components",
+        "state_evidence_trace",
         "q_bayes_prior_strength",
         "q_bayes_prior_source",
         "q_bayes_historical_samples",
         "q_bayes_historical_prior_sample_scale",
         "q_bayes_historical_bucket_count",
         "q_bayes_bias_correction_enabled",
-        "q_bayes_model_evidence",
-        "q_bayes_nowcast_evidence",
-        "q_bayes_observed_nowcast_evidence",
-        "q_bayes_wu_forecast_evidence",
-        "q_bayes_wu_forecast_evidence_base",
-        "q_bayes_wu_forecast_evidence_scale",
-        "q_bayes_wu_forecast_prob",
-        "q_bayes_wu_forecast_source",
-        "q_bayes_wu_forecast_peak_c",
-        "q_bayes_wu_forecast_sigma_c",
-        "q_bayes_wu_forecast_status",
         "wu_forecast_peak_captured",
         "wu_forecast_peak_posterior_included",
         "wu_forecast_peak_posterior_status",
         "wu_forecast_peak_posterior_label",
         "wu_forecast_peak_not_in_posterior_reason",
-        "q_bayes_taf_peak_evidence",
-        "q_bayes_taf_peak_evidence_base",
-        "q_bayes_taf_peak_evidence_scale",
-        "q_bayes_taf_peak_prob",
-        "q_bayes_taf_peak_source",
-        "q_bayes_taf_peak_c",
-        "q_bayes_taf_peak_sigma_c",
-        "q_bayes_taf_peak_status",
-        "q_bayes_temperature_trajectory_evidence",
-        "q_bayes_temperature_trajectory_evidence_base",
-        "q_bayes_temperature_trajectory_evidence_scale",
-        "q_bayes_temperature_trajectory_enabled",
-        "q_bayes_temperature_trajectory_prob",
-        "q_bayes_temperature_trajectory_source",
-        "q_bayes_temperature_trajectory_status",
-        "q_bayes_temperature_trajectory_mu_c",
-        "q_bayes_temperature_trajectory_sigma_c",
-        "q_bayes_temperature_trajectory_path_mu_c",
-        "q_bayes_temperature_trajectory_path_sigma_c",
-        "q_bayes_temperature_trajectory_extrapolation_c",
-        "q_bayes_temperature_trajectory_blended_mu_c",
-        "q_bayes_temperature_trajectory_rate_c_per_hour",
-        "q_bayes_temperature_trajectory_rate_hat_c_per_hour",
-        "q_bayes_temperature_trajectory_accel_hat_c_per_hour2",
-        "q_bayes_temperature_trajectory_realization_state",
-        "q_bayes_temperature_trajectory_hours_to_peak_window",
-        "q_bayes_temperature_trajectory_role",
-        "q_bayes_temperature_trajectory_source_class",
-        "q_bayes_temperature_trajectory_dedupe_policy",
-        "q_bayes_temperature_trajectory_weaker_than_hard_source",
-        "q_bayes_post_cool_rebound_regime_prior_evidence",
-        "q_bayes_post_cool_rebound_regime_prior_evidence_raw",
-        "q_bayes_post_cool_rebound_regime_prior_evidence_base",
-        "q_bayes_post_cool_rebound_regime_prior_evidence_scale",
-        "q_bayes_post_cool_rebound_regime_prior_enabled",
-        "q_bayes_post_cool_rebound_regime_prior_prob",
-        "q_bayes_post_cool_rebound_regime_prior_source",
-        "q_bayes_post_cool_rebound_regime_prior_status",
-        "q_bayes_post_cool_rebound_regime_prior_state",
-        "q_bayes_post_cool_rebound_regime_prior_role",
-        "q_bayes_post_cool_rebound_regime_prior_source_class",
-        "q_bayes_post_cool_rebound_regime_prior_dedupe_policy",
-        "q_bayes_post_cool_rebound_regime_prior_weaker_than_hard_source",
-        "q_bayes_post_cool_rebound_regime_prior_target_peak_c",
-        "q_bayes_post_cool_rebound_regime_prior_pp_delta",
-        "q_bayes_post_cool_rebound_regime_prior_pp_cap",
-        "q_bayes_post_cool_rebound_regime_prior_pp_max_delta",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_raw",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_base",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_scale",
-        "q_bayes_post_cool_rebound_intraday_likelihood_enabled",
-        "q_bayes_post_cool_rebound_intraday_likelihood_prob",
-        "q_bayes_post_cool_rebound_intraday_likelihood_source",
-        "q_bayes_post_cool_rebound_intraday_likelihood_status",
-        "q_bayes_post_cool_rebound_intraday_likelihood_state",
-        "q_bayes_post_cool_rebound_intraday_likelihood_role",
-        "q_bayes_post_cool_rebound_intraday_likelihood_source_class",
-        "q_bayes_post_cool_rebound_intraday_likelihood_dedupe_policy",
-        "q_bayes_post_cool_rebound_intraday_likelihood_weaker_than_hard_source",
-        "q_bayes_post_cool_rebound_intraday_likelihood_target_peak_c",
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_delta",
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_cap",
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_max_delta",
-        "q_bayes_post_cool_rebound_risk_evidence",
-        "q_bayes_post_cool_rebound_risk_evidence_raw",
-        "q_bayes_post_cool_rebound_risk_evidence_base",
-        "q_bayes_post_cool_rebound_risk_evidence_scale",
-        "q_bayes_post_cool_rebound_risk_enabled",
-        "q_bayes_post_cool_rebound_risk_prob",
-        "q_bayes_post_cool_rebound_risk_source",
-        "q_bayes_post_cool_rebound_risk_status",
-        "q_bayes_post_cool_rebound_risk_state",
-        "q_bayes_post_cool_rebound_risk_target_peak_c",
-        "q_bayes_post_cool_rebound_risk_pp_delta",
-        "q_bayes_post_cool_rebound_risk_pp_cap",
-        "q_bayes_post_cool_rebound_risk_pp_max_delta",
         "taf_forecast_peak_captured",
         "taf_forecast_peak_posterior_included",
         "taf_forecast_peak_posterior_status",
         "taf_forecast_peak_posterior_label",
         "taf_forecast_peak_not_in_posterior_reason",
-        "q_bayes_physical_likelihood_evidence",
-        "q_bayes_independent_physics_residual_evidence",
-        "q_bayes_physical_likelihood_evidence_base",
-        "q_bayes_independent_physics_residual_evidence_base",
-        "q_bayes_physical_likelihood_evidence_scale",
-        "q_bayes_independent_physics_residual_evidence_scale",
-        "q_bayes_physical_likelihood_evidence_scale_reason",
-        "q_bayes_physical_likelihood_enabled",
-        "q_bayes_independent_physics_residual_enabled",
-        "q_bayes_physical_likelihood_source",
-        "q_bayes_independent_physics_residual_source",
-        "q_bayes_independent_physics_residual_role",
-        "q_bayes_independent_physics_residual_source_class",
-        "q_bayes_independent_physics_residual_dedupe_policy",
-        "q_bayes_independent_physics_residual_weaker_than_hard_source",
-        "q_bayes_physical_likelihood_prob",
-        "q_bayes_physical_likelihood_observed_prob",
-        "q_bayes_independent_physics_residual_prob",
-        "q_bayes_independent_physics_residual_observed_prob",
-        "q_bayes_physical_likelihood_hard_zero",
-        "q_bayes_physical_likelihood_hard_reasons",
-        "q_bayes_physical_likelihood_components",
-        "q_bayes_physical_likelihood_component_groups",
-        "q_bayes_physical_d0_explanation",
         "q_bayes_bimodal_risk",
         "q_bayes_bimodal_size_scale",
         "q_bayes_bimodal_size_scale_applied",
@@ -4695,6 +4669,8 @@ def _compact_decision_details(
         "ssot_target_bucket",
         "target_posterior",
         "decision_ssot",
+        "posterior_ssot_fact_used",
+        "target_probability_field",
         "decision_basis",
         "bayes_recomputed_async",
         "fact_recompute_async",
@@ -4726,9 +4702,6 @@ def _compact_decision_details(
         "target_adjustment_dedupe_key",
         "second_target_bucket",
         "second_target_posterior",
-        "remote_no_bucket",
-        "remote_no_reason",
-        "remote_bucket_realization_prob",
         "bucket_switch_reason",
         "posterior_settlement_entry_allowed",
         "posterior_settlement_entry_block_reason",
@@ -4817,6 +4790,60 @@ def _compact_decision_details(
         "hard_source_direct_entry_usable_edge_override",
         "hard_source_direct_entry_override_version",
         "hard_source_direct_signal_edge",
+        "signal_id",
+        "source_event_id",
+        "awc_valid_time",
+        "awc_hard_source_signal_at",
+        "signal_eligible",
+        "acceptance_state",
+        "acceptance_reason",
+        "hard_source_acceptance_state",
+        "hard_source_runtime_contract",
+        "hard_source_runtime_contract_version",
+        "signal_to_order_timing",
+        "signal_to_order_slo_ms",
+        "signal_to_fact_ms",
+        "signal_to_decision_ms",
+        "signal_to_job_enqueue_ms",
+        "signal_to_worker_ms",
+        "awc_signal_to_order_submit_ms",
+        "signal_to_order_slo_met",
+        "signal_to_order_slo_violation_reason",
+        "signal_to_order_terminal_state",
+        "signal_to_order_terminal_reason",
+        "signal_to_order_terminal_at",
+        "signal_to_terminal_ms",
+        "orderbook_checked_at",
+        "orderbook_check_source",
+        "orderbook_check_result",
+        "orderbook_refreshed_at",
+        "orderbook_refresh_started_at",
+        "risk_checked_at",
+        "risk_check_source",
+        "risk_check_result",
+        "idempotency_checked_at",
+        "submit_requested_at",
+        "exchange_ack_at",
+        "order_ack_at",
+        "order_ack_status",
+        "exchange_post_started",
+        "exchange_post_started_at",
+        "order_submitted_at",
+        "order_submission_time_quality",
+        "signal_to_orderbook_ms",
+        "signal_to_risk_ms",
+        "signal_to_idempotency_ms",
+        "signal_to_submit_request_ms",
+        "signal_to_exchange_ack_ms",
+        "orderbook_to_risk_check_ms",
+        "risk_check_to_idempotency_ms",
+        "risk_check_to_submit_ms",
+        "idempotency_to_submit_request_ms",
+        "submit_request_to_exchange_ack_ms",
+        "signal_to_order_ledger_status",
+        "signal_to_order_ledger_schema_status",
+        "signal_to_order_ledger_prewrite",
+        "signal_to_order_ledger_result",
         "posterior_target_direct",
         "posterior_target_update",
         "posterior_target_source",
@@ -4833,6 +4860,8 @@ def _compact_decision_details(
         "posterior_target_fact_to_order_ms",
         "posterior_target_job_enqueue_to_order_ms",
         "posterior_target_worker_to_order_ms",
+        "posterior_ssot_fact_used",
+        "target_probability_field",
     ]
     if action_norm == "entry":
         required.append("exec_edge_entry")
@@ -4851,7 +4880,6 @@ def _compact_decision_details(
                 "target_realization_batch_reason",
                 "target_bucket",
                 "target_posterior",
-                "remote_bucket_realization_prob",
                 "entry_soft_reason_codes",
                 "entry_soft_no_order",
                 "entry_original_reason_codes",
@@ -4919,9 +4947,6 @@ def _compact_decision_details(
                 "current_position_size",
                 "second_target_bucket",
                 "second_target_posterior",
-                "remote_no_bucket",
-                "remote_no_reason",
-                "remote_bucket_realization_prob",
                 "bucket_switch_reason",
                 "posterior_settlement_candidate_bucket",
                 "posterior_settlement_candidate_bucket_prob",
@@ -5060,6 +5085,7 @@ def _compact_decision_details(
         or key.startswith("target_adjustment_")
         or key.startswith("target_switch_")
         or key.startswith("hard_source_")
+        or key.startswith("signal_")
         or key.startswith("posterior_target_")
         or key.startswith("entry_usable_edge")
         or key.startswith("post_peak_near_settlement_price_")
@@ -5090,6 +5116,17 @@ def _compact_decision_details(
             "size",
             "dry_run",
             "status",
+            "source_event_id",
+            "state_evidence_trace",
+            "awc_valid_time",
+            "awc_hard_source_signal_at",
+            "awc_signal_to_order_submit_ms",
+            "signal_to_order_terminal_at",
+            "signal_to_terminal_ms",
+            "hard_source_runtime_contract",
+            "hard_source_runtime_contract_version",
+            "acceptance_state",
+            "acceptance_reason",
             "edge_tradeability_pass",
             "edge_tradeability_blocked",
             "edge_tradeability_target_realization_override",
@@ -5104,6 +5141,8 @@ def _compact_decision_details(
             "ssot_target_bucket",
             "target_posterior",
             "decision_ssot",
+            "posterior_ssot_fact_used",
+            "target_probability_field",
             "decision_basis",
             "bayes_recomputed_async",
             "fact_recompute_async",
@@ -5118,9 +5157,6 @@ def _compact_decision_details(
             "current_position_size",
             "second_target_bucket",
             "second_target_posterior",
-            "remote_no_bucket",
-            "remote_no_reason",
-            "remote_bucket_realization_prob",
             "target_realization_reliability",
             "target_realization_reliability_source",
             "trajectory_support_state",
@@ -5202,6 +5238,8 @@ def _compact_decision_details(
         for key in ordered:
             if key not in compacted:
                 continue
+            if key in protected_set and _nonempty_decision_detail_value(compacted.get(key)):
+                continue
             if key in order_failure_required_set and _nonempty_decision_detail_value(
                 compacted.get(key)
             ):
@@ -5256,10 +5294,88 @@ def _physical_likelihood_audit_fields(meta: Mapping[str, Any]) -> Dict[str, Any]
         }
     component_groups = row.get("component_groups")
     if isinstance(component_groups, Mapping) and component_groups:
+        state_trace = _state_evidence_trace_from_component_groups(
+            component_groups,
+            source="metar_strong_likelihood.component_groups",
+        )
+        if state_trace:
+            out["state_evidence_trace"] = state_trace
         out["q_bayes_physical_likelihood_component_groups"] = {
             str(key): value for key, value in component_groups.items()
         }
     return out
+
+
+def _state_evidence_trace_from_component_groups(
+    component_groups: Mapping[str, Any],
+    *,
+    source: str,
+) -> Dict[str, Any]:
+    groups: Dict[str, Any] = {}
+    for key, raw_group in component_groups.items():
+        group_key = str(key or "").strip()
+        if not group_key or not isinstance(raw_group, Mapping):
+            continue
+        group: Dict[str, Any] = {}
+        if "available" in raw_group:
+            group["available"] = bool(raw_group.get("available"))
+        for text_key in ("na_reason", f"{group_key}_na_reason", "evidence_state"):
+            text = str(raw_group.get(text_key) or "").strip()
+            if text:
+                group[text_key] = text[:160]
+        for num_key in ("weight", "log_likelihood"):
+            value = to_float(raw_group.get(num_key))
+            if value is not None:
+                group[num_key] = float(value)
+        source_profile = raw_group.get("source_profile")
+        if isinstance(source_profile, Mapping):
+            profile: Dict[str, Any] = {}
+            for text_key in ("evidence_state", "source_class", "source_field", "source", "na_reason"):
+                text = str(source_profile.get(text_key) or "").strip()
+                if text:
+                    profile[text_key] = text[:160]
+            for bool_key in (
+                "precip_present",
+                "no_precip_confirmed",
+                "is_real_radar_or_metar",
+                "is_proxy_only",
+            ):
+                if bool_key in source_profile:
+                    profile[bool_key] = bool(source_profile.get(bool_key))
+            rate = to_float(source_profile.get("rate_mm_per_h"))
+            if rate is not None:
+                profile["rate_mm_per_h"] = float(rate)
+            if profile:
+                group["source_profile"] = profile
+        components = raw_group.get("components")
+        if isinstance(components, Mapping) and components:
+            compact_components: Dict[str, Any] = {}
+            for component_key, raw_component in components.items():
+                component_name = str(component_key or "").strip()
+                if not component_name or not isinstance(raw_component, Mapping):
+                    continue
+                compact_component: Dict[str, Any] = {}
+                for num_key in ("factor", "weight", "log_likelihood"):
+                    value = to_float(raw_component.get(num_key))
+                    if value is not None:
+                        compact_component[num_key] = float(value)
+                if compact_component:
+                    compact_components[component_name] = compact_component
+            if compact_components:
+                group["components"] = compact_components
+        if group:
+            groups[group_key] = group
+    if not groups:
+        return {}
+    return {
+        "schema": "metar_strong_state_evidence_trace_v1",
+        "source": str(source or "metar_strong_likelihood.component_groups"),
+        "role": "state_evidence_trace",
+        "replaces": "q_bayes_physical_likelihood_component_groups",
+        "dedupe_boundary": "METAR physical evidence is consumed inside L_metar_strong, not as an independent probability channel",
+        "group_count": len(groups),
+        "groups": groups,
+    }
 
 
 def _normalize_decision_source_fit_fields(details: Dict[str, Any]) -> None:
@@ -5393,6 +5509,25 @@ def _is_posterior_target_direct_candidate(details: Optional[Mapping[str, Any]]) 
     )
 
 
+def _target_has_explicit_posterior_ssot_marker(details: Optional[Mapping[str, Any]]) -> bool:
+    if not isinstance(details, Mapping):
+        return False
+    source_text = " ".join(
+        str(details.get(key) or "")
+        for key in (
+            "decision_ssot",
+            "target_probability_field",
+            "posterior_target_probability_field",
+            "posterior_target_source",
+            "target_source",
+            "target_bucket_selection_source",
+            "ssot_source",
+            "q_bayes_source",
+        )
+    ).lower()
+    return "posterior_ssot_fact" in source_text
+
+
 def _posterior_target_direct_order_context(details: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     if not isinstance(details, Mapping) or not _is_posterior_target_direct_candidate(details):
         return {}
@@ -5415,14 +5550,69 @@ def _posterior_target_direct_order_context(details: Optional[Mapping[str, Any]])
         "target_posterior",
         "new_target_posterior",
         "decision_ssot",
+        "posterior_ssot_fact_used",
+        "target_probability_field",
         "decision_basis",
         "target_adjustment_decision_version",
         "target_adjustment_action",
         "target_adjustment_reason_codes",
+        "posterior_composer_schema",
+        "posterior_activation_mode",
+        "sequential_bayes_execution_contract_id",
+        "signal_to_order_slo_ms",
+        "signal_to_order_hard_deadline_ms",
+        "signal_to_order_slo_deadline_at",
+        "signal_to_order_hard_deadline_at",
     ):
         if key in details and details.get(key) is not None:
             out[key] = details.get(key)
-    return out
+    execution_contract = details.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        out["sequential_bayes_execution_contract"] = dict(execution_contract)
+    return _canonicalize_posterior_ssot_fact_marker(out)
+
+
+def _canonicalize_posterior_ssot_fact_marker(details: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(details, dict):
+        return details
+    decision_ssot = str(details.get("decision_ssot") or "").strip()
+    hard_source_direct_semantics = bool(
+        details.get("hard_source_direct")
+        or details.get("hard_source_posterior_override")
+    ) and (
+        decision_ssot in {"hard_source_direct_ssot_target", "auto_trade_target_bucket"}
+        or str(details.get("decision_basis") or "").strip() == "hard_source_lower_bound_constraint"
+        or str(details.get("target_adjustment_decision_version") or "").strip().startswith("hard_source_")
+    )
+    if hard_source_direct_semantics:
+        if decision_ssot not in {"hard_source_direct_ssot_target", "auto_trade_target_bucket"}:
+            details["decision_ssot"] = "hard_source_direct_ssot_target"
+        details["posterior_ssot_fact_used"] = False
+        if str(details.get("target_probability_field") or "").strip() == "posterior_ssot_fact.target_probability":
+            details["target_probability_field"] = "hard_source_direct_ssot_target.posterior_constraint"
+        if _is_posterior_target_direct_candidate(details):
+            details["posterior_target_direct"] = True
+        return details
+    source_text = " ".join(
+        str(details.get(key) or "")
+        for key in (
+            "decision_ssot",
+            "posterior_target_source",
+            "target_source",
+            "target_probability_field",
+            "posterior_target_probability_field",
+        )
+    ).lower()
+    if (
+        decision_ssot == "posterior_ssot_fact"
+        or ("posterior_ssot_fact" in source_text and not hard_source_direct_semantics)
+    ):
+        details["decision_ssot"] = "posterior_ssot_fact"
+        details["posterior_ssot_fact_used"] = True
+        details["target_probability_field"] = "posterior_ssot_fact.target_probability"
+    if _is_posterior_target_direct_candidate(details):
+        details["posterior_target_direct"] = True
+    return details
 
 
 POSTERIOR_TARGET_DIRECT_ENTRY_SNAPSHOT_VERSION = (
@@ -5573,7 +5763,7 @@ def _apply_posterior_target_direct_snapshot_protection(
             out["q_temperature_bucket_posterior"] = float(target_posterior)
             out["q_quote"] = float(target_posterior)
         out["posterior_target_direct_entry_snapshot_override"] = True
-        out["posterior_target_direct_path_follow_diagnostic_only"] = False
+        out["posterior_target_direct_path_follow_diagnostic_only"] = True
     return out
 
 
@@ -5785,6 +5975,15 @@ def _apply_hard_source_direct_expected_entry_override(
 def _is_ssot_target_realization_candidate(details: Optional[Mapping[str, Any]]) -> bool:
     if not isinstance(details, Mapping):
         return False
+    if not _is_posterior_settlement_candidate(details):
+        return False
+    if _is_hard_source_direct_ssot_target_entry(details):
+        return True
+    decision_ssot = str(details.get("decision_ssot") or "").strip()
+    if decision_ssot in {"posterior_ssot_fact", "hard_source_direct_ssot_target"}:
+        return True
+    if _is_posterior_target_direct_candidate(details):
+        return _target_has_explicit_posterior_ssot_marker(details)
     plan_source = str(
         details.get("target_realization_plan_notional_source")
         or details.get("kelly_sizing_source")
@@ -5792,13 +5991,61 @@ def _is_ssot_target_realization_candidate(details: Optional[Mapping[str, Any]]) 
         or ""
     ).strip()
     return bool(
-        _is_posterior_settlement_candidate(details)
-        and (
-            plan_source in {"ui_snapshot_ssot", "ui_snapshot_ssot_capital_plan"}
-            or _is_posterior_target_direct_candidate(details)
-            or _is_hard_source_direct_ssot_target_entry(details)
-        )
+        plan_source in {"ui_snapshot_ssot", "ui_snapshot_ssot_capital_plan"}
+        and _target_has_explicit_posterior_ssot_marker(details)
     )
+
+
+def _entry_order_policy_allow_reason(details: Optional[Mapping[str, Any]]) -> str:
+    if not isinstance(details, Mapping):
+        return ""
+    if _is_hard_source_direct_ssot_target_entry(details):
+        return "hard_source_direct_ssot_target"
+    if _is_posterior_target_direct_buy_new_target(details):
+        validation = validate_sequential_bayes_execution_context(details)
+        return (
+            "posterior_target_direct_ssot_target"
+            if _target_has_explicit_posterior_ssot_marker(details)
+            and validation.get("ok") is True
+            else ""
+        )
+    if _is_ssot_target_realization_candidate(details):
+        if str(details.get("decision_ssot") or "").strip() == "posterior_ssot_fact":
+            validation = validate_sequential_bayes_execution_context(details)
+            if validation.get("ok") is not True:
+                return ""
+        return "ssot_target_realization"
+    if _is_posterior_settlement_candidate(details) and _target_has_explicit_posterior_ssot_marker(details):
+        return POSTERIOR_SETTLEMENT_FAMILY
+    return ""
+
+
+def _entry_order_policy_guard_details(
+    details: Optional[Mapping[str, Any]],
+    *,
+    block_reason: str = "",
+) -> Dict[str, Any]:
+    allow_reason = _entry_order_policy_allow_reason(details)
+    validation = (
+        validate_sequential_bayes_execution_context(details)
+        if isinstance(details, Mapping)
+        and not _is_hard_source_direct_ssot_target_entry(details)
+        and (
+            _is_posterior_target_direct_candidate(details)
+            or str(details.get("decision_ssot") or "").strip() == "posterior_ssot_fact"
+        )
+        else {}
+    )
+    return {
+        "entry_order_policy_guard_version": ENTRY_ORDER_POLICY_GUARD_VERSION,
+        "entry_order_policy_allowed": bool(allow_reason),
+        "entry_order_policy_allow_reason": allow_reason,
+        "entry_order_policy_block_reason": str(block_reason or ""),
+        "entry_order_policy_boundary": (
+            "posterior_settlement_or_ssot_target_realization_or_hard_source_direct_only"
+        ),
+        "sequential_bayes_execution_validation": validation,
+    }
 
 
 def _entry_usable_edge_missing_audit(reason: str) -> Dict[str, Any]:
@@ -6133,7 +6380,7 @@ def _build_entry_usable_edge_audit(
             "entry_usable_edge_version": "posterior_settlement_audit_v1_2026_06_15",
             "entry_edge_constitution_version": "posterior_settlement_constitution_v1_2026_06_15",
             "entry_edge_constitution_rule": "disabled_price_not_target_selection",
-            "entry_edge_boundary": "posterior_target_reliability_or_remote_no_probability",
+            "entry_edge_boundary": "posterior_target_reliability",
             "entry_edge_boundary_status": "pass" if allowed else "blocked",
             "entry_edge_boundary_action": "allow_size_by_posterior_settlement" if allowed else "size_zero",
             "entry_edge_exit_path_required": False,
@@ -7119,17 +7366,201 @@ def _build_entry_usable_edge_audit(
     return audit
 
 
-ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION = "entry_usable_edge_order_guard_v1_2026_05_06"
+def _target_realization_v3_mutual_exclusion_block_reason(
+    candidate_ref: Mapping[str, Any],
+) -> str:
+    if not str(candidate_ref.get("target_realization_v3_plan_id") or "").strip():
+        return ""
+    slug = str(candidate_ref.get("slug") or candidate_ref.get("event_slug") or "").strip()
+    event_date = _normalize_date_key(str(candidate_ref.get("event_date") or ""))
+    outcome = str(candidate_ref.get("outcome") or "").strip()
+    side = str(candidate_ref.get("side") or "").strip().upper()
+    opposite = "NO" if side == "YES" else "YES" if side == "NO" else ""
+    if not slug or not event_date or not outcome or not opposite:
+        return "target_realization_v3_mutual_exclusion_identity_missing"
+    dust = _env_float("PM_TARGET_REALIZATION_MUTUAL_EXCLUSION_DUST_SIZE")
+    if dust is None or not math.isfinite(dust):
+        dust = 0.000001
+    dust = max(0.0, float(dust))
+    try:
+        conn = sqlite3.connect(
+            f"file:{DB_PATH}?mode=ro",
+            uri=True,
+            timeout=0.25,
+        )
+        try:
+            try:
+                lock_row = conn.execute(
+                    """
+                    SELECT lock_type
+                    FROM target_realization_execution_locks
+                    WHERE slug = ? AND substr(event_date, 1, 10) = ?
+                      AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+                      AND state IN ('active', 'pending')
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (slug, event_date, outcome, side),
+                ).fetchone()
+            except sqlite3.Error:
+                lock_row = None
+            if lock_row is not None:
+                # Do not reinterpret historical lock types as an executable
+                # profit-lock or capital-recycle policy.  Every active lock
+                # only prevents a duplicate intent pending reconciliation.
+                return "target_realization_reentry_locked"
+            same_side_exit = conn.execute(
+                """
+                SELECT 1
+                FROM edge_trades
+                WHERE slug = ? AND substr(event_date, 1, 10) = ?
+                  AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+                  AND LOWER(COALESCE(state, '')) IN ('exit_pending', 'canceling')
+                LIMIT 1
+                """,
+                (slug, event_date, outcome, side),
+            ).fetchone()
+            if same_side_exit is not None:
+                return "target_realization_same_bucket_sell_pending"
+            try:
+                same_side_sell_order = conn.execute(
+                    """
+                    SELECT 1
+                    FROM auto_orders
+                    WHERE slug = ? AND substr(event_date, 1, 10) = ?
+                      AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+                      AND LOWER(COALESCE(action, '')) IN ('exit', 'sell')
+                      AND LOWER(COALESCE(order_status, '')) IN (
+                          'pending', 'open', 'live', 'matched', 'partial',
+                          'partially_filled', 'canceling', 'unknown'
+                      )
+                    LIMIT 1
+                    """,
+                    (slug, event_date, outcome, side),
+                ).fetchone()
+            except sqlite3.Error:
+                same_side_sell_order = None
+            if same_side_sell_order is not None:
+                return "target_realization_same_bucket_sell_pending"
+            position = conn.execute(
+                """
+                SELECT 1
+                FROM edge_trades
+                WHERE slug = ? AND substr(event_date, 1, 10) = ?
+                  AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+                  AND (
+                      COALESCE(position_size, 0) > ?
+                      OR LOWER(COALESCE(state, '')) IN (
+                          'entry_pending', 'exit_pending', 'canceling'
+                      )
+                  )
+                LIMIT 1
+                """,
+                (slug, event_date, outcome, opposite, dust),
+            ).fetchone()
+            if position is not None:
+                return "target_realization_same_bucket_opposite_side_position_exists"
+            pending_order = conn.execute(
+                """
+                SELECT 1
+                FROM auto_orders
+                WHERE slug = ? AND substr(event_date, 1, 10) = ?
+                  AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+                  AND LOWER(COALESCE(order_status, '')) IN (
+                      'pending', 'open', 'live', 'matched', 'partial',
+                      'partially_filled', 'canceling', 'unknown'
+                  )
+                LIMIT 1
+                """,
+                (slug, event_date, outcome, opposite),
+            ).fetchone()
+            if pending_order is not None:
+                return "target_realization_same_bucket_opposite_side_order_exists"
+            try:
+                pending_intent = conn.execute(
+                    """
+                    SELECT 1
+                    FROM auto_trade_jobs j, json_each(j.payload_json, '$.entry_expected_targets') target
+                    WHERE j.state IN ('queued', 'retrying', 'running')
+                      AND COALESCE(json_extract(target.value, '$.slug'), ?) = ?
+                      AND substr(COALESCE(json_extract(target.value, '$.event_date'), ?), 1, 10) = ?
+                      AND json_extract(target.value, '$.outcome') = ?
+                      AND UPPER(COALESCE(json_extract(target.value, '$.side'), '')) = ?
+                      AND UPPER(COALESCE(
+                            json_extract(target.value, '$.target_realization_execution_action'),
+                            'BUY'
+                          )) = 'BUY'
+                    LIMIT 1
+                    """,
+                    (slug, slug, event_date, event_date, outcome, opposite),
+                ).fetchone()
+            except sqlite3.Error:
+                pending_intent = None
+            if pending_intent is not None:
+                return "target_realization_same_bucket_opposite_side_intent_exists"
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return "target_realization_v3_mutual_exclusion_check_failed"
+    return ""
 
 
-def _entry_usable_edge_order_block_reason(candidate_ref: Optional[Mapping[str, Any]]) -> str:
+def _target_realization_v3_entry_block_reason(
+    candidate_ref: Mapping[str, Any],
+) -> str:
+    if not str(candidate_ref.get("target_realization_v3_plan_id") or "").strip():
+        return ""
+    if str(candidate_ref.get("target_realization_execution_action") or "BUY").strip().upper() != "BUY":
+        return "target_realization_v3_entry_action_not_buy"
+    validation = validate_sequential_bayes_execution_context(candidate_ref)
+    if validation.get("ok") is not True:
+        blockers = [str(value) for value in validation.get("blockers") or [] if str(value)]
+        return blockers[0] if blockers else "sequential_bayes_execution_contract_blocked"
+    mutual_exclusion = _target_realization_v3_mutual_exclusion_block_reason(candidate_ref)
+    if mutual_exclusion:
+        return mutual_exclusion
+    plan_notional = to_float(candidate_ref.get("target_realization_plan_notional"))
+    if plan_notional is None or not math.isfinite(plan_notional) or plan_notional <= TIME_EDGE_Q_EPS:
+        return "target_realization_plan_notional_nonpositive"
+    if str(candidate_ref.get("order_type") or "GTC").strip().upper() != "GTC":
+        return "target_realization_v3_maker_order_type_not_gtc"
+    if candidate_ref.get("post_only") is not True or candidate_ref.get(
+        "target_realization_maker_only"
+    ) is not True:
+        return "target_realization_v3_post_only_missing"
+    price = to_float(
+        candidate_ref.get("limit_price")
+        or candidate_ref.get("price")
+        or candidate_ref.get("order_price")
+        or candidate_ref.get("bid")
+        or candidate_ref.get("best_bid")
+    )
+    if price is None or not math.isfinite(price) or price <= TIME_EDGE_Q_EPS:
+        return "target_realization_v3_entry_quote_missing"
+    return ""
+
+
+def _entry_order_policy_block_reason(candidate_ref: Optional[Mapping[str, Any]]) -> str:
     if not isinstance(candidate_ref, Mapping):
-        return "entry_usable_edge_missing"
+        return ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON
     if _is_hard_source_direct_ssot_target_entry(candidate_ref):
         return ""
+    v3_block = _target_realization_v3_entry_block_reason(candidate_ref)
+    if v3_block:
+        return v3_block
+    if str(candidate_ref.get("target_realization_v3_plan_id") or "").strip():
+        return ""
     if _is_posterior_target_direct_buy_new_target(candidate_ref):
+        if not _target_has_explicit_posterior_ssot_marker(candidate_ref):
+            return ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON
+        validation = validate_sequential_bayes_execution_context(candidate_ref)
+        if validation.get("ok") is not True:
+            blockers = list(validation.get("blockers") or [])
+            return str(blockers[0] if blockers else "sequential_bayes_execution_contract_blocked")
         return ""
     if _is_posterior_settlement_candidate(candidate_ref):
+        if not _entry_order_policy_allow_reason(candidate_ref):
+            return ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON
         allowed = bool(candidate_ref.get("posterior_settlement_entry_allowed"))
         if allowed:
             if _is_ssot_target_realization_candidate(candidate_ref):
@@ -7145,52 +7576,20 @@ def _entry_usable_edge_order_block_reason(candidate_ref: Optional[Mapping[str, A
             candidate_ref.get("posterior_settlement_entry_block_reason")
             or "posterior_settlement_entry_blocked"
         )
-    usable_edge = to_float(candidate_ref.get("entry_usable_edge"))
-    if usable_edge is None or not math.isfinite(usable_edge):
-        return "entry_usable_edge_missing"
-    if usable_edge <= TIME_EDGE_Q_EPS:
-        return "entry_usable_edge_nonpositive"
-    size_scale = to_float(candidate_ref.get("entry_usable_edge_size_scale"))
-    if size_scale is None or not math.isfinite(size_scale):
-        return "entry_usable_edge_size_missing"
-    if size_scale <= TIME_EDGE_Q_EPS:
-        return "entry_usable_edge_size_zero"
+    if not _entry_order_policy_allow_reason(candidate_ref):
+        return ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON
     return ""
 
 
-def _entry_usable_edge_order_block_details(
+def _entry_order_policy_block_details(
     candidate_ref: Optional[Mapping[str, Any]],
     reason: str,
 ) -> Dict[str, Any]:
     details: Dict[str, Any] = {
-        "entry_usable_edge_order_blocked": bool(reason),
-        "entry_usable_edge_order_block_reason": str(reason or ""),
-        "entry_usable_edge_order_guard_version": ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION,
+        "entry_order_policy_blocked": bool(reason),
+        "entry_order_policy_block_reason": str(reason or ""),
     }
-    if isinstance(candidate_ref, Mapping):
-        for key in (
-            "entry_usable_edge",
-            "entry_usable_edge_base",
-            "entry_usable_edge_penalty_total",
-        "entry_usable_edge_size_scale",
-        "entry_usable_edge_size_scale_applied",
-        "q_bayes_variance_gate_enabled",
-        "q_bayes_variance_gate_pass",
-        "q_bayes_variance_skip_reason",
-        "q_bayes_sigma_for_entry_gate",
-        "q_bayes_sigma_entry_max",
-        "q_bayes_interval_width_for_entry_gate",
-        "q_bayes_interval_width_entry_max",
-        "entry_usable_edge_block_nonpositive",
-            "entry_usable_edge_base_source",
-            "entry_usable_edge_na_reason",
-            "entry_edge_boundary_status",
-            "entry_edge_boundary_action",
-            "entry_edge_false_edge",
-            "entry_edge_root_cause",
-        ):
-            if key in candidate_ref:
-                details[key] = candidate_ref.get(key)
+    details.update(_entry_order_policy_guard_details(candidate_ref, block_reason=reason))
     return details
 
 
@@ -10019,12 +10418,6 @@ def _auto_trade_dry_run_enabled() -> bool:
 
 
 AUTO_TRADE_MIN_EDGE_SCORE = float(os.environ.get("PM_AUTO_TRADE_MIN_EDGE_SCORE", str(EDGE_SCORE_MIN)))
-AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY = _env_float_default(
-    "PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY",
-    1.0,
-)
-if AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY < 0:
-    AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY = 0.0
 AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY = _env_float_default(
     "PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY",
     0.0,
@@ -11229,14 +11622,14 @@ def _apply_exit_trigger_policy(
     model_dir_enabled: bool,
     model_dir_exit_ok: bool,
 ) -> Dict[str, Any]:
-    out_reasons, out_codes, removed_legacy_codes = _filter_bayes_exit_payload(
+    out_reasons, out_codes, removed_legacy_codes = _filter_executable_exit_payload(
         reasons,
         codes,
     )
     out_triggers = [
         str(item)
         for item in (triggers or [])
-        if str(item).strip() and _is_bayes_exit_reason_code(item)
+        if str(item).strip() and _is_executable_exit_reason_code(item)
     ]
 
     edge_min_val = float(edge_min) if math.isfinite(float(edge_min)) else 0.0
@@ -13055,7 +13448,7 @@ def _kelly_ratio_env_any(keys: Sequence[str], default: float) -> float:
     return float(val)
 
 
-_TARGET_REALIZATION_UI_PLAN_CACHE: Dict[
+_TARGET_REALIZATION_FACT_PLAN_CACHE: Dict[
     Tuple[str, str, str],
     Tuple[float, Dict[Tuple[str, str], Dict[str, Any]], Dict[str, Any]],
 ] = {}
@@ -13066,248 +13459,74 @@ def _target_realization_side_notional_cap_usdc(
     leg: Optional[Mapping[str, Any]] = None,
     plan: Optional[Mapping[str, Any]] = None,
 ) -> Optional[float]:
-    side_upper = str(side or "").strip().upper()
     leg_ref = leg if isinstance(leg, Mapping) else {}
     plan_ref = plan if isinstance(plan, Mapping) else {}
-    env_key = (
-        "PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC"
-        if side_upper == "NO"
-        else "PM_TARGET_REALIZATION_YES_MAX_NOTIONAL_USDC"
-    )
-    env_cap = _env_float_first((env_key,), None)
-    if env_cap is not None and math.isfinite(float(env_cap)) and float(env_cap) > 0:
-        return float(env_cap)
+    if str(plan_ref.get("version") or "").strip() != "strong_posterior_three_leg_strategy_v2":
+        return None
     cap = to_float(leg_ref.get("target_notional_cap_usdc"))
     if cap is None:
-        plan_key = (
-            "remote_no_single_leg_max_notional_usdc"
-            if side_upper == "NO"
-            else "yes_single_leg_max_notional_usdc"
-        )
-        cap = to_float(plan_ref.get(plan_key))
-    if cap is None:
-        if side_upper == "NO":
-            cap = _env_float_first(("PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC",), 100.0)
-        elif side_upper == "YES":
-            cap = _env_float_first(("PM_TARGET_REALIZATION_YES_MAX_NOTIONAL_USDC",), 20.0)
+        cap = to_float(leg_ref.get("max_notional_usdc"))
     if cap is None or not math.isfinite(float(cap)) or float(cap) <= 0:
         return None
-    if side_upper == "NO":
-        cap = max(float(cap), 100.0)
     return float(cap)
 
 
-def _target_realization_remote_no_price_cap(
-    leg: Optional[Mapping[str, Any]] = None,
-    plan: Optional[Mapping[str, Any]] = None,
-) -> float:
-    leg_ref = leg if isinstance(leg, Mapping) else {}
-    plan_ref = plan if isinstance(plan, Mapping) else {}
-    env_cap = _env_float_first(("PM_TARGET_REALIZATION_REMOTE_NO_MAX_PRICE",), None)
-    if env_cap is not None and math.isfinite(float(env_cap)):
-        return float(min(1.0, max(0.0, float(env_cap))))
-    global_cap = _env_float_first(("PM_TARGET_REALIZATION_MAX_ENTRY_PRICE",), 0.98)
-    if global_cap is None or not math.isfinite(float(global_cap)):
-        global_cap = 0.98
-    cap = to_float(leg_ref.get("target_realization_order_price_cap"))
-    if cap is None:
-        cap = to_float(leg_ref.get("remote_no_max_price"))
-    if cap is None:
-        cap = to_float(plan_ref.get("remote_no_max_price"))
-    if cap is not None and math.isfinite(float(cap)):
-        cap = max(float(cap), float(global_cap))
-    if cap is None or not math.isfinite(float(cap)):
-        cap = global_cap
-    return float(min(1.0, max(0.0, float(cap))))
+_STRONG_POSTERIOR_LEG_SIDES = {
+    "top_yes_wave": "YES",
+    "second_yes": "YES",
+    "strongly_excluded_no": "NO",
+}
+
+
+def _sanitize_strong_posterior_strategy_legs(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Fail closed unless the committed plan is exactly the current three-leg contract."""
+    if not isinstance(plan, dict):
+        return {}
+    if str(plan.get("version") or "").strip() != "strong_posterior_three_leg_strategy_v2":
+        plan["legs"] = []
+        plan["strategy_plan_block_reason"] = "retired_target_realization_plan_version"
+        return plan
+    raw_legs = plan.get("legs")
+    if not isinstance(raw_legs, list):
+        plan["legs"] = []
+        plan["strategy_plan_block_reason"] = "strong_posterior_three_leg_missing"
+        return plan
+    cleaned: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for raw_leg in raw_legs:
+        if not isinstance(raw_leg, Mapping):
+            continue
+        leg = dict(raw_leg)
+        role = str(leg.get("role") or leg.get("strategy_leg") or "").strip()
+        side = str(leg.get("side") or "").strip().upper()
+        bucket = str(leg.get("bucket") or leg.get("outcome") or "").strip()
+        action = str(leg.get("action") or "").strip().lower()
+        empty_hold_no = role == "strongly_excluded_no" and side == "NO" and action == "hold" and not bucket
+        if (not bucket and not empty_hold_no) or role in seen or _STRONG_POSTERIOR_LEG_SIDES.get(role) != side:
+            continue
+        if action not in {"add", "hold"}:
+            continue
+        leg["role"] = role
+        leg["strategy_leg"] = role
+        seen.add(role)
+        cleaned.append(leg)
+    plan["legs"] = cleaned
+    if set(_STRONG_POSTERIOR_LEG_SIDES) != seen:
+        plan["strategy_plan_block_reason"] = "strong_posterior_three_leg_contract_incomplete"
+    return plan
 
 
 def _target_realization_plan_legs(
     plan: Mapping[str, Any],
 ) -> Dict[Tuple[str, str], Dict[str, Any]]:
-    legs = plan.get("legs") if isinstance(plan, Mapping) else None
-    if not isinstance(legs, list):
+    sanitized = _sanitize_strong_posterior_strategy_legs(dict(plan))
+    if sanitized.get("strategy_plan_block_reason"):
         return {}
-    target_bucket = str(plan.get("target_bucket") or "").strip()
     out: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    for leg in legs:
-        if not isinstance(leg, Mapping):
-            continue
-        bucket = str(leg.get("bucket") or leg.get("outcome") or "").strip()
-        side = str(leg.get("side") or "").strip().upper()
-        if not bucket or side not in {"YES", "NO"}:
-            continue
-        leg_out = dict(leg)
-        role = str(leg_out.get("role") or leg_out.get("target_realization_leg_role") or "").strip()
-        if role == "remote_no" and side == "NO":
-            allowed, _reason, distance, min_distance, max_distance = (
-                _target_realization_remote_no_plan_leg_allowed(leg_out, target_bucket, plan)
-            )
-            if not allowed:
-                continue
-            signed_distance = posterior_bucket_directional_distance(bucket, target_bucket)
-            leg_out["remote_no_bucket_direction"] = (
-                "above_target"
-                if signed_distance is not None and signed_distance > 0
-                else "below_target"
-            )
-            leg_out["remote_no_bucket_distance"] = distance
-            leg_out["remote_no_min_bucket_distance"] = min_distance
-            leg_out["remote_no_max_bucket_distance"] = max_distance
-        out[(bucket, side)] = leg_out
+    for leg in sanitized.get("legs") or []:
+        if isinstance(leg, Mapping) and str(leg.get("bucket") or "").strip():
+            out[(str(leg.get("bucket") or "").strip(), str(leg.get("side") or "").strip().upper())] = dict(leg)
     return out
-
-
-def _target_realization_remote_no_distance_bounds(direction: str = "") -> Tuple[int, int]:
-    direction_key = str(direction or "").strip().lower()
-    if direction_key == "below_target":
-        min_raw = _env_float("PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MIN_BUCKET_DISTANCE")
-        max_raw = _env_float("PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MAX_BUCKET_DISTANCE")
-        default_min = 2.0
-        default_max = 3.0
-    elif direction_key == "above_target":
-        min_raw = _env_float("PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MIN_BUCKET_DISTANCE")
-        max_raw = _env_float("PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MAX_BUCKET_DISTANCE")
-        default_min = 3.0
-        default_max = 4.0
-    else:
-        min_raw = None
-        max_raw = None
-        default_min = 2.0
-        default_max = 4.0
-    if min_raw is None:
-        min_raw = _env_float("PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE")
-    if max_raw is None:
-        max_raw = _env_float("PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE")
-    if min_raw is None or not math.isfinite(float(min_raw)):
-        min_raw = default_min
-    min_distance = int(max(1, min(20, round(float(min_raw)))))
-    if max_raw is None or not math.isfinite(float(max_raw)):
-        max_raw = default_max
-    max_distance = int(max(min_distance, min(20, round(float(max_raw)))))
-    return min_distance, max_distance
-
-
-def _target_realization_remote_no_leg_allowed(
-    bucket: str,
-    target_bucket: str,
-) -> Tuple[bool, str, Optional[int], int, int]:
-    directional_distance = posterior_bucket_directional_distance(bucket, target_bucket)
-    if directional_distance is None:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_direction_unavailable", None, min_distance, max_distance
-    signed_distance = int(directional_distance)
-    if signed_distance == 0:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_must_not_be_target_bucket", 0, min_distance, max_distance
-    direction = "above_target" if signed_distance > 0 else "below_target"
-    min_distance, max_distance = _target_realization_remote_no_distance_bounds(direction)
-    distance = abs(signed_distance)
-    if distance < min_distance:
-        return False, "remote_no_bucket_not_far_enough", distance, min_distance, max_distance
-    if distance > max_distance:
-        return False, "remote_no_bucket_too_far", distance, min_distance, max_distance
-    return True, "", distance, min_distance, max_distance
-
-
-def _target_realization_remote_no_plan_leg_allowed(
-    leg: Mapping[str, Any],
-    target_bucket: str,
-    plan: Optional[Mapping[str, Any]] = None,
-) -> Tuple[bool, str, Optional[int], int, int]:
-    leg_ref = leg if isinstance(leg, Mapping) else {}
-    bucket = str(leg_ref.get("bucket") or leg_ref.get("outcome") or "").strip()
-    directional_distance = posterior_bucket_directional_distance(bucket, target_bucket)
-    if directional_distance is None:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_direction_unavailable", None, min_distance, max_distance
-    signed_distance = int(directional_distance)
-    if signed_distance == 0:
-        min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-        return False, "remote_no_must_not_be_target_bucket", 0, min_distance, max_distance
-    direction = "above_target" if signed_distance > 0 else "below_target"
-    fallback_min, fallback_max = _target_realization_remote_no_distance_bounds(direction)
-    plan_ref = plan if isinstance(plan, Mapping) else {}
-    min_raw = to_float(leg_ref.get("remote_no_min_bucket_distance"))
-    max_raw = to_float(leg_ref.get("remote_no_max_bucket_distance"))
-    if min_raw is None:
-        min_raw = to_float(
-            plan_ref.get(
-                "remote_no_upper_min_bucket_distance"
-                if direction == "above_target"
-                else "remote_no_lower_min_bucket_distance"
-            )
-        )
-    if max_raw is None:
-        max_raw = to_float(
-            plan_ref.get(
-                "remote_no_upper_max_bucket_distance"
-                if direction == "above_target"
-                else "remote_no_lower_max_bucket_distance"
-            )
-        )
-    if min_raw is None or not math.isfinite(float(min_raw)):
-        min_distance = fallback_min
-    else:
-        min_distance = int(max(1, min(20, round(float(min_raw)))))
-    if max_raw is None or not math.isfinite(float(max_raw)):
-        max_distance = fallback_max
-    else:
-        max_distance = int(max(min_distance, min(20, round(float(max_raw)))))
-    distance = abs(signed_distance)
-    if distance < min_distance:
-        return False, "remote_no_bucket_not_far_enough", distance, min_distance, max_distance
-    if distance > max_distance:
-        return False, "remote_no_bucket_too_far", distance, min_distance, max_distance
-    return True, "", distance, min_distance, max_distance
-
-
-def _sanitize_target_realization_remote_no_legs(plan: Dict[str, Any]) -> Dict[str, Any]:
-    if not isinstance(plan, dict):
-        return {}
-    legs = plan.get("legs")
-    if not isinstance(legs, list):
-        return plan
-    target_bucket = str(plan.get("target_bucket") or "").strip()
-    cleaned: List[Any] = []
-    dropped = 0
-    drop_reasons: List[str] = []
-    for raw_leg in legs:
-        if not isinstance(raw_leg, Mapping):
-            cleaned.append(raw_leg)
-            continue
-        leg = dict(raw_leg)
-        role = str(leg.get("role") or leg.get("target_realization_leg_role") or "").strip()
-        side = str(leg.get("side") or "").strip().upper()
-        bucket = str(leg.get("bucket") or leg.get("outcome") or "").strip()
-        if role == "remote_no" and side == "NO":
-            allowed, reason, distance, min_distance, max_distance = (
-                _target_realization_remote_no_plan_leg_allowed(leg, target_bucket, plan)
-            )
-            if not allowed:
-                dropped += 1
-                if reason and reason not in drop_reasons:
-                    drop_reasons.append(reason)
-                continue
-            signed_distance = posterior_bucket_directional_distance(bucket, target_bucket)
-            leg["remote_no_bucket_direction"] = (
-                "above_target"
-                if signed_distance is not None and signed_distance > 0
-                else "below_target"
-            )
-            leg["remote_no_bucket_distance"] = distance
-            leg["remote_no_min_bucket_distance"] = min_distance
-            leg["remote_no_max_bucket_distance"] = max_distance
-        cleaned.append(leg)
-    plan["legs"] = cleaned
-    plan["remote_no_bucket_direction"] = "below_and_above_target"
-    min_distance, max_distance = _target_realization_remote_no_distance_bounds()
-    plan["remote_no_min_bucket_distance"] = min_distance
-    plan["remote_no_max_bucket_distance"] = max_distance
-    if dropped:
-        plan["remote_no_sanitized"] = True
-        plan["remote_no_sanitized_drop_count"] = int(dropped)
-        plan["remote_no_sanitized_drop_reasons"] = drop_reasons
-    return plan
 
 
 def _target_realization_plan_blocks_yes_follow(plan: Mapping[str, Any]) -> bool:
@@ -13591,6 +13810,105 @@ def _apply_temperature_path_trade_follow_gate_to_plan(
     return plan
 
 
+def _target_realization_plan_source_texts(
+    plan: Mapping[str, Any],
+    payload: Optional[Mapping[str, Any]] = None,
+) -> List[str]:
+    texts: List[str] = []
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if text:
+            texts.append(text)
+
+    containers: List[Mapping[str, Any]] = []
+    if isinstance(plan, Mapping):
+        containers.append(plan)
+        for key in ("posterior_target_bucket_selection", "target_bucket_selection"):
+            nested = plan.get(key)
+            if isinstance(nested, Mapping):
+                containers.append(nested)
+    if isinstance(payload, Mapping):
+        for key in ("posterior_target_bucket_selection", "target_bucket_selection"):
+            nested = payload.get(key)
+            if isinstance(nested, Mapping):
+                containers.append(nested)
+        ssot_fact = payload.get("posterior_ssot_fact")
+        if isinstance(ssot_fact, Mapping):
+            containers.append(ssot_fact)
+
+    for container in containers:
+        for key in (
+            "target_bucket_selection_source",
+            "target_bucket_source",
+            "target_probability_field",
+            "target_bucket_probability_field",
+            "ssot_source",
+            "source",
+            "schema",
+        ):
+            add(container.get(key))
+    return texts
+
+
+def _target_realization_plan_uses_posterior_ssot(
+    plan: Mapping[str, Any],
+    payload: Optional[Mapping[str, Any]] = None,
+) -> bool:
+    if not isinstance(plan, Mapping):
+        return False
+    source_text = " ".join(_target_realization_plan_source_texts(plan, payload)).lower()
+    if "posterior_ssot_fact" in source_text:
+        return True
+    if isinstance(payload, Mapping):
+        ssot_fact = payload.get("posterior_ssot_fact")
+        if isinstance(ssot_fact, Mapping):
+            ssot_state = str(ssot_fact.get("state") or "").strip().lower()
+            if ssot_state and ssot_state not in {"available", "ready", "ok"}:
+                return False
+            plan_bucket = str(plan.get("target_bucket") or "").strip()
+            ssot_bucket = str(
+                ssot_fact.get("target_bucket")
+                or ssot_fact.get("top_bucket")
+                or ssot_fact.get("selected_bucket")
+                or ""
+            ).strip()
+            if plan_bucket and ssot_bucket and plan_bucket == ssot_bucket:
+                return True
+    return False
+
+
+def _target_realization_plan_uses_hard_source_target(plan: Mapping[str, Any]) -> bool:
+    if not isinstance(plan, Mapping):
+        return False
+    for text in _target_realization_plan_source_texts(plan):
+        lower = text.lower()
+        if lower.startswith("hard_source_") or "hard_source_direct" in lower:
+            return True
+    return False
+
+
+def _target_realization_plan_is_executable_ssot(
+    plan: Mapping[str, Any],
+    payload: Optional[Mapping[str, Any]] = None,
+) -> bool:
+    return bool(
+        isinstance(plan, Mapping)
+        and str(plan.get("version") or "").strip() == "strong_posterior_three_leg_strategy_v2"
+        and _target_realization_plan_uses_posterior_ssot(plan, payload)
+        and not _sanitize_strong_posterior_strategy_legs(dict(plan)).get("strategy_plan_block_reason")
+    )
+
+
+def _target_realization_plan_decision_ssot(
+    plan: Mapping[str, Any],
+    payload: Optional[Mapping[str, Any]] = None,
+) -> str:
+    if _target_realization_plan_is_executable_ssot(plan, payload):
+        return "posterior_ssot_fact"
+    return ""
+
+
 def _target_realization_plan_from_snapshot_payload(
     payload: Mapping[str, Any],
     *,
@@ -13610,9 +13928,11 @@ def _target_realization_plan_from_snapshot_payload(
             continue
         plan = item.get("target_realization_capital_plan")
         if isinstance(plan, Mapping) and plan.get("ok") is not False:
+            if not _target_realization_plan_is_executable_ssot(plan, item):
+                return None
             aligned = _align_target_realization_plan_with_path_distribution(dict(plan), item)
             gated = _apply_temperature_path_trade_follow_gate_to_plan(aligned, item)
-            sanitized = _sanitize_target_realization_remote_no_legs(gated)
+            sanitized = _sanitize_strong_posterior_strategy_legs(gated)
             return _merge_target_realization_plan_ssot_context(sanitized, item)
         return None
     return None
@@ -13624,6 +13944,18 @@ def _merge_target_realization_plan_ssot_context(
 ) -> Dict[str, Any]:
     if not isinstance(plan, dict) or not isinstance(payload, Mapping):
         return plan
+    posterior_ssot_fact = payload.get("posterior_ssot_fact")
+    if isinstance(posterior_ssot_fact, Mapping):
+        plan.setdefault("posterior_ssot_fact", dict(posterior_ssot_fact))
+        ssot_bucket = str(
+            posterior_ssot_fact.get("target_bucket")
+            or posterior_ssot_fact.get("top_bucket")
+            or posterior_ssot_fact.get("selected_bucket")
+            or ""
+        ).strip()
+        if ssot_bucket and ssot_bucket == str(plan.get("target_bucket") or "").strip():
+            plan.setdefault("target_bucket_selection_source", "posterior_ssot_fact.top_bucket")
+            plan.setdefault("target_probability_field", "posterior_ssot_fact.target_probability")
     path_distribution = payload.get("temperature_path_distribution")
     if not isinstance(path_distribution, Mapping):
         summary = payload.get("chengdu_intraday_summary")
@@ -13691,21 +14023,10 @@ def _load_target_realization_local_fact_plan(
     plan = payload.get("target_realization_capital_plan")
     if not isinstance(plan, Mapping) or plan.get("ok") is False:
         return None
-    path_distribution = payload.get("temperature_path_distribution")
-    if not isinstance(path_distribution, Mapping):
-        summary = payload.get("chengdu_intraday_summary")
-        if isinstance(summary, Mapping):
-            path_distribution = summary.get("temperature_path_distribution")
-    if isinstance(path_distribution, Mapping):
-        path_target = str(path_distribution.get("target_bucket") or "").strip()
-        plan_target = str(plan.get("target_bucket") or "").strip()
-        if path_target and plan_target and path_target != plan_target:
-            return None
-        out = _align_target_realization_plan_with_path_distribution(dict(plan), payload)
-        out = _apply_temperature_path_trade_follow_gate_to_plan(out, payload)
-    else:
-        out = dict(plan)
-    out = _sanitize_target_realization_remote_no_legs(out)
+    if not _target_realization_plan_is_executable_ssot(plan, payload):
+        return None
+    out = dict(plan)
+    out = _sanitize_strong_posterior_strategy_legs(out)
     out = _merge_target_realization_plan_ssot_context(out, payload)
     out.setdefault("source", "event_fact_latest")
     out["ssot_load_source"] = "event_fact_latest_local"
@@ -13715,7 +14036,7 @@ def _load_target_realization_local_fact_plan(
     return out
 
 
-def _load_target_realization_ui_plan(
+def _load_target_realization_fact_plan(
     slug: str,
     event_date: str,
 ) -> Tuple[Dict[Tuple[str, str], Dict[str, Any]], Dict[str, Any]]:
@@ -13723,93 +14044,23 @@ def _load_target_realization_ui_plan(
     event_key = str(event_date or "").strip().split("T", 1)[0]
     if not slug_key or not event_key:
         return {}, {}
-    snapshot_file = str(
-        os.environ.get("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE", "") or ""
-    ).strip()
-    snapshot_selector = ""
-    if snapshot_file:
-        try:
-            snapshot_selector = f"file:{Path(snapshot_file).resolve()}"
-        except Exception:
-            snapshot_selector = f"file:{snapshot_file}"
     now_mono = time.monotonic()
-    url = str(
-        os.environ.get(
-            "PM_TARGET_REALIZATION_SSOT_URL",
-            "http://127.0.0.1:3002/api/ui_snapshot?limit=40",
-        )
-        or ""
-    ).strip()
-    local_fact_enabled = _env_bool("PM_TARGET_REALIZATION_SSOT_LOCAL_FACT_ENABLED", True)
-    if not snapshot_selector:
-        if local_fact_enabled:
-            try:
-                db_selector = str(Path(DB_PATH).resolve())
-            except Exception:
-                db_selector = str(DB_PATH)
-            snapshot_selector = f"local_fact:event_fact_latest:{db_selector}"
-        else:
-            snapshot_selector = f"url:{url}"
-    cache_key = (slug_key, event_key, snapshot_selector)
-    cached = _TARGET_REALIZATION_UI_PLAN_CACHE.get(cache_key)
+    try:
+        db_selector = str(Path(DB_PATH).resolve())
+    except Exception:
+        db_selector = str(DB_PATH)
+    cache_key = (slug_key, event_key, f"event_fact_latest:{db_selector}")
+    cached = _TARGET_REALIZATION_FACT_PLAN_CACHE.get(cache_key)
     cache_ttl = _env_float("PM_TARGET_REALIZATION_SSOT_CACHE_SEC")
     if cache_ttl is None or not math.isfinite(cache_ttl) or cache_ttl < 0:
         cache_ttl = 2.0
     if cached and now_mono - float(cached[0]) <= float(cache_ttl):
         return dict(cached[1]), dict(cached[2])
-    timeout_sec = _env_float("PM_TARGET_REALIZATION_SSOT_TIMEOUT_SEC")
-    if timeout_sec is None or not math.isfinite(timeout_sec) or timeout_sec <= 0:
-        timeout_sec = 1.5
-    plan: Optional[Dict[str, Any]] = None
-    payload = None
-    if snapshot_file:
-        try:
-            payload_raw = json.loads(
-                Path(snapshot_file).read_text(encoding="utf-8") or "{}"
-            )
-            payload = payload_raw if isinstance(payload_raw, Mapping) else None
-        except Exception:
-            payload = None
-        if isinstance(payload, Mapping):
-            plan = _target_realization_plan_from_snapshot_payload(
-                payload,
-                slug_key=slug_key,
-                event_key=event_key,
-            )
-            if isinstance(plan, dict):
-                plan["ssot_load_source"] = "snapshot_file"
-                plan["ssot_snapshot_file"] = snapshot_file
-    if plan is None and local_fact_enabled:
-        plan = _load_target_realization_local_fact_plan(slug_key, event_key)
-    if plan is None:
-        if not url:
-            return {}, {}
-        retry_count = _env_int("PM_TARGET_REALIZATION_SSOT_RETRIES")
-        if retry_count is None or retry_count < 0:
-            retry_count = 1
-        for attempt in range(int(retry_count) + 1):
-            try:
-                resp = requests.get(url, timeout=float(timeout_sec))
-                resp.raise_for_status()
-                payload = resp.json()
-                break
-            except Exception:
-                payload = None
-                if attempt < int(retry_count):
-                    time.sleep(0.15)
-        if isinstance(payload, Mapping):
-            plan = _target_realization_plan_from_snapshot_payload(
-                payload,
-                slug_key=slug_key,
-                event_key=event_key,
-            )
-            if isinstance(plan, dict):
-                plan["ssot_load_source"] = "ui_snapshot_http"
-                plan["ssot_url"] = url
+    plan = _load_target_realization_local_fact_plan(slug_key, event_key)
     if not isinstance(plan, Mapping):
         return {}, {}
     out = _target_realization_plan_legs(plan)
-    _TARGET_REALIZATION_UI_PLAN_CACHE[cache_key] = (now_mono, dict(out), dict(plan))
+    _TARGET_REALIZATION_FACT_PLAN_CACHE[cache_key] = (now_mono, dict(out), dict(plan))
     return out, dict(plan)
 
 
@@ -13847,6 +14098,7 @@ def _copy_target_realization_plan_context_to_details(
     if ssot_plan.get("ok") is False:
         return details
     plan_dict = dict(ssot_plan)
+    decision_ssot = _target_realization_plan_decision_ssot(ssot_plan)
     details["target_realization_capital_plan"] = plan_dict
     details["target_realization_capital_plan_version"] = str(
         ssot_plan.get("version") or "target_realization_capital_plan_v2"
@@ -13856,6 +14108,11 @@ def _copy_target_realization_plan_context_to_details(
         or ssot_plan.get("source")
         or "ui_snapshot_ssot"
     )
+    if decision_ssot:
+        details["decision_ssot"] = decision_ssot
+        details["posterior_ssot_fact_used"] = decision_ssot == "posterior_ssot_fact"
+        if decision_ssot == "posterior_ssot_fact":
+            details["target_probability_field"] = "posterior_ssot_fact.target_probability"
     target_bucket = str(ssot_plan.get("target_bucket") or "").strip()
     second_bucket = str(ssot_plan.get("second_target_bucket") or "").strip()
     target_posterior = _clamp_prob01(to_float(ssot_plan.get("target_posterior")))
@@ -14297,24 +14554,10 @@ def _normalize_nonnegative_ratio(value: Optional[float], default: float = 1.0) -
 
 
 def _bayes_bimodal_size_scale(candidate: Mapping[str, Any]) -> float:
-    if not isinstance(candidate, Mapping):
-        return 1.0
-    if not _env_bool("PM_BAYES_BIMODAL_SIZE_SCALE_ENABLED", True):
-        return 1.0
-    risk = str(candidate.get("q_bayes_bimodal_risk") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    if not risk:
-        return 1.0
-    raw_scale = to_float(candidate.get("q_bayes_bimodal_size_scale"))
-    if raw_scale is None or not math.isfinite(raw_scale):
-        raw_scale = _env_float("PM_BAYES_BIMODAL_DEFAULT_SIZE_SCALE")
-    if raw_scale is None or not math.isfinite(raw_scale):
-        raw_scale = 0.45
-    return max(0.0, min(1.0, float(raw_scale)))
+    """Retired legacy bimo-size gate; retain field rendering as diagnostics."""
+
+    del candidate
+    return 1.0
 
 
 def _parse_order_usdc_tiers(raw: Optional[str]) -> List[Dict[str, float]]:
@@ -15245,120 +15488,6 @@ def _save_model_member_cache(
             pass
 
 
-def _materialize_model_member_cache_basin_regime(
-    *,
-    lat: float,
-    lon: float,
-    date: str,
-    market_var: str,
-    market_unit: Optional[str],
-    climo_regime_context: Optional[Mapping[str, Any]],
-) -> int:
-    if not DB_PATH.exists():
-        return 0
-    if not _archive_write_allowed_for_chengdu_zuuu(lat=lat, lon=lon):
-        return 0
-    context = climo_regime_context if isinstance(climo_regime_context, Mapping) else {}
-    features = context.get("features") if isinstance(context.get("features"), Mapping) else {}
-    if not isinstance(features, Mapping):
-        return 0
-    basin_regime = str(
-        features.get("basin_regime")
-        or features.get("primary_regime_label")
-        or ""
-    ).strip()
-    if not basin_regime:
-        return 0
-    loc_key = _model_cache_key(lat, lon)
-    updated_at = str(
-        features.get("regime_updated_at")
-        or features.get("updated_at")
-        or context.get("as_of")
-        or utc_now_iso()
-    )
-    source = str(
-        features.get("regime_source")
-        or features.get("source")
-        or "climo_regime_context"
-    )
-    confidence = to_float(features.get("regime_confidence"))
-    compact_features = {
-        key: value
-        for key, value in dict(features).items()
-        if key
-        in {
-            "basin_regime",
-            "primary_regime_label",
-            "regime_confidence",
-            "monsoon_humidity_regime",
-            "subtropical_high_regime",
-            "basin_ventilation_index",
-            "basin_ventilation_regime",
-            "basin_heat_mechanism_state",
-            "basin_heat_mechanism_status",
-            "basin_heat_uplift_index",
-            "basin_heat_mechanism_support_score",
-            "basin_heat_mechanism_suppression_score",
-            "basin_heat_mechanism_temperature_adjustment_c",
-            "basin_heat_mechanism_active_support_keys",
-            "basin_heat_mechanism_active_suppression_keys",
-            "high_temp_potential_gate",
-            "climo_tmax_sample_count",
-            "climo_tmax_basis",
-            "climo_tmax_month",
-            "source",
-            "updated_at",
-        }
-    }
-    try:
-        features_json = json.dumps(compact_features, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-    except Exception:
-        features_json = "{}"
-    try:
-        conn = open_db()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            UPDATE model_member_cache
-            SET basin_regime = COALESCE(NULLIF(basin_regime, ''), ?),
-                basin_regime_features_json = COALESCE(NULLIF(basin_regime_features_json, ''), ?),
-                basin_regime_source = COALESCE(NULLIF(basin_regime_source, ''), ?),
-                basin_regime_updated_at = COALESCE(NULLIF(basin_regime_updated_at, ''), ?),
-                basin_regime_confidence = COALESCE(basin_regime_confidence, ?)
-            WHERE loc_key = ?
-              AND event_date = ?
-              AND market_var = ?
-              AND market_unit = ?
-              AND COALESCE(official_updated_source, '') != 'open_meteo_historical_forecast'
-              AND (
-                    basin_regime IS NULL
-                    OR basin_regime = ''
-                    OR basin_regime_features_json IS NULL
-                    OR basin_regime_features_json = ''
-                  )
-            """,
-            (
-                basin_regime,
-                features_json,
-                source,
-                updated_at,
-                confidence,
-                loc_key,
-                date,
-                market_var,
-                market_unit or "",
-            ),
-        )
-        changed = int(cur.rowcount or 0)
-        conn.commit()
-        return changed
-    except Exception:
-        return 0
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
 
 
 def _is_errno24_error(exc: Exception) -> bool:
@@ -15701,10 +15830,20 @@ def _clob_order_service_request_timeout_sec(default_timeout_sec: float) -> float
 
 
 def _clob_order_service_idempotency_key(payload: Mapping[str, Any]) -> str:
+    audit_keys = {
+        "execution_domain",
+        "order_execution_domain",
+        "order_execution_source",
+        "order_execution_context_version",
+        "order_execution_reason",
+        "order_intent_action",
+        "manual_confirm_source",
+    }
     stable_payload = {
         str(key): value
         for key, value in dict(payload or {}).items()
-        if str(key) not in {"idempotency_key", "request_id", "created_at", "submitted_at"}
+        if str(key)
+        not in {"idempotency_key", "request_id", "created_at", "submitted_at", *audit_keys}
         and value is not None
     }
     raw = json.dumps(stable_payload, sort_keys=True, separators=(",", ":"), default=str)
@@ -15739,6 +15878,149 @@ def _clob_order_service_direct_target_idempotency_key(payload: Mapping[str, Any]
     return "clobsvc:direct-target:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+ORDER_EXECUTION_CONTEXT_VERSION = "order_execution_domain_v1"
+ORDER_EXECUTION_DOMAIN_BAYES_WEATHER = "bayes_weather_auto_trade"
+ORDER_EXECUTION_DOMAIN_MIRROR_FOLLOW = "mirror_follow"
+ORDER_EXECUTION_DOMAIN_MANUAL_SMOKE_TEST = "manual_smoke_test"
+ORDER_EXECUTION_DOMAIN_UNSPECIFIED = "unspecified"
+
+
+def _order_execution_context_from_order_context(
+    *,
+    action: str,
+    side_upper: str,
+    direct_target_order: bool,
+    direct_target_exit_order: bool,
+    order_context: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    ctx = dict(order_context or {}) if isinstance(order_context, Mapping) else {}
+    domain = str(
+        ctx.get("order_execution_domain")
+        or ctx.get("execution_domain")
+        or ""
+    ).strip()
+    if not domain and direct_target_order:
+        domain = ORDER_EXECUTION_DOMAIN_BAYES_WEATHER
+    if not domain:
+        domain = ORDER_EXECUTION_DOMAIN_UNSPECIFIED
+
+    intent_action = str(ctx.get("intent_action") or "").strip().lower()
+    if not intent_action and str(action or "").strip() == "place-order":
+        intent_action = "exit" if side_upper == "SELL" else "entry"
+    if not intent_action:
+        intent_action = str(action or "").strip().lower() or "unknown"
+
+    source = str(
+        ctx.get("order_execution_source")
+        or ctx.get("entry_order_submit_source")
+        or ctx.get("strategy_source")
+        or ctx.get("posterior_target_source")
+        or domain
+    ).strip() or domain
+    reason = str(ctx.get("order_execution_reason") or "").strip()
+    if not reason:
+        if domain == ORDER_EXECUTION_DOMAIN_BAYES_WEATHER:
+            reason = "bayes_or_hard_source_decision_path"
+        elif domain == ORDER_EXECUTION_DOMAIN_MIRROR_FOLLOW:
+            reason = "source_wallet_mirror_strategy"
+        elif domain == ORDER_EXECUTION_DOMAIN_MANUAL_SMOKE_TEST:
+            reason = "manual_real_money_smoke_test"
+        else:
+            reason = "low_level_order_gateway_call"
+
+    return {
+        "order_execution_context_version": ORDER_EXECUTION_CONTEXT_VERSION,
+        "order_execution_domain": domain,
+        "execution_domain": domain,
+        "order_execution_source": source,
+        "order_execution_reason": reason,
+        "order_intent_action": intent_action,
+        "direct_target_exit_order": bool(direct_target_exit_order),
+    }
+
+
+def _bayes_weather_order_context(
+    *,
+    slug: Any,
+    event_date: Any,
+    outcome: Any,
+    side: Any,
+    intent_action: str,
+    submit_source: str,
+    candidate: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    details = dict(candidate or {}) if isinstance(candidate, Mapping) else {}
+    raw_execution_contract = details.get("sequential_bayes_execution_contract")
+    execution_contract = (
+        raw_execution_contract if isinstance(raw_execution_contract, Mapping) else {}
+    )
+    target_bucket = (
+        details.get("target_bucket")
+        or details.get("posterior_target_bucket")
+        or details.get("ssot_target_bucket")
+        or outcome
+    )
+    ctx: Dict[str, Any] = {
+        "execution_domain": ORDER_EXECUTION_DOMAIN_BAYES_WEATHER,
+        "order_execution_domain": ORDER_EXECUTION_DOMAIN_BAYES_WEATHER,
+        "order_execution_source": str(submit_source or "bayes_weather_auto_trade"),
+        "order_execution_reason": "bayes_or_hard_source_decision_path",
+        "intent_action": str(intent_action or "").strip() or "entry",
+        "strategy_source": str(
+            details.get("strategy_source")
+            or details.get("strategy")
+            or details.get("posterior_target_source")
+            or "bayes_weather_auto_trade"
+        ).strip()
+        or "bayes_weather_auto_trade",
+        "entry_order_submit_source": str(submit_source or "bayes_weather_auto_trade"),
+        "slug": str(slug or ""),
+        "event_date": str(event_date or ""),
+        "outcome": str(outcome or ""),
+        "outcome_side": str(side or "").strip().upper(),
+        "target_bucket": str(target_bucket or ""),
+        "posterior_target_bucket": details.get("posterior_target_bucket"),
+        "ssot_target_bucket": details.get("ssot_target_bucket"),
+        "posterior_target_source": details.get("posterior_target_source"),
+        "posterior_target_fact_id": details.get("posterior_target_fact_id"),
+        "posterior_target_fact_as_of": details.get("posterior_target_fact_as_of"),
+        "posterior_composer_schema": details.get("posterior_composer_schema"),
+        "posterior_activation_mode": details.get("posterior_activation_mode"),
+        "sequential_bayes_execution_contract_id": details.get(
+            "sequential_bayes_execution_contract_id"
+        ),
+        "signal_to_order_slo_deadline_at": details.get("signal_to_order_slo_deadline_at")
+        or execution_contract.get("signal_to_order_slo_deadline_at"),
+        "signal_to_order_hard_deadline_at": details.get(
+            "signal_to_order_hard_deadline_at"
+        ) or execution_contract.get("signal_to_order_hard_deadline_at"),
+        "observation_to_order_slo_deadline_at": details.get(
+            "observation_to_order_slo_deadline_at"
+        ) or execution_contract.get("observation_to_order_slo_deadline_at"),
+        "observation_to_order_hard_deadline_at": details.get(
+            "observation_to_order_hard_deadline_at"
+        ) or execution_contract.get("observation_to_order_hard_deadline_at"),
+        "target_realization_v3_plan_id": details.get("target_realization_v3_plan_id"),
+        "target_realization_maker_only": details.get("target_realization_maker_only"),
+        "target_realization_price_source": details.get("target_realization_price_source"),
+        "passive_limit_price": (
+            details.get("limit_price")
+            if details.get("limit_price") is not None
+            else details.get("price")
+        ),
+        "best_bid": details.get("best_bid") or details.get("bid"),
+        "best_ask": details.get("best_ask") or details.get("ask"),
+        "post_only": details.get("post_only"),
+        "order_type": details.get("order_type"),
+    }
+    if isinstance(raw_execution_contract, Mapping):
+        ctx["sequential_bayes_execution_contract"] = dict(execution_contract)
+        ctx["sequential_bayes_execution_validation"] = (
+            validate_sequential_bayes_execution_context(details)
+        )
+    return {key: value for key, value in ctx.items() if value is not None and str(value).strip()}
+
+
 def _clob_order_service_timeout_confirm_sec() -> float:
     configured = _env_float("PM_CLOB_ORDER_SERVICE_TIMEOUT_CONFIRM_SEC")
     if configured is None or not math.isfinite(configured) or configured < 0:
@@ -15757,9 +16039,6 @@ def _clob_order_service_timeout_may_have_submitted(payload: Mapping[str, Any]) -
         payload.get("clob_order_service")
         and payload.get("timeout_expired")
         and str(payload.get("error") or "").strip() == "clob_order_service_timeout"
-        and payload.get("clob_order_service_fallback_allowed") is False
-        and str(payload.get("clob_order_service_fallback_blocked_reason") or "").strip()
-        == "service_may_have_submitted_order"
     )
 
 
@@ -15945,14 +16224,11 @@ def _run_clob_order_service_place_order(
     timeout_sec: float,
 ) -> Tuple[bool, Dict[str, Any]]:
     service_url = _clob_order_service_url()
-    direct_target_service_order = bool(
-        isinstance(payload, Mapping) and payload.get("direct_target_order_context")
-    )
+    direct_target_service_order = bool(isinstance(payload, Mapping) and payload.get("direct_target_order_context"))
     if not service_url:
         return False, {
             "error": "clob_order_service_url_missing",
             "clob_order_service": True,
-            "clob_order_service_fallback_allowed": not direct_target_service_order,
         }
     url = f"{service_url}/place-order"
     started = time.monotonic()
@@ -15969,7 +16245,6 @@ def _run_clob_order_service_place_order(
             "error_detail": f"connect_timeout:{exc}",
             "clob_order_service": True,
             "clob_order_service_url": service_url,
-            "clob_order_service_fallback_allowed": not direct_target_service_order,
             "clob_order_service_ms": round((time.monotonic() - started) * 1000.0, 3),
         }
     except requests.exceptions.ConnectionError as exc:
@@ -15978,7 +16253,6 @@ def _run_clob_order_service_place_order(
             "error_detail": str(exc),
             "clob_order_service": True,
             "clob_order_service_url": service_url,
-            "clob_order_service_fallback_allowed": not direct_target_service_order,
             "clob_order_service_ms": round((time.monotonic() - started) * 1000.0, 3),
         }
     except requests.exceptions.ReadTimeout as exc:
@@ -15989,8 +16263,7 @@ def _run_clob_order_service_place_order(
             "timeout_sec": float(request_timeout),
             "clob_order_service": True,
             "clob_order_service_url": service_url,
-            "clob_order_service_fallback_allowed": False,
-            "clob_order_service_fallback_blocked_reason": "service_may_have_submitted_order",
+            "reconcile_required": True,
             "clob_order_service_ms": round((time.monotonic() - started) * 1000.0, 3),
         }
         if (
@@ -16017,7 +16290,6 @@ def _run_clob_order_service_place_order(
             "error_detail": str(exc),
             "clob_order_service": True,
             "clob_order_service_url": service_url,
-            "clob_order_service_fallback_allowed": False,
             "clob_order_service_ms": round((time.monotonic() - started) * 1000.0, 3),
         }
 
@@ -16034,11 +16306,9 @@ def _run_clob_order_service_place_order(
     body["clob_order_service_ms"] = elapsed_ms
     if response.status_code == 404:
         body.setdefault("error", "clob_order_service_not_found")
-        body["clob_order_service_fallback_allowed"] = not direct_target_service_order
         return False, body
     if response.status_code >= 400:
         body.setdefault("error", f"clob_order_service_http_{response.status_code}")
-        body.setdefault("clob_order_service_fallback_allowed", False)
         return False, body
     if _clob_order_service_submit_pending(body):
         confirm_budget = min(
@@ -16053,15 +16323,12 @@ def _run_clob_order_service_place_order(
         )
         if final:
             final_body["clob_order_service_ms"] = round((time.monotonic() - started) * 1000.0, 3)
-            final_body.setdefault("clob_order_service_fallback_allowed", False)
             return bool(ok_final), final_body
         body = final_body
         body.setdefault("error", "clob_order_service_submit_pending")
-        body.setdefault("clob_order_service_fallback_allowed", False)
         return False, body
     if body.get("ok") is False or not body.get("orderID"):
         body.setdefault("error", "clob_order_service_missing_order_id")
-        body.setdefault("clob_order_service_fallback_allowed", False)
         return False, body
     body.setdefault("source", "clob_order_service")
     return True, body
@@ -16106,6 +16373,7 @@ def _run_node_order(
     tick_size: Optional[float] = None,
     neg_risk: Optional[bool] = None,
     order_context: Optional[Mapping[str, Any]] = None,
+    post_only: Optional[bool] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     ensure_system_proxy_settings()
     script_path = Path(AUTO_TRADE_SCRIPT)
@@ -16117,6 +16385,18 @@ def _run_node_order(
     if node_bin != "node" and not Path(node_bin).exists():
         return False, {"error": f"node_missing:{node_bin}"}
     side_upper = str(side or "").strip().upper()
+    context_ref = dict(order_context or {}) if isinstance(order_context, Mapping) else {}
+    target_realization_v3_maker = bool(
+        action == "place-order"
+        and (
+            str(context_ref.get("target_realization_v3_plan_id") or "").strip()
+            or context_ref.get("target_realization_maker_only") is True
+        )
+    )
+    if target_realization_v3_maker:
+        order_type = "GTC"
+        post_only = True
+    effective_post_only = bool(post_only)
     normalized_price = price
     buy_notional_cap_usdc: Optional[float] = None
     buy_size_cap_price: Optional[float] = None
@@ -16137,6 +16417,13 @@ def _run_node_order(
         direct_target_exit_order = bool(
             direct_target_order and eff_type_for_timeout in {"FOK", "FAK"} and side_upper == "SELL"
         )
+    order_execution_context = _order_execution_context_from_order_context(
+        action=action,
+        side_upper=side_upper,
+        direct_target_order=direct_target_order,
+        direct_target_exit_order=direct_target_exit_order,
+        order_context=order_context,
+    )
     if action == "place-order":
         effective_order_type = (order_type or AUTO_TRADE_ORDER_TYPE).strip().upper()
         if size is None and amount is None:
@@ -16155,6 +16442,25 @@ def _run_node_order(
                 )
             normalized_price = normalized_price_val
             cmd += ["--price", f"{normalized_price:.6f}"]
+        if target_realization_v3_maker:
+            expected_passive_price = to_float(context_ref.get("passive_limit_price"))
+            if expected_passive_price is None:
+                expected_passive_price = to_float(
+                    context_ref.get("best_bid")
+                    if side_upper == "BUY"
+                    else context_ref.get("best_ask")
+                )
+            expected_passive_norm, _ = _normalize_place_order_price(expected_passive_price)
+            if expected_passive_norm is None:
+                return False, {"error": "target_realization_v3_passive_quote_missing"}
+            if normalized_price is None or abs(
+                float(normalized_price) - float(expected_passive_norm)
+            ) > TIME_EDGE_Q_EPS:
+                return False, {
+                    "error": "target_realization_v3_passive_price_mismatch",
+                    "expected_price": float(expected_passive_norm),
+                    "actual_price": normalized_price,
+                }
         if side_upper == "BUY":
             buy_notional_cap_usdc = _entry_order_notional_cap_usdc()
             if (
@@ -16251,6 +16557,8 @@ def _run_node_order(
             amount = float(amount_val)
             cmd += ["--amount", f"{amount:.6f}"]
         cmd += ["--order-type", effective_order_type]
+        if effective_post_only:
+            cmd += ["--post-only", "true"]
         if direct_target_order:
             tick_size_val = to_float(tick_size)
             if tick_size_val is None or not math.isfinite(tick_size_val) or tick_size_val <= 0:
@@ -16267,9 +16575,19 @@ def _run_node_order(
             cmd += ["--neg-risk", "true" if neg_risk_val else "false"]
     if _auto_trade_dry_run_enabled():
         payload = {"dry_run": True, "status": "dry_run", "cmd": cmd}
+        if action == "place-order":
+            payload.update(order_execution_context)
+            payload["post_only"] = bool(effective_post_only)
+            payload["maker_only"] = bool(target_realization_v3_maker)
         if order_cap_meta:
             payload.update(order_cap_meta)
         return True, payload
+
+    if action == "place-order" and not _clob_order_service_enabled():
+        return False, {
+            "error": "durable_clob_order_service_required",
+            "reconcile_required": False,
+        }
 
     env = _build_node_env()
     if action == "place-order":
@@ -16442,6 +16760,14 @@ def _run_node_order(
         payload_obj["order_submit_completed_at"] = utc_now_iso_ms()
         payload_obj["order_submit_ms"] = round(float(elapsed_ms), 3)
         payload_obj["order_submit_outer_timeout_sec"] = float(timeout_sec)
+        for ctx_key, ctx_value in order_execution_context.items():
+            if ctx_value is not None and str(ctx_value).strip():
+                payload_obj.setdefault(ctx_key, ctx_value)
+        if str(payload_obj.get("idempotency_key") or "").strip():
+            payload_obj.setdefault(
+                "order_intent_id",
+                str(payload_obj.get("idempotency_key") or "").strip(),
+            )
         return payload_obj
 
     def _run_clob_order_service_once() -> Tuple[bool, Dict[str, Any]]:
@@ -16458,7 +16784,10 @@ def _run_node_order(
             "allow_market": eff_type_for_service in {"FOK", "FAK"},
             "direct_target_order_context": bool(direct_target_order),
             "direct_target_exit_order": bool(direct_target_exit_order),
+            "post_only": bool(effective_post_only),
+            "maker_only": bool(target_realization_v3_maker),
         }
+        service_payload.update(order_execution_context)
         if (
             direct_target_order
             and not direct_target_exit_order
@@ -16480,6 +16809,19 @@ def _run_node_order(
                 "posterior_target_fact_id",
                 "posterior_target_fact_as_of",
                 "entry_order_submit_source",
+                "order_execution_domain",
+                "execution_domain",
+                "order_execution_source",
+                "order_execution_reason",
+                "order_execution_context_version",
+                "order_intent_action",
+                "manual_confirm_source",
+                "order_intent_id",
+                "sequential_bayes_execution_contract_id",
+                "signal_to_order_slo_deadline_at",
+                "signal_to_order_hard_deadline_at",
+                "observation_to_order_slo_deadline_at",
+                "observation_to_order_hard_deadline_at",
             ):
                 ctx_value = order_context.get(ctx_key)
                 if ctx_value is not None and str(ctx_value).strip():
@@ -16492,6 +16834,11 @@ def _run_node_order(
             _clob_order_service_direct_target_idempotency_key(service_payload)
             or _clob_order_service_idempotency_key(service_payload)
         )
+        service_payload["order_intent_id"] = str(
+            service_payload.get("order_intent_id")
+            or context_ref.get("order_intent_id")
+            or service_payload["idempotency_key"]
+        ).strip()
         ok_service, service_result = _run_clob_order_service_place_order(
             service_payload,
             timeout_sec=timeout_sec,
@@ -16504,6 +16851,7 @@ def _run_node_order(
                 if key not in {"idempotency_key"}
             })
             service_result.setdefault("idempotency_key", service_payload["idempotency_key"])
+            service_result.setdefault("order_intent_id", service_payload["order_intent_id"])
         return ok_service, _attach_order_submit_timing(
             service_result,
             order_submit_started_at=order_submit_started_at,
@@ -16559,105 +16907,23 @@ def _run_node_order(
             order_submit_started_mono=order_submit_started_mono,
         )
 
-    service_payload_before_fallback: Optional[Dict[str, Any]] = None
-    if action == "place-order" and _clob_order_service_enabled():
+    if action == "place-order":
         ok, payload = _run_clob_order_service_once()
-        if ok:
-            if order_cap_meta:
-                payload.update(order_cap_meta)
-            if direct_target_order:
-                payload.setdefault("direct_target_order_context", True)
-                payload.setdefault("direct_target_order_timeout_sec", float(timeout_sec))
-            return True, payload
-        service_payload_before_fallback = dict(payload) if isinstance(payload, dict) else None
-        if not (
-            isinstance(payload, dict)
-            and payload.get("clob_order_service_fallback_allowed") is True
-        ):
-            if isinstance(payload, dict):
-                if order_cap_meta:
-                    payload.update(order_cap_meta)
-                if direct_target_order:
-                    payload.setdefault("direct_target_order_context", True)
-                    payload.setdefault("direct_target_order_timeout_sec", float(timeout_sec))
-            return False, payload
+        if order_cap_meta and isinstance(payload, dict):
+            payload.update(order_cap_meta)
+        if direct_target_order and isinstance(payload, dict):
+            payload.setdefault("direct_target_order_context", True)
+            payload.setdefault("direct_target_order_timeout_sec", float(timeout_sec))
+        return ok, payload
 
     ok, payload = _run_once(cmd)
-    if service_payload_before_fallback and isinstance(payload, dict):
-        payload.setdefault("clob_order_service_fallback_from_error", service_payload_before_fallback.get("error"))
-        payload.setdefault(
-            "clob_order_service_fallback_from_detail",
-            service_payload_before_fallback.get("error_detail"),
-        )
     if ok:
         if order_cap_meta:
             payload.update(order_cap_meta)
-        if direct_target_order:
-            payload.setdefault("direct_target_order_context", True)
-            payload.setdefault("direct_target_order_timeout_sec", float(timeout_sec))
         return True, payload
     if isinstance(payload, dict):
         if order_cap_meta:
             payload.update(order_cap_meta)
-        if direct_target_order:
-            payload.setdefault("direct_target_order_context", True)
-            payload.setdefault("direct_target_order_timeout_sec", float(timeout_sec))
-
-    if action == "place-order" and size is not None and size > 0 and side_upper == "BUY":
-        min_size_hint = _extract_min_order_size_hint(
-            payload.get("stderr"),
-            payload.get("stdout"),
-            payload.get("error_detail"),
-        )
-        if min_size_hint is not None and size + 1e-9 < min_size_hint:
-            if (
-                buy_notional_cap_usdc is not None
-                and math.isfinite(buy_notional_cap_usdc)
-                and buy_size_cap_price is not None
-                and math.isfinite(buy_size_cap_price)
-                and min_size_hint * buy_size_cap_price > buy_notional_cap_usdc + TIME_EDGE_Q_EPS
-            ):
-                payload["error"] = "min_order_size_exceeds_order_cap"
-                payload["order_notional_cap_usdc"] = float(buy_notional_cap_usdc)
-                payload["min_order_size_hint"] = float(min_size_hint)
-                payload["order_size_cap_price"] = float(buy_size_cap_price)
-                if order_cap_meta:
-                    payload.update(order_cap_meta)
-                return False, payload
-            retry_cmd = list(cmd)
-            if "--size" in retry_cmd:
-                size_idx = retry_cmd.index("--size")
-                if size_idx + 1 < len(retry_cmd):
-                    retry_size = round(float(min_size_hint), 6)
-                    retry_cmd[size_idx + 1] = f"{retry_size:.6f}"
-                    print(
-                        f"[auto-trade] order size auto-adjust: {size:.4f} -> {retry_size:.4f} "
-                        f"(minimum={min_size_hint:.4f}, side={side}, token={token_id})"
-                    )
-                    retry_ok, retry_payload = _run_once(retry_cmd)
-                    if retry_ok:
-                        if isinstance(retry_payload, dict):
-                            retry_payload["size_adjusted_from"] = round(float(size), 6)
-                            retry_payload["size_adjusted_to"] = retry_size
-                            retry_payload["size_minimum"] = round(float(min_size_hint), 6)
-                            if direct_target_order:
-                                retry_payload.setdefault("direct_target_order_context", True)
-                                retry_payload.setdefault(
-                                    "direct_target_order_timeout_sec",
-                                    float(timeout_sec),
-                                )
-                            if order_cap_meta:
-                                retry_payload.update(order_cap_meta)
-                        return True, retry_payload
-                    if isinstance(retry_payload, dict):
-                        retry_payload.setdefault("error", "exec_nonzero")
-                        retry_payload["first_error_detail"] = payload.get("error_detail") or payload.get("error")
-                        retry_payload["size_adjusted_from"] = round(float(size), 6)
-                        retry_payload["size_adjusted_to"] = retry_size
-                        retry_payload["size_minimum"] = round(float(min_size_hint), 6)
-                        if order_cap_meta:
-                            retry_payload.update(order_cap_meta)
-                    return False, retry_payload
 
     return False, payload
 
@@ -17842,8 +18108,8 @@ def _parse_reason_list(raw: Any) -> List[str]:
 
 
 TARGET_REALIZATION_OLD_BUCKET_EXIT_CODES: Set[str] = {
-    "target_realization_switch_buy_exit_old",
-    "target_realization_exit_clear",
+    "target_realization_yes_target_invalidated",
+    "target_realization_no_invalidated",
 }
 
 
@@ -17855,7 +18121,7 @@ def _should_bypass_target_switch_exit_balance_check(exit_reason_codes: Any) -> b
         for code in _parse_reason_list(exit_reason_codes)
         if str(code or "").strip()
     }
-    return "target_realization_switch_buy_exit_old" in code_set
+    return bool(code_set.intersection(TARGET_REALIZATION_OLD_BUCKET_EXIT_CODES))
 
 
 def _runtime_truthy_flag(value: Any) -> bool:
@@ -18274,6 +18540,98 @@ def _resolve_lcb_global_daily_loss_block(run_date: str) -> Tuple[bool, Dict[str,
     return blocked, detail
 
 
+def _merge_hard_source_direct_block_context(
+    dest: Dict[str, Any],
+    hard_block: Mapping[str, Any],
+) -> None:
+    if not isinstance(dest, dict) or not isinstance(hard_block, Mapping):
+        return
+    aliases = {
+        "source": "hard_source_source_id",
+        "observed_at": "hard_source_observed_at",
+        "fetched_at": "hard_source_fetched_at",
+        "ssot_written_at": "hard_source_ssot_written_at",
+        "ssot_write_ms": "hard_source_ssot_write_ms",
+        "job_enqueued_at": "hard_source_job_enqueued_at",
+        "worker_started_at": "hard_source_worker_started_at",
+        "fetch_to_ssot_ms": "hard_source_fetch_to_ssot_ms",
+        "ssot_to_job_enqueue_ms": "hard_source_ssot_to_job_enqueue_ms",
+        "fetch_to_job_enqueue_ms": "hard_source_fetch_to_job_enqueue_ms",
+        "job_enqueue_to_worker_ms": "hard_source_job_enqueue_to_worker_ms",
+    }
+    for src_key, dst_key in aliases.items():
+        val = hard_block.get(src_key)
+        if val is not None:
+            dest[dst_key] = val
+    if hard_block.get("observed_at"):
+        dest["hard_source_seen_at"] = hard_block.get("observed_at")
+    for key in (
+        "signal_id",
+        "source_event_id",
+        "awc_valid_time",
+        "awc_hard_source_signal_at",
+        "signal_eligible",
+        "acceptance_state",
+        "acceptance_reason",
+        "hard_source_acceptance_state",
+        "hard_source_runtime_contract",
+        "hard_source_runtime_contract_version",
+        "signal_to_order_timing",
+        "signal_to_order_slo_ms",
+        "signal_to_fact_ms",
+        "signal_to_decision_ms",
+        "signal_to_job_enqueue_ms",
+        "awc_signal_to_order_submit_ms",
+        "signal_to_order_slo_met",
+        "signal_to_order_slo_violation_reason",
+        "signal_to_order_terminal_state",
+        "signal_to_order_terminal_reason",
+        "signal_to_order_terminal_at",
+        "signal_to_terminal_ms",
+        "orderbook_checked_at",
+        "orderbook_check_source",
+        "orderbook_check_result",
+        "orderbook_refreshed_at",
+        "orderbook_refresh_started_at",
+        "risk_checked_at",
+        "risk_check_source",
+        "risk_check_result",
+        "idempotency_checked_at",
+        "idempotency_key",
+        "submit_requested_at",
+        "exchange_ack_at",
+        "order_ack_at",
+        "order_ack_status",
+        "exchange_post_started",
+        "exchange_post_started_at",
+        "order_submitted_at",
+        "order_submission_time_quality",
+        "signal_to_orderbook_ms",
+        "signal_to_risk_ms",
+        "signal_to_idempotency_ms",
+        "signal_to_submit_request_ms",
+        "signal_to_exchange_ack_ms",
+        "orderbook_to_risk_check_ms",
+        "risk_check_to_idempotency_ms",
+        "risk_check_to_submit_ms",
+        "idempotency_to_submit_request_ms",
+        "submit_request_to_exchange_ack_ms",
+        "signal_to_order_ledger_status",
+        "signal_to_order_ledger_schema_status",
+        "signal_to_order_ledger_prewrite",
+        "signal_to_order_ledger_result",
+    ):
+        if key in hard_block and hard_block.get(key) is not None:
+            dest[key] = hard_block.get(key)
+    target_bucket = hard_block.get("target_bucket") or hard_block.get("ssot_target_bucket")
+    if target_bucket and not dest.get("outcome"):
+        dest["outcome"] = target_bucket
+    if hard_block.get("side") and not dest.get("side"):
+        dest["side"] = str(hard_block.get("side") or "").strip().upper()
+    dest["hard_source_direct"] = True
+    dest["hard_source_posterior_override"] = True
+
+
 def notify_edge_signals(
     run_date: str,
     event_date: str,
@@ -18323,6 +18681,10 @@ def notify_edge_signals(
             hard_source_sla_result_context["outcome"] = result_hard_block.get("target_bucket")
         hard_source_sla_result_context["hard_source_direct"] = True
         hard_source_sla_result_context["hard_source_posterior_override"] = True
+        _merge_hard_source_direct_block_context(
+            hard_source_sla_result_context,
+            result_hard_block,
+        )
     result_hard_timing = result.get("hard_source_direct_timing")
     if isinstance(result_hard_timing, Mapping):
         timing_aliases = {
@@ -18634,21 +18996,7 @@ def notify_edge_signals(
             elif state == "none" and prev_state != "none":
                 _update_state(outcome, side, "none", "")
     now_iso = utc_now_iso_ms()
-    cur.execute(
-        """
-        UPDATE edge_trades
-        SET last_action = 'exit_reconcile',
-            last_action_at = ?,
-            last_status = 'no_position',
-            last_error = '',
-            updated_at = ?
-        WHERE state = 'exit'
-          AND (position_size IS NULL OR position_size <= 0)
-          AND (last_order_id IS NULL OR last_order_id = '')
-          AND last_error IN ('pending_timeout', 'confirm_wait_sync', 'order_not_found', 'confirm_not_found')
-        """,
-        (now_iso, now_iso),
-    )
+    reconcile_exit_no_position_blockers(cur, now_iso=now_iso)
     conn.commit()
     conn.close()
 
@@ -18731,6 +19079,10 @@ def execute_auto_trades(
             hard_source_sla_result_context["outcome"] = result_hard_block.get("target_bucket")
         hard_source_sla_result_context["hard_source_direct"] = True
         hard_source_sla_result_context["hard_source_posterior_override"] = True
+        _merge_hard_source_direct_block_context(
+            hard_source_sla_result_context,
+            result_hard_block,
+        )
     result_hard_timing = result.get("hard_source_direct_timing")
     if isinstance(result_hard_timing, Mapping):
         timing_aliases = {
@@ -19246,6 +19598,9 @@ def execute_auto_trades(
             for extra_key, extra_val in item.items():
                 if extra_key in expected_item:
                     continue
+                if extra_key in {"hard_source_acceptance_state", "signal_to_order_timing"} and isinstance(extra_val, Mapping):
+                    expected_item[extra_key] = dict(extra_val)
+                    continue
                 if isinstance(extra_val, (str, int, float, bool)) or extra_val is None:
                     expected_item[extra_key] = extra_val
             expected_entry_targets.append(expected_item)
@@ -19275,6 +19630,8 @@ def execute_auto_trades(
         if hard_source_sla_by_entry_key
         else {}
     )
+    if hard_source_sla_context and hard_source_sla_result_context:
+        _copy_hard_source_sla_fields(hard_source_sla_context, hard_source_sla_result_context)
     if not hard_source_sla_context and hard_source_sla_result_context:
         hard_source_sla_context = dict(hard_source_sla_result_context)
     if hard_source_sla_context:
@@ -19300,6 +19657,27 @@ def execute_auto_trades(
         ):
             continue
         hard_source_sla_by_row_key[(out_key, "YES")] = dict(row_item)
+    if hard_source_sla_result_context:
+        result_context_outcome = str(
+            hard_source_sla_result_context.get("outcome") or ""
+        ).strip()
+        result_context_side = str(
+            hard_source_sla_result_context.get("side") or "YES"
+        ).strip().upper()
+        for context_key, context_item in list(hard_source_sla_by_entry_key.items()):
+            if (
+                result_context_outcome
+                and context_key[0] == result_context_outcome
+                and (not result_context_side or context_key[1] == result_context_side)
+            ):
+                _copy_hard_source_sla_fields(context_item, hard_source_sla_result_context)
+        for context_key, context_item in list(hard_source_sla_by_row_key.items()):
+            if (
+                result_context_outcome
+                and context_key[0] == result_context_outcome
+                and (not result_context_side or context_key[1] == result_context_side)
+            ):
+                _copy_hard_source_sla_fields(context_item, hard_source_sla_result_context)
     expected_entry_strategy: Dict[Tuple[str, str], str] = {
         key: str(item.get("strategy") or "").lower()
         for key, item in expected_entry_targets_by_key.items()
@@ -20221,6 +20599,7 @@ def execute_auto_trades(
     # Buffer per-(outcome, side, action) so each run writes only the latest decision,
     # and the UI can explain "why no order" without recomputing gating.
     decision_buffer: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    persisted_decision_fingerprints: Set[str] = set()
     decision_context_by_key: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
 
     def _detail_put_float(out: Dict[str, Any], key: str, val: Any) -> None:
@@ -20239,6 +20618,11 @@ def execute_auto_trades(
         if val is None:
             return
         out[key] = bool(val)
+
+    def _detail_put_mapping(out: Dict[str, Any], key: str, val: Any) -> None:
+        if not isinstance(val, Mapping) or not val:
+            return
+        out[key] = {str(item_key): item_value for item_key, item_value in val.items()}
 
     def _physical_likelihood_audit_fields(meta: Mapping[str, Any]) -> Dict[str, Any]:
         row = meta.get("physical_likelihood_row") if isinstance(meta, Mapping) else None
@@ -20261,6 +20645,12 @@ def execute_auto_trades(
             }
         component_groups = row.get("component_groups")
         if isinstance(component_groups, Mapping) and component_groups:
+            state_trace = _state_evidence_trace_from_component_groups(
+                component_groups,
+                source="metar_strong_likelihood.component_groups",
+            )
+            if state_trace:
+                out["state_evidence_trace"] = state_trace
             out["q_bayes_physical_likelihood_component_groups"] = {
                 str(key): value for key, value in component_groups.items()
             }
@@ -20413,6 +20803,9 @@ def execute_auto_trades(
         _detail_put_float(out, "q_raw_static", row.get(q_raw_static_key))
         _detail_put_bool(out, "q_bayes_enabled", row.get("q_bayes_enabled"))
         _detail_put_str(out, "q_bayes_source", row.get("q_bayes_source"))
+        _detail_put_bool(out, "q_bayes_old_additive_evidence_pool_used", row.get("q_bayes_old_additive_evidence_pool_used"))
+        _detail_put_bool(out, "q_bayes_production_replacement_required", row.get("q_bayes_production_replacement_required"))
+        _detail_put_str(out, "q_bayes_replacement_posterior_runtime", row.get("q_bayes_replacement_posterior_runtime"))
         _detail_put_float(out, "q_bayes_posterior", row.get(q_bayes_posterior_key))
         _detail_put_float(out, "q_contract_payout_posterior", row.get("q_contract_payout_posterior"))
         _detail_put_float(out, "q_temperature_bucket_posterior", row.get("q_temperature_bucket_posterior"))
@@ -20430,6 +20823,13 @@ def execute_auto_trades(
         _detail_put_float(out, "q_bayes_z", row.get("q_bayes_z"))
         _detail_put_str(out, "q_bayes_z_stage", row.get("q_bayes_z_stage"))
         _detail_put_str(out, "q_bayes_z_source", row.get("q_bayes_z_source"))
+        _detail_put_str(out, "q_bayes_phase", row.get("q_bayes_phase"))
+        _detail_put_float(out, "q_bayes_beta_weak", row.get("q_bayes_beta_weak"))
+        _detail_put_float(out, "q_bayes_beta_strong", row.get("q_bayes_beta_strong"))
+        _detail_put_str(out, "q_bayes_phase_reason", row.get("q_bayes_phase_reason"))
+        _detail_put_str(out, "q_bayes_hard_mask_reason", row.get("q_bayes_hard_mask_reason"))
+        _detail_put_mapping(out, "q_bayes_layer_contributions", row.get("q_bayes_layer_contributions"))
+        _detail_put_mapping(out, "q_bayes_score_components", row.get("q_bayes_score_components"))
         _detail_put_float(out, "q_bayes_prior_strength", row.get("q_bayes_prior_strength"))
         _detail_put_str(out, "q_bayes_prior_source", row.get("q_bayes_prior_source"))
         _detail_put_float(out, "q_bayes_historical_samples", row.get("q_bayes_historical_samples"))
@@ -20448,17 +20848,6 @@ def execute_auto_trades(
             "q_bayes_bias_correction_enabled",
             row.get("q_bayes_bias_correction_enabled"),
         )
-        _detail_put_float(out, "q_bayes_model_evidence", row.get("q_bayes_model_evidence"))
-        _detail_put_float(out, "q_bayes_nowcast_evidence", row.get("q_bayes_nowcast_evidence"))
-        _detail_put_float(out, "q_bayes_observed_nowcast_evidence", row.get("q_bayes_observed_nowcast_evidence"))
-        _detail_put_float(out, "q_bayes_wu_forecast_evidence", row.get("q_bayes_wu_forecast_evidence"))
-        _detail_put_float(out, "q_bayes_wu_forecast_evidence_base", row.get("q_bayes_wu_forecast_evidence_base"))
-        _detail_put_float(out, "q_bayes_wu_forecast_evidence_scale", row.get("q_bayes_wu_forecast_evidence_scale"))
-        _detail_put_float(out, "q_bayes_wu_forecast_prob", row.get("q_bayes_wu_forecast_prob"))
-        _detail_put_str(out, "q_bayes_wu_forecast_source", row.get("q_bayes_wu_forecast_source"))
-        _detail_put_float(out, "q_bayes_wu_forecast_peak_c", row.get("q_bayes_wu_forecast_peak_c"))
-        _detail_put_float(out, "q_bayes_wu_forecast_sigma_c", row.get("q_bayes_wu_forecast_sigma_c"))
-        _detail_put_str(out, "q_bayes_wu_forecast_status", row.get("q_bayes_wu_forecast_status"))
         _detail_put_bool(out, "wu_forecast_peak_captured", row.get("wu_forecast_peak_captured"))
         _detail_put_bool(
             out,
@@ -20480,12 +20869,6 @@ def execute_auto_trades(
             "wu_forecast_peak_not_in_posterior_reason",
             row.get("wu_forecast_peak_not_in_posterior_reason"),
         )
-        _detail_put_float(out, "q_bayes_taf_peak_evidence", row.get("q_bayes_taf_peak_evidence"))
-        _detail_put_float(out, "q_bayes_taf_peak_prob", row.get("q_bayes_taf_peak_prob"))
-        _detail_put_str(out, "q_bayes_taf_peak_source", row.get("q_bayes_taf_peak_source"))
-        _detail_put_float(out, "q_bayes_taf_peak_c", row.get("q_bayes_taf_peak_c"))
-        _detail_put_float(out, "q_bayes_taf_peak_sigma_c", row.get("q_bayes_taf_peak_sigma_c"))
-        _detail_put_str(out, "q_bayes_taf_peak_status", row.get("q_bayes_taf_peak_status"))
         _detail_put_bool(out, "taf_forecast_peak_captured", row.get("taf_forecast_peak_captured"))
         _detail_put_bool(
             out,
@@ -20507,16 +20890,6 @@ def execute_auto_trades(
             "taf_forecast_peak_not_in_posterior_reason",
             row.get("taf_forecast_peak_not_in_posterior_reason"),
         )
-        _detail_put_float(
-            out,
-            "q_bayes_physical_likelihood_evidence",
-            row.get("q_bayes_physical_likelihood_evidence"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_evidence",
-            row.get("q_bayes_independent_physics_residual_evidence"),
-        )
         for target_key in (
             "target_realization_path_p_reach_yes",
             "target_realization_signal_confidence_yes",
@@ -20530,96 +20903,6 @@ def execute_auto_trades(
                 _detail_put_str(out, target_key, row.get(target_key))
             else:
                 _detail_put_float(out, target_key, row.get(target_key))
-        _detail_put_float(
-            out,
-            "q_bayes_physical_likelihood_evidence_base",
-            row.get("q_bayes_physical_likelihood_evidence_base"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_evidence_base",
-            row.get("q_bayes_independent_physics_residual_evidence_base"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_physical_likelihood_evidence_scale",
-            row.get("q_bayes_physical_likelihood_evidence_scale"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_evidence_scale",
-            row.get("q_bayes_independent_physics_residual_evidence_scale"),
-        )
-        _detail_put_str(
-            out,
-            "q_bayes_physical_likelihood_evidence_scale_reason",
-            row.get("q_bayes_physical_likelihood_evidence_scale_reason"),
-        )
-        _detail_put_bool(
-            out,
-            "q_bayes_physical_likelihood_enabled",
-            row.get("q_bayes_physical_likelihood_enabled"),
-        )
-        _detail_put_bool(
-            out,
-            "q_bayes_independent_physics_residual_enabled",
-            row.get("q_bayes_independent_physics_residual_enabled"),
-        )
-        _detail_put_str(
-            out,
-            "q_bayes_physical_likelihood_source",
-            row.get("q_bayes_physical_likelihood_source"),
-        )
-        _detail_put_str(
-            out,
-            "q_bayes_independent_physics_residual_source",
-            row.get("q_bayes_independent_physics_residual_source"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_physical_likelihood_prob",
-            row.get("q_bayes_physical_likelihood_prob"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_physical_likelihood_observed_prob",
-            row.get("q_bayes_physical_likelihood_observed_prob"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_prob",
-            row.get("q_bayes_independent_physics_residual_prob"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_observed_prob",
-            row.get("q_bayes_independent_physics_residual_observed_prob"),
-        )
-        _detail_put_bool(
-            out,
-            "q_bayes_physical_likelihood_hard_zero",
-            row.get("q_bayes_physical_likelihood_hard_zero"),
-        )
-        hard_reasons = row.get("q_bayes_physical_likelihood_hard_reasons")
-        if isinstance(hard_reasons, list):
-            out["q_bayes_physical_likelihood_hard_reasons"] = [
-                str(reason) for reason in hard_reasons if str(reason).strip()
-            ]
-        components = row.get("q_bayes_physical_likelihood_components")
-        if isinstance(components, Mapping):
-            out["q_bayes_physical_likelihood_components"] = {
-                str(key): value for key, value in components.items()
-            }
-        component_groups = row.get("q_bayes_physical_likelihood_component_groups")
-        if isinstance(component_groups, Mapping):
-            out["q_bayes_physical_likelihood_component_groups"] = {
-                str(key): value for key, value in component_groups.items()
-            }
-        d0_explanation = row.get("q_bayes_physical_d0_explanation")
-        if isinstance(d0_explanation, Mapping):
-            out["q_bayes_physical_d0_explanation"] = {
-                str(key): value for key, value in d0_explanation.items()
-            }
         _detail_put_bool(out, "q_bayes_bimodal_risk", row.get("q_bayes_bimodal_risk"))
         _detail_put_float(out, "q_bayes_bimodal_size_scale", row.get("q_bayes_bimodal_size_scale"))
         _detail_put_str(out, "weather_likelihood_features_source", row.get("weather_likelihood_features_source"))
@@ -20775,12 +21058,13 @@ def execute_auto_trades(
             "edge_signal_components_freshness_sec",
             "edge_signal_components_consensus_adjustment",
             "q_round_model_spread",
-            "q_bayes_physical_likelihood_evidence",
-            "q_bayes_physical_likelihood_prob",
-            "q_bayes_physical_likelihood_observed_prob",
-            "q_bayes_independent_physics_residual_observed_prob",
-            "q_bayes_physical_likelihood_hard_zero",
-            "q_bayes_physical_d0_explanation",
+            "q_bayes_phase",
+            "q_bayes_beta_weak",
+            "q_bayes_beta_strong",
+            "q_bayes_phase_reason",
+            "q_bayes_hard_mask_reason",
+            "q_bayes_layer_contributions",
+            "q_bayes_score_components",
             "q_bayes_bimodal_size_scale",
             "q_bayes_bimodal_size_scale_applied",
             "strategy_size_ratio_before_bayes_bimodal",
@@ -21465,6 +21749,21 @@ def execute_auto_trades(
         _detail_put_float(out, "q_raw_static", candidate.get("q_raw_static"))
         _detail_put_bool(out, "q_bayes_enabled", candidate.get("q_bayes_enabled"))
         _detail_put_str(out, "q_bayes_source", candidate.get("q_bayes_source"))
+        _detail_put_bool(
+            out,
+            "q_bayes_old_additive_evidence_pool_used",
+            candidate.get("q_bayes_old_additive_evidence_pool_used"),
+        )
+        _detail_put_bool(
+            out,
+            "q_bayes_production_replacement_required",
+            candidate.get("q_bayes_production_replacement_required"),
+        )
+        _detail_put_str(
+            out,
+            "q_bayes_replacement_posterior_runtime",
+            candidate.get("q_bayes_replacement_posterior_runtime"),
+        )
         _detail_put_float(out, "q_bayes_posterior", candidate.get("q_bayes_posterior"))
         _detail_put_float(out, "q_bayes_lcb", candidate.get("q_bayes_lcb"))
         _detail_put_float(out, "q_bayes_ucb", candidate.get("q_bayes_ucb"))
@@ -21474,6 +21773,13 @@ def execute_auto_trades(
         _detail_put_float(out, "q_bayes_z", candidate.get("q_bayes_z"))
         _detail_put_str(out, "q_bayes_z_stage", candidate.get("q_bayes_z_stage"))
         _detail_put_str(out, "q_bayes_z_source", candidate.get("q_bayes_z_source"))
+        _detail_put_str(out, "q_bayes_phase", candidate.get("q_bayes_phase"))
+        _detail_put_float(out, "q_bayes_beta_weak", candidate.get("q_bayes_beta_weak"))
+        _detail_put_float(out, "q_bayes_beta_strong", candidate.get("q_bayes_beta_strong"))
+        _detail_put_str(out, "q_bayes_phase_reason", candidate.get("q_bayes_phase_reason"))
+        _detail_put_str(out, "q_bayes_hard_mask_reason", candidate.get("q_bayes_hard_mask_reason"))
+        _detail_put_mapping(out, "q_bayes_layer_contributions", candidate.get("q_bayes_layer_contributions"))
+        _detail_put_mapping(out, "q_bayes_score_components", candidate.get("q_bayes_score_components"))
         _detail_put_float(out, "q_bayes_prior_strength", candidate.get("q_bayes_prior_strength"))
         _detail_put_str(out, "q_bayes_prior_source", candidate.get("q_bayes_prior_source"))
         _detail_put_float(out, "q_bayes_historical_samples", candidate.get("q_bayes_historical_samples"))
@@ -21492,17 +21798,6 @@ def execute_auto_trades(
             "q_bayes_bias_correction_enabled",
             candidate.get("q_bayes_bias_correction_enabled"),
         )
-        _detail_put_float(out, "q_bayes_model_evidence", candidate.get("q_bayes_model_evidence"))
-        _detail_put_float(out, "q_bayes_nowcast_evidence", candidate.get("q_bayes_nowcast_evidence"))
-        _detail_put_float(out, "q_bayes_observed_nowcast_evidence", candidate.get("q_bayes_observed_nowcast_evidence"))
-        _detail_put_float(out, "q_bayes_wu_forecast_evidence", candidate.get("q_bayes_wu_forecast_evidence"))
-        _detail_put_float(out, "q_bayes_wu_forecast_evidence_base", candidate.get("q_bayes_wu_forecast_evidence_base"))
-        _detail_put_float(out, "q_bayes_wu_forecast_evidence_scale", candidate.get("q_bayes_wu_forecast_evidence_scale"))
-        _detail_put_float(out, "q_bayes_wu_forecast_prob", candidate.get("q_bayes_wu_forecast_prob"))
-        _detail_put_str(out, "q_bayes_wu_forecast_source", candidate.get("q_bayes_wu_forecast_source"))
-        _detail_put_float(out, "q_bayes_wu_forecast_peak_c", candidate.get("q_bayes_wu_forecast_peak_c"))
-        _detail_put_float(out, "q_bayes_wu_forecast_sigma_c", candidate.get("q_bayes_wu_forecast_sigma_c"))
-        _detail_put_str(out, "q_bayes_wu_forecast_status", candidate.get("q_bayes_wu_forecast_status"))
         _detail_put_bool(out, "wu_forecast_peak_captured", candidate.get("wu_forecast_peak_captured"))
         _detail_put_bool(
             out,
@@ -21524,12 +21819,6 @@ def execute_auto_trades(
             "wu_forecast_peak_not_in_posterior_reason",
             candidate.get("wu_forecast_peak_not_in_posterior_reason"),
         )
-        _detail_put_float(out, "q_bayes_taf_peak_evidence", candidate.get("q_bayes_taf_peak_evidence"))
-        _detail_put_float(out, "q_bayes_taf_peak_prob", candidate.get("q_bayes_taf_peak_prob"))
-        _detail_put_str(out, "q_bayes_taf_peak_source", candidate.get("q_bayes_taf_peak_source"))
-        _detail_put_float(out, "q_bayes_taf_peak_c", candidate.get("q_bayes_taf_peak_c"))
-        _detail_put_float(out, "q_bayes_taf_peak_sigma_c", candidate.get("q_bayes_taf_peak_sigma_c"))
-        _detail_put_str(out, "q_bayes_taf_peak_status", candidate.get("q_bayes_taf_peak_status"))
         _detail_put_bool(out, "taf_forecast_peak_captured", candidate.get("taf_forecast_peak_captured"))
         _detail_put_bool(
             out,
@@ -21617,16 +21906,6 @@ def execute_auto_trades(
         _detail_put_str(out, "q_quote_source", candidate.get("q_quote_source"))
         _detail_put_str(
             out,
-            "q_bayes_physical_likelihood_source",
-            candidate.get("q_bayes_physical_likelihood_source"),
-        )
-        _detail_put_str(
-            out,
-            "q_bayes_independent_physics_residual_source",
-            candidate.get("q_bayes_independent_physics_residual_source"),
-        )
-        _detail_put_str(
-            out,
             "weather_likelihood_features_source",
             candidate.get("weather_likelihood_features_source"),
         )
@@ -21634,31 +21913,6 @@ def execute_auto_trades(
         _detail_put_str(out, "weather_likelihood_feature_quality", candidate.get("weather_likelihood_feature_quality"))
         _detail_put_str(out, "weather_likelihood_refreshed_at", candidate.get("weather_likelihood_refreshed_at"))
         _detail_put_str(out, "peak_estimator_source", candidate.get("peak_estimator_source"))
-        _detail_put_bool(
-            out,
-            "q_bayes_physical_likelihood_enabled",
-            candidate.get("q_bayes_physical_likelihood_enabled"),
-        )
-        _detail_put_bool(
-            out,
-            "q_bayes_independent_physics_residual_enabled",
-            candidate.get("q_bayes_independent_physics_residual_enabled"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_evidence",
-            candidate.get("q_bayes_independent_physics_residual_evidence"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_prob",
-            candidate.get("q_bayes_independent_physics_residual_prob"),
-        )
-        _detail_put_float(
-            out,
-            "q_bayes_independent_physics_residual_observed_prob",
-            candidate.get("q_bayes_independent_physics_residual_observed_prob"),
-        )
         _detail_put_bool(out, "q_bayes_bimodal_risk", candidate.get("q_bayes_bimodal_risk"))
         _detail_put_str(out, "edge_tradeability_bayes_q_source", candidate.get("edge_tradeability_bayes_q_source"))
         _detail_put_str(out, "edge_tradeability_bayes_na_reason", candidate.get("edge_tradeability_bayes_na_reason"))
@@ -21906,7 +22160,7 @@ def execute_auto_trades(
             outcome=outcome,
             side=side,
         )
-        ssot_legs, ssot_plan = _load_target_realization_ui_plan(slug, event_date_key)
+        ssot_legs, ssot_plan = _load_target_realization_fact_plan(slug, event_date_key)
         ssot_leg = ssot_legs.get((str(outcome or "").strip(), str(side or "").strip().upper())) if ssot_legs else None
         if not isinstance(ssot_leg, Mapping):
             return (
@@ -21955,10 +22209,6 @@ def execute_auto_trades(
             out["target_realization_plan_notional_cap_applied"] = bool(
                 ssot_leg.get("target_notional_cap_applied")
             )
-        if str(side or "").strip().upper() == "NO":
-            remote_no_price_cap = _target_realization_remote_no_price_cap(ssot_leg, ssot_plan)
-            out["target_realization_order_price_cap"] = float(remote_no_price_cap)
-            out["remote_no_max_price"] = float(remote_no_price_cap)
         if posterior_val is not None:
             out["posterior_settlement_candidate_bucket_prob"] = float(posterior_val)
             out["q_temperature_bucket_posterior"] = float(posterior_val)
@@ -22127,7 +22377,7 @@ def execute_auto_trades(
         )
         out["target_realization_capital_plan_source"] = "ui_snapshot_ssot"
         out["target_realization_capital_plan_strategy"] = str(
-            ssot_plan.get("strategy") or "target_realization_yes_and_remote_no"
+            ssot_plan.get("strategy") or "strong_posterior_top_yes_second_yes_and_least_no"
         )
         for plan_key, detail_key in (
             ("bankroll_usdc", "kelly_bankroll_usdc"),
@@ -22174,7 +22424,7 @@ def execute_auto_trades(
         outcome: str,
         side: str,
     ) -> Tuple[Optional[Mapping[str, Any]], Mapping[str, Any]]:
-        ssot_legs, ssot_plan = _load_target_realization_ui_plan(slug, event_date_key)
+        ssot_legs, ssot_plan = _load_target_realization_fact_plan(slug, event_date_key)
         if not ssot_legs:
             return None, ssot_plan if isinstance(ssot_plan, Mapping) else {}
         key = (str(outcome or "").strip(), str(side or "").strip().upper())
@@ -22186,7 +22436,11 @@ def execute_auto_trades(
     def _is_target_realization_ssot_detail(details: Optional[Mapping[str, Any]]) -> bool:
         if not isinstance(details, Mapping):
             return False
-        if str(details.get("decision_ssot") or "").strip() == "auto_trade_target_bucket":
+        if str(details.get("decision_ssot") or "").strip() in {
+            "auto_trade_target_bucket",
+            "posterior_ssot_fact",
+            "hard_source_direct_ssot_target",
+        }:
             return True
         for key in ("strategy", "strategy_family", "entry_strategy_family", "exit_policy_rule"):
             text = str(details.get(key) or "").strip().lower()
@@ -22308,7 +22562,15 @@ def execute_auto_trades(
             if side_label in {"YES", "NO"}:
                 out.setdefault("held_target_side", side_label)
                 out.setdefault("current_position_side", side_label)
-        out["decision_ssot"] = "auto_trade_target_bucket"
+        decision_ssot = _target_realization_plan_decision_ssot(ssot_plan)
+        if posterior_target_direct:
+            decision_ssot = "posterior_ssot_fact"
+        if not decision_ssot:
+            decision_ssot = "posterior_ssot_fact"
+        out["decision_ssot"] = decision_ssot
+        out["posterior_ssot_fact_used"] = decision_ssot == "posterior_ssot_fact"
+        if decision_ssot == "posterior_ssot_fact":
+            out["target_probability_field"] = "posterior_ssot_fact.target_probability"
         out["target_bucket"] = plan_target_bucket
         out["ssot_target_bucket"] = plan_target_bucket
         out["posterior_settlement_target_bucket"] = plan_target_bucket
@@ -22402,17 +22664,8 @@ def execute_auto_trades(
                 merged_details,
                 hard_source_sla_by_row_key.get(hard_source_key, {}),
             )
-            if (
-                will_order
-                and bool(merged_details.get("hard_source_direct") or merged_details.get("hard_source_posterior_override"))
-                and (
-                    "order_submitted" in rc
-                    or "exit_marketable_immediate_confirmed" in rc
-                    or "order_already_live" in rc
-                )
-                and not str(merged_details.get("hard_source_order_submitted_at") or "").strip()
-            ):
-                _add_hard_source_order_sla(merged_details, utc_now_iso_ms())
+            # Decision materialization must never invent T5. Only the CLOB gateway's
+            # exchange_post_started_at may populate order-submitted latency evidence.
         if isinstance(merged_details, dict):
             merged_details["edge_tradeability_signal_z"] = float(signal_z)
             merged_details["edge_tradeability_signal_z_stage"] = signal_z_meta.get("stage")
@@ -22629,13 +22882,30 @@ def execute_auto_trades(
             } if isinstance(merged_details, Mapping) else set()
             if (
                 "hard_source_posterior_constraint" in rc_set_for_sla
-                or "target_realization_switch_buy_exit_old" in detail_codes_for_sla
-                or "target_realization_exit_clear" in detail_codes_for_sla
+                or "target_realization_yes_target_invalidated" in detail_codes_for_sla
+                or "target_realization_no_invalidated" in detail_codes_for_sla
             ):
                 hard_source_detail_context = hard_source_sla_by_row_key.get((out, sd), {})
                 hard_source_include_job_context = True
         if isinstance(merged_details, dict) and hard_source_detail_context:
             _copy_hard_source_sla_fields(merged_details, hard_source_detail_context)
+        if (
+            isinstance(merged_details, dict)
+            and act == "entry"
+            and hard_source_sla_context
+            and bool(
+                merged_details.get("hard_source_direct")
+                or merged_details.get("hard_source_posterior_override")
+            )
+        ):
+            context_outcome = str(hard_source_sla_context.get("outcome") or "").strip()
+            context_side = str(hard_source_sla_context.get("side") or "YES").strip().upper()
+            signal_context_matches = bool(
+                context_outcome == out
+                and (not context_side or context_side == sd)
+            )
+            if signal_context_matches and not str(merged_details.get("awc_hard_source_signal_at") or "").strip():
+                _copy_hard_source_sla_fields(merged_details, hard_source_sla_context)
         if isinstance(merged_details, dict) and hard_source_include_job_context and hard_source_sla_context:
             _copy_hard_source_sla_fields(merged_details, hard_source_sla_context)
         if isinstance(merged_details, dict) and bool(
@@ -22649,7 +22919,7 @@ def execute_auto_trades(
             )
             if ssot_bucket and not str(merged_details.get("ssot_target_bucket") or "").strip():
                 merged_details["ssot_target_bucket"] = ssot_bucket
-            merged_details.setdefault("decision_ssot", "auto_trade_target_bucket")
+            merged_details.setdefault("decision_ssot", "hard_source_direct_ssot_target")
             merged_details.setdefault("decision_basis", "hard_source_lower_bound_constraint")
             merged_details.setdefault("bayes_recomputed_async", True)
             merged_details.setdefault("fact_recompute_async", True)
@@ -22677,14 +22947,47 @@ def execute_auto_trades(
             and bool(will_order)
             and submitted_like_codes.intersection({str(code or "") for code in (rc or [])})
         ):
-            _add_hard_source_order_sla(merged_details, decision_created_at)
             if act == "entry" and (out, sd) in target_switch_expected_entry_keys:
                 target_switch_order_submitted_entry_keys.add((out, sd))
+        if isinstance(merged_details, dict) and act == "entry":
+            (
+                signal_id_for_terminal,
+                signal_at_for_terminal,
+                _timing_for_terminal,
+            ) = _signal_to_order_identity_from_details(merged_details)
+            if signal_id_for_terminal and signal_at_for_terminal:
+                terminal_reason = str(
+                    (rc or [decided_state or "entry_decision"])[0] or ""
+                ).strip()
+                terminal_text = " ".join([terminal_reason, " ".join(rs or [])]).strip()
+                submitted_like = bool(
+                    bool(will_order)
+                    and submitted_like_codes.intersection(
+                        {str(code or "") for code in (rc or [])}
+                    )
+                )
+                terminal_state = _classify_signal_to_order_terminal_state(
+                    terminal_reason,
+                    terminal_text,
+                    will_order=bool(will_order),
+                )
+                if (not submitted_like) and (
+                    (not bool(will_order))
+                    or terminal_state in {"blocked", "stale", "skipped", "no_action", "error"}
+                ):
+                    _apply_signal_to_order_terminal(
+                        merged_details,
+                        terminal_state=terminal_state,
+                        terminal_reason=terminal_reason or "entry_decision_terminal",
+                        terminal_at=decision_created_at,
+                    )
         if isinstance(merged_details, dict) and explicit_ssot_entry_block_context:
             _apply_explicit_ssot_entry_block_context(
                 merged_details,
                 explicit_ssot_entry_block_context,
             )
+        if isinstance(merged_details, dict):
+            merged_details = _canonicalize_posterior_ssot_fact_marker(merged_details)
         merged_details = _compact_decision_details(
             merged_details,
             action=act,
@@ -23001,6 +23304,159 @@ def execute_auto_trades(
                     sleep_base_sec=float(sleep_base_sec),
                 )
 
+    def _signal_to_order_ledger_payload_from_decision(
+        payload: Mapping[str, Any],
+        *,
+        decision_id: Any = "",
+    ) -> Dict[str, Any]:
+        details = payload.get("details")
+        if not isinstance(details, Mapping):
+            return {}
+        timing = details.get("signal_to_order_timing")
+        if not isinstance(timing, Mapping):
+            return {}
+        signal_id = str(details.get("signal_id") or timing.get("signal_id") or "").strip()
+        signal_at = str(
+            details.get("awc_hard_source_signal_at")
+            or timing.get("awc_hard_source_signal_at")
+            or ""
+        ).strip()
+        if not signal_id or not signal_at:
+            return {}
+        order_intent_id = str(
+            details.get("order_intent_id")
+            or timing.get("order_intent_id")
+            or details.get("idempotency_key")
+            or timing.get("idempotency_key")
+            or ""
+        ).strip()
+        return {
+            "signal_id": signal_id,
+            "decision_id": str(decision_id or details.get("decision_id") or ""),
+            "order_intent_id": order_intent_id,
+            "awc_hard_source_signal_at": signal_at,
+            "signal_to_order_slo_violation_reason": str(
+                details.get("signal_to_order_slo_violation_reason")
+                or timing.get("signal_to_order_slo_violation_reason")
+                or ""
+            ),
+            "signal_to_order_timing": dict(timing),
+        }
+
+    def _merge_fill_auto_order_lineage_from_decision(
+        payload: Mapping[str, Any],
+        *,
+        decision_id: Any = "",
+        attempts: int = 5,
+        sleep_base_sec: float = 0.25,
+    ) -> None:
+        details = payload.get("details")
+        if not isinstance(details, Mapping):
+            return
+        timing = (
+            details.get("signal_to_order_timing")
+            if isinstance(details.get("signal_to_order_timing"), Mapping)
+            else {}
+        )
+        order_id = str(
+            details.get("order_id")
+            or timing.get("order_id")
+            or details.get("orderID")
+            or timing.get("orderID")
+            or details.get("orderId")
+            or timing.get("orderId")
+            or ""
+        ).strip()
+        if not order_id:
+            return
+        signal_id = str(details.get("signal_id") or timing.get("signal_id") or "").strip()
+        order_intent_id = str(
+            details.get("order_intent_id")
+            or timing.get("order_intent_id")
+            or details.get("idempotency_key")
+            or timing.get("idempotency_key")
+            or ""
+        ).strip()
+        merge_fill_auto_order_lineage_by_order_id(
+            cur,
+            order_id=order_id,
+            correlation_id=str(
+                details.get("correlation_id")
+                or timing.get("correlation_id")
+                or ""
+            ).strip(),
+            decision_id=str(decision_id or details.get("decision_id") or timing.get("decision_id") or "").strip(),
+            signal_id=signal_id,
+            order_intent_id=order_intent_id,
+            attempts=max(1, int(attempts)),
+            sleep_base_sec=float(sleep_base_sec),
+        )
+
+    def _awc_hard_source_signal_payload_from_decision(
+        payload: Mapping[str, Any],
+        *,
+        terminal_state: str = "",
+        terminal_reason: str = "",
+    ) -> Dict[str, Any]:
+        details = payload.get("details")
+        if not isinstance(details, Mapping):
+            return {}
+        signal_id, signal_at, timing = _signal_to_order_identity_from_details(details)
+        if not signal_id or not signal_at:
+            return {}
+        return {
+            "signal_id": signal_id,
+            "slug": payload.get("slug") or details.get("slug") or timing.get("slug"),
+            "event_date": payload.get("event_date") or details.get("event_date") or timing.get("event_date"),
+            "source_event_id": details.get("source_event_id") or timing.get("source_event_id"),
+            "awc_valid_time": details.get("awc_valid_time") or timing.get("awc_valid_time"),
+            "awc_hard_source_signal_at": signal_at,
+            "acceptance_state": details.get("acceptance_state") or timing.get("acceptance_state") or "accepted",
+            "hard_source_acceptance_state": details.get("hard_source_acceptance_state"),
+            "terminal_state": terminal_state
+            or details.get("signal_to_order_terminal_state")
+            or timing.get("terminal_state"),
+            "terminal_reason": terminal_reason
+            or details.get("signal_to_order_terminal_reason")
+            or timing.get("terminal_reason"),
+            "signal_to_order_timing": dict(timing),
+        }
+
+    def _attach_signal_to_order_ledger_prewrite(payload: Mapping[str, Any]) -> Dict[str, Any]:
+        payload_out = dict(payload)
+        details = payload_out.get("details")
+        if not isinstance(details, Mapping):
+            details_raw = payload_out.get("details_json")
+            if isinstance(details_raw, str) and details_raw.strip():
+                try:
+                    parsed_details = json.loads(details_raw)
+                except Exception:
+                    parsed_details = {}
+                if isinstance(parsed_details, Mapping):
+                    details = parsed_details
+                    payload_out["details"] = dict(parsed_details)
+            if not isinstance(details, Mapping):
+                return payload_out
+        ledger_payload = _signal_to_order_ledger_payload_from_decision(payload_out)
+        if not ledger_payload:
+            return payload_out
+        schema_status = signal_to_order_timing_schema_status(cur)
+        details_out = dict(details)
+        details_out["signal_to_order_ledger_status"] = (
+            "pending_upsert" if bool(schema_status.get("ok")) else "schema_missing_noop"
+        )
+        details_out["signal_to_order_ledger_schema_status"] = schema_status
+        details_out["signal_to_order_ledger_prewrite"] = {
+            "status": details_out["signal_to_order_ledger_status"],
+            "writes_archive_db": bool(schema_status.get("ok")),
+            "schema_status": schema_status,
+        }
+        details_out.pop("signal_to_order_ledger_result", None)
+        payload_out["details"] = details_out
+        if payload_out.get("details_json") is not None:
+            payload_out["details_json"] = None
+        return payload_out
+
     def _flush_decisions() -> None:
         if not decision_buffer:
             return
@@ -23012,41 +23468,63 @@ def execute_auto_trades(
             retry_sleep = 0.4
         failed_decisions: List[str] = []
         first_exc: Optional[Exception] = None
-        sql = """
-            INSERT INTO auto_trade_decisions(
-                run_id, run_date, slug, event_date, title,
-                outcome, side, action,
-                decided_state, will_order,
-                reason_codes_json, reasons_json, details_json,
-                created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        for payload in decision_buffer.values():
+        for buffered_payload in decision_buffer.values():
+            payload = _attach_signal_to_order_ledger_prewrite(buffered_payload)
+            payload_fingerprint = hashlib.sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+            if payload_fingerprint in persisted_decision_fingerprints:
+                continue
             try:
-                _sqlite_execute_with_retry_compat(
+                decision_id = insert_auto_trade_decision_payload(
                     cur,
-                    sql,
-                    (
-                        payload.get("run_id"),
-                        payload.get("run_date"),
-                        payload.get("slug"),
-                        payload.get("event_date"),
-                        payload.get("title"),
-                        payload.get("outcome"),
-                        payload.get("side"),
-                        payload.get("action"),
-                        payload.get("decided_state"),
-                        payload.get("will_order"),
-                        payload.get("reason_codes_json"),
-                        payload.get("reasons_json"),
-                        payload.get("details_json"),
-                        payload.get("created_at"),
-                    ),
+                    payload,
                     attempts=int(retry_attempts),
                     sleep_base_sec=float(retry_sleep),
                 )
-                decision_id = int(cur.lastrowid or 0)
+                try:
+                    _merge_fill_auto_order_lineage_from_decision(
+                        payload,
+                        decision_id=decision_id,
+                        attempts=int(retry_attempts),
+                        sleep_base_sec=float(retry_sleep),
+                    )
+                except Exception:
+                    pass
+                ledger_payload = _signal_to_order_ledger_payload_from_decision(
+                    payload,
+                    decision_id=decision_id,
+                )
+                if (
+                    ledger_payload
+                    and str(payload.get("action") or "").strip().lower() == "entry"
+                ):
+                    decision_reason_codes = {
+                        str(code or "").strip()
+                        for code in _parse_reason_list(payload.get("reason_codes_json"))
+                        if str(code or "").strip()
+                    }
+                    pending_submit_intent = "order_pending_submit" in decision_reason_codes
+                    upsert_signal_to_order_timing(
+                        cur,
+                        ledger_payload,
+                        created_at=str(payload.get("created_at") or ""),
+                        attempts=int(retry_attempts),
+                        sleep_base_sec=float(retry_sleep),
+                    )
+                    upsert_awc_hard_source_signal(
+                        cur,
+                        _awc_hard_source_signal_payload_from_decision(
+                            payload,
+                            terminal_state="" if pending_submit_intent else "submitted",
+                            terminal_reason="" if pending_submit_intent else "order_submitted",
+                        ),
+                        created_at=str(payload.get("created_at") or ""),
+                        attempts=int(retry_attempts),
+                        sleep_base_sec=float(retry_sleep),
+                    )
                 try:
                     _write_calibration_sample_from_decision(
                         payload,
@@ -23056,6 +23534,7 @@ def execute_auto_trades(
                     )
                 except Exception:
                     pass
+                persisted_decision_fingerprints.add(payload_fingerprint)
             except Exception as exc:
                 if first_exc is None:
                     first_exc = exc
@@ -23112,11 +23591,6 @@ def execute_auto_trades(
                 or ""
             ).strip()
             combined = " ".join(part for part in (block_reason, reason_blob) if part)
-            if "remote_bucket_realization_prob_above_max" in combined:
-                return (
-                    "remote_bucket_realization_prob_above_max",
-                    "远端旧桶兑现概率仍高于上限，禁止用 NO 28°C 代替卖旧桶",
-                )
             if "temperature_path_trade_follow_not_allowed" in combined:
                 return (
                     "temperature_path_trade_follow_not_allowed",
@@ -23222,7 +23696,6 @@ def execute_auto_trades(
                 "target_realization_batch_reason",
                 "target_bucket",
                 "target_posterior",
-                "remote_bucket_realization_prob",
             ):
                 if field in item and field not in details_payload:
                     details_payload[field] = item.get(field)
@@ -23418,112 +23891,52 @@ def execute_auto_trades(
                     exit_reason_family_codes = _dump_exit_reason_family_codes(
                         existing_reason_row[0]
                     )
-        params = (
-            slug,
-            event_date.split("T", 1)[0],
-            outcome,
-            side,
-            state,
-            entry_at,
-            last_order_id,
-            entry_price,
-            entry_size,
-            last_action,
-            last_action_price,
-            last_action_size,
-            last_action_order_type,
-            last_action_at,
-            last_status,
-            last_error,
-            exit_reasons,
-            exit_reason_codes,
-            exit_reason_family_codes,
-            exit_triggered_at,
-            exit_skip_reason,
-            exit_skip_detail,
-            exit_skip_at,
-            trend_limit_step,
-            entry_retry_count,
-            exit_retry_count,
-            position_size,
-            avg_price,
-            peak_price,
-            utc_now_iso(),
+        upsert_edge_trade_runtime_row(
+            cur,
+            {
+                "slug": slug,
+                "event_date": event_date.split("T", 1)[0],
+                "outcome": outcome,
+                "side": side,
+                "state": state,
+                "entry_at": entry_at,
+                "last_order_id": last_order_id,
+                "entry_price": entry_price,
+                "entry_size": entry_size,
+                "last_action": last_action,
+                "last_action_price": last_action_price,
+                "last_action_size": last_action_size,
+                "last_action_order_type": last_action_order_type,
+                "last_action_at": last_action_at,
+                "last_status": last_status,
+                "last_error": last_error,
+                "exit_reasons": exit_reasons,
+                "exit_reason_codes": exit_reason_codes,
+                "exit_reason_family_codes": exit_reason_family_codes,
+                "exit_triggered_at": exit_triggered_at,
+                "exit_skip_reason": exit_skip_reason,
+                "exit_skip_detail": exit_skip_detail,
+                "exit_skip_at": exit_skip_at,
+                "trend_limit_step": trend_limit_step,
+                "entry_retry_count": entry_retry_count,
+                "exit_retry_count": exit_retry_count,
+                "position_size": position_size,
+                "avg_price": avg_price,
+                "peak_price": peak_price,
+                "updated_at": utc_now_iso(),
+            },
         )
-        sql = """
-            INSERT INTO edge_trades (
-                slug, event_date, outcome, side, state,
-                entry_at, last_order_id,
-                entry_price, entry_size,
-                last_action, last_action_price, last_action_size, last_action_order_type, last_action_at, last_status, last_error,
-                exit_reasons, exit_reason_codes, exit_reason_family_codes, exit_triggered_at,
-                exit_skip_reason, exit_skip_detail, exit_skip_at,
-                trend_limit_step,
-                entry_retry_count, exit_retry_count,
-                position_size, avg_price, peak_price,
-                updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(slug, event_date, outcome, side)
-            DO UPDATE SET state = excluded.state,
-                          entry_at = COALESCE(excluded.entry_at, edge_trades.entry_at),
-                          last_order_id = COALESCE(excluded.last_order_id, edge_trades.last_order_id),
-                          entry_price = COALESCE(excluded.entry_price, edge_trades.entry_price),
-                          entry_size = COALESCE(excluded.entry_size, edge_trades.entry_size),
-                          last_action = COALESCE(excluded.last_action, edge_trades.last_action),
-                          last_action_price = COALESCE(excluded.last_action_price, edge_trades.last_action_price),
-                          last_action_size = COALESCE(excluded.last_action_size, edge_trades.last_action_size),
-                          last_action_order_type = COALESCE(excluded.last_action_order_type, edge_trades.last_action_order_type),
-                          last_action_at = COALESCE(excluded.last_action_at, edge_trades.last_action_at),
-                          last_status = COALESCE(excluded.last_status, edge_trades.last_status),
-                          last_error = COALESCE(excluded.last_error, edge_trades.last_error),
-                          exit_reasons = COALESCE(excluded.exit_reasons, edge_trades.exit_reasons),
-                          exit_reason_codes = COALESCE(excluded.exit_reason_codes, edge_trades.exit_reason_codes),
-	                          exit_reason_family_codes = COALESCE(NULLIF(excluded.exit_reason_family_codes, ''), edge_trades.exit_reason_family_codes),
-                          exit_triggered_at = COALESCE(excluded.exit_triggered_at, edge_trades.exit_triggered_at),
-                          exit_skip_reason = COALESCE(excluded.exit_skip_reason, edge_trades.exit_skip_reason),
-                          exit_skip_detail = COALESCE(excluded.exit_skip_detail, edge_trades.exit_skip_detail),
-                          exit_skip_at = COALESCE(excluded.exit_skip_at, edge_trades.exit_skip_at),
-                          trend_limit_step = COALESCE(excluded.trend_limit_step, edge_trades.trend_limit_step),
-                          entry_retry_count = COALESCE(excluded.entry_retry_count, edge_trades.entry_retry_count),
-                          exit_retry_count = COALESCE(excluded.exit_retry_count, edge_trades.exit_retry_count),
-                          position_size = COALESCE(excluded.position_size, edge_trades.position_size),
-                          avg_price = COALESCE(excluded.avg_price, edge_trades.avg_price),
-                          peak_price = COALESCE(excluded.peak_price, edge_trades.peak_price),
-                          updated_at = excluded.updated_at
-            """
-        for attempt in range(6):
-            try:
-                cur.execute(sql, params)
-                break
-            except sqlite3.OperationalError as exc:
-                if "locked" not in str(exc).lower() or attempt == 5:
-                    raise
-                time.sleep(0.5 * (attempt + 1))
 
     def _set_stop_loss_probe_at(outcome: str, side: str, probe_at: Optional[str]) -> None:
-        params = (
-            probe_at,
-            utc_now_iso(),
-            slug,
-            event_date.split("T", 1)[0],
-            outcome,
-            side,
+        set_stop_loss_probe_at(
+            cur,
+            slug=slug,
+            event_date=event_date.split("T", 1)[0],
+            outcome=outcome,
+            side=side,
+            probe_at=probe_at,
+            updated_at=utc_now_iso(),
         )
-        sql = """
-            UPDATE edge_trades
-            SET stop_loss_probe_at = ?,
-                updated_at = ?
-            WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-        """
-        for attempt in range(6):
-            try:
-                cur.execute(sql, params)
-                break
-            except sqlite3.OperationalError as exc:
-                if "locked" not in str(exc).lower() or attempt == 5:
-                    raise
-                time.sleep(0.5 * (attempt + 1))
     positions_by_token: Dict[str, Dict[str, Any]] = {}
     positions_error = ""
     positions_fetch_started = _event_stage_start()
@@ -23630,31 +24043,14 @@ def execute_auto_trades(
                 live_size = 0.0
             if live_size is not None and math.isfinite(live_size) and live_size <= settled_reconcile_dust + TIME_EDGE_Q_EPS:
                 try:
-                    cur.execute(
-                        """
-                        UPDATE edge_trades
-                        SET state = 'exit',
-                            position_size = 0,
-                            last_order_id = '',
-                            last_action = 'settled_reconcile_clear',
-                            last_action_at = ?,
-                            last_status = 'settled_no_position',
-                            last_error = 'settled_no_position',
-                            exit_reasons = '',
-                            exit_reason_codes = '',
-                            exit_reason_family_codes = '',
-                            exit_triggered_at = NULL,
-                            exit_skip_reason = '',
-                            exit_skip_detail = '',
-                            exit_skip_at = NULL,
-                            stop_loss_probe_at = NULL,
-                            updated_at = ?
-                        WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                          AND (state IN ('entry', 'entry_pending') OR COALESCE(position_size, 0) > 0)
-                        """,
-                        (now_iso, now_iso, slug_r, event_date_r, outcome_r, side_r),
+                    cleared_count += settled_reconcile_clear_position(
+                        cur,
+                        now_iso=now_iso,
+                        slug=slug_r,
+                        event_date=event_date_r,
+                        outcome=outcome_r,
+                        side=side_r,
                     )
-                    cleared_count += cur.rowcount
                 except sqlite3.OperationalError:
                     continue
             elif live_size is not None and math.isfinite(live_size) and live_size > settled_reconcile_dust:
@@ -23664,31 +24060,14 @@ def execute_auto_trades(
                     int(settled_open_status_counts.get(settled_status) or 0) + 1
                 )
                 try:
-                    cur.execute(
-                        """
-                        UPDATE edge_trades
-                        SET last_status = ?,
-                            last_error = ?,
-                            exit_reasons = '',
-                            exit_reason_codes = '',
-                            exit_reason_family_codes = '',
-                            exit_triggered_at = NULL,
-                            exit_skip_reason = '',
-                            exit_skip_detail = '',
-                            exit_skip_at = NULL,
-                            stop_loss_probe_at = NULL,
-                            updated_at = ?
-                        WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                        """,
-                        (
-                            settled_status,
-                            settled_status,
-                            now_iso,
-                            slug_r,
-                            event_date_r,
-                            outcome_r,
-                            side_r,
-                        ),
+                    settled_reconcile_mark_open(
+                        cur,
+                        now_iso=now_iso,
+                        slug=slug_r,
+                        event_date=event_date_r,
+                        outcome=outcome_r,
+                        side=side_r,
+                        status=settled_status,
                     )
                 except sqlite3.OperationalError:
                     continue
@@ -24465,6 +24844,7 @@ def execute_auto_trades(
             direct_target_job
             and target_switch_primary_entry_keys
             and not exit_only
+            and not _direct_target_payload_requests_exit_cleanup(result)
             and not _env_bool("PM_TARGET_REALIZATION_DIRECT_JOB_OLD_EXIT_BEFORE_ENTRY", False)
             and outcome_key
             and side_key in {"YES", "NO"}
@@ -27111,21 +27491,10 @@ def execute_auto_trades(
                     to_float(candidate_ref.get("strategy_size_ratio_extra")),
                     1.0,
                 )
-                usable_ratio_existing = 1.0
-                if _env_bool("PM_ENTRY_USABLE_EDGE_SIZE_SCALE_ENABLED", True):
-                    usable_ratio_val_existing = to_float(
-                        candidate_ref.get("entry_usable_edge_size_scale")
-                    )
-                    if (
-                        usable_ratio_val_existing is not None
-                        and math.isfinite(usable_ratio_val_existing)
-                    ):
-                        usable_ratio_existing = max(0.0, float(usable_ratio_val_existing))
                 bimodal_ratio_existing = _bayes_bimodal_size_scale(candidate_ref)
                 ratio_now = max(
                     float(ratio_base_existing)
-                    * float(ratio_extra_existing)
-                    * float(usable_ratio_existing),
+                    * float(ratio_extra_existing),
                     0.0,
                 ) * float(bimodal_ratio_existing)
                 if ratio_now > TIME_EDGE_Q_EPS:
@@ -27146,20 +27515,15 @@ def execute_auto_trades(
             to_float(candidate_ref.get("strategy_size_ratio_extra")),
             1.0,
         )
-        usable_ratio = 1.0
-        if _env_bool("PM_ENTRY_USABLE_EDGE_SIZE_SCALE_ENABLED", True):
-            usable_ratio_val = to_float(candidate_ref.get("entry_usable_edge_size_scale"))
-            if usable_ratio_val is not None and math.isfinite(usable_ratio_val):
-                usable_ratio = max(0.0, float(usable_ratio_val))
-        ratio_before_usable = max(float(ratio_base) * float(ratio_extra), 0.0)
-        ratio_before_bimodal = max(float(ratio_before_usable) * float(usable_ratio), 0.0)
+        ratio_before_bimodal = max(float(ratio_base) * float(ratio_extra), 0.0)
         bimodal_ratio = _bayes_bimodal_size_scale(candidate_ref)
         ratio_val = max(float(ratio_before_bimodal) * float(bimodal_ratio), 0.0)
         size_base = to_float(candidate_ref.get("size"))
         candidate_ref["strategy_size_ratio_base"] = ratio_base
         candidate_ref["strategy_size_ratio_extra"] = ratio_extra
-        candidate_ref["entry_usable_edge_size_scale_applied"] = float(usable_ratio)
-        candidate_ref["strategy_size_ratio_before_usable_edge"] = float(ratio_before_usable)
+        candidate_ref["entry_usable_edge_size_scale_applied"] = 1.0
+        candidate_ref["entry_usable_edge_diagnostic_only"] = True
+        candidate_ref["entry_usable_edge_runtime_influence"] = False
         candidate_ref["q_bayes_bimodal_size_scale_applied"] = float(bimodal_ratio)
         candidate_ref["strategy_size_ratio_before_bayes_bimodal"] = float(ratio_before_bimodal)
         candidate_ref["strategy_size_ratio"] = ratio_val
@@ -27174,100 +27538,6 @@ def execute_auto_trades(
         candidate_ref["size"] = scaled
         return scaled, ratio_val, size_base
 
-    def _recover_positive_usable_edge_size_in_place(
-        candidate_ref: Dict[str, Any],
-        *,
-        scaled_size: Optional[float],
-        strategy_size_ratio: float,
-        base_size: Optional[float],
-    ) -> Tuple[Optional[float], float, Optional[float]]:
-        def _mark_recovery(reason: str) -> None:
-            if not isinstance(candidate_ref, dict):
-                return
-            candidate_ref["strategy_size_ratio_recovery_checked"] = True
-            candidate_ref["strategy_size_ratio_recovery_skip_reason"] = str(reason or "")
-
-        if not isinstance(candidate_ref, dict):
-            return scaled_size, strategy_size_ratio, base_size
-        if strategy_size_ratio > TIME_EDGE_Q_EPS:
-            _mark_recovery("ratio_positive")
-            return scaled_size, strategy_size_ratio, base_size
-        usable_edge = to_float(candidate_ref.get("entry_usable_edge"))
-        usable_scale = to_float(candidate_ref.get("entry_usable_edge_size_scale"))
-        tradeability_pass = _entry_usable_edge_bool(candidate_ref.get("edge_tradeability_pass"))
-        tradeability_blocked = _entry_usable_edge_bool(candidate_ref.get("edge_tradeability_blocked"))
-        candidate_ref["strategy_size_ratio_recovery_usable_edge"] = (
-            float(usable_edge)
-            if usable_edge is not None and math.isfinite(usable_edge)
-            else None
-        )
-        candidate_ref["strategy_size_ratio_recovery_usable_scale"] = (
-            float(usable_scale)
-            if usable_scale is not None and math.isfinite(usable_scale)
-            else None
-        )
-        candidate_ref["strategy_size_ratio_recovery_tradeability_pass"] = tradeability_pass
-        candidate_ref["strategy_size_ratio_recovery_tradeability_blocked"] = tradeability_blocked
-        if usable_edge is None or not math.isfinite(usable_edge) or usable_edge <= TIME_EDGE_Q_EPS:
-            _mark_recovery("usable_edge_missing_or_nonpositive")
-            return scaled_size, strategy_size_ratio, base_size
-        if usable_scale is None or not math.isfinite(usable_scale) or usable_scale <= TIME_EDGE_Q_EPS:
-            _mark_recovery("usable_scale_missing_or_nonpositive")
-            return scaled_size, strategy_size_ratio, base_size
-        if tradeability_pass is False or tradeability_blocked is True:
-            _mark_recovery("tradeability_failed")
-            return scaled_size, strategy_size_ratio, base_size
-        strategy_name = str(candidate_ref.get("strategy") or "main").strip().lower()
-        ratio_base = _strategy_entry_size_ratio(strategy_name)
-        ratio_extra = _normalize_nonnegative_ratio(
-            to_float(candidate_ref.get("strategy_size_ratio_extra")),
-            1.0,
-        )
-        candidate_ref["strategy_size_ratio_recovery_ratio_base"] = float(ratio_base)
-        candidate_ref["strategy_size_ratio_recovery_ratio_extra"] = float(ratio_extra)
-        if ratio_base <= TIME_EDGE_Q_EPS or ratio_extra <= TIME_EDGE_Q_EPS:
-            _mark_recovery("ratio_base_or_extra_zero")
-            return scaled_size, strategy_size_ratio, base_size
-        size_base = base_size
-        if size_base is None or not math.isfinite(size_base) or size_base <= TIME_EDGE_Q_EPS:
-            size_base = to_float(candidate_ref.get("size_base"))
-        if size_base is None or not math.isfinite(size_base) or size_base <= TIME_EDGE_Q_EPS:
-            size_base = to_float(candidate_ref.get("size"))
-        candidate_ref["strategy_size_ratio_recovery_size_base"] = (
-            float(size_base)
-            if size_base is not None and math.isfinite(size_base)
-            else None
-        )
-        if size_base is None or not math.isfinite(size_base) or size_base <= TIME_EDGE_Q_EPS:
-            _mark_recovery("size_base_missing_or_nonpositive")
-            return scaled_size, strategy_size_ratio, base_size
-        ratio_before_usable = max(float(ratio_base) * float(ratio_extra), 0.0)
-        ratio_before_bimodal = max(float(ratio_before_usable) * float(usable_scale), 0.0)
-        bimodal_ratio = _bayes_bimodal_size_scale(candidate_ref)
-        ratio_val = max(float(ratio_before_bimodal) * float(bimodal_ratio), 0.0)
-        if ratio_val <= TIME_EDGE_Q_EPS:
-            _mark_recovery("scaled_ratio_nonpositive")
-            return scaled_size, strategy_size_ratio, base_size
-        scaled = round(max(float(size_base) * float(ratio_val), 0.0), 4)
-        if scaled <= TIME_EDGE_Q_EPS:
-            _mark_recovery("scaled_size_nonpositive")
-            return scaled_size, strategy_size_ratio, base_size
-        candidate_ref["strategy_size_ratio_base"] = float(ratio_base)
-        candidate_ref["strategy_size_ratio_extra"] = float(ratio_extra)
-        candidate_ref["entry_usable_edge_size_scale_applied"] = float(usable_scale)
-        candidate_ref["strategy_size_ratio_before_usable_edge"] = float(ratio_before_usable)
-        candidate_ref["q_bayes_bimodal_size_scale_applied"] = float(bimodal_ratio)
-        candidate_ref["strategy_size_ratio_before_bayes_bimodal"] = float(ratio_before_bimodal)
-        candidate_ref["strategy_size_ratio"] = float(ratio_val)
-        candidate_ref["size_base"] = float(size_base)
-        candidate_ref["size_scaled"] = float(scaled)
-        candidate_ref["size"] = float(scaled)
-        candidate_ref["_strategy_size_ratio_applied"] = True
-        candidate_ref["strategy_size_ratio_recomputed_reason"] = (
-            "positive_entry_usable_edge_zero_ratio_recovery"
-        )
-        candidate_ref["strategy_size_ratio_recovery_skip_reason"] = "recovered"
-        return float(scaled), float(ratio_val), float(size_base)
     entry_follow_require_highest_temp = _env_bool(
         "PM_AUTO_TRADE_ENTRY_FOLLOW_REQUIRE_HIGHEST_TEMP",
         True,
@@ -27819,43 +28089,6 @@ def execute_auto_trades(
     exit_confirm_min_age_sec = _env_float("PM_AUTO_TRADE_CONFIRM_EXIT_MIN_AGE_SEC")
     if exit_confirm_min_age_sec is None or not math.isfinite(exit_confirm_min_age_sec) or exit_confirm_min_age_sec < 0:
         exit_confirm_min_age_sec = 30.0
-    entry_market_fallback_enabled = _env_bool("PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK", True)
-    entry_market_fallback_sec = _env_float("PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK_SEC")
-    if entry_market_fallback_sec is None or not math.isfinite(entry_market_fallback_sec) or entry_market_fallback_sec <= 0:
-        entry_market_fallback_sec = 30.0
-    entry_market_fallback_min_v2 = _env_float(
-        "PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK_MIN_V2"
-    )
-    if (
-        entry_market_fallback_min_v2 is None
-        or not math.isfinite(entry_market_fallback_min_v2)
-        or entry_market_fallback_min_v2 < 0
-    ):
-        entry_market_fallback_min_v2 = 0.0
-    entry_market_fallback_min_p_realize = _env_float(
-        "PM_AUTO_TRADE_ENTRY_MARKET_FALLBACK_MIN_P_REALIZE"
-    )
-    if (
-        entry_market_fallback_min_p_realize is None
-        or not math.isfinite(entry_market_fallback_min_p_realize)
-        or entry_market_fallback_min_p_realize < 0
-    ):
-        entry_market_fallback_min_p_realize = 0.0
-    if entry_market_fallback_min_p_realize > 1.0:
-        entry_market_fallback_min_p_realize = entry_market_fallback_min_p_realize / 100.0
-    if entry_market_fallback_min_p_realize > 1.0:
-        entry_market_fallback_min_p_realize = 1.0
-    entry_market_on_rising_ask = _env_bool("PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK", False)
-    entry_market_on_rising_ask_eps = _env_float("PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK_EPS")
-    if (
-        entry_market_on_rising_ask_eps is None
-        or not math.isfinite(entry_market_on_rising_ask_eps)
-        or entry_market_on_rising_ask_eps < 0
-    ):
-        entry_market_on_rising_ask_eps = 0.005
-    entry_market_on_rising_ask_n = _env_int("PM_AUTO_TRADE_ENTRY_MARKET_ON_RISING_ASK_N")
-    if entry_market_on_rising_ask_n is None or entry_market_on_rising_ask_n < 1:
-        entry_market_on_rising_ask_n = 1
     entry_edge_score_market_min = _env_float("PM_AUTO_TRADE_ENTRY_EDGE_SCORE_MARKET_MIN")
     if (
         entry_edge_score_market_min is None
@@ -28381,6 +28614,75 @@ def execute_auto_trades(
             return str(stdout)
         return "unknown"
 
+    def _order_failure_classification(payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload_map = payload if isinstance(payload, dict) else {"payload": payload}
+        raw_class = str(payload_map.get("error_class") or "").strip()
+        try:
+            http_status = int(payload_map.get("http_status") or payload_map.get("clob_order_service_http_status") or 0)
+        except Exception:
+            http_status = 0
+        text = " ".join(
+            str(payload_map.get(key) or "")
+            for key in ("error", "error_detail", "status", "statusText", "stdout", "stderr")
+        ).lower()
+        if not raw_class:
+            if "trading restricted" in text or "geoblock" in text:
+                raw_class = "clob_order_geoblocked"
+                http_status = http_status or 403
+            elif http_status == 429 or "too many requests" in text or "rate limit" in text:
+                raw_class = "clob_order_rate_limited"
+            elif http_status in {500, 502, 503, 504} or "bad gateway" in text or "gateway timeout" in text:
+                raw_class = "clob_order_gateway_error"
+            elif "timeout" in text or "timed out" in text:
+                raw_class = "clob_order_timeout"
+            elif (
+                "clob_order_service_unavailable" in text
+                or "connection refused" in text
+                or "failed to establish a new connection" in text
+            ):
+                raw_class = "clob_order_service_local_failure"
+            else:
+                raw_class = "clob_order_rejected"
+        geoblocked = bool(payload_map.get("geoblocked")) or raw_class == "clob_order_geoblocked"
+        if payload_map.get("retryable") is not None:
+            retryable = bool(payload_map.get("retryable"))
+        else:
+            retryable = raw_class in {
+                "clob_order_gateway_error",
+                "clob_order_timeout",
+                "clob_order_rate_limited",
+                "clob_order_service_local_failure",
+            }
+        fatal = bool(payload_map.get("fatal")) or geoblocked
+        return {
+            "order_error_class": raw_class,
+            "order_http_status": http_status or None,
+            "order_geoblocked": bool(geoblocked),
+            "order_retryable": bool(retryable),
+            "order_fatal": bool(fatal),
+        }
+
+    def _order_failure_reason_codes(payload: Dict[str, Any]) -> List[str]:
+        cls = str(_order_failure_classification(payload).get("order_error_class") or "").strip()
+        specific = {
+            "clob_order_geoblocked": "place_order_geoblocked",
+            "clob_order_gateway_error": "place_order_gateway_error",
+            "clob_order_timeout": "place_order_timeout",
+            "clob_order_rate_limited": "place_order_rate_limited",
+            "clob_order_service_local_failure": "place_order_service_local_failure",
+            "clob_order_rejected": "place_order_rejected",
+        }.get(cls)
+        codes = ["place_order_failed"]
+        if specific and specific not in codes:
+            codes.append(specific)
+        return codes
+
+    def _order_failure_last_status(payload: Dict[str, Any]) -> str:
+        cls = str(_order_failure_classification(payload).get("order_error_class") or "").strip()
+        if cls:
+            return cls
+        return str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed")
+
     def _order_failure_text_value(value: Any) -> str:
         if value is None:
             return ""
@@ -28418,6 +28720,7 @@ def execute_auto_trades(
             "order_raw_payload_json": raw_payload_json,
             "order_raw_payload_keys": sorted(str(key) for key in payload_map.keys()),
             "order_raw_payload_truncated": bool(raw_payload_truncated),
+            **_order_failure_classification(payload_map),
         }
         status = str(payload_map.get("status") or payload_map.get("statusText") or "")
         if status:
@@ -29229,6 +29532,96 @@ def execute_auto_trades(
                 details=marketable_details,
             )
             return
+        retry_reason_families = _normalize_exit_reason_family_codes(exit_reason_codes_ref)
+        if len(retry_reason_families) == 1:
+            marketable_details["exit_reason_family"] = retry_reason_families[0]
+            marketable_details["exit_reason_family_codes"] = list(retry_reason_families)
+        retry_policy_block = _exit_order_policy_block_reason(
+            exit_reason_codes_ref,
+            details=marketable_details,
+        )
+        if retry_policy_block:
+            now_iso_block = utc_now_iso()
+            retry_policy_details = dict(marketable_details)
+            retry_policy_details.update(
+                _exit_order_policy_guard_details(
+                    exit_reason_codes_ref,
+                    reasons=_parse_reason_list(exit_reasons_text),
+                    details=marketable_details,
+                    block_reason=retry_policy_block,
+                    side=side,
+                )
+            )
+            retry_policy_details.update(
+                {
+                    "strategy": str(prev_entry_ref.get("strategy") or "exit"),
+                    "token_id": token_id,
+                    "order_price": retry_price,
+                    "order_size": size_to_sell,
+                    "order_type": exit_order_type,
+                    "exit_marketable_retry_blocked_by_policy": True,
+                }
+            )
+            _update_trade_state(
+                outcome,
+                side,
+                prev_state_ref or "entry",
+                None,
+                "",
+                last_action="exit_skip",
+                last_action_price=retry_price,
+                last_action_size=size_to_sell,
+                last_action_order_type=exit_order_type,
+                last_action_at=now_iso_block,
+                last_status=retry_policy_block,
+                last_error="",
+                exit_reasons=exit_reasons_text,
+                exit_reason_codes=exit_reason_codes_text,
+                exit_triggered_at=exit_triggered_at_update,
+                exit_skip_reason=retry_policy_block,
+                exit_skip_detail="exit retry blocked by Bayes target_realization order policy",
+                exit_skip_at=now_iso_block,
+                exit_retry_count=prev_exit_retry_count,
+                position_size=size_to_sell,
+            )
+            print(
+                f"[auto-trade] exit retry blocked {title} {side} {outcome} "
+                f"reason={retry_policy_block}{exit_reason_extra}"
+            )
+            _buffer_decision(
+                outcome,
+                side,
+                "exit",
+                decided_state=prev_state_ref or "entry",
+                will_order=False,
+                reason_codes=[retry_policy_block],
+                reasons=["exit policy 门禁阻断，禁止提交旧退出诊断卖单"],
+                details=retry_policy_details,
+            )
+            return
+        retry_intent_ok, retry_order_context, retry_pending_identity = (
+            _persist_pending_submit_intent(
+                outcome=outcome,
+                side=side,
+                action="exit",
+                token_id=token_id,
+                order_price=retry_price,
+                order_size=size_to_sell,
+                order_type=exit_order_type,
+                submit_source="exit_marketable_retry",
+                candidate={
+                    **dict(prev_entry_ref),
+                    **dict(marketable_details),
+                    "exit_reason_codes": list(exit_reason_codes_ref or []),
+                    "exit_reasons": _parse_reason_list(exit_reasons_text),
+                },
+            )
+        )
+        if not retry_intent_ok:
+            marketable_details["exit_marketable_retry_block_reason"] = (
+                "pending_submit_decision_persist_failed"
+            )
+            return
         retry_submit_started = _event_stage_start() if exit_only else None
         retry_ok, retry_payload = _run_node_order(
             "place-order",
@@ -29237,6 +29630,7 @@ def execute_auto_trades(
             price=retry_price,
             size=size_to_sell,
             order_type=exit_order_type,
+            order_context=retry_order_context,
         )
         retry_order_id = str(retry_payload.get("orderID") or retry_payload.get("orderId") or "")
         if retry_ok and not retry_order_id and not retry_payload.get("dry_run"):
@@ -29266,6 +29660,7 @@ def execute_auto_trades(
                 None,
                 None,
                 "exit",
+                lineage=retry_pending_identity,
             )
             retry_probe_started = _event_stage_start() if exit_only else None
             retry_probe = _probe_marketable_exit_submission(
@@ -29660,92 +30055,6 @@ def execute_auto_trades(
             return None
         return _entry_strategy_family_from_details(candidate_ref)
 
-    def _block_entry_buy_on_unusable_edge(
-        outcome_label: str,
-        side_label: str,
-        candidate_ref: Optional[Dict[str, Any]],
-        *,
-        details: Optional[Mapping[str, Any]] = None,
-        order_price: Any = None,
-        price_for_order: Any = None,
-        order_size: Any = None,
-        order_amount: Any = None,
-        order_type: Any = None,
-        submit_source: str = "",
-    ) -> bool:
-        if not isinstance(candidate_ref, dict):
-            return False
-        guard_context: Dict[str, Any] = dict(candidate_ref)
-        if isinstance(details, Mapping):
-            guard_context.update(dict(details))
-        guard_context = _merge_expected_entry_target_context(
-            outcome_label,
-            side_label,
-            guard_context,
-        )
-        guard_context = _apply_hard_source_direct_expected_entry_override(
-            guard_context,
-            outcome=outcome_label,
-            side=side_label,
-        )
-        if _is_posterior_settlement_candidate(guard_context) or _is_posterior_target_direct_candidate(guard_context):
-            guard_context = _merge_ssot_target_realization_leg(
-                guard_context,
-                outcome_label,
-                side_label,
-            )
-        guard_context.update(_build_entry_usable_edge_audit(guard_context))
-        candidate_ref.update(
-            {
-                key: value
-                for key, value in guard_context.items()
-                if key.startswith("entry_usable_edge")
-                or key.startswith("entry_edge_")
-                or key.startswith("posterior_settlement_")
-                or key.startswith("hard_source_direct")
-                or key.startswith("target_realization_")
-                or key.startswith("temperature_path_")
-                or key
-                in {
-                    "entry_alpha_gate_source",
-                    "target_bucket",
-                    "ssot_target_bucket",
-                    "outcome",
-                    "bucket_label",
-                    "q_temperature_bucket_label",
-                }
-            }
-        )
-        block_reason = _entry_usable_edge_order_block_reason(guard_context)
-        if not block_reason:
-            return False
-        block_details: Dict[str, Any] = {}
-        block_details.update(_build_candidate_decision_context(guard_context))
-        block_details.update(guard_context)
-        block_details.update(_entry_usable_edge_order_block_details(guard_context, block_reason))
-        block_details.update(
-            {
-                "strategy": str(candidate_ref.get("strategy") or "main"),
-                "entry_order_submit_source": str(submit_source or "entry"),
-                "order_price": order_price,
-                "price_for_order": price_for_order,
-                "order_size": order_size,
-                "order_amount": order_amount,
-                "order_type": order_type,
-            }
-        )
-        _buffer_decision(
-            outcome_label,
-            side_label,
-            "entry",
-            decided_state="blocked",
-            will_order=False,
-            reason_codes=[block_reason],
-            reasons=["entry_usable_edge非正或尺寸系数为0，禁止提交入场订单"],
-            details=block_details,
-        )
-        return True
-
     def _block_entry_buy_on_post_peak_near_settlement_price(
         outcome_label: str,
         side_label: str,
@@ -29812,6 +30121,12 @@ def execute_auto_trades(
                 "order_type": order_type,
             }
         )
+        _apply_signal_to_order_execution_segments(
+            block_details,
+            risk_checked_at=utc_now_iso_ms(),
+            risk_check_source="post_peak_near_settlement_price_guard",
+            risk_check_result=POST_PEAK_NEAR_SETTLEMENT_ENTRY_REASON,
+        )
         _buffer_decision(
             outcome_label,
             side_label,
@@ -29834,6 +30149,118 @@ def execute_auto_trades(
         )
         return True
 
+    def _persist_pending_submit_intent(
+        *,
+        outcome: str,
+        side: str,
+        action: str,
+        token_id: str,
+        order_price: Optional[float],
+        order_size: Optional[float],
+        order_type: str,
+        submit_source: str,
+        candidate: Optional[Mapping[str, Any]] = None,
+        order_amount: Optional[float] = None,
+        post_only: bool = False,
+    ) -> Tuple[bool, Dict[str, Any], Dict[str, str]]:
+        order_context_payload = _bayes_weather_order_context(
+            slug=slug,
+            event_date=event_date_key,
+            outcome=outcome,
+            side=side,
+            intent_action=action,
+            submit_source=submit_source,
+            candidate=candidate,
+        )
+        intent_probe = {
+            **order_context_payload,
+            "token_id": token_id,
+            "side": "SELL" if str(action or "").strip().lower() == "exit" else "BUY",
+            "order_type": order_type,
+            "price": order_price,
+            "size": order_size,
+            "amount": order_amount,
+            "post_only": bool(post_only),
+            "direct_target_order_context": bool(
+                _env_bool("PM_AUTO_TRADE_DIRECT_JOB_CONTEXT", False)
+            ),
+            "direct_target_exit_order": str(action or "").strip().lower() == "exit",
+        }
+        order_intent_id = _clob_order_service_idempotency_key(intent_probe)
+        order_context_payload["order_intent_id"] = order_intent_id
+        pending_submit_at = utc_now_iso_ms()
+        pending_submit_details = dict(candidate or {})
+        pending_submit_details.update(
+            {
+                "decision_phase": "pending_submit",
+                "order_intent_state": "pending_submit",
+                "order_intent_id": order_intent_id,
+                "idempotency_key": order_intent_id,
+                "auto_trade_decision_written_at": pending_submit_at,
+                "token_id": token_id,
+                "order_price": order_price,
+                "order_size": order_size,
+                "order_amount": order_amount,
+                "order_type": order_type,
+                "post_only": bool(post_only),
+                "submit_source": submit_source,
+            }
+        )
+        _apply_signal_to_order_execution_segments(
+            pending_submit_details,
+            order_intent_id=order_intent_id,
+            idempotency_key=order_intent_id,
+        )
+        _buffer_decision(
+            outcome,
+            side,
+            action,
+            decided_state="pending_submit",
+            will_order=True,
+            reason_codes=["order_pending_submit"],
+            reasons=["订单意图已持久化，等待唯一 CLOB submitter 提交"],
+            details=pending_submit_details,
+        )
+        try:
+            _flush_decisions()
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            return False, order_context_payload, {
+                "correlation_id": "",
+                "decision_id": "",
+                "signal_id": "",
+                "order_intent_id": order_intent_id,
+            }
+        pending_identity = {
+            "correlation_id": str(pending_submit_details.get("correlation_id") or "").strip(),
+            "decision_id": "",
+            "signal_id": str(pending_submit_details.get("signal_id") or "").strip(),
+            "order_intent_id": order_intent_id,
+        }
+        try:
+            identity_row = cur.execute(
+                """
+                SELECT correlation_id, decision_id, signal_id, order_intent_id
+                FROM auto_trade_decisions
+                WHERE order_intent_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (order_intent_id,),
+            ).fetchone()
+            if identity_row is not None:
+                for identity_key in pending_identity:
+                    identity_value = identity_row[identity_key]
+                    if str(identity_value or "").strip():
+                        pending_identity[identity_key] = str(identity_value).strip()
+        except (KeyError, IndexError, sqlite3.Error, TypeError):
+            pass
+        return True, order_context_payload, pending_identity
+
     def _record_auto_order(
         order_id: str,
         outcome: str,
@@ -29850,6 +30277,7 @@ def execute_auto_trades(
         q_calibrated_ucb: Optional[float] = None,
         q_calibrated_sigma: Optional[float] = None,
         q_calibration_version: Optional[str] = None,
+        lineage: Optional[Mapping[str, Any]] = None,
     ) -> None:
         nonlocal event_active_entry, location_active_entry, location_blocking_trade
         nonlocal lcb_global_entry_orders_submitted
@@ -29857,34 +30285,30 @@ def execute_auto_trades(
             return
         now_iso = utc_now_iso()
         record_price = _auto_order_record_price(price)
-        cur.execute(
-            """
-            INSERT OR IGNORE INTO auto_orders (
-                order_id, slug, event_date, outcome, side, action, price, size, order_type,
-                q_raw, q_calibrated, q_calibrated_lcb, q_calibrated_ucb, q_calibrated_sigma, q_calibration_version,
-                q_edge, strategy, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                order_id,
-                slug,
-                event_date_key,
-                outcome,
-                side,
-                action,
-                record_price,
-                size,
-                order_type,
-                q_raw,
-                q_calibrated,
-                q_calibrated_lcb,
-                q_calibrated_ucb,
-                q_calibrated_sigma,
-                str(q_calibration_version or ""),
-                q_edge,
-                strategy,
-                now_iso,
-            ),
+        insert_auto_order_ignore(
+            cur,
+            order_id=order_id,
+            correlation_id=str((lineage or {}).get("correlation_id") or ""),
+            decision_id=str((lineage or {}).get("decision_id") or ""),
+            signal_id=str((lineage or {}).get("signal_id") or ""),
+            order_intent_id=str((lineage or {}).get("order_intent_id") or ""),
+            slug=slug,
+            event_date=event_date_key,
+            outcome=outcome,
+            side=side,
+            action=action,
+            price=record_price,
+            size=size,
+            order_type=order_type,
+            q_raw=q_raw,
+            q_calibrated=q_calibrated,
+            q_calibrated_lcb=q_calibrated_lcb,
+            q_calibrated_ucb=q_calibrated_ucb,
+            q_calibrated_sigma=q_calibrated_sigma,
+            q_calibration_version=str(q_calibration_version or ""),
+            q_edge=q_edge,
+            strategy=strategy,
+            created_at=now_iso,
         )
         action_u = str(action or "").strip().lower()
         side_u = str(side or "").strip().upper()
@@ -30160,6 +30584,8 @@ def execute_auto_trades(
     def _posterior_target_primary_entry_fast_path() -> bool:
         if exit_only or not direct_target_job:
             return False
+        if _direct_target_payload_requests_exit_cleanup(result):
+            return False
         if not _direct_target_primary_only_fast_path_enabled(result):
             return False
         if not _env_bool("PM_POSTERIOR_TARGET_DIRECT_PRIMARY_ENTRY_FAST_SUBMIT", True):
@@ -30312,6 +30738,21 @@ def execute_auto_trades(
             "token_id": token_id,
         }
         base_details.update(_direct_target_order_stage_details())
+        _copy_hard_source_sla_fields(
+            base_details,
+            hard_source_sla_by_entry_key.get((outcome, side), {}),
+        )
+        _copy_hard_source_sla_fields(
+            base_details,
+            hard_source_sla_by_row_key.get((outcome, side), {}),
+        )
+        _copy_hard_source_sla_fields(base_details, hard_source_sla_context)
+        _apply_signal_to_order_execution_segments(
+            base_details,
+            orderbook_checked_at=utc_now_iso_ms(),
+            orderbook_check_source="posterior_target_primary_fast_path_candidate_quote",
+            orderbook_check_result="pass",
+        )
 
         prev_entry = prev_states.get((outcome, side), {}) if isinstance(prev_states, Mapping) else {}
         prev_state = str(prev_entry.get("state") or "").strip().lower() if isinstance(prev_entry, Mapping) else ""
@@ -30339,16 +30780,14 @@ def execute_auto_trades(
                 will_order=True,
                 reason_codes=["order_already_live"],
                 reasons=["目标桶已有 live entry / pending order，跳过重复提交"],
-                details=_add_hard_source_order_sla(
-                    {
-                        **base_details,
-                        "order_id": prev_order_id,
-                        "status": str(prev_entry.get("last_status") or "already_live"),
-                        "current_position_size": prev_position,
-                        "order_submit_pending_confirmation": prev_timeout_pending,
-                    },
-                    utc_now_iso_ms(),
-                ),
+                details={
+                    **base_details,
+                    "order_id": prev_order_id,
+                    "status": str(prev_entry.get("last_status") or "already_live"),
+                    "current_position_size": prev_position,
+                    "order_submit_pending_confirmation": prev_timeout_pending,
+                    "order_submission_time_quality": "existing_order_t5_not_reconstructed",
+                },
             )
             _event_stage_end("row_processing", row_processing_started)
             decision_finalize_started = _event_stage_start()
@@ -30356,6 +30795,31 @@ def execute_auto_trades(
             conn.commit()
             _event_stage_end("direct_target_fast_finalize", decision_finalize_started)
             _event_stage_end("decision_finalize", decision_finalize_started)
+            _emit_event_stage_timings()
+            conn.close()
+            return True
+
+        direct_entry_policy_block = _entry_order_policy_block_reason(candidate)
+        if direct_entry_policy_block:
+            _buffer_decision(
+                outcome,
+                side,
+                "entry",
+                decided_state="blocked",
+                will_order=False,
+                reason_codes=[direct_entry_policy_block],
+                reasons=["posterior target fast lane 未满足生产 Bayes 入场白名单"],
+                details={
+                    **base_details,
+                    **_entry_order_policy_block_details(
+                        candidate,
+                        direct_entry_policy_block,
+                    ),
+                },
+            )
+            _flush_decisions()
+            conn.commit()
+            _event_stage_end("row_processing", row_processing_started)
             _emit_event_stage_timings()
             conn.close()
             return True
@@ -30383,28 +30847,6 @@ def execute_auto_trades(
             _emit_event_stage_timings()
             conn.close()
             return True
-        if _block_entry_buy_on_unusable_edge(
-            outcome,
-            side,
-            candidate,
-            details=base_details,
-            order_price=order_price,
-            price_for_order=order_price,
-            order_size=order_size,
-            order_amount=order_amount,
-            order_type=effective_order_type,
-            submit_source="posterior_target_primary_fast_path",
-        ):
-            _event_stage_end("row_processing", row_processing_started)
-            decision_finalize_started = _event_stage_start()
-            _flush_decisions()
-            conn.commit()
-            _event_stage_end("direct_target_fast_finalize", decision_finalize_started)
-            _event_stage_end("decision_finalize", decision_finalize_started)
-            _emit_event_stage_timings()
-            conn.close()
-            return True
-
         balance_guard_ok, guarded_size, guarded_amount, balance_guard_detail = _entry_buy_balance_guard(
             order_price=order_price,
             order_size=order_size,
@@ -30413,6 +30855,16 @@ def execute_auto_trades(
             market_price=order_price,
         )
         if not balance_guard_ok:
+            block_details = {**base_details, **balance_guard_detail}
+            _apply_signal_to_order_execution_segments(
+                block_details,
+                risk_checked_at=utc_now_iso_ms(),
+                risk_check_source="entry_balance_guard",
+                risk_check_result=str(
+                    balance_guard_detail.get("entry_balance_guard_block_reason")
+                    or "blocked"
+                ),
+            )
             _buffer_decision(
                 outcome,
                 side,
@@ -30421,7 +30873,7 @@ def execute_auto_trades(
                 will_order=False,
                 reason_codes=["entry_balance_insufficient_preflight"],
                 reasons=["入场前余额/额度不足，已阻断下单请求"],
-                details={**base_details, **balance_guard_detail},
+                details=block_details,
             )
             _event_stage_end("row_processing", row_processing_started)
             decision_finalize_started = _event_stage_start()
@@ -30441,6 +30893,93 @@ def execute_auto_trades(
         candidate["size"] = order_size
         candidate["order_size"] = order_size
         candidate["order_amount"] = order_amount
+        _apply_signal_to_order_execution_segments(
+            base_details,
+            risk_checked_at=utc_now_iso_ms(),
+            risk_check_source="entry_pre_submit_guards",
+            risk_check_result="pass",
+        )
+
+        order_context_payload = {
+            **_bayes_weather_order_context(
+                slug=slug,
+                event_date=event_date_key,
+                outcome=outcome,
+                side=side,
+                intent_action="entry",
+                submit_source="posterior_target_primary_fast_path",
+                candidate=candidate,
+            ),
+            "strategy_source": candidate.get("strategy_source") or "posterior_target_direct",
+            "posterior_target_source": candidate.get("posterior_target_source"),
+            "target_bucket": candidate.get("target_bucket") or outcome,
+            "posterior_target_bucket": candidate.get("posterior_target_bucket") or outcome,
+            "ssot_target_bucket": candidate.get("ssot_target_bucket"),
+            "posterior_target_fact_id": candidate.get("posterior_target_fact_id"),
+            "posterior_target_fact_as_of": candidate.get("posterior_target_fact_as_of"),
+            "entry_order_submit_source": "posterior_target_primary_fast_path",
+        }
+        intent_probe = {
+            **order_context_payload,
+            "token_id": token_id,
+            "side": "BUY",
+            "order_type": effective_order_type,
+            "price": order_price,
+            "size": order_size,
+            "amount": order_amount,
+            "direct_target_order_context": True,
+            "direct_target_exit_order": False,
+        }
+        order_intent_id = (
+            _clob_order_service_direct_target_idempotency_key(intent_probe)
+            or _clob_order_service_idempotency_key(intent_probe)
+        )
+        order_context_payload["order_intent_id"] = order_intent_id
+        pending_submit_at = utc_now_iso_ms()
+        pending_submit_details = {
+            **base_details,
+            **balance_guard_detail,
+            "decision_phase": "pending_submit",
+            "order_intent_state": "pending_submit",
+            "order_intent_id": order_intent_id,
+            "idempotency_key": order_intent_id,
+            "auto_trade_decision_written_at": pending_submit_at,
+            "token_id": token_id,
+            "order_price": order_price,
+            "price_for_order": order_price,
+            "order_size": order_size,
+            "order_amount": order_amount,
+            "order_type": effective_order_type,
+        }
+        _apply_signal_to_order_execution_segments(
+            pending_submit_details,
+            order_intent_id=order_intent_id,
+            idempotency_key=order_intent_id,
+        )
+        _buffer_decision(
+            outcome,
+            side,
+            "entry",
+            decided_state="pending_submit",
+            will_order=True,
+            reason_codes=["order_pending_submit"],
+            reasons=["订单意图已持久化，等待唯一 CLOB submitter 提交"],
+            details=pending_submit_details,
+        )
+        try:
+            _flush_decisions()
+            conn.commit()
+        except Exception as exc:
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            event_stage_meta["direct_target_fast_skip_reason"] = "pending_submit_decision_persist_failed"
+            event_stage_meta["direct_target_fast_skip_detail"] = str(exc)
+            _event_stage_end("row_processing", row_processing_started)
+            _emit_event_stage_timings()
+            conn.close()
+            return True
 
         submit_started = _event_stage_start()
         ok, payload = _run_node_order(
@@ -30451,21 +30990,7 @@ def execute_auto_trades(
             size=order_size,
             order_type=effective_order_type,
             amount=order_amount,
-            order_context={
-                "slug": slug,
-                "event_date": event_date_key,
-                "outcome": outcome,
-                "outcome_side": side,
-                "intent_action": "entry",
-                "strategy_source": candidate.get("strategy_source") or "posterior_target_direct",
-                "posterior_target_source": candidate.get("posterior_target_source"),
-                "target_bucket": candidate.get("target_bucket") or outcome,
-                "posterior_target_bucket": candidate.get("posterior_target_bucket") or outcome,
-                "ssot_target_bucket": candidate.get("ssot_target_bucket"),
-                "posterior_target_fact_id": candidate.get("posterior_target_fact_id"),
-                "posterior_target_fact_as_of": candidate.get("posterior_target_fact_as_of"),
-                "entry_order_submit_source": "posterior_target_primary_fast_path",
-            },
+            order_context=order_context_payload,
         )
         _event_stage_end("direct_target_fast_submit", submit_started)
         order_id = str(payload.get("orderID") or payload.get("orderId") or "")
@@ -30479,7 +31004,7 @@ def execute_auto_trades(
             status_text = status_text or "dry_run"
         dry_run_order = bool(payload.get("dry_run"))
         now_iso = utc_now_iso()
-        submitted_at = utc_now_iso_ms()
+        submitted_at = _exchange_post_t5_from_order_payload(payload)
         submit_to_decision_ms = _iso_latency_ms_between(
             payload.get("order_submit_started_at"),
             submitted_at,
@@ -30487,6 +31012,7 @@ def execute_auto_trades(
         order_details = _direct_target_order_stage_details(
             {
                 **candidate,
+                **base_details,
                 **balance_guard_detail,
                 "entry_order_submit_source": "posterior_target_primary_fast_path",
                 "direct_target_order_prepare_ms": round(float(prepare_ms), 3),
@@ -30507,11 +31033,18 @@ def execute_auto_trades(
                 "order_submit_outer_timeout_sec": payload.get("order_submit_outer_timeout_sec"),
                 "direct_target_order_timeout_sec": payload.get("direct_target_order_timeout_sec"),
                 "idempotency_key": payload.get("idempotency_key"),
+                "order_intent_id": payload.get("order_intent_id") or payload.get("idempotency_key"),
                 "idempotent_replay": bool(payload.get("idempotent_replay")),
                 "clob_order_service": bool(payload.get("clob_order_service")),
                 "clob_order_service_ms": payload.get("clob_order_service_ms"),
                 "service_submit_ms": payload.get("service_submit_ms"),
                 "clob_timeout_ms": payload.get("clob_timeout_ms"),
+                "exchange_post_started": bool(payload.get("exchange_post_started")),
+                "exchange_post_started_at": payload.get("exchange_post_started_at"),
+                "order_submitted_at": submitted_at,
+                "order_submission_time_quality": (
+                    "exchange_post_started_at" if submitted_at else "exchange_post_t5_missing"
+                ),
                 "order_submit_source": payload.get("source"),
                 "confirm_deferred": bool(
                     ok
@@ -30524,6 +31057,25 @@ def execute_auto_trades(
                 "size": order_size,
                 "strategy": candidate.get("strategy") or "posterior_settlement",
             }
+        )
+        _apply_signal_to_order_execution_segments(
+            order_details,
+            idempotency_key=payload.get("idempotency_key"),
+            idempotency_checked_at=payload.get("idempotency_checked_at")
+            or (
+                payload.get("order_submit_started_at")
+                if str(payload.get("idempotency_key") or "").strip()
+                else None
+            ),
+            submit_requested_at=payload.get("order_submit_started_at"),
+            exchange_ack_at=payload.get("exchange_ack_at")
+            or payload.get("order_submit_completed_at"),
+            order_submit_started_at=payload.get("order_submit_started_at"),
+            order_submit_completed_at=payload.get("order_submit_completed_at"),
+            order_submit_ms=payload.get("order_submit_ms"),
+            order_submit_outer_timeout_sec=payload.get("order_submit_outer_timeout_sec"),
+            order_ack_status=status_text or payload.get("status") or payload.get("error"),
+            order_id=order_id,
         )
         if ok:
             next_state = "entry_pending" if (order_id and not dry_run_order) else "entry_dry_run"
@@ -30638,7 +31190,11 @@ def execute_auto_trades(
                 will_order=True,
                 reason_codes=["order_submit_pending_confirmation"],
                 reasons=["CLOB service 超时但可能已提交，等待幂等状态确认"],
-                details=_add_hard_source_order_sla(pending_details, submitted_at),
+                details=(
+                    _add_hard_source_order_sla(pending_details, submitted_at)
+                    if submitted_at
+                    else pending_details
+                ),
             )
             print(
                 f"[auto-trade] direct target fast entry pending confirmation {title} {side} {outcome} "
@@ -30662,7 +31218,7 @@ def execute_auto_trades(
                 last_action_size=order_size,
                 last_action_order_type=effective_order_type,
                 last_action_at=now_iso,
-                last_status=str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed"),
+                last_status=_order_failure_last_status(payload),
                 last_error=_format_order_error_short(payload),
                 entry_retry_count=(
                     (to_float(prev_entry.get("entry_retry_count")) or 0) + 1
@@ -30678,7 +31234,7 @@ def execute_auto_trades(
                 "entry",
                 decided_state="entry_failed",
                 will_order=True,
-                reason_codes=["place_order_failed"],
+                reason_codes=_order_failure_reason_codes(payload),
                 reasons=["下单失败(place-order failed)"],
                 details=fail_details,
             )
@@ -32190,84 +32746,12 @@ def execute_auto_trades(
             "q_temperature_bucket_posterior",
             "q_temperature_bucket_label",
             "q_bayes_z",
+            "q_bayes_beta_weak",
+            "q_bayes_beta_strong",
             "q_bayes_prior_strength",
             "q_bayes_historical_samples",
             "q_bayes_historical_prior_sample_scale",
             "q_bayes_historical_bucket_count",
-            "q_bayes_model_evidence",
-            "q_bayes_nowcast_evidence",
-            "q_bayes_observed_nowcast_evidence",
-            "q_bayes_wu_forecast_evidence",
-            "q_bayes_wu_forecast_evidence_base",
-            "q_bayes_wu_forecast_evidence_scale",
-            "q_bayes_wu_forecast_prob",
-            "q_bayes_wu_forecast_peak_c",
-            "q_bayes_wu_forecast_sigma_c",
-            "q_bayes_taf_peak_evidence",
-            "q_bayes_taf_peak_evidence_base",
-            "q_bayes_taf_peak_evidence_scale",
-            "q_bayes_taf_peak_prob",
-            "q_bayes_taf_peak_c",
-            "q_bayes_taf_peak_sigma_c",
-            "q_bayes_temperature_trajectory_evidence",
-            "q_bayes_temperature_trajectory_evidence_base",
-            "q_bayes_temperature_trajectory_evidence_scale",
-            "q_bayes_temperature_trajectory_prob",
-            "q_bayes_temperature_trajectory_mu_c",
-            "q_bayes_temperature_trajectory_sigma_c",
-            "q_bayes_temperature_trajectory_path_mu_c",
-            "q_bayes_temperature_trajectory_path_sigma_c",
-            "q_bayes_temperature_trajectory_extrapolation_c",
-            "q_bayes_temperature_trajectory_blended_mu_c",
-            "q_bayes_temperature_trajectory_rate_c_per_hour",
-            "q_bayes_temperature_trajectory_rate_hat_c_per_hour",
-            "q_bayes_temperature_trajectory_accel_hat_c_per_hour2",
-            "q_bayes_temperature_trajectory_hours_to_peak_window",
-            "q_bayes_climo_regime_evidence",
-            "q_bayes_climo_regime_evidence_raw",
-            "q_bayes_climo_regime_evidence_base",
-            "q_bayes_climo_regime_evidence_scale",
-            "q_bayes_climo_regime_prob",
-            "q_bayes_climo_regime_pp_delta",
-            "q_bayes_climo_regime_pp_cap",
-            "q_bayes_climo_regime_pp_max_delta",
-            "q_bayes_post_cool_rebound_regime_prior_evidence",
-            "q_bayes_post_cool_rebound_regime_prior_evidence_raw",
-            "q_bayes_post_cool_rebound_regime_prior_evidence_base",
-            "q_bayes_post_cool_rebound_regime_prior_evidence_scale",
-            "q_bayes_post_cool_rebound_regime_prior_prob",
-            "q_bayes_post_cool_rebound_regime_prior_target_peak_c",
-            "q_bayes_post_cool_rebound_regime_prior_pp_delta",
-            "q_bayes_post_cool_rebound_regime_prior_pp_cap",
-            "q_bayes_post_cool_rebound_regime_prior_pp_max_delta",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence_raw",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence_base",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence_scale",
-            "q_bayes_post_cool_rebound_intraday_likelihood_prob",
-            "q_bayes_post_cool_rebound_intraday_likelihood_target_peak_c",
-            "q_bayes_post_cool_rebound_intraday_likelihood_pp_delta",
-            "q_bayes_post_cool_rebound_intraday_likelihood_pp_cap",
-            "q_bayes_post_cool_rebound_intraday_likelihood_pp_max_delta",
-            "q_bayes_post_cool_rebound_risk_evidence",
-            "q_bayes_post_cool_rebound_risk_evidence_raw",
-            "q_bayes_post_cool_rebound_risk_evidence_base",
-            "q_bayes_post_cool_rebound_risk_evidence_scale",
-            "q_bayes_post_cool_rebound_risk_prob",
-            "q_bayes_post_cool_rebound_risk_target_peak_c",
-            "q_bayes_post_cool_rebound_risk_pp_delta",
-            "q_bayes_post_cool_rebound_risk_pp_cap",
-            "q_bayes_post_cool_rebound_risk_pp_max_delta",
-            "q_bayes_physical_likelihood_evidence",
-            "q_bayes_independent_physics_residual_evidence",
-            "q_bayes_physical_likelihood_evidence_base",
-            "q_bayes_independent_physics_residual_evidence_base",
-            "q_bayes_physical_likelihood_evidence_scale",
-            "q_bayes_independent_physics_residual_evidence_scale",
-            "q_bayes_physical_likelihood_prob",
-            "q_bayes_physical_likelihood_observed_prob",
-            "q_bayes_independent_physics_residual_prob",
-            "q_bayes_independent_physics_residual_observed_prob",
             "q_bayes_bimodal_size_scale",
             "weather_likelihood_feature_count",
             "peak_estimator_mu_c",
@@ -32280,67 +32764,10 @@ def execute_auto_trades(
             val = to_float(row_ref.get(key))
             if val is not None and math.isfinite(val):
                 candidate[key] = float(val)
-        if row_ref.get("q_bayes_physical_likelihood_enabled") is not None:
-            candidate["q_bayes_physical_likelihood_enabled"] = bool(
-                row_ref.get("q_bayes_physical_likelihood_enabled")
-            )
-        if row_ref.get("q_bayes_independent_physics_residual_enabled") is not None:
-            candidate["q_bayes_independent_physics_residual_enabled"] = bool(
-                row_ref.get("q_bayes_independent_physics_residual_enabled")
-            )
-        if row_ref.get("q_bayes_climo_regime_enabled") is not None:
-            candidate["q_bayes_climo_regime_enabled"] = bool(row_ref.get("q_bayes_climo_regime_enabled"))
-        if row_ref.get("q_bayes_temperature_trajectory_enabled") is not None:
-            candidate["q_bayes_temperature_trajectory_enabled"] = bool(
-                row_ref.get("q_bayes_temperature_trajectory_enabled")
-            )
-        if row_ref.get("q_bayes_temperature_trajectory_weaker_than_hard_source") is not None:
-            candidate["q_bayes_temperature_trajectory_weaker_than_hard_source"] = bool(
-                row_ref.get("q_bayes_temperature_trajectory_weaker_than_hard_source")
-            )
-        if row_ref.get("q_bayes_post_cool_rebound_regime_prior_enabled") is not None:
-            candidate["q_bayes_post_cool_rebound_regime_prior_enabled"] = bool(
-                row_ref.get("q_bayes_post_cool_rebound_regime_prior_enabled")
-            )
-        if row_ref.get("q_bayes_post_cool_rebound_regime_prior_weaker_than_hard_source") is not None:
-            candidate["q_bayes_post_cool_rebound_regime_prior_weaker_than_hard_source"] = bool(
-                row_ref.get("q_bayes_post_cool_rebound_regime_prior_weaker_than_hard_source")
-            )
-        if row_ref.get("q_bayes_post_cool_rebound_intraday_likelihood_enabled") is not None:
-            candidate["q_bayes_post_cool_rebound_intraday_likelihood_enabled"] = bool(
-                row_ref.get("q_bayes_post_cool_rebound_intraday_likelihood_enabled")
-            )
-        if row_ref.get("q_bayes_post_cool_rebound_intraday_likelihood_weaker_than_hard_source") is not None:
-            candidate["q_bayes_post_cool_rebound_intraday_likelihood_weaker_than_hard_source"] = bool(
-                row_ref.get("q_bayes_post_cool_rebound_intraday_likelihood_weaker_than_hard_source")
-            )
-        if row_ref.get("q_bayes_post_cool_rebound_risk_enabled") is not None:
-            candidate["q_bayes_post_cool_rebound_risk_enabled"] = bool(
-                row_ref.get("q_bayes_post_cool_rebound_risk_enabled")
-            )
-        if row_ref.get("q_bayes_physical_likelihood_hard_zero") is not None:
-            candidate["q_bayes_physical_likelihood_hard_zero"] = bool(
-                row_ref.get("q_bayes_physical_likelihood_hard_zero")
-            )
-        if row_ref.get("q_bayes_independent_physics_residual_weaker_than_hard_source") is not None:
-            candidate["q_bayes_independent_physics_residual_weaker_than_hard_source"] = bool(
-                row_ref.get("q_bayes_independent_physics_residual_weaker_than_hard_source")
-            )
-        hard_reasons = row_ref.get("q_bayes_physical_likelihood_hard_reasons")
-        if isinstance(hard_reasons, list):
-            candidate["q_bayes_physical_likelihood_hard_reasons"] = [
-                str(reason) for reason in hard_reasons if str(reason).strip()
-            ]
-        components = row_ref.get("q_bayes_physical_likelihood_components")
-        if isinstance(components, Mapping):
-            candidate["q_bayes_physical_likelihood_components"] = {
-                str(key): value for key, value in components.items()
-            }
-        component_groups = row_ref.get("q_bayes_physical_likelihood_component_groups")
-        if isinstance(component_groups, Mapping):
-            candidate["q_bayes_physical_likelihood_component_groups"] = {
-                str(key): value for key, value in component_groups.items()
-            }
+        for key in ("q_bayes_layer_contributions", "q_bayes_score_components"):
+            value = row_ref.get(key)
+            if isinstance(value, Mapping) and value:
+                candidate[key] = {str(item_key): item_value for item_key, item_value in value.items()}
         if row_ref.get("q_bayes_bimodal_risk") is not None:
             candidate["q_bayes_bimodal_risk"] = bool(row_ref.get("q_bayes_bimodal_risk"))
         for key in (
@@ -32352,47 +32779,15 @@ def execute_auto_trades(
             if row_ref.get(key) is not None:
                 candidate[key] = bool(row_ref.get(key))
         for key in (
-            "q_bayes_taf_peak_source",
-            "q_bayes_taf_peak_status",
-            "q_bayes_temperature_trajectory_source",
-            "q_bayes_temperature_trajectory_status",
-            "q_bayes_temperature_trajectory_realization_state",
-            "q_bayes_temperature_trajectory_role",
-            "q_bayes_temperature_trajectory_source_class",
-            "q_bayes_temperature_trajectory_dedupe_policy",
-            "q_bayes_climo_regime_source",
-            "q_bayes_climo_regime_status",
-            "q_bayes_climo_regime_pp_cap_stage",
-            "q_bayes_climo_regime_primary_regime",
-            "q_bayes_post_cool_rebound_regime_prior_source",
-            "q_bayes_post_cool_rebound_regime_prior_status",
-            "q_bayes_post_cool_rebound_regime_prior_state",
-            "q_bayes_post_cool_rebound_regime_prior_role",
-            "q_bayes_post_cool_rebound_regime_prior_source_class",
-            "q_bayes_post_cool_rebound_regime_prior_dedupe_policy",
-            "q_bayes_post_cool_rebound_intraday_likelihood_source",
-            "q_bayes_post_cool_rebound_intraday_likelihood_status",
-            "q_bayes_post_cool_rebound_intraday_likelihood_state",
-            "q_bayes_post_cool_rebound_intraday_likelihood_role",
-            "q_bayes_post_cool_rebound_intraday_likelihood_source_class",
-            "q_bayes_post_cool_rebound_intraday_likelihood_dedupe_policy",
-            "q_bayes_post_cool_rebound_risk_source",
-            "q_bayes_post_cool_rebound_risk_status",
-            "q_bayes_post_cool_rebound_risk_state",
-            "q_bayes_wu_forecast_source",
-            "q_bayes_wu_forecast_status",
             "wu_forecast_peak_posterior_status",
             "wu_forecast_peak_posterior_label",
             "wu_forecast_peak_not_in_posterior_reason",
             "taf_forecast_peak_posterior_status",
             "taf_forecast_peak_posterior_label",
             "taf_forecast_peak_not_in_posterior_reason",
-            "q_bayes_physical_likelihood_source",
-            "q_bayes_independent_physics_residual_source",
-            "q_bayes_independent_physics_residual_role",
-            "q_bayes_independent_physics_residual_source_class",
-            "q_bayes_independent_physics_residual_dedupe_policy",
-            "q_bayes_physical_likelihood_evidence_scale_reason",
+            "q_bayes_phase",
+            "q_bayes_phase_reason",
+            "q_bayes_hard_mask_reason",
             "q_bayes_z_stage",
             "q_bayes_z_source",
             "q_calibration_z_stage",
@@ -33453,2807 +33848,11 @@ def execute_auto_trades(
                 best_candidate = cand
         return best_candidate
 
-    q_fallback_row_by_outcome: Dict[str, Dict[str, Any]] = {}
-    q_fallback_load_started = _event_stage_start()
-    skip_direct_payload_fallback_load = bool(
-        direct_target_job
-        and _env_bool(
-            "PM_TARGET_REALIZATION_DIRECT_SKIP_PAYLOAD_FALLBACK_LOAD",
-            True,
-        )
-    )
-    if (not exit_only) and slug and event_date_key and not skip_direct_payload_fallback_load:
-        try:
-            with open_db() as conn_q_fallback:
-                fallback_rows = _load_latest_payload_rows(conn_q_fallback, slug, event_date_key)
-            for row_q in fallback_rows:
-                if not isinstance(row_q, Mapping):
-                    continue
-                outcome_q = str(row_q.get("outcome") or "").strip()
-                if not outcome_q:
-                    continue
-                row_q_copy = dict(row_q)
-                q_fallback_row_by_outcome[outcome_q] = row_q_copy
-                outcome_q_norm = _normalize_outcome_key(outcome_q)
-                if outcome_q_norm and outcome_q_norm not in q_fallback_row_by_outcome:
-                    q_fallback_row_by_outcome[outcome_q_norm] = row_q_copy
-        except Exception:
-            q_fallback_row_by_outcome = {}
-    _event_stage_end("payload_fallback_load", q_fallback_load_started)
-
-    def _resolve_q_fallback_for_side(
-        outcome_label: str,
-        side_label: str,
-    ) -> Tuple[
-        Optional[float],
-        Optional[float],
-        Optional[float],
-        Optional[float],
-        Optional[float],
-        Optional[float],
-        str,
-        str,
-    ]:
-        if not q_fallback_row_by_outcome:
-            return None, None, None, None, None, None, "", ""
-        outcome_key = str(outcome_label or "").strip()
-        if not outcome_key:
-            return None, None, None, None, None, None, "", ""
-        row_fb = (
-            q_fallback_row_by_outcome.get(outcome_key)
-            or q_fallback_row_by_outcome.get(_normalize_outcome_key(outcome_key))
-        )
-        if not isinstance(row_fb, Mapping):
-            return None, None, None, None, None, None, "", ""
-        q_fb = _payload_row_q_fields_for_side(row_fb, side_label)
-        return (
-            to_float(q_fb.get("q_entry")),
-            to_float(q_fb.get("q_raw")),
-            to_float(q_fb.get("q_calibrated")),
-            to_float(q_fb.get("q_edge")),
-            to_float(q_fb.get("q_quote")),
-            to_float(q_fb.get("q_quote_blend_alpha")),
-            str(q_fb.get("q_quote_source") or ""),
-            "event_runs_history",
-        )
-
-    def _resolve_q_market_proxy_for_side(
-        row_ref: Mapping[str, Any],
-        side_label: str,
-    ) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float], str]:
-        side_u = str(side_label or "").strip().upper()
-        if side_u == "YES":
-            ask_now = to_float(row_ref.get("best_ask"))
-            bid_now = to_float(row_ref.get("best_bid"))
-            other_bid_now = to_float(row_ref.get("best_bid_no"))
-            other_ask_now = to_float(row_ref.get("best_ask_no"))
-        else:
-            ask_now = to_float(row_ref.get("best_ask_no"))
-            bid_now = to_float(row_ref.get("best_bid_no"))
-            other_bid_now = to_float(row_ref.get("best_bid"))
-            other_ask_now = to_float(row_ref.get("best_ask"))
-
-        q_proxy: Optional[float] = None
-        if (
-            ask_now is not None
-            and math.isfinite(ask_now)
-            and bid_now is not None
-            and math.isfinite(bid_now)
-            and bid_now <= ask_now + TIME_EDGE_Q_EPS
-        ):
-            q_proxy = _clamp_prob01((float(ask_now) + float(bid_now)) / 2.0)
-        if q_proxy is None and ask_now is not None and math.isfinite(ask_now):
-            q_proxy = _clamp_prob01(float(ask_now))
-        if q_proxy is None and bid_now is not None and math.isfinite(bid_now):
-            q_proxy = _clamp_prob01(float(bid_now))
-        if q_proxy is None and other_bid_now is not None and math.isfinite(other_bid_now):
-            q_proxy = _clamp_prob01(1.0 - float(other_bid_now))
-        if q_proxy is None and other_ask_now is not None and math.isfinite(other_ask_now):
-            q_proxy = _clamp_prob01(1.0 - float(other_ask_now))
-        if q_proxy is None:
-            return None, None, None, None, ""
-        return q_proxy, q_proxy, q_proxy, q_proxy, "market_quote_proxy"
-
-    def _build_lcb_global_candidates(row_ref: Mapping[str, Any]) -> List[Dict[str, Any]]:
-        if row_ref.get("synthetic_exit_only"):
-            return []
-        if entry_blocked_by_temp_edge_score:
-            outcome_label = str(row_ref.get("outcome") or "").strip()
-            if outcome_label:
-                for sd in ("YES", "NO"):
-                    _buffer_decision(
-                        outcome_label,
-                        sd,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["temp_edge_score_blocked"],
-                        reasons=["温度事件入场阈值阻断(全局禁入)"],
-                        details={"strategy": PATH_PROBABILITY_FOLLOW_FAMILY},
-                    )
-            return []
-        outcome_label = str(row_ref.get("outcome") or "").strip()
-        if not outcome_label:
-            return []
-        yes_top_label_match = bool(
-            lcb_global_yes_top_enabled
-            and top_cal_label
-            and top_market_label
-            and outcome_label == top_cal_label
-            and outcome_label == top_market_label
-        )
-        yes_top_cal_match = bool(
-            lcb_global_yes_top_enabled
-            and top_cal_label
-            and outcome_label == top_cal_label
-        )
-        yes_top_market_match = bool(
-            lcb_global_yes_top_enabled
-            and top_market_label
-            and outcome_label == top_market_label
-        )
-        yes_top_q_quote = to_float(row_ref.get("q_quote"))
-        yes_top_q_cal = to_float(row_ref.get("q_calibrated"))
-        yes_top_q_market_ref = (
-            yes_top_q_quote
-            if yes_top_q_quote is not None and math.isfinite(yes_top_q_quote)
-            else yes_top_q_cal
-        )
-        yes_top_q_market_ref_source = (
-            "q_quote"
-            if yes_top_q_quote is not None and math.isfinite(yes_top_q_quote)
-            else "q_calibrated"
-        )
-        yes_top_market_ask = to_float(row_ref.get("best_ask"))
-        yes_top_q_market_gap: Optional[float] = None
-        if (
-            yes_top_q_market_ref is not None
-            and math.isfinite(yes_top_q_market_ref)
-            and yes_top_market_ask is not None
-            and math.isfinite(yes_top_market_ask)
-            and yes_top_market_ask > TIME_EDGE_Q_EPS
-        ):
-            yes_top_q_market_gap = abs(float(yes_top_q_market_ref) - float(yes_top_market_ask))
-        yes_top_q_market_consistent = bool(
-            yes_top_q_market_gap is not None
-            and yes_top_q_market_gap
-            <= float(lcb_global_yes_top_market_consist_eps) + TIME_EDGE_Q_EPS
-        )
-        # User-defined YES top: prefer market top bucket (always tradable focus),
-        # and keep calibrated/strict matches for diagnostics.
-        yes_top_event_match = bool(
-            yes_top_market_match or yes_top_cal_match or yes_top_label_match
-        )
-        consensus_yes_top_label_match = bool(
-            lcb_global_consensus_yes_top_enabled
-            and outcome_label
-            and top_auto_label
-            and top_market_label
-            and top_consensus_model_label
-            and outcome_label == top_auto_label
-            and outcome_label == top_market_label
-            and outcome_label == top_consensus_model_label
-        )
-        yes_top_budget_ratio = float(lcb_global_yes_top_budget_ratio)
-        lcb_budget_ratio = max(0.0, 1.0 - yes_top_budget_ratio)
-        lcb_global_edge_lcb_min_runtime = _resolve_lcb_global_edge_lcb_min(days_to_event)
-        if lcb_global_edge_lcb_min_runtime is None:
-            reason_text = "事件日距>1天(D2+)按风控禁入"
-            if days_to_event is not None and math.isfinite(days_to_event):
-                reason_text = f"事件日距={int(days_to_event)}天(D2+)按风控禁入"
-            for sd in ("YES", "NO"):
-                _buffer_decision(
-                    outcome_label,
-                    sd,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["event_timing_out_of_scope"],
-                    reasons=[reason_text],
-                    details={
-                        "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                        "run_date": run_date,
-                        "event_date": event_date_key,
-                        "days_to_event": days_to_event,
-                        "lcb_global_block_d2_plus": bool(lcb_global_block_d2_plus),
-                        "lcb_global_d2_plus_use_base_edge_min": bool(
-                            lcb_global_d2_plus_use_base_edge_min
-                        ),
-                        "lcb_global_edge_lcb_min_d0": float(lcb_global_edge_lcb_min_d0),
-                        "lcb_global_edge_lcb_min_d1": float(lcb_global_edge_lcb_min_d1),
-                        "lcb_global_edge_lcb_min_base": float(lcb_global_edge_lcb_min),
-                    },
-                )
-            return []
-
-        candidates: List[Dict[str, Any]] = []
-        for side in ("YES", "NO"):
-            size_ratio_extra = 1.0
-            q_fallback_used = False
-            q_fallback_source = ""
-            if side == "YES":
-                ask_val = to_float(row_ref.get("best_ask"))
-                bid_val = to_float(row_ref.get("best_bid"))
-                spread_val = to_float(row_ref.get("spread"))
-                token_id = str(row_ref.get("yes_token") or "").strip()
-                position_ratio = to_float(row_ref.get("position_ratio_yes"))
-                q_prob_val = to_float(row_ref.get("q_entry"))
-                q_raw_val = to_float(row_ref.get("q_round"))
-                q_cal_val = to_float(row_ref.get("q_calibrated"))
-                q_quote_val = to_float(row_ref.get("q_quote"))
-                q_quote_blend_alpha_val = to_float(row_ref.get("q_quote_blend_alpha"))
-                q_quote_source_val = str(row_ref.get("q_quote_source") or "")
-                q_edge_val = to_float(row_ref.get("q_edge"))
-                trend_down_val = bool(row_ref.get("trend_down_yes"))
-                trend_up_val = bool(row_ref.get("trend_up_yes"))
-                trend_unknown_val = bool(row_ref.get("trend_unknown_yes"))
-                trend_pct_val = to_float(row_ref.get("trend_pct_yes"))
-                trend_cons_val = to_float(row_ref.get("trend_consistency_up_yes"))
-                exec_edge_entry_val = to_float(row_ref.get("exec_edge_entry_yes"))
-                exec_edge_exit_val = to_float(row_ref.get("exec_edge_exit_yes"))
-                exec_edge_score_val = to_float(row_ref.get("exec_edge_score_yes"))
-                depth_val = (
-                    to_float(row_ref.get("ask_depth_total"))
-                    or to_float(row_ref.get("ask_depth_topN"))
-                    or to_float(row_ref.get("best_ask_size"))
-                )
-            else:
-                ask_val = to_float(row_ref.get("best_ask_no"))
-                bid_val = to_float(row_ref.get("best_bid_no"))
-                spread_val = to_float(row_ref.get("spread_no"))
-                token_id = str(row_ref.get("no_token") or "").strip()
-                position_ratio = to_float(row_ref.get("position_ratio_no"))
-                q_prob_val = to_float(row_ref.get("q_entry_no"))
-                if q_prob_val is None or not math.isfinite(q_prob_val):
-                    q_yes_val = to_float(row_ref.get("q_entry"))
-                    if q_yes_val is not None and math.isfinite(q_yes_val):
-                        q_prob_val = max(0.0, min(1.0, 1.0 - float(q_yes_val)))
-                q_raw_val = to_float(row_ref.get("q_round_no"))
-                q_cal_val = to_float(row_ref.get("q_calibrated_no"))
-                q_quote_val = to_float(row_ref.get("q_quote_no"))
-                q_quote_blend_alpha_val = to_float(row_ref.get("q_quote_blend_alpha_no"))
-                q_quote_source_val = str(row_ref.get("q_quote_source_no") or "")
-                q_edge_val = to_float(row_ref.get("q_edge_no"))
-                trend_down_val = bool(row_ref.get("trend_down_no"))
-                trend_up_val = bool(row_ref.get("trend_up_no"))
-                trend_unknown_val = bool(row_ref.get("trend_unknown_no"))
-                trend_pct_val = to_float(row_ref.get("trend_pct_no"))
-                trend_cons_val = to_float(row_ref.get("trend_consistency_up_no"))
-                exec_edge_entry_val = to_float(row_ref.get("exec_edge_entry_no"))
-                exec_edge_exit_val = to_float(row_ref.get("exec_edge_exit_no"))
-                exec_edge_score_val = to_float(row_ref.get("exec_edge_score_no"))
-                depth_val = (
-                    to_float(row_ref.get("ask_depth_total_no"))
-                    or to_float(row_ref.get("ask_depth_topN_no"))
-                    or to_float(row_ref.get("best_ask_size_no"))
-                )
-            q_needs_fallback = bool(
-                q_prob_val is None
-                or not math.isfinite(q_prob_val)
-                or q_raw_val is None
-                or not math.isfinite(q_raw_val)
-                or q_cal_val is None
-                or not math.isfinite(q_cal_val)
-                or q_edge_val is None
-                or not math.isfinite(q_edge_val)
-            )
-            q_quote_needs_fallback = bool(
-                q_quote_val is None
-                or not math.isfinite(q_quote_val)
-            )
-            if q_needs_fallback or q_quote_needs_fallback:
-                (
-                    q_prob_fb,
-                    q_raw_fb,
-                    q_cal_fb,
-                    q_edge_fb,
-                    q_quote_fb,
-                    q_quote_blend_alpha_fb,
-                    q_quote_source_fb,
-                    q_fb_source,
-                ) = _resolve_q_fallback_for_side(outcome_label, side)
-                if q_prob_val is None or not math.isfinite(q_prob_val):
-                    if q_prob_fb is not None and math.isfinite(q_prob_fb):
-                        q_prob_val = max(0.0, min(1.0, float(q_prob_fb)))
-                        q_fallback_used = True
-                if q_raw_val is None or not math.isfinite(q_raw_val):
-                    if q_raw_fb is not None and math.isfinite(q_raw_fb):
-                        q_raw_val = max(0.0, min(1.0, float(q_raw_fb)))
-                        q_fallback_used = True
-                if q_cal_val is None or not math.isfinite(q_cal_val):
-                    if q_cal_fb is not None and math.isfinite(q_cal_fb):
-                        q_cal_val = max(0.0, min(1.0, float(q_cal_fb)))
-                        q_fallback_used = True
-                if q_edge_val is None or not math.isfinite(q_edge_val):
-                    if q_edge_fb is not None and math.isfinite(q_edge_fb):
-                        q_edge_val = max(0.0, min(1.0, float(q_edge_fb)))
-                        q_fallback_used = True
-                    elif q_cal_val is not None and math.isfinite(q_cal_val):
-                        q_edge_val = float(q_cal_val)
-                        q_fallback_used = True
-                    elif q_raw_val is not None and math.isfinite(q_raw_val):
-                        q_edge_val = float(q_raw_val)
-                        q_fallback_used = True
-                if q_quote_val is None or not math.isfinite(q_quote_val):
-                    if q_quote_fb is not None and math.isfinite(q_quote_fb):
-                        q_quote_val = max(0.0, min(1.0, float(q_quote_fb)))
-                        q_fallback_used = True
-                if (
-                    (q_quote_blend_alpha_val is None or not math.isfinite(q_quote_blend_alpha_val))
-                    and q_quote_blend_alpha_fb is not None
-                    and math.isfinite(q_quote_blend_alpha_fb)
-                ):
-                    q_quote_blend_alpha_val = float(q_quote_blend_alpha_fb)
-                if not q_quote_source_val and q_quote_source_fb:
-                    q_quote_source_val = str(q_quote_source_fb)
-                if q_fallback_used:
-                    q_fallback_source = str(q_fb_source or "event_runs_history")
-            base_detail = {
-                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "side": side,
-                "outcome": outcome_label,
-                "token_id": token_id,
-                "ask": ask_val,
-                "bid": bid_val,
-                "spread": spread_val,
-                "depth_usdc": depth_val,
-                "q_entry": q_prob_val,
-                "q_round": q_raw_val,
-                "q_calibrated": q_cal_val,
-                "q_quote": q_quote_val,
-                "q_quote_blend_alpha": q_quote_blend_alpha_val,
-                "q_quote_source": str(q_quote_source_val or ""),
-                "q_edge": q_edge_val,
-                "q_fallback_used": bool(q_fallback_used),
-                "q_fallback_source": str(q_fallback_source or ""),
-                "exec_edge_entry": exec_edge_entry_val,
-                "exec_edge_exit": exec_edge_exit_val,
-                "exec_edge_score": exec_edge_score_val,
-                "run_date": run_date,
-                "event_date": event_date_key,
-                "days_to_event": days_to_event,
-                "lcb_global_max_spread": float(lcb_global_max_spread),
-                "lcb_global_spread_hard_cap": float(lcb_global_spread_hard_cap),
-                "lcb_global_spread_relax_exec_edge_min": float(lcb_global_spread_relax_exec_edge_min),
-                "lcb_global_min_depth_usdc": float(lcb_global_min_depth_usdc),
-                "lcb_global_edge_lcb_min": float(lcb_global_edge_lcb_min_runtime),
-                "lcb_global_yes_top_enabled": bool(lcb_global_yes_top_enabled),
-                "lcb_global_yes_top_budget_ratio": float(yes_top_budget_ratio),
-                "lcb_global_yes_top_market_consist_eps": float(lcb_global_yes_top_market_consist_eps),
-                "lcb_yes_top_label_match": bool(yes_top_label_match),
-                "lcb_yes_top_cal_match": bool(yes_top_cal_match),
-                "lcb_yes_top_market_match": bool(yes_top_market_match),
-                "lcb_yes_top_q_market_consistent": bool(yes_top_q_market_consistent),
-                "lcb_yes_top_event_match": bool(yes_top_event_match),
-                "lcb_yes_top_q_market_ref_source": str(yes_top_q_market_ref_source or ""),
-                "lcb_yes_top_q_market_gap": (
-                    float(yes_top_q_market_gap)
-                    if yes_top_q_market_gap is not None and math.isfinite(yes_top_q_market_gap)
-                    else None
-                ),
-                "lcb_consensus_yes_top_enabled": bool(lcb_global_consensus_yes_top_enabled),
-                "lcb_consensus_yes_top_mode": str(lcb_global_consensus_yes_top_mode),
-                "lcb_consensus_yes_top_model_mode": str(
-                    lcb_global_consensus_yes_top_model_mode
-                ),
-                "lcb_consensus_yes_top_model": str(consensus_selected_model),
-                "lcb_consensus_yes_top_fallback_model": str(
-                    lcb_global_consensus_yes_top_model
-                ),
-                "lcb_consensus_yes_top_available_models": ",".join(models),
-                "lcb_consensus_yes_top_available_models_source": str(models_source or ""),
-                "lcb_consensus_yes_top_model_source": str(
-                    consensus_model_meta.get("source") or ""
-                ),
-                "lcb_consensus_yes_top_coord_source": str(event_coord_source or ""),
-                "lcb_consensus_yes_top_region": str(
-                    consensus_model_meta.get("region") or ""
-                ),
-                "lcb_consensus_yes_top_stage": str(
-                    consensus_model_meta.get("stage") or ""
-                ),
-                "lcb_consensus_yes_top_matched": bool(consensus_yes_top_label_match),
-                "lcb_consensus_yes_top_auto_label": str(top_auto_label or ""),
-                "lcb_consensus_yes_top_auto_source": str(top_auto_source or ""),
-                "lcb_consensus_yes_top_market_label": str(top_market_label or ""),
-                "lcb_consensus_yes_top_model_label": str(top_consensus_model_label or ""),
-                "lcb_consensus_yes_top_ecmwf_label": str(top_consensus_model_label or ""),
-                "lcb_consensus_yes_top_auto_q": (
-                    float(top_auto_q)
-                    if top_auto_q is not None and math.isfinite(top_auto_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_auto_second_q": (
-                    float(top_auto_second_q)
-                    if top_auto_second_q is not None and math.isfinite(top_auto_second_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_model_q": (
-                    float(top_consensus_model_q)
-                    if top_consensus_model_q is not None and math.isfinite(top_consensus_model_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_ecmwf_q": (
-                    float(top_consensus_model_q)
-                    if top_consensus_model_q is not None and math.isfinite(top_consensus_model_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_lat": (
-                    float(event_lat)
-                    if event_lat is not None and math.isfinite(event_lat)
-                    else None
-                ),
-                "lcb_consensus_yes_top_lon": (
-                    float(event_lon)
-                    if event_lon is not None and math.isfinite(event_lon)
-                    else None
-                ),
-                "lcb_consensus_yes_top_price_max": float(
-                    lcb_global_consensus_yes_top_price_max
-                )
-                if lcb_global_consensus_yes_top_price_max is not None
-                else None,
-                "lcb_consensus_yes_top_exec_edge_min": float(
-                    lcb_global_consensus_yes_top_exec_edge_min
-                ),
-                "lcb_consensus_yes_top_size_ratio": float(
-                    lcb_global_consensus_yes_top_size_ratio
-                ),
-                "rules_contract_ok": row_ref.get("rules_contract_ok"),
-                "rules_missing_reasons": row_ref.get("rules_missing_reasons"),
-                "resolution_source": row_ref.get("resolution_source"),
-                "station_id": row_ref.get("station_id"),
-                "market_var": row_ref.get("market_var"),
-                "market_unit": row_ref.get("market_unit"),
-                "source_kind": row_ref.get("source_kind"),
-                "source_confidence": row_ref.get("source_confidence"),
-                "source_fit_tier": row_ref.get("source_fit_tier"),
-                "source_trust_tier": row_ref.get("source_trust_tier"),
-                "source_usable_for_settlement": row_ref.get("source_usable_for_settlement"),
-                "source_aux_only": row_ref.get("source_aux_only"),
-                "publication_cadence": row_ref.get("publication_cadence"),
-                "source_na_reason": row_ref.get("source_na_reason"),
-                "observed_nowcast_source": row_ref.get("observed_nowcast_source"),
-                "observed_nowcast_source_kind": row_ref.get("observed_nowcast_source_kind"),
-                "observed_nowcast_source_confidence": row_ref.get("observed_nowcast_source_confidence"),
-                "observed_nowcast_source_fit_tier": row_ref.get("observed_nowcast_source_fit_tier"),
-                "observed_nowcast_source_trust_tier": row_ref.get("observed_nowcast_source_trust_tier"),
-                "observed_nowcast_source_usable": row_ref.get("observed_nowcast_source_usable"),
-                "observed_nowcast_source_na_reason": row_ref.get("observed_nowcast_source_na_reason"),
-            }
-            expected_target = expected_entry_targets_by_key.get((outcome_label, side))
-            if isinstance(expected_target, Mapping) and (
-                direct_target_job
-                or bool(expected_target.get("posterior_target_direct"))
-                or bool(expected_target.get("posterior_target_update"))
-                or bool(expected_target.get("hard_source_direct"))
-            ):
-                for key_name in (
-                    "strategy",
-                    "strategy_family",
-                    "entry_strategy_family",
-                    "weather_strategy_family",
-                    "target_realization_leg_role",
-                    "target_realization_execution_action",
-                    "target_realization_position_effect",
-                    "target_adjustment_action",
-                    "target_adjustment_decision_version",
-                    "posterior_target_source",
-                    "posterior_target_bucket",
-                    "target_bucket",
-                    "ssot_target_bucket",
-                    "new_target_bucket",
-                    "current_top_bucket",
-                    "decision_ssot",
-                    "entry_alpha_gate_source",
-                    "strategy_lane",
-                ):
-                    if expected_target.get(key_name) not in (None, ""):
-                        base_detail[key_name] = expected_target.get(key_name)
-                for key_name in (
-                    "posterior_target_direct",
-                    "posterior_target_update",
-                    "posterior_settlement_entry_allowed",
-                    "temperature_path_trade_follow_allowed",
-                    "target_realization_trade_follow_allowed",
-                    "edge_tradeability_pass",
-                    "edge_tradeability_blocked",
-                    "entry_usable_edge_block_nonpositive",
-                ):
-                    if expected_target.get(key_name) is not None:
-                        base_detail[key_name] = bool(expected_target.get(key_name))
-                for key_name in (
-                    "q_entry",
-                    "q_round",
-                    "q_raw",
-                    "q_calibrated",
-                    "q_quote",
-                    "q_bayes_posterior",
-                    "q_temperature_bucket_posterior",
-                    "target_posterior",
-                    "target_bucket_posterior",
-                    "posterior_settlement_candidate_bucket_prob",
-                    "entry_usable_edge",
-                    "entry_usable_edge_base",
-                    "entry_usable_edge_penalty_total",
-                    "entry_usable_edge_size_scale",
-                    "posterior_settlement_size_scale",
-                    "posterior_settlement_sort_score",
-                    "edge_min",
-                    "edge_score",
-                    "exec_edge_entry",
-                    "exec_edge_score",
-                    "edge_realizable",
-                    "edge_realizable_v2",
-                    "edge_realizable_score",
-                    "edge_tradeability_profit_value",
-                ):
-                    value = to_float(expected_target.get(key_name))
-                    if value is not None and math.isfinite(value):
-                        base_detail[key_name] = float(value)
-                expected_token = str(expected_target.get("token_id") or "").strip()
-                if expected_token:
-                    token_id = expected_token
-                    base_detail["token_id"] = expected_token
-                ask_expected = to_float(
-                    expected_target.get("ask")
-                    if expected_target.get("ask") is not None
-                    else expected_target.get("best_ask")
-                )
-                bid_expected = to_float(
-                    expected_target.get("bid")
-                    if expected_target.get("bid") is not None
-                    else expected_target.get("best_bid")
-                )
-                spread_expected = to_float(expected_target.get("spread"))
-                if ask_expected is not None and math.isfinite(ask_expected) and ask_expected > TIME_EDGE_Q_EPS:
-                    ask_val = float(ask_expected)
-                    base_detail["ask"] = float(ask_val)
-                if bid_expected is not None and math.isfinite(bid_expected):
-                    bid_val = float(bid_expected)
-                    base_detail["bid"] = float(bid_val)
-                if spread_expected is not None and math.isfinite(spread_expected):
-                    spread_val = max(float(spread_expected), 0.0)
-                    base_detail["spread"] = float(spread_val)
-                elif (
-                    ask_val is not None
-                    and math.isfinite(ask_val)
-                    and bid_val is not None
-                    and math.isfinite(bid_val)
-                ):
-                    spread_val = max(float(ask_val) - float(bid_val), 0.0)
-                    base_detail["spread"] = float(spread_val)
-                q_expected = to_float(
-                    expected_target.get("q_entry")
-                    if expected_target.get("q_entry") is not None
-                    else expected_target.get("q_bayes_posterior")
-                )
-                if q_expected is not None and math.isfinite(q_expected):
-                    q_prob_val = float(q_expected)
-                    q_raw_val = float(to_float(expected_target.get("q_raw")) or q_prob_val)
-                    q_cal_val = float(to_float(expected_target.get("q_calibrated")) or q_prob_val)
-                    q_quote_val = float(to_float(expected_target.get("q_quote")) or q_prob_val)
-                    q_edge_val = float(to_float(expected_target.get("edge_min")) or q_prob_val)
-                    base_detail.update(
-                        {
-                            "q_entry": q_prob_val,
-                            "q_round": q_raw_val,
-                            "q_raw": q_raw_val,
-                            "q_calibrated": q_cal_val,
-                            "q_quote": q_quote_val,
-                            "q_edge": q_edge_val,
-                        }
-                    )
-                base_detail["direct_expected_target_candidate_override"] = True
-                base_detail["direct_expected_target_candidate_source"] = "entry_expected_targets"
-            _enrich_candidate_q_bayes(base_detail, row_ref, side)
-            _normalize_decision_source_fit_fields(base_detail)
-            refreshed_quotes_once = False
-
-            def _sync_quote_detail_fields() -> None:
-                base_detail["ask"] = (
-                    float(ask_val)
-                    if ask_val is not None and math.isfinite(ask_val)
-                    else None
-                )
-                base_detail["bid"] = (
-                    float(bid_val)
-                    if bid_val is not None and math.isfinite(bid_val)
-                    else None
-                )
-                base_detail["spread"] = (
-                    float(spread_val)
-                    if spread_val is not None and math.isfinite(spread_val)
-                    else None
-                )
-                base_detail["depth_usdc"] = (
-                    float(depth_val)
-                    if depth_val is not None and math.isfinite(depth_val)
-                    else None
-                )
-
-            def _quote_price_clamp(val: Optional[float]) -> Optional[float]:
-                if val is None or not math.isfinite(val):
-                    return None
-                return min(0.999, max(float(lcb_global_bid_only_synthetic_tick), float(val)))
-
-            def _apply_cross_side_quote_proxy(proxy_reason: str) -> bool:
-                nonlocal ask_val, bid_val, spread_val
-                if not lcb_global_cross_side_quote_proxy_enabled:
-                    return False
-                ask_missing = (
-                    ask_val is None
-                    or not math.isfinite(ask_val)
-                    or ask_val <= TIME_EDGE_Q_EPS
-                )
-                bid_missing = bid_val is None or not math.isfinite(bid_val)
-                spread_missing = spread_val is None or not math.isfinite(spread_val)
-                if not (ask_missing or bid_missing or spread_missing):
-                    return False
-                proxy_used = False
-                ask_proxy_source = ""
-                bid_proxy_source = ""
-                if side == "YES":
-                    opp_bid = to_float(row_ref.get("best_bid_no"))
-                    opp_ask = to_float(row_ref.get("best_ask_no"))
-                else:
-                    opp_bid = to_float(row_ref.get("best_bid"))
-                    opp_ask = to_float(row_ref.get("best_ask"))
-                if ask_missing:
-                    ask_proxy = None
-                    if opp_bid is not None and math.isfinite(opp_bid):
-                        ask_proxy = _quote_price_clamp(1.0 - float(opp_bid))
-                        ask_proxy_source = "1-opposite_best_bid"
-                    elif opp_ask is not None and math.isfinite(opp_ask):
-                        ask_proxy = _quote_price_clamp(1.0 - float(opp_ask))
-                        ask_proxy_source = "1-opposite_best_ask"
-                    if ask_proxy is not None and ask_proxy > TIME_EDGE_Q_EPS:
-                        ask_val = float(ask_proxy)
-                        proxy_used = True
-                if bid_missing:
-                    bid_proxy = None
-                    if opp_ask is not None and math.isfinite(opp_ask):
-                        bid_proxy = _quote_price_clamp(1.0 - float(opp_ask))
-                        bid_proxy_source = "1-opposite_best_ask"
-                    elif opp_bid is not None and math.isfinite(opp_bid):
-                        bid_proxy = _quote_price_clamp(1.0 - float(opp_bid))
-                        bid_proxy_source = "1-opposite_best_bid"
-                    elif ask_val is not None and math.isfinite(ask_val) and ask_val > TIME_EDGE_Q_EPS:
-                        bid_proxy = _quote_price_clamp(float(ask_val) - float(lcb_global_bid_only_synthetic_tick))
-                        bid_proxy_source = "self_best_ask-minus_tick"
-                    if bid_proxy is not None and math.isfinite(bid_proxy):
-                        bid_val = float(bid_proxy)
-                        proxy_used = True
-                if (
-                    ask_val is not None
-                    and math.isfinite(ask_val)
-                    and ask_val > TIME_EDGE_Q_EPS
-                    and bid_val is not None
-                    and math.isfinite(bid_val)
-                    and ask_val + TIME_EDGE_Q_EPS < bid_val
-                ):
-                    ask_val = min(0.999, max(float(bid_val) + float(lcb_global_bid_only_synthetic_tick), float(ask_val)))
-                    base_detail["quote_proxy_cross_adjusted"] = True
-                    proxy_used = True
-                if (
-                    spread_missing
-                    and ask_val is not None
-                    and math.isfinite(ask_val)
-                    and ask_val > TIME_EDGE_Q_EPS
-                    and bid_val is not None
-                    and math.isfinite(bid_val)
-                ):
-                    spread_val = max(float(ask_val) - float(bid_val), 0.0)
-                    proxy_used = True
-                if proxy_used:
-                    base_detail["quote_proxy_used"] = True
-                    base_detail["quote_proxy_reason"] = str(proxy_reason or "")
-                    if ask_proxy_source:
-                        base_detail["quote_proxy_ask_source"] = ask_proxy_source
-                    if bid_proxy_source:
-                        base_detail["quote_proxy_bid_source"] = bid_proxy_source
-                    _sync_quote_detail_fields()
-                return proxy_used
-
-            def _allow_bid_only_entry(relax_reason: str) -> bool:
-                nonlocal ask_val, spread_val
-                if not lcb_global_bid_only_synthetic_enabled:
-                    return False
-                if bid_val is None or not math.isfinite(bid_val) or bid_val <= TIME_EDGE_Q_EPS:
-                    return False
-                synthetic_ask = min(
-                    0.999,
-                    max(float(bid_val), float(bid_val) + float(lcb_global_bid_only_synthetic_tick)),
-                )
-                if not math.isfinite(synthetic_ask) or synthetic_ask <= TIME_EDGE_Q_EPS:
-                    return False
-                ask_val = float(synthetic_ask)
-                spread_val = max(float(ask_val) - float(bid_val), 0.0)
-                base_detail["lcb_plain_bid_only_proxy_relaxed"] = True
-                base_detail["lcb_plain_bid_only_proxy_reason"] = str(relax_reason or "")
-                base_detail["lcb_plain_bid_only_proxy_synthetic_ask"] = float(ask_val)
-                base_detail["lcb_bid_only_synthetic_enabled"] = bool(lcb_global_bid_only_synthetic_enabled)
-                base_detail["lcb_bid_only_synthetic_tick"] = float(lcb_global_bid_only_synthetic_tick)
-                base_detail["market_structure_state"] = "one_sided_bid_only"
-                return True
-
-            def _allow_quoteless_entry(relax_reason: str) -> bool:
-                nonlocal ask_val, bid_val, spread_val
-                if not lcb_global_quoteless_fallback_enabled:
-                    return False
-                if ask_val is not None and math.isfinite(ask_val) and ask_val > TIME_EDGE_Q_EPS:
-                    return False
-                q_ref = None
-                q_src = ""
-                for src, val in (
-                    ("q_quote", q_quote_val),
-                    ("q_calibrated", q_cal_val),
-                    ("q_entry", q_prob_val),
-                ):
-                    if val is not None and math.isfinite(val):
-                        q_ref = float(val)
-                        q_src = src
-                        break
-                if q_ref is None or (not math.isfinite(q_ref)) or q_ref <= TIME_EDGE_Q_EPS:
-                    return False
-                ask_fallback = min(0.999, max(float(lcb_global_bid_only_synthetic_tick), float(q_ref)))
-                bid_fallback = max(0.0, float(ask_fallback) - float(lcb_global_bid_only_synthetic_tick))
-                ask_val = float(ask_fallback)
-                if bid_val is None or not math.isfinite(bid_val):
-                    bid_val = float(bid_fallback)
-                spread_val = max(float(ask_val) - float(bid_val), 0.0)
-                base_detail["lcb_quoteless_fallback_used"] = True
-                base_detail["lcb_quoteless_fallback_reason"] = str(relax_reason or "")
-                base_detail["lcb_quoteless_fallback_source"] = str(q_src)
-                base_detail["lcb_quoteless_fallback_q"] = float(q_ref)
-                base_detail["lcb_quoteless_fallback_ask"] = float(ask_val)
-                base_detail["lcb_quoteless_fallback_bid"] = float(bid_val)
-                base_detail["lcb_quoteless_fallback_tick"] = float(lcb_global_bid_only_synthetic_tick)
-                base_detail["market_structure_state"] = "proxy_quoteless_fallback"
-                return True
-
-            def _refresh_quotes_once(trigger: str) -> None:
-                nonlocal ask_val, bid_val, spread_val, depth_val, refreshed_quotes_once, token_id
-                if refreshed_quotes_once or not token_id:
-                    return
-                refreshed_quotes_once = True
-                refreshed = _lcb_global_refresh_orderbook(
-                    token_id,
-                    outcome_label=outcome_label,
-                    side=side,
-                )
-                if isinstance(refreshed, dict) and refreshed.get("ok"):
-                    ask_ref = to_float(refreshed.get("best_ask"))
-                    bid_ref = to_float(refreshed.get("best_bid"))
-                    spread_ref = to_float(refreshed.get("spread"))
-                    depth_ref = to_float(refreshed.get("ask_depth"))
-                    token_used = str(refreshed.get("token_id_used") or "").strip()
-                    if token_used and token_used != token_id:
-                        token_id_prev = token_id
-                        token_id = token_used
-                        if side == "YES":
-                            row_ref["yes_token"] = token_used
-                        else:
-                            row_ref["no_token"] = token_used
-                        base_detail["ob_token_before"] = token_id_prev
-                        base_detail["ob_token_after"] = token_used
-                    if ask_ref is not None and math.isfinite(ask_ref) and ask_ref > TIME_EDGE_Q_EPS:
-                        ask_val = ask_ref
-                    if bid_ref is not None and math.isfinite(bid_ref):
-                        bid_val = bid_ref
-                    if spread_ref is not None and math.isfinite(spread_ref):
-                        spread_val = spread_ref
-                    if depth_ref is not None and math.isfinite(depth_ref):
-                        depth_val = depth_ref
-                    base_detail.update(
-                        {
-                            "ob_refresh_ok": True,
-                            "ob_refresh_trigger": str(trigger or ""),
-                            "ob_best_ask": ask_ref,
-                            "ob_best_bid": bid_ref,
-                            "ob_spread": spread_ref,
-                            "ob_ask_depth": depth_ref,
-                            "ob_refresh_source": str(refreshed.get("source") or "orderbook"),
-                            "ob_remap_attempted": bool(refreshed.get("remap_attempted")),
-                            "ob_remap_selected": bool(refreshed.get("remap_selected")),
-                            "ob_remap_token": str(refreshed.get("token_id_remapped") or ""),
-                        }
-                    )
-                else:
-                    base_detail.update(
-                        {
-                            "ob_refresh_ok": False,
-                            "ob_refresh_trigger": str(trigger or ""),
-                            "ob_refresh_error": str((refreshed or {}).get("error") or ""),
-                            "ob_refresh_source": str((refreshed or {}).get("source") or ""),
-                            "ob_remap_attempted": bool((refreshed or {}).get("remap_attempted")),
-                            "ob_remap_selected": bool((refreshed or {}).get("remap_selected")),
-                            "ob_remap_token": str((refreshed or {}).get("token_id_remapped") or ""),
-                        }
-                    )
-                _sync_quote_detail_fields()
-
-            if not token_id:
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["token_missing"],
-                    reasons=["缺少token_id"],
-                    details=base_detail,
-                )
-                continue
-            pinned_tail_pre_probe = {
-                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                "side": side,
-                                "ask": ask_val,
-                "order_price": _resolve_mid_price(ask_val, bid_val, spread_val),
-                "q_entry": q_prob_val,
-                "q_round": q_raw_val,
-                "q_raw": q_raw_val,
-            }
-            if _candidate_is_plain_lcb_pinned_tail_no(
-                pinned_tail_pre_probe,
-                ask=ask_val,
-                order_price=to_float(pinned_tail_pre_probe.get("order_price")),
-            ):
-                pinned_tail_order_price = to_float(pinned_tail_pre_probe.get("order_price"))
-                pinned_tail_q = to_float(q_prob_val)
-                pinned_tail_effective_edge = (
-                    float(pinned_tail_q) - float(pinned_tail_order_price)
-                    if (
-                        pinned_tail_q is not None
-                        and math.isfinite(pinned_tail_q)
-                        and pinned_tail_order_price is not None
-                        and math.isfinite(pinned_tail_order_price)
-                    )
-                    else None
-                )
-                pinned_tail_detail = {
-                    **base_detail,
-                    "plain_lcb_pinned_tail_no_filtered": True,
-                    "plain_lcb_pinned_tail_no_prefilter": True,
-                    "order_price": pinned_tail_order_price,
-                    "q_entry": q_prob_val,
-                    "q_round": q_raw_val,
-                    "q_raw": q_raw_val,
-                }
-                if (
-                    pinned_tail_effective_edge is not None
-                    and math.isfinite(pinned_tail_effective_edge)
-                ):
-                    pinned_tail_detail["exec_edge_entry_raw"] = to_float(
-                        base_detail.get("exec_edge_entry")
-                    )
-                    pinned_tail_detail["exec_edge_entry"] = float(pinned_tail_effective_edge)
-                    pinned_tail_detail["plain_lcb_pinned_tail_effective_edge"] = float(
-                        pinned_tail_effective_edge
-                    )
-                    pinned_tail_detail["plain_lcb_pinned_tail_edge_source"] = (
-                        "q_entry_minus_order_price"
-                    )
-                base_detail.update(pinned_tail_detail)
-            zero_prob_yes_probe = {
-                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                "side": side,
-                                "q_entry": q_prob_val,
-                "q_round": q_raw_val,
-                "q_raw": q_raw_val,
-            }
-            if _candidate_is_plain_lcb_zero_prob_yes(
-                zero_prob_yes_probe,
-            ):
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["plain_lcb_zero_prob_yes_filtered"],
-                    reasons=["Plain LCB最高YES桶模型概率为0，源头过滤"],
-                    details={
-                        **base_detail,
-                        "plain_lcb_zero_prob_yes_filtered": True,
-                        "q_entry": q_prob_val,
-                        "q_round": q_raw_val,
-                        "q_raw": q_raw_val,
-                    },
-                )
-                continue
-            if _is_orderbook_missing_recent_token(token_id):
-                # Give "recent missing" tokens one lightweight retry chance, so stale
-                # missing cache does not zero out today's tradable coverage.
-                _refresh_quotes_once("orderbook_missing_recent")
-                if not (
-                    ask_val is not None
-                    and math.isfinite(ask_val)
-                    and ask_val > TIME_EDGE_Q_EPS
-                ):
-                    _sync_quote_detail_fields()
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["orderbook_missing_recent"],
-                        reasons=["近期订单簿缺失(orderbook_missing)"],
-                        details=base_detail,
-                    )
-                    continue
-            _apply_cross_side_quote_proxy("pre_structure")
-            structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
-            if structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}:
-                # Try one lightweight refresh before deciding this is truly one-sided.
-                _refresh_quotes_once("one_sided_structure")
-                _apply_cross_side_quote_proxy("one_sided_structure")
-                structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
-            if structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}:
-                # BUY orders are tradable on ask-only books; bid-only books can be proxied by
-                # synthetic ask when execution-layer bid-only proxy is enabled.
-                allow_one_sided_ask_buy = bool(
-                    structure_state_now == "one_sided_ask_only"
-                    and ask_val is not None
-                    and math.isfinite(ask_val)
-                    and ask_val > TIME_EDGE_Q_EPS
-                )
-                allow_one_sided_bid_buy = bool(
-                    structure_state_now == "one_sided_bid_only"
-                    and _allow_bid_only_entry("one_sided_structure")
-                )
-                if allow_one_sided_ask_buy or allow_one_sided_bid_buy:
-                    if allow_one_sided_ask_buy:
-                        base_detail["lcb_one_sided_ask_buy_allowed"] = True
-                    if allow_one_sided_bid_buy:
-                        base_detail["lcb_one_sided_bid_buy_allowed"] = True
-                    base_detail["market_structure_state"] = structure_state_now
-                    if allow_one_sided_ask_buy:
-                        spread_val = 0.0
-                else:
-                    _sync_quote_detail_fields()
-                    base_detail["market_structure_state"] = structure_state_now
-                    if entry_only_realizable:
-                        base_detail["entry_only_realizable_soft_gate"] = True
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["market_one_sided_thin_book"],
-                        reasons=[
-                            "单边薄簿/不可交易(ask=0.001且bid缺失)"
-                            if structure_state_now == "one_sided_ask_only"
-                            else "单边薄簿/不可交易(仅bid挂单,ask缺失)"
-                        ],
-                        details=base_detail,
-                    )
-                    continue
-            if (
-                ask_val is None
-                or not math.isfinite(ask_val)
-                or ask_val <= TIME_EDGE_Q_EPS
-            ):
-                # SSOT tick can legitimately miss some orderbooks. For LCB-global we do a
-                # small-budget, low-latency refresh so "no ask" does not permanently zero out the day.
-                _refresh_quotes_once("ask_missing")
-                _apply_cross_side_quote_proxy("ask_missing")
-                if ask_val is not None and math.isfinite(ask_val) and ask_val > TIME_EDGE_Q_EPS:
-                    # Recovered quotes, continue evaluating the candidate.
-                    pass
-                else:
-                    _sync_quote_detail_fields()
-                    ask_missing_bid_only = bool(bid_val is not None and math.isfinite(bid_val))
-                    structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
-                    if ask_missing_bid_only and _allow_bid_only_entry("ask_missing"):
-                        _sync_quote_detail_fields()
-                    elif _allow_quoteless_entry("ask_missing"):
-                        _sync_quote_detail_fields()
-                    else:
-                        base_detail["market_structure_state"] = structure_state_now
-                        ask_missing_reason_code = (
-                            "market_one_sided_thin_book" if ask_missing_bid_only else "market_ask_missing_no_bid"
-                        )
-                        ask_missing_reason_text = (
-                            "单边薄簿/不可交易(仅bid挂单,ask缺失)"
-                            if ask_missing_bid_only
-                            else "盘口ask缺失（双侧不可用）"
-                        )
-                        if entry_only_realizable:
-                            base_detail["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=[ask_missing_reason_code],
-                            reasons=[ask_missing_reason_text],
-                            details=base_detail,
-                        )
-                        continue
-            if (
-                spread_val is None
-                or not math.isfinite(spread_val)
-                or (
-                    bid_val is None
-                    or not math.isfinite(bid_val)
-                )
-            ):
-                need_quote_refresh = (
-                    spread_val is None
-                    or not math.isfinite(spread_val)
-                    or (
-                        (bid_val is None or not math.isfinite(bid_val))
-                        and ask_val is not None
-                        and math.isfinite(ask_val)
-                        and ask_val <= lcb_global_one_sided_ask_max + TIME_EDGE_Q_EPS
-                    )
-                )
-                if need_quote_refresh:
-                    _refresh_quotes_once("spread_or_bid_missing")
-                _apply_cross_side_quote_proxy("spread_or_bid_missing")
-                if (
-                    (spread_val is None or not math.isfinite(spread_val))
-                    and ask_val is not None
-                    and math.isfinite(ask_val)
-                    and bid_val is not None
-                    and math.isfinite(bid_val)
-                ):
-                    spread_val = max(float(ask_val) - float(bid_val), 0.0)
-                _sync_quote_detail_fields()
-            posterior_prob_meta = posterior_prob_by_label.get(outcome_label.lower())
-            posterior_bucket_prob = None
-            if isinstance(posterior_prob_meta, Mapping):
-                posterior_bucket_prob = to_float(
-                    posterior_prob_meta.get("posterior_settlement_candidate_bucket_prob")
-                )
-            if (
-                (q_prob_val is None or not math.isfinite(q_prob_val))
-                and posterior_bucket_prob is not None
-                and math.isfinite(posterior_bucket_prob)
-            ):
-                q_prob_val = (
-                    float(posterior_bucket_prob)
-                    if side == "YES"
-                    else max(0.0, min(1.0, 1.0 - float(posterior_bucket_prob)))
-                )
-                if q_raw_val is None or not math.isfinite(q_raw_val):
-                    q_raw_val = q_prob_val
-                if q_cal_val is None or not math.isfinite(q_cal_val):
-                    q_cal_val = q_prob_val
-                if q_edge_val is None or not math.isfinite(q_edge_val):
-                    q_edge_val = q_prob_val
-                if q_quote_val is None or not math.isfinite(q_quote_val):
-                    q_quote_val = q_prob_val
-                base_detail.update(
-                    {
-                        "q_entry": q_prob_val,
-                        "q_round": q_raw_val,
-                        "q_calibrated": q_cal_val,
-                        "q_quote": q_quote_val,
-                        "q_edge": q_edge_val,
-                        "q_fallback_used": True,
-                        "q_fallback_source": "posterior_settlement_bayes_bucket",
-                    }
-                )
-            if q_prob_val is None or not math.isfinite(q_prob_val):
-                base_detail["entry_only_realizable_soft_gate"] = bool(entry_only_realizable)
-                if entry_only_realizable:
-                    (
-                        q_prob_proxy,
-                        q_raw_proxy,
-                        q_cal_proxy,
-                        q_edge_proxy,
-                        q_quote_proxy,
-                        q_quote_blend_alpha_proxy,
-                        q_quote_source_proxy,
-                        q_fallback_source,
-                    ) = _resolve_q_fallback_for_side(outcome_label, side)
-                    if (
-                        q_prob_proxy is None
-                        or not math.isfinite(q_prob_proxy)
-                    ):
-                        q_prob_proxy = _resolve_q_market_proxy_for_side(row_ref, side)[0]
-                    if q_prob_proxy is not None and math.isfinite(q_prob_proxy):
-                        q_prob_val = float(q_prob_proxy)
-                        if q_quote_val is None or not math.isfinite(q_quote_val):
-                            q_quote_val = q_quote_proxy if q_quote_proxy is not None else q_prob_val
-                        if q_raw_val is None or not math.isfinite(q_raw_val):
-                            q_raw_val = q_prob_val if q_raw_proxy is not None and math.isfinite(q_raw_proxy) else q_prob_val
-                        if q_cal_val is None or not math.isfinite(q_cal_val):
-                            q_cal_val = q_cal_proxy if q_cal_proxy is not None and math.isfinite(q_cal_proxy) else q_prob_val
-                        if q_edge_val is None or not math.isfinite(q_edge_val):
-                            q_edge_val = q_edge_proxy if q_edge_proxy is not None and math.isfinite(q_edge_proxy) else q_prob_val
-                        if (
-                            q_quote_blend_alpha_val is None
-                            or not math.isfinite(q_quote_blend_alpha_val)
-                        ):
-                            q_quote_blend_alpha_val = (
-                                q_quote_blend_alpha_proxy
-                                if q_quote_blend_alpha_proxy is not None
-                                and math.isfinite(q_quote_blend_alpha_proxy)
-                                else None
-                            )
-                        if (
-                            q_quote_source_proxy is not None
-                            and not q_fallback_source
-                        ):
-                            q_fallback_source = str(q_quote_source_proxy)
-                        if not q_fallback_source:
-                            q_fallback_source = "market_proxy"
-                        base_detail["q_fallback_used"] = True
-                        base_detail["q_fallback_source"] = str(q_fallback_source)
-                        base_detail["q_missing_soft"] = True
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["q_missing_soft"],
-                            reasons=["模型q缺失，使用proxy重建q值"],
-                            details=base_detail,
-                        )
-                    else:
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["q_missing"],
-                            reasons=["模型q缺失"],
-                            details=base_detail,
-                        )
-                        continue
-                else:
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["q_missing"],
-                        reasons=["模型q缺失"],
-                        details=base_detail,
-                    )
-                    continue
-                if not entry_only_realizable:
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["q_missing"],
-                        reasons=["模型q缺失"],
-                        details=base_detail,
-                    )
-            q_market_ref_side = (
-                q_quote_val
-                if q_quote_val is not None and math.isfinite(q_quote_val)
-                else q_cal_val
-            )
-            q_market_ref_side_source = (
-                "q_quote"
-                if q_quote_val is not None and math.isfinite(q_quote_val)
-                else "q_calibrated"
-            )
-            q_market_gap_side: Optional[float] = None
-            if (
-                q_market_ref_side is not None
-                and math.isfinite(q_market_ref_side)
-                and ask_val is not None
-                and math.isfinite(ask_val)
-                and ask_val > TIME_EDGE_Q_EPS
-            ):
-                q_market_gap_side = abs(float(q_market_ref_side) - float(ask_val))
-            q_market_consistent_side = bool(
-                q_market_gap_side is not None
-                and q_market_gap_side <= float(lcb_global_yes_top_market_consist_eps) + TIME_EDGE_Q_EPS
-            )
-            base_detail["lcb_yes_top_q_market_ref_source"] = str(q_market_ref_side_source)
-            base_detail["lcb_yes_top_q_market_gap"] = (
-                float(q_market_gap_side)
-                if q_market_gap_side is not None and math.isfinite(q_market_gap_side)
-                else None
-            )
-            base_detail["lcb_yes_top_q_market_consistent"] = bool(q_market_consistent_side)
-            base_detail["lcb_yes_top_market_gap_gate_enabled"] = False
-            tail_locked = _is_tail_locked_quote(ask_val, q_prob_val)
-            if tail_locked:
-                base_detail["tail_locked_quote"] = True
-            signal_edge_val = float(q_prob_val) - float(ask_val)
-            if lcb_global_require_nonnegative_signal_edge and signal_edge_val <= TIME_EDGE_Q_EPS:
-                # LCB-global uses realizable edge as the hard gate; keep this only as a soft warning.
-                base_detail["signal_edge_nonpos"] = True
-            if (
-                lcb_global_signal_edge_min is not None
-                and math.isfinite(lcb_global_signal_edge_min)
-                and signal_edge_val + TIME_EDGE_Q_EPS < float(lcb_global_signal_edge_min)
-            ):
-                base_detail["signal_edge_below_min_soft"] = bool(posterior_settlement_available)
-                if not posterior_settlement_available:
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=["signal_edge_below_min"],
-                        reasons=[
-                            f"信号差={signal_edge_val:.4f}<{float(lcb_global_signal_edge_min):.4f}，禁止入场"
-                        ],
-                        details={**base_detail, "signal_edge": signal_edge_val},
-                    )
-                    continue
-            if entry_require_nonneg_spread:
-                if spread_val is None or not math.isfinite(spread_val) or spread_val < -TIME_EDGE_Q_EPS:
-                    structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
-                    one_sided_thin = structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}
-                    base_detail["market_structure_state"] = structure_state_now
-                    reason_code = "market_one_sided_thin_book" if one_sided_thin else "market_spread_missing"
-                    if entry_only_realizable:
-                        base_detail["entry_only_realizable_soft_gate"] = True
-                        base_detail["spread_missing_soft"] = True
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=[reason_code],
-                        reasons=[
-                            "单边薄簿/不可交易"
-                            if one_sided_thin
-                            else "盘口spread缺失"
-                        ],
-                        details=base_detail,
-                    )
-                    if not entry_only_realizable:
-                        continue
-            if (
-                spread_val is None
-                or not math.isfinite(spread_val)
-                or spread_val > lcb_global_max_spread + TIME_EDGE_Q_EPS
-            ):
-                if spread_val is None or not math.isfinite(spread_val):
-                    structure_state_now = _lcb_market_structure_state(ask_val, bid_val, spread_val)
-                    one_sided_thin = structure_state_now in {"one_sided_ask_only", "one_sided_bid_only"}
-                    base_detail["market_structure_state"] = structure_state_now
-                    reason_code = (
-                        "market_one_sided_thin_book" if one_sided_thin else "market_spread_missing"
-                    )
-                    if entry_only_realizable:
-                        base_detail["entry_only_realizable_soft_gate"] = True
-                        base_detail["spread_missing_soft"] = True
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=[reason_code],
-                        reasons=["单边薄簿/不可交易" if one_sided_thin else "盘口spread缺失"],
-                        details=base_detail,
-                    )
-                    if not entry_only_realizable:
-                        continue
-                else:
-                    spread_now = float(spread_val)
-                    if entry_only_realizable:
-                        base_detail["lcb_global_spread"] = spread_now
-                        base_detail["lcb_global_max_spread"] = float(lcb_global_max_spread)
-                        base_detail["spread_too_wide_soft"] = True
-                        base_detail["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["spread_too_wide_soft"],
-                            reasons=[
-                                f"spread={spread_now:.4f}>{float(lcb_global_max_spread):.4f}，仅soft惩罚"
-                            ],
-                            details=base_detail,
-                        )
-                    else:
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["spread_too_wide"],
-                            reasons=[
-                                f"spread={spread_now:.4f}>{float(lcb_global_max_spread):.4f}，禁止入场"
-                            ],
-                            details=base_detail,
-                        )
-                        continue
-            if lcb_global_min_depth_usdc > TIME_EDGE_Q_EPS:
-                if (
-                    depth_val is None
-                    or not math.isfinite(depth_val)
-                    or depth_val + TIME_EDGE_Q_EPS < lcb_global_min_depth_usdc
-                ):
-                    depth_missing = depth_val is None or not math.isfinite(depth_val)
-                    if entry_only_realizable:
-                        base_detail["depth_soft_violation"] = True
-                        base_detail["entry_only_realizable_soft_gate"] = True
-                        base_detail["lcb_global_depth"] = (
-                            float(depth_val)
-                            if depth_val is not None and math.isfinite(depth_val)
-                            else None
-                        )
-                        base_detail["lcb_global_min_depth_usdc"] = float(
-                            lcb_global_min_depth_usdc
-                        )
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=[
-                                "depth_missing" if depth_missing else "depth_below_min"
-                            ],
-                            reasons=[
-                                "盘口深度缺失"
-                                if depth_missing
-                                else (
-                                    f"盘口深度不足(depth={float(depth_val):.2f}<{float(lcb_global_min_depth_usdc):.2f})"
-                                    if depth_val is not None and math.isfinite(depth_val)
-                                    else "盘口深度不足"
-                                )
-                            ],
-                            details=base_detail,
-                        )
-                    elif depth_missing:
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["depth_missing"],
-                            reasons=["盘口深度缺失"],
-                            details=base_detail,
-                        )
-                    else:
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["depth_below_min"],
-                            reasons=[
-                                f"盘口深度不足(depth={float(depth_val):.2f}<{float(lcb_global_min_depth_usdc):.2f})"
-                            ],
-                            details=base_detail,
-                        )
-                    if not entry_only_realizable:
-                        continue
-            consistency_meta = _lcb_global_snapshot_consistency_eval(outcome_label, side)
-            base_detail["snapshot_consistency_enabled"] = bool(consistency_meta.get("enabled"))
-            base_detail["snapshot_consistency_enforced"] = bool(consistency_meta.get("enforced"))
-            base_detail["snapshot_consistency_pass"] = bool(consistency_meta.get("pass"))
-            base_detail["snapshot_consistency_reason"] = str(consistency_meta.get("reason") or "")
-            base_detail["snapshot_consistency_available"] = int(consistency_meta.get("available") or 0)
-            base_detail["snapshot_consistency_pass_count"] = int(consistency_meta.get("pass_count") or 0)
-            base_detail["snapshot_consistency_required"] = int(consistency_meta.get("required") or 0)
-            base_detail["snapshot_consistency_states"] = list(consistency_meta.get("states") or [])
-            if consistency_meta.get("enforced") and (not consistency_meta.get("pass")):
-                available = int(consistency_meta.get("available") or 0)
-                pass_count = int(consistency_meta.get("pass_count") or 0)
-                required = int(consistency_meta.get("required") or 0)
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["market_snapshot_inconsistent"],
-                    reasons=[
-                        f"盘口快照一致性不足(近{available}次可交易={pass_count} < 要求{required})"
-                    ],
-                    details=base_detail,
-                )
-                continue
-            order_price = _resolve_mid_price(ask_val, bid_val, spread_val)
-            if order_price is None or not math.isfinite(order_price) or order_price <= TIME_EDGE_Q_EPS:
-                order_price = ask_val
-            if order_price is None or not math.isfinite(order_price) or order_price <= TIME_EDGE_Q_EPS:
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["order_price_invalid"],
-                    reasons=["下单价无效(order_price)"],
-                    details=base_detail,
-                )
-                continue
-            base_detail["order_price"] = float(order_price)
-            consensus_yes_top_considered = bool(
-                lcb_global_consensus_yes_top_enabled
-                and side == "YES"
-                and consensus_yes_top_label_match
-            )
-            consensus_yes_top_price = (
-                float(order_price)
-                if order_price is not None and math.isfinite(order_price)
-                else None
-            )
-            consensus_yes_top_fail_reason = ""
-            consensus_yes_top_eligible = False
-            if consensus_yes_top_considered:
-                consensus_yes_top_fail_reason = "pass"
-                if consensus_yes_top_price is None:
-                    consensus_yes_top_fail_reason = "price_missing"
-                elif (
-                    lcb_global_consensus_yes_top_price_max is not None
-                    and
-                    consensus_yes_top_price
-                    > float(lcb_global_consensus_yes_top_price_max) + TIME_EDGE_Q_EPS
-                ):
-                    consensus_yes_top_fail_reason = "price_above_max"
-                elif exec_edge_entry_val is None or not math.isfinite(exec_edge_entry_val):
-                    consensus_yes_top_fail_reason = "exec_edge_missing"
-                elif (
-                    lcb_global_consensus_yes_top_exec_edge_min <= TIME_EDGE_Q_EPS
-                    and exec_edge_entry_val <= TIME_EDGE_Q_EPS
-                ):
-                    consensus_yes_top_fail_reason = "exec_edge_not_positive"
-                elif (
-                    lcb_global_consensus_yes_top_exec_edge_min > TIME_EDGE_Q_EPS
-                    and exec_edge_entry_val + TIME_EDGE_Q_EPS
-                    < float(lcb_global_consensus_yes_top_exec_edge_min)
-                ):
-                    consensus_yes_top_fail_reason = "exec_edge_below_min"
-                consensus_yes_top_eligible = bool(consensus_yes_top_fail_reason == "pass")
-                if consensus_yes_top_eligible:
-                    size_ratio_extra *= float(lcb_global_consensus_yes_top_size_ratio)
-                    base_detail["strategy_variant"] = "consensus_yes_top"
-                base_detail["lcb_consensus_yes_top_considered"] = True
-                base_detail["lcb_consensus_yes_top_eligible"] = bool(
-                    consensus_yes_top_eligible
-                )
-                base_detail["lcb_consensus_yes_top_fail_reason"] = str(
-                    consensus_yes_top_fail_reason
-                )
-                base_detail["lcb_consensus_yes_top_price"] = consensus_yes_top_price
-            pinned_tail_probe = {
-                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                "side": side,
-                "ask": ask_val,
-                "order_price": order_price,
-                "q_raw": q_raw_val,
-                "q_round": q_raw_val,
-            }
-            if _candidate_is_plain_lcb_pinned_tail_no(
-                pinned_tail_probe,
-                ask=ask_val,
-                order_price=order_price,
-            ):
-                pinned_tail_q = to_float(q_prob_val)
-                pinned_tail_effective_edge = (
-                    float(pinned_tail_q) - float(order_price)
-                    if (
-                        pinned_tail_q is not None
-                        and math.isfinite(pinned_tail_q)
-                        and order_price is not None
-                        and math.isfinite(order_price)
-                    )
-                    else None
-                )
-                pinned_tail_detail = {
-                    **base_detail,
-                    "plain_lcb_pinned_tail_no_filtered": True,
-                    "q_peak_outcome_hint": str(top_lcb_peak_label or ""),
-                }
-                if (
-                    pinned_tail_effective_edge is not None
-                    and math.isfinite(pinned_tail_effective_edge)
-                ):
-                    pinned_tail_detail["exec_edge_entry_raw"] = to_float(
-                        base_detail.get("exec_edge_entry")
-                    )
-                    pinned_tail_detail["exec_edge_entry"] = float(pinned_tail_effective_edge)
-                    pinned_tail_detail["plain_lcb_pinned_tail_effective_edge"] = float(
-                        pinned_tail_effective_edge
-                    )
-                    pinned_tail_detail["plain_lcb_pinned_tail_edge_source"] = (
-                        "q_entry_minus_order_price"
-                    )
-                base_detail.update(pinned_tail_detail)
-            if auto_trade_max_ask is not None and auto_trade_max_ask > 0:
-                if ask_val > auto_trade_max_ask + TIME_EDGE_Q_EPS:
-                    base_detail["entry_only_realizable_soft_gate"] = bool(entry_only_realizable)
-                    if entry_only_realizable:
-                        base_detail["ask_above_cap_soft"] = True
-                        base_detail["lcb_global_auto_trade_max_ask"] = float(auto_trade_max_ask)
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["ask_above_cap"],
-                            reasons=[f"ask高于上限({ask_val:.3f}>{auto_trade_max_ask:.3f})"],
-                            details=base_detail,
-                        )
-                    else:
-                        _buffer_decision(
-                            outcome_label,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["ask_above_cap"],
-                            reasons=[f"ask高于上限({ask_val:.3f}>{auto_trade_max_ask:.3f})"],
-                            details=base_detail,
-                        )
-                    continue
-            if position_ratio is None or not math.isfinite(position_ratio):
-                position_ratio = 0.0
-            size_val = _resolve_order_size(order_price, position_ratio, None)
-            if size_val is None or not math.isfinite(size_val):
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["order_size_missing"],
-                    reasons=["下单尺寸缺失(PM_ORDER_USDC/PM_ORDER_SIZE未配置)"],
-                    details={
-                        **base_detail,
-                        "order_price": float(order_price),
-                        "position_ratio": float(position_ratio),
-                        "pm_order_usdc": _env_float("PM_ORDER_USDC"),
-                        "pm_order_size": _env_float("PM_ORDER_SIZE"),
-                        "entry_budget_min_usdc": float(_entry_budget_min_notional_usdc()),
-                    },
-                )
-                continue
-            if min_entry_size_val > 0 and size_val < min_entry_size_val:
-                size_val = float(min_entry_size_val)
-            if tail_locked and lcb_global_tail_lock_soft:
-                size_val = max(float(size_val) * float(lcb_global_tail_lock_size_ratio), float(min_entry_size_val or 0.0))
-            if size_val <= TIME_EDGE_Q_EPS:
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=["order_size_nonpositive"],
-                    reasons=["下单尺寸<=0，禁止入场"],
-                    details={
-                        **base_detail,
-                        "order_price": float(order_price),
-                        "position_ratio": float(position_ratio),
-                        "size": float(size_val),
-                    },
-                )
-                continue
-            cand = {
-                "side": side,
-                "edge_min": signal_edge_val,
-                "edge_score": max(signal_edge_val, 0.0) * 100.0,
-                "exec_edge_entry": exec_edge_entry_val,
-                "exec_edge_exit": exec_edge_exit_val,
-                "exec_edge_score": exec_edge_score_val,
-                "price": order_price,
-                "size": size_val,
-                "token_id": token_id,
-                "trend_limit": False,
-                "trend_limit_strict": False,
-                "limit_mode": "",
-                "trend_down": trend_down_val,
-                "trend_up": trend_up_val,
-                "trend_unknown": trend_unknown_val,
-                "trend_pct": trend_pct_val,
-                "trend_consistency_up": trend_cons_val,
-                "q_raw": q_raw_val,
-                "q_calibrated": q_cal_val,
-                "q_quote": q_quote_val,
-                "q_quote_blend_alpha": to_float(row_ref.get("q_quote_blend_alpha")) if side == "YES" else to_float(row_ref.get("q_quote_blend_alpha_no")),
-                "q_edge": q_edge_val,
-                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                "strategy_variant": "consensus_yes_top" if consensus_yes_top_eligible else "",
-                                "lcb_yes_top_enabled": bool(lcb_global_yes_top_enabled),
-                "lcb_yes_top_budget_ratio": float(yes_top_budget_ratio),
-                "lcb_yes_top_market_consist_eps": float(lcb_global_yes_top_market_consist_eps),
-                "lcb_yes_top_label_match": bool(yes_top_label_match),
-                "lcb_yes_top_cal_match": bool(yes_top_cal_match),
-                "lcb_yes_top_market_match": bool(yes_top_market_match),
-                "lcb_yes_top_q_market_consistent": bool(q_market_consistent_side),
-                "lcb_yes_top_event_match": bool(yes_top_event_match),
-                "lcb_yes_top_q_market_ref_source": str(q_market_ref_side_source),
-                "lcb_yes_top_q_market_gap": (
-                    float(q_market_gap_side)
-                    if q_market_gap_side is not None and math.isfinite(q_market_gap_side)
-                    else None
-                ),
-                "lcb_q_peak_outcome": str(top_lcb_peak_label or ""),
-                "strategy_size_ratio_extra": float(size_ratio_extra),
-                "priority": 1200 if consensus_yes_top_eligible else 1000,
-                "lcb_consensus_yes_top_enabled": bool(lcb_global_consensus_yes_top_enabled),
-                "lcb_consensus_yes_top_mode": str(lcb_global_consensus_yes_top_mode),
-                "lcb_consensus_yes_top_model_mode": str(
-                    lcb_global_consensus_yes_top_model_mode
-                ),
-                "lcb_consensus_yes_top_model": str(consensus_selected_model),
-                "lcb_consensus_yes_top_fallback_model": str(
-                    lcb_global_consensus_yes_top_model
-                ),
-                "lcb_consensus_yes_top_available_models": ",".join(models),
-                "lcb_consensus_yes_top_available_models_source": str(models_source or ""),
-                "lcb_consensus_yes_top_model_source": str(
-                    consensus_model_meta.get("source") or ""
-                ),
-                "lcb_consensus_yes_top_coord_source": str(event_coord_source or ""),
-                "lcb_consensus_yes_top_region": str(
-                    consensus_model_meta.get("region") or ""
-                ),
-                "lcb_consensus_yes_top_stage": str(
-                    consensus_model_meta.get("stage") or ""
-                ),
-                "lcb_consensus_yes_top_matched": bool(consensus_yes_top_considered),
-                "lcb_consensus_yes_top_eligible": bool(consensus_yes_top_eligible),
-                "lcb_consensus_yes_top_fail_reason": str(consensus_yes_top_fail_reason),
-                "lcb_consensus_yes_top_auto_label": str(top_auto_label or ""),
-                "lcb_consensus_yes_top_auto_source": str(top_auto_source or ""),
-                "lcb_consensus_yes_top_market_label": str(top_market_label or ""),
-                "lcb_consensus_yes_top_model_label": str(top_consensus_model_label or ""),
-                "lcb_consensus_yes_top_ecmwf_label": str(top_consensus_model_label or ""),
-                "lcb_consensus_yes_top_auto_q": (
-                    float(top_auto_q)
-                    if top_auto_q is not None and math.isfinite(top_auto_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_auto_second_q": (
-                    float(top_auto_second_q)
-                    if top_auto_second_q is not None and math.isfinite(top_auto_second_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_model_q": (
-                    float(top_consensus_model_q)
-                    if top_consensus_model_q is not None and math.isfinite(top_consensus_model_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_ecmwf_q": (
-                    float(top_consensus_model_q)
-                    if top_consensus_model_q is not None and math.isfinite(top_consensus_model_q)
-                    else None
-                ),
-                "lcb_consensus_yes_top_lat": (
-                    float(event_lat)
-                    if event_lat is not None and math.isfinite(event_lat)
-                    else None
-                ),
-                "lcb_consensus_yes_top_lon": (
-                    float(event_lon)
-                    if event_lon is not None and math.isfinite(event_lon)
-                    else None
-                ),
-                "lcb_consensus_yes_top_price": consensus_yes_top_price,
-                "lcb_consensus_yes_top_price_max": float(
-                    lcb_global_consensus_yes_top_price_max
-                )
-                if lcb_global_consensus_yes_top_price_max is not None
-                else None,
-                "lcb_consensus_yes_top_exec_edge_min": float(
-                    lcb_global_consensus_yes_top_exec_edge_min
-                ),
-                "lcb_consensus_yes_top_size_ratio": float(
-                    lcb_global_consensus_yes_top_size_ratio
-                ),
-                "lcb_global_signal_lcb_min": float(lcb_global_signal_lcb_min),
-                "lcb_global_path_lcb_min": float(lcb_global_path_lcb_min),
-                "lcb_global_edge_lcb_min": float(lcb_global_edge_lcb_min_runtime),
-                "lcb_global_max_spread": float(lcb_global_max_spread),
-                "lcb_global_min_depth_usdc": float(lcb_global_min_depth_usdc),
-                "lcb_global_depth_usdc": float(depth_val) if depth_val is not None and math.isfinite(depth_val) else None,
-                "rules_contract_ok": row_ref.get("rules_contract_ok"),
-                "rules_missing_reasons": row_ref.get("rules_missing_reasons"),
-                "resolution_source": row_ref.get("resolution_source"),
-                "station_id": row_ref.get("station_id"),
-                "market_var": row_ref.get("market_var"),
-                "market_unit": row_ref.get("market_unit"),
-                "source_kind": row_ref.get("source_kind"),
-                "source_confidence": row_ref.get("source_confidence"),
-                "source_fit_tier": row_ref.get("source_fit_tier"),
-                "source_trust_tier": row_ref.get("source_trust_tier"),
-                "source_usable_for_settlement": row_ref.get("source_usable_for_settlement"),
-                "source_aux_only": row_ref.get("source_aux_only"),
-                "publication_cadence": row_ref.get("publication_cadence"),
-                "source_na_reason": row_ref.get("source_na_reason"),
-                "observed_nowcast_source": row_ref.get("observed_nowcast_source"),
-                "observed_nowcast_source_kind": row_ref.get("observed_nowcast_source_kind"),
-                "observed_nowcast_source_confidence": row_ref.get("observed_nowcast_source_confidence"),
-                "observed_nowcast_source_fit_tier": row_ref.get("observed_nowcast_source_fit_tier"),
-                "observed_nowcast_source_trust_tier": row_ref.get("observed_nowcast_source_trust_tier"),
-                "observed_nowcast_source_usable": row_ref.get("observed_nowcast_source_usable"),
-                "observed_nowcast_source_na_reason": row_ref.get("observed_nowcast_source_na_reason"),
-                "days_to_event": days_to_event,
-                "snapshot_consistency_enabled": bool(consistency_meta.get("enabled")),
-                "snapshot_consistency_enforced": bool(consistency_meta.get("enforced")),
-                "snapshot_consistency_pass": bool(consistency_meta.get("pass")),
-                "snapshot_consistency_reason": str(consistency_meta.get("reason") or ""),
-                "snapshot_consistency_available": int(consistency_meta.get("available") or 0),
-                "snapshot_consistency_pass_count": int(consistency_meta.get("pass_count") or 0),
-                "snapshot_consistency_required": int(consistency_meta.get("required") or 0),
-                "snapshot_consistency_states": list(consistency_meta.get("states") or []),
-            }
-            _enrich_candidate_q_bayes(cand, row_ref, side)
-            _enrich_candidate_posterior_settlement(cand, row_ref, outcome_label)
-            apply_weather_strategy_profile(cand, row_ref)
-            for _strategy_field in WEATHER_STRATEGY_FIELD_NAMES:
-                base_detail[_strategy_field] = cand.get(_strategy_field)
-            if weather_strategy_require_rules and cand.get("weather_strategy_rules_ok") is not True:
-                source_na_reason = str(
-                    cand.get("weather_strategy_source_na_reason")
-                    or row_ref.get("source_na_reason")
-                    or ""
-                ).strip()
-                reason_codes = ["weather_rules_contract_incomplete"]
-                if source_na_reason:
-                    reason_codes.append(source_na_reason)
-                elif cand.get("weather_strategy_source_usable_for_settlement") is False:
-                    reason_codes.append("resolution_source_untrusted")
-                rules_reason = str(
-                    cand.get("weather_strategy_rules_na_reason")
-                    or row_ref.get("rules_missing_reasons")
-                    or "rules_contract_not_verified"
-                )
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=reason_codes,
-                    reasons=[f"天气市场Rules/结算站点未确认({rules_reason})"],
-                    details={
-                        **base_detail,
-                        "rules_contract_ok": cand.get("weather_strategy_rules_ok"),
-                        "rules_missing_reasons": row_ref.get("rules_missing_reasons"),
-                        "resolution_source": row_ref.get("resolution_source"),
-                        "station_id": row_ref.get("station_id"),
-                        "source_kind": cand.get("weather_strategy_source_kind") or row_ref.get("source_kind"),
-                        "source_confidence": cand.get("weather_strategy_source_confidence") or row_ref.get("source_confidence"),
-                        "source_fit_tier": cand.get("weather_strategy_source_fit_tier") or row_ref.get("source_fit_tier"),
-                        "source_trust_tier": cand.get("weather_strategy_source_trust_tier") or row_ref.get("source_trust_tier"),
-                        "source_usable_for_settlement": cand.get("weather_strategy_source_usable_for_settlement"),
-                        "source_na_reason": source_na_reason,
-                    },
-                )
-                continue
-            sort_val = _candidate_realizable_sort_score(cand, row_ref)
-            if sort_val is None or not math.isfinite(sort_val):
-                if _is_posterior_settlement_candidate(cand):
-                    posterior_reason = str(
-                        cand.get("posterior_settlement_entry_block_reason")
-                        or "posterior_settlement_entry_blocked"
-                    )
-                    _buffer_decision(
-                        outcome_label,
-                        side,
-                        "entry",
-                        decided_state="blocked",
-                        will_order=False,
-                        reason_codes=[posterior_reason],
-                        reasons=[f"后验兑现策略阻断：{posterior_reason}"],
-                        details={
-                            **base_detail,
-                            "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                            **{
-                                key: cand.get(key)
-                                for key in WEATHER_STRATEGY_FIELD_NAMES
-                                if key in cand
-                            },
-                        },
-                    )
-                    continue
-                reason_codes = ["edge_realizable_sort_missing"]
-                reasons = ["可兑现排序分缺失，候选未进入执行层"]
-                tradeability_reasons = str(cand.get("edge_tradeability_reasons") or "").strip()
-                if bool(cand.get("edge_tradeability_blocked")):
-                    defer_meta = _mark_tradeability_deferral_flags(
-                        cand,
-                        enable_near_miss=bool(
-                            entry_tradeability_gate_enabled and lcb_global_near_miss_enabled
-                        ),
-                        enable_signal_soft_band=signal_soft_band_enabled,
-                        enable_lcb_canary=bool(lcb_global_lcb_canary_enabled),
-                        enable_consensus_yes_top=bool(
-                            lcb_global_consensus_yes_top_enabled
-                            and cand.get("lcb_consensus_yes_top_eligible")
-                        ),
-                    )
-                    if defer_meta.get("deferred"):
-                        cand["edge_realizable_sort_missing"] = True
-                        cand["edge_realizable_sort_missing_deferred"] = True
-                        _enrich_candidate_q_bayes(cand, row_ref, side)
-                        candidates.append(cand)
-                        continue
-                    reason_codes = _merge_reason_codes(
-                        ["edge_realizable_sort_missing"],
-                        _edge_tradeability_reason_codes(tradeability_reasons),
-                    )
-                    reasons = [
-                        "LCB可兑现收益门阻断",
-                        f"tradeability={tradeability_reasons or 'blocked'}",
-                    ]
-                elif bool(cand.get("edge_realizable_exec_audit_blocked")):
-                    cand["entry_sort_exec_audit_diag_failed"] = True
-                    reason_codes = ["edge_realizable_sort_missing"]
-                    reasons = ["执行审计诊断未通过，排序分未生成"]
-                elif bool(cand.get("edge_realizable_report_blocked")):
-                    cand["entry_sort_report_diag_failed"] = True
-                    reason_codes = ["edge_realizable_sort_missing"]
-                    reasons = ["可兑现回放诊断未通过，排序分未生成"]
-                _buffer_decision(
-                    outcome_label,
-                    side,
-                    "entry",
-                    decided_state="blocked",
-                    will_order=False,
-                    reason_codes=reason_codes,
-                    reasons=reasons,
-                    details={
-                        **base_detail,
-                        "order_price": float(order_price),
-                        "size": float(size_val),
-                        "edge_realizable_sort": to_float(cand.get("edge_realizable_sort")),
-                        "edge_realizable_sort_score": to_float(cand.get("edge_realizable_sort_score")),
-                        "edge_realizable_sort_p_realize": to_float(
-                            cand.get("edge_realizable_sort_p_realize")
-                        ),
-                        "edge_realizable_sort_missing": True,
-                        "edge_realizable_sort_missing_deferred": bool(
-                            cand.get("edge_realizable_sort_missing_deferred")
-                        ),
-                        "edge_signal_lcb": to_float(cand.get("edge_signal_lcb")),
-                        "edge_path_p_reach_lcb": to_float(cand.get("edge_path_p_reach_lcb")),
-                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(cand),
-                        "edge_tradeability_signal_lcb_min": to_float(
-                            cand.get("edge_tradeability_signal_lcb_min")
-                        ),
-                        "edge_tradeability_path_lcb_min": to_float(
-                            cand.get("edge_tradeability_path_lcb_min")
-                        ),
-                        "edge_tradeability_profit_min": _candidate_tradeability_profit_min(cand),
-                        "edge_tradeability_blocked": bool(cand.get("edge_tradeability_blocked")),
-                        "edge_tradeability_reasons": tradeability_reasons,
-                        "edge_tradeability_policy_enforce": bool(
-                            cand.get("edge_tradeability_policy_enforce")
-                        ),
-                        "edge_realizable_exec_audit_blocked": bool(
-                            cand.get("edge_realizable_exec_audit_blocked")
-                        ),
-                        "edge_realizable_report_blocked": bool(
-                            cand.get("edge_realizable_report_blocked")
-                        ),
-                        "entry_sort_exec_audit_diag_failed": bool(
-                            cand.get("entry_sort_exec_audit_diag_failed")
-                        ),
-                        "entry_sort_report_diag_failed": bool(
-                            cand.get("entry_sort_report_diag_failed")
-                        ),
-                    },
-                )
-                continue
-            _enrich_candidate_q_bayes(cand, row_ref, side)
-            candidates.append(cand)
-        if len(candidates) > 1:
-            candidates.sort(
-                key=lambda c: (
-                    _candidate_sort_score(c),
-                    _candidate_tradeability_profit_value(c)
-                    if _candidate_tradeability_profit_value(c) is not None
-                    else to_float(c.get("edge_realizable_sort"))
-                    if to_float(c.get("edge_realizable_sort")) is not None
-                    else to_float(c.get("edge_min")) or 0.0,
-                ),
-                reverse=True,
-            )
-            best_by_side: Dict[str, Dict[str, Any]] = {}
-            selected: List[Dict[str, Any]] = []
-            for cand in candidates:
-                side_key = str(cand.get("side") or "").strip().upper()
-                if side_key in {"YES", "NO"}:
-                    if side_key in best_by_side:
-                        continue
-                    best_by_side[side_key] = cand
-                    selected.append(cand)
-                else:
-                    selected.append(cand)
-            candidates = selected
-        return candidates
-
     def _build_entry_candidates(row: Dict[str, Any]) -> List[Dict[str, Any]]:
-        nonlocal entry_open_logged
-        if lcb_global_enabled:
-            return _build_lcb_global_candidates(row)
-        # Non-path-probability entry strategies are retired; when disabled, do not build legacy entries.
+        # Generic Edge/LCB entries are retired. Bayes target entries are built only
+        # from persisted target-realization facts in the forced-target path below.
         return []
-        if row.get("synthetic_exit_only"):
-            return []
-        if entry_blocked_by_temp_edge_score:
-            return []
-        def _skip_top_no(side_label: str, outcome_label: str) -> bool:
-            return bool(
-                entry_skip_top_label
-                and str(side_label or "").strip().upper() == "NO"
-                and top_market_label
-                and str(outcome_label or "").strip() == top_market_label
-            )
-        outcome = str(row.get("outcome") or "")
-        if not outcome:
-            return []
-        forced_yes_top = False
-        yes_q_val = to_float(row.get("q_entry"))
-        block_no_by_yes_q = (
-            yes_q_val is not None
-            and math.isfinite(yes_q_val)
-            and AUTO_TRADE_YES_Q_NEVER_MIN <= yes_q_val <= AUTO_TRADE_YES_Q_NEVER_MAX
-        )
-        candidates: List[Dict[str, Any]] = []
-        if forced_yes_top:
-            # Parent SSOT already selected this YES-top bucket as entry_ok; reuse it directly so
-            # execute layer can apply统一风控并落地 decision（不再因重复候选重算而丢失决策）。
-            token_id_forced = str(row.get("yes_token") or "")
-            ask_forced = to_float(row.get("best_ask"))
-            bid_forced = to_float(row.get("best_bid"))
-            spread_forced = to_float(row.get("spread"))
-            q_forced = to_float(row.get("q_entry"))
-            q_raw_forced = to_float(row.get("q_round"))
-            q_cal_forced = to_float(row.get("q_calibrated"))
-            position_ratio_forced = to_float(row.get("position_ratio_yes"))
-            if position_ratio_forced is None or not math.isfinite(position_ratio_forced):
-                position_ratio_forced = 0.0
-            edge_score_forced = to_float(row.get("edge_score_yes"))
-            signal_edge_forced = None
-            if (
-                q_forced is not None
-                and math.isfinite(q_forced)
-                and ask_forced is not None
-                and math.isfinite(ask_forced)
-            ):
-                signal_edge_forced = q_forced - ask_forced
-            if edge_score_forced is None or not math.isfinite(edge_score_forced):
-                edge_score_forced = signal_edge_forced * 100.0 if signal_edge_forced is not None else None
-            order_price_forced = _resolve_yes_top_price(
-                ask_forced,
-                bid_forced,
-                spread_forced,
-                entry_yes_top_price_spread_ratio,
-            )
-            if order_price_forced is None:
-                order_price_forced = _resolve_mid_price(ask_forced, bid_forced, spread_forced)
-            size_forced = _resolve_order_size(order_price_forced, position_ratio_forced, None)
-            if (
-                token_id_forced
-                and order_price_forced is not None
-                and math.isfinite(order_price_forced)
-                and order_price_forced > 0
-                and size_forced is not None
-                and math.isfinite(size_forced)
-                and size_forced > 0
-                and signal_edge_forced is not None
-                and math.isfinite(signal_edge_forced)
-            ):
-                # Do not pre-filter forced YES-top here; keep candidate and let the execution layer
-                # apply unified gates + write explicit SSOT block reasons.
-                cand = {
-                    "side": "YES",
-                    "edge_min": signal_edge_forced,
-                    "edge_score": edge_score_forced if edge_score_forced is not None else 0.0,
-                    "exec_edge_entry": to_float(row.get("exec_edge_entry_yes")),
-                    "exec_edge_exit": to_float(row.get("exec_edge_exit_yes")),
-                    "exec_edge_score": to_float(row.get("exec_edge_score_yes")),
-                    "price": order_price_forced,
-                    "size": size_forced,
-                    "token_id": token_id_forced,
-                    "trend_limit": False,
-                    "trend_limit_strict": False,
-                    "limit_mode": "",
-                    "trend_down": bool(row.get("trend_down_yes")),
-                    "trend_up": bool(row.get("trend_up_yes")),
-                    "trend_unknown": bool(row.get("trend_unknown_yes")),
-                    "trend_pct": to_float(row.get("trend_pct_yes")),
-                    "trend_consistency_up": to_float(row.get("trend_consistency_up_yes")),
-                    "q_raw": q_raw_forced,
-                    "q_calibrated": q_cal_forced,
-                    "q_quote": to_float(row.get("q_quote")),
-                    "q_quote_blend_alpha": to_float(row.get("q_quote_blend_alpha")),
-                    "q_edge": to_float(row.get("q_edge")),
-                    "strategy": "yes_top",
-                    "priority": 999,
-                    "forced_yes_top": True,
-                }
-                _candidate_realizable_sort_score(cand, row)
-                _enrich_candidate_q_bayes(cand, row, "YES")
-                candidates.append(cand)
-                return candidates
-        hard_bound_candidate = _build_hard_bound_no_candidate(row)
-        if isinstance(hard_bound_candidate, dict) and not _skip_top_no(
-            str(hard_bound_candidate.get("side") or ""),
-            outcome,
-        ):
-            _candidate_realizable_sort_score(hard_bound_candidate, row)
-            _enrich_candidate_q_bayes(
-                hard_bound_candidate,
-                row,
-                str(hard_bound_candidate.get("side") or ""),
-            )
-            candidates.append(hard_bound_candidate)
-        adj_pair_candidate = adj_pair_candidates_by_outcome.get(outcome)
-        if isinstance(adj_pair_candidate, dict) and not _skip_top_no(
-            str(adj_pair_candidate.get("side") or ""),
-            outcome,
-        ):
-            adj_pair_cand = dict(adj_pair_candidate)
-            _candidate_realizable_sort_score(adj_pair_cand, row)
-            _enrich_candidate_q_bayes(
-                adj_pair_cand,
-                row,
-                str(adj_pair_cand.get("side") or ""),
-            )
-            candidates.append(adj_pair_cand)
-        follow_candidate = _build_follow_candidate(row)
-        if isinstance(follow_candidate, dict) and not _skip_top_no(
-            str(follow_candidate.get("side") or ""),
-            outcome,
-        ):
-            follow_cand = dict(follow_candidate)
-            _candidate_realizable_sort_score(follow_cand, row)
-            _enrich_candidate_q_bayes(
-                follow_cand,
-                row,
-                str(follow_cand.get("side") or ""),
-            )
-            candidates.append(follow_cand)
-        ask_val: Optional[float] = None
-        direct_label_match = (
-            entry_yes_top_direct_label_match_enabled
-            and top_cal_label
-            and top_market_label
-            and top_cal_label == top_market_label
-        )
-        yes_top_label = top_cal_label if direct_label_match else top_model_label
-        yes_top_label_match = bool(yes_top_label) and outcome == yes_top_label
-        if entry_yes_top_enabled and (yes_top_label_match or forced_yes_top):
-            forced_direct_entry = forced_yes_top and not yes_top_label_match
-            direct_entry = bool(direct_label_match or forced_direct_entry)
-            gap_ok = True
-            spread_ok = True
-            q_round_val = to_float(row.get("q_round"))
-            q_cal_val = to_float(row.get("q_calibrated"))
-            q_quote_val = to_float(row.get("q_quote"))
-            q_market_ref_val = (
-                q_quote_val
-                if q_quote_val is not None and math.isfinite(q_quote_val)
-                else q_cal_val
-            )
-            q_market_ref_source = (
-                "q_quote"
-                if q_quote_val is not None and math.isfinite(q_quote_val)
-                else "q_calibrated"
-            )
-            ask_val = to_float(row.get("best_ask"))
-            spread_val_f = to_float(row.get("spread"))
-            lag_val = to_float(row.get("lag_yes"))
-            q_prob_val = to_float(row.get("q_entry"))
-            signal_edge_val = (
-                q_prob_val - ask_val
-                if q_prob_val is not None
-                and math.isfinite(q_prob_val)
-                and ask_val is not None
-                and math.isfinite(ask_val)
-                else None
-            )
-            q_consistent = (
-                q_round_val is not None
-                and q_cal_val is not None
-                and math.isfinite(q_round_val)
-                and math.isfinite(q_cal_val)
-                and abs(q_round_val - q_cal_val) <= entry_yes_top_q_consist_eps
-            )
-            q_market_gap: Optional[float] = None
-            if (
-                q_market_ref_val is not None
-                and math.isfinite(q_market_ref_val)
-                and ask_val is not None
-                and math.isfinite(ask_val)
-                and ask_val > TIME_EDGE_Q_EPS
-            ):
-                q_market_gap = abs(float(q_market_ref_val) - float(ask_val))
-            q_market_consistent = bool(
-                q_market_gap is not None
-                and q_market_gap <= float(entry_yes_top_market_consist_eps) + TIME_EDGE_Q_EPS
-            )
-            if not q_market_consistent:
-                spread_ok = False
-            strong_consistency = bool(q_consistent or model4_consistent or direct_entry)
-            if direct_entry:
-                if ask_val is None or not math.isfinite(ask_val) or ask_val <= 0:
-                    spread_ok = False
-                if q_prob_val is None or not math.isfinite(q_prob_val) or q_prob_val <= 0:
-                    spread_ok = False
-            else:
-                if top_model_q is None or not math.isfinite(top_model_q):
-                    gap_ok = False
-                elif top_model_q + TIME_EDGE_Q_EPS < entry_yes_top_min_q:
-                    gap_ok = False
-                if entry_yes_top_gap_min > 0 and not strong_consistency:
-                    if top_model_gap is None or not math.isfinite(top_model_gap):
-                        gap_ok = False
-                    else:
-                        gap_ok = top_model_gap + TIME_EDGE_Q_EPS >= entry_yes_top_gap_min
-                if gap_ok:
-                    model_ratio_full = (
-                        model_top_ratio is not None
-                        and math.isfinite(model_top_ratio)
-                        and model_top_ratio + TIME_EDGE_Q_EPS >= 1.0
-                    )
-                    if entry_yes_top_model_spread_max > 0 and not model_ratio_full and not strong_consistency:
-                        if top_model_spread is None or not math.isfinite(top_model_spread):
-                            spread_ok = False
-                        else:
-                            spread_ok = top_model_spread <= entry_yes_top_model_spread_max + TIME_EDGE_Q_EPS
-            if gap_ok and spread_ok:
-                if entry_require_signal_edge and not strong_consistency and not weight_top_bonus:
-                    if signal_edge_val is None or not math.isfinite(signal_edge_val):
-                        spread_ok = False
-                    elif signal_edge_val <= entry_yes_top_signal_edge_min + TIME_EDGE_Q_EPS:
-                        spread_ok = False
-                if (
-                    spread_ok
-                    and entry_require_signal_edge
-                    and entry_signal_edge_min_consecutive > 1
-                    and not strong_consistency
-                    and not weight_top_bonus
-                ):
-                    prev_edge_min = row.get("prev_edge_min_yes")
-                    try:
-                        prev_edge_min_val = float(prev_edge_min) if prev_edge_min is not None else None
-                    except (TypeError, ValueError):
-                        prev_edge_min_val = None
-                    if (
-                        prev_edge_min_val is None
-                        or not math.isfinite(prev_edge_min_val)
-                        or prev_edge_min_val <= entry_yes_top_signal_edge_min + TIME_EDGE_Q_EPS
-                    ):
-                        spread_ok = False
-                if (
-                    ask_val is not None
-                    and math.isfinite(ask_val)
-                    and ask_val > 0
-                ):
-                    if (
-                        entry_yes_top_require_ask_min
-                        and ask_val < entry_yes_top_ask_min - TIME_EDGE_Q_EPS
-                    ):
-                        spread_ok = False
-                    if _is_tail_locked_quote(ask_val, q_prob_val):
-                        spread_ok = False
-                if (
-                    spread_ok
-                    and ask_val is not None
-                    and math.isfinite(ask_val)
-                    and ask_val > 0
-                    and (not entry_yes_top_require_ask_max or ask_val <= entry_yes_top_ask_max + TIME_EDGE_Q_EPS)
-                ):
-                    if entry_require_nonneg_spread:
-                        if (
-                            spread_val_f is None
-                            or not math.isfinite(spread_val_f)
-                            or spread_val_f < 0
-                        ):
-                            spread_ok = False
-                    if entry_yes_top_require_spread_max:
-                        if (
-                            spread_val_f is None
-                            or not math.isfinite(spread_val_f)
-                            or spread_val_f > entry_yes_top_spread_max + TIME_EDGE_Q_EPS
-                        ):
-                            spread_ok = False
-                    if spread_ok:
-                        if entry_lag_enabled:
-                            if (
-                                lag_val is None
-                                or not math.isfinite(lag_val)
-                                or lag_val > (MINUTE_EDGE_L_MAX + MINUTE_EDGE_L_EPS)
-                            ):
-                                spread_ok = False
-                        if spread_ok and entry_open_age_sec is not None and not exit_only:
-                            blocked, detail = _resolve_open_cooldown_block(outcome, "YES", spread_val_f)
-                            if blocked:
-                                if not entry_open_logged:
-                                    print(
-                                        f"[auto-trade] entry skip {title} reason={detail or 'open_delay'}"
-                                    )
-                                    entry_open_logged = True
-                                return []
-                        if spread_ok:
-                            best_bid_val = to_float(row.get("best_bid"))
-                            aggressive_price = (
-                                direct_entry
-                                or strong_consistency
-                                or weight_top_bonus
-                            )
-                            if (
-                                not aggressive_price
-                                and entry_yes_top_price_take_signal_edge_min > 0
-                                and signal_edge_val is not None
-                                and math.isfinite(signal_edge_val)
-                                and signal_edge_val + TIME_EDGE_Q_EPS >= entry_yes_top_price_take_signal_edge_min
-                            ):
-                                aggressive_price = True
-                            price_ratio = (
-                                entry_yes_top_price_spread_ratio_strong
-                                if aggressive_price
-                                else entry_yes_top_price_spread_ratio
-                            )
-                            order_price = _resolve_yes_top_price(
-                                ask_val,
-                                best_bid_val,
-                                spread_val_f,
-                                price_ratio,
-                            )
-                            if order_price is not None and math.isfinite(order_price) and order_price > 0:
-                                if q_prob_val is None or not math.isfinite(q_prob_val):
-                                    spread_ok = False
-                                else:
-                                    cap_margin = (
-                                        entry_yes_top_price_take_signal_edge_min
-                                        if aggressive_price
-                                        else entry_yes_top_signal_edge_min
-                                    )
-                                    price_cap = q_prob_val - cap_margin
-                                    if price_cap is None or not math.isfinite(price_cap) or price_cap <= 0:
-                                        spread_ok = False
-                                    elif (
-                                        best_bid_val is not None
-                                        and math.isfinite(best_bid_val)
-                                        and best_bid_val > price_cap + TIME_EDGE_Q_EPS
-                                    ):
-                                        spread_ok = False
-                                    elif order_price > price_cap + TIME_EDGE_Q_EPS:
-                                        order_price = price_cap
-                                    if (
-                                        spread_ok
-                                        and best_bid_val is not None
-                                        and math.isfinite(best_bid_val)
-                                        and order_price < best_bid_val
-                                    ):
-                                        order_price = best_bid_val
-                            if spread_ok and order_price is not None and math.isfinite(order_price) and order_price > 0:
-                                edge_score_val = to_float(row.get("edge_score_yes")) or 0.0
-                                q_min_bound_val = to_float(row.get("q_entry"))
-                                limit_mode = ""
-                                trend_limit = False
-                                trend_limit_strict = False
-                                if (
-                                    entry_lag_limit_enabled
-                                    and lag_val is not None
-                                    and math.isfinite(lag_val)
-                                    and lag_val >= MINUTE_EDGE_ENTRY_LAG_LIMIT - TIME_EDGE_Q_EPS
-                                ):
-                                    trend_limit_strict = edge_score_val < trend_limit_force_edge
-                                    limit_price = _trend_limit_price(
-                                        best_bid_val,
-                                        ask_val,
-                                        q_min_bound_val,
-                                        0,
-                                        edge_score_val,
-                                        trend_limit_strict,
-                                    )
-                                    if limit_price is None or not math.isfinite(limit_price):
-                                        limit_price = None
-                                    if limit_price is not None and limit_price > 0:
-                                        order_price = limit_price
-                                    trend_limit = True
-                                    limit_mode = "lag"
-                                order_price = _apply_low_liquidity_discount(
-                                    order_price,
-                                    row,
-                                    "YES",
-                                    best_bid_val,
-                                )
-                                edge_confidence_val = None
-                                if (
-                                    edge_confidence_val is None
-                                    and order_usdc_tiers
-                                    and order_usdc_tiers_need_conf
-                                ):
-                                    pred_edge_points = (
-                                        (q_prob_val - ask_val) * 100.0
-                                        if q_prob_val is not None
-                                        and math.isfinite(q_prob_val)
-                                        and ask_val is not None
-                                        and math.isfinite(ask_val)
-                                        else None
-                                    )
-                                    _, edge_confidence_val = _resolve_edge_bias(pred_edge_points)
-                                score_for_tier = edge_score_val
-                                if entry_only_realizable:
-                                    score_for_tier = to_float(row.get("edge_realizable_score_yes"))
-                                notional_override = _resolve_order_usdc_tier(
-                                    score_for_tier,
-                                    edge_confidence_val,
-                                    order_usdc_tiers,
-                                )
-                                size = _resolve_order_size(order_price, 0.0, notional_override)
-                                if size is not None and math.isfinite(size):
-                                    if min_entry_size is not None and math.isfinite(min_entry_size) and min_entry_size > 0:
-                                        if size < min_entry_size:
-                                            size = float(min_entry_size)
-                                    trend_down_flag = row.get("trend_down_yes")
-                                    trend_pct_val = to_float(row.get("trend_pct_yes"))
-                                    uptrend = (
-                                        trend_pct_val is not None
-                                        and math.isfinite(trend_pct_val)
-                                        and trend_pct_val >= entry_yes_top_trend_strength_min
-                                        and (trend_down_flag is False or trend_down_flag is None)
-                                    )
-                                    order_type = "FAK" if uptrend else None
-                                    order_amount = None
-                                    if uptrend:
-                                        base_price = order_price if order_price is not None else ask_val
-                                        if base_price is not None and math.isfinite(base_price) and base_price > 0:
-                                            order_amount = size * base_price
-                                    cand = {
-                                        "side": "YES",
-                                        "edge_min": signal_edge_val
-                                        if signal_edge_val is not None and math.isfinite(signal_edge_val)
-                                        else 0.0,
-                                        "edge_score": edge_score_val,
-                                        "exec_edge_entry": to_float(row.get("exec_edge_entry_yes")),
-                                        "exec_edge_exit": to_float(row.get("exec_edge_exit_yes")),
-                                        "exec_edge_score": to_float(row.get("exec_edge_score_yes")),
-                                        "price": order_price,
-                                        "size": size,
-                                        "order_type": order_type,
-                                        "order_amount": order_amount,
-                                        "token_id": row.get("yes_token"),
-                                        "trend_limit": trend_limit,
-                                        "trend_limit_strict": trend_limit_strict,
-                                        "limit_mode": limit_mode,
-                                        "trend_down": bool(row.get("trend_down_yes")),
-                                        "trend_up": bool(row.get("trend_up_yes")),
-                                        "trend_unknown": bool(row.get("trend_unknown_yes")),
-                                        "trend_pct": to_float(row.get("trend_pct_yes")),
-                                        "trend_consistency_up": to_float(
-                                            row.get("trend_consistency_up_yes")
-                                        ),
-                                        "q_raw": to_float(row.get("q_round")),
-                                        "q_calibrated": to_float(row.get("q_calibrated")),
-                                        "q_quote": to_float(row.get("q_quote")),
-                                        "q_quote_blend_alpha": to_float(row.get("q_quote_blend_alpha")),
-                                        "q_edge": to_float(row.get("q_edge")),
-                                        "yes_top_q_market_consistent": bool(q_market_consistent),
-                                        "yes_top_q_market_ref_source": str(q_market_ref_source),
-                                        "yes_top_q_market_gap": (
-                                            float(q_market_gap)
-                                            if q_market_gap is not None and math.isfinite(q_market_gap)
-                                            else None
-                                        ),
-                                        "yes_top_q_market_consist_eps": float(entry_yes_top_market_consist_eps),
-                                        "direct_entry": bool(direct_entry),
-                                        "priority": 2,
-                                        "strategy": "yes_top",
-                                    }
-                                    _candidate_realizable_sort_score(cand, row)
-                                    _enrich_candidate_q_bayes(cand, row, "YES")
-                                    candidates.append(cand)
-        if entry_yes_top_only:
-            return candidates
-        for side in ("YES", "NO"):
-            if not entry_main_enabled:
-                continue
-            if side == "YES":
-                edge_score = row.get("edge_score_yes")
-                price = row.get("best_ask")
-                spread_val = row.get("spread")
-                token_id = row.get("yes_token")
-                position_ratio = row.get("position_ratio_yes")
-                q_prob = row.get("q_entry")
-                trend_down = bool(row.get("trend_down_yes"))
-                trend_up = bool(row.get("trend_up_yes"))
-                best_bid_val = row.get("best_bid")
-                lag_val = to_float(row.get("lag_yes"))
-                trend_unknown = bool(row.get("trend_unknown_yes"))
-                trend_pct_val = to_float(row.get("trend_pct_yes"))
-                trend_cons_up_val = to_float(row.get("trend_consistency_up_yes"))
-            else:
-                edge_score = row.get("edge_score_no")
-                price = row.get("best_ask_no")
-                spread_val = row.get("spread_no")
-                token_id = row.get("no_token")
-                position_ratio = row.get("position_ratio_no")
-                q_prob = row.get("q_entry_no")
-                trend_down = bool(row.get("trend_down_no"))
-                trend_up = bool(row.get("trend_up_no"))
-                best_bid_val = row.get("best_bid_no")
-                lag_val = to_float(row.get("lag_no"))
-                trend_unknown = bool(row.get("trend_unknown_no"))
-                trend_pct_val = to_float(row.get("trend_pct_no"))
-                trend_cons_up_val = to_float(row.get("trend_consistency_up_no"))
-            try:
-                edge_score_val = float(edge_score) if edge_score is not None else 0.0
-            except (TypeError, ValueError):
-                edge_score_val = 0.0
-            if not math.isfinite(edge_score_val):
-                edge_score_val = 0.0
-            try:
-                q_prob_val = float(q_prob) if q_prob is not None else None
-            except (TypeError, ValueError):
-                q_prob_val = None
-            if q_prob_val is None or not math.isfinite(q_prob_val):
-                continue
-            try:
-                ask_val = float(price) if price is not None else None
-            except (TypeError, ValueError):
-                ask_val = None
-            if ask_val is None or not math.isfinite(ask_val):
-                continue
-            if _is_tail_locked_quote(ask_val, q_prob_val):
-                continue
-            if side == "YES":
-                q_cal_val = to_float(row.get("q_calibrated"))
-                q_edge_val = to_float(row.get("q_edge"))
-            else:
-                q_cal_val = to_float(row.get("q_calibrated_no"))
-                q_edge_val = to_float(row.get("q_edge_no"))
-            if entry_require_q_range:
-                if q_prob_val < MINUTE_EDGE_ENTRY_Q_MIN or q_prob_val > MINUTE_EDGE_ENTRY_Q_MAX:
-                    continue
-            if entry_require_q_band:
-                if MINUTE_EDGE_ENTRY_Q_BANDS:
-                    in_q_band = any(
-                        q_prob_val >= band_min and q_prob_val <= band_max
-                        for band_min, band_max in MINUTE_EDGE_ENTRY_Q_BANDS
-                    )
-                    if not in_q_band:
-                        continue
-                else:
-                    continue
-            if (
-                entry_skip_top_label
-                and side == "NO"
-                and top_market_label
-                and outcome == top_market_label
-            ):
-                continue
-            if entry_block_no_by_yes_q and side == "NO" and block_no_by_yes_q:
-                continue
-            use_edge_bias = entry_require_edge_confidence or entry_require_edge_bias or entry_apply_edge_bias
-            pred_edge_points = None
-            if use_edge_bias and q_prob_val is not None and math.isfinite(q_prob_val):
-                pred_edge_points = (q_prob_val - ask_val) * 100.0
-            bias_mean = None
-            ratio = None
-            if use_edge_bias:
-                bias_mean, ratio = _resolve_edge_bias(pred_edge_points)
-                if entry_require_edge_confidence:
-                    if ratio is None or not math.isfinite(ratio) or ratio < MINUTE_EDGE_ENTRY_CONFIDENCE_MIN:
-                        continue
-                if entry_require_edge_bias:
-                    if bias_mean is None or not math.isfinite(bias_mean) or bias_mean < MINUTE_EDGE_ENTRY_BIAS_MIN:
-                        continue
-            if entry_min_liquidity is not None and entry_min_liquidity > 0:
-                if side == "YES":
-                    depth_val = row.get("ask_depth_total") or row.get("ask_depth_topN") or row.get("best_ask_size")
-                else:
-                    depth_val = row.get("ask_depth_total_no") or row.get("ask_depth_topN_no") or row.get("best_ask_size_no")
-                try:
-                    depth_val_f = float(depth_val) if depth_val is not None else None
-                except (TypeError, ValueError):
-                    depth_val_f = None
-                if depth_val_f is None or not math.isfinite(depth_val_f) or depth_val_f < entry_min_liquidity:
-                    continue
-            if side == "YES" and entry_require_ask_range:
-                if (
-                    ask_val < MINUTE_EDGE_ENTRY_ASK_MIN - TIME_EDGE_Q_EPS
-                    or ask_val > MINUTE_EDGE_ENTRY_ASK_MAX + TIME_EDGE_Q_EPS
-                ):
-                    continue
-            if side == "NO":
-                if entry_require_no_ask_range:
-                    if (
-                        ask_val < AUTO_TRADE_NO_ASK_MIN - TIME_EDGE_Q_EPS
-                        or ask_val > AUTO_TRADE_NO_ASK_MAX + TIME_EDGE_Q_EPS
-                    ):
-                        continue
-                if entry_require_yes_overprice:
-                    yes_ask_val = to_float(row.get("best_ask"))
-                    yes_q_val = to_float(row.get("q_entry"))
-                    if (
-                        yes_ask_val is None
-                        or yes_q_val is None
-                        or not math.isfinite(yes_ask_val)
-                        or not math.isfinite(yes_q_val)
-                    ):
-                        continue
-                    if yes_ask_val <= yes_q_val + AUTO_TRADE_YES_OVERPRICE_MIN - TIME_EDGE_Q_EPS:
-                        continue
-            if auto_trade_max_ask is not None and auto_trade_max_ask > 0:
-                if ask_val > auto_trade_max_ask:
-                    continue
-            q_min_bound = row.get("q_entry") if side == "YES" else row.get("q_entry_no")
-            try:
-                q_min_bound_val = (
-                    float(q_min_bound) if q_min_bound is not None else None
-                )
-            except (TypeError, ValueError):
-                q_min_bound_val = None
-            if q_min_bound_val is None or not math.isfinite(q_min_bound_val):
-                continue
-            if entry_require_ask_le_q_min:
-                ask_limit = q_min_bound_val + MINUTE_EDGE_ENTRY_ASK_LE_Q_MIN_BUFFER
-                if ask_val > ask_limit + TIME_EDGE_Q_EPS:
-                    continue
-            spread_val_f = None
-            if spread_val is not None:
-                try:
-                    spread_val_f = float(spread_val)
-                except (TypeError, ValueError):
-                    spread_val_f = None
-            if entry_require_nonneg_spread:
-                if spread_val_f is None or not math.isfinite(spread_val_f) or spread_val_f < 0:
-                    continue
-            if entry_require_spread_max:
-                if spread_val_f is None or not math.isfinite(spread_val_f):
-                    continue
-                if spread_val_f > MINUTE_EDGE_ENTRY_SPREAD_MAX + TIME_EDGE_Q_EPS:
-                    continue
-            signal_edge_eval = q_prob_val - ask_val
-            if entry_require_signal_edge and signal_edge_eval <= entry_signal_edge_min_runtime:
-                continue
-            if entry_require_edge_band:
-                if MINUTE_EDGE_ENTRY_EDGE_BANDS:
-                    in_band = any(
-                        signal_edge_eval >= band_min and signal_edge_eval <= band_max
-                        for band_min, band_max in MINUTE_EDGE_ENTRY_EDGE_BANDS
-                    )
-                    if not in_band:
-                        continue
-                else:
-                    continue
-            if entry_require_signal_edge and entry_signal_edge_min_consecutive > 1:
-                prev_edge_min = row.get("prev_edge_min_yes") if side == "YES" else row.get("prev_edge_min_no")
-                try:
-                    prev_edge_min_val = float(prev_edge_min) if prev_edge_min is not None else None
-                except (TypeError, ValueError):
-                    prev_edge_min_val = None
-                if (
-                    prev_edge_min_val is None
-                    or not math.isfinite(prev_edge_min_val)
-                    or prev_edge_min_val <= entry_signal_edge_min_runtime
-                ):
-                    continue
-                if entry_require_edge_band and MINUTE_EDGE_ENTRY_EDGE_BANDS:
-                    prev_in_band = any(
-                        prev_edge_min_val >= band_min and prev_edge_min_val <= band_max
-                        for band_min, band_max in MINUTE_EDGE_ENTRY_EDGE_BANDS
-                    )
-                    if not prev_in_band:
-                        continue
-            edge_min_eval = (
-                signal_edge_eval
-                if signal_edge_eval is not None and math.isfinite(signal_edge_eval)
-                else 0.0
-            )
-            if trend_limit_enabled and trend_down and trend_limit_max_steps <= 0:
-                continue
-            if entry_open_age_sec is not None and not exit_only:
-                blocked, detail = _resolve_open_cooldown_block(outcome, side, spread_val_f)
-                if blocked:
-                    if not entry_open_logged:
-                        print(f"[auto-trade] entry skip {title} reason={detail or 'open_delay'}")
-                        entry_open_logged = True
-                    return []
-            order_price = _resolve_mid_price(ask_val, to_float(best_bid_val), spread_val_f)
-            if order_price is None or not math.isfinite(order_price) or order_price <= 0:
-                continue
-            edge_confidence_val = ratio
-            if (
-                edge_confidence_val is None
-                and order_usdc_tiers
-                and order_usdc_tiers_need_conf
-            ):
-                pred_edge_points = (
-                    (q_prob_val - ask_val) * 100.0
-                    if q_prob_val is not None
-                    and math.isfinite(q_prob_val)
-                    and ask_val is not None
-                    and math.isfinite(ask_val)
-                    else None
-                )
-                _, edge_confidence_val = _resolve_edge_bias(pred_edge_points)
-            score_for_tier = edge_score_val
-            if entry_only_realizable:
-                score_for_tier = to_float(
-                    row.get("edge_realizable_score_yes") if side == "YES" else row.get("edge_realizable_score_no")
-                )
-            notional_override = _resolve_order_usdc_tier(
-                score_for_tier,
-                edge_confidence_val,
-                order_usdc_tiers,
-            )
-            if entry_skip_small:
-                size_probe = _resolve_order_size(order_price, position_ratio, notional_override)
-                if size_probe is None or not math.isfinite(size_probe):
-                    continue
-                if min_entry_size and min_entry_size > 0 and size_probe + TIME_EDGE_Q_EPS < min_entry_size:
-                    continue
-            trend_limit = False
-            trend_limit_strict = False
-            limit_mode = ""
-            if trend_limit_enabled and trend_down:
-                trend_limit_strict = edge_score_val < trend_limit_force_edge
-                limit_price = _trend_limit_price(
-                    to_float(best_bid_val),
-                    ask_val,
-                    q_min_bound_val,
-                    0,
-                    edge_score_val,
-                    trend_limit_strict,
-                )
-                if limit_price is None or not math.isfinite(limit_price):
-                    continue
-                order_price = limit_price
-                trend_limit = True
-                limit_mode = "trend"
-            if not limit_mode and entry_lag_limit_enabled:
-                if lag_val is not None and math.isfinite(lag_val) and lag_val >= MINUTE_EDGE_ENTRY_LAG_LIMIT - TIME_EDGE_Q_EPS:
-                    trend_limit_strict = edge_score_val < trend_limit_force_edge
-                    limit_price = _trend_limit_price(
-                        to_float(best_bid_val),
-                        ask_val,
-                        q_min_bound_val,
-                        0,
-                        edge_score_val,
-                        trend_limit_strict,
-                    )
-                    if limit_price is None or not math.isfinite(limit_price):
-                        continue
-                    order_price = limit_price
-                    trend_limit = True
-                    limit_mode = "lag"
-            order_price = _apply_low_liquidity_discount(
-                order_price,
-                row,
-                side,
-                to_float(best_bid_val),
-            )
-            size = _resolve_order_size(order_price, position_ratio, notional_override)
-            if size is None:
-                continue
-            if min_entry_size is not None and math.isfinite(min_entry_size) and min_entry_size > 0:
-                if size < min_entry_size:
-                    size = float(min_entry_size)
-            if entry_require_depth and AUTO_TRADE_ENTRY_DEPTH_MULT > 0:
-                depth_mult = _entry_depth_mult(
-                    edge_score_val,
-                    entry_depth_mult_min,
-                    entry_depth_mult_max,
-                    entry_depth_mult_slope,
-                )
-                if side == "YES":
-                    ask_size = row.get("ask_depth_total")
-                    # Treat <=0 as missing; prefer a real depth number over a default 0.0.
-                    try:
-                        ask_size_val0 = float(ask_size) if ask_size is not None else None
-                    except (TypeError, ValueError):
-                        ask_size_val0 = None
-                    if ask_size_val0 is not None and math.isfinite(ask_size_val0) and ask_size_val0 <= 0:
-                        ask_size = None
-                    if ask_size is None:
-                        ask_size = row.get("best_ask_size")
-                    if ask_size is None:
-                        ask_size = row.get("ask_depth_topN")
-                else:
-                    ask_size = row.get("ask_depth_total_no")
-                    try:
-                        ask_size_val0 = float(ask_size) if ask_size is not None else None
-                    except (TypeError, ValueError):
-                        ask_size_val0 = None
-                    if ask_size_val0 is not None and math.isfinite(ask_size_val0) and ask_size_val0 <= 0:
-                        ask_size = None
-                    if ask_size is None:
-                        ask_size = row.get("best_ask_size_no")
-                    if ask_size is None:
-                        ask_size = row.get("ask_depth_topN_no")
-                try:
-                    ask_size_val = float(ask_size) if ask_size is not None else None
-                except (TypeError, ValueError):
-                    ask_size_val = None
-                if ask_size_val is None or not math.isfinite(ask_size_val):
-                    continue
-                if depth_mult <= 0:
-                    continue
-                max_size = ask_size_val / depth_mult
-                if max_size < size:
-                    size = max_size
-                if min_entry_size is not None and size < min_entry_size:
-                    continue
-            q_raw_val = to_float(row.get("q_round")) if side == "YES" else to_float(row.get("q_round_no"))
-            q_quote_val = to_float(row.get("q_quote")) if side == "YES" else to_float(row.get("q_quote_no"))
-            if token_id and _is_orderbook_missing_recent_token(token_id):
-                continue
-            cand = {
-                "side": side,
-                "edge_min": edge_min_eval,
-                "edge_score": edge_score_val,
-                "exec_edge_entry": to_float(
-                    row.get("exec_edge_entry_yes") if side == "YES" else row.get("exec_edge_entry_no")
-                ),
-                "exec_edge_exit": to_float(
-                    row.get("exec_edge_exit_yes") if side == "YES" else row.get("exec_edge_exit_no")
-                ),
-                "exec_edge_score": to_float(
-                    row.get("exec_edge_score_yes") if side == "YES" else row.get("exec_edge_score_no")
-                ),
-                "price": order_price,
-                "size": size,
-                "token_id": token_id,
-                "trend_limit": trend_limit,
-                "trend_limit_strict": trend_limit_strict,
-                "limit_mode": limit_mode,
-                "trend_down": trend_down,
-                "trend_up": trend_up,
-                "trend_unknown": trend_unknown,
-                "trend_pct": trend_pct_val,
-                "trend_consistency_up": trend_cons_up_val,
-                "q_raw": q_raw_val,
-                "q_calibrated": q_cal_val,
-                "q_quote": q_quote_val,
-                "q_quote_blend_alpha": to_float(row.get("q_quote_blend_alpha")) if side == "YES" else to_float(row.get("q_quote_blend_alpha_no")),
-                "q_edge": q_edge_val,
-                "strategy": "main",
-            }
-            _candidate_realizable_sort_score(cand, row)
-            _enrich_candidate_q_bayes(cand, row, side)
-            candidates.append(cand)
-        if len(candidates) > 1:
-            candidates.sort(
-                key=lambda c: (
-                    c.get("priority", 0),
-                    _candidate_sort_score(c),
-                    to_float(c.get("edge_realizable_sort"))
-                    if to_float(c.get("edge_realizable_sort")) is not None
-                    else to_float(c.get("edge_min")) or 0.0,
-                ),
-                reverse=True,
-            )
-            best_by_side: Dict[str, Dict[str, Any]] = {}
-            selected: List[Dict[str, Any]] = []
-            for cand in candidates:
-                side_key = str(cand.get("side") or "").strip().upper()
-                if side_key in {"YES", "NO"}:
-                    if side_key in best_by_side:
-                        continue
-                    best_by_side[side_key] = cand
-                    selected.append(cand)
-                    if len(best_by_side) >= 2:
-                        continue
-                else:
-                    selected.append(cand)
-            candidates = selected
-        return candidates
+
 
     def _expected_entry_is_direct_target(expected: Mapping[str, Any]) -> bool:
         expected_reasons = {
@@ -38372,18 +35971,6 @@ def execute_auto_trades(
             ):
                 plan_notional_val = float(plan_notional_cap_val)
                 plan_notional_cap_applied = True
-            remote_no_order_price_cap = None
-            if ssot_side == "NO":
-                remote_no_order_price_cap = _target_realization_remote_no_price_cap(
-                    ssot_entry_leg,
-                    _ssot_entry_plan,
-                )
-                if (
-                    order_price_val is not None
-                    and math.isfinite(order_price_val)
-                    and float(order_price_val) > float(remote_no_order_price_cap) + TIME_EDGE_Q_EPS
-                ):
-                    continue
             if (
                 order_price_val is None
                 or not math.isfinite(order_price_val)
@@ -38435,11 +36022,6 @@ def execute_auto_trades(
                     plan_notional_raw_val
                 )
                 ssot_candidate["target_realization_plan_notional_cap_applied"] = True
-            if remote_no_order_price_cap is not None:
-                ssot_candidate["target_realization_order_price_cap"] = float(
-                    remote_no_order_price_cap
-                )
-                ssot_candidate["remote_no_max_price"] = float(remote_no_order_price_cap)
             if prob_for_size_val is not None:
                 ssot_candidate["kelly_q_prob"] = float(prob_for_size_val)
             ssot_candidate = _merge_target_realization_probability_fields_from_ssot_leg(
@@ -38474,6 +36056,9 @@ def execute_auto_trades(
                     "ssot_target_bucket",
                     "new_target_bucket",
                     "target_posterior",
+                    "decision_ssot",
+                    "posterior_ssot_fact_used",
+                    "target_probability_field",
                     "new_target_posterior",
                     "q_bayes_posterior",
                     "q_temperature_bucket_posterior",
@@ -39578,7 +37163,7 @@ def execute_auto_trades(
                 row["follow_exit_independent"] = True
                 if prev_exit_triggered_at is not None and prev_state == "entry":
                     prev_exit_triggered_at = None
-            exit_reasons, exit_reason_codes, removed_legacy_exit_codes = _filter_bayes_exit_payload(
+            exit_reasons, exit_reason_codes, removed_legacy_exit_codes = _filter_executable_exit_payload(
                 exit_reasons,
                 exit_reason_codes,
                 side=side,
@@ -39681,16 +37266,15 @@ def execute_auto_trades(
                             if str(key_outcome or "").strip()
                         }
                     )
-                if "target_realization_switch_buy_exit_old" not in exit_reason_codes:
-                    exit_reason_codes = list(exit_reason_codes) + [
-                        "target_realization_switch_buy_exit_old"
-                    ]
+                invalidation_code = _target_realization_invalidation_code_for_side(side)
+                if invalidation_code not in exit_reason_codes:
+                    exit_reason_codes = list(exit_reason_codes) + [invalidation_code]
                 target_switch_reason = f"目标桶兑现切换：旧{side}目标桶退出"
                 if target_switch_reason not in exit_reasons:
                     exit_reasons = list(exit_reasons) + [target_switch_reason]
                 row["target_adjustment_force_exit"] = True
                 row["target_adjustment_action"] = "SWITCH_BUY"
-                row["target_adjustment_exit_reason_code"] = "target_realization_switch_buy_exit_old"
+                row["target_adjustment_exit_reason_code"] = invalidation_code
                 row["target_adjustment_exit_reason"] = target_switch_reason
                 row["target_adjustment_exit_side"] = side
                 row["target_bucket"] = target_switch_target_outcomes[0] if target_switch_target_outcomes else None
@@ -39777,11 +37361,7 @@ def execute_auto_trades(
                         or ""
                     ).strip().upper()
                     if target_action in {"EXIT_CLEAR", "SWITCH_BUY"}:
-                        code = (
-                            "target_realization_switch_buy_exit_old"
-                            if target_action == "SWITCH_BUY"
-                            else "target_realization_exit_clear"
-                        )
+                        code = _target_realization_invalidation_code_for_side(side)
                         reason_txt = (
                             f"目标桶兑现切换：旧{side}目标桶退出"
                             if target_action == "SWITCH_BUY"
@@ -40519,11 +38099,7 @@ def execute_auto_trades(
                         and position_size > TIME_EDGE_Q_EPS
                         and target_action in {"EXIT_CLEAR", "SWITCH_BUY"}
                     ):
-                        code = (
-                            "target_realization_switch_buy_exit_old"
-                            if target_action == "SWITCH_BUY"
-                            else "target_realization_exit_clear"
-                        )
+                        code = _target_realization_invalidation_code_for_side(side)
                         reason_txt = (
                             f"目标桶兑现切换：旧{side}目标桶退出"
                             if target_action == "SWITCH_BUY"
@@ -40559,9 +38135,8 @@ def execute_auto_trades(
                 )
                 row["target_realization_capital_plan_source"] = "ui_snapshot_ssot"
             target_realization_force_codes = {
-                "target_realization_switch_buy_exit_old",
-                "target_realization_exit_clear",
-                "target_realization_hard_zero_dead_market",
+                "target_realization_yes_target_invalidated",
+                "target_realization_no_invalidated",
             }
             ssot_hold_actions = {"add", "hold", "over_target"}
             if exit_flag and ssot_exit_action in ssot_hold_actions:
@@ -40592,52 +38167,17 @@ def execute_auto_trades(
                     exit_reasons_text = ""
                     exit_reason_codes_text = ""
             elif ssot_exit_action == "over_target":
-                rebalance_exit_enabled = _env_bool(
-                    "PM_TARGET_REALIZATION_REBALANCE_OVER_TARGET_EXIT",
-                    False,
-                )
                 row["target_realization_execution_action"] = "over_target"
-                row["target_realization_execution_policy"] = (
-                    "rebalance_exit_enabled"
-                    if rebalance_exit_enabled
-                    else "hold_no_forced_exit"
+                row["target_realization_execution_policy"] = "hold_no_forced_exit"
+                row["target_realization_rebalance_over_target_exit_enabled"] = False
+                row["target_realization_force_exit"] = False
+                row["target_realization_execution_reason"] = (
+                    "SSOT目标仓位已超目标，持有不追；risk rebalance 不得触发真实 SELL"
                 )
-                row["target_realization_rebalance_over_target_exit_enabled"] = bool(
-                    rebalance_exit_enabled
-                )
-                if (
-                    rebalance_exit_enabled
-                    and prev_state == "entry"
-                    and position_size > TIME_EDGE_Q_EPS
-                ):
-                    code = "target_realization_rebalance_over_target"
-                    reason_txt = "SSOT目标仓位已超目标：执行减仓/再平衡"
-                    if code not in exit_reason_codes:
-                        exit_reason_codes = list(exit_reason_codes) + [code]
-                    if reason_txt not in exit_reasons:
-                        exit_reasons = list(exit_reasons) + [reason_txt]
-                    exit_flag = True
-                    row["target_realization_force_exit"] = True
-                    row["target_realization_exit_reason_code"] = code
-                    row["target_realization_exit_reason"] = reason_txt
-                    if side == "YES":
-                        row["edge_min_exit_reasons_yes"] = exit_reasons
-                        row["edge_min_exit_codes_yes"] = exit_reason_codes
-                    else:
-                        row["edge_min_exit_reasons_no"] = exit_reasons
-                        row["edge_min_exit_codes_no"] = exit_reason_codes
-                    exit_reasons_text = _dump_reason_list(exit_reasons)
-                    exit_reason_codes_text = _dump_reason_list(exit_reason_codes)
-                    row["target_realization_execution_reason"] = "SSOT目标仓位已超目标，显式开关允许真实退出/减仓"
-                else:
-                    row["target_realization_force_exit"] = False
-                    row["target_realization_execution_reason"] = (
-                        "SSOT目标仓位已超目标，持有不追；不因目标仓位下降主动卖出"
-                    )
             elif ssot_exit_action:
                 row["target_realization_execution_action"] = ssot_exit_action
                 row["target_realization_execution_reason"] = "SSOT目标仓位未要求退出"
-            exit_reasons, exit_reason_codes, removed_legacy_exit_codes_final = _filter_bayes_exit_payload(
+            exit_reasons, exit_reason_codes, removed_legacy_exit_codes_final = _filter_executable_exit_payload(
                 exit_reasons,
                 exit_reason_codes,
                 side=side,
@@ -40649,6 +38189,15 @@ def execute_auto_trades(
                         removed_all.append(removed_code)
                 row["bayes_exit_policy_removed_legacy_codes"] = removed_all
             exit_flag = bool(exit_reason_codes)
+            exit_reason_families = _normalize_exit_reason_family_codes(exit_reason_codes)
+            if len(exit_reason_families) == 1:
+                row["exit_reason_family"] = exit_reason_families[0]
+                row["exit_reason_family_codes"] = list(exit_reason_families)
+                row["exit_reason_primary_family"] = exit_reason_families[0]
+            else:
+                row.pop("exit_reason_family", None)
+                row.pop("exit_reason_family_codes", None)
+                row.pop("exit_reason_primary_family", None)
             if not exit_flag:
                 exit_triggered_at_update = None
                 if not str(prev_exit_triggered_at_raw or "").strip():
@@ -40756,1090 +38305,6 @@ def execute_auto_trades(
                     },
                 )
                 continue
-            if (
-                not exit_only
-                and AUTO_TRADE_ENTRY_REPRICE
-                and entry_stale_sec > 0
-                and prev_state == "entry"
-                and prev_last_order_id
-                and status_norm in open_statuses
-            ):
-                stale_base = prev_last_action_at or entry_at
-                if stale_base:
-                    age_sec = (now_utc - stale_base).total_seconds()
-                else:
-                    age_sec = None
-                candidate = candidate_map.get(side)
-                stale_threshold = (
-                    trend_limit_ttl_sec
-                    if candidate and candidate.get("trend_limit")
-                    else entry_stale_sec
-                )
-                if entry_market_fallback_enabled and entry_market_fallback_sec > 0:
-                    stale_threshold = min(stale_threshold, entry_market_fallback_sec)
-                if age_sec is not None and age_sec >= stale_threshold:
-                    token_id = str(
-                        (candidate.get("token_id") if candidate else None)
-                        or (row.get("yes_token") if side == "YES" else row.get("no_token"))
-                        or ""
-                    )
-                    if token_id:
-                        _run_node_order("cancel-orders", token_id, "BUY")
-                    if exit_flag:
-                        now_iso = utc_now_iso()
-                        _update_trade_state(
-                            outcome,
-                            side,
-                            "entry_failed",
-                            None,
-                            "",
-                            last_action="entry_cancel",
-                            last_action_at=now_iso,
-                            last_status="stale_cancel_exit",
-                            last_error="stale_cancel_exit",
-                            entry_retry_count=prev_retry_count + 1,
-                            trend_limit_step=None,
-                        )
-                        if not exit_only and side in candidate_side:
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["entry_gate_blocked", "exit_flag", "entry_stale_cancel_exit"],
-                                reasons=["挂单超时后检测到退出信号，本轮取消入场"],
-                                details={
-                                    "prev_state": prev_state,
-                                    "exit_flag": True,
-                                    "pending_age_sec": age_sec,
-                                    "stale_threshold_sec": stale_threshold,
-                                    "strategy": str((candidate or {}).get("strategy") or ""),
-                                },
-                            )
-                        prev_state = "entry_failed"
-                        continue
-                    if candidate and token_id:
-                        if entry_market_fallback_enabled and age_sec is not None and age_sec >= entry_market_fallback_sec:
-                            market_size = (
-                                to_float(prev_entry.get("last_action_size"))
-                                or to_float(prev_entry.get("entry_size"))
-                                or to_float(candidate.get("size"))
-                            )
-                            position_size_now = to_float(prev_entry.get("position_size")) or 0.0
-                            entry_target_size = to_float(prev_entry.get("entry_size"))
-                            if (
-                                entry_target_size is None
-                                or not math.isfinite(entry_target_size)
-                                or entry_target_size <= 0
-                            ):
-                                entry_target_size = to_float(candidate.get("size"))
-                            remaining_size = None
-                            if (
-                                entry_target_size is not None
-                                and math.isfinite(entry_target_size)
-                                and entry_target_size > 0
-                            ):
-                                remaining_size = max(entry_target_size - position_size_now, 0.0)
-                                if market_size is None or not math.isfinite(market_size):
-                                    market_size = remaining_size
-                                else:
-                                    market_size = min(market_size, remaining_size)
-                            if market_size is None or not math.isfinite(market_size) or market_size <= TIME_EDGE_Q_EPS:
-                                now_iso = utc_now_iso()
-                                _update_trade_state(
-                                    outcome,
-                                    side,
-                                    "entry",
-                                    entry_at_raw or now_iso,
-                                    "",
-                                    entry_size=entry_target_size,
-                                    last_action="entry_market_skip",
-                                    last_action_size=0.0,
-                                    last_action_order_type="FAK",
-                                    last_action_at=now_iso,
-                                    last_status="position_satisfied_no_fallback",
-                                    last_error="",
-                                    entry_retry_count=0,
-                                    trend_limit_step=None,
-                                )
-                                _buffer_decision(
-                                    outcome,
-                                    side,
-                                    "entry",
-                                    decided_state="blocked",
-                                    will_order=False,
-                                    reason_codes=["entry_market_fallback_skipped_position_satisfied"],
-                                    reasons=["挂单超时后检测到持仓已满足目标，跳过市价补单"],
-                                    details={
-                                        "position_size": position_size_now,
-                                        "entry_target_size": entry_target_size,
-                                        "remaining_size": remaining_size,
-                                        "pending_age_sec": age_sec,
-                                        "fallback_sec": entry_market_fallback_sec,
-                                        "strategy": str(candidate.get("strategy") or ""),
-                                    },
-                                )
-                                print(
-                                    f"[auto-trade] entry market skip {title} {side} {outcome} "
-                                    f"reason=position_satisfied pos={position_size_now:.4f} "
-                                    f"target={(entry_target_size or 0.0):.4f}"
-                                )
-                                continue
-                            if market_size is not None and math.isfinite(market_size) and market_size > 0:
-                                if side == "YES":
-                                    best_ask_val = to_float(row.get("best_ask"))
-                                else:
-                                    best_ask_val = to_float(row.get("best_ask_no"))
-                                price_for_amount = best_ask_val
-                                if price_for_amount is None or not math.isfinite(price_for_amount):
-                                    price_for_amount = to_float(prev_entry.get("last_action_price")) or to_float(candidate.get("price"))
-                                order_amount = None
-                                if price_for_amount is not None and math.isfinite(price_for_amount) and price_for_amount > 0:
-                                    order_amount = market_size * price_for_amount
-                                market_size_adj, order_amount_adj, market_min_meta = _apply_entry_marketable_min_notional(
-                                    order_size=market_size,
-                                    order_amount=order_amount,
-                                    market_price=price_for_amount,
-                                )
-                                if (
-                                    market_size_adj is not None
-                                    and math.isfinite(market_size_adj)
-                                    and market_size_adj > TIME_EDGE_Q_EPS
-                                ):
-                                    market_size = float(market_size_adj)
-                                    order_amount = order_amount_adj
-                                    entry_target_size_now = to_float(entry_target_size)
-                                    if (
-                                        entry_target_size_now is not None
-                                        and math.isfinite(entry_target_size_now)
-                                        and market_size > float(entry_target_size_now) + TIME_EDGE_Q_EPS
-                                    ):
-                                        entry_target_size = float(market_size)
-                                    candidate["marketable_min_usdc_applied"] = bool(
-                                        market_min_meta.get("adjusted")
-                                    )
-                                    candidate["marketable_min_usdc"] = float(
-                                        market_min_meta.get("market_min_usdc") or entry_marketable_min_usdc
-                                    )
-                                    if market_min_meta.get("adjusted"):
-                                        candidate["marketable_min_usdc_size_from"] = market_min_meta.get("original_size")
-                                        candidate["marketable_min_usdc_size_to"] = market_min_meta.get("adjusted_size")
-                                        candidate["marketable_min_usdc_amount_to"] = market_min_meta.get("adjusted_amount")
-                                strategy_name = str(candidate.get("strategy") or "").strip().lower()
-                                fallback_v2_val = to_float(candidate.get("edge_realizable_v2"))
-                                fallback_p_realize_val = to_float(
-                                    candidate.get("edge_realizable_p_realize")
-                                )
-                                fallback_block_codes: List[str] = []
-                                fallback_block_reasons: List[str] = []
-                                if entry_market_fallback_min_v2 > TIME_EDGE_Q_EPS:
-                                    if (
-                                        fallback_v2_val is None
-                                        or not math.isfinite(fallback_v2_val)
-                                    ):
-                                        fallback_block_codes.append(
-                                            "entry_market_fallback_effective_edge_missing"
-                                        )
-                                        fallback_block_reasons.append(
-                                            "市价补单有效边际缺失，禁止市价补单"
-                                        )
-                                    elif (
-                                        fallback_v2_val + TIME_EDGE_Q_EPS
-                                        < entry_market_fallback_min_v2
-                                    ):
-                                        fallback_block_codes.append(
-                                            "entry_market_fallback_effective_edge_low"
-                                        )
-                                        fallback_block_reasons.append(
-                                            f"市价补单有效边际={fallback_v2_val:.2%}<{entry_market_fallback_min_v2:.2%}，禁止市价补单"
-                                        )
-                                if entry_market_fallback_min_p_realize > TIME_EDGE_Q_EPS:
-                                    if (
-                                        fallback_p_realize_val is None
-                                        or not math.isfinite(fallback_p_realize_val)
-                                    ):
-                                        fallback_block_codes.append(
-                                            "entry_market_fallback_p_realize_missing"
-                                        )
-                                        fallback_block_reasons.append(
-                                            "可兑现概率缺失，禁止市价补单"
-                                        )
-                                    elif (
-                                        fallback_p_realize_val + TIME_EDGE_Q_EPS
-                                        < entry_market_fallback_min_p_realize
-                                    ):
-                                        fallback_block_codes.append(
-                                            "entry_market_fallback_p_realize_low"
-                                        )
-                                        fallback_block_reasons.append(
-                                            f"可兑现概率={fallback_p_realize_val:.2%}<{entry_market_fallback_min_p_realize:.2%}，禁止市价补单"
-                                        )
-                                if fallback_block_codes:
-                                    now_iso = utc_now_iso()
-                                    block_error = ",".join(fallback_block_codes)
-                                    _update_trade_state(
-                                        outcome,
-                                        side,
-                                        "entry_failed",
-                                        None,
-                                        "",
-                                        entry_price=price_for_amount,
-                                        entry_size=market_size,
-                                        last_action="entry_market_skip",
-                                        last_action_price=price_for_amount,
-                                        last_action_size=market_size,
-                                        last_action_order_type="FAK",
-                                        last_action_at=now_iso,
-                                        last_status="fallback_effective_edge_blocked",
-                                        last_error=block_error,
-                                        entry_retry_count=prev_retry_count + 1,
-                                        trend_limit_step=None,
-                                    )
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        decided_state="blocked",
-                                        will_order=False,
-                                        reason_codes=[
-                                            "entry_market_fallback_blocked_by_effective_edge"
-                                        ]
-                                        + fallback_block_codes,
-                                        reasons=(
-                                            ["市价补单硬门阻断：成交后有效边际不足"]
-                                            + fallback_block_reasons
-                                        ),
-                                        details={
-                                            "pending_age_sec": age_sec,
-                                            "fallback_sec": entry_market_fallback_sec,
-                                            "fallback_effective_edge_min": entry_market_fallback_min_v2,
-                                            "fallback_realize_probability_min": entry_market_fallback_min_p_realize,
-                                            "fallback_effective_edge_value": fallback_v2_val,
-                                            "fallback_realize_probability_value": fallback_p_realize_val,
-                                            "edge_realizable_v2": fallback_v2_val,
-                                            "edge_realizable_p_realize": fallback_p_realize_val,
-                                            "position_size": position_size_now,
-                                            "entry_target_size": entry_target_size,
-                                            "remaining_size": remaining_size,
-                                            "market_size": market_size,
-                                            "market_amount_usdc": order_amount,
-                                            "price_for_amount": price_for_amount,
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                        },
-                                    )
-                                    print(
-                                        f"[auto-trade] entry market skip {title} {side} {outcome} "
-                                        "reason=fallback_effective_edge_blocked "
-                                        f"v2={_fmt_price(fallback_v2_val)} "
-                                        f"p_realize={_fmt_price(fallback_p_realize_val)}"
-                                    )
-                                    continue
-                                if (
-                                    strategy_name == "follow_copy"
-                                    and entry_follow_market_min_usdc > TIME_EDGE_Q_EPS
-                                    and order_amount is not None
-                                    and math.isfinite(order_amount)
-                                    and order_amount + TIME_EDGE_Q_EPS < entry_follow_market_min_usdc
-                                ):
-                                    now_iso = utc_now_iso()
-                                    _update_trade_state(
-                                        outcome,
-                                        side,
-                                        "entry_failed",
-                                        None,
-                                        "",
-                                        entry_price=price_for_amount,
-                                        entry_size=market_size,
-                                        last_action="entry_market_skip",
-                                        last_action_price=price_for_amount,
-                                        last_action_size=market_size,
-                                        last_action_order_type="FAK",
-                                        last_action_at=now_iso,
-                                        last_status="follow_market_amount_low",
-                                        last_error=(
-                                            "follow_market_amount_low:"
-                                            f"{order_amount:.4f}<{entry_follow_market_min_usdc:.4f}"
-                                        ),
-                                        entry_retry_count=prev_retry_count + 1,
-                                        trend_limit_step=None,
-                                    )
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        decided_state="blocked",
-                                        will_order=False,
-                                        reason_codes=["follow_market_amount_low"],
-                                        reasons=["临结价差市价补单阻断：下单金额低于最小门槛"],
-                                        details={
-                                            "pending_age_sec": age_sec,
-                                            "fallback_sec": entry_market_fallback_sec,
-                                            "position_size": position_size_now,
-                                            "entry_target_size": entry_target_size,
-                                            "remaining_size": remaining_size,
-                                            "market_size": market_size,
-                                            "market_amount_usdc": order_amount,
-                                            "market_amount_min_usdc": entry_follow_market_min_usdc,
-                                            "price_for_amount": price_for_amount,
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                        },
-                                    )
-                                    print(
-                                        f"[auto-trade] entry market skip {title} {side} {outcome} "
-                                        "reason=follow_market_amount_low "
-                                        f"amount={order_amount:.4f} min={entry_follow_market_min_usdc:.4f}"
-                                    )
-                                    continue
-                                if _should_block_for_volume_check(side):
-                                    pending_block = True
-                                    continue
-                                same_outcome_block = _same_outcome_active_entry_block(outcome, side)
-                                if isinstance(same_outcome_block, dict):
-                                    pending_block = True
-                                    _buffer_same_outcome_active_entry(
-                                        outcome,
-                                        side,
-                                        same_outcome_block,
-                                        details={
-                                            "pending_age_sec": age_sec,
-                                            "fallback_sec": entry_market_fallback_sec,
-                                            "position_size": position_size_now,
-                                            "entry_target_size": entry_target_size,
-                                            "remaining_size": remaining_size,
-                                            "market_size": market_size,
-                                            "market_amount_usdc": order_amount,
-                                            "price_for_amount": price_for_amount,
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                            "submit_source": "entry_market_fallback",
-                                        },
-                                    )
-                                    continue
-                                dedupe_hit = _entry_submit_guard_check(outcome, side)
-                                if isinstance(dedupe_hit, dict):
-                                    pending_block = True
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        decided_state="blocked",
-                                        will_order=False,
-                                        reason_codes=["entry_submit_dedup_blocked"],
-                                        reasons=["同轮同腿已提交下单，阻断重复提交"],
-                                        details={
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                            "dedupe_guard": dedupe_hit,
-                                        },
-                                    )
-                                    continue
-                                balance_guard_ok, market_size_guarded, order_amount_guarded, balance_guard_detail = (
-                                    _entry_buy_balance_guard(
-                                        order_price=price_for_amount,
-                                        order_size=market_size,
-                                        order_amount=order_amount,
-                                        order_type="FAK",
-                                        market_price=price_for_amount,
-                                    )
-                                )
-                                if not balance_guard_ok:
-                                    pending_block = True
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        decided_state="blocked",
-                                        will_order=False,
-                                        reason_codes=["entry_balance_insufficient_preflight"],
-                                        reasons=["入场前余额/额度不足，已阻断下单请求"],
-                                        details={
-                                            "pending_age_sec": age_sec,
-                                            "fallback_sec": entry_market_fallback_sec,
-                                            "position_size": position_size_now,
-                                            "entry_target_size": entry_target_size,
-                                            "remaining_size": remaining_size,
-                                            "market_size": market_size,
-                                            "market_amount_usdc": order_amount,
-                                            "price_for_amount": price_for_amount,
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                            **balance_guard_detail,
-                                        },
-                                    )
-                                    continue
-                                if (
-                                    market_size_guarded is not None
-                                    and math.isfinite(market_size_guarded)
-                                    and market_size_guarded > TIME_EDGE_Q_EPS
-                                ):
-                                    market_size = float(market_size_guarded)
-                                if (
-                                    order_amount_guarded is not None
-                                    and math.isfinite(order_amount_guarded)
-                                    and order_amount_guarded > TIME_EDGE_Q_EPS
-                                ):
-                                    order_amount = float(order_amount_guarded)
-                                if _block_entry_buy_on_post_peak_near_settlement_price(
-                                    outcome,
-                                    side,
-                                    candidate,
-                                    row_ref=row,
-                                    details={
-                                        "pending_age_sec": age_sec,
-                                        "fallback_sec": entry_market_fallback_sec,
-                                        "position_size": position_size_now,
-                                        "entry_target_size": entry_target_size,
-                                        "remaining_size": remaining_size,
-                                        "market_size": market_size,
-                                        "market_amount_usdc": order_amount,
-                                        "price_for_amount": price_for_amount,
-                                    },
-                                    order_price=price_for_amount,
-                                    price_for_order=None,
-                                    market_price=price_for_amount,
-                                    order_size=market_size,
-                                    order_amount=order_amount,
-                                    order_type="FAK",
-                                    submit_source="entry_market_fallback",
-                                ):
-                                    pending_block = True
-                                    continue
-                                if _block_entry_buy_on_unusable_edge(
-                                    outcome,
-                                    side,
-                                    candidate,
-                                    details={
-                                        "pending_age_sec": age_sec,
-                                        "fallback_sec": entry_market_fallback_sec,
-                                        "position_size": position_size_now,
-                                        "entry_target_size": entry_target_size,
-                                        "remaining_size": remaining_size,
-                                        "market_size": market_size,
-                                        "market_amount_usdc": order_amount,
-                                        "price_for_amount": price_for_amount,
-                                    },
-                                    order_price=price_for_amount,
-                                    price_for_order=None,
-                                    order_size=market_size,
-                                    order_amount=order_amount,
-                                    order_type="FAK",
-                                    submit_source="entry_market_fallback",
-                                ):
-                                    pending_block = True
-                                    continue
-                                ok, payload = _run_node_order(
-                                    "place-order",
-                                    token_id,
-                                    "BUY",
-                                    price=None,
-                                    size=market_size,
-                                    order_type="FAK",
-                                    amount=order_amount,
-                                )
-                                order_id = str(payload.get("orderID") or payload.get("orderId") or "")
-                                if ok and not order_id and not payload.get("dry_run"):
-                                    ok = False
-                                    payload = {
-                                        "error": "missing_order_id",
-                                        "stdout": payload,
-                                    }
-                                status_text = str(payload.get("status") or payload.get("statusText") or "")
-                                if not status_text and ok:
-                                    status_text = "submitted"
-                                if payload.get("dry_run"):
-                                    status_text = status_text or "dry_run"
-                                if ok and (order_id or payload.get("dry_run")):
-                                    _entry_submit_guard_mark(
-                                        outcome,
-                                        side,
-                                        source="entry_market_fallback",
-                                        order_id=order_id,
-                                        status=status_text,
-                                    )
-                                confirm_state = ""
-                                confirm_status = ""
-                                confirm_error = ""
-                                if ok and order_id and not payload.get("dry_run"):
-                                    confirm_state, confirm_status, confirm_error, _ = _confirm_order(order_id)
-                                now_iso = utc_now_iso()
-                                if ok:
-                                    next_state = "entry"
-                                    next_entry_at = now_iso
-                                    next_status = status_text
-                                    next_error = ""
-                                    if payload.get("dry_run"):
-                                        next_status = status_text or "dry_run"
-                                    elif confirm_state == "error":
-                                        next_state = "entry_pending"
-                                        next_entry_at = None
-                                        next_status = confirm_status or "confirm_error"
-                                        next_error = confirm_error or "confirm_error"
-                                    elif confirm_state == "ok":
-                                        next_status = confirm_status or status_text or "confirmed"
-                                    _update_trade_state(
-                                        outcome,
-                                        side,
-                                        next_state,
-                                        next_entry_at,
-                                        order_id,
-                                        entry_price=price_for_amount,
-                                        entry_size=market_size,
-                                        last_action="entry_market",
-                                        last_action_price=price_for_amount,
-                                        last_action_size=market_size,
-                                        last_action_order_type="FAK",
-                                        last_action_at=now_iso,
-                                        last_status=next_status,
-                                        last_error=next_error,
-                                        entry_retry_count=0,
-                                        trend_limit_step=None,
-                                        peak_price=price_for_amount,
-                                    )
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        decided_state=next_state,
-                                        will_order=True,
-                                        reason_codes=["entry_market_fallback"],
-                                        reasons=["挂单超时后转市价补单(entry_market_fallback)"],
-                                        details={
-                                            "pending_age_sec": age_sec,
-                                            "fallback_sec": entry_market_fallback_sec,
-                                            "position_size": position_size_now,
-                                            "entry_target_size": entry_target_size,
-                                            "remaining_size": remaining_size,
-                                            "market_size": market_size,
-                                            "order_id": order_id,
-                                            "status": next_status,
-                                            "error": next_error,
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                        },
-                                    )
-                                    _record_auto_order(
-                                        order_id,
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        price_for_amount,
-                                        market_size,
-                                        "FAK",
-                                        candidate.get("q_raw"),
-                                        candidate.get("q_calibrated"),
-                                        candidate.get("q_edge"),
-                                        _candidate_entry_strategy_for_order(candidate),
-                                        candidate.get("q_calibrated_lcb"),
-                                        candidate.get("q_calibrated_ucb"),
-                                        candidate.get("q_calibrated_sigma"),
-                                        candidate.get("q_calibration_version"),
-                                    )
-                                    best_bid = to_float(
-                                        row.get("best_bid") if side == "YES" else row.get("best_bid_no")
-                                    )
-                                    best_ask = to_float(
-                                        row.get("best_ask") if side == "YES" else row.get("best_ask_no")
-                                    )
-                                    bid_text = f"{best_bid:.2f}" if best_bid is not None and math.isfinite(best_bid) else "—"
-                                    ask_text = f"{best_ask:.2f}" if best_ask is not None and math.isfinite(best_ask) else "—"
-                                    print(
-                                        f"[auto-trade] entry market {title} {side} {outcome} "
-                                        f"amount={order_amount or market_size} order={order_id or '—'} "
-                                        f"bid={bid_text} ask={ask_text} strategy={candidate.get('strategy') or 'main'}"
-                                    )
-                                else:
-                                    _update_trade_state(
-                                        outcome,
-                                        side,
-                                        "entry_failed",
-                                        None,
-                                        "",
-                                        entry_price=price_for_amount,
-                                        entry_size=market_size,
-                                        last_action="entry_market",
-                                        last_action_price=price_for_amount,
-                                        last_action_size=market_size,
-                                        last_action_order_type="FAK",
-                                        last_action_at=now_iso,
-                                        last_status=str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed"),
-                                        last_error=_format_order_error_short(payload),
-                                        entry_retry_count=prev_retry_count + 1,
-                                        trend_limit_step=None,
-                                    )
-                                    _buffer_decision(
-                                        outcome,
-                                        side,
-                                        "entry",
-                                        decided_state="entry_failed",
-                                        will_order=True,
-                                        reason_codes=["place_order_failed"],
-                                        reasons=["挂单超时后市价补单失败(place-order failed)"],
-                                        details={
-                                            "pending_age_sec": age_sec,
-                                            "fallback_sec": entry_market_fallback_sec,
-                                            "position_size": position_size_now,
-                                            "entry_target_size": entry_target_size,
-                                            "remaining_size": remaining_size,
-                                            "market_size": market_size,
-                                            "error": _format_order_error_short(payload),
-                                            "status": str(payload.get("status") or payload.get("statusText") or ""),
-                                            "strategy": str(candidate.get("strategy") or ""),
-                                            **_order_failure_detail_fields(payload),
-                                            "order_error": _format_order_error_short(payload),
-                                            "order_status": str(
-                                                payload.get("status")
-                                                or payload.get("statusText")
-                                                or ""
-                                            ),
-                                        },
-                                    )
-                                    best_bid = to_float(
-                                        row.get("best_bid") if side == "YES" else row.get("best_bid_no")
-                                    )
-                                    best_ask = to_float(
-                                        row.get("best_ask") if side == "YES" else row.get("best_ask_no")
-                                    )
-                                    bid_text = f"{best_bid:.2f}" if best_bid is not None and math.isfinite(best_bid) else "—"
-                                    ask_text = f"{best_ask:.2f}" if best_ask is not None and math.isfinite(best_ask) else "—"
-                                    print(
-                                        f"[auto-trade] entry market failed {title} {side} {outcome} "
-                                        f"{_format_order_error(payload)} bid={bid_text} ask={ask_text}"
-                                    )
-                                continue
-                        trend_step = 0
-                        order_price = candidate.get("price")
-                        limit_mode = str(candidate.get("limit_mode") or "")
-                        limit_allowed = (
-                            (limit_mode == "trend" and trend_limit_enabled)
-                            or (limit_mode == "lag" and entry_lag_limit_enabled)
-                        )
-                        if candidate.get("trend_limit") and limit_allowed:
-                            prev_step = int(to_float(prev_entry.get("trend_limit_step")) or 0)
-                            if trend_limit_max_steps <= 0 or prev_step >= trend_limit_max_steps:
-                                now_iso = utc_now_iso()
-                                _update_trade_state(
-                                    outcome,
-                                    side,
-                                    "entry_failed",
-                                    None,
-                                    "",
-                                    last_action="entry_reprice",
-                                    last_action_at=now_iso,
-                                    last_status="trend_limit_exhausted",
-                                    last_error="trend_limit_exhausted",
-                                    entry_retry_count=prev_retry_count + 1,
-                                    trend_limit_step=prev_step,
-                                )
-                                prev_state = "entry_failed"
-                                continue
-                            trend_step = prev_step + 1
-                            q_min_bound_val = row.get("q_entry") if side == "YES" else row.get("q_entry_no")
-                            try:
-                                q_min_bound_val = float(q_min_bound_val) if q_min_bound_val is not None else None
-                            except (TypeError, ValueError):
-                                q_min_bound_val = None
-                            order_price = _trend_limit_price(
-                                to_float(row.get("best_bid") if side == "YES" else row.get("best_bid_no")),
-                                to_float(row.get("best_ask") if side == "YES" else row.get("best_ask_no")),
-                                q_min_bound_val,
-                                trend_step,
-                                candidate.get("edge_score"),
-                                bool(candidate.get("trend_limit_strict")),
-                            )
-                            if order_price is None or not math.isfinite(order_price):
-                                now_iso = utc_now_iso()
-                                _update_trade_state(
-                                    outcome,
-                                    side,
-                                    "entry_failed",
-                                    None,
-                                    "",
-                                    last_action="entry_reprice",
-                                    last_action_at=now_iso,
-                                    last_status="trend_limit_invalid",
-                                    last_error="trend_limit_invalid",
-                                    entry_retry_count=prev_retry_count + 1,
-                                    trend_limit_step=prev_step,
-                                )
-                                prev_state = "entry_failed"
-                                continue
-                        max_reconcile_up = _env_float("PM_RECONCILE_MAX_UP")
-                        if max_reconcile_up is None or not math.isfinite(max_reconcile_up):
-                            max_reconcile_up = 0.02
-                        if max_reconcile_up > 0 and prev_state in {"entry_pending", "entry_failed"}:
-                            prev_price = to_float(prev_entry.get("entry_price"))
-                            if prev_price is None or not math.isfinite(prev_price):
-                                prev_price = to_float(prev_entry.get("last_action_price"))
-                            if prev_price is not None and math.isfinite(prev_price) and order_price is not None and math.isfinite(order_price):
-                                cap_price = prev_price + max_reconcile_up
-                                if order_price > cap_price:
-                                    order_price = cap_price
-                        effective_order_type = str(
-                            candidate.get("order_type") or AUTO_TRADE_ORDER_TYPE
-                        ).strip().upper()
-                        order_amount = candidate.get("order_amount")
-                        price_for_order = order_price
-                        if effective_order_type in {"FOK", "FAK"} and order_amount is not None:
-                            price_for_order = None
-                        if _should_block_for_volume_check(side):
-                            continue
-                        same_outcome_block = _same_outcome_active_entry_block(outcome, side)
-                        if isinstance(same_outcome_block, dict):
-                            pending_block = True
-                            _buffer_same_outcome_active_entry(
-                                outcome,
-                                side,
-                                same_outcome_block,
-                                details={
-                                    "pending_age_sec": age_sec,
-                                    "fallback_sec": entry_market_fallback_sec,
-                                    "order_price": order_price,
-                                    "price_for_order": price_for_order,
-                                    "order_size": candidate.get("size"),
-                                    "order_amount": order_amount,
-                                    "order_type": effective_order_type,
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                    "submit_source": "entry_reprice",
-                                },
-                            )
-                            continue
-                        dedupe_hit = _entry_submit_guard_check(outcome, side)
-                        if isinstance(dedupe_hit, dict):
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["entry_submit_dedup_blocked"],
-                                reasons=["同轮同腿已提交下单，阻断重复提交"],
-                                details={
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                    "dedupe_guard": dedupe_hit,
-                                },
-                            )
-                            continue
-                        candidate_order_size = to_float(candidate.get("size"))
-                        balance_guard_ok, guarded_size, guarded_amount, balance_guard_detail = (
-                            _entry_buy_balance_guard(
-                                order_price=price_for_order if price_for_order is not None else order_price,
-                                order_size=candidate_order_size,
-                                order_amount=order_amount,
-                                order_type=effective_order_type,
-                                market_price=order_price,
-                            )
-                        )
-                        if not balance_guard_ok:
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["entry_balance_insufficient_preflight"],
-                                reasons=["入场前余额/额度不足，已阻断下单请求"],
-                                details={
-                                    **entry_chase_details,
-                                    "order_price": order_price,
-                                    "price_for_order": price_for_order,
-                                    "order_size": candidate_order_size,
-                                    "order_amount": order_amount,
-                                    "order_type": effective_order_type,
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                    **balance_guard_detail,
-                                },
-                            )
-                            continue
-                        if guarded_size is not None and math.isfinite(guarded_size) and guarded_size > TIME_EDGE_Q_EPS:
-                            candidate["size"] = float(guarded_size)
-                        if guarded_amount is not None and math.isfinite(guarded_amount) and guarded_amount > TIME_EDGE_Q_EPS:
-                            order_amount = float(guarded_amount)
-                            candidate["order_amount"] = float(guarded_amount)
-                        if _block_entry_buy_on_post_peak_near_settlement_price(
-                            outcome,
-                            side,
-                            candidate,
-                            row_ref=row,
-                            details={
-                                "pending_age_sec": age_sec,
-                                "fallback_sec": entry_market_fallback_sec,
-                                "strategy": str(candidate.get("strategy") or ""),
-                            },
-                            order_price=order_price,
-                            price_for_order=price_for_order,
-                            market_price=order_price,
-                            order_size=candidate.get("size"),
-                            order_amount=order_amount,
-                            order_type=effective_order_type,
-                            submit_source="entry_reprice",
-                        ):
-                            pending_block = True
-                            continue
-                        if _block_entry_buy_on_unusable_edge(
-                            outcome,
-                            side,
-                            candidate,
-                            details={
-                                "pending_age_sec": age_sec,
-                                "fallback_sec": entry_market_fallback_sec,
-                                "strategy": str(candidate.get("strategy") or ""),
-                            },
-                            order_price=order_price,
-                            price_for_order=price_for_order,
-                            order_size=candidate.get("size"),
-                            order_amount=order_amount,
-                            order_type=effective_order_type,
-                            submit_source="entry_reprice",
-                        ):
-                            pending_block = True
-                            continue
-                        ok, payload = _run_node_order(
-                            "place-order",
-                            token_id,
-                            "BUY",
-                            price=price_for_order,
-                            size=candidate.get("size"),
-                            order_type=effective_order_type,
-                            amount=order_amount,
-                        )
-                        order_id = str(payload.get("orderID") or payload.get("orderId") or "")
-                        if ok and not order_id and not payload.get("dry_run"):
-                            ok = False
-                            payload = {
-                                "error": "missing_order_id",
-                                "stdout": payload,
-                            }
-                        status_text = str(payload.get("status") or payload.get("statusText") or "")
-                        if not status_text and ok:
-                            status_text = "submitted"
-                        if payload.get("dry_run"):
-                            status_text = status_text or "dry_run"
-                        if ok and (order_id or payload.get("dry_run")):
-                            _entry_submit_guard_mark(
-                                outcome,
-                                side,
-                                source="entry_reprice",
-                                order_id=order_id,
-                                status=status_text,
-                            )
-                        confirm_state = ""
-                        confirm_status = ""
-                        confirm_error = ""
-                        confirm_meta: Dict[str, Any] = {}
-                        if ok and order_id and not payload.get("dry_run"):
-                            confirm_state, confirm_status, confirm_error, _ = _confirm_order(order_id)
-                            if confirm_state == "not_found":
-                                confirm_meta = _confirm_entry_not_found_recheck(
-                                    token_id,
-                                    order_id,
-                                    cancel_side="BUY",
-                                )
-                                confirm_state = str(confirm_meta.get("confirm_state") or confirm_state)
-                                confirm_status = str(confirm_meta.get("confirm_status") or confirm_status)
-                                confirm_error = str(confirm_meta.get("confirm_error") or confirm_error)
-                        if ok and not payload.get("dry_run") and confirm_state in {"not_found", "canceled"}:
-                            now_iso = utc_now_iso()
-                            confirm_canceled = confirm_state == "canceled"
-                            confirm_pending_risk = (
-                                _confirm_not_found_pending_risk_assess(
-                                    side=side,
-                                    candidate=candidate,
-                                    row_ref=row,
-                                )
-                                if not confirm_canceled
-                                else {}
-                            )
-                            confirm_risk_blocked = bool(confirm_pending_risk.get("block"))
-                            confirm_failed_fast = bool(confirm_canceled or confirm_risk_blocked)
-                            _update_trade_state(
-                                outcome,
-                                side,
-                                "entry_failed" if confirm_failed_fast else "entry_pending",
-                                now_iso,
-                                "" if confirm_failed_fast else order_id,
-                                entry_price=order_price,
-                                entry_size=candidate.get("size"),
-                                last_action="entry_reprice",
-                                last_action_price=order_price,
-                                last_action_size=candidate.get("size"),
-                                last_action_order_type=effective_order_type,
-                                last_action_at=now_iso,
-                                last_status=(
-                                    confirm_status
-                                    or (
-                                        "confirm_not_found_open_cancelled"
-                                        if confirm_canceled
-                                        else (
-                                            "confirm_not_found_risk_blocked"
-                                            if confirm_risk_blocked
-                                            else "confirm_not_found"
-                                        )
-                                    )
-                                ),
-                                last_error=(
-                                    confirm_error
-                                    or (
-                                        "confirm_not_found_open_cancelled"
-                                        if confirm_canceled
-                                        else (
-                                            "confirm_not_found_risk_blocked"
-                                            if confirm_risk_blocked
-                                            else "order_not_found"
-                                        )
-                                    )
-                                ),
-                                entry_retry_count=(prev_retry_count + 1) if confirm_failed_fast else 0,
-                                trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
-                                peak_price=order_price,
-                            )
-                            best_bid = to_float(
-                                row.get("best_bid") if side == "YES" else row.get("best_bid_no")
-                            )
-                            best_ask = to_float(
-                                row.get("best_ask") if side == "YES" else row.get("best_ask_no")
-                            )
-                            bid_text = f"{best_bid:.2f}" if best_bid is not None and math.isfinite(best_bid) else "—"
-                            ask_text = f"{best_ask:.2f}" if best_ask is not None and math.isfinite(best_ask) else "—"
-                            if confirm_canceled:
-                                print(
-                                    f"[auto-trade] entry reprice confirm_not_found_cancelled {title} {side} {outcome} "
-                                    f"price={order_price} size={candidate.get('size')} "
-                                    f"order={order_id or '—'} bid={bid_text} ask={ask_text}"
-                                )
-                            elif confirm_risk_blocked:
-                                print(
-                                    f"[auto-trade] entry reprice confirm_not_found_risk_blocked {title} {side} {outcome} "
-                                    f"price={order_price} size={candidate.get('size')} "
-                                    f"order={order_id or '—'} bid={bid_text} ask={ask_text} "
-                                    f"exec_edge_score={to_float(confirm_pending_risk.get('exec_edge_score'))} "
-                                    f"spread={to_float(confirm_pending_risk.get('spread'))}"
-                                )
-                            else:
-                                print(
-                                    f"[auto-trade] entry pending {title} {side} {outcome} "
-                                    f"price={order_price} size={candidate.get('size')} "
-                                    f"order={order_id or '—'} state=entry_pending "
-                                    f"bid={bid_text} ask={ask_text}"
-                                )
-                            cand = candidate_map.get(side) if candidate_map else None
-                            _record_auto_order(
-                                order_id,
-                                outcome,
-                                side,
-                                "entry",
-                                order_price,
-                                candidate.get("size"),
-                                effective_order_type,
-                                cand.get("q_raw") if cand else None,
-                                cand.get("q_calibrated") if cand else None,
-                                cand.get("q_edge") if cand else None,
-                                _candidate_entry_strategy_for_order(cand),
-                                cand.get("q_calibrated_lcb") if cand else None,
-                                cand.get("q_calibrated_ucb") if cand else None,
-                                cand.get("q_calibrated_sigma") if cand else None,
-                                cand.get("q_calibration_version") if cand else None,
-                            )
-                            if not confirm_failed_fast:
-                                pending_block = True
-                            continue
-                        if _should_block_for_volume_check(side):
-                            continue
-                        if ok:
-                            now_iso = utc_now_iso()
-                            next_state = "entry"
-                            next_entry_at = now_iso
-                            next_status = status_text
-                            next_error = ""
-                            if payload.get("dry_run"):
-                                next_status = status_text or "dry_run"
-                            elif confirm_state == "error":
-                                next_state = "entry_pending"
-                                next_entry_at = None
-                                next_status = confirm_status or "confirm_error"
-                                next_error = confirm_error or "confirm_error"
-                            elif confirm_state == "ok":
-                                next_status = confirm_status or status_text or "confirmed"
-                            _update_trade_state(
-                                outcome,
-                                side,
-                                next_state,
-                                next_entry_at,
-                                order_id,
-                                entry_price=order_price,
-                                entry_size=candidate.get("size"),
-                                last_action="entry_reprice",
-                                last_action_price=order_price,
-                                last_action_size=candidate.get("size"),
-                                last_action_order_type=effective_order_type,
-                                last_action_at=now_iso,
-                                last_status=next_status,
-                                last_error=next_error,
-                                entry_retry_count=0,
-                                trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
-                                peak_price=order_price,
-                            )
-                            print(
-                                f"[auto-trade] entry reprice {title} {side} {outcome} "
-                                f"price={order_price} size={candidate.get('size')} "
-                                f"order={order_id or '—'} state={next_state}"
-                            )
-                            if next_state == "entry":
-                                cand = candidate_map.get(side) if candidate_map else None
-                                _record_auto_order(
-                                    order_id,
-                                    outcome,
-                                    side,
-                                    "entry",
-                                    order_price,
-                                    candidate.get("size"),
-                                    effective_order_type,
-                                    cand.get("q_raw") if cand else None,
-                                    cand.get("q_calibrated") if cand else None,
-                                    cand.get("q_edge") if cand else None,
-                                    _candidate_entry_strategy_for_order(cand),
-                                    cand.get("q_calibrated_lcb") if cand else None,
-                                    cand.get("q_calibrated_ucb") if cand else None,
-                                    cand.get("q_calibrated_sigma") if cand else None,
-                                    cand.get("q_calibration_version") if cand else None,
-                                )
-                        else:
-                            now_iso = utc_now_iso()
-                            _update_trade_state(
-                                outcome,
-                                side,
-                                "entry_failed",
-                                None,
-                                "",
-                                entry_price=order_price,
-                                entry_size=candidate.get("size"),
-                                last_action="entry_reprice",
-                                last_action_price=order_price,
-                                last_action_size=candidate.get("size"),
-                                last_action_order_type=effective_order_type,
-                                last_action_at=now_iso,
-                                last_status=str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed"),
-                                last_error=_format_order_error_short(payload),
-                                entry_retry_count=prev_retry_count + 1,
-                                trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
-                            )
-                            print(
-                                f"[auto-trade] entry reprice failed {title} {side} {outcome} "
-                                f"{_format_order_error(payload)}"
-                            )
-                        continue
-                    if token_id:
-                        now_iso = utc_now_iso()
-                        _update_trade_state(
-                            outcome,
-                            side,
-                            "entry_failed",
-                            None,
-                            "",
-                            last_action="entry_cancel",
-                            last_action_at=now_iso,
-                            last_status="stale_cancel_no_candidate",
-                            last_error="stale_no_candidate",
-                            entry_retry_count=prev_retry_count + 1,
-                        )
-                        prev_state = "entry_failed"
-                        continue
             retry_blocked = False
             if prev_state == "entry_failed" and _is_dry_run_entry_shadow(prev_entry):
                 now_iso = utc_now_iso()
@@ -42676,14 +39141,6 @@ def execute_auto_trades(
                         )
                 scaled_size, strategy_size_ratio, base_size_before_ratio = _apply_strategy_size_ratio_in_place(
                     candidate
-                )
-                scaled_size, strategy_size_ratio, base_size_before_ratio = (
-                    _recover_positive_usable_edge_size_in_place(
-                        candidate,
-                        scaled_size=scaled_size,
-                        strategy_size_ratio=strategy_size_ratio,
-                        base_size=base_size_before_ratio,
-                    )
                 )
                 ssot_target_realization_entry = _is_ssot_target_realization_candidate(candidate)
                 hard_source_direct_target_entry = _is_hard_source_direct_ssot_target_entry(
@@ -44085,14 +40542,6 @@ def execute_auto_trades(
                         )
                 scaled_size_final, strategy_size_ratio_final, base_size_final = _apply_strategy_size_ratio_in_place(
                     candidate
-                )
-                scaled_size_final, strategy_size_ratio_final, base_size_final = (
-                    _recover_positive_usable_edge_size_in_place(
-                        candidate,
-                        scaled_size=scaled_size_final,
-                        strategy_size_ratio=strategy_size_ratio_final,
-                        base_size=base_size_final,
-                    )
                 )
                 ssot_target_realization_entry = _is_ssot_target_realization_candidate(candidate)
                 hard_source_direct_target_entry = _is_hard_source_direct_ssot_target_entry(
@@ -46352,726 +42801,6 @@ def execute_auto_trades(
                         details={"order_price": order_price, "candidate_price": candidate.get("price")},
                     )
                     continue
-                if entry_market_on_rising_ask and edge_score_market_ok:
-                    cur_ask = to_float(
-                        row.get("best_ask") if side == "YES" else row.get("best_ask_no")
-                    )
-                    prev_ask = to_float(
-                        row.get("prev_best_ask") if side == "YES" else row.get("prev_best_ask_no")
-                    )
-                    rising_ask = _is_rising_ask_consecutive(
-                        outcome,
-                        side,
-                        entry_market_on_rising_ask_eps,
-                        entry_market_on_rising_ask_n,
-                    )
-                    if rising_ask and token_id:
-                        if _should_block_for_volume_check(side):
-                            continue
-                        dedupe_hit = _entry_submit_guard_check(outcome, side)
-                        if isinstance(dedupe_hit, dict):
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["entry_submit_dedup_blocked"],
-                                reasons=["同轮同腿已提交下单，阻断重复提交"],
-                                details={
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                    "dedupe_guard": dedupe_hit,
-                                },
-                            )
-                            continue
-                        price_for_amount = cur_ask if cur_ask is not None else order_price
-                        order_amount = None
-                        if price_for_amount is not None and math.isfinite(price_for_amount) and price_for_amount > 0:
-                            order_amount = order_size * price_for_amount
-                        order_size_adj, order_amount_adj, market_min_meta = _apply_entry_marketable_min_notional(
-                            order_size=order_size,
-                            order_amount=order_amount,
-                            market_price=price_for_amount,
-                        )
-                        if (
-                            order_size_adj is not None
-                            and math.isfinite(order_size_adj)
-                            and order_size_adj > TIME_EDGE_Q_EPS
-                        ):
-                            order_size = float(order_size_adj)
-                            order_amount = order_amount_adj
-                            entry_target_size_now = to_float(entry_target_size)
-                            if (
-                                entry_target_size_now is not None
-                                and math.isfinite(entry_target_size_now)
-                                and order_size > float(entry_target_size_now) + TIME_EDGE_Q_EPS
-                            ):
-                                entry_target_size = float(order_size)
-                            candidate["marketable_min_usdc_applied"] = bool(
-                                market_min_meta.get("adjusted")
-                            )
-                            candidate["marketable_min_usdc"] = float(
-                                market_min_meta.get("market_min_usdc") or entry_marketable_min_usdc
-                            )
-                            if market_min_meta.get("adjusted"):
-                                candidate["marketable_min_usdc_size_from"] = market_min_meta.get("original_size")
-                                candidate["marketable_min_usdc_size_to"] = market_min_meta.get("adjusted_size")
-                                candidate["marketable_min_usdc_amount_to"] = market_min_meta.get("adjusted_amount")
-                        plain_lcb_min_total_edge_gate_enforced = bool(
-                            candidate.get("plain_lcb_path_gate_enforced")
-                        )
-                        candidate["plain_lcb_min_total_edge_gate_enforced"] = bool(
-                            plain_lcb_min_total_edge_gate_enforced
-                        )
-                        if plain_lcb_min_total_edge_gate_enforced:
-                            candidate["plain_lcb_min_total_edge_min_usdc"] = float(
-                                lcb_global_min_trade_ev_usdc
-                            )
-                        if plain_lcb_min_total_edge_gate_enforced and (
-                            lcb_global_min_trade_ev_usdc > TIME_EDGE_Q_EPS
-                        ):
-                            trade_ev_usdc, trade_ev_per_share, trade_ev_source = (
-                                _candidate_plain_lcb_min_total_edge_usdc(
-                                    candidate,
-                                    order_size=order_size,
-                                )
-                            )
-                            candidate["plain_lcb_min_total_edge_usdc"] = (
-                                float(trade_ev_usdc)
-                                if trade_ev_usdc is not None and math.isfinite(trade_ev_usdc)
-                                else None
-                            )
-                            candidate["plain_lcb_min_total_edge_per_share"] = (
-                                float(trade_ev_per_share)
-                                if trade_ev_per_share is not None and math.isfinite(trade_ev_per_share)
-                                else None
-                            )
-                            candidate["plain_lcb_min_total_edge_source"] = str(trade_ev_source or "")
-                            if trade_ev_usdc is None or not math.isfinite(trade_ev_usdc):
-                                candidate["plain_lcb_min_total_edge_gate_pass"] = False
-                                if entry_only_realizable:
-                                    candidate["entry_only_realizable_soft_gate"] = True
-                                _buffer_decision(
-                                    outcome,
-                                    side,
-                                    "entry",
-                                    decided_state="blocked",
-                                    will_order=False,
-                                    reason_codes=["plain_lcb_min_total_edge_missing"],
-                                    reasons=["路径概率跟随整单可兑现edge缺失，禁止入场"],
-                                    details={
-                                        "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                        "plain_lcb_min_total_edge_gate_enforced": True,
-                                        "plain_lcb_min_total_edge_gate_pass": False,
-                                        "plain_lcb_min_total_edge_source": trade_ev_source,
-                                        "plain_lcb_min_total_edge_per_share": trade_ev_per_share,
-                                        "plain_lcb_min_total_edge_usdc": trade_ev_usdc,
-                                        "plain_lcb_min_total_edge_min_usdc": float(lcb_global_min_trade_ev_usdc),
-                                        "plain_lcb_path_gate_enforced": bool(
-                                            candidate.get("plain_lcb_path_gate_enforced")
-                                        ),
-                                        "order_size": order_size,
-                                        "order_amount": order_amount,
-                                        "price_for_amount": price_for_amount,
-                                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                        "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                        "edge_realizable": to_float(candidate.get("edge_realizable")),
-                                    },
-                                )
-                                if not entry_only_realizable:
-                                    continue
-                            if (
-                                trade_ev_usdc is not None
-                                and math.isfinite(trade_ev_usdc)
-                                and trade_ev_usdc + TIME_EDGE_Q_EPS < float(lcb_global_min_trade_ev_usdc)
-                            ):
-                                candidate["plain_lcb_min_total_edge_gate_pass"] = False
-                                if entry_only_realizable:
-                                    candidate["entry_only_realizable_soft_gate"] = True
-                                _buffer_decision(
-                                    outcome,
-                                    side,
-                                    "entry",
-                                    decided_state="blocked",
-                                    will_order=False,
-                                    reason_codes=["plain_lcb_min_total_edge_below_min"],
-                                    reasons=[
-                                        (
-                                            f"路径概率跟随整单可兑现edge={float(trade_ev_usdc):.4f}usdc < "
-                                            f"{float(lcb_global_min_trade_ev_usdc):.4f}usdc，禁止入场"
-                                        )
-                                    ],
-                                    details={
-                                        "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                        "plain_lcb_min_total_edge_gate_enforced": True,
-                                        "plain_lcb_min_total_edge_gate_pass": False,
-                                        "plain_lcb_min_total_edge_source": trade_ev_source,
-                                        "plain_lcb_min_total_edge_per_share": trade_ev_per_share,
-                                        "plain_lcb_min_total_edge_usdc": trade_ev_usdc,
-                                        "plain_lcb_min_total_edge_min_usdc": float(lcb_global_min_trade_ev_usdc),
-                                        "plain_lcb_path_gate_enforced": bool(
-                                            candidate.get("plain_lcb_path_gate_enforced")
-                                        ),
-                                        "order_size": order_size,
-                                        "order_amount": order_amount,
-                                        "price_for_amount": price_for_amount,
-                                        "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                        "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                        "edge_realizable": to_float(candidate.get("edge_realizable")),
-                                    },
-                                )
-                                if not entry_only_realizable:
-                                    continue
-                            candidate["plain_lcb_min_total_edge_gate_pass"] = True
-                        elif lcb_global_min_trade_ev_usdc > TIME_EDGE_Q_EPS:
-                            trade_ev_usdc, trade_ev_per_share, trade_ev_source = _candidate_trade_ev_usdc(
-                                candidate,
-                                order_size=order_size,
-                            )
-                            candidate["lcb_global_trade_ev_usdc"] = (
-                                float(trade_ev_usdc)
-                                if trade_ev_usdc is not None and math.isfinite(trade_ev_usdc)
-                                else None
-                            )
-                            candidate["lcb_global_trade_ev_per_share"] = (
-                                float(trade_ev_per_share)
-                                if trade_ev_per_share is not None and math.isfinite(trade_ev_per_share)
-                                else None
-                            )
-                            candidate["lcb_global_trade_ev_source"] = str(trade_ev_source or "")
-                            candidate["lcb_global_min_trade_ev_usdc"] = float(lcb_global_min_trade_ev_usdc)
-                    if (not lcb_global_candidate) and ssot_target_realization_entry_runtime:
-                        candidate["lcb_global_trade_ev_gate_skipped_by_ssot"] = True
-                    elif trade_ev_usdc is None or not math.isfinite(trade_ev_usdc):
-                        if entry_only_realizable:
-                            candidate["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["lcb_global_trade_ev_missing"],
-                            reasons=["路径概率跟随整单预期收益缺失，禁止入场"],
-                            details={
-                                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "order_size": order_size,
-                                "order_amount": order_amount,
-                                "price_for_amount": price_for_amount,
-                                "trade_ev_source": trade_ev_source,
-                                "trade_ev_per_share": trade_ev_per_share,
-                                "trade_ev_usdc": trade_ev_usdc,
-                                "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
-                                "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                "edge_realizable": to_float(candidate.get("edge_realizable")),
-                            },
-                        )
-                        if not entry_only_realizable:
-                            continue
-                    if (
-                        lcb_global_candidate
-                        and trade_ev_usdc is not None
-                        and math.isfinite(trade_ev_usdc)
-                        and trade_ev_usdc + TIME_EDGE_Q_EPS < float(lcb_global_min_trade_ev_usdc)
-                    ):
-                        if entry_only_realizable:
-                            candidate["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["lcb_global_trade_ev_below_min"],
-                            reasons=[
-                                (
-                                    f"路径概率跟随整单预期收益={float(trade_ev_usdc):.4f}usdc < "
-                                    f"{float(lcb_global_min_trade_ev_usdc):.4f}usdc，禁止入场"
-                                )
-                            ],
-                            details={
-                                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "order_size": order_size,
-                                "order_amount": order_amount,
-                                "price_for_amount": price_for_amount,
-                                "trade_ev_source": trade_ev_source,
-                                "trade_ev_per_share": trade_ev_per_share,
-                                "trade_ev_usdc": trade_ev_usdc,
-                                "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
-                                "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                "edge_realizable": to_float(candidate.get("edge_realizable")),
-                            },
-                        )
-                        if not entry_only_realizable:
-                            continue
-                        balance_guard_ok, guarded_size, guarded_amount, balance_guard_detail = (
-                            _entry_buy_balance_guard(
-                                order_price=price_for_amount,
-                                order_size=order_size,
-                                order_amount=order_amount,
-                                order_type="FAK",
-                                market_price=price_for_amount,
-                            )
-                        )
-                        if not balance_guard_ok:
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="blocked",
-                                will_order=False,
-                                reason_codes=["entry_balance_insufficient_preflight"],
-                                reasons=["入场前余额/额度不足，已阻断下单请求"],
-                                details={
-                                    **entry_chase_details,
-                                    **_posterior_target_direct_order_context(candidate),
-                                    "rising_ask_market": True,
-                                    "rising_ask_eps": entry_market_on_rising_ask_eps,
-                                    "rising_ask_n": entry_market_on_rising_ask_n,
-                                    "best_ask": cur_ask,
-                                    "prev_ask": prev_ask,
-                                    "order_size": order_size,
-                                    "order_amount": order_amount,
-                                    "price_for_amount": price_for_amount,
-                                    "strategy": str(candidate.get("strategy") or ""),
-                                    **balance_guard_detail,
-                                },
-                            )
-                            continue
-                        if guarded_size is not None and math.isfinite(guarded_size) and guarded_size > TIME_EDGE_Q_EPS:
-                            order_size = float(guarded_size)
-                            candidate["size"] = float(order_size)
-                            entry_target_size_now = to_float(entry_target_size)
-                            if (
-                                entry_target_size_now is None
-                                or not math.isfinite(entry_target_size_now)
-                                or float(entry_target_size_now) > float(order_size)
-                            ):
-                                entry_target_size = float(order_size)
-                        if guarded_amount is not None and math.isfinite(guarded_amount) and guarded_amount > TIME_EDGE_Q_EPS:
-                            order_amount = float(guarded_amount)
-                            candidate["order_amount"] = float(order_amount)
-                        if _block_entry_buy_on_post_peak_near_settlement_price(
-                            outcome,
-                            side,
-                            candidate,
-                            row_ref=row,
-                            details={
-                                **entry_chase_details,
-                                "rising_ask_market": True,
-                                "rising_ask_eps": entry_market_on_rising_ask_eps,
-                                "rising_ask_n": entry_market_on_rising_ask_n,
-                                "best_ask": cur_ask,
-                                "prev_ask": prev_ask,
-                                "price_for_amount": price_for_amount,
-                            },
-                            order_price=price_for_amount,
-                            price_for_order=None,
-                            market_price=price_for_amount,
-                            order_size=order_size,
-                            order_amount=order_amount,
-                            order_type="FAK",
-                            submit_source="entry_market_rising_ask",
-                        ):
-                            continue
-                        if _block_entry_buy_on_unusable_edge(
-                            outcome,
-                            side,
-                            candidate,
-                            details={
-                                **entry_chase_details,
-                                "rising_ask_market": True,
-                                "rising_ask_eps": entry_market_on_rising_ask_eps,
-                                "rising_ask_n": entry_market_on_rising_ask_n,
-                                "best_ask": cur_ask,
-                                "prev_ask": prev_ask,
-                                "price_for_amount": price_for_amount,
-                            },
-                            order_price=price_for_amount,
-                            price_for_order=None,
-                            order_size=order_size,
-                            order_amount=order_amount,
-                            order_type="FAK",
-                            submit_source="entry_market_rising_ask",
-                        ):
-                            continue
-                        ok, payload = _run_node_order(
-                            "place-order",
-                            token_id,
-                            "BUY",
-                            price=None,
-                            size=order_size,
-                            order_type="FAK",
-                            amount=order_amount,
-                        )
-                        order_id = str(payload.get("orderID") or payload.get("orderId") or "")
-                        if ok and not order_id and not payload.get("dry_run"):
-                            ok = False
-                            payload = {
-                                "error": "missing_order_id",
-                                "stdout": payload,
-                            }
-                        status_text = str(payload.get("status") or payload.get("statusText") or "")
-                        if not status_text and ok:
-                            status_text = "submitted"
-                        if payload.get("dry_run"):
-                            status_text = status_text or "dry_run"
-                        if ok and (order_id or payload.get("dry_run")):
-                            _entry_submit_guard_mark(
-                                outcome,
-                                side,
-                                source="entry_market_rising_ask",
-                                order_id=order_id,
-                                status=status_text,
-                            )
-                        confirm_state = ""
-                        confirm_status = ""
-                        confirm_error = ""
-                        confirm_meta: Dict[str, Any] = {}
-                        if ok and order_id and not payload.get("dry_run"):
-                            confirm_state, confirm_status, confirm_error, _ = _confirm_order(order_id)
-                            if confirm_state == "not_found":
-                                confirm_meta = _confirm_entry_not_found_recheck(
-                                    token_id,
-                                    order_id,
-                                    cancel_side="BUY",
-                                )
-                                confirm_state = str(confirm_meta.get("confirm_state") or confirm_state)
-                                confirm_status = str(confirm_meta.get("confirm_status") or confirm_status)
-                                confirm_error = str(confirm_meta.get("confirm_error") or confirm_error)
-                        if ok and not payload.get("dry_run") and confirm_state in {"not_found", "canceled"}:
-                            now_iso = utc_now_iso()
-                            confirm_canceled = confirm_state == "canceled"
-                            confirm_pending_risk = (
-                                _confirm_not_found_pending_risk_assess(
-                                    side=side,
-                                    candidate=candidate,
-                                    row_ref=row,
-                                )
-                                if not confirm_canceled
-                                else {}
-                            )
-                            confirm_risk_blocked = bool(confirm_pending_risk.get("block"))
-                            confirm_failed_fast = bool(confirm_canceled or confirm_risk_blocked)
-                            _update_trade_state(
-                                outcome,
-                                side,
-                                "entry_failed" if confirm_failed_fast else "entry_pending",
-                                now_iso,
-                                "" if confirm_failed_fast else order_id,
-                                entry_price=price_for_amount,
-                                entry_size=entry_target_size,
-                                last_action="entry_market_rise",
-                                last_action_price=price_for_amount,
-                                last_action_size=order_size,
-                                last_action_order_type="FAK",
-                                last_action_at=now_iso,
-                                last_status=(
-                                    confirm_status
-                                    or (
-                                        "confirm_not_found_open_cancelled"
-                                        if confirm_canceled
-                                        else (
-                                            "confirm_not_found_risk_blocked"
-                                            if confirm_risk_blocked
-                                            else "confirm_not_found"
-                                        )
-                                    )
-                                ),
-                                last_error=(
-                                    confirm_error
-                                    or (
-                                        "confirm_not_found_open_cancelled"
-                                        if confirm_canceled
-                                        else (
-                                            "confirm_not_found_risk_blocked"
-                                            if confirm_risk_blocked
-                                            else "order_not_found"
-                                        )
-                                    )
-                                ),
-                                exit_triggered_at=exit_triggered_reset,
-                                entry_retry_count=(prev_retry_count + 1) if confirm_failed_fast else 0,
-                                trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
-                                peak_price=price_for_amount,
-                            )
-                            if not confirm_failed_fast:
-                                _register_follow_runtime_entry(
-                                    outcome,
-                                    side,
-                                    strategy=candidate_strategy,
-                                    price=price_for_amount,
-                                    size=order_size,
-                                )
-                                print(
-                                    f"[auto-trade] entry market rising-ask {title} {side} {outcome} "
-                                    f"amount={order_amount or order_size} order={order_id or '—'} "
-                                    f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
-                                    f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'}"
-                                )
-                            else:
-                                if confirm_canceled:
-                                    print(
-                                        f"[auto-trade] entry market rising-ask confirm_not_found_cancelled {title} {side} {outcome} "
-                                        f"amount={order_amount or order_size} order={order_id or '—'} "
-                                        f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
-                                        f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'}"
-                                    )
-                                else:
-                                    print(
-                                        f"[auto-trade] entry market rising-ask confirm_not_found_risk_blocked {title} {side} {outcome} "
-                                        f"amount={order_amount or order_size} order={order_id or '—'} "
-                                        f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
-                                        f"n={entry_market_on_rising_ask_n} strategy={candidate.get('strategy') or 'main'} "
-                                        f"exec_edge_score={to_float(confirm_pending_risk.get('exec_edge_score'))} "
-                                        f"spread={to_float(confirm_pending_risk.get('spread'))}"
-                                    )
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="entry_failed" if confirm_failed_fast else "entry_pending",
-                                will_order=False if confirm_failed_fast else True,
-                                reason_codes=(
-                                    ["confirm_not_found_open_cancelled"]
-                                    if confirm_canceled
-                                    else (
-                                        ["confirm_not_found_risk_blocked"]
-                                        + list(confirm_pending_risk.get("reason_codes") or [])
-                                        if confirm_risk_blocked
-                                        else ["confirm_not_found"]
-                                    )
-                                ),
-                                reasons=(
-                                    ["二次确认仍未找到且检测到挂单，已撤单并转入重评估"]
-                                    if confirm_canceled
-                                    else (
-                                        [
-                                            "下单确认未找到且执行质量偏弱，转入重评估(不进入 entry_pending)"
-                                        ]
-                                        if confirm_risk_blocked
-                                        else ["下单已提交但确认未找到(进入 entry_pending)"]
-                                    )
-                                ),
-                                details={
-                                    **entry_chase_details,
-                                    "rising_ask_market": True,
-                                    "rising_ask_eps": entry_market_on_rising_ask_eps,
-                                    "rising_ask_n": entry_market_on_rising_ask_n,
-                                    "best_ask": cur_ask,
-                                    "prev_ask": prev_ask,
-                                    "order_id": order_id,
-                                    "status": confirm_status or status_text,
-                                    "token_id": token_id,
-                                    "order_price": price_for_amount,
-                                    "order_size": order_size,
-                                    "order_amount": order_amount,
-                                    "order_type": "FAK",
-                                    "confirm_not_found_rechecked": bool(confirm_meta.get("rechecked")),
-                                    "confirm_not_found_recheck_state": str(confirm_meta.get("recheck_state") or ""),
-                                    "confirm_not_found_recheck_status": str(confirm_meta.get("recheck_status") or ""),
-                                    "confirm_not_found_recheck_error": str(confirm_meta.get("recheck_error") or ""),
-                                    "confirm_not_found_recheck_delay_sec": to_float(confirm_meta.get("recheck_delay_sec")),
-                                    "confirm_not_found_open_order_seen": bool(confirm_meta.get("open_order_seen")),
-                                    "confirm_not_found_open_order_ids": confirm_meta.get("open_order_ids") or [],
-                                    "confirm_not_found_cancel_attempted": bool(confirm_meta.get("cancel_attempted")),
-                                    "confirm_not_found_cancel_ok": bool(confirm_meta.get("cancel_ok")),
-                                    "confirm_not_found_cancel_error": str(confirm_meta.get("cancel_error") or ""),
-                                    "confirm_not_found_pending_risk_blocked": bool(confirm_risk_blocked),
-                                    "confirm_not_found_pending_risk_reason_codes": list(
-                                        confirm_pending_risk.get("reason_codes") or []
-                                    ),
-                                    "confirm_not_found_pending_risk_reasons": list(
-                                        confirm_pending_risk.get("reasons") or []
-                                    ),
-                                    "confirm_not_found_pending_exec_edge_score": to_float(
-                                        confirm_pending_risk.get("exec_edge_score")
-                                    ),
-                                    "confirm_not_found_pending_spread": to_float(
-                                        confirm_pending_risk.get("spread")
-                                    ),
-                                    "confirm_not_found_pending_exec_edge_score_max": to_float(
-                                        confirm_pending_risk.get("exec_edge_score_max")
-                                    ),
-                                    "confirm_not_found_pending_spread_min": to_float(
-                                        confirm_pending_risk.get("spread_min")
-                                    ),
-                                    "confirm_not_found_pending_risk_strategies": list(
-                                        confirm_pending_risk.get("strategies") or []
-                                    ),
-                                },
-                            )
-                            cand = candidate_map.get(side) if candidate_map else None
-                            _record_auto_order(
-                                order_id,
-                                outcome,
-                                side,
-                                "entry",
-                                price_for_amount,
-                                order_size,
-                                "FAK",
-                                cand.get("q_raw") if cand else None,
-                                cand.get("q_calibrated") if cand else None,
-                                cand.get("q_edge") if cand else None,
-                                _candidate_entry_strategy_for_order(cand),
-                                cand.get("q_calibrated_lcb") if cand else None,
-                                cand.get("q_calibrated_ucb") if cand else None,
-                                cand.get("q_calibrated_sigma") if cand else None,
-                                cand.get("q_calibration_version") if cand else None,
-                            )
-                            if not confirm_failed_fast:
-                                pending_block = True
-                            continue
-                        if ok:
-                            now_iso = utc_now_iso()
-                            next_state = "entry"
-                            next_entry_at = now_iso
-                            next_status = status_text
-                            next_error = ""
-                            if payload.get("dry_run"):
-                                next_status = status_text or "dry_run"
-                            elif confirm_state == "error":
-                                next_state = "entry_pending"
-                                next_entry_at = now_iso if reentry_reset else None
-                                next_status = confirm_status or "confirm_error"
-                                next_error = confirm_error or "confirm_error"
-                            elif confirm_state == "ok":
-                                next_status = confirm_status or status_text or "confirmed"
-                            _update_trade_state(
-                                outcome,
-                                side,
-                                next_state,
-                                next_entry_at,
-                                order_id,
-                                entry_price=price_for_amount,
-                                entry_size=entry_target_size,
-                                last_action="entry_market_rise",
-                                last_action_price=price_for_amount,
-                                last_action_size=order_size,
-                                last_action_order_type="FAK",
-                                last_action_at=now_iso,
-                                last_status=next_status,
-                                last_error=next_error,
-                                exit_triggered_at=exit_triggered_reset,
-                                entry_retry_count=0,
-                                trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
-                                peak_price=price_for_amount,
-                            )
-                            _register_follow_runtime_entry(
-                                outcome,
-                                side,
-                                strategy=candidate_strategy,
-                                price=price_for_amount,
-                                size=order_size,
-                            )
-                            print(
-                                f"[auto-trade] entry market rising-ask {title} {side} {outcome} "
-                                f"amount={order_amount or order_size} order={order_id or '—'} "
-                                f"ask={cur_ask if cur_ask is not None else '—'} prev_ask={prev_ask if prev_ask is not None else '—'} "
-                                f"n={entry_market_on_rising_ask_n}"
-                            )
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state=next_state or "entry",
-                                will_order=True,
-                                reason_codes=["order_submitted"],
-                                reasons=["已触发下单(entry)"],
-                                details={
-                                    **entry_chase_details,
-                                    "rising_ask_market": True,
-                                    "rising_ask_eps": entry_market_on_rising_ask_eps,
-                                    "rising_ask_n": entry_market_on_rising_ask_n,
-                                    "best_ask": cur_ask,
-                                    "prev_ask": prev_ask,
-                                    "order_id": order_id,
-                                    "status": next_status,
-                                    "token_id": token_id,
-                                    "order_price": price_for_amount,
-                                    "order_size": order_size,
-                                    "order_amount": order_amount,
-                                    "order_type": "FAK",
-                                    "price": price_for_amount,
-                                    "size": order_size,
-                                    "strategy": candidate.get("strategy") or "main",
-                                },
-                            )
-                            if next_state == "entry":
-                                cand = candidate_map.get(side) if candidate_map else None
-                                _record_auto_order(
-                                    order_id,
-                                    outcome,
-                                    side,
-                                    "entry",
-                                    price_for_amount,
-                                    order_size,
-                                    "FAK",
-                                    cand.get("q_raw") if cand else None,
-                                    cand.get("q_calibrated") if cand else None,
-                                    cand.get("q_edge") if cand else None,
-                                    _candidate_entry_strategy_for_order(cand),
-                                    cand.get("q_calibrated_lcb") if cand else None,
-                                    cand.get("q_calibrated_ucb") if cand else None,
-                                    cand.get("q_calibrated_sigma") if cand else None,
-                                    cand.get("q_calibration_version") if cand else None,
-                                )
-                        else:
-                            now_iso = utc_now_iso()
-                            _update_trade_state(
-                                outcome,
-                                side,
-                                "entry_failed",
-                                None,
-                                "",
-                                entry_price=price_for_amount,
-                                entry_size=entry_target_size,
-                                last_action="entry_market_rise",
-                                last_action_price=price_for_amount,
-                                last_action_size=order_size,
-                                last_action_order_type="FAK",
-                                last_action_at=now_iso,
-                                last_status=str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed"),
-                                last_error=_format_order_error_short(payload),
-                                exit_triggered_at=exit_triggered_reset,
-                                entry_retry_count=prev_retry_count + 1,
-                                trend_limit_step=trend_step if candidate.get("trend_limit") else 0,
-                            )
-                            print(
-                                f"[auto-trade] entry market rising-ask failed {title} {side} {outcome} "
-                                f"{_format_order_error(payload)}"
-                            )
-                            _buffer_decision(
-                                outcome,
-                                side,
-                                "entry",
-                                decided_state="entry_failed",
-                                will_order=True,
-                                reason_codes=["place_order_failed"],
-                                reasons=["下单失败(place-order failed)"],
-                                details={
-                                    **entry_chase_details,
-                                    "rising_ask_market": True,
-                                    "rising_ask_eps": entry_market_on_rising_ask_eps,
-                                    "rising_ask_n": entry_market_on_rising_ask_n,
-                                    "best_ask": cur_ask,
-                                    "prev_ask": prev_ask,
-                                    "token_id": token_id,
-                                    "order_price": price_for_amount,
-                                    "order_size": order_size,
-                                    "order_amount": order_amount,
-                                    "order_type": "FAK",
-                                    "error": _format_order_error_short(payload),
-                                    "status": status_text,
-                                    **_order_failure_detail_fields(payload),
-                                    "order_error": _format_order_error_short(payload),
-                                    "order_status": status_text
-                                    or str(payload.get("status") or payload.get("statusText") or ""),
-                                },
-                            )
-                        continue
                 if order_price >= 1:
                     order_price = 0.999
                 effective_order_type = str(
@@ -47345,6 +43074,22 @@ def execute_auto_trades(
                         candidate["entry_reprice_usable_edge_refreshed"] = True
                         candidate.update(_build_entry_usable_edge_audit(candidate))
                         _seed_decision_context(outcome, side, candidate=candidate, action="entry")
+                entry_policy_block = _entry_order_policy_block_reason(candidate)
+                if entry_policy_block:
+                    _buffer_decision(
+                        outcome,
+                        side,
+                        "entry",
+                        decided_state="blocked",
+                        will_order=False,
+                        reason_codes=[entry_policy_block],
+                        reasons=["生产入场只允许 posterior/SSOT/hard-source Bayes 目标候选"],
+                        details={
+                            "strategy": str(candidate.get("strategy") or ""),
+                            **_entry_order_policy_block_details(candidate, entry_policy_block),
+                        },
+                    )
+                    continue
                 if _should_block_for_volume_check(side):
                     continue
                 dedupe_hit = _entry_submit_guard_check(outcome, side)
@@ -47363,200 +43108,6 @@ def execute_auto_trades(
                         },
                     )
                     continue
-                plain_lcb_min_total_edge_gate_enforced = bool(
-                    candidate.get("plain_lcb_path_gate_enforced")
-                )
-                candidate["plain_lcb_min_total_edge_gate_enforced"] = bool(
-                    plain_lcb_min_total_edge_gate_enforced
-                )
-                if plain_lcb_min_total_edge_gate_enforced:
-                    candidate["plain_lcb_min_total_edge_min_usdc"] = float(
-                        lcb_global_min_trade_ev_usdc
-                    )
-                if lcb_global_candidate and plain_lcb_min_total_edge_gate_enforced and (
-                    lcb_global_min_trade_ev_usdc > TIME_EDGE_Q_EPS
-                ):
-                    trade_ev_usdc, trade_ev_per_share, trade_ev_source = (
-                        _candidate_plain_lcb_min_total_edge_usdc(
-                            candidate,
-                            order_size=order_size,
-                        )
-                    )
-                    candidate["plain_lcb_min_total_edge_usdc"] = (
-                        float(trade_ev_usdc)
-                        if trade_ev_usdc is not None and math.isfinite(trade_ev_usdc)
-                        else None
-                    )
-                    candidate["plain_lcb_min_total_edge_per_share"] = (
-                        float(trade_ev_per_share)
-                        if trade_ev_per_share is not None and math.isfinite(trade_ev_per_share)
-                        else None
-                    )
-                    candidate["plain_lcb_min_total_edge_source"] = str(trade_ev_source or "")
-                    if trade_ev_usdc is None or not math.isfinite(trade_ev_usdc):
-                        candidate["plain_lcb_min_total_edge_gate_pass"] = False
-                        if entry_only_realizable:
-                            candidate["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["plain_lcb_min_total_edge_missing"],
-                            reasons=["路径概率跟随整单可兑现edge缺失，禁止入场"],
-                            details={
-                                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "plain_lcb_min_total_edge_gate_enforced": True,
-                                "plain_lcb_min_total_edge_gate_pass": False,
-                                "plain_lcb_min_total_edge_source": trade_ev_source,
-                                "plain_lcb_min_total_edge_per_share": trade_ev_per_share,
-                                "plain_lcb_min_total_edge_usdc": trade_ev_usdc,
-                                "plain_lcb_min_total_edge_min_usdc": float(lcb_global_min_trade_ev_usdc),
-                                "plain_lcb_path_gate_enforced": bool(
-                                    candidate.get("plain_lcb_path_gate_enforced")
-                                ),
-                                "order_size": order_size,
-                                "order_amount": order_amount,
-                                "order_price": order_price,
-                                "order_type": effective_order_type,
-                                "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                "edge_realizable": to_float(candidate.get("edge_realizable")),
-                                "exec_edge_entry": to_float(candidate.get("exec_edge_entry")),
-                            },
-                        )
-                        if not entry_only_realizable:
-                            continue
-                    if (
-                        trade_ev_usdc is not None
-                        and math.isfinite(trade_ev_usdc)
-                        and trade_ev_usdc + TIME_EDGE_Q_EPS < float(lcb_global_min_trade_ev_usdc)
-                    ):
-                        candidate["plain_lcb_min_total_edge_gate_pass"] = False
-                        if entry_only_realizable:
-                            candidate["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["plain_lcb_min_total_edge_below_min"],
-                            reasons=[
-                                (
-                                    f"路径概率跟随整单可兑现edge={float(trade_ev_usdc):.4f}usdc < "
-                                    f"{float(lcb_global_min_trade_ev_usdc):.4f}usdc，禁止入场"
-                                )
-                            ],
-                            details={
-                                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "plain_lcb_min_total_edge_gate_enforced": True,
-                                "plain_lcb_min_total_edge_gate_pass": False,
-                                "plain_lcb_min_total_edge_source": trade_ev_source,
-                                "plain_lcb_min_total_edge_per_share": trade_ev_per_share,
-                                "plain_lcb_min_total_edge_usdc": trade_ev_usdc,
-                                "plain_lcb_min_total_edge_min_usdc": float(lcb_global_min_trade_ev_usdc),
-                                "plain_lcb_path_gate_enforced": bool(
-                                    candidate.get("plain_lcb_path_gate_enforced")
-                                ),
-                                "order_size": order_size,
-                                "order_amount": order_amount,
-                                "order_price": order_price,
-                                "order_type": effective_order_type,
-                                "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                "edge_realizable": to_float(candidate.get("edge_realizable")),
-                                "exec_edge_entry": to_float(candidate.get("exec_edge_entry")),
-                            },
-                        )
-                        if not entry_only_realizable:
-                            continue
-                    candidate["plain_lcb_min_total_edge_gate_pass"] = True
-                elif lcb_global_candidate and lcb_global_min_trade_ev_usdc > TIME_EDGE_Q_EPS:
-                    trade_ev_usdc, trade_ev_per_share, trade_ev_source = _candidate_trade_ev_usdc(
-                        candidate,
-                        order_size=order_size,
-                    )
-                    candidate["lcb_global_trade_ev_usdc"] = (
-                        float(trade_ev_usdc)
-                        if trade_ev_usdc is not None and math.isfinite(trade_ev_usdc)
-                        else None
-                    )
-                    candidate["lcb_global_trade_ev_per_share"] = (
-                        float(trade_ev_per_share)
-                        if trade_ev_per_share is not None and math.isfinite(trade_ev_per_share)
-                        else None
-                    )
-                    candidate["lcb_global_trade_ev_source"] = str(trade_ev_source or "")
-                    candidate["lcb_global_min_trade_ev_usdc"] = float(lcb_global_min_trade_ev_usdc)
-                    if trade_ev_usdc is None or not math.isfinite(trade_ev_usdc):
-                        if entry_only_realizable:
-                            candidate["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["lcb_global_trade_ev_missing"],
-                            reasons=["路径概率跟随整单预期收益缺失，禁止入场"],
-                            details={
-                                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "order_size": order_size,
-                                "order_amount": order_amount,
-                                "order_price": order_price,
-                                "order_type": effective_order_type,
-                                "trade_ev_source": trade_ev_source,
-                                "trade_ev_per_share": trade_ev_per_share,
-                                "trade_ev_usdc": trade_ev_usdc,
-                                "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
-                                "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                "edge_realizable": to_float(candidate.get("edge_realizable")),
-                                "exec_edge_entry": to_float(candidate.get("exec_edge_entry")),
-                            },
-                        )
-                        if not entry_only_realizable:
-                            continue
-                    if (
-                        trade_ev_usdc is not None
-                        and math.isfinite(trade_ev_usdc)
-                        and trade_ev_usdc + TIME_EDGE_Q_EPS < float(lcb_global_min_trade_ev_usdc)
-                    ):
-                        if entry_only_realizable:
-                            candidate["entry_only_realizable_soft_gate"] = True
-                        _buffer_decision(
-                            outcome,
-                            side,
-                            "entry",
-                            decided_state="blocked",
-                            will_order=False,
-                            reason_codes=["lcb_global_trade_ev_below_min"],
-                            reasons=[
-                                (
-                                    f"路径概率跟随整单预期收益={float(trade_ev_usdc):.4f}usdc < "
-                                    f"{float(lcb_global_min_trade_ev_usdc):.4f}usdc，禁止入场"
-                                )
-                            ],
-                            details={
-                                "strategy": PATH_PROBABILITY_FOLLOW_FAMILY,
-                                "order_size": order_size,
-                                "order_amount": order_amount,
-                                "order_price": order_price,
-                                "order_type": effective_order_type,
-                                "trade_ev_source": trade_ev_source,
-                                "trade_ev_per_share": trade_ev_per_share,
-                                "trade_ev_usdc": trade_ev_usdc,
-                                "min_trade_ev_usdc": float(lcb_global_min_trade_ev_usdc),
-                                "edge_tradeability_profit_value": _candidate_tradeability_profit_value(candidate),
-                                "edge_realizable_v2": to_float(candidate.get("edge_realizable_v2")),
-                                "edge_realizable": to_float(candidate.get("edge_realizable")),
-                                "exec_edge_entry": to_float(candidate.get("exec_edge_entry")),
-                            },
-                        )
-                        if not entry_only_realizable:
-                            continue
                 balance_guard_ok, guarded_size, guarded_amount, balance_guard_detail = (
                     _entry_buy_balance_guard(
                         order_price=price_for_order if price_for_order is not None else order_price,
@@ -47619,18 +43170,73 @@ def execute_auto_trades(
                     submit_source="entry_main",
                 ):
                     continue
-                if _block_entry_buy_on_unusable_edge(
+                order_context_payload = _bayes_weather_order_context(
+                    slug=slug,
+                    event_date=event_date_key,
+                    outcome=outcome,
+                    side=side,
+                    intent_action="entry",
+                    submit_source="entry_topup" if is_topup else "entry_main",
+                    candidate=candidate,
+                )
+                intent_probe = {
+                    **order_context_payload,
+                    "token_id": token_id,
+                    "side": "BUY",
+                    "order_type": effective_order_type,
+                    "price": price_for_order,
+                    "size": order_size,
+                    "amount": order_amount,
+                    "direct_target_order_context": bool(
+                        _env_bool("PM_AUTO_TRADE_DIRECT_JOB_CONTEXT", False)
+                    ),
+                    "direct_target_exit_order": False,
+                }
+                order_intent_id = (
+                    _clob_order_service_direct_target_idempotency_key(intent_probe)
+                    or _clob_order_service_idempotency_key(intent_probe)
+                )
+                order_context_payload["order_intent_id"] = order_intent_id
+                pending_submit_at = utc_now_iso_ms()
+                pending_submit_details = {
+                    **candidate,
+                    **entry_chase_details,
+                    **balance_guard_detail,
+                    "decision_phase": "pending_submit",
+                    "order_intent_state": "pending_submit",
+                    "order_intent_id": order_intent_id,
+                    "idempotency_key": order_intent_id,
+                    "auto_trade_decision_written_at": pending_submit_at,
+                    "token_id": token_id,
+                    "order_price": price_for_order,
+                    "price_for_order": price_for_order,
+                    "order_size": order_size,
+                    "order_amount": order_amount,
+                    "order_type": effective_order_type,
+                }
+                _apply_signal_to_order_execution_segments(
+                    pending_submit_details,
+                    order_intent_id=order_intent_id,
+                    idempotency_key=order_intent_id,
+                )
+                _buffer_decision(
                     outcome,
                     side,
-                    candidate,
-                    details=entry_chase_details,
-                    order_price=order_price,
-                    price_for_order=price_for_order,
-                    order_size=order_size,
-                    order_amount=order_amount,
-                    order_type=effective_order_type,
-                    submit_source="entry_main",
-                ):
+                    "entry",
+                    decided_state="pending_submit",
+                    will_order=True,
+                    reason_codes=["order_pending_submit"],
+                    reasons=["订单意图已持久化，等待唯一 CLOB submitter 提交"],
+                    details=pending_submit_details,
+                )
+                try:
+                    _flush_decisions()
+                    conn.commit()
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except sqlite3.Error:
+                        pass
                     continue
                 ok, payload = _run_node_order(
                     "place-order",
@@ -47640,6 +43246,7 @@ def execute_auto_trades(
                     size=order_size,
                     order_type=effective_order_type,
                     amount=order_amount,
+                    order_context=order_context_payload,
                 )
                 order_id = str(payload.get("orderID") or payload.get("orderId") or "")
                 if ok and not order_id and not payload.get("dry_run"):
@@ -47962,6 +43569,20 @@ def execute_auto_trades(
                                     "order_submit_outer_timeout_sec": payload.get(
                                         "order_submit_outer_timeout_sec"
                                     ),
+                                    "exchange_post_started": bool(
+                                        payload.get("exchange_post_started")
+                                    ),
+                                    "exchange_post_started_at": payload.get(
+                                        "exchange_post_started_at"
+                                    ),
+                                    "order_submitted_at": _exchange_post_t5_from_order_payload(
+                                        payload
+                                    ),
+                                    "order_submission_time_quality": (
+                                        "exchange_post_started_at"
+                                        if _exchange_post_t5_from_order_payload(payload)
+                                        else "exchange_post_t5_missing"
+                                    ),
                                     "direct_target_order_timeout_sec": payload.get(
                                         "direct_target_order_timeout_sec"
                                     ),
@@ -47978,7 +43599,7 @@ def execute_auto_trades(
 	                                "size": order_size,
 	                                "strategy": candidate.get("strategy") or "main",
 	                            },
-	                            utc_now_iso_ms(),
+	                            _exchange_post_t5_from_order_payload(payload),
 	                        ),
 	                    )
                     if next_state in {"entry", "entry_pending"} and order_id:
@@ -48063,7 +43684,7 @@ def execute_auto_trades(
                         last_action_size=order_size,
                         last_action_order_type=AUTO_TRADE_ORDER_TYPE,
                         last_action_at=now_iso,
-                        last_status=str(payload.get("status") or payload.get("statusText") or payload.get("error") or "failed"),
+                        last_status=_order_failure_last_status(payload),
                         last_error=_format_order_error_short(payload),
                         exit_triggered_at=exit_triggered_reset,
                         entry_retry_count=prev_retry_count + 1,
@@ -48079,7 +43700,7 @@ def execute_auto_trades(
                         "entry",
                         decided_state="entry_failed",
                         will_order=True,
-                        reason_codes=["place_order_failed"],
+                        reason_codes=_order_failure_reason_codes(payload),
                         reasons=["下单失败(place-order failed)"],
                         details={
                             **entry_chase_details,
@@ -48401,7 +44022,7 @@ def execute_auto_trades(
                     if target_switch_exit_balance_bypass:
                         row["exit_balance_guard_bypassed"] = True
                         row["exit_balance_guard_bypass_reason"] = (
-                            "target_realization_switch_buy_exit_old"
+                            "target_realization_target_invalidated"
                         )
                     elif not allow_balance_check:
                         pos_entry = positions_by_token.get(token_id) if token_id else None
@@ -48828,9 +44449,8 @@ def execute_auto_trades(
                 target_realization_force_reason_active = bool(
                     exit_reason_code_set_for_force.intersection(
                         {
-                            "target_realization_switch_buy_exit_old",
-                            "target_realization_exit_clear",
-                            "target_realization_hard_zero_dead_market",
+                            "target_realization_yes_target_invalidated",
+                            "target_realization_no_invalidated",
                         }
                     )
                     or row.get("target_adjustment_force_exit") is True
@@ -49410,7 +45030,68 @@ def execute_auto_trades(
                         continue
                 if AUTO_TRADE_SELL_ON_EXIT and size_to_sell and exit_price:
                     exit_order_type = str(AUTO_TRADE_EXIT_ORDER_TYPE or "FAK").strip().upper() or "FAK"
-                    exit_submit_started = _event_stage_start() if exit_only else None
+                    exit_policy_block = _exit_order_policy_block_reason(
+                        exit_reason_codes,
+                        details=row,
+                    )
+                    if exit_policy_block:
+                        now_iso = utc_now_iso()
+                        exit_policy_details: Dict[str, Any] = {
+                            "strategy": str(prev_entry.get("strategy") or "exit"),
+                            "token_id": token_id,
+                            "order_price": exit_price,
+                            "order_size": size_to_sell,
+                            "order_type": exit_order_type,
+                            "exit_reason_codes": list(exit_reason_codes or []),
+                            "exit_reasons": list(exit_reasons or []),
+                            "position_size": size_to_sell,
+                        }
+                        exit_policy_details.update(
+                            _exit_order_policy_guard_details(
+                                exit_reason_codes,
+                                reasons=exit_reasons,
+                                details=exit_policy_details,
+                                block_reason=exit_policy_block,
+                                side=side,
+                            )
+                        )
+                        _update_trade_state(
+                            outcome,
+                            side,
+                            prev_state or "entry",
+                            None,
+                            None,
+                            last_action="exit_skip",
+                            last_action_price=exit_price,
+                            last_action_size=size_to_sell,
+                            last_action_order_type=exit_order_type,
+                            last_action_at=now_iso,
+                            last_status=exit_policy_block,
+                            last_error="",
+                            exit_reasons=exit_reasons_text,
+                            exit_reason_codes=exit_reason_codes_text,
+                            exit_triggered_at=exit_triggered_at_update,
+                            exit_skip_reason=exit_policy_block,
+                            exit_skip_detail="exit blocked by Bayes target_realization order policy",
+                            exit_skip_at=now_iso,
+                            position_size=size_to_sell,
+                            avg_price=avg_cost,
+                        )
+                        print(
+                            f"[auto-trade] exit blocked {title} {side} {outcome} "
+                            f"reason={exit_policy_block}{exit_reason_extra}"
+                        )
+                        _buffer_decision(
+                            outcome,
+                            side,
+                            "exit",
+                            decided_state=prev_state or "entry",
+                            will_order=False,
+                            reason_codes=[exit_policy_block],
+                            reasons=["exit policy 门禁阻断，禁止提交旧退出诊断卖单"],
+                            details=exit_policy_details,
+                        )
+                        continue
                     if exit_order_type in {"FAK", "FOK"}:
                         # Exit with marketable order types must avoid balance being occupied by stale SELL GTCs.
                         _run_node_order("cancel-orders", token_id, "SELL")
@@ -49424,6 +45105,27 @@ def execute_auto_trades(
                     ):
                         # Best-effort de-dup: replace old SELL only after canceling stale open sells.
                         _run_node_order("cancel-orders", token_id, "SELL")
+                    exit_intent_ok, exit_order_context, exit_pending_identity = (
+                        _persist_pending_submit_intent(
+                            outcome=outcome,
+                            side=side,
+                            action="exit",
+                            token_id=token_id,
+                            order_price=exit_price,
+                            order_size=size_to_sell,
+                            order_type=exit_order_type,
+                            submit_source="exit_main",
+                            candidate={
+                                **dict(prev_entry),
+                                "exit_reason_codes": list(exit_reason_codes or []),
+                                "exit_reasons": list(exit_reasons or []),
+                                "position_size": size_to_sell,
+                            },
+                        )
+                    )
+                    if not exit_intent_ok:
+                        continue
+                    exit_submit_started = _event_stage_start() if exit_only else None
                     ok, payload = _run_node_order(
                         "place-order",
                         token_id,
@@ -49431,6 +45133,7 @@ def execute_auto_trades(
                         price=exit_price,
                         size=size_to_sell,
                         order_type=exit_order_type,
+                        order_context=exit_order_context,
                     )
                     order_id = str(payload.get("orderID") or payload.get("orderId") or "")
                     if ok and not order_id and not payload.get("dry_run"):
@@ -49492,6 +45195,7 @@ def execute_auto_trades(
                                 "exit_reasons": list(exit_reasons or []),
                                 "exit_skip_reason": "dry_run_exit_no_state_mutation",
                                 "exit_skip_detail": dry_run_detail,
+                                "order_submission_time_quality": "exchange_post_t5_missing",
                                 **(
                                     {
                                         "exit_balance_guard_bypassed": True,
@@ -49513,7 +45217,7 @@ def execute_auto_trades(
                                 will_order=True,
                                 reason_codes=["order_submitted"],
                                 reasons=["dry-run 模拟退出单(exit)，不改变真实仓位"],
-                                details=_add_hard_source_order_sla(dry_exit_details, utc_now_iso_ms()),
+                                details=dry_exit_details,
                             )
                             continue
                         marketable_status_pending = str(status_text or "").strip().lower() in {
@@ -49551,6 +45255,7 @@ def execute_auto_trades(
                                 None,
                                 None,
                                 "exit",
+                                lineage=exit_pending_identity,
                             )
                             marketable_probe_state = str(marketable_probe.get("probe_state") or "")
                             marketable_confirm_status = str(
@@ -49605,6 +45310,15 @@ def execute_auto_trades(
                                 "exit_marketable_retry_status": "",
                                 "exit_marketable_retry_error": "",
                                 "exit_marketable_retry_probe_state": "",
+                                "exchange_post_started": bool(
+                                    payload.get("exchange_post_started")
+                                ),
+                                "exchange_post_started_at": payload.get(
+                                    "exchange_post_started_at"
+                                ),
+                                "order_submitted_at": _exchange_post_t5_from_order_payload(
+                                    payload
+                                ),
                                 **(
                                     {
                                         "exit_balance_guard_bypassed": True,
@@ -49618,7 +45332,10 @@ def execute_auto_trades(
                             }
                             _copy_hard_source_sla_fields(marketable_details, row)
                             _copy_hard_source_sla_fields(marketable_details, prev_entry)
-                            _add_hard_source_order_sla(marketable_details, utc_now_iso_ms())
+                            _add_hard_source_order_sla(
+                                marketable_details,
+                                _exchange_post_t5_from_order_payload(payload),
+                            )
                             if marketable_probe_state == "filled":
                                 if (
                                     marketable_remaining_position is None
@@ -49800,6 +45517,7 @@ def execute_auto_trades(
                             None,
                             None,
                             "exit",
+                            lineage=exit_pending_identity,
                         )
                         _buffer_decision(
                             outcome,
@@ -50309,11 +46027,11 @@ def execute_auto_trades(
                         )
     _event_stage_end("row_processing", row_processing_started)
     decision_finalize_started = _event_stage_start()
-    try:
-        _ensure_expected_entry_decisions()
-        _flush_decisions()
-    except Exception as exc:
-        print(f"[auto-trade] decision flush failed {slug} {event_date_key}: {exc}")
+    _ensure_expected_entry_decisions()
+    # Decision persistence is part of the order transaction boundary.  The
+    # durable CLOB outbox makes a retry idempotent, so a failed decision write
+    # must abort instead of committing an order state with no decision ledger.
+    _flush_decisions()
     if direct_target_job:
         event_stage_meta["no_orderbook_reconcile"] = "skipped_direct_target_job"
     else:
@@ -50370,19 +46088,6 @@ def _mark_no_orderbook_skips(
     now_iso: Optional[str] = None,
 ) -> int:
     now_iso = now_iso or utc_now_iso()
-    params: List[Any] = [now_iso]
-    where_parts = [
-        "last_error IS NOT NULL",
-        "lower(last_error) LIKE '%orderbook%'",
-        "(lower(last_error) LIKE '%does not exist%' OR lower(last_error) LIKE '%not exist%')",
-    ]
-    if slug:
-        where_parts.append("slug = ?")
-        params.append(slug)
-    if event_date:
-        where_parts.append("event_date = ?")
-        params.append(event_date)
-    where_sql = " AND ".join(where_parts)
     cur = conn.cursor()
     retry_attempts = _env_int("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_RETRY_ATTEMPTS")
     if retry_attempts is None or retry_attempts <= 0:
@@ -50393,33 +46098,15 @@ def _mark_no_orderbook_skips(
     max_wait_sec = _env_float("PM_AUTO_TRADE_NO_ORDERBOOK_RECONCILE_MAX_WAIT_SEC", 0.8)
     if max_wait_sec is None or not math.isfinite(max_wait_sec) or max_wait_sec <= 0:
         max_wait_sec = 0.8
-    deadline = time.time() + max(0.05, float(max_wait_sec))
-    sql_text = f"""
-        UPDATE edge_trades
-        SET exit_skip_reason = 'no_orderbook',
-            exit_skip_detail = COALESCE(exit_skip_detail, last_error),
-            exit_skip_at = COALESCE(exit_skip_at, last_action_at, ?)
-        WHERE {where_sql}
-        """
-    updated = False
-    for attempt in range(max(1, int(retry_attempts))):
-        try:
-            cur.execute(sql_text, tuple(params))
-            updated = True
-            break
-        except sqlite3.OperationalError as exc:
-            if (not _sqlite_locked_error(exc)) or attempt >= int(retry_attempts) - 1:
-                raise
-            remain = deadline - time.time()
-            if remain <= 0:
-                break
-            sleep_for = min(float(retry_sleep) * float(attempt + 1), max(0.0, remain))
-            if sleep_for <= 0:
-                break
-            time.sleep(sleep_for)
-    if not updated:
-        return 0
-    return max(0, int(cur.rowcount or 0))
+    return mark_no_orderbook_skip_details(
+        cur,
+        now_iso=now_iso,
+        slug=slug,
+        event_date=event_date,
+        attempts=max(1, int(retry_attempts)),
+        retry_sleep_sec=float(retry_sleep),
+        sleep_cap_sec=float(max_wait_sec),
+    )
 
 
 def _load_trade_sync_status() -> Dict[str, Any]:
@@ -51175,19 +46862,13 @@ def _clear_residual_positions(
                     now_iso,
                 ),
             )
-        cur.execute(
-            """
-            UPDATE edge_trades
-            SET state = 'exit',
-                position_size = 0.0,
-                last_action = 'residual_clear',
-                last_action_at = ?,
-                last_status = 'residual_clear',
-                last_error = '',
-                updated_at = ?
-            WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-            """,
-            (now_iso, now_iso, slug, event_date, outcome, side),
+        residual_clear_edge_trade(
+            cur,
+            now_iso=now_iso,
+            slug=slug,
+            event_date=event_date,
+            outcome=outcome,
+            side=side,
         )
         cleared.append(
             {
@@ -51296,16 +46977,13 @@ def _probe_recent_auto_orders_for_fast_sync(
                 fill_size = None
             if fill_size is not None and math.isfinite(fill_size) and fill_size > TIME_EDGE_Q_EPS:
                 try:
-                    cur.execute(
-                        """
-                        UPDATE auto_orders
-                        SET order_status = COALESCE(NULLIF(order_status, ''), ?),
-                            order_checked_at = ?
-                        WHERE id = ?
-                        """,
-                        ("filled", checked_at, int(row[0] or 0)),
+                    status_updates += update_auto_order_status_by_id(
+                        cur,
+                        row_id=int(row[0] or 0),
+                        order_status="filled",
+                        order_checked_at=checked_at,
+                        only_if_blank=True,
                     )
-                    status_updates += int(cur.rowcount or 0)
                 except sqlite3.OperationalError:
                     pass
                 continue
@@ -51335,16 +47013,12 @@ def _probe_recent_auto_orders_for_fast_sync(
                 ).strip().lower()
             db_status = status_norm or ("missing" if order is None else "unknown")
             try:
-                cur.execute(
-                    """
-                    UPDATE auto_orders
-                    SET order_status = ?,
-                        order_checked_at = ?
-                    WHERE id = ?
-                    """,
-                    (db_status, checked_at, int(row[0] or 0)),
+                status_updates += update_auto_order_status_by_id(
+                    cur,
+                    row_id=int(row[0] or 0),
+                    order_status=db_status,
+                    order_checked_at=checked_at,
                 )
-                status_updates += int(cur.rowcount or 0)
             except sqlite3.OperationalError:
                 pass
             if size_matched is None or not math.isfinite(size_matched) or size_matched <= TIME_EDGE_Q_EPS:
@@ -51852,32 +47526,25 @@ def sync_trade_fills(
             status = "confirm_not_found"
         strategy = str(details.get("strategy") or "main").strip() or "main"
         try:
-            cur.execute(
-                """
-                INSERT OR IGNORE INTO auto_orders (
-                    order_id, slug, event_date, outcome, side, action, price, size,
-                    q_raw, q_calibrated, q_edge,
-                    order_type, order_status, order_checked_at, strategy, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    key,
-                    slug,
-                    event_date,
-                    outcome,
-                    side,
-                    action,
-                    price,
-                    size,
-                    q_raw,
-                    q_calibrated,
-                    q_edge,
-                    order_type,
-                    status or None,
-                    created_at or utc_now_iso(),
-                    strategy,
-                    created_at or utc_now_iso(),
-                ),
+            checked_or_now = created_at or utc_now_iso()
+            insert_auto_order_ignore(
+                cur,
+                order_id=key,
+                slug=slug,
+                event_date=event_date,
+                outcome=outcome,
+                side=side,
+                action=action,
+                price=price,
+                size=size,
+                q_raw=q_raw,
+                q_calibrated=q_calibrated,
+                q_edge=q_edge,
+                order_type=order_type,
+                order_status=status or None,
+                order_checked_at=checked_or_now,
+                strategy=strategy,
+                created_at=created_at or utc_now_iso(),
             )
         except sqlite3.OperationalError:
             return None
@@ -52446,14 +48113,10 @@ def sync_trade_fills(
                 resolved_run_id = None
         if did > 0 and resolved_run_id is not None and resolved_run_id > 0:
             try:
-                cur.execute(
-                    """
-                    UPDATE auto_trade_decisions
-                    SET run_id = ?
-                    WHERE id = ?
-                      AND (run_id IS NULL OR run_id <= 0)
-                    """,
-                    (int(resolved_run_id), did),
+                fill_missing_auto_trade_decision_run_id(
+                    cur,
+                    decision_id=did,
+                    run_id=resolved_run_id,
                 )
             except sqlite3.OperationalError:
                 pass
@@ -52704,36 +48367,19 @@ def sync_trade_fills(
             new_avg = prev_avg if new_pos > TIME_EDGE_Q_EPS else 0.0
             new_state = "exit" if new_pos <= TIME_EDGE_Q_EPS else "entry"
         last_fill_at = trade_time or now_iso
-        cur.execute(
-            """
-            INSERT INTO edge_trades (
-                slug, event_date, outcome, side, state,
-                entry_at, last_order_id,
-                position_size, avg_price, last_fill_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(slug, event_date, outcome, side)
-            DO UPDATE SET
-                state = excluded.state,
-                entry_at = COALESCE(edge_trades.entry_at, excluded.entry_at),
-                last_order_id = COALESCE(NULLIF(edge_trades.last_order_id, ''), excluded.last_order_id),
-                position_size = excluded.position_size,
-                avg_price = excluded.avg_price,
-                last_fill_at = COALESCE(excluded.last_fill_at, edge_trades.last_fill_at),
-                updated_at = excluded.updated_at
-            """,
-            (
-                slug,
-                event_date,
-                outcome,
-                side,
-                new_state,
-                entry_at or None,
-                str(order_id or ""),
-                float(new_pos),
-                float(new_avg),
-                last_fill_at,
-                now_iso,
-            ),
+        upsert_shadow_position_from_fill(
+            cur,
+            slug=slug,
+            event_date=event_date,
+            outcome=outcome,
+            side=side,
+            state=new_state,
+            entry_at=entry_at or None,
+            order_id=str(order_id or ""),
+            position_size=float(new_pos),
+            avg_price=float(new_avg),
+            last_fill_at=last_fill_at,
+            updated_at=now_iso,
         )
         shadow_positions[key] = {
             "state": new_state,
@@ -53044,7 +48690,6 @@ def sync_trade_fills(
             details = dict(details)
             details.update(merged_details)
             details["entry_strategy_family"] = _entry_strategy_family_from_details(details)
-            details["entry_usable_edge_order_guard_version"] = ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION
         else:
             details = _finalize_exit_decision_details(
                 details,
@@ -53058,34 +48703,22 @@ def sync_trade_fills(
             will_order=True,
         )
         try:
-            _sqlite_execute_with_retry_compat(
+            insert_auto_trade_decision(
                 cur,
-                """
-                INSERT INTO auto_trade_decisions(
-                    run_id, run_date, slug, event_date, title,
-                    outcome, side, action,
-                    decided_state, will_order,
-                    reason_codes_json, reasons_json, details_json,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    int(run_id_key) if run_id_key is not None and run_id_key > 0 else None,
-                    str(run_date_key or ""),
-                    slug,
-                    event_date,
-                    title or slug,
-                    outcome,
-                    side,
-                    action_key,
-                    decided_state,
-                    1,
-                    json.dumps(reason_codes, ensure_ascii=False),
-                    json.dumps(reasons, ensure_ascii=False),
-                    json.dumps(details, ensure_ascii=False, separators=(",", ":")),
-                    utc_now_iso(),
-                ),
+                run_id=int(run_id_key) if run_id_key is not None and run_id_key > 0 else None,
+                run_date=str(run_date_key or ""),
+                slug=slug,
+                event_date=event_date,
+                title=title or slug,
+                outcome=outcome,
+                side=side,
+                action=action_key,
+                decided_state=decided_state,
+                will_order=True,
+                reason_codes=reason_codes,
+                reasons=reasons,
+                details=details,
+                created_at=utc_now_iso(),
                 attempts=10,
                 sleep_base_sec=0.4,
             )
@@ -53922,61 +49555,26 @@ def sync_trade_fills(
         unrealized = None
         if mark_price is not None and position > 0 and avg_cost > 0:
             unrealized = (mark_price - avg_cost) * position
-        _sqlite_execute_with_retry(
-            cur.execute,
-            """
-            INSERT INTO edge_trades (
-                slug, event_date, outcome, side, state,
-                entry_at, last_order_id,
-                entry_price, entry_size,
-                last_action, last_action_price, last_action_size, last_action_at, last_status,
-                exit_skip_reason, exit_skip_detail, exit_skip_at,
-                position_size, avg_price, realized_pnl, unrealized_pnl, mark_price, last_fill_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(slug, event_date, outcome, side)
-            DO UPDATE SET state = excluded.state,
-                          entry_at = CASE
-                              WHEN excluded.state = 'exit' THEN NULL
-                              ELSE COALESCE(excluded.entry_at, edge_trades.entry_at)
-                          END,
-                          position_size = excluded.position_size,
-                          avg_price = excluded.avg_price,
-                          realized_pnl = excluded.realized_pnl,
-                          unrealized_pnl = excluded.unrealized_pnl,
-                          mark_price = excluded.mark_price,
-                          last_fill_at = excluded.last_fill_at,
-                          exit_skip_reason = COALESCE(excluded.exit_skip_reason, edge_trades.exit_skip_reason),
-                          exit_skip_detail = COALESCE(excluded.exit_skip_detail, edge_trades.exit_skip_detail),
-                          exit_skip_at = COALESCE(excluded.exit_skip_at, edge_trades.exit_skip_at),
-                          updated_at = excluded.updated_at
-            """,
-            (
-                slug,
-                event_date,
-                outcome,
-                side,
-                state_value,
-                entry_at_value,
-                None,
-                avg_cost if avg_cost > 0 else None,
-                position if position > 0 else None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                synced_exit_skip_reason,
-                synced_exit_skip_detail,
-                synced_exit_skip_at,
-                position if position > 0 else 0.0,
-                avg_cost if avg_cost > 0 else 0.0,
-                realized,
-                unrealized,
-                mark_price,
-                last_fill_at,
-                utc_now_iso(),
-            ),
+        upsert_synced_trade_position(
+            cur,
+            slug=slug,
+            event_date=event_date,
+            outcome=outcome,
+            side=side,
+            state=state_value,
+            entry_at=entry_at_value,
+            entry_price=avg_cost if avg_cost > 0 else None,
+            entry_size=position if position > 0 else None,
+            exit_skip_reason=synced_exit_skip_reason,
+            exit_skip_detail=synced_exit_skip_detail,
+            exit_skip_at=synced_exit_skip_at,
+            position_size=position if position > 0 else 0.0,
+            avg_price=avg_cost if avg_cost > 0 else 0.0,
+            realized_pnl=realized,
+            unrealized_pnl=unrealized,
+            mark_price=mark_price,
+            last_fill_at=last_fill_at,
+            updated_at=utc_now_iso(),
         )
     conn.commit()
     residual_clear_enabled = allow_residual_clear and _env_bool("PM_AUTO_TRADE_RESIDUAL_CLEAR", True)
@@ -54251,36 +49849,14 @@ def _force_clear_expired_positions(conn: sqlite3.Connection, *, now_iso: Optiona
     today_utc = datetime.now(timezone.utc).date().isoformat()
     cur = conn.cursor()
     try:
-        _sqlite_execute_with_retry(
-            cur.execute,
-            """
-            UPDATE edge_trades
-            SET position_size = 0,
-                state = 'exit',
-                last_order_id = '',
-                last_action = ?,
-                last_action_at = ?,
-                last_status = 'no_position',
-                last_error = '',
-                exit_skip_reason = NULL,
-                exit_skip_detail = NULL,
-                exit_skip_at = NULL,
-                updated_at = ?
-            WHERE COALESCE(position_size, 0) > ?
-              AND COALESCE(event_date, '') <> ''
-              AND substr(event_date, 1, 10) < ?
-            """,
-            (
-                "expired_force_clear",
-                now_iso_final,
-                now_iso_final,
-                TIME_EDGE_Q_EPS,
-                today_utc,
-            ),
+        return force_clear_expired_positions(
+            cur,
+            now_iso=now_iso_final,
+            today=today_utc,
+            min_position_size=TIME_EDGE_Q_EPS,
         )
     except sqlite3.OperationalError:
         return 0
-    return int(cur.rowcount or 0)
 
 
 def sync_positions_to_db(
@@ -54300,7 +49876,19 @@ def sync_positions_to_db(
         )
         active_rows = cur.fetchall() or []
     except sqlite3.OperationalError:
-        active_rows = []
+        try:
+            cur.execute(
+                """
+                SELECT id, slug, event_date, outcome, side,
+                       last_action, last_status, last_error, '' AS exit_skip_reason
+                FROM edge_trades
+                WHERE state IN ('entry', 'entry_pending')
+                   OR (position_size IS NOT NULL AND position_size > 0)
+                """
+            )
+            active_rows = cur.fetchall() or []
+        except sqlite3.OperationalError:
+            active_rows = []
     active_entries: List[Tuple[int, str, str, str, str, str, str, str, str, str]] = []
     active_keys: List[Tuple[str, str, str, str]] = []
     for row in active_rows:
@@ -54349,22 +49937,11 @@ def sync_positions_to_db(
         size = to_float(live_entry.get("size")) if isinstance(live_entry, dict) else None
         if size is None or not math.isfinite(size) or size <= TIME_EDGE_Q_EPS:
             if POSITIONS_ASSUME_ZERO:
-                cur.execute(
-                    """
-                    UPDATE edge_trades
-                    SET position_size = 0,
-                        state = 'exit',
-                        last_action = ?,
-                        last_action_at = ?,
-                        last_status = 'no_position',
-                        last_error = '',
-                        updated_at = ?
-                    WHERE id = ?
-                      AND COALESCE(position_size, 0) > 0
-                    """,
-                    ("pos_sync_clear", now_iso, now_iso, row_id),
+                updated += sync_position_clear_by_id(
+                    cur,
+                    row_id=row_id,
+                    now_iso=now_iso,
                 )
-                updated += int(cur.rowcount or 0)
             continue
         avg_price = to_float(live_entry.get("avg_price")) if isinstance(live_entry, dict) else None
         skip_reason = None
@@ -54381,36 +49958,16 @@ def sync_positions_to_db(
             skip_reason = "exit_size_too_small"
             skip_detail = f"position={float(size):.4f}; synced_open_position_below_exit_min"
             skip_at = now_iso
-        cur.execute(
-            """
-            UPDATE edge_trades
-            SET position_size = ?,
-                avg_price = COALESCE(?, avg_price),
-                state = 'entry',
-                last_action = ?,
-                last_action_at = ?,
-                last_status = ?,
-                last_error = '',
-                exit_skip_reason = COALESCE(?, exit_skip_reason),
-                exit_skip_detail = COALESCE(?, exit_skip_detail),
-                exit_skip_at = COALESCE(?, exit_skip_at),
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                size,
-                avg_price,
-                "pos_sync",
-                now_iso,
-                "pos_sync",
-                skip_reason,
-                skip_detail,
-                skip_at,
-                now_iso,
-                row_id,
-            ),
+        updated += sync_position_mark_entry_by_id(
+            cur,
+            row_id=row_id,
+            size=size,
+            avg_price=avg_price,
+            skip_reason=skip_reason,
+            skip_detail=skip_detail,
+            skip_at=skip_at,
+            now_iso=now_iso,
         )
-        updated += int(cur.rowcount or 0)
     updated += _force_clear_expired_positions(conn, now_iso=now_iso)
     conn.commit()
     return updated
@@ -54727,6 +50284,527 @@ def _detect_filled_targets_for_event(
     return filled_targets, details_by_key
 
 
+def _signal_to_order_terminal_rank_local(state: Any) -> int:
+    return int(SIGNAL_TO_ORDER_TERMINAL_RANK.get(str(state or "").strip(), 0))
+
+
+def _signal_to_order_identity_from_details(
+    details: Mapping[str, Any],
+) -> Tuple[str, str, Dict[str, Any]]:
+    if not isinstance(details, Mapping):
+        return "", "", {}
+    timing = (
+        dict(details.get("signal_to_order_timing"))
+        if isinstance(details.get("signal_to_order_timing"), Mapping)
+        else {}
+    )
+    signal_id = str(details.get("signal_id") or timing.get("signal_id") or "").strip()
+    signal_at = str(
+        details.get("awc_hard_source_signal_at")
+        or timing.get("awc_hard_source_signal_at")
+        or ""
+    ).strip()
+    return signal_id, signal_at, timing
+
+
+def _first_non_empty_signal_value(*values: Any) -> Any:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return None
+
+
+def _exchange_post_t5_from_order_payload(payload: Any) -> str:
+    """Return T5 only when the gateway attests that the exchange POST started."""
+
+    if not isinstance(payload, Mapping) or not bool(payload.get("exchange_post_started")):
+        return ""
+    exchange_post_started_at = str(payload.get("exchange_post_started_at") or "").strip()
+    order_submitted_at = str(payload.get("order_submitted_at") or "").strip()
+    if not exchange_post_started_at or _parse_iso_utc(exchange_post_started_at) is None:
+        return ""
+    if order_submitted_at and order_submitted_at != exchange_post_started_at:
+        return ""
+    return exchange_post_started_at
+
+
+def _apply_signal_to_order_execution_segments(
+    details: Dict[str, Any],
+    **segments: Any,
+) -> Dict[str, Any]:
+    if not isinstance(details, dict):
+        return details
+    signal_id, signal_at, timing = _signal_to_order_identity_from_details(details)
+    if not signal_id or not signal_at:
+        return details
+
+    timing = dict(timing)
+    timing.setdefault("schema", "signal_to_order_timing_v1")
+    timing["signal_id"] = signal_id
+    timing["awc_hard_source_signal_at"] = signal_at
+
+    def _put(key: str, value: Any, *, top_key: str = "", overwrite: bool = True) -> None:
+        if value is None:
+            return
+        if isinstance(value, str) and not value.strip():
+            return
+        dest_key = str(top_key or key)
+        if not overwrite:
+            existing = _first_non_empty_signal_value(details.get(dest_key), timing.get(key))
+            if existing is not None:
+                return
+        details[dest_key] = value
+        timing[key] = value
+
+    orderbook_checked_at = _first_non_empty_signal_value(
+        segments.get("orderbook_checked_at"),
+        details.get("orderbook_checked_at"),
+    )
+    orderbook_refreshed_at = _first_non_empty_signal_value(
+        segments.get("orderbook_refreshed_at"),
+        details.get("orderbook_refreshed_at"),
+    )
+    orderbook_refresh_started_at = _first_non_empty_signal_value(
+        segments.get("orderbook_refresh_started_at"),
+        details.get("orderbook_refresh_started_at"),
+    )
+    risk_checked_at = _first_non_empty_signal_value(
+        segments.get("risk_checked_at"),
+        details.get("risk_checked_at"),
+    )
+    idempotency_key = _first_non_empty_signal_value(
+        segments.get("idempotency_key"),
+        details.get("idempotency_key"),
+    )
+    order_intent_id = _first_non_empty_signal_value(
+        segments.get("order_intent_id"),
+        details.get("order_intent_id"),
+        idempotency_key,
+    )
+    submit_requested_at = _first_non_empty_signal_value(
+        segments.get("submit_requested_at"),
+        details.get("submit_requested_at"),
+        details.get("order_submit_started_at"),
+    )
+    idempotency_checked_at = _first_non_empty_signal_value(
+        segments.get("idempotency_checked_at"),
+        details.get("idempotency_checked_at"),
+        submit_requested_at if idempotency_key is not None else None,
+    )
+    exchange_ack_at = _first_non_empty_signal_value(
+        segments.get("exchange_ack_at"),
+        details.get("exchange_ack_at"),
+        details.get("order_ack_at"),
+        details.get("order_submit_completed_at"),
+    )
+    order_submitted_at = _first_non_empty_signal_value(
+        segments.get("order_submitted_at"),
+        details.get("order_submitted_at"),
+        details.get("hard_source_order_submitted_at"),
+    )
+    order_submit_started_at = _first_non_empty_signal_value(
+        segments.get("order_submit_started_at"),
+        details.get("order_submit_started_at"),
+        submit_requested_at,
+    )
+    order_submit_completed_at = _first_non_empty_signal_value(
+        segments.get("order_submit_completed_at"),
+        details.get("order_submit_completed_at"),
+        exchange_ack_at,
+    )
+    order_ack_status = _first_non_empty_signal_value(
+        segments.get("order_ack_status"),
+        details.get("order_ack_status"),
+        details.get("status"),
+        details.get("order_status"),
+        details.get("error"),
+    )
+    exchange_post_started = bool(
+        _first_non_empty_signal_value(
+            segments.get("exchange_post_started"),
+            details.get("exchange_post_started"),
+        )
+    )
+    exchange_post_started_at = _first_non_empty_signal_value(
+        segments.get("exchange_post_started_at"),
+        details.get("exchange_post_started_at"),
+    )
+    order_submission_time_quality = _first_non_empty_signal_value(
+        segments.get("order_submission_time_quality"),
+        details.get("order_submission_time_quality"),
+    )
+
+    _put("orderbook_refresh_started_at", orderbook_refresh_started_at)
+    _put("orderbook_refreshed_at", orderbook_refreshed_at)
+    _put("orderbook_checked_at", orderbook_checked_at)
+    _put(
+        "orderbook_check_source",
+        _first_non_empty_signal_value(
+            segments.get("orderbook_check_source"),
+            details.get("orderbook_check_source"),
+        ),
+    )
+    _put(
+        "orderbook_check_result",
+        _first_non_empty_signal_value(
+            segments.get("orderbook_check_result"),
+            details.get("orderbook_check_result"),
+        ),
+    )
+    _put("risk_checked_at", risk_checked_at)
+    _put(
+        "risk_check_source",
+        _first_non_empty_signal_value(
+            segments.get("risk_check_source"),
+            details.get("risk_check_source"),
+        ),
+    )
+    _put(
+        "risk_check_result",
+        _first_non_empty_signal_value(
+            segments.get("risk_check_result"),
+            details.get("risk_check_result"),
+        ),
+    )
+    _put("idempotency_key", idempotency_key)
+    _put("order_intent_id", order_intent_id)
+    _put("idempotency_checked_at", idempotency_checked_at)
+    _put("submit_requested_at", submit_requested_at)
+    _put("order_submit_started_at", order_submit_started_at)
+    _put("order_submit_completed_at", order_submit_completed_at)
+    _put(
+        "order_submit_ms",
+        _first_non_empty_signal_value(
+            segments.get("order_submit_ms"),
+            details.get("order_submit_ms"),
+        ),
+    )
+    _put(
+        "order_submit_outer_timeout_sec",
+        _first_non_empty_signal_value(
+            segments.get("order_submit_outer_timeout_sec"),
+            details.get("order_submit_outer_timeout_sec"),
+        ),
+    )
+    _put("order_submitted_at", order_submitted_at)
+    _put("exchange_ack_at", exchange_ack_at)
+    _put("order_ack_at", exchange_ack_at)
+    _put("order_ack_status", order_ack_status)
+    if exchange_post_started:
+        _put("exchange_post_started", True)
+    _put("exchange_post_started_at", exchange_post_started_at)
+    _put("order_submission_time_quality", order_submission_time_quality)
+    _put(
+        "order_id",
+        _first_non_empty_signal_value(segments.get("order_id"), details.get("order_id")),
+    )
+
+    latency_pairs = {
+        "signal_to_orderbook_ms": (signal_at, orderbook_checked_at or orderbook_refreshed_at),
+        "signal_to_risk_ms": (signal_at, risk_checked_at),
+        "signal_to_idempotency_ms": (signal_at, idempotency_checked_at),
+        "signal_to_submit_request_ms": (signal_at, submit_requested_at),
+        "signal_to_exchange_ack_ms": (signal_at, exchange_ack_at),
+        "awc_signal_to_order_submit_ms": (signal_at, order_submitted_at),
+        "orderbook_to_risk_check_ms": (
+            orderbook_checked_at or orderbook_refreshed_at,
+            risk_checked_at,
+        ),
+        "risk_check_to_idempotency_ms": (risk_checked_at, idempotency_checked_at),
+        "risk_check_to_submit_ms": (risk_checked_at, submit_requested_at),
+        "idempotency_to_submit_request_ms": (idempotency_checked_at, submit_requested_at),
+        "submit_request_to_exchange_ack_ms": (submit_requested_at, exchange_ack_at),
+    }
+    for out_key, (start_value, end_value) in latency_pairs.items():
+        val = _iso_latency_ms_between(start_value, end_value)
+        if val is not None:
+            _put(out_key, val)
+
+    details["signal_to_order_timing"] = timing
+    return details
+
+
+def _classify_signal_to_order_terminal_state(
+    reason_code: Any,
+    reason_text: Any = "",
+    *,
+    will_order: bool = False,
+) -> str:
+    text = " ".join(
+        part
+        for part in (
+            str(reason_code or "").strip(),
+            str(reason_text or "").strip(),
+        )
+        if part
+    ).lower()
+    if not text:
+        return "error" if will_order else "blocked"
+    if "order_submitted" in text or "submitted" == text:
+        return "submitted"
+    if "synced_fill_without_decision" in text:
+        return "submitted"
+    if "disabled" in text or "skip" in text or "skipped" in text:
+        return "skipped"
+    if "no_action" in text or "no_submit" in text:
+        return "no_action"
+    stale_markers = (
+        "stale",
+        "freshness",
+        "expired_snapshot",
+        "posterior_expired",
+        "decision_expired",
+        "fact_expired",
+        "orderbook_expired",
+    )
+    if any(marker in text for marker in stale_markers):
+        return "stale"
+    blocked_markers = (
+        "runtime_lock_busy",
+        "orderbook_missing",
+        "orderbook_unavailable",
+        "no_orderbook",
+        "market_orderbook_disabled",
+        "duplicate",
+        "idempotency",
+        "already_live",
+        "open_order",
+        "same_outcome_open_order",
+        "risk",
+        "cap",
+        "guard",
+        "blocked",
+        "not_allowed",
+        "below_threshold",
+        "entry_no",
+    )
+    if any(marker in text for marker in blocked_markers):
+        return "blocked"
+    error_markers = (
+        "event_timeout",
+        "worker_timeout",
+        "worker_no_result",
+        "event_worker_failed",
+        "worker_failed",
+        "decision_persistence_failed",
+        "submit_failed",
+        "place_order_failed",
+        "clob_submit_failed",
+        "order_submit_failed",
+        "failed",
+        "exception",
+        "traceback",
+        "interrupted",
+        "terminated",
+    )
+    if any(marker in text for marker in error_markers):
+        return "error"
+    return "error" if will_order else "blocked"
+
+
+def _apply_signal_to_order_terminal(
+    details: Dict[str, Any],
+    *,
+    terminal_state: str,
+    terminal_reason: str,
+    terminal_at: str = "",
+) -> Dict[str, Any]:
+    if not isinstance(details, dict):
+        return details
+    signal_id, signal_at, timing = _signal_to_order_identity_from_details(details)
+    if not signal_id or not signal_at:
+        return details
+    incoming_state = str(terminal_state or "").strip()
+    if incoming_state not in {"submitted", "blocked", "stale", "skipped", "no_action", "error"}:
+        return details
+    existing_state = str(
+        details.get("signal_to_order_terminal_state")
+        or timing.get("terminal_state")
+        or ""
+    ).strip()
+    if _signal_to_order_terminal_rank_local(existing_state) > _signal_to_order_terminal_rank_local(incoming_state):
+        return details
+    terminal_at_value = str(terminal_at or utc_now_iso()).strip()
+    reason = str(terminal_reason or incoming_state or "signal_terminal_without_order").strip()
+    signal_ms = _iso_latency_ms_between(signal_at, terminal_at_value)
+    try:
+        slo_ms = int(float(str(details.get("signal_to_order_slo_ms") or timing.get("signal_to_order_slo_ms") or 3000)))
+    except Exception:
+        slo_ms = 3000
+    slo_ms = max(1, int(slo_ms))
+
+    timing = dict(timing)
+    timing["signal_id"] = signal_id
+    timing["awc_hard_source_signal_at"] = signal_at
+    timing["terminal_state"] = incoming_state
+    timing["terminal_reason"] = reason
+    timing["terminal_at"] = terminal_at_value
+    timing["signal_to_order_slo_ms"] = slo_ms
+    if signal_ms is not None:
+        timing["signal_to_terminal_ms"] = signal_ms
+    if incoming_state == "submitted":
+        submitted_at_value = str(
+            details.get("order_submitted_at") or timing.get("order_submitted_at") or ""
+        ).strip()
+        submitted_ms = _iso_latency_ms_between(signal_at, submitted_at_value)
+        if submitted_at_value and submitted_ms is not None:
+            timing["order_submitted_at"] = submitted_at_value
+            timing["awc_signal_to_order_submit_ms"] = submitted_ms
+            timing["signal_to_order_slo_met"] = bool(float(submitted_ms) <= float(slo_ms))
+            timing["signal_to_order_slo_violation_reason"] = (
+                "" if bool(timing["signal_to_order_slo_met"]) else "order_submitted_after_slo"
+            )
+        else:
+            timing["signal_to_order_slo_met"] = False
+            timing["signal_to_order_slo_violation_reason"] = "exchange_post_t5_missing"
+    else:
+        timing["signal_to_order_slo_met"] = False
+        timing["signal_to_order_slo_violation_reason"] = reason
+
+    details["signal_id"] = signal_id
+    details["awc_hard_source_signal_at"] = signal_at
+    details["signal_to_order_timing"] = timing
+    details["signal_to_order_slo_ms"] = slo_ms
+    details["signal_to_order_terminal_state"] = incoming_state
+    details["signal_to_order_terminal_reason"] = reason
+    details["signal_to_order_terminal_at"] = terminal_at_value
+    if signal_ms is not None:
+        details["signal_to_terminal_ms"] = signal_ms
+    if incoming_state == "submitted":
+        submitted_ms = _iso_latency_ms_between(
+            signal_at,
+            details.get("order_submitted_at") or timing.get("order_submitted_at"),
+        )
+        if submitted_ms is not None:
+            details["awc_signal_to_order_submit_ms"] = submitted_ms
+        details["signal_to_order_slo_met"] = bool(timing.get("signal_to_order_slo_met"))
+        details["signal_to_order_slo_violation_reason"] = str(timing.get("signal_to_order_slo_violation_reason") or "")
+    else:
+        details["signal_to_order_slo_met"] = False
+        details["signal_to_order_slo_violation_reason"] = reason
+    return details
+
+
+def _build_signal_to_order_ledger_payload_from_details(
+    details: Mapping[str, Any],
+    *,
+    decision_id: Any = "",
+) -> Dict[str, Any]:
+    signal_id, signal_at, timing = _signal_to_order_identity_from_details(details)
+    if not signal_id or not signal_at or not timing:
+        return {}
+    order_intent_id = str(
+        details.get("order_intent_id")
+        or timing.get("order_intent_id")
+        or details.get("idempotency_key")
+        or timing.get("idempotency_key")
+        or ""
+    ).strip()
+    return {
+        "signal_id": signal_id,
+        "decision_id": str(decision_id or details.get("decision_id") or timing.get("decision_id") or ""),
+        "order_intent_id": order_intent_id,
+        "awc_hard_source_signal_at": signal_at,
+        "order_submitted_at": str(details.get("order_submitted_at") or timing.get("order_submitted_at") or ""),
+        "signal_to_order_slo_violation_reason": str(
+            details.get("signal_to_order_slo_violation_reason")
+            or timing.get("signal_to_order_slo_violation_reason")
+            or ""
+        ),
+        "signal_to_order_timing": dict(timing),
+    }
+
+
+def _iter_signal_to_order_detail_dicts(value: Any, *, _depth: int = 0) -> Iterable[Dict[str, Any]]:
+    if _depth > 8:
+        return
+    if isinstance(value, dict):
+        signal_id, signal_at, _timing = _signal_to_order_identity_from_details(value)
+        if signal_id and signal_at:
+            yield value
+        for child in value.values():
+            yield from _iter_signal_to_order_detail_dicts(child, _depth=_depth + 1)
+        return
+    if isinstance(value, list):
+        for child in value:
+            yield from _iter_signal_to_order_detail_dicts(child, _depth=_depth + 1)
+
+
+def _upsert_signal_to_order_terminal_for_payload(
+    payload: Mapping[str, Any],
+    *,
+    terminal_state: str,
+    terminal_reason: str,
+    terminal_at: str,
+) -> List[Dict[str, Any]]:
+    if not isinstance(payload, Mapping) or not DB_PATH.exists():
+        return []
+    results: List[Dict[str, Any]] = []
+    seen_signal_ids: Set[str] = set()
+    try:
+        with open_db() as conn:
+            cur = conn.cursor()
+            for detail_block in _iter_signal_to_order_detail_dicts(payload):
+                signal_id, _signal_at, _timing = _signal_to_order_identity_from_details(detail_block)
+                if not signal_id or signal_id in seen_signal_ids:
+                    continue
+                seen_signal_ids.add(signal_id)
+                _apply_signal_to_order_terminal(
+                    detail_block,
+                    terminal_state=terminal_state,
+                    terminal_reason=terminal_reason,
+                    terminal_at=terminal_at,
+                )
+                ledger_payload = _build_signal_to_order_ledger_payload_from_details(detail_block)
+                if not ledger_payload:
+                    continue
+                result = upsert_signal_to_order_timing(
+                    cur,
+                    ledger_payload,
+                    created_at=terminal_at,
+                    attempts=3,
+                    sleep_base_sec=0.1,
+                    sleep_cap_sec=0.3,
+                )
+                signal_result = upsert_awc_hard_source_signal(
+                    cur,
+                    {
+                        "signal_id": signal_id,
+                        "slug": detail_block.get("slug"),
+                        "event_date": detail_block.get("event_date"),
+                        "source_event_id": detail_block.get("source_event_id"),
+                        "awc_valid_time": detail_block.get("awc_valid_time"),
+                        "awc_hard_source_signal_at": detail_block.get("awc_hard_source_signal_at"),
+                        "acceptance_state": detail_block.get("acceptance_state"),
+                        "hard_source_acceptance_state": detail_block.get("hard_source_acceptance_state"),
+                        "terminal_state": terminal_state,
+                        "terminal_reason": terminal_reason,
+                        "signal_to_order_timing": detail_block.get("signal_to_order_timing"),
+                    },
+                    created_at=terminal_at,
+                    attempts=3,
+                    sleep_base_sec=0.1,
+                    sleep_cap_sec=0.3,
+                )
+                results.append(dict(result))
+                if signal_result:
+                    results[-1]["awc_hard_source_signal_ledger_result"] = dict(signal_result)
+            conn.commit()
+    except Exception as exc:
+        return [
+            {
+                "ok": False,
+                "status": "signal_to_order_terminal_upsert_failed",
+                "error": str(exc)[:240],
+                "writes_archive_db": False,
+            }
+        ]
+    return results
+
+
 def _record_auto_trade_fallback_decisions(
     *,
     run_id: Optional[int],
@@ -54752,6 +50830,7 @@ def _record_auto_trade_fallback_decisions(
     payload_details = details if isinstance(details, dict) else {}
     target_details = per_target_details if isinstance(per_target_details, dict) else {}
     rows: List[Tuple[Any, ...]] = []
+    row_ledger_pairs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = []
     seen: set[Tuple[str, str]] = set()
     for item in targets:
         if not isinstance(item, dict):
@@ -54772,6 +50851,9 @@ def _record_auto_trade_fallback_decisions(
             if item_key in {"outcome", "side"}:
                 continue
             if item_key in row_details and row_details.get(item_key) not in (None, "", []):
+                continue
+            if item_key in {"hard_source_acceptance_state", "hard_source_runtime_contract", "signal_to_order_timing"} and isinstance(item_val, Mapping):
+                row_details[item_key] = dict(item_val)
                 continue
             if isinstance(item_val, (str, int, float, bool)) or item_val is None:
                 row_details[item_key] = item_val
@@ -54805,35 +50887,46 @@ def _record_auto_trade_fallback_decisions(
         )
         row_details.update(entry_audit)
         row_details["entry_strategy_family"] = _entry_strategy_family_from_details(row_details)
-        row_details["entry_usable_edge_order_guard_version"] = ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION
         if isinstance(row_details, dict):
             _normalize_decision_source_fit_fields(row_details)
-        rows.append(
-            (
-                int(run_id) if run_id else None,
-                str(run_date or ""),
-                str(slug or ""),
-                str(event_date or ""),
-                str(title or ""),
-                outcome,
-                side,
-                "entry",
-                str(decided_state or "error_timeout"),
-                1 if int(will_order or 0) == 1 else 0,
-                json.dumps(normalized_reason_codes, ensure_ascii=False),
-                json.dumps(row_reason_texts, ensure_ascii=False),
-                json.dumps(
-                    _compact_decision_details(
-                        row_details,
-                        action="entry",
-                        will_order=bool(will_order),
-                    ),
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-                now_iso,
-            )
+        terminal_state = _classify_signal_to_order_terminal_state(
+            reason_code,
+            reason_text,
+            will_order=bool(will_order),
         )
+        _apply_signal_to_order_terminal(
+            row_details,
+            terminal_state=terminal_state,
+            terminal_reason=str(reason_code or terminal_state),
+            terminal_at=now_iso,
+        )
+        ledger_payload = _build_signal_to_order_ledger_payload_from_details(row_details)
+        row_tuple = (
+            int(run_id) if run_id else None,
+            str(run_date or ""),
+            str(slug or ""),
+            str(event_date or ""),
+            str(title or ""),
+            outcome,
+            side,
+            "entry",
+            str(decided_state or "error_timeout"),
+            1 if int(will_order or 0) == 1 else 0,
+            json.dumps(normalized_reason_codes, ensure_ascii=False),
+            json.dumps(row_reason_texts, ensure_ascii=False),
+            json.dumps(
+                _compact_decision_details(
+                    row_details,
+                    action="entry",
+                    will_order=bool(will_order),
+                ),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            now_iso,
+        )
+        rows.append(row_tuple)
+        row_ledger_pairs.append((row_tuple, ledger_payload))
     if not rows:
         return 0
     try:
@@ -54841,9 +50934,11 @@ def _record_auto_trade_fallback_decisions(
         with open_db() as conn:
             cur = conn.cursor()
             rows_to_insert = rows
+            ledgers_to_upsert = [ledger for _row, ledger in row_ledger_pairs if ledger]
             if skip_if_will_order_exists and int(will_order or 0) == 1:
                 filtered: List[Tuple[Any, ...]] = []
-                for row in rows:
+                filtered_ledgers: List[Dict[str, Any]] = []
+                for row, ledger_payload in row_ledger_pairs:
                     slug_v = str(row[2] or "")
                     event_date_v = _normalize_date_key(str(row[3] or ""))
                     outcome_v = str(row[5] or "")
@@ -54865,7 +50960,10 @@ def _record_auto_trade_fallback_decisions(
                     if cur.fetchone() is not None:
                         continue
                     filtered.append(row)
+                    if ledger_payload:
+                        filtered_ledgers.append(ledger_payload)
                 rows_to_insert = filtered
+                ledgers_to_upsert = filtered_ledgers
             if not rows_to_insert:
                 return 0
             retry_attempts = _env_int("PM_AUTO_TRADE_DECISION_WRITE_RETRY_ATTEMPTS")
@@ -54874,23 +50972,25 @@ def _record_auto_trade_fallback_decisions(
             retry_sleep = _env_float("PM_AUTO_TRADE_DECISION_WRITE_RETRY_SLEEP_SEC", 0.4)
             if retry_sleep is None or not math.isfinite(retry_sleep) or retry_sleep < 0:
                 retry_sleep = 0.4
-            _sqlite_executemany_with_retry(
+            insert_auto_trade_decision_rows(
                 cur,
-                """
-                INSERT INTO auto_trade_decisions(
-                    run_id, run_date, slug, event_date, title,
-                    outcome, side, action,
-                    decided_state, will_order,
-                    reason_codes_json, reasons_json, details_json,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
                 rows_to_insert,
                 attempts=max(1, int(retry_attempts)),
                 sleep_base_sec=max(0.0, float(retry_sleep)),
                 sleep_cap_sec=max(0.0, min(float(retry_sleep), 0.5)),
             )
+            for ledger_payload in ledgers_to_upsert:
+                try:
+                    upsert_signal_to_order_timing(
+                        cur,
+                        ledger_payload,
+                        created_at=now_iso,
+                        attempts=max(1, int(retry_attempts)),
+                        sleep_base_sec=max(0.0, float(retry_sleep)),
+                        sleep_cap_sec=max(0.0, min(float(retry_sleep), 0.5)),
+                    )
+                except Exception:
+                    pass
             conn.commit()
             return len(rows_to_insert)
     except Exception:
@@ -54932,6 +51032,13 @@ def _extract_fallback_targets_from_payload(payload: Dict[str, Any]) -> List[Dict
         }
         for extra_key, extra_val in item.items():
             if extra_key in target:
+                continue
+            if extra_key in {
+                "hard_source_acceptance_state",
+                "signal_to_order_timing",
+                "sequential_bayes_execution_contract",
+            } and isinstance(extra_val, Mapping):
+                target[extra_key] = dict(extra_val)
                 continue
             if isinstance(extra_val, (str, int, float, bool)) or extra_val is None:
                 target[extra_key] = extra_val
@@ -55110,6 +51217,17 @@ def _load_auto_trade_ssot_for_event(
     slug: str,
     event_date_key: str,
 ) -> Optional[Dict[str, Any]]:
+    fact = _load_latest_fact_payload_for_event(slug, event_date_key)
+    if not isinstance(fact, dict):
+        return None
+    ssot = fact.get("auto_trade_ssot")
+    return ssot if isinstance(ssot, dict) else None
+
+
+def _load_latest_fact_payload_for_event(
+    slug: str,
+    event_date_key: str,
+) -> Optional[Dict[str, Any]]:
     if not slug or not event_date_key:
         return None
     init_db()
@@ -55133,8 +51251,7 @@ def _load_auto_trade_ssot_for_event(
         return None
     if not isinstance(fact, dict):
         return None
-    ssot = fact.get("auto_trade_ssot")
-    return ssot if isinstance(ssot, dict) else None
+    return fact
 
 
 def _build_fallback_targets_from_ssot(ssot: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -55178,6 +51295,122 @@ def _build_fallback_targets_from_ssot(ssot: Dict[str, Any]) -> List[Dict[str, An
 
     _append("main", ssot.get("main_candidate"))
     return targets
+
+
+def _posterior_ssot_fact_target_bucket(payload: Optional[Mapping[str, Any]]) -> str:
+    if not isinstance(payload, Mapping):
+        return ""
+    ssot_fact = payload.get("posterior_ssot_fact")
+    if not isinstance(ssot_fact, Mapping):
+        return ""
+    state = str(ssot_fact.get("state") or "").strip().lower()
+    if state and state not in {"available", "ready", "ok", "locked", "final"}:
+        return ""
+    return str(
+        ssot_fact.get("target_bucket")
+        or ssot_fact.get("top_bucket")
+        or ssot_fact.get("selected_bucket")
+        or ""
+    ).strip()
+
+
+def _fallback_target_has_posterior_ssot_marker(target: Mapping[str, Any]) -> bool:
+    source_text = " ".join(
+        str(target.get(key) or "")
+        for key in (
+            "decision_ssot",
+            "target_probability_field",
+            "posterior_target_probability_field",
+            "posterior_target_source",
+            "target_source",
+            "target_bucket_selection_source",
+            "ssot_source",
+            "strategy_source",
+        )
+    ).lower()
+    return bool(
+        "posterior_ssot_fact" in source_text
+        or _is_posterior_target_direct_candidate(target)
+    )
+
+
+def _fallback_target_matches_posterior_ssot_fact(
+    target: Mapping[str, Any],
+    payload: Optional[Mapping[str, Any]],
+) -> bool:
+    if not isinstance(target, Mapping):
+        return False
+    if not _fallback_target_has_posterior_ssot_marker(target):
+        return False
+    ssot_bucket = _posterior_ssot_fact_target_bucket(payload)
+    if not ssot_bucket:
+        return False
+    side = str(target.get("side") or "").strip().upper()
+    candidate_buckets = {
+        str(target.get(key) or "").strip()
+        for key in (
+            "target_bucket",
+            "ssot_target_bucket",
+            "posterior_settlement_target_bucket",
+            "posterior_target_bucket",
+            "current_top_bucket",
+            "new_target_bucket",
+        )
+        if str(target.get(key) or "").strip()
+    }
+    if side == "YES":
+        outcome = str(
+            target.get("outcome")
+            or target.get("bucket_label")
+            or target.get("q_temperature_bucket_label")
+            or ""
+        ).strip()
+        if outcome:
+            candidate_buckets.add(outcome)
+    return ssot_bucket in candidate_buckets
+
+
+def _filter_fallback_decision_targets_for_ssot(
+    targets: List[Dict[str, Any]],
+    payload: Optional[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    filtered: List[Dict[str, Any]] = []
+    for item in targets or []:
+        if not isinstance(item, dict):
+            continue
+        outcome = str(item.get("outcome") or "").strip()
+        side = str(item.get("side") or "").strip().upper()
+        if not outcome or side not in {"YES", "NO"}:
+            continue
+        if _is_hard_source_direct_ssot_target_entry(item, outcome=outcome, side=side):
+            filtered.append(dict(item))
+            continue
+        if _fallback_target_matches_posterior_ssot_fact(item, payload):
+            target = _canonicalize_posterior_ssot_fact_marker(dict(item))
+            target["decision_ssot"] = "posterior_ssot_fact"
+            target["posterior_ssot_fact_used"] = True
+            target["target_probability_field"] = "posterior_ssot_fact.target_probability"
+            filtered.append(target)
+    return filtered
+
+
+def _fallback_decision_ssot_from_targets(targets: List[Dict[str, Any]]) -> str:
+    has_posterior = False
+    has_hard_source = False
+    for item in targets or []:
+        if not isinstance(item, Mapping):
+            continue
+        outcome = str(item.get("outcome") or "").strip()
+        side = str(item.get("side") or "").strip().upper()
+        if str(item.get("decision_ssot") or "").strip() == "posterior_ssot_fact":
+            has_posterior = True
+        if _is_hard_source_direct_ssot_target_entry(item, outcome=outcome, side=side):
+            has_hard_source = True
+    if has_posterior:
+        return "posterior_ssot_fact"
+    if has_hard_source:
+        return "hard_source_direct_ssot_target"
+    return ""
 
 
 def _build_fallback_diag_targets_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -55282,13 +51515,25 @@ def _resolve_fallback_decision_targets(
     slug: str,
     event_date_key: str,
 ) -> Tuple[List[Dict[str, Any]], str]:
-    targets = _extract_fallback_targets_from_payload(payload)
+    targets = _filter_fallback_decision_targets_for_ssot(
+        _extract_fallback_targets_from_payload(payload),
+        payload,
+    )
     if targets:
-        return targets, "entry_expected_targets"
-    ssot = _load_auto_trade_ssot_for_event(slug, event_date_key)
+        return targets, "entry_expected_targets_ssot"
+    fact_payload = _load_latest_fact_payload_for_event(slug, event_date_key)
+    if not isinstance(fact_payload, dict):
+        return [], "posterior_ssot_fact_missing"
+    ssot = fact_payload.get("auto_trade_ssot")
     if not isinstance(ssot, dict):
-        return [], ""
-    return _build_fallback_targets_from_ssot(ssot), "auto_trade_ssot"
+        return [], "posterior_ssot_fact_missing"
+    targets = _filter_fallback_decision_targets_for_ssot(
+        _build_fallback_targets_from_ssot(ssot),
+        fact_payload,
+    )
+    if targets:
+        return targets, "auto_trade_ssot_posterior_ssot"
+    return [], "posterior_ssot_fact_missing"
 
 
 def _resolve_fallback_diag_targets(
@@ -55745,7 +51990,10 @@ def _attach_entry_expected_targets_from_ssot(payload: Dict[str, Any]) -> None:
     ssot = payload.get("auto_trade_ssot")
     if not isinstance(ssot, dict):
         return
-    targets = _build_fallback_targets_from_ssot(ssot)
+    targets = _filter_fallback_decision_targets_for_ssot(
+        _build_fallback_targets_from_ssot(ssot),
+        payload,
+    )
     if targets:
         payload["entry_expected_targets"] = _merge_entry_expected_targets(
             payload.get("entry_expected_targets"),
@@ -55830,11 +52078,13 @@ def _direct_target_primary_only_fast_path_enabled(payload: Any = None) -> bool:
             if _runtime_truthy_flag(item.get("primary_only_fast_path_disabled")):
                 return True
             allowed = item.get("primary_only_fast_path_allowed")
+            if isinstance(allowed, bool) and allowed is False:
+                return True
+            allowed_text = str(allowed or "").strip().lower()
+            if allowed_text in {"0", "false", "no", "off"}:
+                return True
             if require_allowed_flag:
-                if isinstance(allowed, bool) and allowed is False:
-                    return True
-                allowed_text = str(allowed or "").strip().lower()
-                if allowed_text in {"0", "false", "no", "off"}:
+                if not _runtime_truthy_flag(allowed):
                     return True
         for event_item in raw_payload.get("event_payloads") or []:
             if not isinstance(event_item, Mapping):
@@ -55844,7 +52094,7 @@ def _direct_target_primary_only_fast_path_enabled(payload: Any = None) -> bool:
         return False
 
     if (
-        not _env_bool("PM_TARGET_REALIZATION_DIRECT_PRIMARY_ONLY_FAST_PATH_ALLOW_DEFERRED_TARGETS", False)
+        not _env_bool("PM_TARGET_REALIZATION_DIRECT_PRIMARY_ONLY_FAST_PATH_ALLOW_DEFERRED_TARGETS", True)
         and _direct_target_payload_has_deferred_targets(payload)
     ):
         return False
@@ -55854,30 +52104,58 @@ def _direct_target_primary_only_fast_path_enabled(payload: Any = None) -> bool:
 def _direct_target_payload_target_bucket(payload: Any) -> str:
     if not isinstance(payload, Mapping):
         return ""
+    ssot_bucket = _posterior_ssot_fact_target_bucket(payload)
+    if ssot_bucket:
+        return ssot_bucket
+    targets = payload.get("entry_expected_targets")
+    if isinstance(targets, list):
+        for item in _filter_fallback_decision_targets_for_ssot(
+            _merge_entry_expected_targets(targets, []),
+            payload,
+        ):
+            if not isinstance(item, Mapping):
+                continue
+            outcome = str(
+                item.get("outcome")
+                or item.get("bucket_label")
+                or item.get("q_temperature_bucket_label")
+                or ""
+            ).strip()
+            target_bucket = str(
+                item.get("ssot_target_bucket")
+                or item.get("hard_source_target_bucket")
+                or item.get("target_bucket")
+                or item.get("posterior_target_bucket")
+                or item.get("posterior_settlement_target_bucket")
+                or ""
+            ).strip()
+            if target_bucket:
+                return target_bucket
+            if outcome:
+                return outcome
     candidates: List[Mapping[str, Any]] = []
-    for block_key in ("posterior_target_direct", "hard_source_direct"):
+    for block_key in ("hard_source_direct",):
         block = payload.get(block_key)
         if isinstance(block, Mapping):
             candidates.append(block)
-    candidates.append(payload)
+    if bool(
+        payload.get("hard_source_direct")
+        or payload.get("hard_source_posterior_override")
+        or payload.get("hard_source_ssot_written_at")
+    ):
+        candidates.append(payload)
     for details in candidates:
         for key in (
             "target_bucket",
-            "posterior_target_bucket",
             "new_target_bucket",
             "ssot_target_bucket",
+            "hard_source_target_bucket",
             "posterior_settlement_target_bucket",
             "current_top_bucket",
         ):
             value = str(details.get(key) or "").strip()
             if value:
                 return value
-    targets = payload.get("entry_expected_targets")
-    if isinstance(targets, list):
-        for item in _merge_entry_expected_targets(targets, []):
-            bucket = _posterior_target_direct_snapshot_bucket(item)
-            if bucket:
-                return bucket
     return ""
 
 
@@ -55888,7 +52166,7 @@ def _direct_target_is_primary_entry_target(target: Any, target_bucket: str = "")
     if side != "YES":
         return False
     role = str(target.get("target_realization_leg_role") or "").strip().lower()
-    if role in {"old_bucket_reverse", "remote_no"}:
+    if role == "old_bucket_reverse":
         return False
     if _is_posterior_target_direct_buy_new_target(target):
         return True
@@ -55898,6 +52176,8 @@ def _direct_target_is_primary_entry_target(target: Any, target_bucket: str = "")
         or target.get("q_temperature_bucket_label")
         or ""
     ).strip()
+    if _is_hard_source_direct_ssot_target_entry(target, outcome=outcome, side=side):
+        return True
     bucket = str(target_bucket or _posterior_target_direct_snapshot_bucket(target) or "").strip()
     if not outcome or not bucket or outcome != bucket:
         return False
@@ -55925,13 +52205,56 @@ def _direct_target_primary_entry_targets(
     return primary, max(0, len(normalized) - len(primary))
 
 
+def _direct_target_ssot_entry_targets_for_payload(
+    targets: Any,
+    payload: Mapping[str, Any],
+    target_bucket: str = "",
+) -> Tuple[List[Dict[str, Any]], int]:
+    normalized = _merge_entry_expected_targets(targets, [])
+    if not normalized or not isinstance(payload, Mapping):
+        return [], 0
+    ssot_targets = _filter_fallback_decision_targets_for_ssot(normalized, payload)
+    if not ssot_targets:
+        return [], 0
+    bucket = str(target_bucket or _direct_target_payload_target_bucket(payload) or "").strip()
+    primary = [
+        dict(item)
+        for item in ssot_targets
+        if _direct_target_is_primary_entry_target(item, bucket)
+    ]
+    if not primary:
+        return [], len(ssot_targets)
+    return primary, max(0, len(ssot_targets) - len(primary))
+
+
+def _direct_target_payload_has_ssot_entry_targets(payload: Any) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    targets, _deferred = _direct_target_ssot_entry_targets_for_payload(
+        payload.get("entry_expected_targets"),
+        payload,
+    )
+    if targets:
+        return True
+    for event_item in payload.get("event_payloads") or []:
+        if not isinstance(event_item, Mapping):
+            continue
+        if _direct_target_payload_has_ssot_entry_targets(event_item.get("payload")):
+            return True
+    return False
+
+
 def _direct_target_payload_has_deferred_targets(payload: Any) -> bool:
     if not isinstance(payload, Mapping):
         return False
     targets = payload.get("entry_expected_targets")
     if isinstance(targets, list) and targets:
         target_bucket = _direct_target_payload_target_bucket(payload)
-        primary, deferred = _direct_target_primary_entry_targets(targets, target_bucket)
+        primary, deferred = _direct_target_ssot_entry_targets_for_payload(
+            targets,
+            payload,
+            target_bucket,
+        )
         if primary and deferred > 0:
             return True
     for event_item in payload.get("event_payloads") or []:
@@ -55981,8 +52304,9 @@ def _direct_target_primary_entry_fast_slice_payload(
     def _slice_one(raw_payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], bool, int]:
         out = dict(raw_payload)
         target_bucket = _direct_target_payload_target_bucket(out)
-        primary_targets, deferred_targets = _direct_target_primary_entry_targets(
+        primary_targets, deferred_targets = _direct_target_ssot_entry_targets_for_payload(
             out.get("entry_expected_targets"),
+            out,
             target_bucket,
         )
         if not primary_targets:
@@ -56183,9 +52507,43 @@ def _record_direct_target_disabled_job_decisions(
             )
         if not targets:
             targets = _extract_fallback_targets_from_payload(dict(event_payload))
+        if targets:
+            filtered_targets = _filter_fallback_decision_targets_for_ssot(
+                targets,
+                event_payload,
+            )
+            if not filtered_targets:
+                filtered_targets = _filter_fallback_decision_targets_for_ssot(
+                    targets,
+                    payload,
+                )
+            targets = filtered_targets
         if not targets:
             skipped += 1
             continue
+        decision_ssot = _fallback_decision_ssot_from_targets(targets)
+        decision_details = {
+            "source": "direct_target_job_fast_disabled",
+            "direct_job_context": True,
+            "posterior_target_direct": bool(
+                payload.get("posterior_target_direct")
+                or event_payload.get("posterior_target_direct")
+                or event_payload.get("posterior_target_direct_snapshot")
+            ),
+            "hard_source_direct": bool(
+                payload.get("hard_source_direct")
+                or event_payload.get("hard_source_direct")
+                or event_payload.get("hard_source_direct_snapshot")
+            ),
+            "no_submit_reason": "PM_AUTO_TRADE_ENABLED=0",
+        }
+        if decision_ssot:
+            decision_details["decision_ssot"] = decision_ssot
+            decision_details["posterior_ssot_fact_used"] = decision_ssot == "posterior_ssot_fact"
+            if decision_ssot == "posterior_ssot_fact":
+                decision_details["target_probability_field"] = (
+                    "posterior_ssot_fact.target_probability"
+                )
         written = _record_auto_trade_fallback_decisions(
             run_id=run_id,
             run_date=run_date,
@@ -56195,22 +52553,7 @@ def _record_direct_target_disabled_job_decisions(
             targets=targets,
             reason_code="auto_trade_disabled_direct_target_no_submit",
             reason_text="自动交易关闭：direct posterior 目标桶变化只写诊断，不提交订单",
-            details={
-                "source": "direct_target_job_fast_disabled",
-                "direct_job_context": True,
-                "posterior_target_direct": bool(
-                    payload.get("posterior_target_direct")
-                    or event_payload.get("posterior_target_direct")
-                    or event_payload.get("posterior_target_direct_snapshot")
-                ),
-                "hard_source_direct": bool(
-                    payload.get("hard_source_direct")
-                    or event_payload.get("hard_source_direct")
-                    or event_payload.get("hard_source_direct_snapshot")
-                ),
-                "decision_ssot": "posterior_temperature_distribution",
-                "no_submit_reason": "PM_AUTO_TRADE_ENABLED=0",
-            },
+            details=decision_details,
             decided_state="entry_disabled",
             will_order=0,
         )
@@ -56327,6 +52670,26 @@ def _direct_target_active_entry_evidence_for_target(
     }
 
 
+def _direct_target_active_entry_evidence_is_pending_order(evidence: Mapping[str, Any]) -> bool:
+    state = str(evidence.get("state") or "").strip().lower()
+    position_size = to_float(evidence.get("position_size")) or 0.0
+    last_order_id = str(evidence.get("last_order_id") or "").strip()
+    last_status = str(evidence.get("last_status") or "").strip().lower()
+    if position_size > TIME_EDGE_Q_EPS:
+        return False
+    if state and state != "entry_pending":
+        return False
+    if state == "entry_pending":
+        return True
+    if last_order_id and (
+        "pending" in last_status
+        or "open_order" in last_status
+        or last_status in {"live", "open", "unknown"}
+    ):
+        return True
+    return False
+
+
 def _extract_idempotency_key_from_obj(value: Any) -> str:
     if isinstance(value, Mapping):
         direct = str(value.get("idempotency_key") or "").strip()
@@ -56397,9 +52760,9 @@ def _clob_order_service_idempotency_status_once(idempotency_key: str) -> Dict[st
         return {"ok": False, "error": "idempotency_key_missing"}
     service_url = _clob_order_service_url()
     try:
-        response = requests.get(
-            f"{service_url}/order-status",
-            params={"idempotency_key": key},
+        response = requests.post(
+            f"{service_url}/reconcile-order",
+            json={"idempotency_key": key},
             timeout=(0.25, 0.8),
         )
         try:
@@ -56476,60 +52839,37 @@ def _reconcile_direct_target_pending_order_status(
     try:
         conn_write = open_db(connect_timeout_sec=0.5, busy_timeout_ms=500)
         try:
-            conn_write.execute(
-                """
-                UPDATE edge_trades
-                SET last_order_id = ?,
-                    last_status = ?,
-                    last_error = '',
-                    updated_at = ?
-                WHERE slug = ?
-                  AND substr(event_date, 1, 10) = ?
-                  AND outcome = ?
-                  AND side = ?
-                  AND state = 'entry_pending'
-                  AND COALESCE(last_order_id, '') = ''
-                """,
-                (
-                    order_id,
-                    status_text,
-                    now_iso,
-                    str(slug or "").strip(),
-                    _normalize_date_key(str(event_date or "").strip()),
-                    str(outcome or "").strip(),
-                    str(side or "").strip().upper(),
-                ),
+            reconcile_pending_entry_order_id(
+                conn_write,
+                slug=str(slug or "").strip(),
+                event_date=_normalize_date_key(str(event_date or "").strip()),
+                outcome=str(outcome or "").strip(),
+                side=str(side or "").strip().upper(),
+                order_id=order_id,
+                status=status_text,
+                now_iso=now_iso,
             )
-            conn_write.execute(
-                """
-                INSERT OR IGNORE INTO auto_orders (
-                    order_id, slug, event_date, outcome, side, action,
-                    price, size, order_type, strategy, created_at, order_status, order_checked_at
-                ) VALUES (?, ?, ?, ?, ?, 'entry', ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    order_id,
-                    str(slug or "").strip(),
-                    _normalize_date_key(str(event_date or "").strip()),
-                    str(outcome or "").strip(),
-                    str(side or "").strip().upper(),
-                    price,
-                    size,
-                    order_type,
-                    strategy,
-                    now_iso,
-                    status_text,
-                    now_iso,
-                ),
+            insert_auto_order_ignore(
+                conn_write,
+                order_id=order_id,
+                slug=str(slug or "").strip(),
+                event_date=_normalize_date_key(str(event_date or "").strip()),
+                outcome=str(outcome or "").strip(),
+                side=str(side or "").strip().upper(),
+                action="entry",
+                price=price,
+                size=size,
+                order_type=order_type,
+                strategy=strategy,
+                created_at=now_iso,
+                order_status=status_text,
+                order_checked_at=now_iso,
             )
-            conn_write.execute(
-                """
-                UPDATE auto_orders
-                SET order_status = ?,
-                    order_checked_at = ?
-                WHERE order_id = ?
-                """,
-                (status_text, now_iso, order_id),
+            update_auto_order_status_by_order_id(
+                conn_write,
+                order_id=order_id,
+                order_status=status_text,
+                order_checked_at=now_iso,
             )
             conn_write.commit()
         finally:
@@ -56707,7 +53047,17 @@ def _direct_target_primary_entry_targets_for_event(
         _entry_expected_targets_for_event(event_payload.get("entry_expected_targets"), slug, event_date),
     )
     target_bucket = _direct_target_payload_target_bucket(event_payload) or _direct_target_payload_target_bucket(payload)
-    primary_targets, _deferred = _direct_target_primary_entry_targets(merged_targets, target_bucket)
+    primary_targets, _deferred = _direct_target_ssot_entry_targets_for_payload(
+        merged_targets,
+        event_payload,
+        target_bucket,
+    )
+    if not primary_targets:
+        primary_targets, _deferred = _direct_target_ssot_entry_targets_for_payload(
+            merged_targets,
+            payload,
+            target_bucket,
+        )
     return [dict(item) for item in primary_targets if isinstance(item, Mapping)]
 
 
@@ -56795,9 +53145,21 @@ def _record_direct_target_already_active_job_decisions(
                         side=side,
                         active=active,
                     )
+                    if not _direct_target_active_entry_evidence_is_pending_order(active):
+                        missing.append(
+                            {
+                                "slug": slug,
+                                "event_date": event_date,
+                                "outcome": outcome,
+                                "side": side,
+                                "reason": "active_position_does_not_block_additional_buy",
+                                "position_size": active.get("position_size"),
+                            }
+                        )
+                        continue
                     event_evidence[(outcome, side)] = {
                         "active_entry_fast_confirm": True,
-                        "active_entry_source": "edge_trades",
+                        "active_entry_source": "edge_trades_pending_order",
                         "target_entry_already_active": True,
                         "primary_target_entry_needed": False,
                         "job_id": int(job_id or 0),
@@ -56872,6 +53234,925 @@ def _record_direct_target_already_active_job_decisions(
         "direct_target_active_entry_fast_confirm": True,
         "decisions_written": written_total,
     }
+
+
+def _format_direct_order_error_short(payload: Mapping[str, Any]) -> str:
+    for key in (
+        "error_detail",
+        "error",
+        "statusText",
+        "status",
+        "stderr",
+        "stdout",
+    ):
+        value = str(payload.get(key) or "").strip() if isinstance(payload, Mapping) else ""
+        if value:
+            return value[:240]
+    return "unknown"
+
+
+def _persist_external_pending_submit_intent(
+    conn: sqlite3.Connection,
+    cur: sqlite3.Cursor,
+    *,
+    run_id: Optional[int],
+    run_date: str,
+    slug: str,
+    event_date: str,
+    title: str,
+    outcome: str,
+    side: str,
+    action: str,
+    token_id: str,
+    order_price: float,
+    order_size: float,
+    order_type: str,
+    submit_source: str,
+    candidate: Optional[Mapping[str, Any]] = None,
+    post_only: bool = False,
+    commit: bool = True,
+) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    order_context_payload = _bayes_weather_order_context(
+        slug=slug,
+        event_date=event_date,
+        outcome=outcome,
+        side=side,
+        intent_action=action,
+        submit_source=submit_source,
+        candidate=candidate,
+    )
+    intent_probe = {
+        **order_context_payload,
+        "token_id": token_id,
+        "side": "SELL" if str(action or "").strip().lower() == "exit" else "BUY",
+        "order_type": order_type,
+        "price": order_price,
+        "size": order_size,
+        "post_only": bool(post_only),
+        "direct_target_order_context": True,
+        "direct_target_exit_order": str(action or "").strip().lower() == "exit",
+    }
+    order_intent_id = _clob_order_service_idempotency_key(intent_probe)
+    order_context_payload["order_intent_id"] = order_intent_id
+    created_at = utc_now_iso_ms()
+    details = dict(candidate or {})
+    details.update(
+        {
+            "decision_phase": "pending_submit",
+            "order_intent_state": "pending_submit",
+            "order_intent_id": order_intent_id,
+            "idempotency_key": order_intent_id,
+            "auto_trade_decision_written_at": created_at,
+            "token_id": token_id,
+            "order_price": order_price,
+            "order_size": order_size,
+            "order_type": order_type,
+            "post_only": bool(post_only),
+            "submit_source": submit_source,
+        }
+    )
+    _apply_signal_to_order_execution_segments(
+        details,
+        order_intent_id=order_intent_id,
+        idempotency_key=order_intent_id,
+    )
+    try:
+        decision_row_id = insert_auto_trade_decision(
+            cur,
+            run_id=int(run_id) if run_id else None,
+            run_date=str(run_date or ""),
+            slug=slug,
+            event_date=event_date,
+            title=title,
+            outcome=outcome,
+            side=side,
+            action=action,
+            decided_state="pending_submit",
+            will_order=True,
+            reason_codes=["order_pending_submit"],
+            reasons=["订单意图已持久化，等待唯一 CLOB submitter 提交"],
+            details=details,
+            created_at=created_at,
+        )
+        if commit:
+            conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        raise
+
+    identity = {
+        "correlation_id": str(details.get("correlation_id") or "").strip(),
+        "decision_id": str(decision_row_id or "").strip(),
+        "signal_id": str(details.get("signal_id") or "").strip(),
+        "order_intent_id": order_intent_id,
+    }
+    try:
+        identity_row = cur.execute(
+            """
+            SELECT correlation_id, decision_id, signal_id, order_intent_id
+            FROM auto_trade_decisions
+            WHERE id = ?
+            """,
+            (int(decision_row_id or 0),),
+        ).fetchone()
+        if identity_row is not None:
+            for key in identity:
+                value = identity_row[key]
+                if str(value or "").strip():
+                    identity[key] = str(value).strip()
+    except (KeyError, IndexError, sqlite3.Error, TypeError):
+        pass
+    return order_context_payload, identity
+
+
+def _direct_target_old_exit_cleanup_after_success(
+    payload: Mapping[str, Any],
+    *,
+    run_id: Optional[int],
+    run_date: str,
+    job_id: int,
+    worker_started_at: str,
+) -> Dict[str, Any]:
+    if not _direct_target_payload_requests_exit_cleanup(payload):
+        return {"ok": True, "status": "not_applicable", "submitted": 0}
+
+    event_payloads: List[Mapping[str, Any]] = []
+    for item in payload.get("event_payloads") or []:
+        if isinstance(item, Mapping) and isinstance(item.get("payload"), Mapping):
+            event_payloads.append(item["payload"])
+    if not event_payloads:
+        event_payloads.append(payload)
+
+    submitted = 0
+    fully_exited = 0
+    partially_filled = 0
+    skipped = 0
+    errors: List[Dict[str, Any]] = []
+    unfilled: List[Dict[str, Any]] = []
+    now_iso = utc_now_iso()
+    try:
+        conn = open_db(connect_timeout_sec=0.5, busy_timeout_ms=500)
+    except Exception as exc:
+        return {"ok": False, "status": "db_open_failed", "submitted": 0, "error": str(exc)[:240]}
+
+    try:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        for event_payload in event_payloads:
+            slug = str(event_payload.get("slug") or event_payload.get("event_slug") or "").strip()
+            event_date_key = _normalize_date_key(str(event_payload.get("event_date") or "").strip())
+            if not slug or not event_date_key:
+                skipped += 1
+                continue
+            title = str(event_payload.get("title") or payload.get("title") or slug)
+            rows_by_outcome = {
+                str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip(): row
+                for row in (event_payload.get("rows") or event_payload.get("distribution") or [])
+                if isinstance(row, Mapping)
+                and str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
+            }
+            for target in event_payload.get("entry_expected_targets") or []:
+                if not isinstance(target, Mapping):
+                    continue
+                role = str(target.get("target_realization_leg_role") or "").strip().lower()
+                exec_action = str(target.get("target_realization_execution_action") or "").strip().upper()
+                plan_action = str(target.get("target_realization_plan_action") or "").strip().lower()
+                if role != "old_bucket_reverse" and exec_action not in {"SELL", "EXIT"} and plan_action not in {"exit", "sell", "sell_old", "close", "clear"}:
+                    continue
+                held_outcome = str(
+                    target.get("held_target_bucket")
+                    or target.get("current_position_target_bucket")
+                    or target.get("outcome")
+                    or ""
+                ).strip()
+                held_side = str(
+                    target.get("held_target_side")
+                    or target.get("current_position_side")
+                    or "YES"
+                ).strip().upper()
+                if not held_outcome or held_side not in {"YES", "NO"}:
+                    skipped += 1
+                    continue
+                row = rows_by_outcome.get(held_outcome) or {}
+                token_id = str(
+                    row.get("yes_token" if held_side == "YES" else "no_token")
+                    or target.get("held_token_id")
+                    or target.get("exit_token_id")
+                    or ""
+                ).strip()
+                active_order_row = cur.execute(
+                    """
+                    SELECT order_id, price, size, order_type, order_status
+                    FROM auto_orders
+                    WHERE slug = ? AND substr(event_date, 1, 10) = ?
+                      AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+                      AND LOWER(COALESCE(action, '')) IN ('exit', 'sell')
+                      AND LOWER(COALESCE(order_status, '')) IN (
+                          'pending', 'open', 'live', 'matched', 'partial',
+                          'partially_filled', 'canceling', 'unknown', 'submitted'
+                      )
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (slug, event_date_key, held_outcome, held_side),
+                ).fetchone()
+                ask = to_float(
+                    row.get("best_ask" if held_side == "YES" else "best_ask_no")
+                    or target.get("exit_ask")
+                    or target.get("ask")
+                    or target.get("best_ask")
+                    or (active_order_row["price"] if active_order_row is not None else None)
+                )
+                if ask is None or not math.isfinite(ask) or ask <= TIME_EDGE_Q_EPS or not token_id:
+                    skipped += 1
+                    errors.append(
+                        {
+                            "slug": slug,
+                            "event_date": event_date_key,
+                            "outcome": held_outcome,
+                            "side": held_side,
+                            "reason": "exit_quote_or_token_missing",
+                        }
+                    )
+                    continue
+                trade_row = cur.execute(
+                    """
+                    SELECT
+                        CASE
+                            WHEN SUM(
+                                CASE
+                                    WHEN LOWER(COALESCE(state, '')) IN ('entry', 'entry_pending')
+                                         OR COALESCE(position_size, 0) > 0.000001
+                                    THEN 1 ELSE 0
+                                END
+                            ) > 0
+                            THEN 'entry'
+                            ELSE ''
+                        END AS state,
+                        SUM(
+                            CASE
+                                WHEN LOWER(COALESCE(state, '')) IN ('entry', 'entry_pending')
+                                     OR COALESCE(position_size, 0) > 0.000001
+                                THEN COALESCE(position_size, 0)
+                                ELSE 0
+                            END
+                        ) AS position_size
+                    FROM edge_trades
+                    WHERE slug = ?
+                      AND substr(event_date, 1, 10) = ?
+                      AND outcome = ?
+                      AND side = ?
+                    """,
+                    (slug, event_date_key, held_outcome, held_side),
+                ).fetchone()
+                if trade_row is None:
+                    skipped += 1
+                    continue
+                state_text = str(trade_row["state"] or "").strip().lower()
+                position_size_before = to_float(trade_row["position_size"]) or 0.0
+                requested_size = to_float(
+                    target.get("position_size")
+                    or target.get("order_size")
+                    or target.get("size")
+                )
+                size_to_sell = (
+                    min(float(position_size_before), max(0.0, float(requested_size)))
+                    if requested_size is not None and math.isfinite(requested_size)
+                    else float(position_size_before)
+                )
+                if state_text not in {"entry", "entry_pending"} or size_to_sell <= TIME_EDGE_Q_EPS:
+                    skipped += 1
+                    continue
+                exit_price_raw = float(ask)
+                exit_price_norm, _ = _normalize_place_order_price(exit_price_raw)
+                exit_price = float(exit_price_norm if exit_price_norm is not None else exit_price_raw)
+                order_type = "GTC"
+                reused_existing_order = active_order_row is not None
+                pre_submit_reason_code = str(
+                    target.get("target_realization_reason_code")
+                    or target.get("target_adjustment_exit_reason_code")
+                    or _target_realization_invalidation_code_for_side(held_side)
+                )
+                target["exit_reason_family"] = TARGET_REALIZATION_FAMILY
+                exit_policy_block = _exit_order_policy_block_reason(
+                    [pre_submit_reason_code],
+                    details=target,
+                )
+                if exit_policy_block:
+                    skipped += 1
+                    errors.append(
+                        {
+                            "slug": slug,
+                            "event_date": event_date_key,
+                            "outcome": held_outcome,
+                            "side": held_side,
+                            "reason": exit_policy_block,
+                        }
+                    )
+                    continue
+                pending_identity: Dict[str, str] = {}
+                plan_id = str(
+                    target.get("target_realization_v3_plan_id")
+                    or target.get("target_realization_plan_id")
+                    or ""
+                ).strip()
+                lock_type = "dynamic_posterior_reselection_sell"
+                lock_details = {
+                    "schema": "target_realization_dynamic_sell_lock_v1",
+                    "job_id": int(job_id or 0),
+                    "plan_id": plan_id,
+                    "reason_code": pre_submit_reason_code,
+                    "execution_phase": "SELL_OLD",
+                    "requested_size": float(size_to_sell),
+                }
+                if reused_existing_order:
+                    order_id = str(active_order_row["order_id"] or "")
+                    existing_price = to_float(active_order_row["price"])
+                    existing_size = to_float(active_order_row["size"])
+                    if existing_price is not None and math.isfinite(existing_price):
+                        exit_price = float(existing_price)
+                    if existing_size is not None and math.isfinite(existing_size) and existing_size > 0:
+                        size_to_sell = float(existing_size)
+                    ok = bool(order_id)
+                    order_payload = {
+                        "orderID": order_id,
+                        "status": str(active_order_row["order_status"] or "live"),
+                        "post_only": True,
+                        "maker_only": True,
+                        "reused_existing_order": True,
+                    }
+                else:
+                    maker_target = dict(target)
+                    maker_target.update(
+                        {
+                            "limit_price": exit_price,
+                            "best_ask": exit_price,
+                            "target_realization_price_source": "best_ask",
+                            "target_realization_maker_only": True,
+                            "post_only": True,
+                            "order_type": "GTC",
+                        }
+                    )
+                    try:
+                        # The duplicate check, dynamic sell lock and durable
+                        # order intent are one short SQLite transaction.  The
+                        # CLOB call happens only after this transaction has
+                        # committed, so a crash can only leave a reconciliable
+                        # pending intent/lock, never an untracked SELL.
+                        conn.execute("BEGIN IMMEDIATE")
+                        existing_lock = has_active_target_realization_execution_lock(
+                            conn,
+                            slug=slug,
+                            event_date=event_date_key,
+                            outcome=held_outcome,
+                            side=held_side,
+                        )
+                        if existing_lock:
+                            conn.rollback()
+                            skipped += 1
+                            errors.append(
+                                {
+                                    "slug": slug,
+                                    "event_date": event_date_key,
+                                    "outcome": held_outcome,
+                                    "side": held_side,
+                                    "reason": "target_realization_sell_reconcile_locked",
+                                    "lock_type": existing_lock,
+                                }
+                            )
+                            continue
+                        upsert_target_realization_execution_lock(
+                            conn,
+                            slug=slug,
+                            event_date=event_date_key,
+                            outcome=held_outcome,
+                            side=held_side,
+                            lock_type=lock_type,
+                            state="pending",
+                            plan_id=plan_id,
+                            locked_at=now_iso,
+                            updated_at=now_iso,
+                            details=lock_details,
+                        )
+                        order_context_payload, pending_identity = (
+                            _persist_external_pending_submit_intent(
+                                conn,
+                                cur,
+                                run_id=run_id,
+                                run_date=run_date,
+                                slug=slug,
+                                event_date=event_date_key,
+                                title=title,
+                                outcome=held_outcome,
+                                side=held_side,
+                                action="exit",
+                                token_id=token_id,
+                                order_price=exit_price,
+                                order_size=float(size_to_sell),
+                                order_type=order_type,
+                                submit_source="direct_target_old_exit_cleanup",
+                                candidate=maker_target,
+                                post_only=True,
+                                commit=False,
+                            )
+                        )
+                        conn.commit()
+                    except Exception as exc:
+                        try:
+                            conn.rollback()
+                        except sqlite3.Error:
+                            pass
+                        skipped += 1
+                        errors.append(
+                            {
+                                "slug": slug,
+                                "event_date": event_date_key,
+                                "outcome": held_outcome,
+                                "side": held_side,
+                                "reason": "pending_submit_decision_persist_failed",
+                                "error": str(exc)[:240],
+                            }
+                        )
+                        continue
+                    ok, order_payload = _run_node_order(
+                        "place-order",
+                        token_id,
+                        "SELL",
+                        price=exit_price,
+                        size=float(size_to_sell),
+                        order_type=order_type,
+                        post_only=True,
+                        order_context=order_context_payload,
+                    )
+                order_id = str(order_payload.get("orderID") or order_payload.get("orderId") or "")
+                if not (ok and order_id):
+                    if not reused_existing_order:
+                        upsert_target_realization_execution_lock(
+                            conn,
+                            slug=slug,
+                            event_date=event_date_key,
+                            outcome=held_outcome,
+                            side=held_side,
+                            lock_type=lock_type,
+                            state="released",
+                            plan_id=plan_id,
+                            locked_at=now_iso,
+                            updated_at=utc_now_iso(),
+                            details=lock_details,
+                        )
+                        conn.commit()
+                    skipped += 1
+                    errors.append(
+                        {
+                            "slug": slug,
+                            "event_date": event_date_key,
+                            "outcome": held_outcome,
+                            "side": held_side,
+                            "reason": "exit_order_submit_failed",
+                            "error": _format_direct_order_error_short(order_payload),
+                        }
+                    )
+                    continue
+                if reused_existing_order:
+                    upsert_target_realization_execution_lock(
+                        conn,
+                        slug=slug,
+                        event_date=event_date_key,
+                        outcome=held_outcome,
+                        side=held_side,
+                        lock_type=lock_type,
+                        state="active",
+                        source_order_id=order_id,
+                        plan_id=plan_id,
+                        locked_at=now_iso,
+                        updated_at=utc_now_iso(),
+                        details=lock_details,
+                    )
+                    conn.commit()
+                confirm_ok, confirm_payload = _run_node_get_order(order_id)
+                status_text = "submitted"
+                matched_size = 0.0
+                matched_price = None
+                if confirm_ok and isinstance(confirm_payload, Mapping):
+                    order_obj = confirm_payload.get("order") if isinstance(confirm_payload.get("order"), Mapping) else confirm_payload
+                    if isinstance(order_obj, Mapping):
+                        if str(order_obj.get("status") or "").strip():
+                            status_text = str(order_obj.get("status") or "").strip()
+                        matched_size = to_float(
+                            order_obj.get("size_matched")
+                            or order_obj.get("sizeMatched")
+                            or order_obj.get("matched_amount")
+                            or order_obj.get("matchedAmount")
+                            or order_obj.get("filledSize")
+                            or order_obj.get("sizeFilled")
+                        ) or 0.0
+                        matched_price = to_float(
+                            order_obj.get("avg_price")
+                            or order_obj.get("avgPrice")
+                            or order_obj.get("price")
+                        )
+                if matched_size <= TIME_EDGE_Q_EPS and isinstance(order_payload, Mapping):
+                    matched_size = to_float(
+                        order_payload.get("size_matched")
+                        or order_payload.get("sizeMatched")
+                        or order_payload.get("matched_amount")
+                        or order_payload.get("matchedAmount")
+                        or order_payload.get("filledSize")
+                        or order_payload.get("sizeFilled")
+                    ) or 0.0
+                matched_size = max(0.0, min(float(size_to_sell), float(matched_size)))
+                previous_accounted_row = cur.execute(
+                    """
+                    SELECT json_extract(details_json, '$.matched_size') AS matched_size
+                    FROM auto_trade_decisions
+                    WHERE json_extract(details_json, '$.order_id') = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (order_id,),
+                ).fetchone()
+                previous_accounted_matched = to_float(
+                    previous_accounted_row["matched_size"]
+                    if previous_accounted_row is not None
+                    else None
+                ) or 0.0
+                incremental_matched_size = max(
+                    0.0,
+                    float(matched_size) - float(previous_accounted_matched),
+                )
+                remaining_order_size = max(0.0, float(size_to_sell) - float(matched_size))
+                remaining_position_size = max(
+                    0.0,
+                    float(position_size_before) - float(incremental_matched_size),
+                )
+                status_lower = str(status_text or "").strip().lower()
+                order_still_open = status_lower in {"open", "live", "pending", "submitted", "unknown"}
+                fully_filled = remaining_order_size <= TIME_EDGE_Q_EPS
+                position_fully_exited = remaining_position_size <= TIME_EDGE_Q_EPS
+                partially_filled_flag = matched_size > TIME_EDGE_Q_EPS and not fully_filled
+                if fully_filled:
+                    ledger_state = "exit" if position_fully_exited else "entry"
+                    ledger_action = "confirm_exit"
+                    fully_exited += 1
+                elif partially_filled_flag:
+                    ledger_state = "entry"
+                    ledger_action = "confirm_exit_partial"
+                    partially_filled += 1
+                elif order_still_open:
+                    ledger_state = "exit_pending"
+                    ledger_action = "exit"
+                else:
+                    ledger_state = "entry"
+                    ledger_action = "confirm_exit_no_fill"
+                upsert_target_realization_execution_lock(
+                    conn,
+                    slug=slug,
+                    event_date=event_date_key,
+                    outcome=held_outcome,
+                    side=held_side,
+                    lock_type=lock_type,
+                    state="reconciled" if fully_filled else "active" if order_still_open or partially_filled_flag else "released",
+                    source_order_id=order_id,
+                    plan_id=plan_id,
+                    locked_at=now_iso,
+                    updated_at=utc_now_iso(),
+                    details=lock_details,
+                )
+                target_reason_code = pre_submit_reason_code
+                submitted_at = utc_now_iso_ms()
+                detail = dict(target)
+                detail.update(
+                    {
+                        "source": "direct_target_old_exit_cleanup_after_success",
+                        "hard_source_direct": bool(
+                            target.get("hard_source_direct")
+                            or target.get("hard_source_posterior_override")
+                            or event_payload.get("hard_source_direct")
+                        ),
+                        "job_id": int(job_id or 0),
+                        "worker_started_at": worker_started_at,
+                        "order_id": order_id,
+                        "status": status_text,
+                        "dry_run": False,
+                        "token_id": token_id,
+                        "order_price": exit_price,
+                        "price": exit_price,
+                        "order_size": float(size_to_sell),
+                        "size": float(size_to_sell),
+                        "order_type": order_type,
+                        "post_only": True,
+                        "maker_only": True,
+                        "target_realization_price_source": "best_ask",
+                        "reused_existing_order": reused_existing_order,
+                        "matched_size": matched_size,
+                        "matched_size_previously_accounted": previous_accounted_matched,
+                        "matched_size_increment": incremental_matched_size,
+                        "matched_price": matched_price,
+                        "requested_exit_size": size_to_sell,
+                        "position_size_before_exit": position_size_before,
+                        "remaining_exit_order_size": remaining_order_size,
+                        "remaining_position_size": remaining_position_size,
+                        "exit_fully_filled": fully_filled,
+                        "position_fully_exited": position_fully_exited,
+                        "exit_partially_filled": partially_filled_flag,
+                        "target_realization_execution_action": "SELL",
+                        "target_adjustment_exit_reason_code": target_reason_code,
+                        "exit_reason_codes": [target_reason_code],
+                        "hard_source_worker_started_at": worker_started_at,
+                        "hard_source_order_submitted_at": submitted_at,
+                    }
+                )
+                detail = _add_hard_source_order_sla(detail, submitted_at)
+                reason_codes = [target_reason_code]
+                reasons = [
+                    "目标实现退出已全部成交。"
+                    if fully_filled
+                    else "目标实现退出部分成交，保留剩余仓位并等待后续对账。"
+                    if partially_filled_flag
+                    else "目标实现退出订单未确认成交，禁止进入买新阶段。"
+                ]
+                insert_auto_trade_decision(
+                    cur,
+                    run_id=int(run_id) if run_id else None,
+                    run_date=str(run_date or ""),
+                    slug=slug,
+                    event_date=event_date_key,
+                    title=title,
+                    outcome=held_outcome,
+                    side=held_side,
+                    action="exit",
+                    decided_state=ledger_state,
+                    will_order=True,
+                    reason_codes=reason_codes,
+                    reasons=reasons,
+                    details=detail,
+                    created_at=now_iso,
+                )
+                cur.execute(
+                    """
+                    UPDATE edge_trades
+                    SET state = ?,
+                        last_order_id = ?,
+                        last_action = ?,
+                        last_action_price = ?,
+                        last_action_size = ?,
+                        last_action_order_type = ?,
+                        last_action_at = ?,
+                        last_status = ?,
+                        last_error = ?,
+                        exit_reasons = ?,
+                        exit_reason_codes = ?,
+                        exit_reason_family_codes = ?,
+                        exit_triggered_at = ?,
+                        position_size = ?,
+                        updated_at = ?
+                    WHERE slug = ?
+                      AND substr(event_date, 1, 10) = ?
+                      AND outcome = ?
+                      AND side = ?
+                    """,
+                    (
+                        ledger_state,
+                        order_id,
+                        ledger_action,
+                        exit_price,
+                        float(size_to_sell),
+                        order_type,
+                        now_iso,
+                        status_text,
+                        "" if fully_filled else "exit_partial" if partially_filled_flag else "exit_unfilled",
+                        _dump_reason_list(reasons),
+                        _dump_reason_list(reason_codes),
+                        _dump_reason_list_or_blank([TARGET_REALIZATION_FAMILY]),
+                        now_iso,
+                        remaining_position_size,
+                        now_iso,
+                        slug,
+                        event_date_key,
+                        held_outcome,
+                        held_side,
+                    ),
+                )
+                try:
+                    insert_auto_order_ignore(
+                        cur,
+                        order_id=order_id,
+                        correlation_id=pending_identity.get("correlation_id"),
+                        decision_id=pending_identity.get("decision_id"),
+                        signal_id=pending_identity.get("signal_id"),
+                        order_intent_id=pending_identity.get("order_intent_id"),
+                        slug=slug,
+                        event_date=event_date_key,
+                        outcome=held_outcome,
+                        side=held_side,
+                        action="exit",
+                        price=exit_price,
+                        size=float(size_to_sell),
+                        order_type=order_type,
+                        strategy="exit",
+                        created_at=now_iso,
+                        order_status=status_text,
+                        order_checked_at=now_iso,
+                    )
+                    cur.execute(
+                        """
+                        UPDATE auto_orders
+                        SET order_status = ?, order_checked_at = ?
+                        WHERE order_id = ?
+                        """,
+                        (status_text, now_iso, order_id),
+                    )
+                except sqlite3.OperationalError:
+                    pass
+                submitted += 1
+                if not fully_filled:
+                    unfilled.append(
+                        {
+                            "slug": slug,
+                            "event_date": event_date_key,
+                            "outcome": held_outcome,
+                            "side": held_side,
+                            "order_id": order_id,
+                            "status": status_text,
+                            "matched_size": matched_size,
+                            "remaining_size": remaining_order_size,
+                            "remaining_position_size": remaining_position_size,
+                        }
+                    )
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {
+        "ok": not errors and not unfilled,
+        "status": "checked",
+        "submitted": submitted,
+        "fully_exited": fully_exited,
+        "partially_filled": partially_filled,
+        "skipped": skipped,
+        "errors": errors[:8],
+        "unfilled": unfilled[:8],
+        "all_filled": bool(submitted > 0 and fully_exited == submitted and not errors and not unfilled),
+    }
+
+
+
+
+def _target_realization_v3_refresh_after_sell_fill(
+    payload: Mapping[str, Any],
+    *,
+    transition_signal_at: str,
+) -> Dict[str, Any]:
+    v3 = payload.get("target_realization_v3")
+    v3 = v3 if isinstance(v3, Mapping) else {}
+    slug = str(v3.get("slug") or "").strip()
+    event_date = _normalize_date_key(str(v3.get("event_date") or ""))
+    posterior = payload.get("posterior_target_direct")
+    posterior = posterior if isinstance(posterior, Mapping) else {}
+    if not slug:
+        slug = str(posterior.get("slug") or "").strip()
+    if not event_date:
+        event_date = _normalize_date_key(str(posterior.get("event_date") or ""))
+    if not slug or not event_date:
+        for item in payload.get("event_payloads") or []:
+            if not isinstance(item, Mapping):
+                continue
+            event_payload = item.get("payload")
+            if not isinstance(event_payload, Mapping):
+                continue
+            slug = slug or str(event_payload.get("slug") or event_payload.get("event_slug") or "").strip()
+            event_date = event_date or _normalize_date_key(str(event_payload.get("event_date") or ""))
+            if slug and event_date:
+                break
+    if not slug or not event_date:
+        return {
+            "ok": False,
+            "status": "transition_identity_missing",
+            "error": "target_realization_v3_transition_identity_missing",
+        }
+    project_root = Path(__file__).resolve().parent
+    cmd = [
+        sys.executable,
+        str(project_root / "scripts" / "hard_source_direct_poller.py"),
+        "--db",
+        str(DB_PATH),
+        "--event-date",
+        event_date,
+        "--slug",
+        slug,
+        "--posterior-target-decision-once",
+        "--transition-signal-at",
+        str(transition_signal_at or ""),
+    ]
+    timeout_sec = _env_float("PM_TARGET_REALIZATION_V3_FILL_REFRESH_TIMEOUT_SEC")
+    if timeout_sec is None or not math.isfinite(timeout_sec):
+        timeout_sec = 3.0
+    timeout_sec = max(0.5, min(float(timeout_sec), 4.0))
+    started = time.monotonic()
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(project_root),
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "status": "transition_refresh_timeout",
+            "error": "target_realization_v3_fill_refresh_timeout",
+            "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+        }
+    output = str(proc.stdout or "").strip()
+    parsed: Dict[str, Any] = {}
+    if output:
+        for line in reversed(output.splitlines()):
+            try:
+                value = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(value, dict):
+                parsed = value
+                break
+    status = str(parsed.get("status") or "")
+    accepted = bool(
+        proc.returncode == 0
+        and parsed.get("ok") is True
+        and status
+        not in {
+            "sequential_bayes_execution_contract_blocked",
+            "target_realization_v3_plan_blocked",
+        }
+    )
+    return {
+        "ok": accepted,
+        "status": status or "transition_refresh_failed",
+        "job_id": parsed.get("job_id"),
+        "job_enqueued": bool(parsed.get("job_enqueued")),
+        "job_skipped_reason": parsed.get("job_skipped_reason"),
+        "target_realization_v3_plan_id": parsed.get("target_realization_v3_plan_id"),
+        "target_realization_v3_execution_phase": parsed.get(
+            "target_realization_v3_execution_phase"
+        ),
+        "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+        "transition_signal_at": transition_signal_at,
+        "returncode": int(proc.returncode),
+        "error": "" if accepted else str(parsed.get("block_reason") or proc.stderr or "")[:300],
+    }
+
+
+def _target_realization_v3_persist_refresh_phase(
+    job_id: int,
+    payload: Mapping[str, Any],
+    *,
+    transition_signal_at: str,
+) -> bool:
+    if int(job_id or 0) <= 0 or not isinstance(payload, Mapping):
+        return False
+    next_payload = dict(payload)
+    v3 = next_payload.get("target_realization_v3")
+    v3 = dict(v3) if isinstance(v3, Mapping) else {}
+    v3["execution_phase"] = "REFRESH_BUY"
+    v3["sell_fill_confirmed_at"] = transition_signal_at
+    v3["transition_signal_at"] = transition_signal_at
+    v3["buy_new_deferred"] = True
+    next_payload["target_realization_v3"] = v3
+    posterior = next_payload.get("posterior_target_direct")
+    if isinstance(posterior, Mapping):
+        posterior = dict(posterior)
+        posterior_v3 = posterior.get("target_realization_v3")
+        posterior_v3 = dict(posterior_v3) if isinstance(posterior_v3, Mapping) else {}
+        posterior_v3.update(v3)
+        posterior["target_realization_v3"] = posterior_v3
+        posterior["decision_semantics"] = "target_realization_v3_refresh_after_sell_fill"
+        next_payload["posterior_target_direct"] = posterior
+    try:
+        with _open_auto_trade_job_bookkeeping_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE auto_trade_jobs
+                SET payload_json = ?, updated_at = ?
+                WHERE id = ? AND state = 'running'
+                """,
+                (
+                    json.dumps(next_payload, ensure_ascii=True, separators=(",", ":")),
+                    utc_now_iso_ms(),
+                    int(job_id),
+                ),
+            )
+            conn.commit()
+            return int(cur.rowcount or 0) > 0
+    except Exception:
+        return False
 
 
 def _auto_trade_event_worker(
@@ -57611,7 +54892,6 @@ def run_auto_trades_for_date(
             event_date_val = str((row_obj[2] if len(row_obj) > 2 else "") or "").strip()
         return slug_val, _normalize_date_key(event_date_val)
 
-    payload_snapshot_file = str(payload_filter.get("snapshot_file") or "").strip()
     payload_entry_expected_targets = _merge_entry_expected_targets(
         payload_filter.get("entry_expected_targets"),
         [],
@@ -57952,11 +55232,12 @@ def run_auto_trades_for_date(
         if not _auto_trade_payload_is_direct_target_job(payload):
             return targets
         target_bucket = _direct_target_payload_target_bucket(payload)
-        primary_targets, _deferred_targets = _direct_target_primary_entry_targets(
+        primary_targets, _deferred_targets = _direct_target_ssot_entry_targets_for_payload(
             payload.get("entry_expected_targets"),
+            payload,
             target_bucket,
         )
-        source_targets = primary_targets or list(payload.get("entry_expected_targets") or [])
+        source_targets = primary_targets
         for item in source_targets:
             if not isinstance(item, Mapping):
                 continue
@@ -58027,7 +55308,6 @@ def run_auto_trades_for_date(
         hard_result_codes = {
             "order_submitted",
             "place_order_failed",
-            "entry_market_fallback",
             "order_already_live",
         }
         if hard_result_codes.intersection(reason_set):
@@ -58127,11 +55407,11 @@ def run_auto_trades_for_date(
                         outcome_key,
                         side_key,
                     )
-                    if active_evidence:
+                    if active_evidence and _direct_target_active_entry_evidence_is_pending_order(active_evidence):
                         evidence.append(
                             {
                                 "target": [slug_key, event_date_key, outcome_key, side_key],
-                                "source": "edge_trades_active_entry",
+                                "source": "edge_trades_pending_entry_order",
                                 **active_evidence,
                             }
                         )
@@ -58204,27 +55484,18 @@ def run_auto_trades_for_date(
 
         def _run_with_timeout() -> Tuple[bool, str]:
             if event_timeout_sec <= 0:
-                prev_snapshot_file = os.environ.get("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE")
-                try:
-                    if payload_snapshot_file:
-                        os.environ["PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE"] = payload_snapshot_file
-                    execute_auto_trades(
-                        run_date_key,
-                        event_date_key,
-                        payload,
-                        exit_only=exit_only,
-                        run_id=run_id,
-                        positions_snapshot=(positions_snapshot if exit_only else None),
-                        positions_snapshot_error=(positions_snapshot_error if exit_only else ""),
-                        settled_reconcile_context=settled_reconcile_context,
-                        direct_job_context=bool(direct_job_fast_path and _auto_trade_payload_is_direct_target_job(payload)),
-                    )
-                    return True, ""
-                finally:
-                    if prev_snapshot_file is None:
-                        os.environ.pop("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE", None)
-                    else:
-                        os.environ["PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE"] = prev_snapshot_file
+                execute_auto_trades(
+                    run_date_key,
+                    event_date_key,
+                    payload,
+                    exit_only=exit_only,
+                    run_id=run_id,
+                    positions_snapshot=(positions_snapshot if exit_only else None),
+                    positions_snapshot_error=(positions_snapshot_error if exit_only else ""),
+                    settled_reconcile_context=settled_reconcile_context,
+                    direct_job_context=bool(direct_job_fast_path and _auto_trade_payload_is_direct_target_job(payload)),
+                )
+                return True, ""
             start_method = _auto_trade_event_worker_mp_start_method()
             event_budget_started = time.monotonic()
             try:
@@ -58234,10 +55505,7 @@ def run_auto_trades_for_date(
                 start_method = "spawn"
             proc: Optional[multiprocessing.Process] = None
             queue: Optional[multiprocessing.Queue] = None
-            prev_snapshot_file = os.environ.get("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE")
             try:
-                if payload_snapshot_file:
-                    os.environ["PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE"] = payload_snapshot_file
                 queue = ctx.Queue()
                 proc = ctx.Process(
                     target=_auto_trade_event_worker,
@@ -58326,10 +55594,6 @@ def run_auto_trades_for_date(
                         proc.close()
                     except Exception:
                         pass
-                if prev_snapshot_file is None:
-                    os.environ.pop("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE", None)
-                else:
-                    os.environ["PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE"] = prev_snapshot_file
 
         def _run_inline_lightweight() -> Tuple[bool, str]:
             overrides: Dict[str, str] = {}
@@ -58392,12 +55656,9 @@ def run_auto_trades_for_date(
             if (not direct_inline_fast) and not _env_bool("PM_AUTO_TRADE_EVENT_WORKER_CLOB_GLOBAL_RATE_LIMIT", True):
                 overrides["PM_CLOB_BOOK_GLOBAL_RATE_LIMIT"] = "0"
             prev_vals = {k: os.environ.get(k) for k in overrides.keys()}
-            prev_snapshot_file = os.environ.get("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE")
             try:
                 for k, v in overrides.items():
                     os.environ[k] = v
-                if payload_snapshot_file:
-                    os.environ["PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE"] = payload_snapshot_file
                 if (
                     direct_inline_fast
                     and not _env_bool("PM_AUTO_TRADE_ENABLED", False)
@@ -58456,10 +55717,6 @@ def run_auto_trades_for_date(
                         os.environ.pop(k, None)
                     else:
                         os.environ[k] = prev
-                if prev_snapshot_file is None:
-                    os.environ.pop("PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE", None)
-                else:
-                    os.environ["PM_TARGET_REALIZATION_SSOT_SNAPSHOT_FILE"] = prev_snapshot_file
 
         inline_retried = False
         ok = False
@@ -58699,6 +55956,13 @@ def run_auto_trades_for_date(
                 if slice_applied:
                     direct_target_primary_entry_fast_slice = True
                     direct_target_deferred_target_count += int(deferred_targets)
+            if (
+                direct_job_fast_path
+                and _auto_trade_payload_is_direct_target_job(payload)
+                and not _direct_target_payload_has_ssot_entry_targets(payload)
+            ):
+                skipped += 1
+                return
         if _event_cap_reached():
             deferred += 1
             return
@@ -58821,6 +56085,13 @@ def run_auto_trades_for_date(
                 if slice_applied:
                     direct_target_primary_entry_fast_slice = True
                     direct_target_deferred_target_count += int(deferred_targets)
+            if (
+                direct_job_fast_path
+                and _auto_trade_payload_is_direct_target_job(payload)
+                and not _direct_target_payload_has_ssot_entry_targets(payload)
+            ):
+                skipped += 1
+                return
         if _event_cap_reached():
             deferred += 1
             return
@@ -59061,6 +56332,10 @@ def _copy_hard_source_sla_fields(dest: Dict[str, Any], src: Mapping[str, Any]) -
         dest.setdefault("ssot_target_bucket", src.get("ssot_target_bucket"))
     if src.get("decision_ssot") is not None:
         dest.setdefault("decision_ssot", src.get("decision_ssot"))
+    if src.get("posterior_ssot_fact_used") is not None:
+        dest.setdefault("posterior_ssot_fact_used", src.get("posterior_ssot_fact_used"))
+    if src.get("target_probability_field") is not None:
+        dest.setdefault("target_probability_field", src.get("target_probability_field"))
     if src.get("decision_basis") is not None:
         dest.setdefault("decision_basis", src.get("decision_basis"))
     if src.get("hard_source_direct") or has_ssot_marker:
@@ -59070,6 +56345,58 @@ def _copy_hard_source_sla_fields(dest: Dict[str, Any], src: Mapping[str, Any]) -
             src.get("hard_source_posterior_override") or dest.get("hard_source_posterior_override") or has_ssot_marker
         )
     for key in (
+        "signal_id",
+        "source_event_id",
+        "awc_valid_time",
+        "awc_hard_source_signal_at",
+        "signal_eligible",
+        "acceptance_state",
+        "acceptance_reason",
+        "hard_source_acceptance_state",
+        "signal_to_order_timing",
+        "signal_to_order_slo_ms",
+        "signal_to_fact_ms",
+        "signal_to_decision_ms",
+        "signal_to_job_enqueue_ms",
+        "awc_signal_to_order_submit_ms",
+        "signal_to_order_slo_met",
+        "signal_to_order_slo_violation_reason",
+        "signal_to_order_terminal_state",
+        "signal_to_order_terminal_reason",
+        "signal_to_order_terminal_at",
+        "signal_to_terminal_ms",
+        "orderbook_checked_at",
+        "orderbook_check_source",
+        "orderbook_check_result",
+        "orderbook_refreshed_at",
+        "orderbook_refresh_started_at",
+        "risk_checked_at",
+        "risk_check_source",
+        "risk_check_result",
+        "idempotency_checked_at",
+        "idempotency_key",
+        "submit_requested_at",
+        "exchange_ack_at",
+        "order_ack_at",
+        "order_ack_status",
+        "exchange_post_started",
+        "exchange_post_started_at",
+        "order_submitted_at",
+        "order_submission_time_quality",
+        "signal_to_orderbook_ms",
+        "signal_to_risk_ms",
+        "signal_to_idempotency_ms",
+        "signal_to_submit_request_ms",
+        "signal_to_exchange_ack_ms",
+        "orderbook_to_risk_check_ms",
+        "risk_check_to_idempotency_ms",
+        "risk_check_to_submit_ms",
+        "idempotency_to_submit_request_ms",
+        "submit_request_to_exchange_ack_ms",
+        "signal_to_order_ledger_status",
+        "signal_to_order_ledger_schema_status",
+        "signal_to_order_ledger_prewrite",
+        "signal_to_order_ledger_result",
         "hard_source_seen_at",
         "hard_source_observed_at",
         "hard_source_fetched_at",
@@ -59092,15 +56419,44 @@ def _copy_hard_source_sla_fields(dest: Dict[str, Any], src: Mapping[str, Any]) -
 def _add_hard_source_order_sla(details: Dict[str, Any], submitted_at: str) -> Dict[str, Any]:
     if not isinstance(details, dict):
         return details
-    posterior_target_direct = bool(details.get("posterior_target_direct"))
+    submitted_at = str(submitted_at or "").strip()
+    if not submitted_at or _parse_iso_utc(submitted_at) is None:
+        if not str(details.get("order_submission_time_quality") or "").strip():
+            details["order_submission_time_quality"] = "exchange_post_t5_missing"
+        return details
+    exchange_post_started_at = str(details.get("exchange_post_started_at") or "").strip()
+    if not bool(details.get("exchange_post_started")) or exchange_post_started_at != submitted_at:
+        if not str(details.get("order_submission_time_quality") or "").strip():
+            details["order_submission_time_quality"] = "unverified_non_gateway_timestamp"
+        return details
+    details["order_submission_time_quality"] = "exchange_post_started_at"
+    posterior_target_direct = _is_posterior_target_direct_candidate(details)
     if not bool(
         details.get("hard_source_direct")
         or details.get("hard_source_posterior_override")
         or posterior_target_direct
     ):
         return details
+    hard_source_direct_semantics = bool(
+        details.get("hard_source_direct")
+        or details.get("hard_source_posterior_override")
+    ) and (
+        str(details.get("decision_ssot") or "").strip()
+        in {"hard_source_direct_ssot_target", "auto_trade_target_bucket"}
+        or str(details.get("decision_basis") or "").strip() == "hard_source_lower_bound_constraint"
+        or str(details.get("target_adjustment_decision_version") or "").strip().startswith("hard_source_")
+    )
     if posterior_target_direct:
+        details = _canonicalize_posterior_ssot_fact_marker(details)
         details["posterior_target_order_submitted_at"] = submitted_at
+        decision_ssot = str(details.get("decision_ssot") or "").strip()
+        target_source = str(details.get("posterior_target_source") or details.get("target_source") or "").strip()
+        if decision_ssot == "posterior_ssot_fact" or (
+            "posterior_ssot_fact" in target_source and not hard_source_direct_semantics
+        ):
+            details["decision_ssot"] = "posterior_ssot_fact"
+            details["posterior_ssot_fact_used"] = True
+            details["target_probability_field"] = "posterior_ssot_fact.target_probability"
         posterior_latency_sources = {
             "posterior_target_fact_to_order_ms": details.get("posterior_target_fact_as_of"),
             "posterior_target_job_enqueue_to_order_ms": details.get("posterior_target_job_enqueued_at"),
@@ -59112,6 +56468,64 @@ def _add_hard_source_order_sla(details: Dict[str, Any], submitted_at: str) -> Di
                 details[out_key] = val
     if bool(details.get("hard_source_direct") or details.get("hard_source_posterior_override")):
         details["hard_source_order_submitted_at"] = submitted_at
+        _apply_signal_to_order_execution_segments(
+            details,
+            order_submitted_at=submitted_at,
+            submit_requested_at=details.get("submit_requested_at") or details.get("order_submit_started_at"),
+            idempotency_checked_at=details.get("idempotency_checked_at")
+            or (
+                details.get("order_submit_started_at")
+                if str(details.get("idempotency_key") or "").strip()
+                else None
+            ),
+            idempotency_key=details.get("idempotency_key"),
+            exchange_ack_at=details.get("exchange_ack_at") or details.get("order_submit_completed_at"),
+            order_submit_started_at=details.get("order_submit_started_at"),
+            order_submit_completed_at=details.get("order_submit_completed_at"),
+            order_submit_ms=details.get("order_submit_ms"),
+            order_submit_outer_timeout_sec=details.get("order_submit_outer_timeout_sec"),
+            order_ack_status=details.get("order_ack_status")
+            or details.get("status")
+            or details.get("order_status")
+            or details.get("error"),
+            order_id=details.get("order_id") or details.get("auto_order_id"),
+        )
+        signal_at = str(details.get("awc_hard_source_signal_at") or "").strip()
+        if signal_at:
+            signal_ms = _iso_latency_ms_between(signal_at, submitted_at)
+            if signal_ms is not None:
+                slo_raw = details.get("signal_to_order_slo_ms")
+                try:
+                    slo_ms = int(float(str(slo_raw if slo_raw not in (None, "") else 3000)))
+                except Exception:
+                    slo_ms = 3000
+                slo_ms = max(1, int(slo_ms))
+                details["awc_signal_to_order_submit_ms"] = signal_ms
+                details["signal_to_order_slo_ms"] = slo_ms
+                details["signal_to_order_slo_met"] = bool(float(signal_ms) <= float(slo_ms))
+                details["signal_to_order_slo_violation_reason"] = (
+                    "" if bool(details["signal_to_order_slo_met"]) else "order_submitted_after_slo"
+                )
+                details["signal_to_order_terminal_state"] = "submitted"
+                details["signal_to_order_terminal_reason"] = "order_submitted"
+                details["signal_to_order_terminal_at"] = submitted_at
+                details["signal_to_terminal_ms"] = signal_ms
+                timing = (
+                    dict(details.get("signal_to_order_timing"))
+                    if isinstance(details.get("signal_to_order_timing"), Mapping)
+                    else {}
+                )
+                if timing:
+                    timing["order_submitted_at"] = submitted_at
+                    timing["terminal_at"] = submitted_at
+                    timing["signal_to_terminal_ms"] = signal_ms
+                    timing["awc_signal_to_order_submit_ms"] = signal_ms
+                    timing["signal_to_order_slo_ms"] = slo_ms
+                    timing["signal_to_order_slo_met"] = bool(details["signal_to_order_slo_met"])
+                    timing["signal_to_order_slo_violation_reason"] = details["signal_to_order_slo_violation_reason"]
+                    timing["terminal_state"] = "submitted"
+                    timing["terminal_reason"] = "order_submitted"
+                    details["signal_to_order_timing"] = timing
         latency_sources = {
             "hard_source_seen_to_order_ms": details.get("hard_source_seen_at") or details.get("hard_source_observed_at"),
             "hard_source_fetch_to_order_ms": details.get("hard_source_fetched_at"),
@@ -59232,6 +56646,60 @@ def _apply_db_connection_pragmas(
         pass
 
 
+def _sqlite_sql_requires_write_gate(sql: Any) -> bool:
+    text = str(sql or "").strip()
+    if not text:
+        return False
+    while text.startswith("--"):
+        _, _, rest = text.partition("\n")
+        text = rest.strip()
+    if not text:
+        return False
+    first = text.split(None, 1)[0].strip().upper()
+    if first in {
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "REPLACE",
+        "CREATE",
+        "ALTER",
+        "DROP",
+        "VACUUM",
+        "REINDEX",
+    }:
+        return True
+    if first == "PRAGMA":
+        upper = text.upper()
+        return "JOURNAL_MODE" in upper or "WAL_CHECKPOINT" in upper
+    if first == "WITH":
+        upper = text.upper()
+        return any(token in upper for token in (" INSERT ", " UPDATE ", " DELETE ", " REPLACE "))
+    return False
+
+
+class _QueuedWriteCursor(sqlite3.Cursor):
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+        if _sqlite_sql_requires_write_gate(sql):
+            ensure_gate = getattr(self.connection, "_ensure_archive_db_write_gate", None)
+            if callable(ensure_gate):
+                ensure_gate()
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters: Any, /) -> sqlite3.Cursor:
+        if _sqlite_sql_requires_write_gate(sql):
+            ensure_gate = getattr(self.connection, "_ensure_archive_db_write_gate", None)
+            if callable(ensure_gate):
+                ensure_gate()
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str, /) -> sqlite3.Cursor:
+        if _sqlite_sql_requires_write_gate(sql_script):
+            ensure_gate = getattr(self.connection, "_ensure_archive_db_write_gate", None)
+            if callable(ensure_gate):
+                ensure_gate()
+        return super().executescript(sql_script)
+
+
 class _AutoClosingConnection(sqlite3.Connection):
     """Close connections when callers use ``with open_db()``.
 
@@ -59249,6 +56717,68 @@ class _AutoClosingConnection(sqlite3.Connection):
             pass
         return bool(suppress)
 
+    def cursor(self, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
+        kwargs.setdefault("factory", _QueuedWriteCursor)
+        return super().cursor(*args, **kwargs)
+
+    def _ensure_archive_db_write_gate(self) -> None:
+        if getattr(self, "_archive_db_write_gate_cm", None) is not None:
+            return
+        owner = str(getattr(self, "_archive_db_write_gate_owner", "scan_weather_market.open_db") or "")
+        gate_cm = archive_db_write_gate(DB_PATH, owner=owner or "scan_weather_market.open_db")
+        gate_cm.__enter__()
+        try:
+            setattr(self, "_archive_db_write_gate_cm", gate_cm)
+        except Exception:
+            gate_cm.__exit__(None, None, None)
+            raise
+
+    def _release_archive_db_write_gate(self) -> None:
+        gate_cm = getattr(self, "_archive_db_write_gate_cm", None)
+        if gate_cm is None:
+            return
+        try:
+            setattr(self, "_archive_db_write_gate_cm", None)
+        except Exception:
+            pass
+        try:
+            gate_cm.__exit__(None, None, None)
+        except Exception:
+            pass
+
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+        if _sqlite_sql_requires_write_gate(sql):
+            self._ensure_archive_db_write_gate()
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters: Any, /) -> sqlite3.Cursor:
+        if _sqlite_sql_requires_write_gate(sql):
+            self._ensure_archive_db_write_gate()
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str, /) -> sqlite3.Cursor:
+        if _sqlite_sql_requires_write_gate(sql_script):
+            self._ensure_archive_db_write_gate()
+        return super().executescript(sql_script)
+
+    def commit(self) -> None:
+        try:
+            return super().commit()
+        finally:
+            self._release_archive_db_write_gate()
+
+    def rollback(self) -> None:
+        try:
+            return super().rollback()
+        finally:
+            self._release_archive_db_write_gate()
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self._release_archive_db_write_gate()
+
 
 def _open_db_connection(
     *,
@@ -59264,6 +56794,7 @@ def _open_db_connection(
     if autocommit:
         connect_kwargs["isolation_level"] = None
     conn = sqlite3.connect(DB_PATH, **connect_kwargs)
+    setattr(conn, "_archive_db_write_gate_owner", "scan_weather_market.open_db")
     _apply_db_connection_pragmas(
         conn,
         busy_timeout_ms=int(busy_timeout_ms),
@@ -59385,39 +56916,19 @@ def _auto_trade_job_cleanup_history(conn: sqlite3.Connection, now_dt: datetime, 
     out = {"superseded": 0, "deleted": 0}
     cur = conn.cursor()
     try:
-        cur.execute(
-            """
-            UPDATE auto_trade_jobs
-            SET state = 'superseded',
-                updated_at = ?,
-                ended_at = CASE WHEN COALESCE(ended_at, '') = '' THEN ? ELSE ended_at END
-            WHERE state IN ('failed', 'stuck')
-              AND EXISTS (
-                    SELECT 1
-                    FROM auto_trade_jobs newer
-                    WHERE newer.run_date = auto_trade_jobs.run_date
-                      AND newer.id > auto_trade_jobs.id
-                      AND newer.state IN ('queued', 'running', 'retrying', 'success')
-              )
-            """,
-            (now_iso, now_iso),
+        out["superseded"] = mark_superseded_terminal_jobs_with_newer_active(
+            cur,
+            now_iso=now_iso,
         )
-        out["superseded"] = int(cur.rowcount or 0)
     except sqlite3.Error:
         out["superseded"] = 0
     keep_days = _auto_trade_job_history_days()
     cutoff_iso = (now_dt - timedelta(days=keep_days)).isoformat(timespec="seconds")
     try:
-        cur.execute(
-            """
-            DELETE FROM auto_trade_jobs
-            WHERE state IN ('success', 'failed', 'stuck', 'superseded')
-              AND COALESCE(updated_at, created_at, '') <> ''
-              AND COALESCE(updated_at, created_at) < ?
-            """,
-            (cutoff_iso,),
+        out["deleted"] = delete_terminal_auto_trade_jobs_before(
+            cur,
+            cutoff_iso=cutoff_iso,
         )
-        out["deleted"] = int(cur.rowcount or 0)
     except sqlite3.Error:
         out["deleted"] = 0
     return out
@@ -59504,26 +57015,17 @@ def enqueue_auto_trade_job(
                             "reason": "already_active",
                             "job": _serialize_job_row(active),
                         }
-                cur.execute(
-                    """
-                    INSERT INTO auto_trade_jobs(
-                        run_date, source, state, priority, payload_json,
-                        lease_until, retry_count, max_retry, next_retry_at, last_error,
-                        started_at, ended_at, run_id, created_at, updated_at
-                    ) VALUES (?, ?, 'queued', ?, ?, '', 0, ?, ?, '', '', '', NULL, ?, ?)
-                    """,
-                    (
-                        run_date_key,
-                        source_text,
-                        priority_val,
-                        payload_json,
-                        max_retry_val,
-                        now_iso,
-                        now_iso,
-                        now_iso,
-                    ),
+                job_id = insert_auto_trade_job(
+                    cur,
+                    run_date=run_date_key,
+                    source=source_text,
+                    priority=priority_val,
+                    payload_json=payload_json,
+                    max_retry=max_retry_val,
+                    next_retry_at=now_iso,
+                    created_at=now_iso,
+                    updated_at=now_iso,
                 )
-                job_id = int(cur.lastrowid or 0)
                 conn.commit()
                 try:
                     cur.execute("SELECT * FROM auto_trade_jobs WHERE id = ?", (job_id,))
@@ -59632,29 +57134,15 @@ def _auto_trade_job_touch(
         try:
             with _open_auto_trade_job_bookkeeping_db() as conn:
                 cur = conn.cursor()
-                cur.execute(
-                    """
-                    UPDATE auto_trade_jobs
-                    SET lease_until = ?,
-                        updated_at = ?,
-                        run_id = COALESCE(run_id, ?),
-                        started_at = CASE
-                            WHEN COALESCE(started_at, '') = '' THEN ?
-                            ELSE started_at
-                        END
-                    WHERE id = ?
-                      AND state = 'running'
-                    """,
-                    (
-                        lease_until,
-                        now_iso,
-                        int(run_id) if run_id else None,
-                        now_iso,
-                        int(job_id),
-                    ),
+                updated = touch_running_auto_trade_job(
+                    cur,
+                    job_id=job_id,
+                    lease_until=lease_until,
+                    now_iso=now_iso,
+                    run_id=run_id,
                 )
                 conn.commit()
-                return bool(cur.rowcount or 0)
+                return bool(updated)
         except sqlite3.OperationalError as exc:
             if _sqlite_locked_error(exc):
                 locked_seen = True
@@ -59691,91 +57179,45 @@ def _auto_trade_job_write_final_state(
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 if state_now == "success":
-                    _sqlite_execute_with_retry(
+                    write_auto_trade_job_final_state(
                         cur,
-                        """
-                        UPDATE auto_trade_jobs
-                        SET state = 'success',
-                            lease_until = '',
-                            ended_at = ?,
-                            updated_at = ?,
-                            run_id = ?,
-                            last_error = ''
-                        WHERE id = ?
-                        """,
-                        (ended_at, ended_at, run_id, int(job_id)),
+                        job_id=job_id,
+                        state="success",
+                        ended_at=ended_at,
+                        run_id=run_id,
                         attempts=5,
                     )
                 elif state_now == "retrying":
-                    _sqlite_execute_with_retry(
+                    write_auto_trade_job_final_state(
                         cur,
-                        """
-                        UPDATE auto_trade_jobs
-                        SET state = 'retrying',
-                            lease_until = '',
-                            retry_count = ?,
-                            next_retry_at = ?,
-                            ended_at = ?,
-                            updated_at = ?,
-                            run_id = ?,
-                            last_error = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            int(retry_count or 0),
-                            str(next_retry_at or ""),
-                            ended_at,
-                            ended_at,
-                            run_id,
-                            str(last_error or "auto_trade_failed"),
-                            int(job_id),
-                        ),
+                        job_id=job_id,
+                        state="retrying",
+                        ended_at=ended_at,
+                        run_id=run_id,
+                        retry_count=retry_count,
+                        next_retry_at=str(next_retry_at or ""),
+                        last_error=str(last_error or "auto_trade_failed"),
                         attempts=5,
                     )
                 elif state_now == "failed":
-                    _sqlite_execute_with_retry(
+                    write_auto_trade_job_final_state(
                         cur,
-                        """
-                        UPDATE auto_trade_jobs
-                        SET state = 'failed',
-                            lease_until = '',
-                            retry_count = ?,
-                            ended_at = ?,
-                            updated_at = ?,
-                            run_id = ?,
-                            last_error = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            int(retry_count or 0),
-                            ended_at,
-                            ended_at,
-                            run_id,
-                            str(last_error or "auto_trade_failed"),
-                            int(job_id),
-                        ),
+                        job_id=job_id,
+                        state="failed",
+                        ended_at=ended_at,
+                        run_id=run_id,
+                        retry_count=retry_count,
+                        last_error=str(last_error or "auto_trade_failed"),
                         attempts=5,
                     )
                 else:
-                    _sqlite_execute_with_retry(
+                    write_auto_trade_job_final_state(
                         cur,
-                        """
-                        UPDATE auto_trade_jobs
-                        SET state = 'superseded',
-                            lease_until = '',
-                            ended_at = ?,
-                            updated_at = ?,
-                            run_id = ?,
-                            last_error = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            ended_at,
-                            ended_at,
-                            run_id,
-                            str(last_error or "superseded"),
-                            int(job_id),
-                        ),
+                        job_id=job_id,
+                        state="superseded",
+                        ended_at=ended_at,
+                        run_id=run_id,
+                        last_error=str(last_error or "superseded"),
                         attempts=5,
                     )
                 conn.commit()
@@ -59875,43 +57317,21 @@ def _auto_trade_job_reap_stuck_rows(conn: sqlite3.Connection, now_dt: datetime, 
             backoff = base_backoff * (2 ** max(0, retry_count_next - 1))
             backoff = min(backoff, 600.0)
             next_retry_iso = (now_dt + timedelta(seconds=backoff)).isoformat(timespec="seconds")
-            cur.execute(
-                """
-                UPDATE auto_trade_jobs
-                SET state = 'retrying',
-                    lease_until = '',
-                    retry_count = ?,
-                    next_retry_at = ?,
-                    ended_at = ?,
-                    updated_at = ?,
-                    last_error = CASE
-                        WHEN COALESCE(last_error, '') = '' THEN 'worker_stuck_timeout'
-                        ELSE last_error
-                    END
-                WHERE id = ?
-                  AND state = 'running'
-                """,
-                (retry_count_next, next_retry_iso, now_iso, now_iso, job_id),
+            updated_count = mark_running_auto_trade_job_retrying(
+                cur,
+                job_id=job_id,
+                retry_count=retry_count_next,
+                next_retry_at=next_retry_iso,
+                now_iso=now_iso,
             )
         else:
-            cur.execute(
-                """
-                UPDATE auto_trade_jobs
-                SET state = 'failed',
-                    lease_until = '',
-                    retry_count = ?,
-                    ended_at = ?,
-                    updated_at = ?,
-                    last_error = CASE
-                        WHEN COALESCE(last_error, '') = '' THEN 'worker_stuck_timeout'
-                        ELSE last_error
-                    END
-                WHERE id = ?
-                  AND state = 'running'
-                """,
-                (retry_count_next, now_iso, now_iso, job_id),
+            updated_count = mark_running_auto_trade_job_failed(
+                cur,
+                job_id=job_id,
+                retry_count=retry_count_next,
+                now_iso=now_iso,
             )
-        stuck_jobs += int(cur.rowcount or 0)
+        stuck_jobs += int(updated_count or 0)
     # Close run rows linked to newly reaped stuck jobs.
     for stale in stale_jobs:
         try:
@@ -60011,11 +57431,21 @@ def _auto_trade_job_claim_one(requested_job_id: Optional[int] = None) -> Optiona
     except Exception:
         requested_id = 0
     exclude_direct_target_jobs = _env_bool("PM_AUTO_TRADE_JOB_CLAIM_EXCLUDE_DIRECT_TARGET", False)
+    claim_only_target_realization_v3 = _env_bool(
+        "PM_AUTO_TRADE_JOB_CLAIM_ONLY_TARGET_REALIZATION_V3",
+        False,
+    )
     direct_latest_first = (
         _env_bool("PM_AUTO_TRADE_DIRECT_JOB_CLAIM_LATEST_FIRST", False)
         and not exclude_direct_target_jobs
     )
-    skip_claim_cleanup = _env_bool("PM_AUTO_TRADE_JOB_SKIP_CLEANUP_ON_CLAIM", False)
+    # The v3-dedicated worker owns only v3 execution latency.  Broad legacy
+    # cleanup can scan historical jobs/runs while holding BEGIN IMMEDIATE and
+    # must remain on the maintenance/general-worker lane.
+    skip_claim_cleanup = _env_bool(
+        "PM_AUTO_TRADE_JOB_SKIP_CLEANUP_ON_CLAIM",
+        False,
+    ) or claim_only_target_realization_v3
     claim_retry = _env_int("PM_AUTO_TRADE_JOB_CLAIM_RETRY")
     if claim_retry is None or int(claim_retry) < 1:
         claim_retry = 8
@@ -60041,12 +57471,19 @@ def _auto_trade_job_claim_one(requested_job_id: Optional[int] = None) -> Optiona
                     _auto_trade_job_reap_stuck_rows(conn, now_dt, now_iso)
                     _auto_trade_job_cleanup_history(conn, now_dt, now_iso)
                 if requested_id > 0:
+                    requested_v3_only_sql = (
+                        "AND json_extract(payload_json, '$.target_realization_v3.plan_version') = "
+                        "'strong_posterior_three_leg_strategy_v2'"
+                        if claim_only_target_realization_v3
+                        else ""
+                    )
                     cur.execute(
-                        """
+                        f"""
                         SELECT id
                         FROM auto_trade_jobs
                         WHERE id = ?
                           AND state IN ('queued', 'retrying')
+                          {requested_v3_only_sql}
                         LIMIT 1
                         """,
                         (requested_id,),
@@ -60055,6 +57492,12 @@ def _auto_trade_job_claim_one(requested_job_id: Optional[int] = None) -> Optiona
                     direct_exclusion_sql = (
                         f"AND NOT {_auto_trade_job_direct_sql_predicate()}"
                         if exclude_direct_target_jobs
+                        else ""
+                    )
+                    v3_only_sql = (
+                        "AND json_extract(payload_json, '$.target_realization_v3.plan_version') = "
+                        "'strong_posterior_three_leg_strategy_v2'"
+                        if claim_only_target_realization_v3
                         else ""
                     )
                     if direct_latest_first:
@@ -60079,6 +57522,7 @@ def _auto_trade_job_claim_one(requested_job_id: Optional[int] = None) -> Optiona
                             OR julianday(next_retry_at) <= julianday(?)
                           )
                           {direct_exclusion_sql}
+                          {v3_only_sql}
                         {order_sql}
                         LIMIT 1
                         """,
@@ -60089,18 +57533,11 @@ def _auto_trade_job_claim_one(requested_job_id: Optional[int] = None) -> Optiona
                     conn.commit()
                     return None
                 job_id = int(row["id"] or 0)
-                cur.execute(
-                    """
-                    UPDATE auto_trade_jobs
-                    SET state = 'running',
-                        lease_until = ?,
-                        started_at = CASE WHEN COALESCE(started_at, '') = '' THEN ? ELSE started_at END,
-                        ended_at = '',
-                        updated_at = ?,
-                        last_error = ''
-                    WHERE id = ?
-                    """,
-                    (lease_until, now_iso, now_iso, job_id),
+                claim_auto_trade_job_running(
+                    cur,
+                    job_id=job_id,
+                    lease_until=lease_until,
+                    now_iso=now_iso,
                 )
                 cur.execute("SELECT * FROM auto_trade_jobs WHERE id = ?", (job_id,))
                 picked = cur.fetchone()
@@ -60168,6 +57605,14 @@ def auto_trade_job_status(run_date: str = "", limit: int = 20) -> Dict[str, Any]
 def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Dict[str, Any]:
     class _AutoTradeWorkerInterrupted(BaseException):
         pass
+
+    # The dedicated Live worker runs against an already-migrated production DB.
+    # Validate its narrow execution schema read-only and mark this process ready
+    # before the generic claim helper reaches the very large full init_db path.
+    # A new/incomplete DB fails this probe and keeps the existing full-init
+    # fallback, so tests and bootstrap installs retain their migration behavior.
+    if _env_bool("PM_AUTO_TRADE_WORKER_EXISTING_SCHEMA_FAST_PATH", False):
+        _mark_existing_auto_trade_worker_schema_ready()
 
     requested_id = 0
     try:
@@ -60285,6 +57730,7 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             direct_target_job_payload = _auto_trade_payload_is_direct_target_job(payload)
     worker_started_at = now_iso
     hard_source_block = payload.get("hard_source_direct")
+    hard_source_worker_context: Dict[str, Any] = {}
     if isinstance(hard_source_block, dict):
         hard_source_block["worker_started_at"] = worker_started_at
         hard_source_block["job_id"] = job_id
@@ -60296,6 +57742,42 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             hard_source_block.get("ssot_written_at"),
             worker_started_at,
         )
+        if hard_source_block.get("awc_hard_source_signal_at"):
+            hard_source_block["signal_to_worker_ms"] = _iso_latency_ms_between(
+                hard_source_block.get("awc_hard_source_signal_at"),
+                worker_started_at,
+            )
+            timing = (
+                dict(hard_source_block.get("signal_to_order_timing"))
+                if isinstance(hard_source_block.get("signal_to_order_timing"), Mapping)
+                else {}
+            )
+            if timing:
+                timing["worker_started_at"] = worker_started_at
+                timing["signal_to_worker_ms"] = hard_source_block.get("signal_to_worker_ms")
+                if not str(timing.get("terminal_state") or "").strip() or str(timing.get("terminal_state")) == "job_enqueued":
+                    timing["terminal_state"] = "worker_started"
+                    timing["terminal_reason"] = "awaiting_order_submit"
+                hard_source_block["signal_to_order_timing"] = timing
+        _merge_hard_source_direct_block_context(
+            hard_source_worker_context,
+            hard_source_block,
+        )
+
+    def _merge_worker_hard_source_context_into_target(target: Dict[str, Any]) -> None:
+        if not isinstance(target, dict) or not hard_source_worker_context:
+            return
+        if not bool(target.get("hard_source_direct") or target.get("hard_source_posterior_override")):
+            return
+        context_outcome = str(hard_source_worker_context.get("outcome") or "").strip()
+        context_side = str(hard_source_worker_context.get("side") or "YES").strip().upper()
+        target_outcome = str(target.get("outcome") or target.get("target_bucket") or "").strip()
+        target_side = str(target.get("side") or "YES").strip().upper()
+        if context_outcome and target_outcome and context_outcome != target_outcome:
+            return
+        if context_side and target_side and context_side != target_side:
+            return
+        _copy_hard_source_sla_fields(target, hard_source_worker_context)
     posterior_target_block = payload.get("posterior_target_direct")
     if isinstance(posterior_target_block, dict):
         posterior_target_block["worker_started_at"] = worker_started_at
@@ -60313,6 +57795,7 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
         for target in raw_targets:
             if not isinstance(target, dict):
                 continue
+            _merge_worker_hard_source_context_into_target(target)
             if bool(target.get("hard_source_direct") or target.get("hard_source_posterior_override")):
                 target["hard_source_worker_started_at"] = worker_started_at
                 target["hard_source_job_id"] = job_id
@@ -60324,6 +57807,23 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
                     target.get("hard_source_ssot_written_at"),
                     worker_started_at,
                 )
+                if target.get("awc_hard_source_signal_at"):
+                    target["signal_to_worker_ms"] = _iso_latency_ms_between(
+                        target.get("awc_hard_source_signal_at"),
+                        worker_started_at,
+                    )
+                    timing = (
+                        dict(target.get("signal_to_order_timing"))
+                        if isinstance(target.get("signal_to_order_timing"), Mapping)
+                        else {}
+                    )
+                    if timing:
+                        timing["worker_started_at"] = worker_started_at
+                        timing["signal_to_worker_ms"] = target.get("signal_to_worker_ms")
+                        if not str(timing.get("terminal_state") or "").strip() or str(timing.get("terminal_state")) == "job_enqueued":
+                            timing["terminal_state"] = "worker_started"
+                            timing["terminal_reason"] = "awaiting_order_submit"
+                        target["signal_to_order_timing"] = timing
             if bool(target.get("posterior_target_direct")):
                 target["posterior_target_worker_started_at"] = worker_started_at
                 target["posterior_target_job_id"] = job_id
@@ -60367,6 +57867,7 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
         for target in nested_targets:
             if not isinstance(target, dict):
                 continue
+            _merge_worker_hard_source_context_into_target(target)
             if bool(target.get("hard_source_direct") or target.get("hard_source_posterior_override")):
                 target["hard_source_worker_started_at"] = worker_started_at
                 target["hard_source_job_id"] = job_id
@@ -60378,6 +57879,23 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
                     target.get("hard_source_ssot_written_at"),
                     worker_started_at,
                 )
+                if target.get("awc_hard_source_signal_at"):
+                    target["signal_to_worker_ms"] = _iso_latency_ms_between(
+                        target.get("awc_hard_source_signal_at"),
+                        worker_started_at,
+                    )
+                    timing = (
+                        dict(target.get("signal_to_order_timing"))
+                        if isinstance(target.get("signal_to_order_timing"), Mapping)
+                        else {}
+                    )
+                    if timing:
+                        timing["worker_started_at"] = worker_started_at
+                        timing["signal_to_worker_ms"] = target.get("signal_to_worker_ms")
+                        if not str(timing.get("terminal_state") or "").strip() or str(timing.get("terminal_state")) == "job_enqueued":
+                            timing["terminal_state"] = "worker_started"
+                            timing["terminal_reason"] = "awaiting_order_submit"
+                        target["signal_to_order_timing"] = timing
             if bool(target.get("posterior_target_direct")):
                 target["posterior_target_worker_started_at"] = worker_started_at
                 target["posterior_target_job_id"] = job_id
@@ -60390,6 +57908,27 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
                     worker_started_at,
                 )
     exit_only = bool(payload.get("exit_only"))
+    target_realization_v3_execution = payload.get("target_realization_v3")
+    target_realization_v3_execution = (
+        target_realization_v3_execution
+        if isinstance(target_realization_v3_execution, Mapping)
+        else {}
+    )
+    target_realization_v3_execution_phase = str(
+        target_realization_v3_execution.get("execution_phase") or ""
+    ).strip().upper()
+    target_realization_v3_phase_recognized = target_realization_v3_execution_phase in {
+        "",
+        "BUY_NEW",
+        "SELL_OLD",
+        "REFRESH_BUY",
+    }
+    target_realization_v3_sell_phase = bool(
+        target_realization_v3_execution_phase == "SELL_OLD"
+    )
+    target_realization_v3_refresh_phase = bool(
+        target_realization_v3_execution_phase == "REFRESH_BUY"
+    )
     skip_direct_run_row = bool(
         direct_target_job_payload
         and _env_bool("PM_AUTO_TRADE_DIRECT_JOB_SKIP_RUN_ROW", False)
@@ -60401,13 +57940,11 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             try:
                 with _open_auto_trade_job_bookkeeping_db() as conn_link:
                     cur_link = conn_link.cursor()
-                    cur_link.execute(
-                        """
-                        UPDATE auto_trade_jobs
-                        SET run_id = ?, updated_at = ?
-                        WHERE id = ? AND state = 'running'
-                        """,
-                        (int(run_id), now_iso, int(job_id)),
+                    link_running_auto_trade_job_run_id(
+                        cur_link,
+                        job_id=job_id,
+                        run_id=run_id,
+                        now_iso=now_iso,
                     )
                     conn_link.commit()
                     linked = True
@@ -60430,7 +57967,17 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
     direct_active_entry_fast_result: Dict[str, Any] = {}
     direct_active_entry_fast_completed = False
     lock_acquired = False
-    if direct_disabled_fast_path:
+    if not target_realization_v3_phase_recognized:
+        result = {
+            "ok": False,
+            "status": "target_realization_v3_unknown_execution_phase",
+            "run_date": run_date,
+            "processed": 0,
+            "skipped": 0,
+            "places_orders": False,
+        }
+        err_text = "target_realization_v3_unknown_execution_phase"
+    elif direct_disabled_fast_path:
         result = _record_direct_target_disabled_job_decisions(
             run_id=run_id,
             run_date=run_date,
@@ -60473,7 +58020,12 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
                 )
                 if lock_acquired:
                     break
-    if (not direct_disabled_fast_path) and (not direct_active_entry_fast_completed) and not lock_acquired:
+    if (
+        target_realization_v3_phase_recognized
+        and (not direct_disabled_fast_path)
+        and (not direct_active_entry_fast_completed)
+        and not lock_acquired
+    ):
         result = {
             "ok": False,
             "error": "runtime_lock_busy",
@@ -60484,7 +58036,11 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             "direct_target_active_entry_fast_confirm": dict(direct_active_entry_fast_result),
         }
         err_text = "runtime_lock_busy"
-    elif (not direct_disabled_fast_path) and (not direct_active_entry_fast_completed):
+    elif (
+        target_realization_v3_phase_recognized
+        and (not direct_disabled_fast_path)
+        and (not direct_active_entry_fast_completed)
+    ):
         heartbeat_stop = threading.Event()
         heartbeat_interval = _env_float("PM_AUTO_TRADE_JOB_HEARTBEAT_SEC")
         if heartbeat_interval is None or not math.isfinite(heartbeat_interval) or heartbeat_interval <= 0:
@@ -60543,13 +58099,82 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             )
             heartbeat_thread.start()
             _refresh_auto_trade_config()
-            result = run_auto_trades_for_date(
-                run_date,
-                exit_only=exit_only,
-                run_id=run_id,
-                job_heartbeat=_heartbeat,
-                job_payload=payload,
-            )
+            if target_realization_v3_refresh_phase:
+                transition_signal_at = str(
+                    target_realization_v3_execution.get("transition_signal_at")
+                    or target_realization_v3_execution.get("sell_fill_confirmed_at")
+                    or ""
+                )
+                refresh_result = _target_realization_v3_refresh_after_sell_fill(
+                    payload,
+                    transition_signal_at=transition_signal_at,
+                )
+                result = {
+                    **dict(refresh_result),
+                    "run_date": run_date,
+                    "processed": 1 if refresh_result.get("ok") else 0,
+                    "skipped": 0 if refresh_result.get("ok") else 1,
+                    "target_realization_v3_refresh_phase": True,
+                }
+                if refresh_result.get("ok") is not True:
+                    result["ok"] = False
+                    result["error"] = str(
+                        refresh_result.get("error")
+                        or "target_realization_v3_fill_refresh_failed"
+                    )
+            elif target_realization_v3_sell_phase:
+                sell_result = _direct_target_old_exit_cleanup_after_success(
+                    payload,
+                    run_id=run_id,
+                    run_date=run_date,
+                    job_id=job_id,
+                    worker_started_at=worker_started_at,
+                )
+                result = {
+                    **dict(sell_result),
+                    "run_date": run_date,
+                    "processed": int(sell_result.get("submitted") or 0),
+                    "skipped": int(sell_result.get("skipped") or 0),
+                    "target_realization_v3_sell_phase": True,
+                    "buy_new_deferred": True,
+                    "buy_new_requires_latest_ssot_refresh": True,
+                    "sell_fill_confirmed_at": (
+                        utc_now_iso_ms() if sell_result.get("all_filled") is True else ""
+                    ),
+                }
+                if sell_result.get("all_filled") is True:
+                    transition_signal_at = str(result.get("sell_fill_confirmed_at") or "")
+                    refresh_result = _target_realization_v3_refresh_after_sell_fill(
+                        payload,
+                        transition_signal_at=transition_signal_at,
+                    )
+                    result["target_realization_v3_fill_refresh"] = dict(refresh_result)
+                    result["buy_new_job_id"] = refresh_result.get("job_id")
+                    result["buy_new_job_enqueued"] = bool(refresh_result.get("job_enqueued"))
+                    result["fill_to_buy_job_enqueue_ms"] = refresh_result.get("elapsed_ms")
+                    if refresh_result.get("ok") is not True:
+                        persisted = _target_realization_v3_persist_refresh_phase(
+                            job_id,
+                            payload,
+                            transition_signal_at=transition_signal_at,
+                        )
+                        result["refresh_retry_phase_persisted"] = persisted
+                        result["ok"] = False
+                        result["error"] = str(
+                            refresh_result.get("error")
+                            or "target_realization_v3_fill_refresh_failed"
+                        )
+                else:
+                    result["ok"] = False
+                    result["error"] = "target_realization_v3_sell_old_not_fully_filled"
+            else:
+                result = run_auto_trades_for_date(
+                    run_date,
+                    exit_only=exit_only,
+                    run_id=run_id,
+                    job_heartbeat=_heartbeat,
+                    job_payload=payload,
+                )
             if isinstance(result, dict) and skip_direct_run_row:
                 result.setdefault("direct_job_skip_run_row", True)
             if not result.get("ok"):
@@ -60582,8 +58207,42 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
                     except Exception:
                         pass
 
+    if (
+        isinstance(result, dict)
+        and bool(result.get("ok"))
+        and direct_target_job_payload
+        and not exit_only
+        and not target_realization_v3_sell_phase
+        and not target_realization_v3_refresh_phase
+    ):
+        direct_old_exit_cleanup_result = _direct_target_old_exit_cleanup_after_success(
+            payload,
+            run_id=run_id,
+            run_date=run_date,
+            job_id=job_id,
+            worker_started_at=worker_started_at,
+        )
+        if direct_old_exit_cleanup_result.get("status") != "not_applicable":
+            result["direct_target_old_exit_cleanup"] = direct_old_exit_cleanup_result
+
     ended_iso = utc_now_iso()
     ok_flag = bool(result.get("ok"))
+    signal_terminal_results: List[Dict[str, Any]] = []
+    if not ok_flag:
+        terminal_reason = str(err_text or result.get("error") or "auto_trade_failed").strip()
+        terminal_state = _classify_signal_to_order_terminal_state(
+            terminal_reason,
+            terminal_reason,
+            will_order=True,
+        )
+        signal_terminal_results = _upsert_signal_to_order_terminal_for_payload(
+            payload,
+            terminal_state=terminal_state,
+            terminal_reason=terminal_reason or terminal_state,
+            terminal_at=ended_iso,
+        )
+        if signal_terminal_results:
+            result["signal_to_order_terminal_results"] = signal_terminal_results[:8]
     processed = int(result.get("processed") or 0)
     skipped = int(result.get("skipped") or 0)
     if run_id is not None:
@@ -60610,12 +58269,27 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             job_row["ended_at"] = ended_iso
             job_row["updated_at"] = ended_iso
             job_row["last_error"] = ""
-        return {
+        response = {
             "ok": True,
             "picked": True,
             "job": job_row,
             "result": result,
         }
+        chained_buy_job_id = int(result.get("buy_new_job_id") or 0) if isinstance(result, Mapping) else 0
+        if (
+            target_realization_v3_sell_phase
+            and chained_buy_job_id > 0
+            and chained_buy_job_id != job_id
+            and _env_bool("PM_TARGET_REALIZATION_V3_CHAIN_BUY_WORKER_INLINE", True)
+        ):
+            chained_started = time.monotonic()
+            chained = run_auto_trade_job_worker_once(requested_job_id=chained_buy_job_id)
+            response["target_realization_v3_chained_buy_worker"] = chained
+            response["fill_refresh_to_chained_worker_complete_ms"] = round(
+                max(0.0, time.monotonic() - chained_started) * 1000.0,
+                3,
+            )
+        return response
     direct_runtime_lock_busy = bool(direct_target_job_payload and err_text == "runtime_lock_busy")
     retry_count = int(picked.get("retry_count") or 0) + (0 if direct_runtime_lock_busy else 1)
     max_retry = int(picked.get("max_retry") or _auto_trade_job_max_retry_default())
@@ -60651,6 +58325,7 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
             "job": job_row,
             "result": result,
             "error": err_text or "auto_trade_failed",
+            "signal_to_order_terminal_results": signal_terminal_results[:8],
         }
     job_row = _auto_trade_job_write_final_state(
         job_id,
@@ -60675,6 +58350,7 @@ def run_auto_trade_job_worker_once(requested_job_id: Optional[int] = None) -> Di
         "job": job_row,
         "result": result,
         "error": err_text or "auto_trade_failed",
+        "signal_to_order_terminal_results": signal_terminal_results[:8],
     }
 
 
@@ -60749,37 +58425,30 @@ def reconcile_edge_trades_positions_from_fills(conn: sqlite3.Connection) -> int:
         prev_pos = to_float(row[0])
         prev_pos = prev_pos if prev_pos is not None and math.isfinite(prev_pos) else 0.0
         if abs(prev_pos - net) > 1e-6:
-            cur.execute(
-                """
-                UPDATE edge_trades
-                SET position_size = ?,
-                    last_fill_at = COALESCE(?, last_fill_at),
-                    updated_at = ?
-                WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                """,
-                (net, str(last_trade_time or ""), now_iso, slug, event_date, outcome, side),
+            updated += update_position_size_from_fill(
+                cur,
+                slug=slug,
+                event_date=event_date,
+                outcome=outcome,
+                side=side,
+                position_size=net,
+                last_fill_at=str(last_trade_time or ""),
+                now_iso=now_iso,
             )
-            updated += int(cur.rowcount or 0)
 
         if net <= TIME_EDGE_Q_EPS:
             last_error = str(row[1] or "").strip().lower()
             last_action = str(row[2] or "").strip().lower()
             if last_action == "exit_skip" and last_error in {"no_balance", "balance_parse_failed", "balance_unavailable"}:
-                cur.execute(
-                    """
-                    UPDATE edge_trades
-                    SET last_error = NULL,
-                        last_status = NULL,
-                        exit_skip_reason = NULL,
-                        exit_skip_detail = NULL,
-                        exit_skip_at = NULL,
-                        updated_at = ?
-                    WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                      AND COALESCE(position_size, 0) <= ?
-                    """,
-                    (now_iso, slug, event_date, outcome, side, TIME_EDGE_Q_EPS),
+                updated += clear_balance_skip_after_no_position(
+                    cur,
+                    slug=slug,
+                    event_date=event_date,
+                    outcome=outcome,
+                    side=side,
+                    max_position_size=TIME_EDGE_Q_EPS,
+                    now_iso=now_iso,
                 )
-                updated += int(cur.rowcount or 0)
 
     # Clear stale no-position errors that otherwise keep health in blocker state.
     # Scope:
@@ -60790,69 +58459,21 @@ def reconcile_edge_trades_positions_from_fills(conn: sqlite3.Connection) -> int:
     except Exception:
         today_local = today_date_str("utc")
     try:
-        cur.execute(
-            """
-            UPDATE edge_trades
-            SET state = CASE
-                    WHEN LOWER(COALESCE(state, '')) IN ('entry', 'entry_pending') THEN 'exit'
-                    ELSE state
-                END,
-                position_size = 0,
-                last_order_id = '',
-                last_status = 'no_position',
-                last_error = '',
-                last_action = 'reconcile_no_position',
-                last_action_at = ?,
-                updated_at = ?
-            WHERE COALESCE(last_error, '') <> ''
-              AND COALESCE(position_size, 0) <= ?
-              AND (
-                    LOWER(COALESCE(state, '')) = 'exit'
-                    OR (event_date <> '' AND event_date < ?)
-                  )
-              AND (
-                    LOWER(COALESCE(last_error, '')) IN (
-                        'pending_timeout',
-                        'confirm_wait_sync',
-                        'order_missing',
-                        'no_order_id',
-                        'order_not_found',
-                        'confirm_not_found',
-                        'open_order_cancel_empty',
-                        'open_order_reprice_failed'
-                    )
-                    OR LOWER(COALESCE(last_error, '')) LIKE 'open_order_exists:%'
-                    OR LOWER(COALESCE(last_error, '')) LIKE '%timeout%'
-                  )
-            """,
-            (now_iso, now_iso, TIME_EDGE_Q_EPS, today_local),
+        updated += reconcile_no_position_errors(
+            cur,
+            now_iso=now_iso,
+            max_position_size=TIME_EDGE_Q_EPS,
+            today=today_local,
         )
-        updated += int(cur.rowcount or 0)
     except sqlite3.OperationalError:
         pass
     try:
-        cur.execute(
-            """
-            UPDATE edge_trades
-            SET state = 'exit',
-                position_size = 0,
-                last_order_id = '',
-                last_status = 'no_position',
-                last_error = '',
-                last_action = 'reconcile_no_position',
-                last_action_at = ?,
-                exit_skip_reason = NULL,
-                exit_skip_detail = NULL,
-                exit_skip_at = NULL,
-                updated_at = ?
-            WHERE LOWER(COALESCE(state, '')) IN ('entry', 'entry_pending', 'entry_failed')
-              AND COALESCE(position_size, 0) <= ?
-              AND event_date <> ''
-              AND event_date < ?
-            """,
-            (now_iso, now_iso, TIME_EDGE_Q_EPS, today_local),
+        updated += reconcile_past_no_position_entries(
+            cur,
+            now_iso=now_iso,
+            max_position_size=TIME_EDGE_Q_EPS,
+            today=today_local,
         )
-        updated += int(cur.rowcount or 0)
     except sqlite3.OperationalError:
         pass
     return updated
@@ -64000,6 +61621,22 @@ def run_mirror_follow_trades(
                 "mirror_retry_count": (retry_prev_count + 1) if retry_attempt else 0,
                 "mirror_retry_attempt": bool(retry_attempt),
             }
+
+            def _mirror_order_context(intent_action: str) -> Dict[str, Any]:
+                return {
+                    "execution_domain": ORDER_EXECUTION_DOMAIN_MIRROR_FOLLOW,
+                    "order_execution_domain": ORDER_EXECUTION_DOMAIN_MIRROR_FOLLOW,
+                    "order_execution_source": "run_mirror_follow_trades",
+                    "order_execution_reason": "source_wallet_mirror_strategy",
+                    "intent_action": str(intent_action or "").strip() or "mirror_follow",
+                    "strategy_source": "mirror_follow",
+                    "entry_order_submit_source": "mirror_follow",
+                    "slug": str(mirror_mapping.get("slug") or source_slug or ""),
+                    "event_date": str(mirror_mapping.get("event_date") or source_event_date or ""),
+                    "outcome": str(mirror_mapping.get("outcome") or source_outcome or ""),
+                    "outcome_side": str(mirror_mapping.get("outcome_side") or source_outcome_side or "").upper(),
+                }
+
             if retry_attempt:
                 raw_payload["mirror_retry_from_error"] = retry_last_error
             copy_ratio_trade = float(copy_ratio_runtime)
@@ -64467,6 +62104,7 @@ def run_mirror_follow_trades(
                                 price=float(attempt_price),
                                 size=float(mirror_size),
                                 order_type=attempt_order_type,
+                                order_context=_mirror_order_context("entry"),
                             )
                             attempt_meta: Dict[str, Any] = {
                                 "idx": int(attempt_idx + 1),
@@ -64643,6 +62281,7 @@ def run_mirror_follow_trades(
                                                 price=float(improve_price),
                                                 size=float(improve_size),
                                                 order_type="GTC",
+                                                order_context=_mirror_order_context("entry_improve"),
                                             )
                                             improve_raw["order_ok"] = bool(improve_ok)
                                             improve_raw["order_status"] = str((improve_payload or {}).get("status") or "")
@@ -64662,26 +62301,19 @@ def run_mirror_follow_trades(
                                                 improve_raw["order_id"] = improve_order_id
                                                 if improve_order_id:
                                                     try:
-                                                        cur.execute(
-                                                            """
-                                                            INSERT OR IGNORE INTO auto_orders (
-                                                                order_id, slug, event_date, outcome, side, action,
-                                                                price, size, order_type, strategy, created_at
-                                                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                                            """,
-                                                            (
-                                                                improve_order_id,
-                                                                slug,
-                                                                event_date,
-                                                                outcome,
-                                                                outcome_side,
-                                                                "entry_improve",
-                                                                float(improve_price),
-                                                                float(improve_size),
-                                                                "GTC",
-                                                                "mirror_follow_improve",
-                                                                utc_now_iso(),
-                                                            ),
+                                                        insert_auto_order_ignore(
+                                                            cur,
+                                                            order_id=improve_order_id,
+                                                            slug=slug,
+                                                            event_date=event_date,
+                                                            outcome=outcome,
+                                                            side=outcome_side,
+                                                            action="entry_improve",
+                                                            price=float(improve_price),
+                                                            size=float(improve_size),
+                                                            order_type="GTC",
+                                                            strategy="mirror_follow_improve",
+                                                            created_at=utc_now_iso(),
                                                         )
                                                     except sqlite3.OperationalError:
                                                         pass
@@ -64698,26 +62330,19 @@ def run_mirror_follow_trades(
                                 0.0,
                             )
                         if mirror_order_id:
-                            cur.execute(
-                                """
-                                INSERT OR IGNORE INTO auto_orders (
-                                    order_id, slug, event_date, outcome, side, action,
-                                    price, size, order_type, strategy, created_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    mirror_order_id,
-                                    slug,
-                                    event_date,
-                                    outcome,
-                                    outcome_side,
-                                    "entry",
-                                    mirror_price,
-                                    mirror_size,
-                                    selected_order_type,
-                                    "mirror_follow",
-                                    utc_now_iso(),
-                                ),
+                            insert_auto_order_ignore(
+                                cur,
+                                order_id=mirror_order_id,
+                                slug=slug,
+                                event_date=event_date,
+                                outcome=outcome,
+                                side=outcome_side,
+                                action="entry",
+                                price=mirror_price,
+                                size=mirror_size,
+                                order_type=selected_order_type,
+                                strategy="mirror_follow",
+                                created_at=utc_now_iso(),
                             )
                     elif status != "failed":
                         status = "failed"
@@ -64915,6 +62540,7 @@ def run_mirror_follow_trades(
                                 price=float(mirror_price),
                                 size=float(mirror_size),
                                 order_type=effective_sell_order_type,
+                                order_context=_mirror_order_context("exit"),
                             )
                             if ok:
                                 mirror_order_id = str(
@@ -64932,26 +62558,19 @@ def run_mirror_follow_trades(
                                 status = "placed"
                                 placed += 1
                                 if mirror_order_id:
-                                    cur.execute(
-                                        """
-                                        INSERT OR IGNORE INTO auto_orders (
-                                            order_id, slug, event_date, outcome, side, action,
-                                            price, size, order_type, strategy, created_at
-                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                        """,
-                                        (
-                                            mirror_order_id,
-                                            slug,
-                                            event_date,
-                                            outcome,
-                                            outcome_side,
-                                            "exit",
-                                            mirror_price,
-                                            mirror_size,
-                                            str(effective_sell_order_type),
-                                            "mirror_follow",
-                                            utc_now_iso(),
-                                        ),
+                                    insert_auto_order_ignore(
+                                        cur,
+                                        order_id=mirror_order_id,
+                                        slug=slug,
+                                        event_date=event_date,
+                                        outcome=outcome,
+                                        side=outcome_side,
+                                        action="exit",
+                                        price=mirror_price,
+                                        size=mirror_size,
+                                        order_type=str(effective_sell_order_type),
+                                        strategy="mirror_follow",
+                                        created_at=utc_now_iso(),
                                     )
                             else:
                                 status = "failed"
@@ -66079,6 +63698,7 @@ def requests_get(
     verify: Optional[bool] = None,
     force_direct: bool = False,
     force_proxy: bool = False,
+    stream: bool = False,
     _allow_fallback: bool = True,
 ) -> requests.Response:
     ensure_system_proxy_settings()
@@ -66102,13 +63722,28 @@ def requests_get(
             "headers": headers,
             "timeout": timeout,
         }
+        if stream:
+            # `requests` returns after headers when stream=True.  The caller
+            # owns body consumption and must close the response afterwards.
+            request_kwargs["stream"] = True
         if verify_setting is not None:
             request_kwargs["verify"] = verify_setting
         if use_bypass:
-            # Close the ad-hoc session explicitly to prevent long-run FD/socket accumulation.
-            with requests.Session() as session:
-                session.trust_env = False
-                return session.get(url, **request_kwargs)
+            # A streamed response still owns the socket after this function
+            # returns, so its direct session must outlive this frame.  The
+            # explicit close helper below releases it after body consumption.
+            session = requests.Session()
+            session.trust_env = False
+            try:
+                response = session.get(url, **request_kwargs)
+            except Exception:
+                session.close()
+                raise
+            if stream:
+                setattr(response, "_weather_owned_session", session)
+                return response
+            session.close()
+            return response
         return requests.get(url, **request_kwargs)
 
     last_exc: Optional[Exception] = None
@@ -66125,6 +63760,8 @@ def requests_get(
             if retry_statuses and resp.status_code in retry_statuses:
                 last_resp = resp
                 if attempt < retries - 1:
+                    if stream:
+                        close_streaming_requests_response(resp)
                     _sleep_backoff(backoff, attempt, max_backoff)
                     continue
             return resp
@@ -66158,6 +63795,7 @@ def requests_get(
                     max_backoff=max_backoff,
                     verify=fallback_verify,
                     force_proxy=force_proxy,
+                    stream=stream,
                     _allow_fallback=False,
                 )
             except requests.RequestException:
@@ -66167,6 +63805,25 @@ def requests_get(
     if last_resp is not None:
         return last_resp
     raise requests.RequestException("requests_get failed")
+
+
+def close_streaming_requests_response(response: Any) -> None:
+    """Release a response and any direct session retained for stream=True.
+
+    This is deliberately a transport-resource helper, not a timing source.
+    Timing is captured by the caller immediately after `requests_get(...,
+    stream=True)` returns and before it consumes `response.text`.
+    """
+
+    try:
+        closer = getattr(response, "close", None)
+        if callable(closer):
+            closer()
+    finally:
+        session = getattr(response, "_weather_owned_session", None)
+        session_closer = getattr(session, "close", None)
+        if callable(session_closer):
+            session_closer()
 
 
 def _market_refresh_fast_mode_enabled(args: Optional[argparse.Namespace]) -> bool:
@@ -74514,6 +72171,68 @@ def _extract_wunderground_hourly_api_url(html: str) -> Optional[str]:
     return urls[0].replace("&amp;", "&")
 
 
+def _extract_wunderground_inline_hourly_rows(
+    html: str,
+    *,
+    hourly_api_url: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Read the hourly curve embedded in the public WU page response.
+
+    WU renders a Weather.com hourly payload directly into its page.  The API
+    URL embedded beside it can return a server-side 403 even when that page
+    payload is present.  This parser is deliberately a fallback: it preserves
+    the page's displayed forecast rather than treating a transport block as a
+    missing forecast.
+    """
+
+    if not html:
+        return []
+    source_units = "F"
+    if hourly_api_url:
+        try:
+            query = dict(parse_qsl(urlparse(hourly_api_url).query, keep_blank_values=True))
+            source_units = "F" if str(query.get("units") or "e").lower() == "e" else "C"
+        except Exception:
+            pass
+    candidates: List[Tuple[int, List[Any], List[Any]]] = []
+    pattern = re.compile(
+        r'"temperature":(?P<temperature>\[[^\]]*\]).{0,15000}?"validTimeLocal":(?P<valid_time>\[[^\]]*\])',
+        flags=re.DOTALL,
+    )
+    for match in pattern.finditer(html):
+        try:
+            temperatures = json.loads(match.group("temperature"))
+            valid_times = json.loads(match.group("valid_time"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(temperatures, list) or not isinstance(valid_times, list) or len(temperatures) != len(valid_times):
+            continue
+        if not temperatures:
+            continue
+        candidates.append((len(temperatures), temperatures, valid_times))
+    if not candidates:
+        return []
+    _size, temperatures, valid_times = max(candidates, key=lambda item: item[0])
+    rows: List[Dict[str, Any]] = []
+    for temperature, valid_time in zip(temperatures, valid_times):
+        if not isinstance(temperature, (int, float)) or not isinstance(valid_time, str) or not valid_time:
+            continue
+        value = float(temperature)
+        rows.append(
+            {
+                "valid_time_local": valid_time,
+                "valid_time_utc": None,
+                "temperature": value,
+                "unit": source_units,
+                "source_temperature": value,
+                "source_unit": source_units,
+                "derived_from": "wunderground_hourly_page_inline_payload",
+                "native_decimal": isinstance(temperature, float) and not value.is_integer(),
+            }
+        )
+    return rows
+
+
 def _wunderground_forecast_hourly_source(resolution_source: Optional[str]) -> str:
     source = str(resolution_source or "").strip()
     if not source:
@@ -74575,6 +72294,7 @@ def fetch_wunderground_hourly_temperatures(
     api_url = _extract_wunderground_hourly_api_url(getattr(r, "text", "") or "")
     if not api_url:
         return []
+    inline_rows = _extract_wunderground_inline_hourly_rows(getattr(r, "text", "") or "", hourly_api_url=api_url)
     unit = str(market_unit or "").upper()
     unit_preferences = ["e", "m"] if unit == "F" else ["m", "e"]
     best_rows: List[Dict[str, Any]] = []
@@ -74636,7 +72356,7 @@ def fetch_wunderground_hourly_temperatures(
             return rows
     if require_native_decimal:
         return []
-    return best_rows
+    return best_rows or inline_rows
 
 
 def _forecast_peak_plateau_from_hourly_rows(
@@ -75089,6 +72809,10 @@ def fetch_wunderground_forecast_peak_metrics(
         "peak_plateau_count": plateau.get("plateau_count"),
         "forecast_source_url": forecast_source,
         "hourly_forecast_source_url": forecast_source,
+        "hourly_curve": [
+            {"valid_time_local": valid_local, "temperature_c": float(temp_c)}
+            for temp_c, valid_local in sorted(hourly_candidates, key=lambda item: item[1])
+        ],
         "station_id": str(source_profile.get("station_id") or "").strip().upper(),
         "resolution_source": source,
         "request_timeout": list(request_timeout),
@@ -75167,6 +72891,7 @@ def fetch_weather_com_forecast_peak_metrics(
     *,
     station_id: Optional[str] = None,
     resolution_source: Optional[str] = None,
+    include_capture_evidence: bool = False,
 ) -> Dict[str, Any]:
     kind = _market_var_extreme_kind(market_var)
     if kind != "max":
@@ -75192,6 +72917,10 @@ def fetch_weather_com_forecast_peak_metrics(
         "language": "en-US",
         "apiKey": api_key,
     }
+    requested_at = utc_now_iso() if include_capture_evidence else ""
+    response_started_at = ""
+    response_completed_at = ""
+    raw_provider_response_utf8 = ""
     try:
         response = requests_get(
             WEATHER_COM_DAILY_FORECAST_URL,
@@ -75200,9 +72929,18 @@ def fetch_weather_com_forecast_peak_metrics(
             bypass_proxy=False,
             retries=request_retries,
             backoff=0.5,
+            stream=include_capture_evidence,
         )
     except Exception as exc:
         return {"ok": False, "error": f"request_error:{exc.__class__.__name__}"}
+    if include_capture_evidence:
+        # stream=True returns after provider response headers.  Record this
+        # receipt before consuming the body; a request-start timestamp is not
+        # acceptable Tier-A arrival evidence.
+        response_started_at = utc_now_iso()
+        raw_provider_response_utf8 = str(getattr(response, "text", "") or "")
+        response_completed_at = utc_now_iso()
+        close_streaming_requests_response(response)
     safe_url = _redact_weather_com_api_key(getattr(response, "url", "") or WEATHER_COM_DAILY_FORECAST_URL)
     if response.status_code != 200:
         return {
@@ -75233,7 +72971,7 @@ def fetch_weather_com_forecast_peak_metrics(
     valid_values = payload.get("validTimeLocal")
     if isinstance(valid_values, list) and idx < len(valid_values):
         valid_local = str(valid_values[idx] or "")
-    return {
+    result = {
         "ok": True,
         "value": float(value),
         "value_c": value_c,
@@ -75260,6 +72998,21 @@ def fetch_weather_com_forecast_peak_metrics(
         "request_timeout": list(request_timeout),
         "request_retries": int(request_retries),
     }
+    if include_capture_evidence:
+        # This evidence is deliberately opt-in.  The production caller keeps
+        # its existing compact metrics payload; the research forward collector
+        # alone owns immutable raw-response retention and its observed clock.
+        result.update(
+            {
+                "requested_at": requested_at,
+                "response_started_at": response_started_at,
+                "response_completed_at": response_completed_at,
+                "capture_time_provenance": "observed_transport",
+                "response_headers_observed": True,
+                "raw_provider_response_utf8": raw_provider_response_utf8,
+            }
+        )
+    return result
 
 
 def fetch_weather_com_hourly_peak_metrics(
@@ -75271,6 +73024,7 @@ def fetch_weather_com_hourly_peak_metrics(
     *,
     station_id: Optional[str] = None,
     resolution_source: Optional[str] = None,
+    include_capture_evidence: bool = False,
 ) -> Dict[str, Any]:
     kind = _market_var_extreme_kind(market_var)
     if kind != "max":
@@ -75296,6 +73050,10 @@ def fetch_weather_com_hourly_peak_metrics(
         "language": "en-US",
         "apiKey": api_key,
     }
+    requested_at = utc_now_iso() if include_capture_evidence else ""
+    response_started_at = ""
+    response_completed_at = ""
+    raw_provider_response_utf8 = ""
     try:
         response = requests_get(
             WEATHER_COM_HOURLY_FORECAST_URL,
@@ -75304,9 +73062,16 @@ def fetch_weather_com_hourly_peak_metrics(
             bypass_proxy=False,
             retries=request_retries,
             backoff=0.5,
+            stream=include_capture_evidence,
         )
     except Exception as exc:
         return {"ok": False, "error": f"request_error:{exc.__class__.__name__}"}
+    if include_capture_evidence:
+        # See the daily path above: response headers, then body, then close.
+        response_started_at = utc_now_iso()
+        raw_provider_response_utf8 = str(getattr(response, "text", "") or "")
+        response_completed_at = utc_now_iso()
+        close_streaming_requests_response(response)
     safe_url = _redact_weather_com_api_key(getattr(response, "url", "") or WEATHER_COM_HOURLY_FORECAST_URL)
     if response.status_code != 200:
         return {
@@ -75356,7 +73121,7 @@ def fetch_weather_com_hourly_peak_metrics(
     if plateau.get("available") and plateau.get("expected_peak_at_local"):
         peak_at = str(plateau.get("expected_peak_at_local") or peak_at)
     value_c, value_f = _forecast_temp_units(float(peak_value), unit)
-    return {
+    result = {
         "ok": True,
         "value": float(peak_value),
         "value_c": value_c,
@@ -75386,12 +73151,28 @@ def fetch_weather_com_hourly_peak_metrics(
         "peak_plateau_threshold_c": plateau.get("threshold_c"),
         "peak_plateau_max_temp_c": plateau.get("max_temp_c"),
         "peak_plateau_count": plateau.get("plateau_count"),
+        "hourly_curve": [
+            {"valid_time_local": time_text, "temperature_c": float(temp_c)}
+            for temp_c, time_text, _raw_value in sorted(candidates, key=lambda item: item[1])
+        ],
         "station_id": _normalize_station_code(station_id),
         "resolution_source": str(resolution_source or ""),
         "geocode": params["geocode"],
         "request_timeout": list(request_timeout),
         "request_retries": int(request_retries),
     }
+    if include_capture_evidence:
+        result.update(
+            {
+                "requested_at": requested_at,
+                "response_started_at": response_started_at,
+                "response_completed_at": response_completed_at,
+                "capture_time_provenance": "observed_transport",
+                "response_headers_observed": True,
+                "raw_provider_response_utf8": raw_provider_response_utf8,
+            }
+        )
+    return result
 
 
 def _latest_cached_soft_forecast_peak(
@@ -76747,6 +74528,84 @@ def open_db_ro_fast(timeout_sec: float = 0.2, busy_timeout_ms: int = 200) -> Ite
             pass
 
 
+_AUTO_TRADE_WORKER_REQUIRED_SCHEMA: Dict[str, Set[str]] = {
+    "auto_trade_jobs": {
+        "id",
+        "state",
+        "priority",
+        "payload_json",
+        "lease_until",
+        "next_retry_at",
+        "created_at",
+        "updated_at",
+        "order_intent_id",
+    },
+    "auto_trade_decisions": {
+        "id",
+        "action",
+        "decided_state",
+        "will_order",
+        "reason_codes_json",
+        "details_json",
+        "decision_id",
+        "order_intent_id",
+    },
+    "auto_orders": {
+        "id",
+        "order_id",
+        "order_status",
+        "order_checked_at",
+        "decision_id",
+        "order_intent_id",
+    },
+    "edge_trades": {
+        "id",
+        "state",
+        "position_size",
+        "avg_price",
+        "last_order_id",
+        "exit_skip_reason",
+        "exit_skip_detail",
+        "exit_skip_at",
+    },
+    "edge_trade_fills": {"id", "order_id", "trade_side", "created_at"},
+    "event_market_ticks": {"id", "slug", "event_date", "outcome", "created_at"},
+    "market_tokens": {"slug", "event_date", "outcome", "yes_token", "no_token"},
+    "target_realization_execution_locks": {
+        "slug",
+        "event_date",
+        "outcome",
+        "side",
+        "lock_type",
+        "state",
+        "updated_at",
+    },
+}
+
+
+def _mark_existing_auto_trade_worker_schema_ready() -> bool:
+    """Use a read-only schema probe to avoid full migrations on every hot worker tick."""
+
+    cache_key = _db_cache_key()
+    with _DB_SCHEMA_INIT_LOCK:
+        if cache_key in _DB_SCHEMA_READY_KEYS:
+            return True
+    if not DB_PATH.exists():
+        return False
+    try:
+        with open_db_ro_fast(timeout_sec=0.5, busy_timeout_ms=500) as conn:
+            for table, required_columns in _AUTO_TRADE_WORKER_REQUIRED_SCHEMA.items():
+                rows = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+                present = {str(row[1] or "") for row in rows}
+                if not required_columns.issubset(present):
+                    return False
+    except sqlite3.Error:
+        return False
+    with _DB_SCHEMA_INIT_LOCK:
+        _DB_SCHEMA_READY_KEYS.add(cache_key)
+    return True
+
+
 def _sqlite_is_locked_error(exc: Any) -> bool:
     text = str(exc or "").strip().lower()
     return (
@@ -77404,6 +75263,7 @@ def init_db() -> None:
         )
         """
     )
+    ensure_target_realization_execution_lock_schema(conn)
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_auto_trade_decisions_run_id
@@ -77995,6 +75855,28 @@ def init_db() -> None:
     ensure_column(conn, "auto_orders", "order_status", "TEXT")
     ensure_column(conn, "auto_orders", "order_checked_at", "TEXT")
     ensure_column(conn, "auto_orders", "strategy", "TEXT")
+    ensure_column(conn, "auto_orders", "correlation_id", "TEXT")
+    ensure_column(conn, "auto_orders", "decision_id", "TEXT")
+    ensure_column(conn, "auto_orders", "signal_id", "TEXT")
+    ensure_column(conn, "auto_orders", "order_intent_id", "TEXT")
+    for sql in (
+        """
+        CREATE INDEX IF NOT EXISTS idx_auto_orders_decision_id
+        ON auto_orders(decision_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_auto_orders_signal_id
+        ON auto_orders(signal_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_auto_orders_order_intent_id
+        ON auto_orders(order_intent_id)
+        """,
+    ):
+        try:
+            cur.execute(sql)
+        except sqlite3.OperationalError:
+            pass
     ensure_column(conn, "event_daily_temps", "station_most_likely_label", "TEXT")
     ensure_column(conn, "event_daily_temps", "station_most_likely_q", "REAL")
     ensure_column(conn, "event_daily_temps", "city_most_likely_label", "TEXT")
@@ -82180,23 +80062,343 @@ def _writeback_q_calibrated_payload(payload: Dict[str, Any]) -> Tuple[bool, str]
     return True, ""
 
 
+def _sqlite_table_column_names(conn: sqlite3.Connection, table: str) -> Set[str]:
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    except sqlite3.Error:
+        return set()
+    out: Set[str] = set()
+    for row in rows or []:
+        try:
+            name = row[1]
+        except Exception:
+            name = None
+        text = str(name or "").strip()
+        if text:
+            out.add(text)
+    return out
+
+
+def _sqlite_select_expr_for_columns(available: Set[str], wanted: Sequence[str]) -> str:
+    parts: List[str] = []
+    for col in wanted:
+        name = str(col or "").strip()
+        if not name:
+            continue
+        if name in available:
+            parts.append(name)
+        else:
+            parts.append(f"NULL AS {name}")
+    return ", ".join(parts)
+
+
+def _row_get_value(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except Exception:
+        pass
+    if isinstance(row, Mapping):
+        return row.get(key, default)
+    return default
+
+
+def _strip_stale_fact_writer_metadata_for_derived_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    out = dict(payload or {})
+    for key in (
+        "fact_snapshot_id",
+        "source_observations",
+        "source_acquisition_trace",
+        "source_latency_trace",
+        "fact_layer_state",
+        "db_write_guard",
+        "lineage_state",
+        "phase0_fact_json_contract",
+    ):
+        out.pop(key, None)
+    return out
+
+
+def _q_calibrated_writeback_source_trace(
+    *,
+    row: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    parent_raw_json: str,
+    run_date: str,
+    historical_backfill: bool,
+    created_at: str,
+) -> Dict[str, Any]:
+    parent_fact_id = _row_get_value(row, "id")
+    parent_fact_as_of = str(_row_get_value(row, "fact_as_of") or payload.get("fact_as_of") or "").strip()
+    parent_snapshot_id = str(
+        payload.get("fact_snapshot_id")
+        or (
+            payload.get("lineage_state", {}).get("fact_snapshot_id")
+            if isinstance(payload.get("lineage_state"), Mapping)
+            else ""
+        )
+        or ""
+    ).strip()
+    parent_raw_sha256 = hashlib.sha256(str(parent_raw_json or "").encode("utf-8")).hexdigest()
+    source_payload = {
+        "source_id": Q_CALIBRATED_WRITEBACK_SOURCE_ID,
+        "provider": "local_platt_calibration",
+        "ok": True,
+        "event_date": str(_row_get_value(row, "event_date") or payload.get("event_date") or "").strip(),
+        "valid_time": parent_fact_as_of or created_at,
+        "valid_time_utc": parent_fact_as_of or created_at,
+        "fetched_at": created_at,
+        "response_completed_at": created_at,
+        "raw_ref": f"event_fact_history:{parent_fact_id}",
+        "parent_fact_id": parent_fact_id,
+        "parent_fact_snapshot_id": parent_snapshot_id,
+        "parent_fact_as_of": parent_fact_as_of,
+        "parent_fact_json_sha256": parent_raw_sha256,
+        "q_platt_days": Q_PLATT_DAYS,
+        "historical_backfill": bool(historical_backfill),
+        "write_reason": "q_calibrated_writeback",
+    }
+    try:
+        import weather_source_acquisition_manager as source_manager
+
+        trace = source_manager.build_source_acquisition_trace(
+            sources=[source_payload],
+            station_id=str(payload.get("station_id") or "ZUUU"),
+            event_date=str(_row_get_value(row, "event_date") or payload.get("event_date") or "").strip(),
+            fetched_at=created_at,
+            include_payload=True,
+        )
+    except Exception:
+        from source_observation_runtime import build_source_observation
+
+        observation_obj = build_source_observation(
+            source_id=Q_CALIBRATED_WRITEBACK_SOURCE_ID,
+            station_id=str(payload.get("station_id") or "ZUUU"),
+            event_date=str(_row_get_value(row, "event_date") or payload.get("event_date") or "").strip(),
+            valid_time=parent_fact_as_of or created_at,
+            fetched_at=created_at,
+            response_completed_at=created_at,
+            raw_ref=f"event_fact_history:{parent_fact_id}",
+            raw_payload=parent_raw_json,
+            parser_version="q_calibrated_writeback_source_trace_v1",
+            overrides={
+                "source_class": "unknown_source",
+                "role": "derived_calibration_writeback",
+                "hard_eligible": False,
+                "demotion_reason": "derived_calibration_not_weather_observation",
+            },
+            payload=source_payload,
+        )
+        observation = observation_obj.as_dict(include_payload=True)
+        source_event_id = observation_obj.source_event_id
+        source_observation_id = observation_obj.source_observation_id
+        trace = {
+            "schema": "q_calibrated_writeback_source_trace_v1",
+            "read_only": True,
+            "trace_built_at": created_at,
+            "station_id": str(payload.get("station_id") or "ZUUU"),
+            "event_date": str(_row_get_value(row, "event_date") or payload.get("event_date") or "").strip(),
+            "source_observations": [
+                observation
+            ],
+            "source_latency_trace": [
+                {
+                    "source_event_id": source_event_id,
+                    "source_observation_id": source_observation_id,
+                    "source_id": Q_CALIBRATED_WRITEBACK_SOURCE_ID,
+                    "source_class": "unknown_source",
+                    "role": "derived_calibration_writeback",
+                    "station_id": str(payload.get("station_id") or "ZUUU"),
+                    "event_date": str(_row_get_value(row, "event_date") or payload.get("event_date") or "").strip(),
+                    "valid_time": parent_fact_as_of or created_at,
+                    "fetched_at": created_at,
+                    "response_completed_at": created_at,
+                    "raw_ref": f"event_fact_history:{parent_fact_id}",
+                    "raw_sha256": parent_raw_sha256,
+                    "hard_eligible": False,
+                    "demotion_reason": "derived_calibration_not_weather_observation",
+                }
+            ],
+            "source_event_ids": [source_event_id],
+            "source_observation_ids": [source_observation_id],
+            "hard_observation_candidate_ids": [],
+            "diagnostic_current_ids": [],
+            "forecast_weak_ids": [],
+            "guards": {"historical_backfill": bool(historical_backfill), "places_orders": False},
+        }
+    trace = dict(trace)
+    trace["write_reason"] = "q_calibrated_writeback"
+    trace["derived_from_fact_id"] = parent_fact_id
+    trace["parent_fact_snapshot_id"] = parent_snapshot_id
+    trace["parent_fact_as_of"] = parent_fact_as_of
+    trace["parent_fact_json_sha256"] = parent_raw_sha256
+    trace["historical_backfill"] = bool(historical_backfill)
+    trace["next_boundary"] = "weather_fact_snapshot_writer_apply_contract"
+    guards = trace.get("guards") if isinstance(trace.get("guards"), Mapping) else {}
+    trace["guards"] = {**dict(guards), "historical_backfill": bool(historical_backfill), "places_orders": False}
+    for obs in trace.get("source_observations") or []:
+        if isinstance(obs, dict) and obs.get("source_id") == Q_CALIBRATED_WRITEBACK_SOURCE_ID:
+            obs["role"] = "derived_calibration_writeback"
+            obs["hard_eligible"] = False
+            obs.setdefault("demotion_reason", "derived_calibration_not_weather_observation")
+    for latency in trace.get("source_latency_trace") or []:
+        if isinstance(latency, dict) and latency.get("source_id") == Q_CALIBRATED_WRITEBACK_SOURCE_ID:
+            latency["role"] = "derived_calibration_writeback"
+            latency["hard_eligible"] = False
+            latency.setdefault("demotion_reason", "derived_calibration_not_weather_observation")
+    return trace
+
+
+def build_q_calibrated_writeback_fact_snapshot_writer_apply_plan(
+    *,
+    row: Mapping[str, Any],
+    original_payload: Mapping[str, Any],
+    updated_payload: Mapping[str, Any],
+    parent_raw_json: str,
+    created_at: str = "",
+    historical_backfill: bool = False,
+) -> Dict[str, Any]:
+    import weather_fact_snapshot_writer
+
+    created_at_text = str(created_at or utc_now_iso())
+    slug = str(_row_get_value(row, "slug") or updated_payload.get("slug") or "").strip()
+    event_date = str(_row_get_value(row, "event_date") or updated_payload.get("event_date") or "").strip()
+    run_date = str(_row_get_value(row, "run_date") or updated_payload.get("run_date") or event_date).strip()
+    parent_fact_as_of = str(
+        _row_get_value(row, "fact_as_of") or updated_payload.get("fact_as_of") or created_at_text
+    ).strip()
+    payload_for_writer = _strip_stale_fact_writer_metadata_for_derived_payload(updated_payload)
+    payload_for_writer.update(
+        {
+            "slug": slug,
+            "event_date": event_date,
+            "run_date": run_date,
+            "fact_as_of": parent_fact_as_of,
+            "composer_version": Q_CALIBRATED_WRITEBACK_COMPOSER_VERSION,
+            "parent_composer_version": str(_row_get_value(row, "composer_version") or ""),
+            "parent_fact_id": _row_get_value(row, "id"),
+            "parent_fact_as_of": parent_fact_as_of,
+            "q_calibrated_writeback_state": {
+                "schema": "q_calibrated_writeback_state_v1",
+                "write_owner": "weather_fact_snapshot_writer",
+                "write_reason": "q_calibrated_writeback",
+                "method": "platt",
+                "source_id": Q_CALIBRATED_WRITEBACK_SOURCE_ID,
+                "parent_fact_id": _row_get_value(row, "id"),
+                "parent_fact_as_of": parent_fact_as_of,
+                "parent_fact_snapshot_id": str(
+                    original_payload.get("fact_snapshot_id")
+                    or (
+                        original_payload.get("lineage_state", {}).get("fact_snapshot_id")
+                        if isinstance(original_payload.get("lineage_state"), Mapping)
+                        else ""
+                    )
+                    or ""
+                ),
+                "historical_backfill": bool(historical_backfill),
+                "fact_as_of_preserved_from_parent": True,
+                "created_at_represents_write_time_only": True,
+            },
+        }
+    )
+    for field in (
+        "model_snapshot_id",
+        "market_snapshot_id",
+        "market_updated_at",
+        "model_updated_at",
+        "market_stale_sec",
+        "model_cache_age_sec",
+    ):
+        value = _row_get_value(row, field)
+        if value not in (None, ""):
+            payload_for_writer.setdefault(field, value)
+    source_trace = _q_calibrated_writeback_source_trace(
+        row=row,
+        payload=original_payload,
+        parent_raw_json=parent_raw_json,
+        run_date=run_date,
+        historical_backfill=bool(historical_backfill),
+        created_at=created_at_text,
+    )
+    return weather_fact_snapshot_writer.build_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=parent_fact_as_of,
+        incoming_payload=payload_for_writer,
+        current_fact_id=int(_row_get_value(row, "id") or 0) or None,
+        current_fact_as_of=parent_fact_as_of,
+        current_payload=original_payload,
+        source_acquisition_trace=source_trace,
+        composer_version=Q_CALIBRATED_WRITEBACK_COMPOSER_VERSION,
+        write_reason="q_calibrated_writeback",
+        posterior_run_id=str(
+            original_payload.get("posterior_run_id")
+            or (
+                original_payload.get("lineage_state", {}).get("posterior_run_id")
+                if isinstance(original_payload.get("lineage_state"), Mapping)
+                else ""
+            )
+            or ""
+        ),
+        include_payload=True,
+        enable_apply_contract=True,
+        write_latest=True,
+    )
+
+
 def writeback_q_calibrated_for_run_date(
     run_date: str,
     limit: int = 0,
+    *,
+    allow_historical: bool = False,
 ) -> Dict[str, Any]:
     if not DB_PATH.exists():
         return {"ok": False, "error": "db_missing"}
     run_date_key = _normalize_date_key(run_date)
     if not run_date_key:
         return {"ok": False, "error": "no_run_date"}
+    et_today = today_date_str("America/New_York")
+    historical_backfill = bool(run_date_key != et_today)
+    if historical_backfill and not bool(allow_historical):
+        return {
+            "ok": False,
+            "error": "historical_writeback_requires_explicit_allow",
+            "run_date": run_date_key,
+            "today_et": et_today,
+            "historical_backfill": True,
+            "write_owner": "weather_fact_snapshot_writer",
+            "write_mode": "blocked_no_apply",
+        }
     init_db()
     conn = open_db()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     try:
+        history_columns = _sqlite_table_column_names(conn, "event_fact_history")
+        select_expr = _sqlite_select_expr_for_columns(
+            history_columns,
+            (
+                "id",
+                "run_date",
+                "slug",
+                "event_date",
+                "fact_as_of",
+                "model_snapshot_id",
+                "market_snapshot_id",
+                "composer_version",
+                "market_updated_at",
+                "model_updated_at",
+                "market_stale_sec",
+                "model_cache_age_sec",
+                "fact_json",
+                "created_at",
+            ),
+        )
         cur.execute(
-            """
-            SELECT id, slug, event_date, fact_json
+            f"""
+            SELECT {select_expr}
             FROM event_fact_history
             WHERE run_date = ?
             ORDER BY fact_as_of DESC, id DESC
@@ -82212,6 +80414,13 @@ def writeback_q_calibrated_for_run_date(
     skipped_has = 0
     skipped_no_rows = 0
     skipped_no_platt = 0
+    skipped_apply = 0
+    latest_repointed = 0
+    summary_cache_written = 0
+    post_apply_persisted_verification_ok = 0
+    post_apply_persisted_verification_missing = 0
+    writer_apply_result_summary_samples: List[Dict[str, Any]] = []
+    apply_errors: List[str] = []
     for row in cur.fetchall():
         slug = str(row["slug"] or "")
         event_date = str(row["event_date"] or "")
@@ -82229,15 +80438,16 @@ def writeback_q_calibrated_for_run_date(
             skipped_no_rows += 1
             continue
         try:
-            payload = json.loads(raw)
+            original_payload = json.loads(raw)
         except (TypeError, json.JSONDecodeError):
             skipped_no_rows += 1
             continue
-        if not isinstance(payload, dict):
+        if not isinstance(original_payload, dict):
             skipped_no_rows += 1
             continue
-        if not _payload_write_allowed_for_chengdu_zuuu(payload, slug=slug):
+        if not _payload_write_allowed_for_chengdu_zuuu(original_payload, slug=slug):
             continue
+        payload = dict(original_payload)
         ok, reason = _writeback_q_calibrated_payload(payload)
         if not ok:
             if reason == "has_q_calibrated":
@@ -82247,23 +80457,67 @@ def writeback_q_calibrated_for_run_date(
             else:
                 skipped_no_rows += 1
             continue
-        new_payload = json.dumps(payload, ensure_ascii=True)
-        cur.execute(
-            "UPDATE event_fact_history SET fact_json = ? WHERE id = ?",
-            (new_payload, int(row["id"])),
+        created_at = utc_now_iso()
+        plan = build_q_calibrated_writeback_fact_snapshot_writer_apply_plan(
+            row=row,
+            original_payload=original_payload,
+            updated_payload=payload,
+            parent_raw_json=str(raw or ""),
+            created_at=created_at,
+            historical_backfill=historical_backfill,
         )
+        import weather_fact_snapshot_writer
+
+        apply_result = weather_fact_snapshot_writer.apply_fact_snapshot_write_plan(
+            conn,
+            plan,
+            allow_apply=True,
+            commit=False,
+            created_at=created_at,
+        )
+        apply_summary = weather_fact_snapshot_writer.compact_fact_snapshot_writer_apply_result_for_lineage(
+            apply_result
+        )
+        if len(writer_apply_result_summary_samples) < 3:
+            writer_apply_result_summary_samples.append(apply_summary)
+        if not apply_result.get("ok"):
+            skipped_apply += 1
+            block_reason = str(apply_result.get("block_reason") or apply_result.get("error") or "apply_failed")
+            if block_reason and block_reason not in apply_errors:
+                apply_errors.append(block_reason)
+            continue
         updated += 1
+        if apply_summary.get("post_apply_persisted_verification_ok"):
+            post_apply_persisted_verification_ok += 1
+        else:
+            post_apply_persisted_verification_missing += 1
+        if apply_result.get("latest_repointed"):
+            latest_repointed += 1
+        if apply_result.get("summary_cache_written"):
+            summary_cache_written += 1
     conn.commit()
     conn.close()
     return {
         "ok": True,
         "run_date": run_date_key,
+        "today_et": et_today,
         "total": total,
         "updated": updated,
         "skipped_has_q_calibrated": skipped_has,
         "skipped_no_rows": skipped_no_rows,
         "skipped_platt_or_raw": skipped_no_platt,
+        "skipped_apply": skipped_apply,
+        "latest_repointed": latest_repointed,
+        "summary_cache_written": summary_cache_written,
+        "post_apply_persisted_verification_ok": post_apply_persisted_verification_ok,
+        "post_apply_persisted_verification_missing": post_apply_persisted_verification_missing,
+        "writer_apply_result_summary_samples": writer_apply_result_summary_samples,
         "limit": limit,
+        "historical_backfill": historical_backfill,
+        "write_owner": "weather_fact_snapshot_writer",
+        "write_mode": "append_only_writer_apply",
+        "composer_version": Q_CALIBRATED_WRITEBACK_COMPOSER_VERSION,
+        "apply_errors": apply_errors[:5],
     }
 
 
@@ -87745,79 +85999,6 @@ def analyze_event(
             }
         )
 
-    bayes_context_city = normalize_city_name(
-        str(
-            contract_profile.get("city")
-            or _weather_strategy_city_from_slug(slug)
-            or extract_city_from_event(title, slug, description, resolution_source)
-            or ""
-        )
-    ).strip()
-    bayes_history_scope = str(os.environ.get("PM_BAYES_HISTORICAL_PLACE_SCOPE") or "market").strip().lower()
-    bayes_history_city = bayes_context_city if bayes_history_scope in {"city", "station"} and bayes_context_city else None
-    bayes_history_station = (contract_profile.get("station_id") or station_id) if bayes_history_scope == "station" else None
-    bayesian_historical_context = build_historical_bayesian_context(
-        db_path=DB_PATH,
-        pre_items=pre_items,
-        city=bayes_history_city,
-        station_id=bayes_history_station,
-        market_var=market_var,
-        market_unit=market_unit,
-        run_date=run_date,
-        active_models=list(weights.keys() or []),
-    )
-    climo_regime_context = load_climo_regime_context(
-        db_path=DB_PATH,
-        labels=[str(pre.get("label") or "") for pre in pre_items],
-        target_event_date=str(date or ""),
-        as_of=weather_likelihood_refreshed_at or utc_now_iso(),
-        city=bayes_context_city or None,
-        station_id=contract_profile.get("station_id") or station_id,
-        market_var=market_var,
-        market_unit=market_unit,
-        rounding_rule=rounding_rule,
-        weather_features=weather_likelihood_features,
-        days_to_event=days_to_event,
-        min_samples=max(1, int(_env_float("PM_BAYES_CLIMO_REGIME_MIN_SAMPLES") or 3)),
-        reference_path=os.environ.get("PM_CLIMO_REGIME_REFERENCE_PATH") or "",
-        reference_min_samples=max(1, int(_env_float("PM_CLIMO_REGIME_REFERENCE_MIN_SAMPLES") or 30)),
-    )
-    basin_regime_model_cache_rows_updated = _materialize_model_member_cache_basin_regime(
-        lat=lat,
-        lon=lon,
-        date=str(date or ""),
-        market_var=market_var,
-        market_unit=market_unit,
-        climo_regime_context=climo_regime_context,
-    )
-    post_cool_rebound_risk_context = load_post_cool_rebound_risk_context(
-        db_path=DB_PATH,
-        target_event_date=str(date or ""),
-        as_of=weather_likelihood_refreshed_at or utc_now_iso(),
-        city=bayes_context_city or None,
-        station_id=contract_profile.get("station_id") or station_id,
-        market_var=market_var,
-        market_unit=market_unit,
-        weather_features=weather_likelihood_features,
-    )
-    if isinstance(bayesian_historical_context, dict):
-        bayesian_historical_context["climo_regime"] = climo_regime_context
-        bayesian_historical_context["post_cool_rebound_risk"] = post_cool_rebound_risk_context
-        if isinstance(post_cool_rebound_risk_context, Mapping):
-            bayesian_historical_context["post_cool_rebound_regime_prior"] = (
-                post_cool_rebound_risk_context.get("regime_prior") or {}
-            )
-            bayesian_historical_context["post_cool_rebound_intraday_likelihood"] = (
-                post_cool_rebound_risk_context.get("intraday_likelihood") or {}
-            )
-    bayesian_probability_meta = apply_bayesian_probability_update(
-        pre_items,
-        weights=weights,
-        model_cache_freshness=model_cache_freshness,
-        days_to_event=days_to_event,
-        lcb_stage_tz=str(tz or ""),
-        historical_context=bayesian_historical_context,
-    )
 
     platt_a = to_float(q_platt.get("a")) if isinstance(q_platt, dict) else None
     platt_b = to_float(q_platt.get("b")) if isinstance(q_platt, dict) else None
@@ -89589,13 +87770,13 @@ def analyze_event(
 
         wu_forecast_posterior_status = _soft_forecast_posterior_status(
             peak_c=wu_forecast_peak.get("value_c"),
-            evidence=q_bayes_meta.get("wu_forecast_evidence"),
+            posterior_signal=q_bayes_meta.get("wu_forecast_prob"),
             status=q_bayes_meta.get("wu_forecast_status"),
             source=wu_forecast_peak.get("source") or q_bayes_meta.get("wu_forecast_source"),
         )
         weather_com_forecast_posterior_status = _soft_forecast_posterior_status(
             peak_c=weather_com_forecast_peak.get("value_c"),
-            evidence=q_bayes_meta.get("weather_com_forecast_evidence"),
+            posterior_signal=q_bayes_meta.get("weather_com_forecast_prob"),
             status=q_bayes_meta.get("weather_com_forecast_status"),
             channel_status=(
                 weather_com_forecast_peak.get("not_in_posterior_reason")
@@ -89608,7 +87789,7 @@ def analyze_event(
         )
         taf_forecast_posterior_status = _soft_forecast_posterior_status(
             peak_c=taf_forecast_peak.get("value_c"),
-            evidence=q_bayes_meta.get("taf_peak_evidence"),
+            posterior_signal=q_bayes_meta.get("taf_peak_prob"),
             status=q_bayes_meta.get("taf_peak_status"),
             channel_status=taf_forecast_peak.get("bayes_channel_status"),
             source=taf_forecast_peak.get("source") or q_bayes_meta.get("taf_peak_source"),
@@ -89675,6 +87856,10 @@ def analyze_event(
                 "q_raw_static_no": q.get("q_raw_static_no"),
                 "q_bayes_enabled": bool(q_bayes_meta.get("enabled")),
                 "q_bayes_source": q_bayes_meta.get("source"),
+                "q_bayes_legacy_additive_bridge": q_bayes_meta.get("legacy_additive_evidence_bridge"),
+                "q_bayes_old_additive_evidence_pool_used": q_bayes_meta.get("old_additive_evidence_pool_used"),
+                "q_bayes_production_replacement_required": q_bayes_meta.get("production_replacement_required"),
+                "q_bayes_replacement_posterior_runtime": q_bayes_meta.get("replacement_posterior_runtime"),
                 "posterior_temperature_distribution_version": q_bayes_meta.get(
                     "posterior_temperature_distribution_version"
                 ),
@@ -89723,6 +87908,13 @@ def analyze_event(
                 "q_bayes_z": q_bayes_meta.get("z"),
                 "q_bayes_z_stage": q_bayes_meta.get("z_stage"),
                 "q_bayes_z_source": q_bayes_meta.get("z_source"),
+                "q_bayes_phase": q_bayes_meta.get("phase"),
+                "q_bayes_beta_weak": q_bayes_meta.get("beta_weak"),
+                "q_bayes_beta_strong": q_bayes_meta.get("beta_strong"),
+                "q_bayes_phase_reason": q_bayes_meta.get("phase_reason"),
+                "q_bayes_hard_mask_reason": q_bayes_meta.get("hard_mask_reason"),
+                "q_bayes_layer_contributions": q_bayes_meta.get("layer_contributions"),
+                "q_bayes_score_components": q_bayes_meta.get("score_components"),
                 "q_bayes_prior_strength": q_bayes_meta.get("prior_strength"),
                 "q_bayes_prior_source": q_bayes_meta.get("prior_source"),
                 "q_bayes_historical_samples": q_bayes_meta.get("historical_samples"),
@@ -89730,29 +87922,11 @@ def analyze_event(
                 "q_bayes_historical_bucket_count": q_bayes_meta.get("historical_bucket_count"),
                 "q_bayes_bias_correction_enabled": q_bayes_meta.get("bias_correction_enabled"),
                 "q_bayes_model_weight_multipliers": q_bayes_meta.get("model_weight_multipliers"),
-                "q_bayes_model_evidence": q_bayes_meta.get("model_evidence"),
-                "q_bayes_nowcast_evidence": q_bayes_meta.get("nowcast_evidence"),
-                "q_bayes_observed_nowcast_evidence": q_bayes_meta.get("observed_nowcast_evidence"),
-                "q_bayes_wu_forecast_evidence": q_bayes_meta.get("wu_forecast_evidence"),
-                "q_bayes_wu_forecast_evidence_base": q_bayes_meta.get("wu_forecast_evidence_base"),
-                "q_bayes_wu_forecast_evidence_scale": q_bayes_meta.get("wu_forecast_evidence_scale"),
                 "q_bayes_wu_forecast_prob": q_bayes_meta.get("wu_forecast_prob"),
                 "q_bayes_wu_forecast_source": q_bayes_meta.get("wu_forecast_source"),
                 "q_bayes_wu_forecast_peak_c": q_bayes_meta.get("wu_forecast_peak_c"),
                 "q_bayes_wu_forecast_sigma_c": q_bayes_meta.get("wu_forecast_sigma_c"),
                 "q_bayes_wu_forecast_status": q_bayes_meta.get("wu_forecast_status"),
-                "q_bayes_weather_com_forecast_evidence": q_bayes_meta.get(
-                    "weather_com_forecast_evidence"
-                ),
-                "q_bayes_weather_com_forecast_evidence_raw": q_bayes_meta.get(
-                    "weather_com_forecast_evidence_raw"
-                ),
-                "q_bayes_weather_com_forecast_evidence_base": q_bayes_meta.get(
-                    "weather_com_forecast_evidence_base"
-                ),
-                "q_bayes_weather_com_forecast_evidence_scale": q_bayes_meta.get(
-                    "weather_com_forecast_evidence_scale"
-                ),
                 "q_bayes_weather_com_forecast_prob": q_bayes_meta.get(
                     "weather_com_forecast_prob"
                 ),
@@ -89819,23 +87993,11 @@ def analyze_event(
                 "twc_forecast_peak_not_in_posterior_reason": weather_com_forecast_posterior_status[
                     "not_in_posterior_reason"
                 ],
-                "q_bayes_taf_peak_evidence": q_bayes_meta.get("taf_peak_evidence"),
-                "q_bayes_taf_peak_evidence_base": q_bayes_meta.get("taf_peak_evidence_base"),
-                "q_bayes_taf_peak_evidence_scale": q_bayes_meta.get("taf_peak_evidence_scale"),
                 "q_bayes_taf_peak_prob": q_bayes_meta.get("taf_peak_prob"),
                 "q_bayes_taf_peak_source": q_bayes_meta.get("taf_peak_source"),
                 "q_bayes_taf_peak_c": q_bayes_meta.get("taf_peak_c"),
                 "q_bayes_taf_peak_sigma_c": q_bayes_meta.get("taf_peak_sigma_c"),
                 "q_bayes_taf_peak_status": q_bayes_meta.get("taf_peak_status"),
-                "q_bayes_temperature_trajectory_evidence": q_bayes_meta.get(
-                    "temperature_trajectory_evidence"
-                ),
-                "q_bayes_temperature_trajectory_evidence_base": q_bayes_meta.get(
-                    "temperature_trajectory_evidence_base"
-                ),
-                "q_bayes_temperature_trajectory_evidence_scale": q_bayes_meta.get(
-                    "temperature_trajectory_evidence_scale"
-                ),
                 "q_bayes_temperature_trajectory_enabled": q_bayes_meta.get(
                     "temperature_trajectory_posterior_enabled"
                 ),
@@ -89885,10 +88047,6 @@ def analyze_event(
                 "q_bayes_temperature_trajectory_weaker_than_hard_source": q_bayes_meta.get(
                     "temperature_trajectory_weaker_than_hard_source"
                 ),
-                "q_bayes_climo_regime_evidence": q_bayes_meta.get("climo_regime_evidence"),
-                "q_bayes_climo_regime_evidence_raw": q_bayes_meta.get("climo_regime_evidence_raw"),
-                "q_bayes_climo_regime_evidence_base": q_bayes_meta.get("climo_regime_evidence_base"),
-                "q_bayes_climo_regime_evidence_scale": q_bayes_meta.get("climo_regime_evidence_scale"),
                 "q_bayes_climo_regime_enabled": q_bayes_meta.get("climo_regime_enabled"),
                 "q_bayes_climo_regime_prob": q_bayes_meta.get("climo_regime_prob"),
                 "q_bayes_climo_regime_source": q_bayes_meta.get("climo_regime_source"),
@@ -89899,18 +88057,6 @@ def analyze_event(
                 "q_bayes_climo_regime_pp_cap_stage": q_bayes_meta.get("climo_regime_pp_cap_stage"),
                 "q_bayes_climo_regime_primary_regime": q_bayes_meta.get("climo_regime_primary_regime"),
                 "q_bayes_climo_regime_high_temp_gate": q_bayes_meta.get("climo_regime_high_temp_gate"),
-                "q_bayes_post_cool_rebound_regime_prior_evidence": q_bayes_meta.get(
-                    "post_cool_rebound_regime_prior_evidence"
-                ),
-                "q_bayes_post_cool_rebound_regime_prior_evidence_raw": q_bayes_meta.get(
-                    "post_cool_rebound_regime_prior_evidence_raw"
-                ),
-                "q_bayes_post_cool_rebound_regime_prior_evidence_base": q_bayes_meta.get(
-                    "post_cool_rebound_regime_prior_evidence_base"
-                ),
-                "q_bayes_post_cool_rebound_regime_prior_evidence_scale": q_bayes_meta.get(
-                    "post_cool_rebound_regime_prior_evidence_scale"
-                ),
                 "q_bayes_post_cool_rebound_regime_prior_enabled": q_bayes_meta.get(
                     "post_cool_rebound_regime_prior_enabled"
                 ),
@@ -89949,18 +88095,6 @@ def analyze_event(
                 ),
                 "q_bayes_post_cool_rebound_regime_prior_pp_max_delta": q_bayes_meta.get(
                     "post_cool_rebound_regime_prior_pp_max_delta"
-                ),
-                "q_bayes_post_cool_rebound_intraday_likelihood_evidence": q_bayes_meta.get(
-                    "post_cool_rebound_intraday_likelihood_evidence"
-                ),
-                "q_bayes_post_cool_rebound_intraday_likelihood_evidence_raw": q_bayes_meta.get(
-                    "post_cool_rebound_intraday_likelihood_evidence_raw"
-                ),
-                "q_bayes_post_cool_rebound_intraday_likelihood_evidence_base": q_bayes_meta.get(
-                    "post_cool_rebound_intraday_likelihood_evidence_base"
-                ),
-                "q_bayes_post_cool_rebound_intraday_likelihood_evidence_scale": q_bayes_meta.get(
-                    "post_cool_rebound_intraday_likelihood_evidence_scale"
                 ),
                 "q_bayes_post_cool_rebound_intraday_likelihood_enabled": q_bayes_meta.get(
                     "post_cool_rebound_intraday_likelihood_enabled"
@@ -90001,18 +88135,6 @@ def analyze_event(
                 "q_bayes_post_cool_rebound_intraday_likelihood_pp_max_delta": q_bayes_meta.get(
                     "post_cool_rebound_intraday_likelihood_pp_max_delta"
                 ),
-                "q_bayes_post_cool_rebound_risk_evidence": q_bayes_meta.get(
-                    "post_cool_rebound_risk_evidence"
-                ),
-                "q_bayes_post_cool_rebound_risk_evidence_raw": q_bayes_meta.get(
-                    "post_cool_rebound_risk_evidence_raw"
-                ),
-                "q_bayes_post_cool_rebound_risk_evidence_base": q_bayes_meta.get(
-                    "post_cool_rebound_risk_evidence_base"
-                ),
-                "q_bayes_post_cool_rebound_risk_evidence_scale": q_bayes_meta.get(
-                    "post_cool_rebound_risk_evidence_scale"
-                ),
                 "q_bayes_post_cool_rebound_risk_enabled": q_bayes_meta.get(
                     "post_cool_rebound_risk_enabled"
                 ),
@@ -90047,14 +88169,6 @@ def analyze_event(
                 "taf_forecast_peak_not_in_posterior_reason": taf_forecast_posterior_status[
                     "not_in_posterior_reason"
                 ],
-                "q_bayes_physical_likelihood_evidence": q_bayes_meta.get("physical_likelihood_evidence"),
-                "q_bayes_independent_physics_residual_evidence": q_bayes_meta.get("independent_physics_residual_evidence"),
-                "q_bayes_physical_likelihood_evidence_base": q_bayes_meta.get("physical_likelihood_evidence_base"),
-                "q_bayes_independent_physics_residual_evidence_base": q_bayes_meta.get("independent_physics_residual_evidence_base"),
-                "q_bayes_physical_likelihood_evidence_scale": q_bayes_meta.get("physical_likelihood_evidence_scale"),
-                "q_bayes_independent_physics_residual_evidence_scale": q_bayes_meta.get("independent_physics_residual_evidence_scale"),
-                "q_bayes_physical_likelihood_evidence_scale_reason": q_bayes_meta.get("physical_likelihood_evidence_scale_reason"),
-                "q_bayes_physical_likelihood_evidence_scale_details": q_bayes_meta.get("physical_likelihood_evidence_scale_details"),
                 "q_bayes_physical_likelihood_enabled": q_bayes_meta.get("physical_likelihood_enabled"),
                 "q_bayes_independent_physics_residual_enabled": q_bayes_meta.get("independent_physics_residual_enabled"),
                 "q_bayes_physical_likelihood_source": q_bayes_meta.get("physical_likelihood_source"),
@@ -90194,8 +88308,14 @@ def analyze_event(
                 "taf_forecast_peak_c": taf_forecast_peak.get("value_c"),
                 "taf_forecast_peak_value": taf_forecast_peak.get("value"),
                 "taf_forecast_peak_source": taf_forecast_peak.get("source"),
+                "taf_forecast_peak_source_url": taf_forecast_peak.get("source_url"),
+                "taf_forecast_peak_raw": taf_forecast_peak.get("raw_text"),
                 "taf_forecast_peak_at": taf_forecast_peak.get("peak_at"),
                 "taf_forecast_peak_issued_at": taf_forecast_peak.get("issued_at"),
+                "taf_forecast_peak_valid_start_at": taf_forecast_peak.get("valid_start_at"),
+                "taf_forecast_peak_valid_end_at": taf_forecast_peak.get("valid_end_at"),
+                "taf_forecast_min_c": taf_forecast_peak.get("minimum_c"),
+                "taf_forecast_min_at": taf_forecast_peak.get("minimum_at"),
                 "taf_forecast_peak_source_fit_tier": taf_forecast_peak.get("source_fit_tier"),
                 "taf_forecast_peak_source_trust_tier": taf_forecast_peak.get("source_trust_tier"),
                 "taf_forecast_peak_usable_for_settlement": taf_forecast_peak.get("source_usable_for_settlement"),
@@ -90410,24 +88530,6 @@ def analyze_event(
         tick_conn = None
     rows.sort(key=lambda r: r["signal_edge_best"], reverse=True)
     apply_posterior_observed_constraints_to_distribution(rows)
-    if bool(bayesian_probability_meta.get("hard_source_posterior_override_applied")):
-        hard_source_base_probs: List[float] = []
-        for row in rows:
-            base_q = to_float(row.get("q_bayes_posterior_pre_hard_source_override"))
-            if base_q is None:
-                base_q = to_float(row.get("q_bayes_posterior"))
-            if base_q is None:
-                base_q = to_float(row.get("q_raw"))
-            hard_source_base_probs.append(float(base_q if base_q is not None else 0.0))
-        apply_hard_source_posterior_override_to_distribution(
-            rows,
-            weather_likelihood_features,
-            base_probs=hard_source_base_probs,
-            market_var=market_var,
-            rounding_rule=rounding_rule,
-            event_tz=str(tz or ""),
-            event_date=str(date or ""),
-        )
     soft_forecast_posterior_channels: Dict[str, Any] = {}
     if rows:
         row0 = rows[0]
@@ -90439,7 +88541,7 @@ def analyze_event(
                 "posterior_label": row0.get("wu_forecast_peak_posterior_label"),
                 "not_in_posterior_reason": row0.get("wu_forecast_peak_not_in_posterior_reason"),
                 "peak_c": row0.get("wu_forecast_peak_c"),
-                "evidence": row0.get("q_bayes_wu_forecast_evidence"),
+                "posterior_probability": row0.get("q_bayes_wu_forecast_prob"),
             },
             "weather_com_forecast_peak": {
                 "captured": bool(row0.get("weather_com_forecast_peak_captured")),
@@ -90448,7 +88550,7 @@ def analyze_event(
                 "posterior_label": row0.get("weather_com_forecast_peak_posterior_label"),
                 "not_in_posterior_reason": row0.get("weather_com_forecast_peak_not_in_posterior_reason"),
                 "peak_c": row0.get("weather_com_forecast_peak_c"),
-                "evidence": 0.0,
+                "posterior_probability": row0.get("q_bayes_weather_com_forecast_prob"),
                 "source": row0.get("weather_com_forecast_peak_source"),
             },
             "taf_forecast_peak": {
@@ -90458,7 +88560,7 @@ def analyze_event(
                 "posterior_label": row0.get("taf_forecast_peak_posterior_label"),
                 "not_in_posterior_reason": row0.get("taf_forecast_peak_not_in_posterior_reason"),
                 "peak_c": row0.get("taf_forecast_peak_c"),
-                "evidence": row0.get("q_bayes_taf_peak_evidence"),
+                "posterior_probability": row0.get("q_bayes_taf_peak_prob"),
             },
         }
         captured_not_included = [
@@ -90703,173 +88805,6 @@ def analyze_event(
         "weather_likelihood_features": weather_likelihood_feature_snapshot,
         "weather_likelihood_feature_groups": weather_likelihood_feature_groups,
         "weather_likelihood_feature_quality": weather_likelihood_feature_quality,
-        "climo_regime": climo_regime_context,
-        "basin_regime_model_cache_rows_updated": basin_regime_model_cache_rows_updated,
-        "climo_regime_features": (
-            climo_regime_context.get("features")
-            if isinstance(climo_regime_context, Mapping)
-            else {}
-        ),
-        "post_cool_rebound_risk": post_cool_rebound_risk_context,
-        "post_cool_rebound_risk_features": (
-            post_cool_rebound_risk_context.get("features")
-            if isinstance(post_cool_rebound_risk_context, Mapping)
-            else {}
-        ),
-        "post_cool_rebound_regime_prior": (
-            post_cool_rebound_risk_context.get("regime_prior")
-            if isinstance(post_cool_rebound_risk_context, Mapping)
-            else {}
-        ),
-        "post_cool_rebound_intraday_likelihood": (
-            post_cool_rebound_risk_context.get("intraday_likelihood")
-            if isinstance(post_cool_rebound_risk_context, Mapping)
-            else {}
-        ),
-        "q_bayes_climo_regime_prob": (
-            climo_regime_context.get("bucket_probabilities")
-            if isinstance(climo_regime_context, Mapping)
-            else {}
-        ),
-        "q_bayes_temperature_trajectory_evidence": bayesian_probability_meta.get(
-            "temperature_trajectory_evidence"
-        ),
-        "q_bayes_temperature_trajectory_evidence_base": bayesian_probability_meta.get(
-            "temperature_trajectory_evidence_base"
-        ),
-        "q_bayes_temperature_trajectory_evidence_scale": bayesian_probability_meta.get(
-            "temperature_trajectory_evidence_scale"
-        ),
-        "q_bayes_temperature_trajectory_enabled": bayesian_probability_meta.get(
-            "temperature_trajectory_posterior_enabled"
-        ),
-        "q_bayes_temperature_trajectory_source": bayesian_probability_meta.get(
-            "temperature_trajectory_posterior_source"
-        ),
-        "q_bayes_temperature_trajectory_status": bayesian_probability_meta.get(
-            "temperature_trajectory_posterior_status"
-        ),
-        "q_bayes_temperature_trajectory_mu_c": bayesian_probability_meta.get("temperature_trajectory_mu_c"),
-        "q_bayes_temperature_trajectory_sigma_c": bayesian_probability_meta.get("temperature_trajectory_sigma_c"),
-        "q_bayes_temperature_trajectory_path_mu_c": bayesian_probability_meta.get(
-            "temperature_trajectory_path_mu_c"
-        ),
-        "q_bayes_temperature_trajectory_path_sigma_c": bayesian_probability_meta.get(
-            "temperature_trajectory_path_sigma_c"
-        ),
-        "q_bayes_temperature_trajectory_rate_c_per_hour": bayesian_probability_meta.get(
-            "temperature_trajectory_rate_c_per_hour"
-        ),
-        "q_bayes_temperature_trajectory_rate_hat_c_per_hour": bayesian_probability_meta.get(
-            "temperature_trajectory_rate_hat_c_per_hour"
-        ),
-        "q_bayes_temperature_trajectory_accel_hat_c_per_hour2": bayesian_probability_meta.get(
-            "temperature_trajectory_accel_hat_c_per_hour2"
-        ),
-        "q_bayes_temperature_trajectory_role": bayesian_probability_meta.get("temperature_trajectory_role"),
-        "q_bayes_temperature_trajectory_source_class": bayesian_probability_meta.get(
-            "temperature_trajectory_source_class"
-        ),
-        "q_bayes_temperature_trajectory_dedupe_policy": bayesian_probability_meta.get(
-            "temperature_trajectory_dedupe_policy"
-        ),
-        "q_bayes_temperature_trajectory_weaker_than_hard_source": bayesian_probability_meta.get(
-            "temperature_trajectory_weaker_than_hard_source"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_evidence": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_evidence"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_evidence_raw": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_evidence_raw"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_pp_cap": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_pp_cap"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_pp_max_delta": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_pp_max_delta"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_state": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_state"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_status": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_status"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_role": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_role"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_source_class": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_source_class"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_dedupe_policy": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_dedupe_policy"
-        ),
-        "q_bayes_post_cool_rebound_regime_prior_weaker_than_hard_source": bayesian_probability_meta.get(
-            "post_cool_rebound_regime_prior_weaker_than_hard_source"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_evidence"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence_raw": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_evidence_raw"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_cap": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_pp_cap"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_pp_max_delta": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_pp_max_delta"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_state": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_state"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_status": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_status"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_role": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_role"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_source_class": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_source_class"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_dedupe_policy": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_dedupe_policy"
-        ),
-        "q_bayes_post_cool_rebound_intraday_likelihood_weaker_than_hard_source": bayesian_probability_meta.get(
-            "post_cool_rebound_intraday_likelihood_weaker_than_hard_source"
-        ),
-        "q_bayes_post_cool_rebound_risk_evidence": bayesian_probability_meta.get(
-            "post_cool_rebound_risk_evidence"
-        ),
-        "q_bayes_post_cool_rebound_risk_evidence_raw": bayesian_probability_meta.get(
-            "post_cool_rebound_risk_evidence_raw"
-        ),
-        "q_bayes_post_cool_rebound_risk_pp_cap": bayesian_probability_meta.get(
-            "post_cool_rebound_risk_pp_cap"
-        ),
-        "q_bayes_post_cool_rebound_risk_pp_max_delta": bayesian_probability_meta.get(
-            "post_cool_rebound_risk_pp_max_delta"
-        ),
-        "q_bayes_post_cool_rebound_risk_state": bayesian_probability_meta.get(
-            "post_cool_rebound_risk_state"
-        ),
-        "q_bayes_post_cool_rebound_risk_status": bayesian_probability_meta.get(
-            "post_cool_rebound_risk_status"
-        ),
-        "q_bayes_climo_regime_evidence": bayesian_probability_meta.get("climo_regime_evidence"),
-        "q_bayes_climo_regime_evidence_raw": bayesian_probability_meta.get("climo_regime_evidence_raw"),
-        "q_bayes_climo_regime_pp_cap": bayesian_probability_meta.get("climo_regime_pp_cap"),
-        "q_bayes_climo_regime_pp_max_delta": bayesian_probability_meta.get("climo_regime_pp_max_delta"),
-        "q_bayes_climo_regime_pp_cap_stage": bayesian_probability_meta.get("climo_regime_pp_cap_stage"),
-        "q_bayes_climo_regime_primary_regime": bayesian_probability_meta.get("climo_regime_primary_regime"),
-        "q_bayes_climo_regime_high_temp_gate": bayesian_probability_meta.get("climo_regime_high_temp_gate"),
-        "temperature_trajectory_priority": bayesian_probability_meta.get("temperature_trajectory_priority"),
-        "posterior_temperature_distribution": bayesian_probability_meta.get(
-            "posterior_temperature_distribution"
-        ),
-        "posterior_temperature_distribution_pre_observed_constraints": bayesian_probability_meta.get(
-            "posterior_temperature_distribution_pre_observed_constraints"
-        ),
-        "posterior_temperature_distribution_source": bayesian_probability_meta.get("source"),
-        "q_bayes_climo_regime_explanation": bayesian_probability_meta.get("climo_regime_explanation"),
         "weights": weights,
         "contract_profile": contract_profile,
         "bayesian_data_role_contract": audit_bayesian_data_role_contract(),
@@ -91662,42 +89597,6 @@ def is_temperature_event(ev: Dict) -> bool:
         return False
     market_var = infer_market_variable(title, slug)
     return is_temperature_market_var(market_var)
-
-
-def event_best_edge_score(rows: List[Dict[str, Any]]) -> Optional[float]:
-    best_realizable: Optional[float] = None
-    best_edge: Optional[float] = None
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        for key in ("edge_realizable_score_yes", "edge_realizable_score_no"):
-            score_val = to_float(row.get(key))
-            if score_val is None or not math.isfinite(score_val):
-                continue
-            if best_realizable is None or score_val > best_realizable:
-                best_realizable = float(score_val)
-        for key in ("edge_score_yes", "edge_score_no"):
-            score_val = to_float(row.get(key))
-            if score_val is None or not math.isfinite(score_val):
-                continue
-            if best_edge is None or score_val > best_edge:
-                best_edge = float(score_val)
-    return best_realizable if best_realizable is not None else best_edge
-
-
-def should_block_temperature_event_by_edge_score(
-    market_var: Optional[str],
-    rows: List[Dict[str, Any]],
-    min_edge_score: Optional[float],
-) -> Tuple[bool, Optional[float]]:
-    best_score = event_best_edge_score(rows)
-    if min_edge_score is None or not math.isfinite(min_edge_score) or min_edge_score <= 0:
-        return False, best_score
-    if not is_temperature_market_var(market_var):
-        return False, best_score
-    if best_score is None or best_score + TIME_EDGE_Q_EPS < min_edge_score:
-        return True, best_score
-    return False, best_score
 
 
 def _weather_events_cache_minutes() -> int:
@@ -94889,6 +92788,11 @@ def main() -> None:
         help="Run q_calibrated writeback for this run_date (YYYY-MM-DD)",
     )
     ap.add_argument(
+        "--q-calibrated-writeback-allow-historical",
+        action="store_true",
+        help="Explicitly allow q_calibrated writeback for a non-ET-today run_date",
+    )
+    ap.add_argument(
         "--q-calibrated-writeback-limit",
         type=int,
         default=0,
@@ -94985,10 +92889,11 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=True))
         return
     if args.q_calibrated_writeback_today or args.q_calibrated_writeback_date:
-        run_date = args.q_calibrated_writeback_date or today_date_str(args.tz)
+        run_date = args.q_calibrated_writeback_date or today_date_str("America/New_York")
         result = writeback_q_calibrated_for_run_date(
             run_date,
             limit=int(args.q_calibrated_writeback_limit or 0),
+            allow_historical=bool(args.q_calibrated_writeback_allow_historical),
         )
         print(json.dumps(result, ensure_ascii=True))
         return
@@ -95818,11 +93723,6 @@ def main() -> None:
         skipped: List[Dict[str, str]] = []
         matched = 0
         _refresh_auto_trade_config()
-        scan_temp_event_min_edge_score = AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY
-        if scan_temp_event_min_edge_score is None or not math.isfinite(scan_temp_event_min_edge_score):
-            scan_temp_event_min_edge_score = 0.0
-        if scan_temp_event_min_edge_score < 0:
-            scan_temp_event_min_edge_score = 0.0
         trade_token_map: Dict[str, Dict[str, str]] = {}
         trade_mark_map: Dict[Tuple[str, str, str, str], Optional[float]] = {}
         market_refresh_run_deadline_monotonic: Optional[float] = None
@@ -96139,27 +94039,6 @@ def main() -> None:
                 "event_end_utc": raw_end_date or "",
                 "market_closed": bool(market_closed),
             }
-            block_by_temp_score, best_edge_score = should_block_temperature_event_by_edge_score(
-                market_var,
-                result.get("rows") or [],
-                scan_temp_event_min_edge_score,
-            )
-            if block_by_temp_score:
-                best_text = "missing"
-                if best_edge_score is not None and math.isfinite(best_edge_score):
-                    best_text = f"{best_edge_score:.2f}"
-                reason = f"temp_edge_score<{scan_temp_event_min_edge_score:.2f} (best={best_text})"
-                skipped.append({"slug": slug, "title": title, "reason": reason})
-                print(f"- {title}: skipped ({reason})")
-                if args.archive:
-                    model_count = len(result.get("models") or [])
-                    result["suggestion_filter_stats"] = collect_suggestion_filter_stats(
-                        result.get("rows") or [], args, model_count
-                    )
-                    t_write = time.monotonic()
-                    archive_run(run_date, event_date, result, [], meta)
-                    write_sec += time.monotonic() - t_write
-                continue
             matched += 1
             for row in result.get("rows") or []:
                 outcome = str(row.get("outcome") or "")
@@ -96406,16 +94285,6 @@ def main() -> None:
         return
     _refresh_auto_trade_config()
     result = analyze_event(args.event_url, date, args.lat, args.lon, args.tz, args)
-    single_event_temp_min_edge_score = AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY
-    if single_event_temp_min_edge_score is None or not math.isfinite(single_event_temp_min_edge_score):
-        single_event_temp_min_edge_score = 0.0
-    if single_event_temp_min_edge_score < 0:
-        single_event_temp_min_edge_score = 0.0
-    single_event_blocked_by_temp_score, single_event_best_edge = should_block_temperature_event_by_edge_score(
-        result.get("market_var"),
-        result.get("rows") or [],
-        single_event_temp_min_edge_score,
-    )
     if args.archive:
         meta = {
             "slug": result["slug"],
@@ -96458,17 +94327,8 @@ def main() -> None:
             if not market_closed and raw_end_date:
                 market_closed = is_end_date_passed(raw_end_date)
             meta["market_closed"] = bool(market_closed)
-        if single_event_blocked_by_temp_score:
-            best_text = "missing"
-            if single_event_best_edge is not None and math.isfinite(single_event_best_edge):
-                best_text = f"{single_event_best_edge:.2f}"
-            print(
-                f"- {result.get('title') or result.get('slug') or args.event_url}: "
-                f"skip archive/auto-trade (temp_edge_score<{single_event_temp_min_edge_score:.2f}, best={best_text})"
-            )
-        else:
-            archive_run(run_date, date, result, [], meta)
-        if args.auto_trade and not single_event_blocked_by_temp_score:
+        archive_run(run_date, date, result, [], meta)
+        if args.auto_trade:
             execute_auto_trades(run_date, date, result)
             trade_token_map: Dict[str, Dict[str, str]] = {}
             trade_mark_map: Dict[Tuple[str, str, str, str], Optional[float]] = {}

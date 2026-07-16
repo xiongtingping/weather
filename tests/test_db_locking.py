@@ -93,6 +93,20 @@ class TestDbLocking(unittest.TestCase):
         self.assertIn("PM_MODEL_SCAN_YIELD_TO_MARKET_REFRESH_WHEN_TICK_STALE:=1", script)
         self.assertIn("market_refresh running, yield while ticks stale/unknown", script)
 
+    def test_hourly_model_scan_does_not_hold_parent_archive_writer_lock(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1] / "scripts" / "model_scan_hourly.sh"
+        ).read_text()
+
+        self.assertNotIn(
+            'weather_refresh_db_writer_acquire "model_scan_hourly"',
+            script,
+        )
+        self.assertIn(
+            "Do not hold the archive writer lock around the network/model scan",
+            script,
+        )
+
     def test_model_scan_materializes_stale_facts_before_auto_trade_yield(self) -> None:
         script = (Path(__file__).resolve().parents[1] / "scripts" / "model_scan.sh").read_text()
 
@@ -101,6 +115,28 @@ class TestDbLocking(unittest.TestCase):
         self.assertIn("facts_materialize_on_yield start", script)
         self.assertIn('_model_scan_materialize_stale_facts "auto_trade_worker_process"', script)
         self.assertIn("--materialize-facts --facts-date", script)
+
+    def test_future_discovery_survives_weather_stale_current_day_refresh(self) -> None:
+        script = (Path(__file__).resolve().parents[1] / "scripts" / "model_scan.sh").read_text()
+
+        self.assertIn("PM_MODEL_SCAN_NEW_MARKET_SIGNAL_DAYS_AHEAD:-1", script)
+        self.assertIn("PM_MODEL_SCAN_NEW_MARKET_SIGNAL_MAX_EVENTS_PER_RUN:-2", script)
+        self.assertIn("new market signal preserves future coverage during weather-stale refresh", script)
+        self.assertIn("PM_MODEL_SCAN_WEATHER_STALE_PRIORITY_ENABLED=1", script)
+
+    def test_fast_discovery_persists_cached_tokens_before_gamma_fetch(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "discover_weather_markets_fast.py"
+        ).read_text()
+
+        self.assertIn("def _bootstrap_cached_events", script)
+        self.assertIn('status="cache_bootstrap"', script)
+        self.assertLess(
+            script.index("cached_selected, cache_tokenized, cached_new_slugs = _bootstrap_cached_events("),
+            script.index("events, warnings = swm.fetch_weather_events_from_gamma()"),
+        )
 
     def test_open_db_autocommit_uses_isolation_level_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

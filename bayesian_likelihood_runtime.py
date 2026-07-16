@@ -482,6 +482,22 @@ def _feature_bool(features: Mapping[str, Any], *keys: str) -> Optional[bool]:
     return None
 
 
+def _explicit_final_daily_max_evidence(features: Mapping[str, Any]) -> bool:
+    if _to_float(features.get("settlement_actual")) is not None or _to_float(features.get("settlement_actual_c")) is not None:
+        return True
+    return any(
+        _feature_bool(features, key) is True
+        for key in (
+            "hard_source_final_daily_max",
+            "hard_source_settlement_final",
+            "observed_today_max_final",
+            "observed_today_max_is_final",
+            "temperature_observation_final_daily_max",
+            "daily_max_observation_complete",
+        )
+    )
+
+
 def _flatten_feature_tokens(value: Any) -> List[str]:
     tokens: List[str] = []
     if isinstance(value, Mapping):
@@ -550,6 +566,15 @@ def _wu_twc_intraday_strong_observation_demote_reason(features: Mapping[str, Any
 
 
 def _observed_temp_c(features: Mapping[str, Any]) -> Optional[float]:
+    amsc_usable = (
+        _feature(features, "zuuu_metar_raw_amsc_latest_temp_c") is not None
+        and not _feature_bool(features, "zuuu_metar_raw_amsc_date_mismatch")
+        and not _feature_bool(features, "metar_observation_date_mismatch")
+    )
+    if amsc_usable:
+        amsc_c = _feature(features, "zuuu_metar_raw_amsc_latest_temp_c", "metar_temperature_c")
+        if amsc_c is not None:
+            return amsc_c
     awc_usable = (
         _feature_bool(features, "zuuu_metar_raw_awc_available")
         and not _feature_bool(features, "zuuu_metar_raw_awc_date_mismatch")
@@ -571,6 +596,9 @@ def _forecast_peak_c(features: Mapping[str, Any]) -> Optional[float]:
     forecast_c = _feature(
         features,
         "forecast_peak_temp_c",
+        "taf_forecast_peak_c",
+        "amsc_taf_forecast_peak_c",
+        "settlement_source_forecast_peak_c",
         "model_peak_temp_c",
         "expected_temp_c",
         "temperature_2m_max_c",
@@ -581,6 +609,60 @@ def _forecast_peak_c(features: Mapping[str, Any]) -> Optional[float]:
     raw_fc = _feature(features, "forecast_peak_temp", "model_peak_temp", "expected_temp", "temperature_2m_max")
     if raw_fc is not None:
         return _convert_temp(raw_fc, _feature_unit(features), "C")
+    return None
+
+
+def _observation_hour_local_from_features(features: Mapping[str, Any]) -> Optional[float]:
+    hour = _feature(features, "observation_hour_local", "hour_local", "local_hour")
+    if hour is not None:
+        return float(hour)
+    tz_name = str(features.get("event_tz") or features.get("timezone") or "Asia/Shanghai").strip()
+    for key in (
+        "zuuu_metar_raw_amsc_latest_local",
+        "zuuu_metar_raw_awc_latest_local",
+        "valid_time_local",
+        "latest_valid_time_local",
+        "observed_time_local",
+    ):
+        parsed = _local_hour_from_timestamp(features.get(key), local_timezone="")
+        if parsed is not None:
+            return float(parsed)
+    for key in (
+        "zuuu_metar_raw_amsc_latest_at",
+        "zuuu_metar_raw_awc_latest_at",
+        "valid_time",
+        "latest_valid_time",
+        "observed_time",
+    ):
+        parsed = _local_hour_from_timestamp(features.get(key), local_timezone=tz_name)
+        if parsed is not None:
+            return float(parsed)
+    return None
+
+
+def _forecast_peak_hour_local_from_features(features: Mapping[str, Any]) -> Optional[float]:
+    hour = _feature(features, "local_peak_hour", "expected_peak_hour_local", "peak_hour_local")
+    if hour is not None:
+        return float(hour)
+    tz_name = str(features.get("event_tz") or features.get("timezone") or "Asia/Shanghai").strip()
+    for key in (
+        "taf_forecast_peak_local",
+        "amsc_taf_forecast_peak_local",
+        "expected_peak_at_local",
+        "peak_at_local",
+    ):
+        parsed = _local_hour_from_timestamp(features.get(key), local_timezone="")
+        if parsed is not None:
+            return float(parsed)
+    for key in (
+        "taf_forecast_peak_at",
+        "amsc_taf_forecast_peak_at",
+        "expected_peak_at",
+        "peak_at",
+    ):
+        parsed = _local_hour_from_timestamp(features.get(key), local_timezone=tz_name)
+        if parsed is not None:
+            return float(parsed)
     return None
 
 
@@ -846,6 +928,8 @@ def _soft_intraday_temperature_momentum_profile(
                 "diagnostic_only_rates_c_per_hour": short_rates,
                 "effective_direction_rate_c_per_hour": float(direction_rate) if direction_rate is not None else None,
                 "direction": direction,
+                "consistent_with_amsc": bool(consistent),
+                "conflicts_with_amsc": bool(conflict),
                 "consistent_with_awc": bool(consistent),
                 "conflicts_with_awc": bool(conflict),
                 "used_for_live_momentum": False,
@@ -859,9 +943,9 @@ def _soft_intraday_temperature_momentum_profile(
     elif conflicting_sources:
         status = "direction_conflict_no_boost"
     elif hard_direction == "missing":
-        status = "awc_direction_missing_no_boost"
+        status = "amsc_direction_missing_no_boost"
     elif hard_direction == "flat":
-        status = "awc_direction_flat_no_boost"
+        status = "amsc_direction_flat_no_boost"
     elif sources:
         status = "soft_direction_missing_or_flat_no_boost"
     else:
@@ -871,8 +955,8 @@ def _soft_intraday_temperature_momentum_profile(
         "available": bool(sources),
         "status": status,
         "role": "soft_intraday_diagnostic_not_hard_source",
-        "policy": "does_not_override_awc; confidence_boost_only_when_direction_agrees",
-        "hard_source": "zuuu_metar_raw_awc",
+        "policy": "does_not_override_amsc; confidence_boost_only_when_direction_agrees",
+        "hard_source": "zuuu_metar_raw_amsc",
         "hard_direction_rate_c_per_hour": float(hard_direction_rate) if hard_direction_rate is not None else None,
         "hard_direction": hard_direction,
         "sources": sources,
@@ -896,10 +980,14 @@ def _temperature_momentum_profile(
         )
         if rate is not None and math.isfinite(float(rate)):
             generic_rates[label] = float(rate)
+    amsc_rates = _temperature_momentum_prefixed_rates(features, "zuuu_metar_raw_amsc")
     awc_rates = _temperature_momentum_prefixed_rates(features, "zuuu_metar_raw_awc")
     generic_source = str(features.get("temperature_momentum_source") or "").strip()
     soft_generic_momentum_source = generic_source in TEMPERATURE_MOMENTUM_SOFT_INTRADAY_SOURCES
-    if generic_source == "zuuu_metar_raw_awc":
+    if generic_source == "zuuu_metar_raw_amsc":
+        for label, rate in generic_rates.items():
+            amsc_rates.setdefault(label, rate)
+    elif generic_source == "zuuu_metar_raw_awc":
         for label, rate in generic_rates.items():
             awc_rates.setdefault(label, rate)
 
@@ -920,23 +1008,25 @@ def _temperature_momentum_profile(
     source = generic_source or "temperature_momentum"
     core_source = source
     supplement_source = ""
-    if awc_rates:
-        core_source = "zuuu_metar_raw_awc"
-        source = "zuuu_metar_raw_awc_core"
+    core_rates = amsc_rates or awc_rates
+    core_metar_source = "zuuu_metar_raw_amsc" if amsc_rates else "zuuu_metar_raw_awc"
+    if core_rates:
+        core_source = core_metar_source
+        source = f"{core_metar_source}_core"
         for label in TEMPERATURE_MOMENTUM_CORE_WINDOWS:
-            if label in awc_rates:
-                rates[label] = awc_rates[label]
+            if label in core_rates:
+                rates[label] = core_rates[label]
         for label in TEMPERATURE_MOMENTUM_CONTEXT_WINDOWS:
-            if label in awc_rates:
-                context_rates[label] = awc_rates[label]
-        if not rates and "1h" in generic_rates and generic_source == "zuuu_metar_raw_awc":
+            if label in core_rates:
+                context_rates[label] = core_rates[label]
+        if not rates and "1h" in generic_rates and generic_source == core_metar_source:
             rates["1h"] = generic_rates["1h"]
         for label in TEMPERATURE_MOMENTUM_SUPPLEMENT_WINDOWS:
-            if label in awc_rates and label not in rates:
-                rates[label] = awc_rates[label]
-                supplement_rates[label] = awc_rates[label]
+            if label in core_rates and label not in rates:
+                rates[label] = core_rates[label]
+                supplement_rates[label] = core_rates[label]
         if supplement_rates:
-            supplement_source = "zuuu_metar_raw_awc"
+            supplement_source = core_metar_source
     else:
         if not soft_generic_momentum_source:
             for label in TEMPERATURE_MOMENTUM_CORE_WINDOWS + TEMPERATURE_MOMENTUM_SUPPLEMENT_WINDOWS:
@@ -992,7 +1082,7 @@ def _temperature_momentum_profile(
             "supplement_source": supplement_source,
             "wu_twc_supplement_demoted_reason": wu_demote_reason,
             "soft_intraday_momentum_source_demoted_reason": soft_intraday_demoted_reason,
-            "conclusion": "缺少 AWC/METAR 1h 主动量，软 intraday 源只能作为 regime 诊断佐证，不能单独确认物理升温潜力是否兑现。",
+            "conclusion": "缺少 AMSC/METAR 1h 主动量，软 intraday 源只能作为 regime 诊断佐证，不能单独确认物理升温潜力是否兑现。",
         }
     denom = sum(TEMPERATURE_MOMENTUM_EFFECTIVE_WEIGHTS.get(key, 0.0) for key in rates) or float(len(rates))
     effective = sum(float(rate) * TEMPERATURE_MOMENTUM_EFFECTIVE_WEIGHTS.get(key, 1.0) for key, rate in rates.items()) / max(1e-6, denom)
@@ -1009,7 +1099,7 @@ def _temperature_momentum_profile(
             state = "context_warming_watch"
             label = "多窗口升温观察"
             scale = 0.35
-            conclusion = "短窗口尚未确认升温，但 AWC/METAR 多小时轨迹仍显示升温背景，保守保留突破观察通道。"
+            conclusion = "短窗口尚未确认升温，但 AMSC/METAR 多小时轨迹仍显示升温背景，保守保留突破观察通道。"
         else:
             state = "not_realized"
             label = "未兑现"
@@ -1142,11 +1232,17 @@ def _peak_window_from_features(
         "peak_window_end_hour_local",
         "local_peak_window_end_hour",
     )
-    if start is None and end is None and explicit_peak_hour and peak_hour is not None:
+    basis = "explicit_or_forecast_peak_window" if start is not None or end is not None else ""
+    if start is None and end is None and peak_hour is not None:
         lead = max(0.0, _env_float("PM_BAYES_PEAK_ESTIMATOR_PEAK_WINDOW_LEAD_HOURS", 1.0))
         post = max(0.0, _env_float("PM_BAYES_PEAK_ESTIMATOR_PEAK_WINDOW_POST_HOURS", 1.5))
-        start = math.floor(max(0.0, float(peak_hour) - lead))
-        end = math.ceil(min(23.99, float(peak_hour) + post))
+        start = max(0.0, float(peak_hour) - lead)
+        end = min(23.99, float(peak_hour) + post)
+        basis = "explicit_peak_hour_expanded_window" if explicit_peak_hour else "forecast_or_prior_peak_hour_expanded_window"
+    if start is None and end is None:
+        start = _env_float("PM_BAYES_PEAK_ESTIMATOR_DEFAULT_PEAK_WINDOW_START_HOUR", 13.5)
+        end = _env_float("PM_BAYES_PEAK_ESTIMATOR_DEFAULT_PEAK_WINDOW_END_HOUR", 17.5)
+        basis = "default_chengdu_peak_window_prior_not_single_point"
     if start is not None:
         start = max(0.0, min(23.99, float(start)))
     if end is not None:
@@ -1156,7 +1252,8 @@ def _peak_window_from_features(
     return {
         "start_hour_local": float(start) if start is not None else None,
         "end_hour_local": float(end) if end is not None else None,
-        "basis": "explicit_or_forecast_peak_window" if start is not None or end is not None else "single_peak_hour",
+        "basis": basis or "default_chengdu_peak_window_prior_not_single_point",
+        "single_point_forbidden": True,
     }
 
 
@@ -1372,6 +1469,9 @@ def _temperature_observation_points_from_features(
         features.get("observed_temperature_path"),
         features.get("observed_temperature_points"),
         features.get("temperature_observation_points"),
+        features.get("amsc_temperature_observations"),
+        features.get("zuuu_metar_raw_amsc_temperature_observations"),
+        features.get("zuuu_metar_raw_amsc_today_temperature_points"),
         features.get("awc_temperature_observations"),
         features.get("zuuu_metar_raw_awc_temperature_observations"),
         features.get("zuuu_metar_raw_awc_today_temperature_points"),
@@ -2714,6 +2814,7 @@ def _observed_today_max_for_peak_estimator(features: Mapping[str, Any]) -> Tuple
         candidates.append((float(raw_observed_max), raw_source or "observed_today_max_c"))
 
     for key in (
+        "zuuu_metar_raw_amsc_today_max_c",
         "zuuu_metar_raw_awc_today_max_c",
         "awc_raw_metar_today_max_c",
         "awc_metar_today_max_c",
@@ -2741,6 +2842,124 @@ def _observed_today_max_for_peak_estimator(features: Mapping[str, Any]) -> Tuple
     }
 
 
+def _mapping_feature(features: Mapping[str, Any], *keys: str) -> Dict[str, Any]:
+    for key in keys:
+        value = features.get(key)
+        if isinstance(value, Mapping):
+            return dict(value)
+    return {}
+
+
+def _high_temperature_platform_recoil_meta(
+    features: Mapping[str, Any],
+    *,
+    observed_c: Optional[float],
+    observed_today_max_c: Optional[float],
+    hour_local: Optional[float],
+    peak_window_end_hour_local: Optional[float],
+) -> Dict[str, Any]:
+    if observed_c is None or observed_today_max_c is None or hour_local is None:
+        return {
+            "active": False,
+            "reason": "missing_observed_or_hour",
+        }
+    rolling = _mapping_feature(
+        features,
+        "zuuu_metar_raw_amsc_rolling_temperature_summary",
+        "zuuu_metar_raw_awc_rolling_temperature_summary",
+        "rolling_temperature_observation_summary",
+    )
+    source_text = str(
+        features.get("temperature_momentum_source")
+        or features.get("observed_today_max_source")
+        or features.get("observed_temp_source")
+        or ""
+    ).strip().lower()
+    hard_source = bool(
+        "metar" in source_text
+        or "amsc" in source_text
+        or "awc" in source_text
+        or features.get("zuuu_metar_raw_amsc_latest_temp_c") not in (None, "")
+        or features.get("zuuu_metar_raw_awc_latest_temp_c") not in (None, "")
+    )
+    if not hard_source:
+        return {
+            "active": False,
+            "reason": "hard_metar_source_missing",
+        }
+    latest_drop = _to_float(rolling.get("latest_drop_from_rolling_max_c"))
+    if latest_drop is None:
+        latest_drop = max(0.0, float(observed_today_max_c) - float(observed_c))
+    max_allowed_drop = max(0.0, _env_float("PM_BAYES_PLATFORM_RECOIL_MAX_DROP_C", 1.0))
+    near_high = bool(float(latest_drop) <= float(max_allowed_drop))
+    if not near_high:
+        return {
+            "active": False,
+            "reason": "latest_temperature_too_far_below_platform_high",
+            "latest_drop_from_high_c": float(latest_drop),
+            "max_allowed_drop_c": float(max_allowed_drop),
+        }
+    grace = max(0.0, _env_float("PM_BAYES_PLATFORM_RECOIL_PEAK_WINDOW_GRACE_HOURS", 0.25))
+    peak_open = bool(
+        peak_window_end_hour_local is None
+        or float(hour_local) <= float(peak_window_end_hour_local) + float(grace)
+    )
+    if not peak_open:
+        return {
+            "active": False,
+            "reason": "peak_window_already_closed",
+            "hour_local": float(hour_local),
+            "peak_window_end_hour_local": peak_window_end_hour_local,
+        }
+    raw_weather = " ".join(
+        str(features.get(key) or "")
+        for key in (
+            "weather_text",
+            "cloud_text",
+            "zuuu_metar_raw_amsc_latest_weather_text",
+            "zuuu_metar_raw_amsc_latest_cloud_text",
+            "zuuu_metar_raw_awc_latest_weather_text",
+            "zuuu_metar_raw_awc_latest_cloud_text",
+            "raw_metar",
+            "zuuu_metar_raw_amsc_latest_raw",
+            "zuuu_metar_raw_awc_latest_raw",
+        )
+    ).upper()
+    cutoff_tokens = ("TSRA", "SHRA", "+RA", " CB", "VCB")
+    if any(token in raw_weather for token in cutoff_tokens):
+        return {
+            "active": False,
+            "reason": "convective_or_rain_cutoff_observed",
+            "latest_drop_from_high_c": float(latest_drop),
+        }
+    rolling_state = str(
+        rolling.get("state")
+        or features.get("temperature_trajectory_realization_state")
+        or features.get("temperature_momentum_realization_state")
+        or ""
+    ).strip().lower()
+    platform_like = rolling_state in {"platform", "flat", "mixed", "weak_warming", "sustained_warming", ""}
+    if not platform_like:
+        return {
+            "active": False,
+            "reason": "trajectory_state_not_platform_like",
+            "trajectory_state": rolling_state,
+            "latest_drop_from_high_c": float(latest_drop),
+        }
+    residual_c = max(0.0, _env_float("PM_BAYES_PLATFORM_RECOIL_RESIDUAL_C", 0.55))
+    return {
+        "active": True,
+        "reason": "hard_metar_near_high_platform_before_peak_window_end",
+        "residual_c": float(residual_c),
+        "latest_drop_from_high_c": float(latest_drop),
+        "max_allowed_drop_c": float(max_allowed_drop),
+        "hour_local": float(hour_local),
+        "peak_window_end_hour_local": peak_window_end_hour_local,
+        "trajectory_state": rolling_state or "unknown",
+        "source": "hard_metar_platform_recoil",
+    }
+
+
 def _wet_bulb_c(temp_c: Optional[float], dewpoint_c: Optional[float]) -> Optional[float]:
     if temp_c is None or dewpoint_c is None:
         return None
@@ -2763,7 +2982,7 @@ def _wet_bulb_c(temp_c: Optional[float], dewpoint_c: Optional[float]) -> Optiona
 def _group_templates(features: Mapping[str, Any], config: DynamicLikelihoodConfig) -> Dict[str, Dict[str, Any]]:
     observed_c = _observed_temp_c(features)
     forecast_c = _forecast_peak_c(features)
-    hour = _feature(features, "observation_hour_local", "hour_local", "local_hour")
+    hour = _observation_hour_local_from_features(features)
     cti = _clear_sky_ratio(features)
     cloud = _effective_cloud_cover_pct(features)
     precip_profile = precipitation_evidence_profile(features)
@@ -2969,7 +3188,7 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
         forecast_sigma = math.sqrt(sum((v - mean) ** 2 for v in values) / max(1, len(values) - 1))
     if forecast_sigma is None:
         forecast_sigma = _env_float("PM_BAYES_PEAK_ESTIMATOR_FORECAST_SIGMA_C", 1.5)
-    hour = _feature(features, "observation_hour_local", "hour_local", "local_hour")
+    hour = _observation_hour_local_from_features(features)
     if hour is None or observed_c is None or forecast_c is None:
         return {
             "enabled": False,
@@ -2982,7 +3201,7 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
     observed_today_max, observed_today_max_meta = _observed_today_max_for_peak_estimator(features)
     lock_hour = _env_float("PM_BAYES_PEAK_ESTIMATOR_LOCK_HOUR", 14.0)
     min_hour = _env_float("PM_BAYES_PEAK_ESTIMATOR_MIN_USEFUL_HOUR", 5.0)
-    peak_hour = _feature(features, "local_peak_hour", "expected_peak_hour_local", "peak_hour_local")
+    peak_hour = _forecast_peak_hour_local_from_features(features)
     explicit_peak_hour = peak_hour is not None
     if peak_hour is None:
         peak_hour = _env_float("PM_BAYES_LIKELIHOOD_REFRESH_PEAK_HOUR", 16.0)
@@ -2993,6 +3212,13 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
     )
     peak_window_end = _to_float(peak_window.get("end_hour_local"))
     peak_window_start = _to_float(peak_window.get("start_hour_local"))
+    platform_recoil = _high_temperature_platform_recoil_meta(
+        features,
+        observed_c=observed_c,
+        observed_today_max_c=observed_today_max,
+        hour_local=hour,
+        peak_window_end_hour_local=peak_window_end,
+    )
     hours_to_peak_center = max(0.0, float(peak_hour) - float(hour))
     hours_to_peak = max(0.0, float((peak_window_end if peak_window_end is not None else peak_hour)) - float(hour))
     rise_rate = _feature(
@@ -3031,14 +3257,15 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
     ):
         breakout_rate = float(momentum_context_rate)
     lock_threshold_hour = max(float(lock_hour), float(peak_window_end)) if peak_window_end is not None else float(lock_hour)
-    breakout_after_lock = bool(
+    post_prediction_window_warming_watch = bool(
         _env_bool("PM_BAYES_PEAK_ESTIMATOR_BREAKOUT_AFTER_LOCK_ENABLED", True)
         and hours_to_peak > _env_float("PM_BAYES_PEAK_ESTIMATOR_BREAKOUT_MIN_HOURS_TO_PEAK", 0.25)
         and breakout_rate is not None
         and float(breakout_rate) >= _env_float("PM_BAYES_PEAK_ESTIMATOR_BREAKOUT_MIN_RATE_C_PER_H", 0.50)
         and momentum_state in {"sustained_warming", "emerging_warming", "weak_warming", "context_warming_watch"}
     )
-    if float(hour) >= float(lock_threshold_hour) and not breakout_after_lock:
+    explicit_final_daily_max = _explicit_final_daily_max_evidence(features)
+    if explicit_final_daily_max:
         locked = max(float(observed_c), float(observed_today_max) if observed_today_max is not None else float(observed_c))
         selected_source_text = str(observed_today_max_meta.get("used_source") or "").lower()
         trusted_observed_lock = bool(
@@ -3067,6 +3294,8 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
             "hours_to_peak_window": float(hours_to_peak),
             "hours_to_peak_center": float(hours_to_peak_center),
             "lock_threshold_hour_local": float(lock_threshold_hour),
+            "observed_peak_finalization_state": "final",
+            "prediction_window_lock_forbidden": True,
         }
     if float(hour) < float(min_hour):
         return {
@@ -3196,6 +3425,11 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
     extrapolation_mu = float(observed_c) + adjusted_delta_mu
     if observed_today_max is not None:
         extrapolation_mu = max(extrapolation_mu, float(observed_today_max))
+    if platform_recoil.get("active") and observed_today_max is not None:
+        residual_floor = float(observed_today_max) + float(platform_recoil.get("residual_c") or 0.0)
+        if extrapolation_mu < residual_floor:
+            extrapolation_mu = residual_floor
+            adjusted_delta_mu = max(0.0, float(extrapolation_mu) - float(observed_c))
     if high_temp_guard.get("active"):
         residual_cap_c = max(0.0, _env_float("PM_BAYES_HIGH_TEMP_GUARD_MAX_RESIDUAL_C", 0.8))
         guard_base_c = max(float(observed_c), float(observed_today_max) if observed_today_max is not None else float(observed_c))
@@ -3212,7 +3446,9 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
         gain = max(gain, _clamp(_env_float("PM_BAYES_HIGH_TEMP_GUARD_MIN_OBS_GAIN", 0.86), 0.0, 1.0))
     rho = _clamp(_env_float("PM_BAYES_PEAK_ESTIMATOR_CORRELATION", 0.3), 0.0, 0.95)
     blended_mu = gain * extrapolation_mu + (1.0 - gain) * float(forecast_c)
-    if observed_today_max is not None and _observed_today_max_is_strong(features):
+    # A selected observed-to-date maximum is a physical lower bound on the
+    # final maximum even when another intraday source was demoted.
+    if observed_today_max is not None:
         blended_mu = max(float(blended_mu), float(observed_today_max))
     blended_var = (
         gain**2 * adjusted_delta_sigma**2
@@ -3242,6 +3478,9 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
         "hours_to_peak_window": float(hours_to_peak),
         "hours_to_peak_center": float(hours_to_peak_center),
         "lock_threshold_hour_local": float(lock_threshold_hour),
+        "observed_peak_finalization_state": "provisional",
+        "prediction_window_lock_forbidden": True,
+        "forecast_peak_window_used_as_weak_context_only": True,
         "delta_mu_c": float(delta_mu),
         "delta_sigma_c": float(delta_sigma),
         "adjusted_delta_mu_c": float(adjusted_delta_mu),
@@ -3251,8 +3490,11 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
         "precip_evaporative_cooling_c": float(precip_cooling_c),
         "wet_bulb_penalty_c": float(wet_bulb_penalty_c),
         "combined_discount": float(combined_discount),
-        "post_lock_breakout_projection": bool(breakout_after_lock),
+        "post_prediction_window_warming_watch": bool(post_prediction_window_warming_watch),
+        "post_lock_breakout_projection": False,
         "post_lock_breakout_rate_c_per_hour": float(breakout_rate) if breakout_rate is not None else None,
+        "platform_recoil_watch": platform_recoil,
+        "platform_recoil_active": bool(platform_recoil.get("active")),
         "high_temp_amplification_guard_active": bool(high_temp_guard.get("active")),
         "high_temp_amplification_guard": high_temp_guard,
         "high_temp_guard_residual_cap_c": _env_float("PM_BAYES_HIGH_TEMP_GUARD_MAX_RESIDUAL_C", 0.8),
@@ -3288,7 +3530,10 @@ def estimate_peak_temperature_from_features(features: Mapping[str, Any]) -> Dict
             "wet_bulb_penalty_c": float(wet_bulb_penalty_c),
             "hours_to_peak_window": float(hours_to_peak),
             "hours_to_peak_center": float(hours_to_peak_center),
-            "post_lock_breakout_projection": bool(breakout_after_lock),
+            "post_prediction_window_warming_watch": bool(post_prediction_window_warming_watch),
+            "post_lock_breakout_projection": False,
+            "platform_recoil_active": bool(platform_recoil.get("active")),
+            "platform_recoil_watch": platform_recoil,
             "high_temp_amplification_guard_active": bool(high_temp_guard.get("active")),
         },
     }
@@ -3727,7 +3972,11 @@ def compute_weather_likelihood_vector(
         min_separation_c=config.bimodal_min_separation_c,
         valley_ratio=config.bimodal_valley_ratio,
     )
-    risk_size_scale = float(config.bimodal_size_scale) if bimodal.get("bimodal") else 1.0
+    # Multi-modality is uncertainty structure, not an independent legacy
+    # sizing gate.  The canonical joint weak mixture preserves the scenarios;
+    # confidence/position capacity must come from its approved information
+    # surface and posterior, never from this binary old special case.
+    risk_size_scale = 1.0
     physical_evidence = _summarize_component_groups(rows)
     return {
         "enabled": True,

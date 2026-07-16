@@ -1,0 +1,21 @@
+{
+  "schema": "official_nwp_daily_curve_monitor_job_v1",
+  "job_id": "official_nwp_daily_curve_prospective_capture_v1",
+  "capture_generation": "v2_raw_payload_identity",
+  "enabled_by_default": false,
+  "enable_environment_key": "PM_OFFICIAL_NWP_CURVE_COLLECTION_ENABLED",
+  "target_day_offset": 1,
+  "providers": ["ecmwf", "icon", "gfs"],
+  "minimum_interval_sec": 3600,
+  "one_run_per_provider_per_target_day": true,
+  "execution_budget": {
+    "max_provider_runs_per_job": 1,
+    "max_run_fallbacks": 2,
+    "max_parallel_point_collects": 2,
+    "hot_path_network_acquisition": false,
+    "may_run_during_amsc_fast_lane": false,
+    "writes_archive_db": false,
+    "writes_posterior": false,
+    "places_orders": false
+  }
+}

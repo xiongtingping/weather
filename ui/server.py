@@ -40,19 +40,12 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from edge_realizable import edge_realizable, edge_realizable_score, edge_realizable_v2
-from edge_signal_runtime import compute_signal_advantage, enrich_signal_observability
-from edge_path_runtime import estimate_path_probability
-from edge_exec_runtime import estimate_tradeable_edge_floor
-from edge_policy_runtime import load_edge_policy_from_env, evaluate_tradeability
+from archive_db_write_queue import archive_db_write_gate
 from target_realization_schema import apply_target_realization_aliases
-from weather_strategy_runtime import apply_weather_strategy_profile
 from posterior_settlement_runtime import apply_posterior_observed_constraints_to_distribution
-from bayesian_probability_runtime import (
-    apply_hard_source_posterior_override_to_distribution,
-    _temperature_bucket_bounds as bayes_temperature_bucket_bounds,
-    _temperature_trajectory_channel_probs as bayes_temperature_trajectory_channel_probs,
-)
+from hierarchical_posterior_pipeline_runtime import build_hierarchical_posterior_pipeline
+from source_observation_runtime import build_source_observation
+from temperature_prior_runtime import build_temperature_prior_distribution
 from bayesian_likelihood_runtime import (
     compute_weather_likelihood_vector,
     estimate_peak_temperature_from_features,
@@ -65,6 +58,21 @@ from chengdu_intraday_summary import (
     _sync_target_bucket_outlook_with_temperature_path_distribution,
     _target_bucket_outlook,
 )
+from weather_fact_snapshot_writer import (
+    apply_fact_latest_repoint_plan as apply_weather_fact_latest_repoint_plan,
+    apply_fact_snapshot_write_plan as apply_weather_fact_snapshot_write_plan,
+    apply_fact_summary_cache_repair_plan as apply_weather_fact_summary_cache_repair_plan,
+    build_fact_latest_repoint_plan as build_weather_fact_latest_repoint_plan,
+    build_fact_snapshot_write_plan as build_weather_fact_snapshot_write_plan,
+    build_fact_summary_cache_repair_plan as build_weather_fact_summary_cache_repair_plan,
+    compact_replaced_event_fact_history_row as compact_weather_replaced_event_fact_history_row,
+    event_fact_latest_update_allowed as weather_event_fact_latest_update_allowed,
+    merge_fill_fact_payload as merge_fill_weather_fact_payload,
+)
+from auto_trade_decision_writer import insert_auto_trade_decision_rows
+from auto_trade_job_writer import mark_stale_auto_trade_jobs_stuck
+from auto_order_ledger_writer import insert_auto_order_ignore
+from edge_trade_ledger_writer import update_edge_trade_by_key, upsert_smoke_test_entry
 
 try:
     from eth_account import Account as EthAccount
@@ -76,57 +84,9 @@ DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "archive.db"
 
 
-def _path_probability_follow_env_key(env_key: str) -> str:
-    key = str(env_key or "")
-    if key.startswith("PM_LCB_GLOBAL_"):
-        return "PM_PATH_PROBABILITY_FOLLOW_" + key[len("PM_LCB_GLOBAL_") :]
-    return key
-
-
-def _env_value_with_path_follow_alias(env_key: str) -> Optional[str]:
-    key = str(env_key or "")
-    primary = _path_probability_follow_env_key(key)
-    if primary != key:
-        raw = os.environ.get(primary)
-        if raw is not None:
-            return raw
-    return os.environ.get(key)
-
-
-def _path_probability_follow_config_key(config_key: str) -> str:
-    key = str(config_key or "")
-    if key.startswith("lcb_global_"):
-        return "path_probability_follow_" + key[len("lcb_global_") :]
-    return key
-
-
-def _with_path_probability_follow_config_aliases(config: Dict[str, Any]) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-    items = list(config.items())
-    for key, value in items:
-        key_text = str(key or "")
-        primary_key = _path_probability_follow_config_key(key_text)
-        if primary_key not in out:
-            out[primary_key] = value
-    for key, value in items:
-        key_text = str(key or "")
-        if key_text.startswith("path_probability_follow_"):
-            compat_key = "lcb_global_" + key_text[len("path_probability_follow_") :]
-            out.setdefault(compat_key, value)
-        elif key_text.startswith("lcb_global_"):
-            out.setdefault(key_text, value)
-        else:
-            out.setdefault(key, value)
-    flags = out.get("flags")
-    if isinstance(flags, dict):
-        out["flags"] = _with_path_probability_follow_config_aliases(flags)
-    return out
-
-
 def _public_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    aliased = _with_path_probability_follow_config_aliases(config if isinstance(config, dict) else {})
     out: Dict[str, Any] = {}
-    for key, value in aliased.items():
+    for key, value in (config if isinstance(config, dict) else {}).items():
         key_text = str(key or "")
         if key_text.startswith("lcb_global_"):
             continue
@@ -263,59 +223,8 @@ AUTO_TRADE_TRACE_LIVE_POSITION_REALTIME = _AUTO_TRADE_TRACE_LIVE_REALTIME_RAW no
 AUTO_TRADE_TRACE_LIVE_CACHE_SEC = max(
     0, int(os.environ.get("PM_AUTO_TRADE_TRACE_LIVE_CACHE_SEC", "1") or 1)
 )
-AUTO_TRADE_TRACE_LIVE_REFRESH_MAX_EVENTS = max(
-    1, int(os.environ.get("PM_AUTO_TRADE_TRACE_LIVE_REFRESH_MAX_EVENTS", "2") or 2)
-)
-AUTO_TRADE_TRACE_ENTRY_REFRESH_MAX_EVENTS = max(
-    1, int(os.environ.get("PM_AUTO_TRADE_TRACE_ENTRY_REFRESH_MAX_EVENTS", "2") or 2)
-)
-AUTO_TRADE_TRACE_LIVE_MARKET_REFRESH_COOLDOWN_SEC = max(
-    1,
-    int(os.environ.get("PM_AUTO_TRADE_TRACE_LIVE_MARKET_REFRESH_COOLDOWN_SEC", "3") or 3),
-)
-AUTO_TRADE_TRACE_ENTRY_MARKET_REFRESH_COOLDOWN_SEC = max(
-    2,
-    int(os.environ.get("PM_AUTO_TRADE_TRACE_ENTRY_REFRESH_COOLDOWN_SEC", "8") or 8),
-)
 AUTO_TRADE_TRACE_REFRESH_STALE_SEC = max(
     5, int(os.environ.get("PM_AUTO_TRADE_TRACE_REFRESH_STALE_SEC", "20") or 20)
-)
-AUTO_TRADE_TRACE_REFRESH_MAX_EVENTS = max(
-    1, int(os.environ.get("PM_AUTO_TRADE_TRACE_REFRESH_MAX_EVENTS", "2") or 2)
-)
-AUTO_TRADE_TRACE_MARKET_REFRESH_COOLDOWN_SEC = max(
-    5, int(os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_COOLDOWN_SEC", "25") or 25)
-)
-AUTO_TRADE_TRACE_MARKET_REFRESH_DEPTH_LEVELS = max(
-    1, int(os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_DEPTH_LEVELS", "5") or 5)
-)
-AUTO_TRADE_TRACE_MARKET_REFRESH_MAX_OUTCOMES = max(
-    0, int(os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_MAX_OUTCOMES", "6") or 6)
-)
-try:
-    AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC = float(
-        os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC", "3") or 3
-    )
-except (TypeError, ValueError):
-    AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC = 3.0
-if not math.isfinite(AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC) or AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC < 0:
-    AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC = 3.0
-try:
-    AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC = float(
-        os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC", "1") or 1
-    )
-except (TypeError, ValueError):
-    AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC = 1.0
-if not math.isfinite(AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC) or AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC <= 0:
-    AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC = 1.0
-AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_RETRIES = max(
-    1, min(3, int(os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_RETRIES", "1") or 1))
-)
-AUTO_TRADE_TRACE_MARKET_REFRESH_HINT_SEC = max(
-    30, int(os.environ.get("PM_AUTO_TRADE_TRACE_MARKET_REFRESH_HINT_SEC", "120") or 120)
-)
-AUTO_TRADE_TRACE_PENDING_RECOMPUTE_SEC = max(
-    8, int(os.environ.get("PM_AUTO_TRADE_TRACE_PENDING_RECOMPUTE_SEC", "15") or 15)
 )
 AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS = max(
     3, int(os.environ.get("PM_AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS", "8") or 8)
@@ -323,10 +232,6 @@ AUTO_TRADE_TRACE_BLOCKER_RECENT_RUNS = max(
 AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX = min(
     0.01, max(0.0005, float(os.environ.get("PM_AUTO_TRADE_TRACE_ONE_SIDED_ASK_MAX", "0.0015") or 0.0015))
 )
-_AUTO_TRADE_TRACE_MARKET_REFRESH_AT: Dict[str, float] = {}
-_AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_AT: Dict[str, float] = {}
-_AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_CREATED: Dict[str, str] = {}
-_AUTO_TRADE_TRACE_MARKET_REFRESH_AT_LOCK = threading.Lock()
 try:
     UI_SNAPSHOT_CACHE_SEC = int(float(os.environ.get("PM_UI_SNAPSHOT_CACHE_SEC", "15") or 15))
 except (TypeError, ValueError):
@@ -372,7 +277,7 @@ UI_SNAPSHOT_SUMMARY_FAST = str(os.environ.get("PM_UI_SNAPSHOT_SUMMARY_FAST", "1"
     "no",
     "off",
 }
-EVENT_FACT_SUMMARY_CACHE_VERSION = "event_fact_summary_cache_v6_awc_raw_observation_compact"
+EVENT_FACT_SUMMARY_CACHE_VERSION = "event_fact_summary_cache_v8_posterior_ssot_no_target_fallback"
 UI_SNAPSHOT_SUMMARY_LIVE_MARKET_HYDRATE = str(
     os.environ.get("PM_UI_SNAPSHOT_SUMMARY_LIVE_MARKET_HYDRATE", "0") or "0"
 ).strip().lower() in {"1", "true", "yes", "on"}
@@ -792,7 +697,7 @@ if LONDON_FOLLOW_SIM_ALIGN_FOLLOW_ENTRY:
 # refresh rows even if fact_as_of timestamps are unchanged.
 # Bump this whenever facts composition semantics change, so `--materialize-facts` can re-compose
 # the latest facts even when `fact_as_of` is unchanged (SSOT: avoid stale/null derived fields).
-FACTS_COMPOSER_VERSION = os.environ.get("PM_FACTS_COMPOSER_VERSION", "ui_server_event_runs_v10")
+FACTS_COMPOSER_VERSION = os.environ.get("PM_FACTS_COMPOSER_VERSION", "ui_server_event_runs_v11")
 
 
 def load_env_file(path: Path) -> None:
@@ -1057,6 +962,10 @@ if not UI_SERVER_PIDFILE_PATH.is_absolute():
 FACTS_MATERIALIZE_LOCK_DIR = DATA_DIR / "facts_materialize.lock"
 FACTS_MATERIALIZE_LOCK_META_PATH = FACTS_MATERIALIZE_LOCK_DIR / "meta.json"
 AUTO_TRADE_SMOKE_TEST_LOCK_DIR = DATA_DIR / "auto_trade_smoke_test.lock"
+AUTO_TRADE_SMOKE_TEST_CONFIRM_PHRASE = str(
+    os.environ.get("PM_AUTO_TRADE_SMOKE_TEST_CONFIRM_PHRASE")
+    or "REAL_MONEY_SMOKE_TEST"
+).strip()
 # Cross-process runtime lock so scan jobs can yield to auto-trade (reduce SQLite contention).
 AUTO_TRADE_RUNTIME_LOCK_DIR = DATA_DIR / "auto_trade_runtime.lock"
 AUTO_TRADE_RUNTIME_LOCK_META = AUTO_TRADE_RUNTIME_LOCK_DIR / "meta.json"
@@ -1072,6 +981,11 @@ SYSTEM_PAUSE_STATE_PATH = DATA_DIR / "system_pause_state.json"
 MARKET_REFRESH_LOG_PATH = DATA_DIR / "market_refresh.log"
 REJECT_LEDGER_REPORT_PATH = DATA_DIR / "reports" / "reject_ledger_latest.json"
 CHENGDU_MODEL_HIT_RATE_AUDIT_REPORT_PATH = DATA_DIR / "reports" / "chengdu_model_hit_rate_audit_latest.json"
+FORECAST_SOURCE_ACCURACY_REPORT_PATH = DATA_DIR / "research" / "forecast_source_skill" / "daily" / "accuracy_by_horizon_season.json"
+OFFICIAL_FORECAST_SOURCE_ACCURACY_REPORT_PATH = DATA_DIR / "research" / "joint_forecast_weak_likelihood" / "official_accuracy_by_horizon_season.json"
+FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND = "forecast_source_accuracy_by_horizon_season"
+JOINT_WEAK_BIAS_RESEARCH_ROOT = DATA_DIR / "research" / "joint_forecast_weak_likelihood" / "bias_pipeline"
+JOINT_WEAK_BIAS_RESEARCH_SNAPSHOT_KIND = "joint_weak_bias_research_readiness"
 SCAN_LOCK = threading.Lock()
 AUTO_TRADE_RUN_LOCK = threading.Lock()
 AB_ENTRY_RESULTS_LOCK = threading.Lock()
@@ -1898,10 +1812,8 @@ try:
         _compact_decision_details as _compact_scan_decision_details,
         _build_entry_usable_edge_audit as scan_build_entry_usable_edge_audit,
         _entry_strategy_family_from_details as scan_entry_strategy_family_from_details,
-        ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION as SCAN_ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION,
         sync_trade_fills as scan_sync_trade_fills,
         clear_residual_positions as scan_clear_residual_positions,
-        refresh_market_ticks_for_event as scan_refresh_market_ticks_for_event,
         compute_model_bias_stats as scan_compute_model_bias_stats,
         compute_place_bias_stats as scan_compute_place_bias_stats,
     )
@@ -1928,13 +1840,11 @@ except Exception:
     scan_auto_trade_job_status = None
     scan_sync_trade_fills = None
     scan_clear_residual_positions = None
-    scan_refresh_market_ticks_for_event = None
     scan_compute_model_bias_stats = None
     scan_compute_place_bias_stats = None
     _compact_scan_decision_details = None
     scan_build_entry_usable_edge_audit = None
     scan_entry_strategy_family_from_details = None
-    SCAN_ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION = "entry_usable_edge_order_guard_unavailable"
 
 STATUS_HIT = "\u547d\u4e2d"
 STATUS_MISS = "\u672a\u547d\u4e2d"
@@ -2423,11 +2333,104 @@ def _ssot_row_is_hard_zero(row: Any) -> bool:
         _truthy(row.get("posterior_settlement_candidate_bucket_hard_zero"))
         or _truthy(row.get("q_posterior_observed_constraints_hard_zero"))
         or _truthy(row.get("q_bayes_physical_likelihood_hard_zero"))
+        or _truthy(row.get("hard_zero"))
+        or _truthy(row.get("hard_masked"))
         or _truthy(row.get("impossible_by_observed_max"))
         or "observed_today_max_above_bucket" in reason_text
         or "final_bucket_lock" in reason_text
         or "hard_source_final_bucket_lock" in reason_text
     )
+
+
+def _posterior_ssot_unavailable_reason_for_ui(item: Mapping[str, Any]) -> str:
+    if not isinstance(item, Mapping):
+        return ""
+    if item.get("settlement_actual") not in (None, "", [], {}):
+        return ""
+    ssot = item.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping):
+        has_posterior_surface = any(
+            item.get(key) not in (None, "", [], {})
+            for key in (
+                "posterior_temperature_distribution",
+                "posterior_temperature_distribution_map",
+                "distribution",
+                "target_bucket",
+                "ssot_target_bucket",
+                "target_bucket_selection",
+                "posterior_target_bucket_selection",
+                "target_bucket_outlook",
+                "target_realization_capital_plan",
+            )
+        )
+        return "posterior_ssot_fact_missing" if has_posterior_surface else ""
+    schema = str(ssot.get("schema") or "").strip()
+    state = str(ssot.get("state") or "").strip()
+    if schema not in {
+        "bayes_posterior_ssot_fact_v1",
+        "bayes_posterior_ssot_fact_placeholder_v1",
+    } and not state:
+        return ""
+    label = str(ssot.get("target_bucket") or ssot.get("top_bucket") or ssot.get("selected_bucket") or "").strip()
+    probability = _ui_snapshot_prob01_from_value(ssot.get("target_probability"))
+    if schema == "bayes_posterior_ssot_fact_v1" and state == "available" and label and probability is not None:
+        return ""
+    return str(
+        ssot.get("state_reason")
+        or ssot.get("na_reason")
+        or (f"posterior_ssot_fact_{state}" if state else "posterior_ssot_fact_unavailable")
+    )
+
+
+def _suppress_ui_target_fields_when_posterior_ssot_unavailable(item: MutableMapping[str, Any]) -> None:
+    if not isinstance(item, MutableMapping):
+        return
+    reason = _posterior_ssot_unavailable_reason_for_ui(item)
+    if not reason:
+        return
+    for key in (
+        "ssot_target_bucket",
+        "target_bucket",
+        "target_bucket_probability_pct",
+        "target_probability_pct",
+        "target_probability",
+        "target_bucket_probability",
+        "target_bucket_selection",
+        "posterior_target_bucket_selection",
+        "target_bucket_outlook",
+        "target_realization_capital_plan",
+        "target_switch_context",
+        "temperature_path_distribution",
+        "posterior_highest_bucket_label",
+        "posterior_highest_probability_pct",
+    ):
+        item.pop(key, None)
+    item["target_bucket_source"] = "posterior_ssot_fact.unavailable"
+    item["target_bucket_source_semantics"] = "bayes_posterior_ssot_fact_v1"
+    item["target_bucket_probability_field"] = "posterior_ssot_fact.target_probability"
+    item["target_bucket_na_reason"] = reason
+    item["posterior_target_na_reason"] = reason
+    summary = item.get("chengdu_intraday_summary")
+    if isinstance(summary, MutableMapping):
+        for key in (
+            "ssot_target_bucket",
+            "target_bucket",
+            "target_bucket_probability_pct",
+            "target_bucket_selection",
+            "posterior_target_bucket_selection",
+            "target_bucket_outlook",
+            "target_realization_capital_plan",
+            "target_switch_context",
+            "temperature_path_distribution",
+            "posterior_highest_bucket_label",
+            "posterior_highest_probability_pct",
+        ):
+            summary.pop(key, None)
+        summary["target_bucket_source"] = "posterior_ssot_fact.unavailable"
+        summary["target_bucket_source_semantics"] = "bayes_posterior_ssot_fact_v1"
+        summary["target_bucket_probability_field"] = "posterior_ssot_fact.target_probability"
+        summary["target_bucket_na_reason"] = reason
+        summary["posterior_target_na_reason"] = reason
 
 
 def _ssot_bucket_row_by_label(rows: Any, label: Any) -> Dict[str, Any]:
@@ -2512,159 +2515,131 @@ def _latest_fact_payload_for_chengdu_intraday_ssot(event_date: str) -> Dict[str,
     return payload
 
 
+_REPORTED_PHYSICAL_X_SSOT_SCHEMAS = frozenset(
+    {
+        "sequential_temperature_posterior_ssot_v3_reported_x",
+        "sequential_temperature_posterior_ssot_v4_reported_x",
+    }
+)
+_SEQUENTIAL_TEMPERATURE_SSOT_SCHEMAS = frozenset(
+    {"sequential_temperature_posterior_ssot_v2", *_REPORTED_PHYSICAL_X_SSOT_SCHEMAS}
+)
+
+
+def _is_reported_physical_x_ssot_schema(value: Any) -> bool:
+    return str(value or "").strip() in _REPORTED_PHYSICAL_X_SSOT_SCHEMAS
+
+
+def _is_sequential_temperature_ssot_schema(value: Any) -> bool:
+    return str(value or "").strip() in _SEQUENTIAL_TEMPERATURE_SSOT_SCHEMAS
+
+
 def _canonical_target_from_fact_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(payload, Mapping):
         return {}
-    ctp_first = bool(payload.get("posterior_target_direct_fast_trade_write")) or (
-        str(payload.get("target_bucket_probability_field") or "").strip()
-        == "posterior_temperature_distribution.bucket_probabilities"
+
+    def valid_target(label_value: Any, row_value: Any = None) -> bool:
+        label_text = str(label_value or "").strip()
+        if not label_text:
+            return False
+        return not _ssot_row_is_hard_zero(row_value)
+
+    posterior_ssot = payload.get("posterior_ssot_fact")
+    if not isinstance(posterior_ssot, Mapping):
+        return {}
+    reported_x_schema = _is_reported_physical_x_ssot_schema(posterior_ssot.get("schema"))
+    market_rows_value = posterior_ssot.get("market_bucket_probabilities")
+    if reported_x_schema and not market_rows_value:
+        # X is a physical whole-degree posterior.  Only the approved X->S->B
+        # bridge may create a market target; the UI must never infer B from an
+        # observed temperature, X lower bound, or the X distribution itself.
+        return {}
+    state = str(posterior_ssot.get("state") or "").strip()
+    label = str(
+        posterior_ssot.get("target_bucket")
+        or posterior_ssot.get("top_bucket")
+        or posterior_ssot.get("selected_bucket")
+        or ""
+    ).strip()
+    prob = _ui_snapshot_prob01_from_value(posterior_ssot.get("target_probability"))
+    prob_pct = float(prob) * 100.0 if prob is not None else _prob_pct_from_ssot_value(
+        posterior_ssot.get("target_probability_pct")
     )
-    if ctp_first:
-        ctp_probs = _posterior_temperature_distribution_probabilities(payload)
-        ranked_ctp = sorted(
-            (
-                (float(prob) * 100.0, str(label), float(prob))
-                for label, prob in ctp_probs.items()
-                if str(label).strip()
-            ),
-            key=lambda item: item[0],
-            reverse=True,
+    target_rows = (
+        _compact_posterior_ssot_bucket_rows_for_ui_snapshot(market_rows_value, limit=12)
+        if reported_x_schema
+        else payload.get("distribution") if isinstance(payload.get("distribution"), list) else []
+    )
+    target_distribution_row = _ssot_bucket_row_by_label(target_rows, label)
+    if label and (not state or state == "available") and valid_target(label, target_distribution_row):
+        ranked_rows = _compact_posterior_ssot_bucket_rows_for_ui_snapshot(
+            market_rows_value
+            if reported_x_schema
+            else posterior_ssot.get("bucket_probabilities")
+            or posterior_ssot.get("ranked_bucket_probabilities"),
+            limit=12,
         )
-        if ranked_ctp:
-            pct, label, prob = ranked_ctp[0]
-            second = next((candidate for candidate in ranked_ctp[1:] if float(candidate[0]) > 1e-7), None)
+        ranked_rows = _sorted_posterior_ssot_bucket_rows_for_ui_snapshot(ranked_rows, limit=12)
+        if not ranked_rows and prob is not None:
             ranked_rows = [
                 {
-                    "outcome": row_label,
-                    "q_temperature_bucket_posterior": row_prob,
-                    "q_bayes_posterior": row_prob,
-                    "probability": row_prob,
-                    "probability_pct": row_pct,
-                    "posterior_field": "posterior_temperature_distribution.bucket_probabilities",
+                    "outcome": label,
+                    "probability": float(prob),
+                    "probability_pct": float(prob) * 100.0,
+                    "posterior_field": "posterior_ssot_fact.target_probability",
                 }
-                for row_pct, row_label, row_prob in ranked_ctp[:8]
             ]
-            return {
-                "label": label,
-                "prob_pct": pct,
-                "prob": prob,
-                "row": ranked_rows[0] if ranked_rows else {},
-                "second_label": second[1] if second else "",
-                "second_prob_pct": second[0] if second else None,
-                "second_prob": second[2] if second else None,
-                "probability_field": "posterior_temperature_distribution.bucket_probabilities",
-                "source": "event_fact_latest.posterior_temperature_distribution_top1",
-                "ranked_rows": ranked_rows,
-            }
-    distribution = payload.get("distribution")
-    ranked: List[Tuple[float, str, Dict[str, Any]]] = []
-    if isinstance(distribution, list):
-        for raw in distribution:
-            if not isinstance(raw, Mapping):
-                continue
-            label = _bucket_label_from_ssot_row(raw)
-            pct = _posterior_pct_from_ssot_row(raw)
-            if not label or pct is None:
-                continue
-            ranked.append((float(pct), label, dict(raw)))
-    ranked.sort(key=lambda item: item[0], reverse=True)
-    if ranked:
-        pct, label, row = ranked[0]
-        second = next(
+        second_row = next(
             (
-                candidate
-                for candidate in ranked[1:]
-                if float(candidate[0]) > 1e-9 and not _ssot_row_is_hard_zero(candidate[2])
+                row
+                for row in ranked_rows
+                if str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip()
+                and str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip() != label
+                and valid_target(
+                    str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip(),
+                    row,
+                )
+                and (_ui_snapshot_prob01_from_value(row.get("probability")) or 0.0) > 0.0
             ),
             None,
         )
-        return {
-            "label": label,
-            "prob_pct": pct,
-            "prob": pct / 100.0,
-            "row": row,
-            "second_label": second[1] if second else "",
-            "second_prob_pct": second[0] if second else None,
-            "second_prob": second[0] / 100.0 if second else None,
-            "probability_field": "event_fact_latest.distribution.q_temperature_bucket_posterior",
-            "source": (
-                "event_fact_latest.hard_source_constrained_posterior_top1"
-                if _truthy(payload.get("hard_source_posterior_override_applied"))
-                or (
-                    isinstance(payload.get("hard_source_posterior_override"), Mapping)
-                    and payload.get("hard_source_posterior_override", {}).get("applied") is True
-                )
-                else "event_fact_latest.dynamic_constrained_posterior_top1"
-            ),
-            "ranked_rows": [row for _pct, _label, row in ranked[:8]],
-        }
-
-    candidates: Tuple[Tuple[str, Any, Tuple[str, ...], Tuple[str, ...]], ...] = (
-        (
-            "event_fact_latest.target_realization_capital_plan",
-            payload.get("target_realization_capital_plan"),
-            ("target_bucket",),
-            ("target_posterior", "target_probability"),
-        ),
-        (
-            "event_fact_latest.target_bucket_selection",
-            payload.get("target_bucket_selection"),
-            ("target_bucket",),
-            ("target_probability_pct", "target_bucket_probability_pct", "target_probability", "target_bucket_probability"),
-        ),
-        (
-            "event_fact_latest.target_bucket_outlook",
-            payload.get("target_bucket_outlook"),
-            ("final_bucket", "posterior_final_bucket", "target_bucket"),
+        second_label = (
+            str(
+                second_row.get("outcome")
+                or second_row.get("label")
+                or second_row.get("bucket")
+                or ""
+            ).strip()
+            if isinstance(second_row, Mapping)
+            else ""
+        )
+        second_prob = (
+            _ui_snapshot_prob01_from_value(second_row.get("probability"))
+            if isinstance(second_row, Mapping)
+            else None
+        )
+        target_row = next(
             (
-                "final_bucket_probability_pct",
-                "posterior_final_bucket_probability_pct",
-                "target_bucket_probability_pct",
-                "target_final_probability_pct",
-                "target_probability",
-                "target_bucket_probability",
+                row
+                for row in ranked_rows
+                if str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip() == label
             ),
-        ),
-        (
-            "event_fact_latest.top_level_target",
-            payload,
-            ("ssot_target_bucket", "target_bucket"),
-            ("target_bucket_probability_pct", "target_probability_pct", "target_probability"),
-        ),
-    )
-    for source, raw, label_keys, prob_keys in candidates:
-        if not isinstance(raw, Mapping):
-            continue
-        label = next((str(raw.get(key) or "").strip() for key in label_keys if str(raw.get(key) or "").strip()), "")
-        if not label:
-            continue
-        prob_pct = None
-        prob_value = None
-        for key in prob_keys:
-            raw_prob_value = to_float(raw.get(key))
-            prob_pct = _prob_pct_from_ssot_value(raw.get(key))
-            if prob_pct is not None:
-                if (
-                    raw_prob_value is not None
-                    and math.isfinite(float(raw_prob_value))
-                    and abs(float(raw_prob_value)) <= 1.0
-                    and not str(key).endswith("_pct")
-                ):
-                    prob_value = float(raw_prob_value)
-                else:
-                    prob_value = float(prob_pct) / 100.0
-                break
+            ranked_rows[0] if ranked_rows else {},
+        )
         return {
             "label": label,
             "prob_pct": prob_pct,
-            "prob": prob_value,
-            "row": _ssot_bucket_row_by_label(payload.get("distribution") if isinstance(payload.get("distribution"), list) else [], label) or {},
-            "second_label": "",
-            "second_prob_pct": None,
-            "second_prob": None,
-            "probability_field": source,
-            "source": source,
-            "ranked_rows": [],
+            "prob": prob,
+            "row": dict(target_row) if isinstance(target_row, Mapping) else {},
+            "second_label": second_label,
+            "second_prob_pct": float(second_prob) * 100.0 if second_prob is not None else None,
+            "second_prob": second_prob,
+            "probability_field": str(
+                posterior_ssot.get("target_probability_field")
+                or "posterior_ssot_fact.target_probability"
+            ),
+            "source": "posterior_ssot_fact.top_bucket",
+            "ranked_rows": ranked_rows,
         }
     return {}
 
@@ -2894,6 +2869,30 @@ def _overlay_latest_fact_observation_fields(out: Dict[str, Any], fact_payload: M
             existing_features
         )
 
+    for key in (
+        "fact_snapshot_id",
+        "posterior_run_id",
+        "correlation_id",
+        "source_event_id",
+        "source_event_ids",
+        "source_observation_id",
+        "source_observation_ids",
+        "lineage_state",
+        "source_observations",
+        "source_acquisition_trace",
+        "source_to_posterior_timing",
+        "amsc_latency_slo_audit",
+        "signal_to_order_timing",
+        "hard_source_acceptance_state",
+        "signal_id",
+        "decision_id",
+        "order_intent_id",
+        "review_id",
+    ):
+        value = fact_payload.get(key)
+        if out.get(key) in (None, "", [], {}) and value not in (None, "", [], {}):
+            out[key] = copy.deepcopy(value)
+
     nested_summary = (
         dict(out.get("chengdu_intraday_summary") or {})
         if isinstance(out.get("chengdu_intraday_summary"), Mapping)
@@ -2911,6 +2910,10 @@ def _overlay_latest_fact_observation_fields(out: Dict[str, Any], fact_payload: M
         "forecast_reference_bayes",
         "observation_led_bayes",
         "settlement_lock_bayes",
+        "recoil_state_ssot",
+        "physical_cutoff_evidence",
+        "termination_risk",
+        "amsc_latency_slo_audit",
     ):
         value = _mapping_value(key)
         if not value:
@@ -2920,7 +2923,192 @@ def _overlay_latest_fact_observation_fields(out: Dict[str, Any], fact_payload: M
             nested_summary[key] = dict(value)
     if nested_summary is not None:
         out["chengdu_intraday_summary"] = nested_summary
+    _sync_ui_snapshot_amsc_observation_ssot_fields(out, source_payload=fact_payload)
     out["latest_fact_observation_overlay_source"] = "event_fact_latest"
+
+
+def _ui_snapshot_latest_fact_needs_posterior_projection(payload: Mapping[str, Any]) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    ssot = payload.get("posterior_ssot_fact")
+    # A sequential production SSOT must never be fed through the retired v3.1
+    # projection path.  v2 is retained only as an explicit legacy-latent NA;
+    # v3 is the report-defined integer-X authority.
+    if (
+        isinstance(ssot, Mapping)
+        and _is_sequential_temperature_ssot_schema(ssot.get("schema"))
+        and str(ssot.get("writer_mode") or "").strip() == "production"
+        and str(ssot.get("state") or "").strip() in {
+            "available",
+            "physical_only_market_projection_na",
+        }
+    ):
+        return False
+    ssot_available = isinstance(ssot, Mapping) and str(ssot.get("state") or "") == "available"
+    production_model_family = (
+        str(ssot.get("production_model_family") or "").strip()
+        if isinstance(ssot, Mapping)
+        else ""
+    )
+    production_probability_policy = (
+        str(ssot.get("production_probability_policy") or "").strip()
+        if isinstance(ssot, Mapping)
+        else ""
+    )
+    prior_meta = payload.get("prior_meta")
+    prior_source = (
+        str(prior_meta.get("source") or "").strip()
+        if isinstance(prior_meta, Mapping)
+        else ""
+    )
+    prior_settlement_s_used = (
+        prior_meta.get("settlement_s_used")
+        if isinstance(prior_meta, Mapping)
+        else None
+    )
+    unique_model_ready = bool(
+        production_model_family == "joint_weak_physical_strong"
+        and production_probability_policy == "unique_joint_weak_physical_strong_only_fail_closed"
+    )
+    physical_x_prior_ready = bool(
+        prior_source == "approved_ncei_ghcnh_hourly_climate_reference_prior"
+        and prior_settlement_s_used is False
+    )
+    has_prior = isinstance(payload.get("prior_distribution"), Mapping) and bool(payload.get("prior_distribution"))
+    has_strong = isinstance(payload.get("metar_strong_likelihood"), Mapping) and bool(payload.get("metar_strong_likelihood"))
+    has_rows = bool(payload.get("posterior_temperature_distribution") or payload.get("distribution") or payload.get("rows"))
+    has_sources = bool(payload.get("source_observations")) or bool(
+        isinstance(payload.get("source_acquisition_trace"), Mapping)
+        and payload.get("source_acquisition_trace", {}).get("source_observations")
+    )
+    return bool(
+        (has_sources or has_rows)
+        and (
+            not ssot_available
+            or not unique_model_ready
+            or not physical_x_prior_ready
+            or not has_prior
+            or not has_strong
+            or not has_rows
+        )
+    )
+
+
+def _ui_snapshot_project_latest_fact_payload_no_apply(
+    conn: sqlite3.Connection,
+    *,
+    fact_id: Any,
+    slug: str,
+    event_date: str,
+    run_date: str,
+    fact_as_of: str,
+    composer_version: str,
+    payload: Mapping[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    if not _ui_snapshot_latest_fact_needs_posterior_projection(payload):
+        return dict(payload), {}
+    try:
+        from posterior_ssot_projection_runtime import build_fact_projection_no_apply
+
+        projection = build_fact_projection_no_apply(
+            slug=str(slug or payload.get("slug") or ""),
+            event_date=str(event_date or payload.get("event_date") or ""),
+            run_date=str(run_date or payload.get("run_date") or event_date or ""),
+            fact_as_of=str(fact_as_of or payload.get("fact_as_of") or ""),
+            payload=payload,
+            current_fact_id=int(fact_id or 0),
+            current_fact_as_of=str(fact_as_of or ""),
+            composer_version=str(composer_version or ""),
+            conn=conn,
+            write_reason="ui_snapshot_latest_fact_projection_no_apply",
+        )
+    except Exception as exc:
+        return dict(payload), {
+            "schema": "ui_snapshot_latest_fact_projection_v1",
+            "state": "projection_error",
+            "error": str(exc)[:160],
+            "read_only": True,
+        }
+    projected = projection.get("projected_payload")
+    if not isinstance(projected, Mapping) or not projected:
+        return dict(payload), {
+            "schema": "ui_snapshot_latest_fact_projection_v1",
+            "state": "projection_unavailable",
+            "projection_mode": str(projection.get("projection_mode") or ""),
+            "issues": list(projection.get("issues") or []),
+            "read_only": True,
+        }
+    return dict(projected), {
+        "schema": "ui_snapshot_latest_fact_projection_v1",
+        "state": "available",
+        "projection_mode": str(projection.get("projection_mode") or ""),
+        "context": dict(projection.get("context") or {}),
+        "issues": list(projection.get("issues") or []),
+        "read_only": True,
+        "writes_archive_db": False,
+        "places_orders": False,
+    }
+
+
+def _overlay_latest_fact_bayes_fields(out: Dict[str, Any], fact_payload: Mapping[str, Any]) -> None:
+    if not isinstance(out, dict) or not isinstance(fact_payload, Mapping):
+        return
+    for key in (
+        "posterior_temperature_distribution",
+        "posterior_temperature_distribution_map",
+        "posterior_continuous_distribution",
+        "posterior_bucket_cdf",
+        "posterior_quantiles_c",
+        "posterior_quantile_grid",
+        "distribution",
+        "prior_distribution",
+        "prior_meta",
+        "prior_na_reason",
+        "forecast_weak_likelihood",
+        "metar_strong_likelihood",
+        "state_probs",
+        "remaining_warming_by_state",
+        "recoil_state_ssot",
+        "physical_cutoff_evidence",
+        "termination_risk",
+        "temperature_trajectory",
+        "hard_constraints",
+        "layer_contributions",
+        "posterior_ssot_fact",
+        "posterior_target_bucket_selection",
+        "target_bucket_selection",
+        "target_bucket",
+        "target_bucket_probability",
+        "target_bucket_probability_pct",
+        "target_bucket_probability_field",
+        "target_bucket_source",
+        "target_bucket_source_semantics",
+        "ssot_target_bucket",
+        "phase",
+        "beta_weak",
+        "beta_strong",
+        "phase_reason",
+        "hard_mask_reason",
+        "posterior_run_id",
+        "fact_snapshot_id",
+        "posterior_runtime_schema",
+        "posterior_boundary",
+        "runtime_schemas",
+        "normalization",
+        "na_reasons",
+        "source_lineage",
+        "source_event_ids",
+        "source_observation_ids",
+        "source_observations",
+        "source_acquisition_trace",
+        "source_to_posterior_timing",
+        "amsc_latency_slo_audit",
+        "source_latency_trace",
+    ):
+        value = fact_payload.get(key)
+        if value not in (None, "", [], {}):
+            out[key] = copy.deepcopy(value)
+    out["latest_fact_bayes_overlay_source"] = "event_fact_latest_projection_or_payload"
 
 
 def _fact_backed_chengdu_intraday_summary_fallback(key: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
@@ -3250,6 +3438,11 @@ _CHENGDU_INTRADAY_ENDPOINT_ROW_KEYS: Set[str] = {
     "q_round",
     "q_prior",
     "q_likelihood",
+    "q_bayes_phase",
+    "q_bayes_beta_weak",
+    "q_bayes_beta_strong",
+    "q_bayes_phase_reason",
+    "q_bayes_hard_mask_reason",
     "q_calibrated",
     "q_calibrated_pct",
     "q_bayes_posterior",
@@ -3260,27 +3453,16 @@ _CHENGDU_INTRADAY_ENDPOINT_ROW_KEYS: Set[str] = {
     "q_temperature_bucket_posterior_pre_observed_constraints_pct",
     "q_bayes_posterior_pre_observed_constraints",
     "q_bayes_posterior_pre_observed_constraints_pct",
-    "q_bayes_model_evidence",
-    "q_bayes_wu_forecast_evidence",
     "q_bayes_wu_forecast_prob",
     "q_bayes_wu_forecast_status",
-    "q_bayes_taf_peak_evidence",
     "q_bayes_taf_peak_prob",
     "q_bayes_taf_peak_status",
-    "q_bayes_observed_nowcast_evidence",
-    "q_bayes_nowcast_evidence",
-    "q_bayes_physical_likelihood_evidence",
     "q_bayes_physical_likelihood_prob",
     "q_bayes_physical_likelihood_observed_prob",
     "q_bayes_physical_likelihood_source",
-    "q_bayes_independent_physics_residual_evidence",
     "q_bayes_independent_physics_residual_prob",
     "q_bayes_independent_physics_residual_observed_prob",
-    "q_bayes_climo_regime_evidence",
     "q_bayes_climo_regime_prob",
-    "q_bayes_post_cool_rebound_regime_prior_evidence",
-    "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-    "q_bayes_post_cool_rebound_risk_evidence",
     "q_posterior_observed_constraints_applied",
     "q_posterior_observed_constraints_hard_zero",
     "q_posterior_observed_constraints_primary_for_outlook",
@@ -3323,6 +3505,17 @@ def _compact_intraday_distribution_row_for_endpoint(row: Any) -> Dict[str, Any]:
             ][:8]
             if reason_codes:
                 out[key_s] = reason_codes
+    compact_chain = _compact_bayes_chain_for_bucket_series(row)
+    if compact_chain and (
+        compact_chain.get("schema") == "hierarchical_layer_contributions_chain_v1"
+        or compact_chain.get("prior_prob") is not None
+        or compact_chain.get("likelihood_prob") is not None
+    ):
+        out["bayes_chain"] = compact_chain
+        if compact_chain.get("prior_prob") is not None:
+            out.setdefault("q_prior", compact_chain.get("prior_prob"))
+        if compact_chain.get("likelihood_prob") is not None:
+            out.setdefault("q_likelihood", compact_chain.get("likelihood_prob"))
     _align_compact_row_to_temperature_posterior_ssot(out)
     return out
 
@@ -3729,6 +3922,10 @@ def _compact_chengdu_intraday_summary_for_endpoint(summary: Any) -> Dict[str, An
         ("decision", {"target_realization_trade_plan"}, set()),
         ("single_ssot_target_alignment", set(), set()),
         ("created_at_replay_meta", set(), set()),
+        ("recoil_state_ssot", {"physical_cutoff_evidence"}, set()),
+        ("physical_cutoff_evidence", set(), set()),
+        ("amsc_latency_slo_audit", {"stage_latencies_ms", "stage_slo_ms", "stage_status"}, set()),
+        ("source_to_posterior_timing", {"amsc_latency_slo_audit"}, set()),
     )
     for key, nested, row_fields in mapping_specs:
         compact = _compact_intraday_mapping_for_endpoint(
@@ -3846,9 +4043,17 @@ def _normalize_target_bucket_outlook_display_contract(
         if not isinstance(value, str):
             return value
         return (
-            value.replace("约束后最终最可能", "约束后当前后验最可能")
-            .replace("最终最可能", "当前后验最可能")
-            .replace("最终分布", "未结算后验")
+            value.replace("约束后最终最可能", "约束后当前最高目标")
+            .replace("约束后当前后验最可能", "约束后当前最高目标")
+            .replace("当前后验最可能", "当前最高目标")
+            .replace("最终最可能", "当前最高目标")
+            .replace("最终分布", "最终概率")
+            .replace("未结算后验", "最终概率")
+            .replace("最高温落桶后验", "最终概率")
+            .replace("落桶后验", "最终概率")
+            .replace("最终后验", "最终概率")
+            .replace("后验", "最终概率")
+            .replace("当前最高目标落在", "当前最高目标")
             .replace("最终正好落在", "落在")
             .replace("最终正好", "落在")
             .replace("最终超过", "高于")
@@ -3873,15 +4078,15 @@ def _normalize_target_bucket_outlook_display_contract(
             pct = out.get("target_final_probability_pct")
         if final_label and target_label and final_label != target_label:
             return (
-                f"交易目标 {target_label}；约束后最高温落桶后验最可能为 "
+                f"交易目标 {target_label}；当前最高目标为 "
                 f"{final_label}（{_target_outlook_display_pct(pct)}）。"
-                "路径触达字段仅作执行参考，不覆盖交易目标。"
+                "路径触达只作执行参考，不覆盖交易目标。"
             )
         display_label = final_label or target_label
         return (
-            f"交易目标 {target_label or display_label}；约束后最高温落桶后验 "
+            f"交易目标 {target_label or display_label}；最终概率最高为 "
             f"{display_label or '—'}（{_target_outlook_display_pct(pct)}）。"
-            "路径触达字段仅作执行参考，不覆盖交易目标。"
+            "路径触达只作执行参考，不覆盖交易目标。"
         )
 
     for key in ("primary_conclusion", "settlement_line", "summary", "definition"):
@@ -3930,9 +4135,11 @@ def _normalize_target_bucket_outlook_display_contract(
             out["target_reach_label"] = label_map[reach_label]
     reach_line = str(out.get("reach_line") or "").strip()
     if reach_line:
-        reach_line = reach_line.replace("这不是最终落桶概率。", "仅作路径/执行参考，不改写最高温落桶后验。")
-        reach_line = reach_line.replace("这不是最终落桶概率", "仅作路径/执行参考，不改写最高温落桶后验")
-        reach_line = reach_line.replace("不改写最终后验", "不改写最高温落桶后验")
+        reach_line = reach_line.replace("这不是最终落桶概率。", "仅作路径/执行参考，不改写交易目标。")
+        reach_line = reach_line.replace("这不是最终落桶概率", "仅作路径/执行参考，不改写交易目标")
+        reach_line = reach_line.replace("不改写最高温落桶后验", "不改写交易目标")
+        reach_line = reach_line.replace("不改写最终后验", "不改写交易目标")
+        reach_line = _clean_unsettled_text(reach_line)
         out["reach_line"] = reach_line
 
     if final_label and target_label and (final_relation == "target" or final_label == target_label):
@@ -3951,7 +4158,7 @@ def _normalize_target_bucket_outlook_display_contract(
             if pct is None:
                 pct = out.get("target_final_probability_pct")
             out["primary_conclusion"] = (
-                f"当前后验最可能落在 {final_label}（后验 {_target_outlook_display_pct(pct)}）；"
+                f"当前最高目标 {final_label}（最终概率 {_target_outlook_display_pct(pct)}）；"
                 f"目标桶同为 {target_label}。"
             )
 
@@ -3979,8 +4186,9 @@ def _normalize_target_bucket_outlook_display_contract(
                 if detail:
                     next_card["detail"] = detail.replace(
                         "这不是最终落桶概率。",
-                        "仅作路径/执行参考，不改写最高温落桶后验。",
-                    ).replace("不改写最终后验", "不改写最高温落桶后验")
+                        "仅作路径/执行参考，不改写交易目标。",
+                    ).replace("不改写最高温落桶后验", "不改写交易目标").replace("不改写最终后验", "不改写交易目标")
+                    next_card["detail"] = _clean_unsettled_text(next_card["detail"])
             normalized_cards.append(next_card)
         out["answer_cards"] = normalized_cards
     second = out.get("second_target_outlook")
@@ -3990,18 +4198,20 @@ def _normalize_target_bucket_outlook_display_contract(
         if definition:
             next_second["definition"] = (
                 definition
-                .replace("不覆盖当前路径概率目标桶", "不覆盖当前落桶后验目标桶")
-                .replace("不覆盖当前路径概率目标", "不覆盖当前落桶后验目标")
-                .replace("不覆盖当前最终后验目标桶", "不覆盖当前落桶后验目标桶")
-                .replace("不覆盖当前最终后验目标", "不覆盖当前落桶后验目标")
+                .replace("不覆盖当前路径概率目标桶", "不覆盖当前交易目标")
+                .replace("不覆盖当前路径概率目标", "不覆盖当前交易目标")
+                .replace("不覆盖当前最终后验目标桶", "不覆盖当前交易目标")
+                .replace("不覆盖当前最终后验目标", "不覆盖当前交易目标")
+                .replace("不覆盖当前落桶后验目标桶", "不覆盖当前交易目标")
+                .replace("不覆盖当前落桶后验目标", "不覆盖当前交易目标")
             )
         for key in ("primary_conclusion", "candidate_line", "reach_line"):
             text = str(next_second.get(key) or "")
             if text:
                 next_second[key] = _clean_unsettled_text(text).replace(
                     "这不是最终落桶概率",
-                    "仅作路径/执行参考，不改写最高温落桶后验",
-                ).replace("不改写最终后验", "不改写最高温落桶后验").replace("最终后验", "落桶后验")
+                    "仅作路径/执行参考，不改写交易目标",
+                ).replace("不改写最高温落桶后验", "不改写交易目标").replace("不改写最终后验", "不改写交易目标")
         out["second_target_outlook"] = next_second
     return out
 
@@ -4057,8 +4267,43 @@ def _posterior_temperature_distribution_probabilities(out: Mapping[str, Any]) ->
     return probs
 
 
+def _posterior_ssot_distribution_probabilities(out: Mapping[str, Any]) -> Dict[str, float]:
+    if not isinstance(out, Mapping):
+        return {}
+    ssot = out.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping):
+        return {}
+    if str(ssot.get("schema") or "") != "bayes_posterior_ssot_fact_v1":
+        return {}
+    if str(ssot.get("state") or "") not in {"available", ""}:
+        return {}
+    rows = ssot.get("bucket_probabilities")
+    if not isinstance(rows, list) or not rows:
+        rows = ssot.get("ranked_bucket_probabilities")
+    if not isinstance(rows, list):
+        return {}
+    probs: Dict[str, float] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        label = str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip()
+        prob = to_float(row.get("probability"))
+        pct = to_float(row.get("probability_pct"))
+        if prob is None and pct is not None and math.isfinite(float(pct)):
+            prob = float(pct) / 100.0
+        if not label or prob is None or not math.isfinite(float(prob)):
+            continue
+        prob_float = float(prob)
+        if prob_float > 1.0 and prob_float <= 100.0:
+            prob_float /= 100.0
+        probs[label] = max(0.0, min(1.0, prob_float))
+    return probs
+
+
 def _preserve_event_fact_distribution_posterior(out: Mapping[str, Any]) -> bool:
     if not isinstance(out, Mapping):
+        return False
+    if _posterior_ssot_distribution_probabilities(out):
         return False
     if (
         bool(out.get("posterior_target_direct_fast_trade_write"))
@@ -4089,15 +4334,101 @@ def _preserve_event_fact_distribution_posterior(out: Mapping[str, Any]) -> bool:
     )
 
 
+def _payload_has_available_posterior_ssot_target(payload: Mapping[str, Any]) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    return bool(_canonical_target_from_fact_payload(payload).get("label"))
+
+
+def _payload_has_final_temperature_lock(payload: Mapping[str, Any]) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    if payload.get("settlement_actual") not in (None, "", [], {}):
+        return True
+    for key in (
+        "observed_today_max_final",
+        "hard_source_final_daily_max",
+        "hard_source_settlement_final",
+        "temperature_observation_final_daily_max",
+        "final_bucket_lock",
+    ):
+        if _truthy(payload.get(key)):
+            return True
+    return False
+
+
+def _intraday_summary_can_materialize_target_fields(
+    item: Mapping[str, Any],
+    intraday_summary: Mapping[str, Any] | None = None,
+) -> bool:
+    if _payload_has_available_posterior_ssot_target(item):
+        return True
+    if _payload_has_final_temperature_lock(item):
+        return True
+    if isinstance(intraday_summary, Mapping):
+        if _payload_has_available_posterior_ssot_target(intraday_summary):
+            return True
+        if _payload_has_final_temperature_lock(intraday_summary):
+            return True
+    return False
+
+
+def _mark_intraday_summary_diagnostic_only(
+    item: MutableMapping[str, Any],
+    reason: str,
+    intraday_summary: Mapping[str, Any] | None = None,
+) -> None:
+    if not isinstance(item, MutableMapping):
+        return
+    observation_led = {}
+    if isinstance(intraday_summary, Mapping) and isinstance(intraday_summary.get("observation_led_likelihood"), Mapping):
+        observation_led = dict(intraday_summary.get("observation_led_likelihood") or {})
+    elif isinstance(item.get("observation_led_likelihood"), Mapping):
+        observation_led = dict(item.get("observation_led_likelihood") or {})
+    if observation_led:
+        observation_led.setdefault("applied", bool(observation_led.get("applied")))
+        observation_led["posterior_materialized"] = False
+        observation_led["diagnostic_only"] = True
+        observation_led["materialization_block_reason"] = reason
+        item["observation_led_likelihood"] = observation_led
+        item["observation_led_likelihood_applied"] = bool(observation_led.get("applied"))
+    item["observation_led_likelihood_posterior_materialized"] = False
+    provenance = dict(item.get("fact_provenance") or {})
+    existing = provenance.get("observation_led_likelihood")
+    existing_map = dict(existing) if isinstance(existing, Mapping) else {}
+    existing_map.update(
+        {
+            "posterior_materialized": False,
+            "diagnostic_only": True,
+            "skipped_reason": reason,
+        }
+    )
+    if isinstance(intraday_summary, Mapping):
+        existing_map.setdefault("source", "chengdu_intraday_summary.bucket_probabilities")
+        observation_led_src = intraday_summary.get("observation_led_likelihood")
+        if isinstance(observation_led_src, Mapping):
+            existing_map.setdefault("applied", bool(observation_led_src.get("applied")))
+            existing_map.setdefault("target_bucket_before", observation_led_src.get("target_bucket_before"))
+            existing_map.setdefault("target_bucket_after", observation_led_src.get("target_bucket_after"))
+    provenance["observation_led_likelihood"] = existing_map
+    item["fact_provenance"] = provenance
+
+
 def _distribution_with_ctp_posterior(out: Mapping[str, Any]) -> Optional[List[Dict[str, Any]]]:
     distribution = out.get("distribution")
     if not isinstance(distribution, list) or not distribution:
         return None
     if _preserve_event_fact_distribution_posterior(out):
         return [dict(row) for row in distribution if isinstance(row, Mapping)]
-    ctp_probs = _posterior_temperature_distribution_probabilities(out)
+    ssot_probs = _posterior_ssot_distribution_probabilities(out)
+    ctp_probs = ssot_probs or _posterior_temperature_distribution_probabilities(out)
     if not ctp_probs:
         return None
+    probability_field = (
+        "posterior_ssot_fact.bucket_probabilities"
+        if ssot_probs
+        else "posterior_temperature_distribution.bucket_probabilities"
+    )
     synced: List[Dict[str, Any]] = []
     matched = False
     for row in distribution:
@@ -4112,7 +4443,10 @@ def _distribution_with_ctp_posterior(out: Mapping[str, Any]) -> Optional[List[Di
             next_row["q_bayes_posterior"] = prob
             next_row["q_bayes_posterior_pct"] = round(prob * 100.0, 6)
             next_row["posterior_temperature_distribution_probability"] = prob
-            next_row["posterior_field"] = "posterior_temperature_distribution.bucket_probabilities"
+            next_row["posterior_field"] = probability_field
+            next_row["target_bucket_probability"] = prob
+            next_row["target_bucket_probability_pct"] = round(prob * 100.0, 6)
+            next_row["target_bucket_probability_field"] = probability_field
             matched = True
         synced.append(next_row)
     return synced if matched else None
@@ -4335,7 +4669,14 @@ def _sync_temperature_path_distribution_posterior_from_current_distribution(out:
         return
     preserve_distribution_posterior = _preserve_event_fact_distribution_posterior(out)
     distribution = _distribution_with_ctp_posterior(out)
-    ctp_probs = {} if preserve_distribution_posterior else _posterior_temperature_distribution_probabilities(out)
+    ctp_probs = (
+        {}
+        if preserve_distribution_posterior
+        else (
+            _posterior_ssot_distribution_probabilities(out)
+            or _posterior_temperature_distribution_probabilities(out)
+        )
+    )
     path_distribution = out.get("temperature_path_distribution")
     if (
         (not ctp_probs and not preserve_distribution_posterior)
@@ -4685,8 +5026,16 @@ def _align_item_target_fields_to_canonical_posterior_top(item: Dict[str, Any]) -
     second_prob = canonical.get("second_prob")
     row = canonical.get("row") if isinstance(canonical.get("row"), Mapping) else {}
     watch_rows = canonical.get("ranked_rows") if isinstance(canonical.get("ranked_rows"), list) else []
-    probability_field = str(canonical.get("probability_field") or "distribution.q_temperature_bucket_posterior")
-    source = str(canonical.get("source") or "dynamic_constrained_posterior_top1")
+    probability_field = str(canonical.get("probability_field") or "posterior_ssot_fact.target_probability")
+    source = str(canonical.get("source") or "posterior_ssot_fact.top_bucket")
+    posterior_ssot_source = "posterior_ssot_fact" in source
+    target_ssot_source = "posterior_ssot_fact" if posterior_ssot_source else "event_fact_latest"
+    target_source_semantics = (
+        "bayes_posterior_ssot_fact_v1"
+        if posterior_ssot_source
+        else "single_event_fact_latest_canonical_target_v1"
+    )
+    target_selection_priority = "posterior_ssot_fact_top_bucket" if posterior_ssot_source else source
     prob_by_label: Dict[str, Tuple[float, float]] = {}
     for raw in watch_rows or item.get("distribution") or []:
         if not isinstance(raw, Mapping):
@@ -4700,7 +5049,7 @@ def _align_item_target_fields_to_canonical_posterior_top(item: Dict[str, Any]) -
     item["ssot_target_bucket"] = label
     item["target_bucket"] = label
     item["target_bucket_source"] = source
-    item["target_bucket_source_semantics"] = "single_event_fact_latest_canonical_target_v1"
+    item["target_bucket_source_semantics"] = target_source_semantics
     item["target_bucket_probability_field"] = probability_field
     item["posterior_highest_bucket_label"] = label
     if prob_pct is not None and math.isfinite(float(prob_pct)):
@@ -4716,10 +5065,10 @@ def _align_item_target_fields_to_canonical_posterior_top(item: Dict[str, Any]) -
             "target_bucket_probability_field": probability_field,
             "target_row": dict(row) if row else selection.get("target_row"),
             "watch_buckets": [dict(raw) for raw in watch_rows] if watch_rows else selection.get("watch_buckets"),
-            "selection_priority": source,
+            "selection_priority": target_selection_priority,
             "target_bucket_selection_source": source,
-            "ssot_source": "event_fact_latest",
-            "target_selection_priority_version": "single_event_fact_latest_canonical_target_v1",
+            "ssot_source": target_ssot_source,
+            "target_selection_priority_version": target_source_semantics,
             "selection_runtime_recomputed": False,
         }
     )
@@ -4752,7 +5101,7 @@ def _align_item_target_fields_to_canonical_posterior_top(item: Dict[str, Any]) -
             "probability_source": probability_field,
             "target_probability_source": probability_field,
             "constraint_source": source,
-            "ssot_source": "event_fact_latest",
+            "ssot_source": target_ssot_source,
         }
     )
     if prob_pct is not None and math.isfinite(float(prob_pct)):
@@ -4790,8 +5139,8 @@ def _align_item_target_fields_to_canonical_posterior_top(item: Dict[str, Any]) -
         next_plan["target_bucket"] = label
         next_plan["target_bucket_selection_source"] = display_selection_source
         next_plan["canonical_target_source"] = source
-        next_plan["source"] = "event_fact_latest"
-        next_plan["ssot_source"] = "event_fact_latest"
+        next_plan["source"] = target_ssot_source
+        next_plan["ssot_source"] = target_ssot_source
         next_plan["ssot_aligned_to_event_fact_latest"] = True
         if prob is not None and math.isfinite(float(prob)):
             next_plan["target_posterior"] = float(prob)
@@ -4922,7 +5271,7 @@ def _align_item_target_fields_to_canonical_posterior_top(item: Dict[str, Any]) -
         next_summary["ssot_target_bucket"] = label
         next_summary["target_bucket"] = label
         next_summary["target_bucket_source"] = source
-        next_summary["target_bucket_source_semantics"] = "single_event_fact_latest_canonical_target_v1"
+        next_summary["target_bucket_source_semantics"] = target_source_semantics
         next_summary["target_bucket_probability_field"] = probability_field
         next_summary["posterior_highest_bucket_label"] = label
         if prob_pct is not None and math.isfinite(float(prob_pct)):
@@ -5146,6 +5495,13 @@ def _apply_chengdu_intraday_summary_to_snapshot_out(
             summary_for_out.get("temperature_path_distribution"),
         )
     out["chengdu_intraday_summary"] = summary_for_out
+    can_materialize_summary_target = _intraday_summary_can_materialize_target_fields(out, summary_for_out)
+    if not can_materialize_summary_target:
+        _mark_intraday_summary_diagnostic_only(
+            out,
+            "posterior_ssot_fact_missing_for_intraday_summary_target_fields",
+            summary_for_out,
+        )
     _merge_chengdu_intraday_summary_distribution_into_fact_item(
         out,
         summary_for_out,
@@ -5154,42 +5510,43 @@ def _apply_chengdu_intraday_summary_to_snapshot_out(
         event_tz=event_tz,
     )
     _align_chengdu_temperature_trajectory_fields(out, intraday_summary)
-    if intraday_summary.get("target_bucket_selection"):
+    if can_materialize_summary_target and intraday_summary.get("target_bucket_selection"):
         out["target_bucket_selection"] = intraday_summary.get("target_bucket_selection") or {}
     target_switch_context = intraday_summary.get("target_switch_context")
     if not isinstance(target_switch_context, Mapping):
         selection = intraday_summary.get("target_bucket_selection")
         if isinstance(selection, Mapping):
             target_switch_context = selection.get("target_switch_context")
-    if isinstance(target_switch_context, Mapping) and target_switch_context:
+    if can_materialize_summary_target and isinstance(target_switch_context, Mapping) and target_switch_context:
         out["target_switch_context"] = dict(target_switch_context)
     for key in ("forecast_reference_bayes", "observation_led_bayes", "settlement_lock_bayes"):
         if intraday_summary.get(key):
             out[key] = intraday_summary.get(key) or {}
     if intraday_summary.get("physical_weather_modifier"):
         out["physical_weather_modifier"] = intraday_summary.get("physical_weather_modifier") or {}
-    if intraday_summary.get("posterior_target_bucket_selection"):
+    if can_materialize_summary_target and intraday_summary.get("posterior_target_bucket_selection"):
         out["posterior_target_bucket_selection"] = intraday_summary.get("posterior_target_bucket_selection") or {}
-    if intraday_summary.get("target_bucket"):
+    if can_materialize_summary_target and intraday_summary.get("target_bucket"):
         out["target_bucket"] = intraday_summary.get("target_bucket")
-    for key in (
-        "target_bucket_source",
-        "target_bucket_source_semantics",
-        "target_bucket_definition",
-        "target_bucket_probability_field",
-    ):
-        value = intraday_summary.get(key)
-        if value not in (None, ""):
-            out[key] = value
-    if intraday_summary.get("target_bucket_probability_pct") is not None:
+    if can_materialize_summary_target:
+        for key in (
+            "target_bucket_source",
+            "target_bucket_source_semantics",
+            "target_bucket_definition",
+            "target_bucket_probability_field",
+        ):
+            value = intraday_summary.get(key)
+            if value not in (None, ""):
+                out[key] = value
+    if can_materialize_summary_target and intraday_summary.get("target_bucket_probability_pct") is not None:
         out["target_bucket_probability_pct"] = intraday_summary.get("target_bucket_probability_pct")
-    if force_target_fields or not out.get("target_bucket_outlook"):
+    if can_materialize_summary_target and (force_target_fields or not out.get("target_bucket_outlook")):
         if intraday_summary.get("target_bucket_outlook"):
             out["target_bucket_outlook"] = _normalize_target_bucket_outlook_display_contract(
                 intraday_summary.get("target_bucket_outlook") or {},
                 intraday_summary.get("temperature_path_distribution"),
             )
-    elif isinstance(out.get("target_bucket_outlook"), Mapping):
+    elif can_materialize_summary_target and isinstance(out.get("target_bucket_outlook"), Mapping):
         out["target_bucket_outlook"] = _normalize_target_bucket_outlook_display_contract(
             out.get("target_bucket_outlook"),
             out.get("temperature_path_distribution") or intraday_summary.get("temperature_path_distribution"),
@@ -5202,7 +5559,7 @@ def _apply_chengdu_intraday_summary_to_snapshot_out(
             intraday_summary.get("temperature_realization_reliability") or {}
         )
     if (
-        (force_target_fields or not out.get("temperature_path_distribution"))
+        (can_materialize_summary_target or not out.get("temperature_path_distribution"))
         and intraday_summary.get("temperature_path_distribution")
     ):
         out["temperature_path_distribution"] = (
@@ -5211,7 +5568,7 @@ def _apply_chengdu_intraday_summary_to_snapshot_out(
     _promote_chengdu_intraday_observation_fields(out, intraday_summary)
     _align_snapshot_posterior_derived_fields(out)
     summary_path = intraday_summary.get("temperature_path_distribution")
-    if isinstance(summary_path, Mapping) and isinstance(out.get("temperature_path_distribution"), Mapping):
+    if can_materialize_summary_target and isinstance(summary_path, Mapping) and isinstance(out.get("temperature_path_distribution"), Mapping):
         merged_path = _merge_fill_target_path_distribution_metadata(
             out.get("temperature_path_distribution") or {},
             summary_path,
@@ -5265,6 +5622,48 @@ def _promote_chengdu_intraday_observation_fields(
             "observed_temp_c",
             "observed_today_max_c",
             "metar_temperature_c",
+            "visibility_m",
+            "cloud_cover_pct",
+            "low_cloud_cover_pct",
+            "cloud_text",
+            "weather_text",
+            "wind_speed_mps",
+            "wind_dir_deg",
+            "wind_gust_mps",
+            "pressure_hpa",
+            "zuuu_metar_raw_amsc_latest_temp_c",
+            "zuuu_metar_raw_amsc_today_max_c",
+            "zuuu_metar_raw_amsc_latest_at",
+            "zuuu_metar_raw_amsc_latest_local",
+            "zuuu_metar_raw_amsc_fetched_at",
+            "zuuu_metar_raw_amsc_latest_raw",
+            "zuuu_metar_raw_amsc_latest_dewpoint_c",
+            "zuuu_metar_raw_amsc_latest_visibility_m",
+            "zuuu_metar_raw_amsc_latest_cloud_cover_pct",
+            "zuuu_metar_raw_amsc_latest_low_cloud_cover_pct",
+            "zuuu_metar_raw_amsc_latest_cloud_text",
+            "zuuu_metar_raw_amsc_latest_weather_text",
+            "zuuu_metar_raw_amsc_latest_pressure_hpa",
+            "zuuu_metar_raw_amsc_latest_wind_dir_deg",
+            "zuuu_metar_raw_amsc_latest_wind_speed_mps",
+            "zuuu_metar_raw_amsc_latest_wind_gust_mps",
+            "zuuu_metar_raw_amsc_today_max_at",
+            "zuuu_metar_raw_amsc_today_max_local",
+            "zuuu_metar_raw_amsc_today_max_raw",
+            "zuuu_metar_raw_amsc_today_temperature_points",
+            "zuuu_metar_raw_amsc_temperature_observations",
+            "zuuu_metar_raw_amsc_temperature_point_count",
+            "zuuu_metar_raw_amsc_temperature_momentum_available_horizons",
+            "zuuu_metar_raw_amsc_temperature_momentum_30m_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_45m_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_2h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_3h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_6h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_12h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_trajectory_stable_rate_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_trajectory_realization_state",
+            "zuuu_metar_raw_amsc_rolling_temperature_summary",
             "zuuu_metar_raw_awc_latest_temp_c",
             "zuuu_metar_raw_awc_today_max_c",
             "zuuu_metar_raw_awc_latest_at",
@@ -5327,25 +5726,31 @@ def _align_chengdu_temperature_trajectory_fields(
     summary_status = intraday_summary.get("temperature_trajectory_status")
     if not isinstance(summary_status, Mapping):
         return
-    out["temperature_trajectory_status"] = dict(summary_status)
+    root_status = (
+        _ui_temperature_trajectory_status_from_payload(out, out.get("distribution"))
+        if isinstance(out.get("temperature_trajectory"), Mapping) and out.get("temperature_trajectory")
+        else {}
+    )
+    out_status = root_status if isinstance(root_status, Mapping) and root_status else dict(summary_status)
+    out["temperature_trajectory_status"] = dict(out_status)
     compact_features = (
         dict(out.get("weather_likelihood_features_compact") or {})
         if isinstance(out.get("weather_likelihood_features_compact"), Mapping)
         else {}
     )
-    summary_rate = to_float(summary_status.get("temperature_rise_rate_c_per_hour"))
-    if summary_rate is not None and summary_status.get("temperature_rise_rate_trusted") is not False:
+    summary_rate = to_float(out_status.get("temperature_rise_rate_c_per_hour"))
+    if summary_rate is not None and out_status.get("temperature_rise_rate_trusted") is not False:
         compact_features["temperature_rise_rate_c_per_hour"] = float(summary_rate)
         compact_features["temperature_rise_rate_trusted"] = True
-        if summary_status.get("temperature_rise_rate_source"):
-            compact_features["temperature_rise_rate_source"] = str(summary_status.get("temperature_rise_rate_source") or "")
-        if summary_status.get("temperature_rise_rate_window"):
-            compact_features["temperature_rise_rate_window"] = str(summary_status.get("temperature_rise_rate_window") or "")
+        if out_status.get("temperature_rise_rate_source"):
+            compact_features["temperature_rise_rate_source"] = str(out_status.get("temperature_rise_rate_source") or "")
+        if out_status.get("temperature_rise_rate_window"):
+            compact_features["temperature_rise_rate_window"] = str(out_status.get("temperature_rise_rate_window") or "")
         compact_features.pop("temperature_rise_rate_na_reason", None)
-    elif summary_status.get("temperature_rise_rate_na_reason"):
+    elif out_status.get("temperature_rise_rate_na_reason"):
         compact_features.pop("temperature_rise_rate_c_per_hour", None)
         compact_features["temperature_rise_rate_trusted"] = False
-        compact_features["temperature_rise_rate_na_reason"] = str(summary_status.get("temperature_rise_rate_na_reason") or "")
+        compact_features["temperature_rise_rate_na_reason"] = str(out_status.get("temperature_rise_rate_na_reason") or "")
     if compact_features:
         out["weather_likelihood_features_compact"] = _normalize_ui_temperature_rise_rate_fields(compact_features)
 
@@ -6429,11 +6834,6 @@ def load_auto_trade_config() -> Dict[str, Any]:
             continue
         data[key] = defaults.get(key)
         migrated = True
-    if migrated:
-        try:
-            save_auto_trade_config(data)
-        except OSError:
-            pass
     return data
 
 
@@ -6658,7 +7058,7 @@ def build_auto_trade_presets() -> Dict[str, Any]:
 
 def auto_trade_config_defaults() -> Dict[str, Any]:
     def env_float(key: str, fallback: float) -> float:
-        raw = _env_value_with_path_follow_alias(key)
+        raw = os.environ.get(key)
         try:
             val = float(raw) if raw is not None else None
         except (TypeError, ValueError):
@@ -6668,13 +7068,13 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         return val
 
     def env_bool(key: str, fallback: bool) -> bool:
-        raw = _env_value_with_path_follow_alias(key)
+        raw = os.environ.get(key)
         if raw is None:
             return fallback
         return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
     def env_float_optional(key: str) -> Optional[float]:
-        raw = _env_value_with_path_follow_alias(key)
+        raw = os.environ.get(key)
         if raw is None:
             return None
         try:
@@ -6686,7 +7086,7 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         return val
 
     def env_int(key: str, fallback: int, min_val: int = 1) -> int:
-        raw = _env_value_with_path_follow_alias(key)
+        raw = os.environ.get(key)
         if raw is None:
             return fallback
         try:
@@ -6698,7 +7098,7 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         return val
 
     def env_choice(key: str, fallback: str, choices: Set[str]) -> str:
-        raw = str(_env_value_with_path_follow_alias(key) or "").strip().lower()
+        raw = str(os.environ.get(key) or "").strip().lower()
         if raw in choices:
             return raw
         return fallback
@@ -6754,7 +7154,7 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         "final",
         {"final", "pre", "off"},
     )
-    entry_usable_edge_size_scale_enabled = env_bool("PM_ENTRY_USABLE_EDGE_SIZE_SCALE_ENABLED", True)
+    entry_usable_edge_size_scale_enabled = False
     entry_usable_edge_size_target = env_float("PM_ENTRY_USABLE_EDGE_SIZE_TARGET", 0.05)
     entry_usable_edge_min_size_scale = env_float("PM_ENTRY_USABLE_EDGE_MIN_SIZE_SCALE", 0.10)
     entry_usable_edge_block_nonpositive = env_bool("PM_ENTRY_USABLE_EDGE_BLOCK_NONPOSITIVE", False)
@@ -6829,7 +7229,6 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
             True,
         ),
         "auto_trade_min_run_interval_sec": env_float("PM_AUTO_TRADE_MIN_RUN_INTERVAL_SEC", 120.0),
-        "temperature_event_min_edge_score_display": env_float("PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY", 1.0),
         "reentry_cooldown_sec": env_float("PM_AUTO_TRADE_REENTRY_COOLDOWN_SEC", 600.0),
         "min_hold_sec": env_float("PM_AUTO_TRADE_MIN_HOLD_SEC", 300.0),
         "entry_partial_topup_enabled": env_bool("PM_AUTO_TRADE_PARTIAL_TOPUP_ENABLED", True),
@@ -7232,13 +7631,13 @@ def auto_trade_config_defaults() -> Dict[str, Any]:
         "model_dir_ratio": env_float("PM_MODEL_DIR_RATIO", 0.6),
         "model_dir_min_models": env_float("PM_MODEL_DIR_MIN_MODELS", 2),
     }
-    return _with_path_probability_follow_config_aliases(defaults)
+    return defaults
 
 
 def validate_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(config, dict):
         return {"ok": False, "errors": ["配置格式无效"], "warnings": []}
-    config = _with_path_probability_follow_config_aliases(dict(config))
+    config = dict(config)
     if "prefetch_event_detail" in config:
         config["prefetch_event_detail"] = bool(config["prefetch_event_detail"])
     _migrate_legacy_edge_keys(config)
@@ -7566,9 +7965,6 @@ def validate_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
     min_hold_sec = num("min_hold_sec")
     if min_hold_sec is not None and min_hold_sec < 0:
         errors.append("最短持有秒数不能为负")
-    temperature_event_min_edge_score_display = num("temperature_event_min_edge_score_display")
-    if temperature_event_min_edge_score_display is not None and temperature_event_min_edge_score_display < 0:
-        errors.append("温度事件显示阈值不能为负")
     if flag("entry_require_ask_le_q_min") and flag("entry_require_q_range") and flag("entry_require_ask_range"):
         q_max = num("entry_q_max")
         ask_min = num("entry_ask_min")
@@ -7972,7 +8368,7 @@ def _latest_lcb_tradeability_runtime_snapshot(limit_rows: int = 600) -> Dict[str
     if out:
         out["lcb_runtime_tradeability_source"] = latest_source or "recent_decisions"
         out["lcb_runtime_tradeability_updated_at"] = latest_at
-    return _with_path_probability_follow_config_aliases(out)
+    return out
 
 
 def _auto_trade_criteria_runtime_snapshot_cache_sec() -> int:
@@ -8633,14 +9029,14 @@ def _compact_reject_ledger_report(path: Path = REJECT_LEDGER_REPORT_PATH) -> Dic
 
 
 def build_auto_trade_criteria_pills(config: Dict[str, Any]) -> Dict[str, Any]:
-    config = _with_path_probability_follow_config_aliases(config if isinstance(config, dict) else {})
+    config = config if isinstance(config, dict) else {}
     entry_only_realizable = bool(config.get("entry_only_realizable", True))
     exec_edge_flags_disabled = set(_ENTRY_ONLY_REALIZABLE_SOFT_FLAGS)
 
     def _cfg(key: str, default: Any = None) -> Any:
         key_text = str(key or "")
         if key_text.startswith("lcb_global_"):
-            primary_key = _path_probability_follow_config_key(key_text)
+            primary_key = key_text
             if primary_key in config:
                 return config.get(primary_key)
         return config.get(key_text, default)
@@ -9044,9 +9440,9 @@ def build_auto_trade_criteria_pills(config: Dict[str, Any]) -> Dict[str, Any]:
         if _flag("entry_yes_top_only", False):
             yes_top.append(_pill("仅独立策略", strong=True))
         if _flag("entry_yes_top_direct_label_match_enabled", True):
-            yes_top.append(_pill("直入：后验最高桶=市场最高桶（定价更激进/更易追价）"))
+            yes_top.append(_pill("直入：最终概率最高目标=盘口最高目标（定价更激进/更易追价）"))
         else:
-            yes_top.append(_pill("直入：后验最高桶=市场最高桶（已关闭）", enabled=False))
+            yes_top.append(_pill("直入：最终概率最高目标=盘口最高目标（已关闭）", enabled=False))
         yes_top.append(_pill(f"最高桶q≥{_f2(_num('entry_yes_top_min_q'))}"))
         yes_top.append(_pill(f"领先差≥{_f2(_num('entry_yes_top_gap_min'))}"))
         yes_top.append(_pill(f"模型差≤{_f2(_num('entry_yes_top_model_spread_max'))}"))
@@ -9358,7 +9754,7 @@ def apply_auto_trade_config(payload: Dict[str, Any]) -> None:
     _normalize_entry_only_realizable_config(payload, entry_only_realizable=entry_only_realizable)
 
     def set_env(env_key: str, value: str) -> None:
-        os.environ[_path_probability_follow_env_key(env_key)] = value
+        os.environ[env_key] = value
 
     def apply_float(key: str, env_key: str, min_val: Optional[float] = None) -> Optional[float]:
         if key not in payload:
@@ -9876,11 +10272,6 @@ def apply_auto_trade_config(payload: Dict[str, Any]) -> None:
     apply_bool(
         "entry_outcome_volume_refresh_missing_only",
         "PM_AUTO_TRADE_ENTRY_OUTCOME_VOLUME_REFRESH_MISSING_ONLY",
-    )
-    apply_float(
-        "temperature_event_min_edge_score_display",
-        "PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_DISPLAY",
-        0,
     )
     reentry_cooldown_sec = apply_float("reentry_cooldown_sec", "PM_AUTO_TRADE_REENTRY_COOLDOWN_SEC", 0)
     min_hold_sec = apply_float("min_hold_sec", "PM_AUTO_TRADE_MIN_HOLD_SEC", 0)
@@ -10428,14 +10819,14 @@ def trade_sync_env_missing() -> List[str]:
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
-    raw = _env_value_with_path_follow_alias(name)
+    raw = os.environ.get(name)
     if raw is None:
         return default
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _env_float(name: str, default: Optional[float] = None) -> Optional[float]:
-    raw = _env_value_with_path_follow_alias(name)
+    raw = os.environ.get(name)
     if raw is None or str(raw).strip() == "":
         return default
     try:
@@ -10448,7 +10839,7 @@ def _env_float(name: str, default: Optional[float] = None) -> Optional[float]:
 
 
 def _env_int_clamped(name: str, default: int, *, min_value: int, max_value: int) -> int:
-    raw = _env_value_with_path_follow_alias(name)
+    raw = os.environ.get(name)
     try:
         value = int(float(str(raw if raw is not None else default).strip()))
     except (TypeError, ValueError):
@@ -11992,10 +12383,12 @@ def _slim_fact_payload_for_ui(payload: Any) -> Any:
         payload["weather_likelihood_features_compact"] = _normalize_ui_temperature_rise_rate_fields(
             compact_features
         )
+    _normalize_ui_temperature_trajectory_root_fields(payload)
     trajectory_status = _ui_temperature_trajectory_status_from_payload(payload, distribution)
     if trajectory_status:
         payload["temperature_trajectory_status"] = trajectory_status
     _attach_rebound_regime_signal(payload, distribution)
+    _attach_ui_snapshot_sections_to_item(payload)
     if not UI_STRIP_MODEL_RAW:
         return payload
     provenance = payload.get("model_provenance")
@@ -12345,6 +12738,194 @@ def _attach_model_raw_top_history_for_ui_snapshot(
         payload["model_raw_top_history"] = history
 
 
+UI_SNAPSHOT_MODEL_MEMBER_CACHE_MODELS: Tuple[str, ...] = (
+    "gfs_seamless",
+    "icon_seamless",
+    "ecmwf_ifs025",
+)
+
+
+def _model_member_cache_loc_key_for_ui_snapshot(payload: Mapping[str, Any]) -> str:
+    if not isinstance(payload, Mapping):
+        return ""
+    if _is_chengdu_zuuu_fact_payload(str(payload.get("slug") or ""), payload):
+        return "30.5583,103.9460"
+    lat = _to_float_safe(payload.get("lat") or payload.get("station_lat") or payload.get("city_lat"))
+    lon = _to_float_safe(payload.get("lon") or payload.get("station_lon") or payload.get("city_lon"))
+    if lat is None or lon is None:
+        return ""
+    return f"{float(lat):.4f},{float(lon):.4f}"
+
+
+def _coerce_model_member_cache_values(raw_members: Any) -> List[float]:
+    if not isinstance(raw_members, Sequence) or isinstance(raw_members, (str, bytes, bytearray)):
+        return []
+    values: List[float] = []
+    for raw_value in raw_members:
+        value = to_float(raw_value)
+        if value is None or not math.isfinite(value):
+            continue
+        values.append(round(float(value), 3))
+    return values
+
+
+def _attach_model_member_cache_snapshot_for_ui_snapshot(
+    conn: sqlite3.Connection,
+    payload: MutableMapping[str, Any],
+    row: Any = None,
+) -> None:
+    if not isinstance(payload, MutableMapping):
+        return
+    event_date = _normalize_date_key(str(payload.get("event_date") or ""))
+    if not event_date and row is not None:
+        try:
+            event_date = _normalize_date_key(str(row["event_date"] or ""))
+        except Exception:
+            event_date = ""
+    if not event_date:
+        return
+    market_var = str(payload.get("market_var") or "temperature_2m_max").strip() or "temperature_2m_max"
+    market_unit = str(payload.get("market_unit") or "C").strip() or "C"
+    loc_key = _model_member_cache_loc_key_for_ui_snapshot(payload)
+    existing_raw = payload.get("model_members_decimal_raw")
+    raw_members_by_model: Dict[str, Any] = dict(existing_raw) if isinstance(existing_raw, Mapping) else {}
+    existing_qm = payload.get("model_members")
+    qm_members_by_model: Dict[str, Any] = dict(existing_qm) if isinstance(existing_qm, Mapping) else {}
+    counts_raw = payload.get("model_member_counts_raw")
+    counts_raw_by_model: Dict[str, Any] = dict(counts_raw) if isinstance(counts_raw, Mapping) else {}
+    counts = payload.get("model_member_counts")
+    counts_by_model: Dict[str, Any] = dict(counts) if isinstance(counts, Mapping) else {}
+    provenance_raw = payload.get("model_provenance")
+    provenance: Dict[str, Any] = dict(provenance_raw) if isinstance(provenance_raw, Mapping) else {}
+    snapshot_raw = payload.get("model_member_cache_snapshot")
+    snapshot: Dict[str, Any] = dict(snapshot_raw) if isinstance(snapshot_raw, Mapping) else {}
+    snapshot_models_raw = snapshot.get("models")
+    snapshot_models: Dict[str, Any] = dict(snapshot_models_raw) if isinstance(snapshot_models_raw, Mapping) else {}
+    filled_models: List[str] = []
+    missing_models: List[str] = []
+    for model in UI_SNAPSHOT_MODEL_MEMBER_CACHE_MODELS:
+        already_has_raw = isinstance(raw_members_by_model.get(model), Sequence) and not isinstance(
+            raw_members_by_model.get(model), (str, bytes, bytearray)
+        ) and bool(raw_members_by_model.get(model))
+        already_has_qm = isinstance(qm_members_by_model.get(model), Sequence) and not isinstance(
+            qm_members_by_model.get(model), (str, bytes, bytearray)
+        ) and bool(qm_members_by_model.get(model))
+        if already_has_raw and already_has_qm and model in snapshot_models:
+            continue
+        try:
+            if loc_key:
+                cache_row = conn.execute(
+                    """
+                    SELECT members_json, loc_key, created_at, official_updated_at,
+                           official_updated_source, members_signature
+                    FROM model_member_cache
+                    WHERE model = ? AND loc_key = ? AND event_date = ?
+                      AND market_var = ? AND market_unit = ?
+                    ORDER BY datetime(created_at) DESC
+                    LIMIT 1
+                    """,
+                    (model, loc_key, event_date, market_var, market_unit),
+                ).fetchone()
+            else:
+                cache_row = None
+            if cache_row is None:
+                cache_row = conn.execute(
+                    """
+                    SELECT members_json, loc_key, created_at, official_updated_at,
+                           official_updated_source, members_signature
+                    FROM model_member_cache
+                    WHERE model = ? AND event_date = ?
+                      AND market_var = ? AND market_unit = ?
+                    ORDER BY datetime(created_at) DESC
+                    LIMIT 1
+                    """,
+                    (model, event_date, market_var, market_unit),
+                ).fetchone()
+        except Exception:
+            cache_row = None
+        if cache_row is None:
+            missing_models.append(model)
+            continue
+        try:
+            members = _coerce_model_member_cache_values(json.loads(str(cache_row["members_json"] or "[]")))
+        except Exception:
+            members = []
+        if not members:
+            missing_models.append(model)
+            continue
+        if not already_has_raw:
+            raw_members_by_model[model] = members
+        if not already_has_qm:
+            qm_members_by_model[model] = members
+        counts_raw_by_model.setdefault(model, len(members))
+        counts_by_model.setdefault(model, len(members))
+        mean_c = sum(members) / float(len(members))
+        cache_loc_key = str(cache_row["loc_key"] or "")
+        cache_created_at = str(cache_row["created_at"] or "")
+        official_updated_at = str(cache_row["official_updated_at"] or "")
+        official_source = str(cache_row["official_updated_source"] or "")
+        snapshot_models.setdefault(
+            model,
+            {
+                "source": "model_member_cache",
+                "loc_key": cache_loc_key,
+                "event_date": event_date,
+                "market_var": market_var,
+                "market_unit": market_unit,
+                "member_count": len(members),
+                "mean_c": round(float(mean_c), 3),
+                "min_c": round(float(min(members)), 3),
+                "max_c": round(float(max(members)), 3),
+                "members": members,
+                "created_at": cache_created_at,
+                "official_updated_at": official_updated_at,
+                "official_updated_source": official_source,
+                "members_signature": str(cache_row["members_signature"] or ""),
+            },
+        )
+        model_provenance = provenance.get(model)
+        if not isinstance(model_provenance, Mapping):
+            provenance[model] = {
+                "status": "ok",
+                "source_kind": "model_member_cache",
+                "cache_source": "model_member_cache",
+                "cache_loc_key": cache_loc_key,
+                "created_at": cache_created_at,
+                "official_updated_at": official_updated_at,
+                "official_updated_source": official_source,
+                "raw_member_count": len(members),
+                "clean_member_count": len(members),
+                "final_member_count": len(members),
+            }
+        filled_models.append(model)
+    if raw_members_by_model:
+        payload["model_members_decimal_raw"] = raw_members_by_model
+    if qm_members_by_model:
+        payload["model_members"] = qm_members_by_model
+    if counts_raw_by_model:
+        payload["model_member_counts_raw"] = counts_raw_by_model
+    if counts_by_model:
+        payload["model_member_counts"] = counts_by_model
+    if provenance:
+        payload["model_provenance"] = provenance
+    if snapshot_models:
+        snapshot.update(
+            {
+                "version": "model_member_cache_snapshot_v1",
+                "source": "model_member_cache",
+                "role": "ui_snapshot_member_fill_display_only",
+                "event_date": event_date,
+                "market_var": market_var,
+                "market_unit": market_unit,
+                "loc_key": loc_key,
+                "models": snapshot_models,
+                "filled_models": sorted(set(filled_models)),
+                "missing_models": sorted(set(missing_models)),
+            }
+        )
+        payload["model_member_cache_snapshot"] = snapshot
+
+
 def _model_bucket_rule_comparison_for_ui_snapshot(payload: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     if not isinstance(payload, Mapping):
         return None
@@ -12356,6 +12937,12 @@ def _model_bucket_rule_comparison_for_ui_snapshot(payload: Mapping[str, Any]) ->
     raw_bucket_meta = qm_meta.get("raw_bucket_probability") if isinstance(qm_meta.get("raw_bucket_probability"), Mapping) else {}
     bucket_meta = qm_meta.get("bucket_probability") if isinstance(qm_meta.get("bucket_probability"), Mapping) else {}
     labels = raw_bucket_meta.get("labels") or bucket_meta.get("labels") or []
+    if not isinstance(labels, list) or not labels:
+        labels = [
+            str(row.get("outcome") or "").strip()
+            for row in distribution
+            if isinstance(row, Mapping) and str(row.get("outcome") or "").strip()
+        ] if isinstance(distribution, list) else []
     if not isinstance(labels, list) or not labels:
         return None
     raw_members = payload.get("model_members_decimal_raw")
@@ -12505,183 +13092,196 @@ def _compact_qm_meta_for_ui_snapshot(meta: Any) -> Optional[Dict[str, Any]]:
     return out or None
 
 
-def _bayes_chain_for_distribution_row(row: Any) -> Dict[str, Any]:
-    if not isinstance(row, Mapping):
+def _row_mapping_value(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip().startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    return {}
+
+
+def _row_probability_value(value: Any) -> Optional[float]:
+    num = to_float(value)
+    if num is None or not math.isfinite(num):
+        return None
+    return max(0.0, min(1.0, float(num)))
+
+
+def _row_bucket_label(row: Mapping[str, Any]) -> str:
+    for key in ("outcome", "bucket", "label", "temperature_bucket", "q_temperature_bucket_label"):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _row_bucket_label_candidates(label: str) -> Tuple[str, ...]:
+    value = str(label or "").strip()
+    candidates = [value]
+    if value.endswith("°C"):
+        candidates.append(value[:-2].strip())
+    if value.endswith("C"):
+        candidates.append(value[:-1].strip())
+    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _row_layer_contributions(row: Mapping[str, Any]) -> Dict[str, Any]:
+    for key in ("q_bayes_layer_contributions", "layer_contributions"):
+        candidate = _row_mapping_value(row.get(key))
+        if candidate:
+            return candidate
+    q_meta = _row_mapping_value(row.get("q_bayes_meta"))
+    return _row_mapping_value(q_meta.get("layer_contributions"))
+
+
+def _row_layer_probability(layer_contributions: Mapping[str, Any], layer_key: str, label: str) -> Optional[float]:
+    layer = _row_mapping_value(layer_contributions.get(layer_key))
+    distribution = _row_mapping_value(layer.get("distribution"))
+    if not distribution:
+        return None
+    for candidate in _row_bucket_label_candidates(label):
+        if candidate in distribution:
+            prob = _row_probability_value(distribution.get(candidate))
+            if prob is not None:
+                return prob
+    return None
+
+
+def _row_layer_beta(
+    row: Mapping[str, Any],
+    layer_contributions: Mapping[str, Any],
+    layer_key: str,
+    *,
+    default: Optional[float],
+) -> Optional[float]:
+    layer = _row_mapping_value(layer_contributions.get(layer_key))
+    beta = to_float(layer.get("beta"))
+    if beta is not None and math.isfinite(beta):
+        return float(beta)
+    q_meta = _row_mapping_value(row.get("q_bayes_meta"))
+    row_key = "q_bayes_beta_weak" if layer_key == "forecast_weak_likelihood" else "q_bayes_beta_strong"
+    meta_key = "beta_weak" if layer_key == "forecast_weak_likelihood" else "beta_strong"
+    for raw in (row.get(row_key), q_meta.get(meta_key)):
+        beta = to_float(raw)
+        if beta is not None and math.isfinite(beta):
+            return float(beta)
+    return default
+
+
+def _row_combined_layer_likelihood_prob(
+    layer_contributions: Mapping[str, Any],
+    label: str,
+    *,
+    beta_weak: Optional[float],
+    beta_strong: Optional[float],
+) -> Optional[float]:
+    weak_layer = _row_mapping_value(layer_contributions.get("forecast_weak_likelihood"))
+    strong_layer = _row_mapping_value(layer_contributions.get("metar_strong_likelihood"))
+    weak_dist = _row_mapping_value(weak_layer.get("distribution"))
+    strong_dist = _row_mapping_value(strong_layer.get("distribution"))
+    labels = list(dict.fromkeys([str(key) for key in (*weak_dist.keys(), *strong_dist.keys()) if str(key)]))
+    if not labels:
+        return None
+    weak_beta = max(0.0, float(beta_weak if beta_weak is not None else 0.0))
+    strong_beta = max(0.0, float(beta_strong if beta_strong is not None else 1.0))
+    scores: Dict[str, float] = {}
+    for bucket in labels:
+        weak = _row_probability_value(weak_dist.get(bucket))
+        strong = _row_probability_value(strong_dist.get(bucket))
+        score = 1.0
+        if weak_dist:
+            score *= max(1e-12, weak if weak is not None else 1.0) ** weak_beta
+        if strong_dist:
+            score *= max(1e-12, strong if strong is not None else 1.0) ** strong_beta
+        scores[bucket] = float(score)
+    total = sum(scores.values())
+    if total <= 0:
+        return None
+    for candidate in _row_bucket_label_candidates(label):
+        if candidate in scores:
+            return _row_probability_value(scores[candidate] / total)
+    return None
+
+
+def _hierarchical_bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    layer_contributions = _row_layer_contributions(row)
+    if not layer_contributions:
         return {}
-    direct_chain_raw = row.get("bayes_chain")
-    if not isinstance(direct_chain_raw, Mapping):
-        direct_chain_raw = row.get("chain")
-    direct_chain = dict(direct_chain_raw) if isinstance(direct_chain_raw, Mapping) else {}
-    direct_parts_raw = direct_chain.get("likelihood_parts")
-    direct_parts = dict(direct_parts_raw) if isinstance(direct_parts_raw, Mapping) else {}
-    direct_components_raw = direct_chain.get("components")
-    components = dict(direct_components_raw) if isinstance(direct_components_raw, Mapping) else {}
-    components_raw = row.get("q_temperature_bucket_score_components")
-    row_components = dict(components_raw) if isinstance(components_raw, Mapping) else {}
-    if row_components:
-        components.update(row_components)
-    prior_strength = to_float(row.get("q_bayes_prior_strength"))
-    if prior_strength is None:
-        prior_strength = to_float(direct_chain.get("prior_strength"))
-    if prior_strength is None or not math.isfinite(prior_strength) or prior_strength <= 0:
-        alpha_total = to_float(row.get("q_temperature_bucket_alpha_total"))
-        evidence_total = sum(
-            float(value)
-            for value in (
-                to_float(row.get("q_bayes_model_evidence")),
-                to_float(row.get("q_bayes_wu_forecast_evidence")),
-                to_float(row.get("q_bayes_taf_peak_evidence")),
-                to_float(row.get("q_bayes_observed_nowcast_evidence")),
-                to_float(row.get("q_bayes_temperature_trajectory_evidence")),
-                to_float(row.get("q_bayes_independent_physics_residual_evidence")),
-                to_float(row.get("q_bayes_climo_regime_evidence")),
-                to_float(row.get("q_bayes_post_cool_rebound_regime_prior_evidence")),
-                to_float(row.get("q_bayes_post_cool_rebound_intraday_likelihood_evidence")),
-            )
-            if value is not None and math.isfinite(value)
-        )
-        if alpha_total is not None and math.isfinite(alpha_total):
-            inferred = float(alpha_total) - evidence_total
-            if inferred > 0:
-                prior_strength = inferred
-    history_component = to_float(components.get("history"))
-    if history_component is None:
-        history_component = to_float(direct_chain.get("prior_component"))
-    prior_prob: Optional[float] = to_float(
-        row.get("q_prior")
-        if row.get("q_prior") is not None
-        else row.get("q_bayes_prior_prob")
-        if row.get("q_bayes_prior_prob") is not None
-        else row.get("q_temperature_bucket_prior")
-        if row.get("q_temperature_bucket_prior") is not None
-        else direct_chain.get("prior_prob")
-    )
-    if (
-        prior_prob is None
-        and
-        history_component is not None
-        and prior_strength is not None
-        and math.isfinite(history_component)
-        and math.isfinite(prior_strength)
-        and prior_strength > 0
-    ):
-        prior_prob = max(0.0, min(1.0, float(history_component) / float(prior_strength)))
-    likelihood_specs = (
-        ("model", "q_bayes_model_evidence", ("q_bayes_model_prob", "q_ensemble_qm_bucket", "q_model_temperature_bucket_round")),
-        ("wu_forecast", "q_bayes_wu_forecast_evidence", ("q_bayes_wu_forecast_prob",)),
-        ("taf_peak", "q_bayes_taf_peak_evidence", ("q_bayes_taf_peak_prob",)),
-        ("observed_nowcast", "q_bayes_observed_nowcast_evidence", ("q_bayes_observed_nowcast_prob", "q_bayes_nowcast_prob")),
-        (
-            "temperature_trajectory",
-            "q_bayes_temperature_trajectory_evidence",
-            ("q_bayes_temperature_trajectory_prob", "q_temperature_trajectory"),
-        ),
-        (
-            "independent_physics_residual",
-            "q_bayes_independent_physics_residual_evidence",
-            ("q_bayes_independent_physics_residual_prob", "q_bayes_independent_physics_residual_observed_prob"),
-        ),
-        ("climo_regime", "q_bayes_climo_regime_evidence", ("q_bayes_climo_regime_prob",)),
-        (
-            "post_cool_rebound_regime_prior",
-            "q_bayes_post_cool_rebound_regime_prior_evidence",
-            ("q_bayes_post_cool_rebound_regime_prior_prob",),
-        ),
-        (
-            "post_cool_rebound_intraday_likelihood",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-            ("q_bayes_post_cool_rebound_intraday_likelihood_prob",),
-        ),
-    )
-    likelihood_component_total = 0.0
-    likelihood_evidence_total = 0.0
+    label = _row_bucket_label(row)
+    if not label:
+        return {}
+    q_meta = _row_mapping_value(row.get("q_bayes_meta"))
+    beta_weak = _row_layer_beta(row, layer_contributions, "forecast_weak_likelihood", default=0.0)
+    beta_strong = _row_layer_beta(row, layer_contributions, "metar_strong_likelihood", default=1.0)
+    layer_parts: Dict[str, Dict[str, Any]] = {}
     likelihood_parts: Dict[str, Dict[str, Any]] = {}
-    has_row_likelihood_inputs = False
-    for name, evidence_key, prob_keys in likelihood_specs:
-        existing_part = direct_parts.get(name) if isinstance(direct_parts.get(name), Mapping) else {}
-        row_has_component = name in row_components
-        row_has_evidence = row.get(evidence_key) not in (None, "")
-        row_has_prob = any(row.get(prob_key) not in (None, "") for prob_key in prob_keys)
-        if row_has_component or row_has_evidence or row_has_prob:
-            has_row_likelihood_inputs = True
-        component = to_float(components.get(name))
-        if component is None:
-            component = to_float(existing_part.get("component"))
-        evidence = to_float(row.get(evidence_key))
-        if evidence is None:
-            evidence = to_float(existing_part.get("evidence"))
-        prob: Optional[float] = None
-        for prob_key in prob_keys:
-            prob = to_float(row.get(prob_key))
-            if prob is not None and math.isfinite(prob):
-                prob = max(0.0, min(1.0, float(prob)))
-                break
-        if prob is None:
-            prob = to_float(existing_part.get("prob"))
-            if prob is not None and math.isfinite(prob):
-                prob = max(0.0, min(1.0, float(prob)))
-        if (
-            component is None
-            and evidence is not None
-            and math.isfinite(evidence)
-            and evidence > 0
-            and prob is not None
-            and math.isfinite(prob)
-        ):
-            component = float(prob) * float(evidence)
-        if component is not None and math.isfinite(component):
-            likelihood_component_total += float(component)
-        if (evidence is not None and math.isfinite(evidence) and evidence > 0) or (
-            prob is not None and math.isfinite(prob)
-        ):
-            part: Dict[str, Any] = {}
-            if evidence is not None and math.isfinite(evidence):
-                part["evidence"] = float(evidence)
-        if evidence is not None and math.isfinite(evidence) and evidence > 0:
-            likelihood_evidence_total += float(evidence)
-            if component is not None and math.isfinite(component):
-                part["component"] = float(component)
-                if prob is None:
-                    prob = max(0.0, min(1.0, float(component) / float(evidence)))
-            if prob is not None and math.isfinite(prob):
-                part["prob"] = float(prob)
-            likelihood_parts[name] = part
-        elif prob is not None and math.isfinite(prob):
+    for layer_key in ("prior", "forecast_weak_likelihood", "metar_strong_likelihood"):
+        layer = _row_mapping_value(layer_contributions.get(layer_key))
+        prob = _row_layer_probability(layer_contributions, layer_key, label)
+        part: Dict[str, Any] = {}
+        if prob is not None:
             part["prob"] = float(prob)
-            likelihood_parts[name] = part
-    likelihood_prob: Optional[float] = to_float(
+        for meta_key in ("role", "boundary", "entropy", "sum"):
+            value = layer.get(meta_key)
+            if value not in (None, ""):
+                part[meta_key] = value
+        beta = beta_weak if layer_key == "forecast_weak_likelihood" else beta_strong if layer_key == "metar_strong_likelihood" else None
+        if beta is not None:
+            part["beta"] = float(beta)
+        if part:
+            layer_parts[layer_key] = part
+            if layer_key in ("forecast_weak_likelihood", "metar_strong_likelihood"):
+                likelihood_parts[layer_key] = dict(part)
+    prior_prob = _row_layer_probability(layer_contributions, "prior", label)
+    likelihood_prob = _row_probability_value(
         row.get("q_likelihood")
         if row.get("q_likelihood") is not None
         else row.get("q_bayes_likelihood_prob")
-        if row.get("q_bayes_likelihood_prob") is not None
-        else direct_chain.get("likelihood_prob")
     )
-    if likelihood_evidence_total > 0 and (has_row_likelihood_inputs or likelihood_prob is None):
-        likelihood_prob = max(0.0, min(1.0, likelihood_component_total / likelihood_evidence_total))
-    if not (
-        prior_prob is not None
-        or likelihood_prob is not None
-        or likelihood_parts
-        or components
-        or prior_strength is not None
-        or likelihood_evidence_total > 0
-    ):
+    if likelihood_prob is None:
+        likelihood_prob = _row_combined_layer_likelihood_prob(
+            layer_contributions,
+            label,
+            beta_weak=beta_weak,
+            beta_strong=beta_strong,
+        )
+    if not (prior_prob is not None or likelihood_prob is not None or layer_parts or likelihood_parts):
         return {}
-    out = dict(direct_chain)
-    out.update({
+    score_components = _row_mapping_value(row.get("q_bayes_score_components")) or _row_mapping_value(
+        q_meta.get("score_components")
+    )
+    return {
+        "schema": "hierarchical_layer_contributions_chain_v1",
+        "role": "hierarchical_joint_likelihood_explanation",
+        "ui_primary_allowed": True,
+        "production_probability_allowed": False,
+        "old_additive_evidence_pool_used": False,
+        "legacy_compat_fallback_used": False,
+        "formula": "continuous_forecast_error_prior_then_sequential_state_zero_inflated_remaining_warming_mixture_then_bucket_integral",
+        "bucket": label,
         "prior_prob": prior_prob,
         "likelihood_prob": likelihood_prob,
-        "prior_component": history_component,
-        "likelihood_component": likelihood_component_total,
-        "prior_strength": prior_strength,
-        "likelihood_evidence": likelihood_evidence_total,
-        "alpha": to_float(row.get("q_temperature_bucket_alpha")),
-        "alpha_total": to_float(row.get("q_temperature_bucket_alpha_total")),
-        "components": components,
         "likelihood_parts": likelihood_parts,
-        "source": str(row.get("q_bayes_source") or direct_chain.get("source") or ""),
-    })
-    return out
+        "layer_parts": layer_parts,
+        "score_components": score_components,
+        "source": str(row.get("q_bayes_source") or q_meta.get("source") or ""),
+        "phase": row.get("q_bayes_phase") or q_meta.get("phase"),
+        "beta_weak": beta_weak,
+        "beta_strong": beta_strong,
+        "phase_reason": row.get("q_bayes_phase_reason") or q_meta.get("phase_reason"),
+        "hard_mask_reason": row.get("q_bayes_hard_mask_reason") or q_meta.get("hard_mask_reason"),
+    }
+
+
+def _bayes_chain_for_distribution_row(row: Any) -> Dict[str, Any]:
+    if not isinstance(row, Mapping):
+        return {}
+    return _hierarchical_bayes_chain_for_distribution_row(row)
 
 
 def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
@@ -12689,7 +13289,24 @@ def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
     if not chain:
         return {}
     out: Dict[str, Any] = {}
-    for key in ("prior_prob", "likelihood_prob", "source"):
+    for key in (
+        "schema",
+        "role",
+        "ui_primary_allowed",
+        "production_probability_allowed",
+        "replacement",
+        "old_additive_evidence_pool_used",
+        "production_replacement_required",
+        "replacement_posterior_runtime",
+        "prior_prob",
+        "likelihood_prob",
+        "phase",
+        "beta_weak",
+        "beta_strong",
+        "phase_reason",
+        "hard_mask_reason",
+        "source",
+    ):
         value = chain.get(key)
         if value not in (None, ""):
             out[key] = value
@@ -12705,6 +13322,8 @@ def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
             "independent_physics_residual",
             "post_cool_rebound_regime_prior",
             "post_cool_rebound_intraday_likelihood",
+            "forecast_weak_likelihood",
+            "metar_strong_likelihood",
         ):
             part = parts.get(key)
             if not isinstance(part, Mapping):
@@ -12715,9 +13334,92 @@ def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
                 evidence = to_float(part.get("evidence"))
                 if evidence is not None and math.isfinite(evidence):
                     compact_part["evidence"] = float(evidence)
+                beta = to_float(part.get("beta"))
+                if beta is not None and math.isfinite(beta):
+                    compact_part["beta"] = float(beta)
                 compact_parts[key] = compact_part
     if compact_parts:
         out["likelihood_parts"] = compact_parts
+    return out
+
+
+def _compact_per_model_q_for_ui_snapshot(value: Any) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(value, Mapping):
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for model, raw_model in value.items():
+        model_key = str(model or "").strip()
+        if not model_key or not isinstance(raw_model, Mapping):
+            continue
+        entry: Dict[str, Any] = {}
+        for key in ("q_round", "q", "q_calibrated", "dir_value", "value", "label"):
+            raw_value = raw_model.get(key)
+            if raw_value in (None, ""):
+                continue
+            if key == "label":
+                entry[key] = str(raw_value or "")[:80]
+                continue
+            num = to_float(raw_value)
+            if num is not None and math.isfinite(float(num)):
+                entry[key] = float(num)
+        if entry:
+            out[model_key] = entry
+    return out
+
+
+def _compact_physical_d0_explanation_for_ui_snapshot(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in ("title", "summary", "target_bucket", "source", "updated_at"):
+        raw_value = value.get(key)
+        if raw_value in (None, ""):
+            continue
+        out[key] = str(raw_value or "")[:240]
+    variables_raw = value.get("variables")
+    variables_out: List[Dict[str, Any]] = []
+    if isinstance(variables_raw, list):
+        for raw_variable in variables_raw[:8]:
+            if not isinstance(raw_variable, Mapping):
+                continue
+            variable: Dict[str, Any] = {}
+            for key in ("key", "label", "direction", "evidence_state", "na_reason"):
+                raw_value = raw_variable.get(key)
+                if raw_value not in (None, ""):
+                    variable[key] = str(raw_value or "")[:160]
+            for key in ("weight", "factor", "log_likelihood", "value"):
+                num = to_float(raw_variable.get(key))
+                if num is not None and math.isfinite(float(num)):
+                    variable[key] = float(num)
+            current = raw_variable.get("current")
+            if isinstance(current, Mapping):
+                current_out: Dict[str, Any] = {}
+                for key in ("source_field", "source", "at", "updated_at"):
+                    raw_value = current.get(key)
+                    if raw_value not in (None, ""):
+                        current_out[key] = str(raw_value or "")[:120]
+                for key in ("value", "temp_c", "rate_mm_per_h", "probability_pct"):
+                    num = to_float(current.get(key))
+                    if num is not None and math.isfinite(float(num)):
+                        current_out[key] = float(num)
+                if current_out:
+                    variable["current"] = current_out
+            source_profile = raw_variable.get("source_profile")
+            if isinstance(source_profile, Mapping):
+                source_out: Dict[str, Any] = {}
+                for key in ("source", "proxy_source", "source_field", "na_reason"):
+                    raw_value = source_profile.get(key)
+                    if raw_value not in (None, ""):
+                        source_out[key] = str(raw_value or "")[:160]
+                for key in ("available", "is_proxy_only"):
+                    if key in source_profile:
+                        source_out[key] = bool(source_profile.get(key))
+                if source_out:
+                    variable["source_profile"] = source_out
+            if variable:
+                variables_out.append(variable)
+    if variables_out:
+        out["variables"] = variables_out
     return out
 
 
@@ -12765,24 +13467,24 @@ def _compact_distribution_row_for_ui_snapshot(
         "posterior_settlement_candidate_bucket_prob_raw",
         "q_bayes_z_stage",
         "q_calibration_z_stage",
+        "q_bayes_old_additive_evidence_pool_used",
+        "q_bayes_production_replacement_required",
+        "q_bayes_replacement_posterior_runtime",
+        "q_bayes_phase",
+        "q_bayes_beta_weak",
+        "q_bayes_beta_strong",
+        "q_bayes_phase_reason",
+        "q_bayes_hard_mask_reason",
         "q_bayes_prior_strength",
         "q_temperature_bucket_alpha",
         "q_temperature_bucket_alpha_total",
         "q_temperature_bucket_score_components",
         "q_temperature_bucket_score_component_details",
-        "q_bayes_model_evidence",
         "q_bayes_model_prob",
-        "q_bayes_wu_forecast_evidence",
         "q_bayes_wu_forecast_prob",
-        "q_bayes_taf_peak_evidence",
         "q_bayes_taf_peak_prob",
-        "q_bayes_observed_nowcast_evidence",
         "q_bayes_observed_nowcast_prob",
-        "q_bayes_nowcast_evidence",
         "q_bayes_nowcast_prob",
-        "q_bayes_temperature_trajectory_evidence",
-        "q_bayes_temperature_trajectory_evidence_base",
-        "q_bayes_temperature_trajectory_evidence_scale",
         "q_bayes_temperature_trajectory_enabled",
         "q_bayes_temperature_trajectory_prob",
         "q_bayes_temperature_trajectory_source",
@@ -12802,9 +13504,6 @@ def _compact_distribution_row_for_ui_snapshot(
         "q_bayes_temperature_trajectory_weaker_than_hard_source",
         "q_bayes_independent_physics_residual_prob",
         "q_bayes_independent_physics_residual_observed_prob",
-        "q_bayes_independent_physics_residual_evidence",
-        "q_bayes_independent_physics_residual_evidence_base",
-        "q_bayes_independent_physics_residual_evidence_scale",
         "q_bayes_independent_physics_residual_source",
         "q_bayes_independent_physics_residual_enabled",
         "q_bayes_independent_physics_residual_role",
@@ -12812,13 +13511,8 @@ def _compact_distribution_row_for_ui_snapshot(
         "q_bayes_independent_physics_residual_dedupe_policy",
         "q_bayes_independent_physics_residual_weaker_than_hard_source",
         "q_bayes_climo_regime_prob",
-        "q_bayes_climo_regime_evidence",
         "q_bayes_physical_likelihood_prob",
         "q_bayes_physical_likelihood_observed_prob",
-        "q_bayes_physical_likelihood_evidence",
-        "q_bayes_physical_likelihood_evidence_base",
-        "q_bayes_physical_likelihood_evidence_scale",
-        "q_bayes_physical_likelihood_evidence_scale_reason",
         "q_bayes_physical_likelihood_source",
         "q_bayes_physical_likelihood_enabled",
         "q_bayes_physical_likelihood_hard_zero",
@@ -12899,6 +13593,14 @@ def _compact_distribution_row_for_ui_snapshot(
             "posterior_settlement_candidate_bucket_prob_raw",
             "q_bayes_z_stage",
             "q_calibration_z_stage",
+            "q_bayes_old_additive_evidence_pool_used",
+            "q_bayes_production_replacement_required",
+            "q_bayes_replacement_posterior_runtime",
+            "q_bayes_phase",
+            "q_bayes_beta_weak",
+            "q_bayes_beta_strong",
+            "q_bayes_phase_reason",
+            "q_bayes_hard_mask_reason",
             "q_prior",
             "q_likelihood",
             "q_na_reason",
@@ -12924,11 +13626,17 @@ def _compact_distribution_row_for_ui_snapshot(
             "market_updated_at",
             "market_updated_source",
         )
+    keys = _ui_snapshot_contract_keys(keys, UI_SNAPSHOT_FRONTEND_CONTRACT_ROW_KEYS)
     compact: Dict[str, Any] = {
         key: row.get(key)
         for key in keys
         if key in row and row.get(key) not in (None, "")
     }
+    bucket_label = _row_bucket_label(row)
+    if bucket_label:
+        compact.setdefault("bucket", bucket_label)
+        compact.setdefault("outcome", bucket_label)
+        compact.setdefault("label", bucket_label)
     _apply_market_quote_fallback_for_side_in_place(compact, "YES")
     _apply_market_quote_fallback_for_side_in_place(compact, "NO")
     hard_zero_reasons_raw = compact.get("posterior_settlement_candidate_bucket_hard_zero_reasons")
@@ -12960,9 +13668,16 @@ def _compact_distribution_row_for_ui_snapshot(
         compact["q_bayes_posterior_no"] = 1.0
         compact["q_bayes_posterior_hard_zero_synced"] = True
     _align_compact_row_to_temperature_posterior_ssot(compact)
+    physical_scale_details_key = "q_bayes_physical_likelihood_scale_details"
+    state_trace = _compact_state_evidence_trace_for_ui(
+        row.get("state_evidence_trace"),
+        fallback_component_groups=row.get("q_bayes_physical_likelihood_component_groups"),
+    )
+    if state_trace:
+        compact["state_evidence_trace"] = state_trace
     if include_physical_detail:
         for key in (
-            "q_bayes_physical_likelihood_evidence_scale_details",
+            physical_scale_details_key,
             "q_bayes_physical_likelihood_component_groups",
             "q_bayes_physical_likelihood_components",
             "q_bayes_physical_d0_explanation",
@@ -12970,11 +13685,12 @@ def _compact_distribution_row_for_ui_snapshot(
             if key in row and row.get(key) not in (None, ""):
                 compact[key] = row.get(key)
     else:
-        compact_groups = _compact_physical_component_groups_for_fast_trade(
-            row.get("q_bayes_physical_likelihood_component_groups")
+        compact.pop(physical_scale_details_key, None)
+        compact_d0_explanation = _compact_physical_d0_explanation_for_ui_snapshot(
+            row.get("q_bayes_physical_d0_explanation")
         )
-        if compact_groups:
-            compact["q_bayes_physical_likelihood_component_groups"] = compact_groups
+        if compact_d0_explanation:
+            compact["q_bayes_physical_d0_explanation"] = compact_d0_explanation
         compact_components = _compact_physical_components_for_fast_trade(
             row.get("q_bayes_physical_likelihood_components")
         )
@@ -12982,7 +13698,9 @@ def _compact_distribution_row_for_ui_snapshot(
             compact["q_bayes_physical_likelihood_components"] = compact_components
     per_model = row.get("per_model_q")
     if isinstance(per_model, Mapping) and not summary_minimal:
-        compact["per_model_q"] = dict(per_model)
+        compact_per_model = _compact_per_model_q_for_ui_snapshot(per_model)
+        if compact_per_model:
+            compact["per_model_q"] = compact_per_model
     if include_qm_meta:
         qm_meta = _compact_qm_meta_for_ui_snapshot(row.get("q_ensemble_qm_meta"))
         if qm_meta:
@@ -12992,7 +13710,25 @@ def _compact_distribution_row_for_ui_snapshot(
         if summary_minimal:
             compact_chain = {
                 key: bayes_chain.get(key)
-                for key in ("prior_prob", "likelihood_prob", "posterior_prob", "source")
+                for key in (
+                    "schema",
+                    "role",
+                    "ui_primary_allowed",
+                    "production_probability_allowed",
+                    "replacement",
+                    "old_additive_evidence_pool_used",
+                    "production_replacement_required",
+                    "replacement_posterior_runtime",
+                    "prior_prob",
+                    "likelihood_prob",
+                    "posterior_prob",
+                    "phase",
+                    "beta_weak",
+                    "beta_strong",
+                    "phase_reason",
+                    "hard_mask_reason",
+                    "source",
+                )
                 if bayes_chain.get(key) is not None
             }
             compact_parts = _compact_bayes_chain_for_bucket_series(row).get("likelihood_parts")
@@ -13009,6 +13745,78 @@ def _compact_distribution_row_for_ui_snapshot(
     return compact
 
 
+def _ui_snapshot_ctp_soft_forecast_channel_overrides(payload: Any) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(payload, Mapping):
+        return {}
+    posterior = payload.get("posterior_temperature_distribution")
+    if not isinstance(posterior, Mapping):
+        return {}
+    source_components = posterior.get("source_components")
+    if not isinstance(source_components, Mapping):
+        return {}
+    components = source_components.get("components")
+    if not isinstance(components, Sequence) or isinstance(components, (str, bytes, bytearray)):
+        return {}
+    channel_specs = {
+        "wu_forecast": ("wu_forecast_peak", "q_bayes_wu_forecast_status"),
+        "weather_com_forecast": ("weather_com_forecast_peak", ""),
+        "twc_forecast": ("weather_com_forecast_peak", ""),
+        "taf_peak": ("taf_forecast_peak", "q_bayes_taf_peak_status"),
+        "taf_forecast": ("taf_forecast_peak", "q_bayes_taf_peak_status"),
+        "taf_forecast_peak": ("taf_forecast_peak", "q_bayes_taf_peak_status"),
+    }
+
+    def _first_finite(*values: Any) -> Optional[float]:
+        for value in values:
+            num = to_float(value)
+            if num is not None and math.isfinite(num):
+                return float(num)
+        return None
+
+    overrides: Dict[str, Dict[str, Any]] = {}
+    for component in components:
+        if not isinstance(component, Mapping):
+            continue
+        raw = component.get("raw") if isinstance(component.get("raw"), Mapping) else {}
+        source_id = str(component.get("source_id") or raw.get("source_id") or "").strip()
+        spec = channel_specs.get(source_id)
+        if not spec:
+            continue
+        channel_key, status_field = spec
+        precision = _first_finite(component.get("precision"), raw.get("precision"))
+        peak_c = _first_finite(
+            raw.get("calibrated_peak_c"),
+            component.get("calibrated_peak_c"),
+            raw.get("peak_c"),
+            component.get("peak_c"),
+            raw.get("mean_c"),
+            component.get("mean_c"),
+        )
+        sigma_c = _first_finite(component.get("sigma_c"), raw.get("sigma_c"))
+        override: Dict[str, Any] = {
+            "captured": True,
+            "posterior_included": True,
+            "posterior_status": "included_in_ctp_posterior",
+            "posterior_label": "已进入 CTP 主后验",
+            "not_in_posterior_reason": "",
+            "ctp_source_id": source_id,
+        }
+        if status_field:
+            override[status_field] = "included_in_ctp_posterior"
+        if precision is not None:
+            override["evidence"] = precision
+            override["ctp_precision"] = precision
+        if peak_c is not None:
+            override["peak_c"] = peak_c
+        if sigma_c is not None:
+            override["sigma_c"] = sigma_c
+        source = str(raw.get("source") or component.get("source") or source_id).strip()
+        if source:
+            override["source"] = source
+        overrides[channel_key] = {**overrides.get(channel_key, {}), **override}
+    return overrides
+
+
 def _ui_snapshot_soft_forecast_channels(payload: Any, distribution: Any) -> Dict[str, Any]:
     soft_channels = payload.get("soft_forecast_posterior_channels") if isinstance(payload, Mapping) else {}
     if isinstance(soft_channels, Mapping):
@@ -13019,37 +13827,6 @@ def _ui_snapshot_soft_forecast_channels(payload: Any, distribution: Any) -> Dict
     else:
         out = {}
     row0 = distribution[0] if isinstance(distribution, list) and distribution and isinstance(distribution[0], Mapping) else {}
-    if not out and row0:
-        out = {
-            "wu_forecast_peak": {
-                "captured": bool(row0.get("wu_forecast_peak_captured")),
-                "posterior_included": bool(row0.get("wu_forecast_peak_posterior_included")),
-                "posterior_status": row0.get("wu_forecast_peak_posterior_status"),
-                "posterior_label": row0.get("wu_forecast_peak_posterior_label"),
-                "not_in_posterior_reason": row0.get("wu_forecast_peak_not_in_posterior_reason"),
-                "peak_c": row0.get("wu_forecast_peak_c"),
-                "evidence": row0.get("q_bayes_wu_forecast_evidence"),
-            },
-            "weather_com_forecast_peak": {
-                "captured": bool(row0.get("weather_com_forecast_peak_captured")),
-                "posterior_included": bool(row0.get("weather_com_forecast_peak_posterior_included")),
-                "posterior_status": row0.get("weather_com_forecast_peak_posterior_status"),
-                "posterior_label": row0.get("weather_com_forecast_peak_posterior_label"),
-                "not_in_posterior_reason": row0.get("weather_com_forecast_peak_not_in_posterior_reason"),
-                "peak_c": row0.get("weather_com_forecast_peak_c") or row0.get("twc_forecast_peak_c"),
-                "evidence": 0.0,
-                "source": row0.get("weather_com_forecast_peak_source") or row0.get("twc_forecast_peak_source"),
-            },
-            "taf_forecast_peak": {
-                "captured": bool(row0.get("taf_forecast_peak_captured")),
-                "posterior_included": bool(row0.get("taf_forecast_peak_posterior_included")),
-                "posterior_status": row0.get("taf_forecast_peak_posterior_status"),
-                "posterior_label": row0.get("taf_forecast_peak_posterior_label"),
-                "not_in_posterior_reason": row0.get("taf_forecast_peak_not_in_posterior_reason"),
-                "peak_c": row0.get("taf_forecast_peak_c"),
-                "evidence": row0.get("q_bayes_taf_peak_evidence"),
-            },
-        }
     manual_override_enabled = row0.get("q_bayes_soft_forecast_manual_override_enabled") if isinstance(row0, Mapping) else None
     for channel_key, status_field in (
         ("wu_forecast_peak", "q_bayes_wu_forecast_status"),
@@ -13065,7 +13842,12 @@ def _ui_snapshot_soft_forecast_channels(payload: Any, distribution: Any) -> Dict
         if manual_override_enabled is not None:
             channel_out["q_bayes_soft_forecast_manual_override_enabled"] = bool(manual_override_enabled)
         out[channel_key] = channel_out
-    if out and "summary_status" not in out:
+    for channel_key, override in _ui_snapshot_ctp_soft_forecast_channel_overrides(payload).items():
+        channel = out.get(channel_key)
+        channel_out = dict(channel) if isinstance(channel, Mapping) else {}
+        channel_out.update(override)
+        out[channel_key] = channel_out
+    if out:
         captured_not_included = [
             key
             for key, value in out.items()
@@ -13221,12 +14003,16 @@ def _normalize_awc_primary_temperature_momentum_metadata(features: Mapping[str, 
             "temperature_trajectory_stable_rate_source",
         )
     ).lower()
-    hard_awc_source = any(token in source_text for token in ("zuuu", "metar", "awc", "airport"))
+    hard_awc_source = any(token in source_text for token in ("zuuu", "metar", "amsc", "awc", "airport"))
     if not hard_awc_source:
         return out
     for label in _UI_TEMPERATURE_MOMENTUM_WINDOWS:
         fallback_requested = _ui_temperature_momentum_label_hours(label)
-        for prefix in ("temperature_momentum_", "zuuu_metar_raw_awc_temperature_momentum_"):
+        for prefix in (
+            "temperature_momentum_",
+            "zuuu_metar_raw_amsc_temperature_momentum_",
+            "zuuu_metar_raw_awc_temperature_momentum_",
+        ):
             requested = to_float(out.get(f"{prefix}{label}_requested_hours"))
             if requested is None:
                 requested = fallback_requested
@@ -13311,6 +14097,11 @@ def _compact_weather_likelihood_features_for_ui(features: Any) -> Dict[str, Any]
         "observed_today_max_at",
         "observed_temp_source",
         "observed_today_max_source",
+        "observed_today_max_final",
+        "hard_source_final_daily_max",
+        "temperature_observation_final_daily_max",
+        "hard_source_final_daily_max_source",
+        "hard_source_final_lock_reason",
         "temperature_rise_rate_c_per_hour",
         "temperature_rise_rate_source",
         "temperature_rise_rate_window",
@@ -13321,6 +14112,18 @@ def _compact_weather_likelihood_features_for_ui(features: Any) -> Dict[str, Any]
         "temperature_trajectory_stable_rate_c_per_hour",
         "temperature_trajectory_stable_rate_window",
         "temperature_trajectory_stable_rate_source",
+        "temperature_trajectory_state",
+        "temperature_trajectory_gate_state",
+        "temperature_trajectory_gate_reason",
+        "temperature_trajectory_realization_state",
+        "temperature_trajectory_effective_rate_c_per_hour",
+        "temperature_trajectory_adjusted_rate_c_per_hour",
+        "temperature_trajectory_point_count",
+        "temperature_trajectory_current_temp_c",
+        "temperature_trajectory_rolling_max_c",
+        "temperature_trajectory_today_max_c",
+        "temperature_trajectory_latest_observation_at",
+        "temperature_trajectory_confidence",
         "temperature_momentum_source",
         "temperature_momentum_effective_c_per_hour",
         "temperature_momentum_effective_windows",
@@ -13421,6 +14224,50 @@ def _compact_weather_likelihood_features_for_ui(features: Any) -> Dict[str, Any]
         "peak_estimator_kalman_gain",
         "peak_estimator_combined_discount",
         "weather_likelihood_refreshed_at",
+        "visibility_m",
+        "cloud_cover_pct",
+        "low_cloud_cover_pct",
+        "cloud_text",
+        "weather_text",
+        "wind_speed_mps",
+        "wind_dir_deg",
+        "wind_gust_mps",
+        "pressure_hpa",
+        "zuuu_metar_raw_amsc_request_started_at",
+        "zuuu_metar_raw_amsc_fetched_at",
+        "zuuu_metar_raw_amsc_latest_at",
+        "zuuu_metar_raw_amsc_latest_local",
+        "zuuu_metar_raw_amsc_latest_temp_c",
+        "zuuu_metar_raw_amsc_latest_dewpoint_c",
+        "zuuu_metar_raw_amsc_latest_visibility_m",
+        "zuuu_metar_raw_amsc_latest_cloud_cover_pct",
+        "zuuu_metar_raw_amsc_latest_low_cloud_cover_pct",
+        "zuuu_metar_raw_amsc_latest_cloud_text",
+        "zuuu_metar_raw_amsc_latest_weather_text",
+        "zuuu_metar_raw_amsc_latest_wind_dir_deg",
+        "zuuu_metar_raw_amsc_latest_wind_speed_mps",
+        "zuuu_metar_raw_amsc_latest_wind_gust_mps",
+        "zuuu_metar_raw_amsc_latest_pressure_hpa",
+        "zuuu_metar_raw_amsc_latest_raw",
+        "zuuu_metar_raw_amsc_today_max_c",
+        "zuuu_metar_raw_amsc_today_max_at",
+        "zuuu_metar_raw_amsc_today_max_local",
+        "zuuu_metar_raw_amsc_today_max_raw",
+        "zuuu_metar_raw_amsc_today_temperature_points",
+        "zuuu_metar_raw_amsc_temperature_observations",
+        "zuuu_metar_raw_amsc_temperature_point_count",
+        "zuuu_metar_raw_amsc_source_observation_id",
+        "zuuu_metar_raw_amsc_temperature_momentum_available_horizons",
+        "zuuu_metar_raw_amsc_temperature_momentum_12h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_6h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_3h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_2h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_45m_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_30m_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_trajectory_stable_rate_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_trajectory_realization_state",
+        "zuuu_metar_raw_amsc_rolling_temperature_summary",
         "zuuu_metar_raw_awc_request_started_at",
         "zuuu_metar_raw_awc_fetched_at",
         "zuuu_metar_raw_awc_latest_at",
@@ -13463,6 +14310,12 @@ def _compact_weather_likelihood_features_for_ui(features: Any) -> Dict[str, Any]
         "zuuu_metar_raw_awc_today_max_raw",
         "zuuu_metar_raw_awc_today_sample_count",
         "zuuu_metar_raw_awc_today_temperature_points",
+        "zuuu_metar_raw_awc_final_daily_max",
+        "zuuu_metar_raw_awc_final_daily_max_state",
+        "zuuu_metar_raw_awc_final_daily_max_reason",
+        "zuuu_metar_raw_awc_final_daily_max_at",
+        "zuuu_metar_raw_awc_final_event_end_utc",
+        "zuuu_metar_raw_awc_final_latest_at",
         "zuuu_metar_raw_awc_url",
         "zuuu_metar_raw_awc_source_url",
         "zuuu_metar_raw_awc_fetch_duration_ms",
@@ -13544,9 +14397,10 @@ def _compact_weather_likelihood_features_for_ui(features: Any) -> Dict[str, Any]
         "forecast_precip_nowcast_1_3h_next_precip_at",
         "open_meteo_hourly_forcing_timeline",
         "forecast_hourly_forcing_timeline",
-        "forecast_hourly_forcing_timeline_source",
-        "forecast_hourly_forcing_timeline_rows",
-    )
+	        "forecast_hourly_forcing_timeline_source",
+	        "forecast_hourly_forcing_timeline_rows",
+	    )
+    keys = _ui_snapshot_contract_keys(keys, UI_SNAPSHOT_FRONTEND_CONTRACT_FEATURE_KEYS)
     compact = {
         key: features.get(key)
         for key in keys
@@ -13563,11 +14417,24 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         return {}
     features = payload.get("weather_likelihood_features")
     compact_features = _compact_weather_likelihood_features_for_ui(features)
-    if not compact_features and isinstance(payload.get("weather_likelihood_features_compact"), Mapping):
-        compact_features = _normalize_ui_temperature_rise_rate_fields(
-            payload.get("weather_likelihood_features_compact") or {}
-        )
+    existing_compact = (
+        _normalize_ui_temperature_rise_rate_fields(payload.get("weather_likelihood_features_compact") or {})
+        if isinstance(payload.get("weather_likelihood_features_compact"), Mapping)
+        else {}
+    )
+    if existing_compact:
+        compact_features = {**compact_features, **existing_compact}
     row0 = distribution[0] if isinstance(distribution, list) and distribution and isinstance(distribution[0], Mapping) else {}
+    def max_numeric_value(*values: Any) -> Optional[float]:
+        numbers: List[float] = []
+        for value in values:
+            parsed = to_float(value)
+            if parsed is not None and math.isfinite(float(parsed)):
+                numbers.append(float(parsed))
+        if not numbers:
+            return None
+        return max(numbers)
+
     observed = to_float(compact_features.get("observed_temp_c"))
     observed_max = to_float(compact_features.get("observed_today_max_c"))
     rise_info = _ui_trusted_temperature_rise_rate(compact_features)
@@ -13583,7 +14450,6 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         compact_features.get("taf_forecast_peak_c"),
         compact_features.get("open_meteo_peak_temp_c"),
     )
-    has_observed = observed is not None or observed_max is not None
     q_meta = row0.get("q_bayes_meta") if isinstance(row0.get("q_bayes_meta"), Mapping) else {}
     component_details = q_meta.get("score_component_details") if isinstance(q_meta.get("score_component_details"), Mapping) else {}
     trajectory_detail = (
@@ -13591,24 +14457,78 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         if isinstance(component_details.get("temperature_trajectory"), Mapping)
         else {}
     )
+    root_trajectory = (
+        payload.get("temperature_trajectory")
+        if isinstance(payload.get("temperature_trajectory"), Mapping)
+        else {}
+    )
+    root_trajectory_na_reasons = root_trajectory.get("na_reasons")
+    if isinstance(root_trajectory_na_reasons, list):
+        root_trajectory_na_reason = ",".join(str(reason) for reason in root_trajectory_na_reasons if str(reason))
+    else:
+        root_trajectory_na_reason = ""
+    root_rolling = (
+        root_trajectory.get("rolling_temperature_observation_summary")
+        if isinstance(root_trajectory.get("rolling_temperature_observation_summary"), Mapping)
+        else {}
+    )
+    root_observed = _coalesce_numeric(
+        root_rolling.get("current_temp_c"),
+        root_rolling.get("current_temperature_c"),
+        root_rolling.get("observed_temp_c"),
+        root_trajectory.get("current_temp_c"),
+        root_trajectory.get("current_temperature_c"),
+        root_trajectory.get("observed_temp_c"),
+    )
+    root_rolling_window_max = _coalesce_numeric(
+        root_rolling.get("rolling_window_max_c"),
+        root_rolling.get("rolling_window_max_temperature_c"),
+        root_rolling.get("rolling_max_c"),
+        root_rolling.get("rolling_max_temperature_c"),
+        root_trajectory.get("rolling_window_max_c"),
+        root_trajectory.get("rolling_window_max_temperature_c"),
+        root_trajectory.get("rolling_max_c"),
+        root_trajectory.get("rolling_max_temperature_c"),
+    )
+    if root_rolling_window_max is None:
+        root_rolling_window_max = _coalesce_numeric(root_rolling.get("observed_today_max_c"))
+    root_declared_today_max = _coalesce_numeric(
+        compact_features.get("zuuu_metar_raw_amsc_today_max_c"),
+        payload.get("zuuu_metar_raw_amsc_today_max_c"),
+        compact_features.get("observed_today_max_c"),
+        payload.get("observed_today_max_c"),
+        root_trajectory.get("observed_today_max_c"),
+    )
+    if root_trajectory and root_observed is not None:
+        observed = root_observed
+    observed_max = max_numeric_value(observed_max, root_declared_today_max, root_rolling_window_max)
+    has_observed = observed is not None or observed_max is not None
     posterior_status = str(
-        row0.get("q_bayes_temperature_trajectory_status")
+        root_trajectory.get("state")
+        or row0.get("q_bayes_temperature_trajectory_status")
         or payload.get("q_bayes_temperature_trajectory_status")
         or q_meta.get("temperature_trajectory_posterior_status")
         or ""
     ).strip()
     posterior_na_reason = str(
-        row0.get("q_bayes_temperature_trajectory_na_reason")
+        root_trajectory_na_reason
+        if root_trajectory
+        else row0.get("q_bayes_temperature_trajectory_na_reason")
         or payload.get("q_bayes_temperature_trajectory_na_reason")
         or q_meta.get("temperature_trajectory_posterior_na_reason")
         or ""
     ).strip()
+    if not root_trajectory:
+        posterior_na_reason = str(
+            row0.get("q_bayes_temperature_trajectory_na_reason")
+            or payload.get("q_bayes_temperature_trajectory_na_reason")
+            or q_meta.get("temperature_trajectory_posterior_na_reason")
+            or ""
+        ).strip()
     trajectory_evidence = to_float(
-        row0.get("q_bayes_temperature_trajectory_evidence")
-        if row0.get("q_bayes_temperature_trajectory_evidence") not in (None, "")
-        else payload.get("q_bayes_temperature_trajectory_evidence")
-        if payload.get("q_bayes_temperature_trajectory_evidence") not in (None, "")
-        else q_meta.get("temperature_trajectory_evidence")
+        root_trajectory.get("adjusted_rate_c_per_hour")
+        if root_trajectory.get("adjusted_rate_c_per_hour") not in (None, "")
+        else q_meta.get("temperature_trajectory_overlay_strength")
     )
     trajectory_path_mu = _coalesce_numeric(
         row0.get("q_bayes_temperature_trajectory_path_mu_c"),
@@ -13627,6 +14547,10 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         q_meta.get("temperature_trajectory_sigma_c"),
     )
     trajectory_rate = _coalesce_numeric(
+        root_trajectory.get("adjusted_rate_c_per_hour"),
+        root_trajectory.get("stable_rate_c_per_hour"),
+        root_trajectory.get("effective_rate_c_per_hour"),
+        root_trajectory.get("recent_rate_c_per_hour"),
         row0.get("q_bayes_temperature_trajectory_rate_hat_c_per_hour"),
         payload.get("q_bayes_temperature_trajectory_rate_hat_c_per_hour"),
         q_meta.get("temperature_trajectory_rate_hat_c_per_hour"),
@@ -13663,8 +14587,35 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         else payload.get("q_bayes_temperature_trajectory_enabled")
         if payload.get("q_bayes_temperature_trajectory_enabled") not in (None, "")
         else q_meta.get("temperature_trajectory_posterior_enabled")
+        if q_meta.get("temperature_trajectory_posterior_enabled") not in (None, "")
+        else bool(root_trajectory)
     )
     trajectory_enabled = bool(enabled_raw is True or str(enabled_raw).strip().lower() in {"1", "true", "yes", "on"})
+    had_feature_rate = rise is not None or momentum is not None
+    if root_trajectory and trajectory_rate is not None:
+        momentum = trajectory_rate
+    elif momentum is None and trajectory_rate is not None:
+        momentum = trajectory_rate
+    if root_trajectory and trajectory_rate is not None:
+        rise = trajectory_rate
+        rise_info = {
+            **dict(rise_info),
+            "value": trajectory_rate,
+            "source": "temperature_trajectory.adjusted_rate_c_per_hour",
+            "window": "rolling",
+            "trusted": True,
+            "na_reason": "",
+        }
+    elif rise is None and trajectory_rate is not None:
+        rise = trajectory_rate
+        rise_info = {
+            **dict(rise_info),
+            "value": trajectory_rate,
+            "source": "temperature_trajectory.adjusted_rate_c_per_hour",
+            "window": "rolling",
+            "trusted": True,
+            "na_reason": "",
+        }
     has_feature_rate = rise is not None or momentum is not None
     has_rate = has_feature_rate or trajectory_rate is not None
     gate_raw = compact_features.get("temperature_momentum_posterior_gate_allowed")
@@ -13675,8 +14626,19 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         gate_allowed = True
     elif str(gate_raw).strip().lower() in {"0", "false", "no", "off"}:
         gate_allowed = False
-    momentum_state = str(compact_features.get("temperature_momentum_realization_state") or "").strip().lower()
-    gate_reason = str(compact_features.get("temperature_momentum_posterior_gate_reason") or "").strip()
+    root_gate_state = str(root_trajectory.get("gate_state") or "").strip().lower()
+    if root_gate_state:
+        gate_allowed = root_gate_state == "confirmed"
+    momentum_state = str(
+        root_trajectory.get("state")
+        or compact_features.get("temperature_momentum_realization_state")
+        or ""
+    ).strip().lower()
+    gate_reason = str(
+        root_trajectory.get("gate_reason")
+        or compact_features.get("temperature_momentum_posterior_gate_reason")
+        or ""
+    ).strip()
     trajectory_effective = bool(
         trajectory_evidence is not None
         and math.isfinite(float(trajectory_evidence))
@@ -13684,8 +14646,9 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         and gate_allowed is not False
     )
     trajectory_plumbing_mismatch = bool(
-        (trajectory_effective or trajectory_enabled)
-        and not has_feature_rate
+        not root_trajectory
+        and (trajectory_effective or trajectory_enabled)
+        and not had_feature_rate
         and trajectory_rate is not None
     )
     non_positive_rate = bool(
@@ -13703,7 +14666,7 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         missing.append("observed_temperature_missing")
     if not has_feature_rate and trajectory_rate is None:
         missing.append("temperature_momentum_or_rise_rate_missing")
-    if forecast_peak is None:
+    if forecast_peak is None and not root_trajectory:
         missing.append("forecast_peak_missing")
     upstream_reason = str(compact_features.get("temperature_trajectory_na_reason") or "").strip()
     rise_na_reason = str(rise_info.get("na_reason") or "").strip()
@@ -13741,6 +14704,11 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         summary = "实况温度轨迹数据不全；只展示后验/软预报，不作轨迹兑现判定。"
     if trajectory_plumbing_mismatch:
         summary += " 诊断：regime_v1 已提供轨迹 rate，但行级动量字段未同步，已按 v1 字段补齐状态。"
+    rolling_point_count = _coalesce_numeric(
+        root_rolling.get("rolling_point_count"),
+        root_rolling.get("point_count"),
+    )
+    rolling_window_max = to_float(root_rolling_window_max)
     return {
         "available": available,
         "state": state,
@@ -13750,19 +14718,31 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         "diagnostic_flags": ["trajectory_plumbing_mismatch"] if trajectory_plumbing_mismatch else [],
         "trajectory_plumbing_mismatch": trajectory_plumbing_mismatch,
         "observed_temp_c": observed,
+        "current_temp_c": observed,
+        "current_temperature_c": observed,
         "observed_today_max_c": observed_max,
+        "rolling_window_max_c": rolling_window_max,
+        "rolling_window_max_temperature_c": rolling_window_max,
+        "rolling_max_c": rolling_window_max if rolling_window_max is not None else observed_max,
+        "rolling_max_temperature_c": rolling_window_max if rolling_window_max is not None else observed_max,
+        "rolling_point_count": rolling_point_count,
         "temperature_rise_rate_c_per_hour": rise,
         "temperature_rise_rate_source": str(rise_info.get("source") or ""),
         "temperature_rise_rate_window": str(rise_info.get("window") or ""),
         "temperature_rise_rate_trusted": bool(rise_info.get("trusted")),
         "temperature_rise_rate_na_reason": rise_na_reason,
         "temperature_momentum_effective_c_per_hour": momentum,
+        "temperature_momentum_source": str(
+            compact_features.get("temperature_momentum_source")
+            or root_trajectory.get("source_id")
+            or ""
+        ),
         "temperature_momentum_realization_state": momentum_state,
         "temperature_momentum_posterior_gate_allowed": gate_allowed,
         "temperature_momentum_posterior_gate_reason": gate_reason,
         "temperature_trajectory_posterior_status": posterior_status,
         "temperature_trajectory_posterior_na_reason": posterior_na_reason,
-        "temperature_trajectory_evidence": trajectory_evidence,
+        "temperature_trajectory_overlay_strength": trajectory_evidence,
         "temperature_trajectory_effective": trajectory_effective,
         "temperature_trajectory_path_mu_c": trajectory_path_mu,
         "temperature_trajectory_path_sigma_c": trajectory_path_sigma,
@@ -13776,6 +14756,233 @@ def _ui_temperature_trajectory_status_from_payload(payload: Any, distribution: A
         "feature_quality": payload.get("weather_likelihood_feature_quality") or row0.get("weather_likelihood_feature_quality"),
         "summary": summary,
     }
+
+
+def _normalize_ui_temperature_trajectory_root_fields(payload: MutableMapping[str, Any]) -> None:
+    if not isinstance(payload, MutableMapping):
+        return
+    trajectory = payload.get("temperature_trajectory")
+    if not isinstance(trajectory, MutableMapping):
+        return
+    rolling = trajectory.get("rolling_temperature_observation_summary")
+    if not isinstance(rolling, MutableMapping):
+        rolling = {}
+
+    current = _coalesce_numeric(
+        rolling.get("current_temp_c"),
+        rolling.get("current_temperature_c"),
+        rolling.get("observed_temp_c"),
+        trajectory.get("current_temp_c"),
+        trajectory.get("current_temperature_c"),
+        trajectory.get("observed_temp_c"),
+    )
+    feature_compact = payload.get("weather_likelihood_features_compact")
+    if not isinstance(feature_compact, Mapping):
+        feature_compact = {}
+    key_metrics = payload.get("key_metrics")
+    if not isinstance(key_metrics, Mapping):
+        key_metrics = {}
+
+    all_day_observed_max = _coalesce_numeric(
+        payload.get("zuuu_metar_raw_amsc_today_max_c"),
+        feature_compact.get("zuuu_metar_raw_amsc_today_max_c"),
+        key_metrics.get("zuuu_metar_raw_amsc_today_max_c"),
+        payload.get("observed_today_max_c"),
+        feature_compact.get("observed_today_max_c"),
+        key_metrics.get("observed_today_max_c"),
+        trajectory.get("observed_today_max_c"),
+    )
+    rolling_max = _coalesce_numeric(
+        rolling.get("rolling_window_max_c"),
+        rolling.get("rolling_window_max_temperature_c"),
+        rolling.get("rolling_max_c"),
+        rolling.get("rolling_max_temperature_c"),
+        trajectory.get("rolling_window_max_c"),
+        trajectory.get("rolling_window_max_temperature_c"),
+        trajectory.get("rolling_max_c"),
+        trajectory.get("rolling_max_temperature_c"),
+    )
+    if rolling_max is None:
+        rolling_max = _coalesce_numeric(rolling.get("observed_today_max_c"))
+    observed_today_max = None
+    numeric_max_candidates = [
+        to_float(value)
+        for value in (all_day_observed_max, rolling_max)
+        if to_float(value) is not None and math.isfinite(float(to_float(value)))
+    ]
+    if numeric_max_candidates:
+        observed_today_max = max(float(value) for value in numeric_max_candidates)
+    point_count = _coalesce_numeric(rolling.get("rolling_point_count"), rolling.get("point_count"))
+    point_count_value: Optional[float | int] = None
+    if point_count is not None:
+        point_count_value = int(point_count) if float(point_count).is_integer() else float(point_count)
+
+    if current is not None:
+        if isinstance(rolling, MutableMapping):
+            for key in ("current_temp_c", "current_temperature_c", "observed_temp_c"):
+                if rolling.get(key) in (None, ""):
+                    rolling[key] = float(current)
+        for key in ("current_temp_c", "current_temperature_c", "observed_temp_c"):
+            if trajectory.get(key) in (None, ""):
+                trajectory[key] = float(current)
+    if rolling_max is not None:
+        if isinstance(rolling, MutableMapping):
+            for key in (
+                "rolling_window_max_c",
+                "rolling_window_max_temperature_c",
+                "rolling_max_c",
+                "rolling_max_temperature_c",
+            ):
+                if rolling.get(key) in (None, ""):
+                    rolling[key] = float(rolling_max)
+        for key in (
+            "rolling_window_max_c",
+            "rolling_window_max_temperature_c",
+            "rolling_max_c",
+            "rolling_max_temperature_c",
+        ):
+            if trajectory.get(key) in (None, ""):
+                trajectory[key] = float(rolling_max)
+    if observed_today_max is not None:
+        for target in (trajectory, rolling):
+            if isinstance(target, MutableMapping):
+                target["observed_today_max_c"] = float(observed_today_max)
+                target["today_max_c"] = float(observed_today_max)
+    if point_count_value is not None and isinstance(rolling, MutableMapping):
+        for key in ("point_count", "rolling_point_count"):
+            if rolling.get(key) in (None, ""):
+                rolling[key] = point_count_value
+
+    rate_source = trajectory.get("rates_c_per_hour")
+    rates: Dict[str, float] = {}
+    if isinstance(rate_source, Mapping):
+        for raw_label, raw_value in rate_source.items():
+            label = str(raw_label or "").strip()
+            value = to_float(raw_value)
+            if label and value is not None and math.isfinite(float(value)):
+                rates[label] = float(value)
+
+    stable = _coalesce_numeric(
+        trajectory.get("stable_rate_c_per_hour"),
+        rolling.get("rolling_slope_c_per_hour"),
+    )
+    adjusted = _coalesce_numeric(
+        trajectory.get("adjusted_rate_c_per_hour"),
+    )
+    effective_rate = _coalesce_numeric(
+        trajectory.get("effective_rate_c_per_hour"),
+        adjusted,
+        stable,
+        trajectory.get("recent_rate_c_per_hour"),
+        trajectory.get("short_rate_c_per_hour"),
+    )
+    effective = _coalesce_numeric(
+        effective_rate,
+    )
+    state = str(trajectory.get("state") or "").strip()
+    gate_state = str(trajectory.get("gate_state") or "").strip()
+    gate_reason = str(trajectory.get("gate_reason") or "").strip()
+    confidence = _coalesce_numeric(trajectory.get("confidence"), rolling.get("confidence"))
+    confirmed_windows = trajectory.get("confirmed_windows")
+    if isinstance(confirmed_windows, list):
+        confirmed_window_labels = [str(item).strip() for item in confirmed_windows if str(item).strip()]
+    else:
+        confirmed_window_labels = []
+    positive_short_windows = trajectory.get("positive_short_windows")
+    if isinstance(positive_short_windows, list):
+        positive_short_window_labels = [str(item).strip() for item in positive_short_windows if str(item).strip()]
+    else:
+        positive_short_window_labels = []
+    available_horizons = list(rates.keys())
+    latest_at = str(
+        trajectory.get("latest_observation_at")
+        or rolling.get("latest_observation_at")
+        or rolling.get("current_valid_time")
+        or rolling.get("valid_time")
+        or ""
+    ).strip()
+    has_amsc_observation_source = any(
+        value not in (None, "", [], {})
+        for value in (
+            payload.get("zuuu_metar_raw_amsc_latest_temp_c"),
+            payload.get("zuuu_metar_raw_amsc_today_max_c"),
+            feature_compact.get("zuuu_metar_raw_amsc_latest_temp_c"),
+            feature_compact.get("zuuu_metar_raw_amsc_today_max_c"),
+            key_metrics.get("zuuu_metar_raw_amsc_latest_temp_c"),
+            key_metrics.get("zuuu_metar_raw_amsc_today_max_c"),
+        )
+    )
+    trajectory_source = str(
+        trajectory.get("source_id")
+        or ("zuuu_metar_raw_amsc" if has_amsc_observation_source else "")
+        or payload.get("temperature_momentum_source")
+        or feature_compact.get("temperature_momentum_source")
+        or "temperature_trajectory"
+    ).strip()
+
+    def put_if_missing(target: MutableMapping[str, Any], key: str, value: Any, *, force: bool = False) -> None:
+        if value in (None, "", [], {}):
+            return
+        if force or target.get(key) in (None, "", [], {}):
+            target[key] = copy.deepcopy(value)
+
+    def merge_aliases(target: MutableMapping[str, Any], *, force: bool = False) -> None:
+        if not isinstance(target, MutableMapping):
+            return
+        if rates:
+            put_if_missing(target, "temperature_momentum_rates_c_per_hour", rates, force=force)
+            put_if_missing(target, "momentum_rates_c_per_hour", rates, force=force)
+            for label, value in rates.items():
+                put_if_missing(target, f"temperature_momentum_{label}_c_per_hour", value, force=force)
+                put_if_missing(target, f"momentum_{label}_c_per_hour", value, force=force)
+        put_if_missing(target, "temperature_momentum_effective_c_per_hour", effective, force=force)
+        put_if_missing(target, "temperature_momentum_posterior_effective_c_per_hour", effective, force=force)
+        put_if_missing(target, "temperature_momentum_context_effective_c_per_hour", effective, force=force)
+        put_if_missing(target, "temperature_momentum_realization_state", state, force=force)
+        put_if_missing(target, "temperature_momentum_posterior_gate_state", gate_state, force=force)
+        put_if_missing(target, "temperature_momentum_posterior_gate_reason", gate_reason, force=force)
+        put_if_missing(target, "temperature_momentum_latest_observation_at", latest_at, force=force)
+        put_if_missing(target, "temperature_trajectory_state", state, force=force)
+        put_if_missing(target, "temperature_trajectory_realization_state", state, force=force)
+        put_if_missing(target, "temperature_trajectory_gate_state", gate_state, force=force)
+        put_if_missing(target, "temperature_trajectory_gate_reason", gate_reason, force=force)
+        put_if_missing(target, "temperature_trajectory_effective_rate_c_per_hour", effective_rate, force=force)
+        put_if_missing(target, "temperature_trajectory_adjusted_rate_c_per_hour", adjusted, force=force)
+        put_if_missing(target, "temperature_trajectory_stable_rate_c_per_hour", stable, force=force)
+        put_if_missing(target, "temperature_trajectory_point_count", point_count_value, force=force)
+        put_if_missing(target, "temperature_trajectory_current_temp_c", current, force=force)
+        put_if_missing(target, "temperature_trajectory_rolling_max_c", rolling_max, force=force)
+        put_if_missing(target, "temperature_trajectory_today_max_c", observed_today_max, force=force)
+        put_if_missing(target, "temperature_trajectory_latest_observation_at", latest_at, force=force)
+        put_if_missing(target, "temperature_trajectory_confidence", confidence, force=force)
+        if available_horizons:
+            put_if_missing(target, "temperature_momentum_available_horizons", ",".join(available_horizons), force=force)
+        if confirmed_window_labels:
+            put_if_missing(target, "temperature_momentum_effective_windows", ",".join(confirmed_window_labels), force=force)
+            put_if_missing(target, "temperature_momentum_posterior_confirmed_windows", ",".join(confirmed_window_labels), force=force)
+            put_if_missing(target, "temperature_momentum_posterior_confirmed_window_count", len(confirmed_window_labels), force=force)
+        if positive_short_window_labels:
+            put_if_missing(target, "temperature_momentum_positive_short_windows", ",".join(positive_short_window_labels), force=force)
+        if gate_state:
+            put_if_missing(
+                target,
+                "temperature_momentum_posterior_gate_allowed",
+                str(gate_state).strip().lower() == "confirmed",
+                force=force,
+            )
+        put_if_missing(target, "temperature_momentum_source", trajectory_source, force=force)
+        put_if_missing(target, "temperature_trajectory_source", trajectory_source, force=force)
+
+    merge_aliases(trajectory, force=True)
+    merge_aliases(payload, force=True)
+    compact = payload.get("weather_likelihood_features_compact")
+    if isinstance(compact, MutableMapping):
+        merge_aliases(compact, force=True)
+    elif rates or effective is not None or state:
+        compact_out: Dict[str, Any] = {}
+        merge_aliases(compact_out)
+        if compact_out:
+            payload["weather_likelihood_features_compact"] = compact_out
 
 
 def _regime_signal_state(
@@ -14448,6 +15655,2792 @@ def _attach_chengdu_model_weight_shadow_for_ui_snapshot(compact_payload: Mutable
         compact_payload["model_weight_shadow_guardrails"] = dict(guardrails)
 
 
+def _attach_forecast_source_accuracy_for_ui_snapshot(
+    payload: MutableMapping[str, Any],
+    accuracy_snapshot: Mapping[str, Any],
+) -> None:
+    if not isinstance(payload, MutableMapping) or not _is_chengdu_model_weight_shadow_item(payload):
+        return
+    compact = (
+        dict(accuracy_snapshot)
+        if accuracy_snapshot.get("schema") == "ui_forecast_source_accuracy_v1"
+        else _compact_forecast_source_accuracy_for_ui(accuracy_snapshot)
+    )
+    if compact:
+        payload["forecast_source_accuracy"] = compact
+
+
+def _compact_joint_weak_bias_research_for_ui(value: Any) -> Dict[str, Any]:
+    payload = value if isinstance(value, Mapping) else {}
+    if payload.get("schema") != "joint_weak_bias_research_snapshot_v1":
+        return {"schema": "ui_joint_weak_bias_research_v1", "state": "unavailable", "research_only": True, "production_weight_input": False, "na_reason": str(payload.get("na_reason") or payload.get("error") or "joint_weak_bias_research_snapshot_missing")}
+    readiness = payload.get("readiness") if isinstance(payload.get("readiness"), Mapping) else {}
+    return {"schema": "ui_joint_weak_bias_research_v1", "state": str(readiness.get("state") or "pending_formal_samples"), "research_only": True, "production_weight_input": False, "pipeline_sha256": str(payload.get("pipeline_sha256") or ""), "pipeline_contract_version": str(payload.get("pipeline_contract_version") or ""), "pipeline_contract_sha256": str(payload.get("pipeline_contract_sha256") or ""), "dataset_sha256": str(payload.get("dataset_sha256") or ""), "training_event_day_count": readiness.get("training_event_day_count", 0), "minimum_independent_event_days": readiness.get("minimum_independent_event_days", 30), "selected_alpha": readiness.get("selected_alpha"), "frozen_alpha_oos": dict(readiness.get("frozen_alpha_oos") or {}) if isinstance(readiness.get("frozen_alpha_oos"), Mapping) else {}, "rolling_origin": dict(readiness.get("rolling_origin") or {}) if isinstance(readiness.get("rolling_origin"), Mapping) else {}, "promotion_state": str(readiness.get("promotion_state") or "not_eligible_research_only"), "promotion_blockers": list(readiness.get("promotion_blockers") or []), "na_reason": ""}
+
+
+def _safe_joint_weak_bias_research_snapshot_only(conn: sqlite3.Connection) -> Dict[str, Any]:
+    try:
+        snapshot = _load_latest_feedback_snapshot_ro(conn, kind=JOINT_WEAK_BIAS_RESEARCH_SNAPSHOT_KIND, days=0, ok_only=True)
+    except Exception as exc:
+        return {"schema": "ui_joint_weak_bias_research_v1", "state": "unavailable", "research_only": True, "production_weight_input": False, "na_reason": f"joint_weak_bias_research_snapshot_read_failed:{type(exc).__name__}"}
+    return _compact_joint_weak_bias_research_for_ui(snapshot)
+
+
+def _attach_joint_weak_bias_research_for_ui_snapshot(payload: MutableMapping[str, Any], snapshot: Mapping[str, Any]) -> None:
+    if isinstance(payload, MutableMapping) and _is_chengdu_model_weight_shadow_item(payload):
+        payload["joint_weak_bias_research"] = dict(snapshot)
+
+
+UI_SNAPSHOT_FRONTEND_CONTRACT_TOP_LEVEL_KEYS: Tuple[str, ...] = (
+    "fact_id",
+    "fact_snapshot_id",
+    "posterior_run_id",
+    "correlation_id",
+    "source_event_id",
+    "source_event_ids",
+    "source_observation_id",
+    "source_observation_ids",
+    "lineage_state",
+    "source_observations",
+    "source_acquisition_trace",
+    "source_latency_trace",
+    "signal_to_order_timing",
+    "hard_source_acceptance_state",
+    "signal_id",
+    "decision_id",
+    "order_intent_id",
+    "review_id",
+    "daily_review_state",
+    "posterior_runtime_schema",
+    "posterior_composer_schema",
+    "posterior_as_of",
+    "posterior_ssot_fact",
+    "source_to_posterior_timing",
+    "amsc_latency_slo_audit",
+    "phase",
+    "beta_weak",
+    "beta_strong",
+    "phase_reason",
+    "hard_mask_reason",
+    "prior_distribution",
+    "prior_meta",
+    "prior_na_reason",
+    "forecast_weak_likelihood",
+    "metar_strong_likelihood",
+    "state_probs",
+    "remaining_warming_by_state",
+    "recoil_state_ssot",
+    "physical_cutoff_evidence",
+    "termination_risk",
+    "temperature_trajectory_peak_estimate",
+    "path_reach_probability_by_bucket",
+    "observation_features",
+    "amsc_metar_ssot",
+    "temperature_trajectory",
+    "hard_constraints",
+    "layer_contributions",
+    "normalization",
+    "posterior_boundary",
+    "runtime_schemas",
+    "runtime_policy_versions",
+    "model_member_cache_snapshot",
+    "model_members_decimal_raw",
+    "model_members",
+    "model_member_counts_raw",
+    "model_member_counts",
+    "model_provenance",
+    "weather_likelihood_features_compact",
+    "key_metrics",
+    "physical_likelihood",
+    "physical_weather_modifier",
+    "source_observation_comparison",
+    "target_bucket_observation_state",
+    "temperature_trajectory_status",
+    "temperature_trajectory_timeline",
+    "chengdu_intraday_summary",
+    "basin_heat_mechanism_state",
+    "rebound_regime_signal",
+    "temperature_path_distribution",
+    "temperature_realization_reliability",
+    "target_bucket_outlook",
+    "precipitation_evidence_coverage",
+    "weather_source_delay_deformation_alert",
+    "target_realization_capital_plan",
+    "target_switch_context",
+    "market_flow_context",
+    "bucket_series",
+    "lead_day_hit_rates",
+    "first_prediction_hit_rates",
+    "forecast_source_accuracy",
+    "soft_forecast_posterior_channels",
+)
+
+
+UI_SNAPSHOT_FRONTEND_CONTRACT_ROW_KEYS: Tuple[str, ...] = (
+    "q_temperature_bucket_posterior",
+    "q_bayes_posterior",
+    "q_bayes_model_prob",
+    "q_bayes_wu_forecast_prob",
+    "q_bayes_taf_peak_prob",
+    "q_bayes_observed_nowcast_prob",
+    "q_bayes_nowcast_prob",
+    "q_bayes_temperature_trajectory_prob",
+    "q_bayes_temperature_trajectory_source",
+    "q_bayes_temperature_trajectory_status",
+    "q_bayes_independent_physics_residual_prob",
+    "q_bayes_independent_physics_residual_observed_prob",
+    "q_bayes_independent_physics_residual_source",
+    "q_bayes_physical_likelihood_prob",
+    "q_bayes_physical_likelihood_observed_prob",
+    "q_bayes_physical_likelihood_source",
+    "q_bayes_physical_likelihood_enabled",
+    "q_bayes_physical_likelihood_hard_zero",
+    "q_bayes_physical_likelihood_hard_reasons",
+    "q_bayes_phase",
+    "q_bayes_beta_weak",
+    "q_bayes_beta_strong",
+    "q_bayes_phase_reason",
+    "q_bayes_hard_mask_reason",
+    "q_temperature_bucket_score_components",
+    "weather_likelihood_refreshed_at",
+    "weather_likelihood_aux_source",
+    "weather_likelihood_features_source",
+    "weather_likelihood_feature_quality",
+    "weather_likelihood_feature_count",
+    "wu_forecast_peak_c",
+    "wu_forecast_peak_value",
+    "wu_forecast_peak_at",
+    "wu_forecast_peak_source",
+    "q_bayes_wu_forecast_peak_c",
+    "settlement_source_forecast_peak_c",
+    "station_forecast_peak_c",
+    "open_meteo_peak_temp",
+    "open_meteo_peak_temp_c",
+    "weather_com_forecast_peak_c",
+    "weather_com_forecast_peak_value",
+    "twc_forecast_peak_c",
+    "weather_com_forecast_peak_at",
+    "twc_forecast_peak_at",
+    "taf_forecast_peak_c",
+    "q_bayes_taf_peak_c",
+    "taf_forecast_peak_value",
+    "taf_forecast_peak_raw",
+    "taf_forecast_peak_at",
+    "taf_forecast_peak_issued_at",
+    "taf_forecast_peak_valid_start_at",
+    "taf_forecast_peak_valid_end_at",
+    "taf_forecast_min_c",
+    "taf_forecast_min_at",
+)
+
+
+UI_SNAPSHOT_FRONTEND_COMPACT_ROW_OBJECT_KEYS: Tuple[str, ...] = (
+    "bayes_chain",
+    "q_ensemble_qm_meta",
+    "q_bayes_physical_d0_explanation",
+    "per_model_q",
+)
+
+
+UI_SNAPSHOT_FRONTEND_CONTRACT_FEATURE_KEYS: Tuple[str, ...] = (
+    "wu_forecast_peak_c",
+    "wu_forecast_peak_value",
+    "weather_com_forecast_peak_c",
+    "weather_com_forecast_peak_value",
+    "twc_forecast_peak_c",
+    "taf_forecast_peak_c",
+    "taf_forecast_peak_value",
+    "taf_forecast_peak_raw",
+    "taf_forecast_peak_at",
+    "taf_forecast_peak_issued_at",
+    "taf_forecast_peak_valid_start_at",
+    "taf_forecast_peak_valid_end_at",
+    "taf_forecast_min_c",
+    "taf_forecast_min_at",
+    "settlement_source_forecast_peak_c",
+    "station_forecast_peak_c",
+    "open_meteo_peak_temp",
+    "open_meteo_peak_temp_c",
+    "observed_temp_c",
+    "observed_today_max_c",
+    "zuuu_metar_raw_amsc_latest_at",
+    "zuuu_metar_raw_amsc_latest_local",
+    "zuuu_metar_raw_amsc_fetched_at",
+    "zuuu_metar_raw_amsc_latest_temp_c",
+    "zuuu_metar_raw_amsc_latest_dewpoint_c",
+    "zuuu_metar_raw_amsc_today_max_c",
+    "zuuu_metar_raw_amsc_today_max_at",
+    "zuuu_metar_raw_amsc_latest_raw",
+    "zuuu_metar_raw_amsc_source_observation_id",
+    "temperature_rise_rate_c_per_hour",
+    "temperature_momentum_effective_c_per_hour",
+    "temperature_momentum_1h_c_per_hour",
+    "recoil_state",
+    "recoil_state_label",
+    "recoil_action",
+    "recoil_momentum_treatment",
+    "recoil_state_ssot",
+    "physical_cutoff_evidence",
+    "termination_risk",
+    "physical_cutoff_confirmed",
+    "true_cooling_or_cutoff_confirmed",
+    "physical_cutoff_evidence_codes",
+    "physical_cutoff_evidence_count",
+    "peak_estimator_mu_c",
+    "peak_estimator_sigma_c",
+    "precip_nowcast_1_3h_max_rate_mm_per_h",
+    "precip_nowcast_1_3h_max_probability_pct",
+)
+
+
+def _ui_snapshot_prob01_from_value(value: Any) -> Optional[float]:
+    prob = to_float(value)
+    if prob is None or not math.isfinite(float(prob)):
+        return None
+    prob_f = float(prob)
+    if prob_f > 1.0 and prob_f <= 100.0:
+        prob_f /= 100.0
+    return max(0.0, min(1.0, prob_f))
+
+
+def _compact_posterior_ssot_bucket_rows_for_ui_snapshot(
+    value: Any,
+    *,
+    limit: int = 12,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    if isinstance(value, Mapping):
+        iterator = (
+            {"outcome": str(label), "probability": prob}
+            for label, prob in value.items()
+        )
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        iterator = (row for row in value if isinstance(row, Mapping))
+    else:
+        return []
+    for raw in iterator:
+        if len(rows) >= max(0, int(limit or 0)):
+            break
+        if not isinstance(raw, Mapping):
+            continue
+        label = str(raw.get("outcome") or raw.get("label") or raw.get("bucket") or "").strip()
+        if not label:
+            continue
+        prob = _ui_snapshot_prob01_from_value(
+            raw.get("probability")
+            if raw.get("probability") is not None
+            else raw.get("prob")
+            if raw.get("prob") is not None
+            else raw.get("posterior")
+            if raw.get("posterior") is not None
+            else raw.get("q_temperature_bucket_posterior")
+        )
+        if prob is None:
+            continue
+        row: Dict[str, Any] = {
+            "outcome": label,
+            "probability": float(prob),
+            "probability_pct": float(prob) * 100.0,
+            "posterior_field": str(raw.get("posterior_field") or "posterior_ssot_fact.bucket_probabilities"),
+        }
+        for key in (
+            "bucket_lower_bound_c",
+            "bucket_upper_bound_c",
+            "bucket_representative_c",
+            "bucket_open_lower",
+            "bucket_open_upper",
+            "prior_stage_probability",
+            "forecast_weak_stage_probability",
+            "metar_strong_stage_probability",
+            "posterior_stage_probability",
+            "physical_strong_distribution",
+            "hard_zero",
+            "hard_masked",
+            "hard_mask_reason",
+            "posterior_settlement_candidate_bucket_hard_zero",
+            "posterior_settlement_candidate_bucket_hard_zero_reasons",
+            "q_posterior_observed_constraints_hard_zero",
+            "q_bayes_physical_likelihood_hard_zero",
+            "impossible_by_observed_max",
+            "final_bucket_lock_target",
+            "source",
+            "rank",
+        ):
+            raw_value = raw.get(key)
+            if raw_value not in (None, "", [], {}):
+                row[key] = raw_value
+        rows.append(row)
+    return rows
+
+
+def _sorted_posterior_ssot_bucket_rows_for_ui_snapshot(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    limit: int = 12,
+) -> List[Dict[str, Any]]:
+    sortable: List[Tuple[Dict[str, Any], int, Tuple[float, float, str]]] = []
+    for idx, raw in enumerate(rows):
+        if not isinstance(raw, Mapping):
+            continue
+        row = dict(raw)
+        label = str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip()
+        if not label:
+            continue
+        try:
+            key = bucket_sort_key(label)
+        except Exception:
+            key = (math.inf, math.inf, label)
+        sortable.append((row, idx, key))
+    sortable.sort(
+        key=lambda item: (
+            -float(item[0].get("probability") or 0.0),
+            item[2][0],
+            item[2][1],
+            item[1],
+        )
+    )
+    return [row for row, _idx, _key in sortable[: max(0, int(limit or 0))]]
+
+
+def _compact_forecast_weak_attribution_for_ui_snapshot(value: Any) -> Dict[str, Any]:
+    """Keep the weak-layer causality trace visible without exposing raw payloads."""
+
+    if not isinstance(value, Mapping):
+        return {}
+    scalar_keys = (
+        "schema",
+        "state",
+        "read_only",
+        "weak_likelihood_consumed",
+        "source_contribution_semantics",
+        "na_reasons",
+    )
+    out: Dict[str, Any] = {
+        key: copy.deepcopy(value.get(key))
+        for key in scalar_keys
+        if value.get(key) not in (None, "", [], {})
+    }
+    pooling = value.get("forecast_group_pooling")
+    if isinstance(pooling, Mapping):
+        pooling_keys = (
+            "schema",
+            "state",
+            "pooling_mode",
+            "included_groups",
+            "source_group_count",
+            "legacy_model_taf_special_case_retired",
+        )
+        out["forecast_group_pooling"] = {
+            key: copy.deepcopy(pooling.get(key))
+            for key in pooling_keys
+            if pooling.get(key) not in (None, "", [], {})
+        }
+    for key in ("pooling_decision", "boundaries"):
+        raw = value.get(key)
+        if isinstance(raw, Mapping):
+            compact = _compact_intraday_mapping_for_endpoint(raw)
+            if compact:
+                out[key] = compact
+
+    groups = value.get("source_group_contributions")
+    if isinstance(groups, Sequence) and not isinstance(groups, (str, bytes, bytearray)):
+        group_keys = (
+            "group",
+            "source_count",
+            "included_source_event_ids",
+            "raw_precision",
+            "capped_precision",
+            "capped_precision_share_within_weak_likelihood",
+            "precision_cap",
+            "cap_hit",
+            "shrinkage_alpha",
+            "forecast_peak_mean_c",
+            "forecast_sigma_effective_c",
+        )
+        compact_groups = []
+        for raw in groups[:8]:
+            if not isinstance(raw, Mapping):
+                continue
+            row = {
+                key: copy.deepcopy(raw.get(key))
+                for key in group_keys
+                if raw.get(key) not in (None, "", [], {})
+            }
+            for distribution_key in ("distribution", "shrunk_distribution"):
+                distribution = raw.get(distribution_key)
+                if isinstance(distribution, Mapping):
+                    row[distribution_key] = {
+                        str(bucket): float(probability)
+                        for bucket, probability in distribution.items()
+                        if to_float(probability) is not None and math.isfinite(float(to_float(probability)))
+                    }
+            if row:
+                compact_groups.append(row)
+        if compact_groups:
+            out["source_group_contributions"] = compact_groups
+
+    sources = value.get("source_contribution_trace")
+    if isinstance(sources, Sequence) and not isinstance(sources, (str, bytes, bytearray)):
+        source_keys = (
+            "source_event_id",
+            "source_observation_id",
+            "source_id",
+            "source_class",
+            "role",
+            "group",
+            "event_date",
+            "valid_time",
+            "fetched_at",
+            "included",
+            "exclusion_reason",
+            "forecast_peak_c",
+            "distribution_source",
+            "sigma_c",
+            "confidence",
+            "precision_raw",
+            "hard_observation_fields_ignored",
+        )
+        compact_sources = []
+        for raw in sources[:16]:
+            if not isinstance(raw, Mapping):
+                continue
+            row = {
+                key: copy.deepcopy(raw.get(key))
+                for key in source_keys
+                if raw.get(key) not in (None, "", [], {})
+            }
+            if row:
+                compact_sources.append(row)
+        if compact_sources:
+            out["source_contribution_trace"] = compact_sources
+    return out
+
+
+def _compact_posterior_ssot_fact_for_ui_snapshot(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    scalar_keys = (
+        "schema",
+        "state",
+        "state_reason",
+        "read_only",
+        "ssot_kind",
+        "source",
+        "fact_snapshot_id",
+        "posterior_run_id",
+        "source_event_ids",
+        "source_observation_ids",
+        "event_date",
+        "posterior_as_of",
+        "target_bucket",
+        "target_probability_field",
+        "bucket_count",
+        "phase",
+        "beta_weak",
+        "beta_strong",
+        "phase_reason",
+        "hard_mask_reason",
+        "hard_constraints_present",
+        "final_bucket_lock",
+        "final_bucket_lock_reason",
+        "hard_temperature_floor_c",
+        "invalidated_target_bucket",
+        "invalidated_by_hard_observed_max_c",
+        "invalidated_target_probability",
+        "invalidated_target_probability_pct",
+        "production_model_family",
+        "production_model_version",
+        "production_model_ready",
+        "production_probability_policy",
+        "legacy_model_fallback_allowed",
+        "writer_mode",
+        "checkpoint_kind",
+        "posterior_checkpoint_id",
+        "realization_state_id",
+        "realization_state_na_reason",
+        "resolution_contract_id",
+        "joint_posterior_sha256",
+        "last_canonical_event_id",
+        "last_strong_update_id",
+        "observed_max_lower_bound_c",
+        "reported_x_lower_bound_c",
+        "probability_target_type",
+        "latent_probability_public",
+        "committed_at",
+        "market_bucket_probabilities_na_reason",
+        "settlement_scalar_distribution_na_reason",
+    )
+    out: Dict[str, Any] = {
+        key: value.get(key)
+        for key in scalar_keys
+        if value.get(key) not in (None, "", [], {})
+    }
+    prob = _ui_snapshot_prob01_from_value(value.get("target_probability"))
+    if prob is not None:
+        out["target_probability"] = float(prob)
+        out["target_probability_pct"] = float(prob) * 100.0
+    elif value.get("target_probability_pct") not in (None, ""):
+        pct = _prob_pct_from_ssot_value(value.get("target_probability_pct"))
+        if pct is not None:
+            out["target_probability_pct"] = float(pct)
+            out["target_probability"] = float(pct) / 100.0
+
+    bucket_rows = _compact_posterior_ssot_bucket_rows_for_ui_snapshot(
+        value.get("bucket_probabilities"),
+        limit=12,
+    )
+    ranked_rows = _compact_posterior_ssot_bucket_rows_for_ui_snapshot(
+        value.get("ranked_bucket_probabilities"),
+        limit=12,
+    )
+    if bucket_rows:
+        ranked_rows = _sorted_posterior_ssot_bucket_rows_for_ui_snapshot(bucket_rows, limit=12)
+    elif ranked_rows:
+        ranked_rows = _sorted_posterior_ssot_bucket_rows_for_ui_snapshot(ranked_rows, limit=12)
+    if bucket_rows:
+        out["bucket_probabilities"] = bucket_rows
+        out["bucket_count"] = int(value.get("bucket_count") or len(bucket_rows))
+    if ranked_rows:
+        out["ranked_bucket_probabilities"] = ranked_rows
+        out.setdefault("bucket_count", int(value.get("bucket_count") or len(ranked_rows)))
+
+    reported_x_schema = _is_reported_physical_x_ssot_schema(value.get("schema"))
+    physical_value = (
+        value.get("reported_physical_x_distribution")
+        if reported_x_schema
+        else None
+    )
+    if isinstance(physical_value, Mapping):
+        physical_iterator: Iterable[Any] = (
+            {"temperature_c": temperature_c, "probability": probability}
+            for temperature_c, probability in physical_value.items()
+        )
+    elif isinstance(physical_value, Sequence) and not isinstance(
+        physical_value, (str, bytes, bytearray)
+    ):
+        physical_iterator = physical_value
+    else:
+        physical_iterator = ()
+    normalized_physical_rows: List[Dict[str, Any]] = []
+    for raw in physical_iterator:
+        if not isinstance(raw, Mapping):
+            continue
+        temperature_c = to_float(
+            raw.get("temperature_c")
+            if raw.get("temperature_c") is not None
+            else raw.get("value_c")
+            if raw.get("value_c") is not None
+            else raw.get("x")
+        )
+        probability = _ui_snapshot_prob01_from_value(
+            raw.get("probability")
+            if raw.get("probability") is not None
+            else raw.get("mass")
+            if raw.get("mass") is not None
+            else raw.get("posterior")
+        )
+        if temperature_c is None or probability is None:
+            continue
+        normalized_physical_rows.append(
+            {
+                "temperature_c": float(temperature_c),
+                "probability": float(probability),
+                "probability_pct": float(probability) * 100.0,
+                "posterior_field": "posterior_ssot_fact.reported_physical_x_distribution",
+            }
+        )
+    normalized_physical_rows.sort(
+        key=lambda row: (-float(row["probability"]), float(row["temperature_c"]))
+    )
+    if normalized_physical_rows:
+        out["reported_physical_x_distribution"] = normalized_physical_rows[:64]
+        out["reported_x_top_temperature_c"] = normalized_physical_rows[0]["temperature_c"]
+        out["reported_x_top_probability"] = normalized_physical_rows[0]["probability"]
+        out["reported_x_top_probability_pct"] = normalized_physical_rows[0]["probability_pct"]
+
+    market_rows = _compact_posterior_ssot_bucket_rows_for_ui_snapshot(
+        value.get("market_bucket_probabilities"),
+        limit=12,
+    )
+    if market_rows:
+        out["market_bucket_probabilities"] = market_rows
+    target_bucket = str(out.get("target_bucket") or value.get("target_bucket_label") or "").strip()
+    if target_bucket:
+        out["target_bucket"] = target_bucket
+        out["target_bucket_label"] = target_bucket
+        out.setdefault("ssot_target_bucket", target_bucket)
+
+    for key in (
+        "layer_chain",
+        "lineage",
+        "boundaries",
+        "normalization",
+        "runtime_policy_versions",
+        "probability_runtime_identity",
+        "termination_risk",
+        "peak_timing_state",
+        "remaining_warming_marginal",
+        "duration_clocks",
+        "latent_y_public",
+    ):
+        raw = value.get(key)
+        if isinstance(raw, Mapping):
+            compact = _compact_intraday_mapping_for_endpoint(raw)
+            if compact:
+                out[key] = compact
+    hard_constraints = value.get("hard_constraints")
+    if isinstance(hard_constraints, Mapping):
+        compact_constraints = _compact_intraday_mapping_for_endpoint(hard_constraints)
+        if compact_constraints:
+            out["hard_constraints"] = compact_constraints
+    weak_attribution = _compact_forecast_weak_attribution_for_ui_snapshot(
+        value.get("forecast_weak_attribution")
+    )
+    if weak_attribution:
+        out["forecast_weak_attribution"] = weak_attribution
+    na_reasons = value.get("na_reasons")
+    if isinstance(na_reasons, list):
+        compact_na = [str(reason) for reason in na_reasons[:8] if str(reason or "").strip()]
+        if compact_na:
+            out["na_reasons"] = compact_na
+    out.setdefault("read_only", True)
+    return out
+
+
+def _compact_ui_snapshot_probability_rows(
+    value: Any,
+    *,
+    probability_field: str,
+    source: str,
+    limit: int = 12,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    if isinstance(value, Mapping):
+        iterator: Iterable[Any] = (
+            {"outcome": str(label), "probability": probability}
+            for label, probability in value.items()
+        )
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        iterator = value
+    else:
+        return rows
+    for raw in iterator:
+        if not isinstance(raw, Mapping):
+            continue
+        label = str(raw.get("outcome") or raw.get("label") or raw.get("bucket") or raw.get("target_bucket") or "").strip()
+        if not label:
+            continue
+        raw_probability = (
+            raw.get("probability")
+            if raw.get("probability") is not None
+            else raw.get("prob")
+            if raw.get("prob") is not None
+            else raw.get("prior")
+            if raw.get("prior") is not None
+            else raw.get("likelihood")
+            if raw.get("likelihood") is not None
+            else raw.get("posterior")
+            if raw.get("posterior") is not None
+            else raw.get("q_temperature_bucket_prior")
+            if raw.get("q_temperature_bucket_prior") is not None
+            else raw.get("q_temperature_bucket_posterior")
+        )
+        probability = _ui_snapshot_prob01_from_value(raw_probability)
+        if probability is None:
+            continue
+        row: Dict[str, Any] = {
+            "outcome": label,
+            "probability": float(probability),
+            "probability_pct": float(probability) * 100.0,
+            "probability_field": probability_field,
+            "source": source,
+        }
+        for key in (
+            "rank",
+            "state",
+            "state_reason",
+            "hard_zero",
+            "hard_masked",
+            "hard_mask_reason",
+        ):
+            raw_value = raw.get(key)
+            if raw_value not in (None, "", [], {}):
+                row[key] = raw_value
+        rows.append(row)
+    rows.sort(
+        key=lambda row: (
+            -float(row.get("probability") or 0.0),
+            str(row.get("outcome") or ""),
+        )
+    )
+    return rows[: max(0, int(limit or 0))]
+
+
+def _ui_snapshot_prior_distribution_source(item: Mapping[str, Any]) -> Tuple[Any, str]:
+    prior = item.get("prior_distribution")
+    if isinstance(prior, (Mapping, list, tuple)) and prior:
+        return prior, "facts.items[].prior_distribution"
+    contributions = item.get("layer_contributions")
+    contributions_map = contributions if isinstance(contributions, Mapping) else {}
+    prior_layer = contributions_map.get("prior")
+    prior_layer_map = prior_layer if isinstance(prior_layer, Mapping) else {}
+    distribution = prior_layer_map.get("distribution")
+    if isinstance(distribution, (Mapping, list, tuple)) and distribution:
+        return distribution, "facts.items[].layer_contributions.prior.distribution"
+    return None, "facts.items[].prior_distribution"
+
+
+def _build_ui_snapshot_prior_section(item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, Mapping):
+        return {}
+    prior_raw, source = _ui_snapshot_prior_distribution_source(item)
+    rows = _compact_ui_snapshot_probability_rows(
+        prior_raw,
+        probability_field=source,
+        source=source,
+        limit=12,
+    )
+    prior_meta = item.get("prior_meta")
+    if isinstance(prior_meta, Mapping):
+        compact_meta = _compact_intraday_mapping_for_endpoint(prior_meta)
+    else:
+        compact_meta = {}
+    fact_snapshot_id = _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id")
+    posterior_run_id = _lineage_field_for_ui_snapshot_item(item, "posterior_run_id")
+    if not rows:
+        return {
+            "schema": "ui_bayes_prior_section_v1",
+            "state": "missing",
+            "read_only": True,
+            "source": source,
+            "role": "root_prior",
+            "fact_snapshot_id": fact_snapshot_id,
+            "posterior_run_id": posterior_run_id,
+            "bucket_count": 0,
+            "bucket_probabilities": [],
+            "na_reason": str(item.get("prior_na_reason") or "prior_distribution_missing"),
+            "frontend_recompute_allowed": False,
+        }
+    top = rows[0]
+    probability_sum = sum(float(row.get("probability") or 0.0) for row in rows)
+    section: Dict[str, Any] = {
+        "schema": "ui_bayes_prior_section_v1",
+        "state": "available",
+        "read_only": True,
+        "source": source,
+        "role": "root_prior",
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "top_bucket": str(top.get("outcome") or ""),
+        "top_bucket_label": str(top.get("outcome") or ""),
+        "top_probability": float(top.get("probability") or 0.0),
+        "top_probability_pct": float(top.get("probability") or 0.0) * 100.0,
+        "bucket_count": len(rows),
+        "probability_sum": probability_sum,
+        "bucket_probabilities": rows,
+        "na_reason": str(item.get("prior_na_reason") or ""),
+        "frontend_recompute_allowed": False,
+        "boundary": "historical_climate_date_site_terrain_weather_type_prior_only",
+    }
+    if compact_meta:
+        section["prior_meta"] = compact_meta
+    return section
+
+
+def _build_ui_snapshot_forecast_weak_section(item: Mapping[str, Any]) -> Dict[str, Any]:
+    """Expose the persisted forecast weak-likelihood layer for read-only UI use."""
+    if not isinstance(item, Mapping):
+        return {}
+    source = "facts.items[].forecast_weak_likelihood"
+    likelihood_raw = item.get("forecast_weak_likelihood")
+    if not isinstance(likelihood_raw, (Mapping, list, tuple)) or not likelihood_raw:
+        contributions = item.get("layer_contributions")
+        contributions_map = contributions if isinstance(contributions, Mapping) else {}
+        weak_layer = contributions_map.get("forecast_weak_likelihood")
+        weak_layer_map = weak_layer if isinstance(weak_layer, Mapping) else {}
+        likelihood_raw = weak_layer_map.get("distribution")
+        if isinstance(likelihood_raw, (Mapping, list, tuple)) and likelihood_raw:
+            source = "facts.items[].layer_contributions.forecast_weak_likelihood.distribution"
+    rows = _compact_ui_snapshot_probability_rows(
+        likelihood_raw,
+        probability_field=source,
+        source=source,
+        limit=12,
+    )
+    fact_snapshot_id = _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id")
+    posterior_run_id = _lineage_field_for_ui_snapshot_item(item, "posterior_run_id")
+    if not rows:
+        return {
+            "schema": "ui_bayes_forecast_weak_section_v1",
+            "state": "missing",
+            "read_only": True,
+            "source": source,
+            "role": "prediction_weak_likelihood",
+            "fact_snapshot_id": fact_snapshot_id,
+            "posterior_run_id": posterior_run_id,
+            "bucket_count": 0,
+            "bucket_probabilities": [],
+            "na_reason": "forecast_weak_likelihood_missing",
+            "frontend_recompute_allowed": False,
+        }
+    top = rows[0]
+    section: Dict[str, Any] = {
+        "schema": "ui_bayes_forecast_weak_section_v1",
+        "state": "available",
+        "read_only": True,
+        "source": source,
+        "role": "prediction_weak_likelihood",
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "top_bucket": str(top.get("outcome") or ""),
+        "top_bucket_label": str(top.get("outcome") or ""),
+        "top_probability": float(top.get("probability") or 0.0),
+        "top_probability_pct": float(top.get("probability") or 0.0) * 100.0,
+        "bucket_count": len(rows),
+        "bucket_probabilities": rows,
+        "beta_weak": item.get("beta_weak"),
+        "model_version": str(item.get("production_model_version") or item.get("composer_version") or ""),
+        "na_reason": "",
+        "frontend_recompute_allowed": False,
+        "boundary": "forecast_sources_only_all_sources_are_predictions_no_observation_facts",
+    }
+    attribution = item.get("forecast_weak_attribution")
+    if isinstance(attribution, Mapping) and attribution:
+        section["forecast_weak_attribution"] = _compact_intraday_mapping_for_endpoint(attribution)
+    return section
+
+
+def _ui_snapshot_observation_source_rows(item: Mapping[str, Any]) -> List[Mapping[str, Any]]:
+    rows: List[Mapping[str, Any]] = []
+    seen: Set[str] = set()
+
+    def add_row(raw: Any) -> None:
+        if not isinstance(raw, Mapping):
+            return
+        dedupe = "|".join(
+            str(raw.get(key) or "")
+            for key in (
+                "source_observation_id",
+                "source_id",
+                "station_id",
+                "valid_time",
+                "valid_time_local",
+                "temperature_c",
+                "temp_c",
+            )
+        )
+        if not dedupe.strip("|"):
+            dedupe = json.dumps(raw, ensure_ascii=False, sort_keys=True, default=str)[:240]
+        if dedupe in seen:
+            return
+        seen.add(dedupe)
+        rows.append(raw)
+
+    for raw in item.get("source_observations") or []:
+        add_row(raw)
+    trace = item.get("source_acquisition_trace")
+    trace_map = trace if isinstance(trace, Mapping) else {}
+    for raw in trace_map.get("source_observations") or []:
+        add_row(raw)
+    for raw in _ui_snapshot_source_observations_from_fact_features(item):
+        add_row(raw)
+    return rows
+
+
+def _ui_snapshot_source_id_from_fact_observation_source(source: Any) -> str:
+    text = str(source or "").strip().lower()
+    if not text:
+        return ""
+    if "zuuu_metar_raw_amsc" in text or "amsc" in text:
+        return "zuuu_metar_raw_amsc"
+    if "zuuu_metar_raw_awc" in text or "awc" in text or "metar" in text:
+        return "zuuu_metar_raw_awc"
+    return ""
+
+
+def _ui_snapshot_fact_feature_observation_source_id(
+    features: Mapping[str, Any],
+    comparison: Mapping[str, Any],
+) -> str:
+    if any(
+        features.get(key) not in (None, "", [], {})
+        for key in (
+            "zuuu_metar_raw_amsc_latest_raw",
+            "zuuu_metar_raw_amsc_latest_at",
+            "zuuu_metar_raw_amsc_latest_temp_c",
+            "zuuu_metar_raw_amsc_today_max_c",
+        )
+    ):
+        return "zuuu_metar_raw_amsc"
+    for value in (
+        features.get("observed_temp_source"),
+        features.get("observed_today_max_source"),
+        features.get("temperature_momentum_source"),
+        features.get("observation_path_primary_source"),
+        comparison.get("source"),
+    ):
+        source_id = _ui_snapshot_source_id_from_fact_observation_source(value)
+        if source_id:
+            return source_id
+    raw_text = str(
+        features.get("zuuu_metar_raw_amsc_latest_raw")
+        or features.get("zuuu_metar_raw_awc_latest_raw")
+        or comparison.get("raw")
+        or ""
+    ).lower()
+    if raw_text.startswith("metar zuuu") or " metar zuuu" in raw_text:
+        if features.get("zuuu_metar_raw_amsc_latest_raw") not in (None, "", [], {}):
+            return "zuuu_metar_raw_amsc"
+        return "zuuu_metar_raw_awc"
+    return ""
+
+
+def _ui_snapshot_source_observations_from_fact_features(item: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    if not isinstance(item, Mapping):
+        return []
+    features = item.get("weather_likelihood_features_compact")
+    if not isinstance(features, Mapping):
+        features = _compact_weather_likelihood_features_for_ui(
+            item.get("weather_likelihood_features")
+        )
+    if not isinstance(features, Mapping) or not features:
+        return []
+    comparison_raw = item.get("source_observation_comparison")
+    comparison = {}
+    if isinstance(comparison_raw, Mapping):
+        for key in ("amsc", "awc", "metar", "hard", "official"):
+            candidate = comparison_raw.get(key)
+            if isinstance(candidate, Mapping) and candidate:
+                comparison = candidate
+                break
+    source_id = _ui_snapshot_fact_feature_observation_source_id(features, comparison)
+    if not source_id:
+        return []
+    current_temp_c = _feature_first_float(
+        features,
+        "observed_temp_c",
+        "observed_current_temp_c",
+        "current_temp_c",
+        f"{source_id}_latest_temp_c",
+        "zuuu_metar_raw_amsc_latest_temp_c",
+        "zuuu_metar_raw_awc_latest_temp_c",
+    )
+    if current_temp_c is None:
+        current_temp_c = to_float(comparison.get("latest_temp_c") or comparison.get("observed_temp_c"))
+    observed_today_max_c = _feature_first_float(
+        features,
+        "observed_today_max_c",
+        "daily_max_observed_c",
+        f"{source_id}_today_max_c",
+        "zuuu_metar_raw_amsc_today_max_c",
+        "zuuu_metar_raw_awc_today_max_c",
+    )
+    if observed_today_max_c is None:
+        observed_today_max_c = to_float(
+            comparison.get("today_max_c") or comparison.get("observed_today_max_c")
+        )
+    if current_temp_c is None and observed_today_max_c is None:
+        return []
+    event_date = str(item.get("event_date") or features.get("event_date") or "").strip()
+    station_id = str(
+        item.get("station_id")
+        or features.get("station_id")
+        or features.get(f"{source_id}_station_id")
+        or "ZUUU"
+    ).strip()
+    valid_time = _feature_first_text(
+        features,
+        f"{source_id}_latest_at",
+        "zuuu_metar_raw_amsc_latest_at",
+        "zuuu_metar_raw_awc_latest_at",
+        "latest_observation_time_utc",
+        "observation_time",
+        "valid_time",
+    )
+    if not valid_time:
+        valid_time = str(
+            comparison.get("latest_at_utc")
+            or comparison.get("observed_at_utc")
+            or comparison.get("today_max_at_utc")
+            or features.get("observed_today_max_at")
+            or ""
+        ).strip()
+    fetched_at = _feature_first_text(
+        features,
+        f"{source_id}_fetched_at",
+        "zuuu_metar_raw_amsc_fetched_at",
+        "zuuu_metar_raw_awc_fetched_at",
+        "weather_likelihood_refreshed_at",
+        "fetched_at",
+        "response_completed_at",
+    )
+    if not fetched_at:
+        fetched_at = str(comparison.get("fetched_at_utc") or "").strip()
+    raw_text = _feature_first_text(
+        features,
+        f"{source_id}_latest_raw",
+        "zuuu_metar_raw_amsc_latest_raw",
+        "zuuu_metar_raw_awc_latest_raw",
+        "metar_raw",
+        "raw_text",
+    )
+    if not raw_text:
+        raw_text = str(comparison.get("raw") or "").strip()
+    dewpoint_c = _feature_first_float(
+        features,
+        "dewpoint_c",
+        f"{source_id}_latest_dewpoint_c",
+        "zuuu_metar_raw_amsc_latest_dewpoint_c",
+        "zuuu_metar_raw_awc_latest_dewpoint_c",
+    )
+    physical_payload = {
+        "visibility_m": _feature_first_float(
+            features,
+            f"{source_id}_latest_visibility_m",
+            "zuuu_metar_raw_amsc_latest_visibility_m",
+            "visibility_m",
+        ),
+        "cloud_cover_pct": _feature_first_float(
+            features,
+            f"{source_id}_latest_cloud_cover_pct",
+            "zuuu_metar_raw_amsc_latest_cloud_cover_pct",
+            "cloud_cover_pct",
+        ),
+        "low_cloud_cover_pct": _feature_first_float(
+            features,
+            f"{source_id}_latest_low_cloud_cover_pct",
+            "zuuu_metar_raw_amsc_latest_low_cloud_cover_pct",
+            "low_cloud_cover_pct",
+        ),
+        "wind_dir_deg": _feature_first_float(
+            features,
+            f"{source_id}_latest_wind_dir_deg",
+            "zuuu_metar_raw_amsc_latest_wind_dir_deg",
+            "wind_dir_deg",
+        ),
+        "wind_speed_mps": _feature_first_float(
+            features,
+            f"{source_id}_latest_wind_speed_mps",
+            "zuuu_metar_raw_amsc_latest_wind_speed_mps",
+            "wind_speed_mps",
+        ),
+        "wind_gust_mps": _feature_first_float(
+            features,
+            f"{source_id}_latest_wind_gust_mps",
+            "zuuu_metar_raw_amsc_latest_wind_gust_mps",
+            "wind_gust_mps",
+        ),
+        "pressure_hpa": _feature_first_float(
+            features,
+            f"{source_id}_latest_pressure_hpa",
+            "zuuu_metar_raw_amsc_latest_pressure_hpa",
+            "pressure_hpa",
+        ),
+        "cloud_text": _feature_first_text(
+            features,
+            f"{source_id}_latest_cloud_text",
+            "zuuu_metar_raw_amsc_latest_cloud_text",
+            "cloud_text",
+        ),
+        "weather_text": _feature_first_text(
+            features,
+            f"{source_id}_latest_weather_text",
+            "zuuu_metar_raw_amsc_latest_weather_text",
+            "weather_text",
+        ),
+    }
+    physical_payload = {
+        key: value
+        for key, value in physical_payload.items()
+        if value not in (None, "", [], {})
+    }
+    raw_payload = {
+        "source": "facts.items[].weather_likelihood_features_compact",
+        "ui_display_derived_from_fact_features": True,
+        "read_only": True,
+        "not_posterior_input": True,
+        "event_date": event_date,
+        "valid_time": valid_time,
+        "observed_today_max_at": str(
+            features.get("observed_today_max_at")
+            or comparison.get("today_max_at_utc")
+            or comparison.get("observed_at_utc")
+            or ""
+        ).strip(),
+        "raw_text": raw_text,
+        **physical_payload,
+    }
+    observation = build_source_observation(
+        source_id=source_id,
+        station_id=station_id,
+        event_date=event_date,
+        valid_time=valid_time,
+        fetched_at=fetched_at,
+        temperature_c=float(current_temp_c) if current_temp_c is not None else None,
+        dewpoint_c=float(dewpoint_c) if dewpoint_c is not None else None,
+        observed_today_max_c=float(observed_today_max_c) if observed_today_max_c is not None else None,
+        raw_payload=raw_payload,
+        parser_version="ui_snapshot_fact_feature_observation_display_v1",
+        quality_flags=("ui_display_derived_from_fact_features",),
+        payload={
+            "source": "facts.items[].weather_likelihood_features_compact",
+            "ui_display_derived_from_fact_features": True,
+            "read_only": True,
+            "not_posterior_input": True,
+            "boundary": "display_only_from_existing_fact_fields_no_frontend_recompute_no_db_write",
+            "raw_text": raw_text,
+            "observed_today_max_at": raw_payload["observed_today_max_at"],
+            **physical_payload,
+        },
+    ).as_dict(include_payload=True)
+    observation.update(physical_payload)
+    observation["source_role"] = observation.get("role")
+    observation["ui_display_derived_from_fact_features"] = True
+    observation["read_only"] = True
+    observation["not_posterior_input"] = True
+    observed_today_max_at = raw_payload["observed_today_max_at"]
+    if observed_today_max_at:
+        observation["observed_today_max_at"] = observed_today_max_at
+    return [observation]
+
+
+def _compact_ui_snapshot_source_observation_row(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    row: Dict[str, Any] = {}
+    for key in (
+        "source_id",
+        "source_class",
+        "source_role",
+        "role",
+        "hard_eligible",
+        "settlement_anchor",
+        "station_id",
+        "station",
+        "icao",
+        "valid_time",
+        "valid_time_utc",
+        "valid_time_local",
+        "observation_time",
+        "observed_today_max_at",
+        "fetched_at",
+        "source_event_id",
+        "source_observation_id",
+    ):
+        value = raw.get(key)
+        if value not in (None, "", [], {}):
+            row[key] = value
+    numeric_fields = {
+        "temperature_c": (
+            raw.get("temperature_c"),
+            raw.get("temp_c"),
+            raw.get("latest_temp_c"),
+            raw.get("observed_temp_c"),
+        ),
+        "dewpoint_c": (
+            raw.get("dewpoint_c"),
+            raw.get("dew_point_c"),
+            raw.get("latest_dewpoint_c"),
+        ),
+        "observed_today_max_c": (
+            raw.get("observed_today_max_c"),
+            raw.get("today_max_c"),
+            raw.get("temperature_c"),
+            raw.get("temp_c"),
+        ),
+        "forecast_peak_c": (
+            raw.get("forecast_peak_c"),
+            raw.get("taf_forecast_peak_c"),
+        ),
+        "visibility_m": (
+            raw.get("visibility_m"),
+            raw.get("visibility"),
+        ),
+    }
+    for key, candidates in numeric_fields.items():
+        for candidate in candidates:
+            num = to_float(candidate)
+            if num is not None and math.isfinite(float(num)):
+                row[key] = float(num)
+                break
+    raw_text = str(raw.get("raw_text") or raw.get("raw") or raw.get("metar") or "").strip()
+    if not raw_text and isinstance(raw.get("payload"), Mapping):
+        raw_text = str(raw.get("payload", {}).get("raw_text") or "").strip()
+    if raw_text:
+        row["raw_text_preview"] = raw_text[:240]
+    for key in ("ui_display_derived_from_fact_features", "read_only", "not_posterior_input"):
+        if raw.get(key) is not None:
+            row[key] = bool(raw.get(key))
+    return row
+
+
+def _source_observation_sort_key(row: Mapping[str, Any]) -> Tuple[int, float, str]:
+    for key in ("valid_time", "valid_time_utc", "valid_time_local", "observation_time", "fetched_at"):
+        text = str(row.get(key) or "").strip()
+        if not text:
+            continue
+        dt = parse_any_ts(text)
+        if dt is not None:
+            try:
+                return (1, float(dt.timestamp()), text)
+            except Exception:
+                return (0, 0.0, text)
+        return (0, 0.0, text)
+    return (0, 0.0, "")
+
+
+def _is_hard_observation_source(row: Mapping[str, Any]) -> bool:
+    text = " ".join(
+        str(row.get(key) or "").lower()
+        for key in ("source_id", "source_class", "source_role", "role")
+    )
+    if bool(row.get("hard_eligible")):
+        return True
+    if ("taf" in text or "forecast" in text) and "metar" not in text:
+        return False
+    return "hard_observation" in text or "hard_source_observation" in text or "metar" in text
+
+
+def _ui_snapshot_merged_feature_sources(item: Mapping[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+
+    def merge_fill(source: Any) -> None:
+        if not isinstance(source, Mapping):
+            return
+        for key, value in source.items():
+            if value in (None, "", [], {}):
+                continue
+            out.setdefault(str(key), copy.deepcopy(value))
+
+    for key in (
+        "observation_features",
+        "weather_likelihood_features_compact",
+        "weather_likelihood_features",
+        "key_metrics",
+    ):
+        merge_fill(item.get(key))
+    summary = item.get("chengdu_intraday_summary")
+    if isinstance(summary, Mapping):
+        for key in ("weather_likelihood_features_compact", "weather_likelihood_features", "key_metrics"):
+            merge_fill(summary.get(key))
+    return out
+
+
+def _ui_snapshot_latest_sequential_timeline_row(item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, Mapping):
+        return {}
+    timeline = item.get("temperature_trajectory_timeline")
+    if not isinstance(timeline, Mapping):
+        return {}
+    if str(timeline.get("probability_semantics") or "").strip() != (
+        "amsc_scheduled_regular_metar_reported_daily_max_integer_x"
+    ):
+        return {}
+    rows = timeline.get("rows")
+    if not isinstance(rows, list):
+        return {}
+    valid = [dict(row) for row in rows if isinstance(row, Mapping)]
+    return valid[-1] if valid else {}
+
+
+def _ui_snapshot_feature_first_mapping(features: Mapping[str, Any], *keys: str) -> Dict[str, Any]:
+    for key in keys:
+        value = features.get(key)
+        if isinstance(value, Mapping) and value:
+            return _compact_intraday_mapping_for_endpoint(value)
+    return {}
+
+
+def _ui_snapshot_feature_first_list(features: Mapping[str, Any], *keys: str, limit: int = 8) -> List[Any]:
+    for key in keys:
+        value = features.get(key)
+        if isinstance(value, list) and value:
+            return copy.deepcopy(value[-max(1, int(limit or 1)) :])
+    return []
+
+
+def _ui_snapshot_first_finite_float_from_mapping(source: Mapping[str, Any], *keys: str) -> Optional[float]:
+    if not isinstance(source, Mapping):
+        return None
+    for key in keys:
+        value = to_float(source.get(key))
+        if value is not None and math.isfinite(float(value)):
+            return float(value)
+    return None
+
+
+def _ui_snapshot_trajectory_peak_base_temperature_c(
+    *,
+    section: Mapping[str, Any],
+    observation_section: Mapping[str, Any],
+) -> Optional[float]:
+    hard = observation_section.get("hard_constraints") if isinstance(observation_section, Mapping) else {}
+    metar = section.get("metar") if isinstance(section, Mapping) else {}
+    latest = section.get("latest_hard_observation") if isinstance(section, Mapping) else {}
+    candidates = [
+        _ui_snapshot_first_finite_float_from_mapping(hard, "observed_today_max_c", "current_temperature_c", "base_temperature_c")
+        if isinstance(hard, Mapping)
+        else None,
+        _ui_snapshot_first_finite_float_from_mapping(metar, "today_max_c", "latest_temp_c", "temperature_c")
+        if isinstance(metar, Mapping)
+        else None,
+        _ui_snapshot_first_finite_float_from_mapping(latest, "observed_today_max_c", "temperature_c")
+        if isinstance(latest, Mapping)
+        else None,
+    ]
+    finite = [float(value) for value in candidates if value is not None and math.isfinite(float(value))]
+    if not finite:
+        return None
+    return max(finite)
+
+
+def _ui_snapshot_trajectory_peak_rows(
+    remaining_rows: Any,
+    *,
+    base_temperature_c: Optional[float],
+) -> List[Dict[str, Any]]:
+    if not isinstance(remaining_rows, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for raw in remaining_rows:
+        if not isinstance(raw, Mapping):
+            continue
+        state = str(raw.get("state") or "").strip()
+        weight = _ui_snapshot_first_finite_float_from_mapping(
+            raw,
+            "state_prob",
+            "state_probability",
+            "prob",
+            "weight",
+        )
+        peak_mu = _ui_snapshot_first_finite_float_from_mapping(raw, "peak_mu_c", "mean_peak_c", "mean_c", "mu_c")
+        delta_mu = _ui_snapshot_first_finite_float_from_mapping(raw, "delta_mu_c", "mean_delta_c", "delta_c")
+        if peak_mu is None and delta_mu is not None and base_temperature_c is not None:
+            peak_mu = float(base_temperature_c) + float(delta_mu)
+        if delta_mu is None and peak_mu is not None and base_temperature_c is not None:
+            delta_mu = float(peak_mu) - float(base_temperature_c)
+        sigma = _ui_snapshot_first_finite_float_from_mapping(raw, "sigma_c", "sigma", "peak_sigma_c")
+        if sigma is None:
+            sigma = 0.0
+        if not state or weight is None or weight <= 0.0 or peak_mu is None:
+            continue
+        out.append(
+            {
+                "state": state,
+                "state_prob": float(weight),
+                "peak_mu_c": float(peak_mu),
+                "sigma_c": max(0.0, float(sigma)),
+                "delta_mu_c": float(delta_mu) if delta_mu is not None else None,
+            }
+        )
+    return out
+
+
+def _ui_snapshot_target_bucket_label_for_path_reach(item: Mapping[str, Any], labels: Sequence[str]) -> str:
+    ssot = _row_mapping_value(item.get("posterior_ssot_fact")) if isinstance(item, Mapping) else {}
+    for source in (ssot, item):
+        if not isinstance(source, Mapping):
+            continue
+        for key in (
+            "target_bucket_label",
+            "target_bucket",
+            "posterior_highest_bucket_label",
+            "highest_bucket_label",
+        ):
+            label = str(source.get(key) or "").strip()
+            if label:
+                return label
+    best_label = ""
+    best_prob: Optional[float] = None
+    rows = item.get("distribution") if isinstance(item, Mapping) else None
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            label = _row_bucket_label(row)
+            if not label:
+                continue
+            prob = _ui_snapshot_first_finite_float_from_mapping(
+                row,
+                "q_bayes_posterior",
+                "q_temperature_bucket_posterior",
+                "q_round",
+                "probability",
+                "prob",
+            )
+            if prob is not None and (best_prob is None or float(prob) > best_prob):
+                best_prob = float(prob)
+                best_label = label
+    return best_label or (str(labels[0]) if labels else "")
+
+
+def _ui_snapshot_temperature_bucket_labels_for_path_reach(item: Mapping[str, Any]) -> List[str]:
+    labels: List[str] = []
+    seen: Set[str] = set()
+
+    def add(label: Any) -> None:
+        text = str(label or "").strip()
+        if not text or text in seen:
+            return
+        seen.add(text)
+        labels.append(text)
+
+    if not isinstance(item, Mapping):
+        return labels
+    for row in item.get("distribution") or []:
+        if isinstance(row, Mapping):
+            add(_row_bucket_label(row))
+    for key in (
+        "prior_distribution",
+        "forecast_weak_likelihood",
+        "metar_strong_likelihood",
+    ):
+        value = item.get(key)
+        if isinstance(value, Mapping):
+            for label in value.keys():
+                add(label)
+    ssot = _row_mapping_value(item.get("posterior_ssot_fact"))
+    for key in ("target_bucket_label", "target_bucket", "posterior_highest_bucket_label"):
+        add(ssot.get(key))
+        add(item.get(key))
+    return labels
+
+
+def _ui_snapshot_bucket_path_reach_threshold(label: str) -> Optional[Dict[str, Any]]:
+    text = str(label or "").strip()
+    if not text:
+        return None
+    try:
+        spec = parse_outcome_label(text)
+    except ValueError:
+        spec = None
+    if spec is not None:
+        if spec.kind == "le":
+            return {"mode": "hold_at_or_below_boundary", "threshold_c": float(spec.k)}
+        return {"mode": "reach_at_or_above_lower_edge", "threshold_c": float(spec.k)}
+    parsed = parse_bucket_label(text)
+    if not parsed:
+        return None
+    low, high = parsed
+    if math.isfinite(float(low)):
+        return {"mode": "reach_at_or_above_lower_edge", "threshold_c": float(low)}
+    if math.isfinite(float(high)):
+        return {"mode": "hold_at_or_below_boundary", "threshold_c": float(high)}
+    return None
+
+
+def _ui_snapshot_normal_threshold_probability(
+    *,
+    mean_c: float,
+    sigma_c: float,
+    threshold_c: float,
+    mode: str,
+) -> Optional[float]:
+    sigma = max(0.05, float(sigma_c))
+    z = (float(threshold_c) - float(mean_c)) / sigma
+    cdf = 0.5 * (1.0 + math.erf(float(z) / math.sqrt(2.0)))
+    probability = cdf if str(mode) == "hold_at_or_below_boundary" else 1.0 - cdf
+    if not math.isfinite(float(probability)):
+        return None
+    return max(0.0, min(1.0, float(probability)))
+
+
+def _ui_snapshot_trajectory_path_reach_rows(
+    item: Mapping[str, Any],
+    *,
+    mean_peak_c: float,
+    sigma_c: float,
+) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
+    rows: List[Dict[str, Any]] = []
+    by_bucket: Dict[str, float] = {}
+    for label in _ui_snapshot_temperature_bucket_labels_for_path_reach(item):
+        threshold = _ui_snapshot_bucket_path_reach_threshold(label)
+        if not threshold:
+            continue
+        prob = _ui_snapshot_normal_threshold_probability(
+            mean_c=float(mean_peak_c),
+            sigma_c=float(sigma_c),
+            threshold_c=float(threshold["threshold_c"]),
+            mode=str(threshold["mode"]),
+        )
+        if prob is None:
+            continue
+        by_bucket[str(label)] = float(prob)
+        rows.append(
+            {
+                "outcome": str(label),
+                "mode": str(threshold["mode"]),
+                "threshold_c": float(threshold["threshold_c"]),
+                "lower_edge_c": float(threshold["threshold_c"]),
+                "path_reach_probability": float(prob),
+                "source": "amsc_metar_trajectory_peak_estimate_normal_threshold",
+            }
+        )
+    return rows, by_bucket
+
+
+def _build_ui_snapshot_amsc_trajectory_peak_estimate(
+    item: Mapping[str, Any],
+    *,
+    section: Mapping[str, Any],
+    observation_section: Mapping[str, Any],
+) -> Dict[str, Any]:
+    remaining_rows = section.get("remaining_warming_by_state") if isinstance(section, Mapping) else []
+    base_temperature_c = _ui_snapshot_trajectory_peak_base_temperature_c(
+        section=section,
+        observation_section=observation_section,
+    )
+    rows = _ui_snapshot_trajectory_peak_rows(
+        remaining_rows,
+        base_temperature_c=base_temperature_c,
+    )
+    weight_sum = sum(float(row["state_prob"]) for row in rows)
+    if weight_sum <= 0.0:
+        return {}
+    mean_peak_c = sum(float(row["state_prob"]) * float(row["peak_mu_c"]) for row in rows) / weight_sum
+    variance = (
+        sum(
+            float(row["state_prob"])
+            * (
+                (float(row.get("sigma_c") or 0.0) ** 2)
+                + ((float(row["peak_mu_c"]) - float(mean_peak_c)) ** 2)
+            )
+            for row in rows
+        )
+        / weight_sum
+    )
+    sigma_c = math.sqrt(max(0.0, float(variance)))
+    delta_rows = [row for row in rows if row.get("delta_mu_c") is not None]
+    delta_weight_sum = sum(float(row["state_prob"]) for row in delta_rows)
+    mean_delta_c = (
+        sum(float(row["state_prob"]) * float(row["delta_mu_c"]) for row in delta_rows) / delta_weight_sum
+        if delta_weight_sum > 0.0
+        else None
+    )
+    top_row = max(rows, key=lambda row: float(row["state_prob"])) if rows else {}
+    path_rows, path_by_bucket = _ui_snapshot_trajectory_path_reach_rows(
+        item,
+        mean_peak_c=float(mean_peak_c),
+        sigma_c=float(sigma_c),
+    )
+    target_label = _ui_snapshot_target_bucket_label_for_path_reach(item, list(path_by_bucket.keys()))
+    target_probability = path_by_bucket.get(target_label)
+    out: Dict[str, Any] = {
+        "schema": "ui_amsc_metar_trajectory_peak_estimate_v1",
+        "state": "available",
+        "read_only": True,
+        "source": "ui_snapshot.amsc_metar_ssot.remaining_warming_by_state",
+        "primary_source_id": "zuuu_metar_raw_amsc",
+        "role": "trajectory_peak_estimate_display_ssot",
+        "boundary": "backend_ui_snapshot_only_from_existing_fact_fields_no_frontend_recompute_no_db_write",
+        "mean_peak_c": float(mean_peak_c),
+        "sigma_c": float(sigma_c),
+        "sigma": float(sigma_c),
+        "p10_c": float(mean_peak_c) - 1.2815515655446004 * float(sigma_c),
+        "p10": float(mean_peak_c) - 1.2815515655446004 * float(sigma_c),
+        "p90_c": float(mean_peak_c) + 1.2815515655446004 * float(sigma_c),
+        "p90": float(mean_peak_c) + 1.2815515655446004 * float(sigma_c),
+        "mean_delta_c": float(mean_delta_c) if mean_delta_c is not None else None,
+        "base_temperature_c": float(base_temperature_c) if base_temperature_c is not None else None,
+        "weight_sum": float(weight_sum),
+        "row_count": len(rows),
+        "top_state": str(top_row.get("state") or ""),
+        "top_state_prob": float(top_row.get("state_prob")) if top_row else None,
+        "path_reach_probability_by_bucket": path_by_bucket,
+        "path_reach_rows": path_rows,
+        "target_bucket_label": target_label,
+        "path_reach_probability": float(target_probability) if target_probability is not None else None,
+        "rows": rows,
+    }
+    return {
+        key: value
+        for key, value in out.items()
+        if value not in (None, "", [], {})
+    }
+
+
+def _build_ui_snapshot_amsc_metar_ssot_section(
+    item: Mapping[str, Any],
+    observation_section: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    if not isinstance(item, Mapping):
+        return {}
+    features = _ui_snapshot_merged_feature_sources(item)
+    timeline_row = _ui_snapshot_latest_sequential_timeline_row(item)
+    source_id = "zuuu_metar_raw_amsc"
+    latest_temp_c = _feature_first_float(features, f"{source_id}_latest_temp_c")
+    if latest_temp_c is None:
+        latest_temp_c = _ui_snapshot_first_finite_float_from_mapping(
+            timeline_row, "amsc_temp_c", "primary_metar_temp_c"
+        )
+    today_max_c = _feature_first_float(features, f"{source_id}_today_max_c")
+    if today_max_c is None:
+        today_max_c = _ui_snapshot_first_finite_float_from_mapping(
+            timeline_row, "amsc_today_max_c", "primary_metar_today_max_c"
+        )
+    latest_at = _feature_first_text(features, f"{source_id}_latest_at") or str(
+        timeline_row.get("amsc_latest_at")
+        or timeline_row.get("primary_metar_latest_at")
+        or ""
+    ).strip()
+    latest_local = _feature_first_text(features, f"{source_id}_latest_local") or str(
+        timeline_row.get("amsc_latest_local_hhmm")
+        or timeline_row.get("primary_metar_latest_local_hhmm")
+        or ""
+    ).strip()
+    latest_raw = _feature_first_text(features, f"{source_id}_latest_raw")
+    has_amsc = any(value not in (None, "", [], {}) for value in (latest_temp_c, today_max_c, latest_at, latest_raw))
+    section: Dict[str, Any] = {
+        "schema": "ui_amsc_metar_ssot_section_v1",
+        "state": "available" if has_amsc else "missing",
+        "read_only": True,
+        "source": (
+            "facts.items[].temperature_trajectory_timeline.rows[-1]"
+            if timeline_row
+            else "facts.items[].weather_likelihood_features_compact.zuuu_metar_raw_amsc_*"
+        ),
+        "primary_source_id": source_id,
+        "source_priority": ["zuuu_metar_raw_amsc", "zuuu_metar_raw_awc"],
+        "reference_only_source_ids": ["zuuu_metar_raw_awc", "awc_cache_metars_csv_gz"],
+        "role": "hard_observation_primary",
+        "settlement_anchor": True,
+        "frontend_recompute_allowed": False,
+        "fact_snapshot_id": _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id"),
+        "posterior_run_id": _lineage_field_for_ui_snapshot_item(item, "posterior_run_id"),
+        "boundary": "ui_snapshot_display_reads_amsc_primary_ssot;awc_reference_fill_only;no_frontend_recompute",
+    }
+    if not has_amsc:
+        section["na_reason"] = "zuuu_metar_raw_amsc_fields_missing_from_fact_snapshot"
+    metar = {
+        "source_id": source_id,
+        "latest_at": latest_at,
+        "latest_local": latest_local,
+        "fetched_at": _feature_first_text(features, f"{source_id}_fetched_at"),
+        "latest_temp_c": latest_temp_c,
+        "temperature_c": latest_temp_c,
+        "latest_dewpoint_c": (
+            _feature_first_float(features, f"{source_id}_latest_dewpoint_c")
+            if _feature_first_float(features, f"{source_id}_latest_dewpoint_c") is not None
+            else _ui_snapshot_first_finite_float_from_mapping(timeline_row, "dewpoint_c")
+        ),
+        "today_max_c": today_max_c,
+        "today_max_at": _feature_first_text(features, f"{source_id}_today_max_at"),
+        "today_max_local": _feature_first_text(features, f"{source_id}_today_max_local"),
+        "today_max_raw_preview": _feature_first_text(features, f"{source_id}_today_max_raw")[:240],
+        "latest_raw_preview": latest_raw[:240],
+        "temperature_point_count": _feature_first_float(features, f"{source_id}_temperature_point_count"),
+        "source_observation_id": _feature_first_text(features, f"{source_id}_source_observation_id"),
+    }
+    section["metar"] = {
+        key: value
+        for key, value in metar.items()
+        if value not in (None, "", [], {})
+    }
+    physical = {
+        "source_id": source_id,
+        "visibility_m": _feature_first_float(features, f"{source_id}_latest_visibility_m", "visibility_m"),
+        "cloud_cover_pct": _feature_first_float(features, f"{source_id}_latest_cloud_cover_pct", "cloud_cover_pct"),
+        "low_cloud_cover_pct": _feature_first_float(features, f"{source_id}_latest_low_cloud_cover_pct", "low_cloud_cover_pct"),
+        "cloud_text": _feature_first_text(features, f"{source_id}_latest_cloud_text", "cloud_text") or str(timeline_row.get("cloud_text") or ""),
+        "weather_text": _feature_first_text(features, f"{source_id}_latest_weather_text", "weather_text") or str(timeline_row.get("weather_text") or ""),
+        "wind_dir_deg": _feature_first_float(features, f"{source_id}_latest_wind_dir_deg", "wind_dir_deg"),
+        "wind_speed_mps": _feature_first_float(features, f"{source_id}_latest_wind_speed_mps", "wind_speed_mps"),
+        "wind_gust_mps": _feature_first_float(features, f"{source_id}_latest_wind_gust_mps", "wind_gust_mps"),
+        "pressure_hpa": _feature_first_float(features, f"{source_id}_latest_pressure_hpa", "pressure_hpa"),
+        "dewpoint_c": (
+            _feature_first_float(features, f"{source_id}_latest_dewpoint_c", "dewpoint_c")
+            if _feature_first_float(features, f"{source_id}_latest_dewpoint_c", "dewpoint_c") is not None
+            else _ui_snapshot_first_finite_float_from_mapping(timeline_row, "dewpoint_c")
+        ),
+    }
+    section["physical_evidence"] = {
+        key: value
+        for key, value in physical.items()
+        if value not in (None, "", [], {})
+    }
+    momentum_rates = {
+        label: _feature_first_float(
+            features,
+            f"{source_id}_temperature_momentum_{label}_c_per_hour",
+            f"temperature_momentum_{label}_c_per_hour",
+        )
+        for label in ("30m", "45m", "1h", "2h", "3h", "6h", "12h")
+    }
+    momentum_rates = {
+        key: value
+        for key, value in momentum_rates.items()
+        if value is not None and math.isfinite(float(value))
+    }
+    momentum = {
+        "source_id": source_id,
+        "effective_c_per_hour": _feature_first_float(
+            features,
+            "temperature_momentum_effective_c_per_hour",
+            "temperature_momentum_posterior_effective_c_per_hour",
+            f"{source_id}_temperature_trajectory_stable_rate_c_per_hour",
+        ),
+        "stable_rate_c_per_hour": _feature_first_float(
+            features,
+            "temperature_trajectory_stable_rate_c_per_hour",
+            f"{source_id}_temperature_trajectory_stable_rate_c_per_hour",
+        ),
+        "realization_state": _feature_first_text(
+            features,
+            "temperature_momentum_realization_state",
+            "temperature_trajectory_realization_state",
+            f"{source_id}_temperature_trajectory_realization_state",
+        ),
+        "posterior_gate_allowed": features.get("temperature_momentum_posterior_gate_allowed"),
+        "posterior_gate_state": _feature_first_text(features, "temperature_momentum_posterior_gate_state"),
+        "posterior_gate_reason": _feature_first_text(features, "temperature_momentum_posterior_gate_reason"),
+        "available_horizons": _feature_first_text(
+            features,
+            f"{source_id}_temperature_momentum_available_horizons",
+            "temperature_momentum_available_horizons",
+        ),
+        "rates_c_per_hour": momentum_rates,
+    }
+    if momentum.get("effective_c_per_hour") is None:
+        momentum["effective_c_per_hour"] = _ui_snapshot_first_finite_float_from_mapping(
+            timeline_row, "temperature_momentum_effective_c_per_hour"
+        )
+    if not momentum_rates:
+        for label, field in (("1h", "temperature_momentum_1h_c_per_hour"), ("2h", "temperature_momentum_2h_c_per_hour")):
+            value = _ui_snapshot_first_finite_float_from_mapping(timeline_row, field)
+            if value is not None:
+                momentum_rates[label] = value
+    if not momentum.get("realization_state"):
+        momentum["realization_state"] = str(
+            timeline_row.get("temperature_momentum_realization_state") or ""
+        ).strip()
+    section["temperature_momentum"] = {
+        key: value
+        for key, value in momentum.items()
+        if value not in (None, "", [], {})
+    }
+    trajectory = (
+        _compact_intraday_mapping_for_endpoint(
+            item.get("temperature_trajectory"),
+            nested_keys={"rolling_temperature_observation_summary"},
+        )
+        if isinstance(item.get("temperature_trajectory"), Mapping)
+        else {}
+    )
+    rolling = _ui_snapshot_feature_first_mapping(
+        features,
+        f"{source_id}_rolling_temperature_summary",
+        "rolling_temperature_observation_summary",
+    )
+    if rolling:
+        trajectory["rolling_temperature_summary"] = rolling
+    points = _ui_snapshot_feature_first_list(
+        features,
+        f"{source_id}_temperature_observations",
+        f"{source_id}_today_temperature_points",
+        limit=8,
+    )
+    if points:
+        trajectory["recent_temperature_points"] = points
+    if trajectory:
+        trajectory.setdefault("source_id", source_id)
+        if today_max_c is not None and math.isfinite(float(today_max_c)):
+            trajectory["observed_today_max_c"] = float(today_max_c)
+            trajectory["today_max_c"] = float(today_max_c)
+            rolling_summary = trajectory.get("rolling_temperature_summary")
+            if isinstance(rolling_summary, MutableMapping):
+                rolling_summary["observed_today_max_c"] = float(today_max_c)
+                rolling_summary["today_max_c"] = float(today_max_c)
+        section["temperature_trajectory"] = trajectory
+    peak_window = {
+        "start_hour_local": _feature_first_float(features, "expected_peak_window_start_hour_local"),
+        "end_hour_local": _feature_first_float(features, "expected_peak_window_end_hour_local"),
+        "expected_peak_hour_local": _feature_first_float(features, "expected_peak_hour_local"),
+        "expected_peak_at_local": _feature_first_text(features, "expected_peak_at_local"),
+        "source": _feature_first_text(features, "expected_peak_window_source", "expected_peak_hour_source"),
+    }
+    peak_window = {
+        key: value
+        for key, value in peak_window.items()
+        if value not in (None, "", [], {})
+    }
+    if peak_window:
+        section["predicted_peak_window"] = peak_window
+    obs_section = observation_section if isinstance(observation_section, Mapping) else {}
+    latest_amsc_observation: Dict[str, Any] = {}
+    for row in obs_section.get("hard_source_observations") or []:
+        if isinstance(row, Mapping) and str(row.get("source_id") or "") == source_id:
+            latest_amsc_observation = dict(row)
+            break
+    if latest_amsc_observation:
+        section["latest_hard_observation"] = latest_amsc_observation
+    for key in ("hard_constraints", "state_probs", "remaining_warming_by_state"):
+        value = obs_section.get(key)
+        if value not in (None, "", [], {}):
+            section[key] = copy.deepcopy(value)
+    peak_estimate = _build_ui_snapshot_amsc_trajectory_peak_estimate(
+        item,
+        section=section,
+        observation_section=obs_section,
+    )
+    if peak_estimate:
+        section["trajectory_peak_estimate"] = peak_estimate
+    termination = timeline_row.get("termination_risk")
+    if isinstance(termination, Mapping) and termination:
+        section["termination_risk"] = _compact_intraday_mapping_for_endpoint(termination)
+    return section
+
+
+def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, Mapping):
+        return {}
+    layer_contributions = item.get("layer_contributions")
+    strong_layer = (
+        layer_contributions.get("metar_strong_likelihood")
+        if isinstance(layer_contributions, Mapping)
+        and isinstance(layer_contributions.get("metar_strong_likelihood"), Mapping)
+        else {}
+    )
+    consumed_strong_distribution = (
+        strong_layer.get("distribution")
+        if isinstance(strong_layer, Mapping) and isinstance(strong_layer.get("distribution"), Mapping)
+        else item.get("metar_strong_likelihood")
+    )
+    likelihood_rows = _compact_ui_snapshot_probability_rows(
+        consumed_strong_distribution,
+        probability_field="facts.items[].layer_contributions.metar_strong_likelihood.distribution",
+        source="facts.items[].layer_contributions.metar_strong_likelihood.distribution",
+        limit=12,
+    )
+    raw_observations = [
+        _compact_ui_snapshot_source_observation_row(row)
+        for row in _ui_snapshot_observation_source_rows(item)
+        if isinstance(row, Mapping)
+    ]
+    observations = [row for row in raw_observations if row]
+    timeline_row = _ui_snapshot_latest_sequential_timeline_row(item)
+    if not observations and timeline_row:
+        timeline_observation = {
+            "source_id": str(timeline_row.get("primary_source_id") or "zuuu_metar_raw_amsc"),
+            "source_class": "hard_observation_primary",
+            "source_role": "hard_source_observation",
+            "role": "hard_source_observation",
+            "hard_eligible": True,
+            "settlement_anchor": True,
+            "station_id": "ZUUU",
+            "valid_time": str(timeline_row.get("primary_metar_latest_at") or timeline_row.get("amsc_latest_at") or ""),
+            "valid_time_local": str(timeline_row.get("primary_metar_latest_local_hhmm") or timeline_row.get("amsc_latest_local_hhmm") or ""),
+            "temperature_c": timeline_row.get("primary_metar_temp_c", timeline_row.get("amsc_temp_c")),
+            "dewpoint_c": timeline_row.get("dewpoint_c"),
+            "observed_today_max_c": timeline_row.get("primary_metar_today_max_c", timeline_row.get("amsc_today_max_c")),
+            "source_event_id": str(timeline_row.get("canonical_observation_event_id") or ""),
+            "source_observation_id": str(timeline_row.get("canonical_observation_event_id") or ""),
+            "cloud_text": str(timeline_row.get("cloud_text") or ""),
+            "weather_text": str(timeline_row.get("weather_text") or ""),
+            "ui_display_from_v6_timeline": True,
+            "read_only": True,
+            "not_posterior_input": True,
+        }
+        observations = [{key: value for key, value in timeline_observation.items() if value not in (None, "", [], {})}]
+    observations.sort(key=_source_observation_sort_key, reverse=True)
+    hard_observations = [row for row in observations if _is_hard_observation_source(row)]
+    latest_hard = hard_observations[0] if hard_observations else {}
+    hard_constraints = item.get("hard_constraints")
+    hard_constraints_compact = (
+        _compact_intraday_mapping_for_endpoint(hard_constraints)
+        if isinstance(hard_constraints, Mapping)
+        else {}
+    )
+    state_probs = item.get("state_probs") if isinstance(item.get("state_probs"), Mapping) else {}
+    if not state_probs and isinstance(timeline_row.get("latent_state_probabilities"), list):
+        state_probs = {
+            str(row.get("state") or ""): float(row.get("probability") or 0.0)
+            for row in timeline_row.get("latent_state_probabilities") or []
+            if isinstance(row, Mapping) and str(row.get("state") or "").strip()
+        }
+    remaining = item.get("remaining_warming_by_state") if isinstance(item.get("remaining_warming_by_state"), list) else []
+    trajectory = item.get("temperature_trajectory") if isinstance(item.get("temperature_trajectory"), Mapping) else {}
+    features = item.get("observation_features") if isinstance(item.get("observation_features"), Mapping) else {}
+    has_hard_constraint_value = any(
+        to_float(hard_constraints_compact.get(key)) is not None
+        for key in ("current_temperature_c", "observed_today_max_c", "base_temperature_c")
+    )
+    if likelihood_rows and (hard_observations or has_hard_constraint_value):
+        state = "available"
+        na_reason = ""
+    elif likelihood_rows:
+        state = "likelihood_only"
+        na_reason = "hard_source_observation_points_missing"
+    elif hard_observations:
+        state = "raw_observation_only"
+        na_reason = "metar_strong_likelihood_not_materialized"
+    elif observations:
+        state = "source_observation_only"
+        na_reason = "hard_observation_source_not_identified"
+    else:
+        state = "missing"
+        na_reason = "source_observations_and_metar_strong_likelihood_missing"
+    section: Dict[str, Any] = {
+        "schema": "ui_bayes_observation_strong_section_v1",
+        "state": state,
+        "read_only": True,
+        "source": "facts.items[].layer_contributions.metar_strong_likelihood.distribution+source_observations",
+        "role": "observation_strong_likelihood",
+        "fact_snapshot_id": _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id"),
+        "posterior_run_id": _lineage_field_for_ui_snapshot_item(item, "posterior_run_id"),
+        "metar_strong_likelihood": {
+            row["outcome"]: row["probability"] for row in likelihood_rows
+        },
+        "bucket_probabilities": likelihood_rows,
+        "source_observations": observations[:12],
+        "hard_source_observations": hard_observations[:8],
+        "hard_source_count": len(hard_observations),
+        "latest_hard_observation": latest_hard,
+        "na_reason": na_reason,
+        "frontend_recompute_allowed": False,
+        "boundary": "hard_observation_layer_no_frontend_recompute_no_source_role_promotion",
+    }
+    if likelihood_rows:
+        top = likelihood_rows[0]
+        section["top_bucket"] = str(top.get("outcome") or "")
+        section["top_bucket_label"] = str(top.get("outcome") or "")
+        section["top_probability"] = float(top.get("probability") or 0.0)
+        section["top_probability_pct"] = float(top.get("probability") or 0.0) * 100.0
+    if hard_constraints_compact:
+        section["hard_constraints"] = hard_constraints_compact
+    elif timeline_row:
+        section["hard_constraints"] = {
+            "current_temperature_c": timeline_row.get("primary_metar_temp_c", timeline_row.get("amsc_temp_c")),
+            "observed_today_max_c": timeline_row.get("primary_metar_today_max_c", timeline_row.get("amsc_today_max_c")),
+            "reported_x_lower_bound_c": timeline_row.get("reported_x_lower_bound_c"),
+            "source": "temperature_trajectory_timeline.rows[-1]",
+        }
+    if state_probs:
+        section["state_probs"] = {
+            str(key): float(value)
+            for key, value in state_probs.items()
+            if to_float(value) is not None and math.isfinite(float(to_float(value)))
+        }
+    if remaining:
+        section["remaining_warming_by_state"] = copy.deepcopy(remaining[:8])
+    if trajectory:
+        section["temperature_trajectory"] = _compact_intraday_mapping_for_endpoint(
+            trajectory,
+            nested_keys={"rolling_temperature_observation_summary"},
+        )
+    if features:
+        section["observation_features"] = _compact_intraday_mapping_for_endpoint(features)
+    termination = timeline_row.get("termination_risk")
+    if isinstance(termination, Mapping) and termination:
+        section["termination_risk"] = _compact_intraday_mapping_for_endpoint(termination)
+    ssot = item.get("posterior_ssot_fact")
+    if isinstance(ssot, Mapping) and isinstance(ssot.get("peak_timing_state"), Mapping):
+        section["peak_timing_state"] = _compact_intraday_mapping_for_endpoint(
+            ssot.get("peak_timing_state")
+        )
+    return section
+
+
+def _lineage_field_for_ui_snapshot_item(item: Mapping[str, Any], key: str) -> str:
+    if not isinstance(item, Mapping):
+        return ""
+    value = item.get(key)
+    if value not in (None, "", [], {}):
+        return str(value)
+    lineage = item.get("lineage_state")
+    if isinstance(lineage, Mapping) and lineage.get(key) not in (None, "", [], {}):
+        return str(lineage.get(key))
+    # The sequential probability SSOT owns these lineage identifiers.  The
+    # summary endpoint intentionally compacts them inside posterior_ssot_fact;
+    # requiring a duplicated top-level copy makes a valid snapshot look
+    # lineage-incomplete and causes an endless cache rebuild loop.
+    posterior_ssot = item.get("posterior_ssot_fact")
+    if (
+        key in {"fact_snapshot_id", "posterior_run_id"}
+        and isinstance(posterior_ssot, Mapping)
+        and posterior_ssot.get(key) not in (None, "", [], {})
+    ):
+        return str(posterior_ssot.get(key))
+    return ""
+
+
+def _build_ui_snapshot_hard_mask_section(item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, Mapping):
+        return {}
+    hard_constraints = item.get("hard_constraints")
+    compact_constraints = (
+        _compact_intraday_mapping_for_endpoint(hard_constraints)
+        if isinstance(hard_constraints, Mapping)
+        else {}
+    )
+    reason = str(item.get("hard_mask_reason") or "").strip()
+    active = bool(reason or compact_constraints or item.get("d0_observed_feasibility_guard_applied"))
+    return {
+        "schema": "ui_bayes_hard_mask_section_v1",
+        "state": "available" if active else "inactive",
+        "read_only": True,
+        "source": "facts.items[].hard_constraints+hard_mask_reason",
+        "role": "hard_physical_feasibility_mask",
+        "fact_snapshot_id": _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id"),
+        "posterior_run_id": _lineage_field_for_ui_snapshot_item(item, "posterior_run_id"),
+        "active": active,
+        "hard_mask_reason": reason,
+        "hard_constraints": compact_constraints,
+        "na_reason": "" if active else "hard_mask_not_triggered",
+        "frontend_recompute_allowed": False,
+        "boundary": "deterministic_physical_impossibility_only_no_soft_prediction_ranking",
+    }
+
+
+def _build_ui_snapshot_physical_high_posterior_section(item: Mapping[str, Any]) -> Dict[str, Any]:
+    """Project the authoritative report-defined X posterior for display only.
+
+    This is intentionally distinct from market settlement buckets.  A numeric
+    X grid point such as 34.0C must never be relabelled as the cumulative
+    market outcome ``34C or below``.
+    """
+
+    if not isinstance(item, Mapping):
+        return {}
+    ssot = _compact_posterior_ssot_fact_for_ui_snapshot(item.get("posterior_ssot_fact"))
+    schema = str(ssot.get("schema") or "")
+    if not _is_reported_physical_x_ssot_schema(schema):
+        return {
+            "schema": "ui_reported_physical_x_posterior_section_v2",
+            "state": "missing",
+            "read_only": True,
+            "source": "facts.items[].posterior_ssot_fact.reported_physical_x_distribution",
+            "na_reason": (
+                "legacy_continuous_latent_distribution_is_not_reported_x"
+                if schema == "sequential_temperature_posterior_ssot_v2"
+                else "reported_x_ssot_schema_unavailable"
+            ),
+            "frontend_recompute_allowed": False,
+        }
+    rows = list(ssot.get("reported_physical_x_distribution") or [])
+    if not rows:
+        return {
+            "schema": "ui_reported_physical_x_posterior_section_v2",
+            "state": "missing",
+            "read_only": True,
+            "source": "facts.items[].posterior_ssot_fact.reported_physical_x_distribution",
+            "na_reason": "reported_physical_x_distribution_missing",
+            "frontend_recompute_allowed": False,
+        }
+    top = rows[0]
+    market_rows = list(ssot.get("market_bucket_probabilities") or [])
+    market_na_reason = str(ssot.get("market_bucket_probabilities_na_reason") or "")
+    return {
+        "schema": "ui_reported_physical_x_posterior_section_v2",
+        "state": "available",
+        "read_only": True,
+        "source": "facts.items[].posterior_ssot_fact.reported_physical_x_distribution",
+        "fact_snapshot_id": str(ssot.get("fact_snapshot_id") or ""),
+        "posterior_run_id": str(ssot.get("posterior_run_id") or ""),
+        "posterior_checkpoint_id": str(ssot.get("posterior_checkpoint_id") or ""),
+        "posterior_as_of": str(ssot.get("committed_at") or ""),
+        "top_temperature_c": top.get("temperature_c"),
+        "top_probability": top.get("probability"),
+        "top_probability_pct": top.get("probability_pct"),
+        "ranked_temperature_probabilities": rows,
+        "market_projection_state": "available" if market_rows else "na",
+        "market_projection_na_reason": "" if market_rows else market_na_reason,
+        "reported_x_lower_bound_c": ssot.get("reported_x_lower_bound_c"),
+        "last_canonical_event_id": str(ssot.get("last_canonical_event_id") or ""),
+        "last_strong_update_id": str(ssot.get("last_strong_update_id") or ""),
+        "frontend_recompute_allowed": False,
+        "boundary": "reported_X_whole_degree_only_not_latent_Z_not_market_B_not_cumulative_edge_bucket",
+    }
+
+
+def _build_ui_snapshot_bayes_posterior_ssot_section(item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, Mapping):
+        return {}
+    ssot = _compact_posterior_ssot_fact_for_ui_snapshot(item.get("posterior_ssot_fact"))
+    fact_snapshot_id = str(ssot.get("fact_snapshot_id") or _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id"))
+    posterior_run_id = str(ssot.get("posterior_run_id") or _lineage_field_for_ui_snapshot_item(item, "posterior_run_id"))
+    if not ssot:
+        return {
+            "schema": "ui_bayes_posterior_ssot_section_v1",
+            "state": "missing",
+            "read_only": True,
+            "source": "facts.items[].posterior_ssot_fact",
+            "na_reason": "posterior_ssot_fact_missing",
+            "fact_snapshot_id": fact_snapshot_id,
+            "posterior_run_id": posterior_run_id,
+            "frontend_recompute_allowed": False,
+        }
+    state = str(ssot.get("state") or "").strip() or "available"
+    target_probability = _ui_snapshot_prob01_from_value(ssot.get("target_probability"))
+    boundaries = ssot.get("boundaries") if isinstance(ssot.get("boundaries"), Mapping) else {}
+    phase = ssot.get("phase") if ssot.get("phase") not in (None, "", [], {}) else item.get("phase")
+    beta_weak = ssot.get("beta_weak") if ssot.get("beta_weak") not in (None, "", [], {}) else item.get("beta_weak")
+    beta_strong = (
+        ssot.get("beta_strong")
+        if ssot.get("beta_strong") not in (None, "", [], {})
+        else item.get("beta_strong")
+    )
+    phase_reason = str(ssot.get("phase_reason") or item.get("phase_reason") or "")
+    hard_mask_reason = str(ssot.get("hard_mask_reason") or item.get("hard_mask_reason") or "")
+    target_bucket = str(ssot.get("target_bucket") or ssot.get("target_bucket_label") or "").strip()
+    is_sequential = _is_sequential_temperature_ssot_schema(ssot.get("schema"))
+    market_projection_available = bool(ssot.get("market_bucket_probabilities"))
+    section: Dict[str, Any] = {
+        "schema": "ui_bayes_posterior_ssot_section_v1",
+        "state": (
+            "available"
+            if state == "available" and (not is_sequential or market_projection_available)
+            else "market_projection_na"
+            if is_sequential and not market_projection_available
+            else state
+        ),
+        "read_only": True,
+        "source": "facts.items[].posterior_ssot_fact",
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "posterior_as_of": str(
+            ssot.get("posterior_as_of")
+            or ssot.get("committed_at")
+            or item.get("posterior_as_of")
+            or ""
+        ),
+        "target_bucket": target_bucket,
+        "target_bucket_label": target_bucket,
+        "target_probability_field": str(
+            ssot.get("target_probability_field") or "posterior_ssot_fact.target_probability"
+        ),
+        "phase": phase,
+        "beta_weak": beta_weak,
+        "beta_strong": beta_strong,
+        "phase_reason": phase_reason,
+        "hard_mask_reason": hard_mask_reason,
+        "frontend_recompute_allowed": bool(boundaries.get("frontend_recompute_allowed", False)),
+        "decision_recompute_allowed": bool(boundaries.get("decision_recompute_allowed", False)),
+        "posterior_distribution_source": (
+            "posterior_ssot_fact.market_bucket_probabilities"
+            if is_sequential
+            else "posterior_ssot_fact.bucket_probabilities"
+        ),
+        "na_reason": (
+            str(ssot.get("market_bucket_probabilities_na_reason") or "market_bucket_projection_unavailable")
+                if is_sequential and not market_projection_available
+            else str(ssot.get("state_reason") or "") if state != "available" else ""
+        ),
+    }
+    if target_probability is not None:
+        section["target_probability"] = float(target_probability)
+        section["target_probability_pct"] = float(target_probability) * 100.0
+    for key in (
+        "ranked_bucket_probabilities",
+        "bucket_probabilities",
+        "layer_chain",
+        "lineage",
+        "boundaries",
+        "hard_constraints",
+        "invalidated_target_bucket",
+        "invalidated_by_hard_observed_max_c",
+        "invalidated_target_probability",
+        "invalidated_target_probability_pct",
+    ):
+        value = ssot.get(key)
+        if value not in (None, "", [], {}):
+            section[key] = value
+    return section
+
+
+def _ui_snapshot_event_layer_distribution(
+    payload: Mapping[str, Any],
+    *,
+    direct_key: str,
+    layer_key: str,
+) -> Dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        return {}
+    direct = _row_mapping_value(payload.get(direct_key))
+    if direct:
+        return direct
+    layers = _row_mapping_value(payload.get("layer_contributions"))
+    layer = _row_mapping_value(layers.get(layer_key))
+    return _row_mapping_value(layer.get("distribution"))
+
+
+def _ui_snapshot_event_layer_metadata(payload: Mapping[str, Any], layer_key: str) -> Dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        return {}
+    layers = _row_mapping_value(payload.get("layer_contributions"))
+    layer = _row_mapping_value(layers.get(layer_key))
+    out = {
+        key: copy.deepcopy(value)
+        for key, value in layer.items()
+        if key != "distribution" and value not in (None, "", [], {})
+    }
+    return out
+
+
+UI_SNAPSHOT_CHENGDU_SUMMARY_SSOT_KEYS: Tuple[str, ...] = (
+    "fact_id",
+    "fact_snapshot_id",
+    "posterior_run_id",
+    "posterior_as_of",
+    "prior_distribution",
+    "prior_meta",
+    "prior_na_reason",
+    "forecast_weak_likelihood",
+    "metar_strong_likelihood",
+    "state_probs",
+    "remaining_warming_by_state",
+    "temperature_trajectory_peak_estimate",
+    "path_reach_probability_by_bucket",
+    "observation_features",
+    "temperature_trajectory",
+    "temperature_trajectory_status",
+    "hard_constraints",
+    "layer_contributions",
+    "posterior_ssot_fact",
+    "weather_likelihood_features_compact",
+    "source_observations",
+    "source_acquisition_trace",
+    "source_latency_trace",
+    "ui_sections",
+)
+
+
+UI_SNAPSHOT_CHENGDU_SUMMARY_FORCE_SSOT_KEYS: Set[str] = {
+    "posterior_ssot_fact",
+    "temperature_trajectory",
+    "temperature_trajectory_status",
+    "weather_likelihood_features_compact",
+    "ui_sections",
+    "metar_strong_likelihood",
+    "state_probs",
+    "remaining_warming_by_state",
+    "temperature_trajectory_peak_estimate",
+    "path_reach_probability_by_bucket",
+    "hard_constraints",
+    "source_observations",
+}
+
+
+UI_SNAPSHOT_CHENGDU_SUMMARY_FORCE_METRIC_PREFIXES: Tuple[str, ...] = (
+    "observed_",
+    "temperature_rise_rate_",
+    "temperature_momentum_",
+    "temperature_trajectory_",
+    "zuuu_metar_raw_amsc_",
+)
+
+
+def _merge_fill_ui_snapshot_ssot_into_chengdu_summary(payload: MutableMapping[str, Any]) -> None:
+    if not isinstance(payload, MutableMapping):
+        return
+    summary = payload.get("chengdu_intraday_summary")
+    if not isinstance(summary, MutableMapping):
+        return
+    for key in UI_SNAPSHOT_CHENGDU_SUMMARY_SSOT_KEYS:
+        value = payload.get(key)
+        if value in (None, "", [], {}):
+            continue
+        if key in UI_SNAPSHOT_CHENGDU_SUMMARY_FORCE_SSOT_KEYS or summary.get(key) in (None, "", [], {}):
+            summary[key] = copy.deepcopy(value)
+
+    features = payload.get("weather_likelihood_features_compact")
+    metrics = summary.get("key_metrics")
+    metrics_map: Dict[str, Any] = dict(metrics) if isinstance(metrics, Mapping) else {}
+    if isinstance(features, Mapping):
+        for key, value in features.items():
+            if value in (None, "", [], {}):
+                continue
+            force_ssot = str(key).startswith(UI_SNAPSHOT_CHENGDU_SUMMARY_FORCE_METRIC_PREFIXES)
+            if force_ssot or metrics_map.get(key) in (None, "", [], {}):
+                metrics_map[key] = copy.deepcopy(value)
+    trajectory_status = payload.get("temperature_trajectory_status")
+    if isinstance(trajectory_status, Mapping):
+        for key in (
+            "observed_temp_c",
+            "observed_today_max_c",
+            "temperature_rise_rate_c_per_hour",
+            "temperature_rise_rate_window",
+            "temperature_momentum_effective_c_per_hour",
+            "temperature_momentum_realization_state",
+            "temperature_momentum_posterior_gate_allowed",
+            "temperature_momentum_posterior_gate_reason",
+            "temperature_trajectory_posterior_status",
+            "temperature_trajectory_rate_hat_c_per_hour",
+        ):
+            value = trajectory_status.get(key)
+            if value not in (None, "", [], {}):
+                metrics_map[key] = copy.deepcopy(value)
+    if metrics_map:
+        summary["key_metrics"] = metrics_map
+    summary.setdefault("ui_snapshot_summary_ssot_overlay", "same_snapshot_top_level_fact_fields")
+    summary.setdefault("frontend_recompute_allowed", False)
+
+
+def _sync_ui_snapshot_amsc_observation_ssot_fields(
+    payload: MutableMapping[str, Any],
+    *,
+    source_payload: Optional[Mapping[str, Any]] = None,
+) -> None:
+    if not isinstance(payload, MutableMapping):
+        return
+    source_maps: List[Mapping[str, Any]] = []
+    if isinstance(source_payload, Mapping):
+        source_maps.append(source_payload)
+        for key in ("weather_likelihood_features_compact", "weather_likelihood_features"):
+            value = source_payload.get(key)
+            if isinstance(value, Mapping):
+                source_maps.append(value)
+    source_maps.append(payload)
+    for key in ("weather_likelihood_features_compact", "weather_likelihood_features"):
+        value = payload.get(key)
+        if isinstance(value, Mapping):
+            source_maps.append(value)
+
+    def first_value(*keys: str) -> Any:
+        for mapping in source_maps:
+            for key in keys:
+                value = mapping.get(key)
+                if value not in (None, "", [], {}):
+                    return value
+        for key in keys:
+            value = payload.get(key)
+            if value not in (None, "", [], {}):
+                return value
+        return None
+
+    amsc_today_max = to_float(first_value("zuuu_metar_raw_amsc_today_max_c", "observed_today_max_c"))
+    amsc_latest_temp = to_float(first_value("zuuu_metar_raw_amsc_latest_temp_c", "observed_temp_c", "metar_temperature_c"))
+    metrics_raw = payload.get("key_metrics")
+    metrics: Dict[str, Any] = dict(metrics_raw) if isinstance(metrics_raw, Mapping) else {}
+    compact_raw = payload.get("weather_likelihood_features_compact")
+    compact: Dict[str, Any] = dict(compact_raw) if isinstance(compact_raw, Mapping) else {}
+
+    amsc_keys = (
+        "zuuu_metar_raw_amsc_latest_temp_c",
+        "zuuu_metar_raw_amsc_today_max_c",
+        "zuuu_metar_raw_amsc_latest_at",
+        "zuuu_metar_raw_amsc_latest_local",
+        "zuuu_metar_raw_amsc_fetched_at",
+        "zuuu_metar_raw_amsc_latest_raw",
+        "zuuu_metar_raw_amsc_latest_dewpoint_c",
+        "zuuu_metar_raw_amsc_latest_visibility_m",
+        "zuuu_metar_raw_amsc_latest_cloud_cover_pct",
+        "zuuu_metar_raw_amsc_latest_low_cloud_cover_pct",
+        "zuuu_metar_raw_amsc_latest_cloud_text",
+        "zuuu_metar_raw_amsc_latest_weather_text",
+        "zuuu_metar_raw_amsc_latest_pressure_hpa",
+        "zuuu_metar_raw_amsc_latest_wind_dir_deg",
+        "zuuu_metar_raw_amsc_latest_wind_speed_mps",
+        "zuuu_metar_raw_amsc_latest_wind_gust_mps",
+        "zuuu_metar_raw_amsc_today_max_at",
+        "zuuu_metar_raw_amsc_today_max_local",
+        "zuuu_metar_raw_amsc_today_max_raw",
+        "zuuu_metar_raw_amsc_temperature_point_count",
+        "zuuu_metar_raw_amsc_temperature_momentum_30m_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_45m_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_2h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_trajectory_stable_rate_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_trajectory_realization_state",
+    )
+    for key in amsc_keys:
+        value = first_value(key)
+        if value in (None, "", [], {}):
+            continue
+        copied = copy.deepcopy(value)
+        metrics[key] = copied
+        compact[key] = copied
+        if key in {
+            "zuuu_metar_raw_amsc_latest_temp_c",
+            "zuuu_metar_raw_amsc_today_max_c",
+            "zuuu_metar_raw_amsc_latest_at",
+            "zuuu_metar_raw_amsc_latest_local",
+            "zuuu_metar_raw_amsc_today_max_at",
+            "zuuu_metar_raw_amsc_today_max_local",
+        }:
+            payload[key] = copied
+
+    if amsc_latest_temp is not None:
+        for key in ("observed_temp_c", "metar_temperature_c", "observed_current_temp_c"):
+            payload[key] = float(amsc_latest_temp)
+            metrics[key] = float(amsc_latest_temp)
+            compact[key] = float(amsc_latest_temp)
+        for key in ("source", "observed_temp_source", "metar_source", "hard_observation_source", "observation_path_primary_source"):
+            payload[key] = "zuuu_metar_raw_amsc"
+            metrics[key] = "zuuu_metar_raw_amsc"
+            compact[key] = "zuuu_metar_raw_amsc"
+    if amsc_today_max is not None:
+        for key in ("observed_today_max_c",):
+            payload[key] = float(amsc_today_max)
+            metrics[key] = float(amsc_today_max)
+            compact[key] = float(amsc_today_max)
+        for target_key, source_keys in (
+            ("observed_today_max_at", ("zuuu_metar_raw_amsc_today_max_at", "observed_today_max_at")),
+            ("observed_today_max_local", ("zuuu_metar_raw_amsc_today_max_local", "observed_today_max_local")),
+            ("observed_today_max_source", ("observed_today_max_source",)),
+        ):
+            value = "zuuu_metar_raw_amsc" if target_key == "observed_today_max_source" else first_value(*source_keys)
+            if value in (None, "", [], {}):
+                if target_key == "observed_today_max_source":
+                    value = "zuuu_metar_raw_amsc"
+                else:
+                    continue
+            copied = copy.deepcopy(value)
+            payload[target_key] = copied
+            metrics[target_key] = copied
+            compact[target_key] = copied
+    has_amsc_momentum = any(
+        first_value(key) not in (None, "", [], {})
+        for key in (
+            "zuuu_metar_raw_amsc_temperature_momentum_30m_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_45m_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_momentum_2h_c_per_hour",
+            "zuuu_metar_raw_amsc_temperature_trajectory_stable_rate_c_per_hour",
+        )
+    )
+    if has_amsc_momentum:
+        for key in ("temperature_momentum_source", "temperature_trajectory_source"):
+            payload[key] = "zuuu_metar_raw_amsc"
+            metrics[key] = "zuuu_metar_raw_amsc"
+            compact[key] = "zuuu_metar_raw_amsc"
+    physical_cutoff = first_value("physical_cutoff_evidence")
+    if not isinstance(physical_cutoff, Mapping):
+        evidence_codes_raw = first_value("physical_cutoff_evidence_codes")
+        if isinstance(evidence_codes_raw, str):
+            evidence_codes = [part.strip() for part in evidence_codes_raw.split(",") if part.strip()]
+        elif isinstance(evidence_codes_raw, list):
+            evidence_codes = [str(part or "").strip() for part in evidence_codes_raw if str(part or "").strip()]
+        else:
+            evidence_codes = []
+        cutoff_confirmed = first_value("physical_cutoff_confirmed")
+        true_cutoff = first_value("true_cooling_or_cutoff_confirmed")
+        evidence_count = to_float(first_value("physical_cutoff_evidence_count"))
+        if evidence_codes or cutoff_confirmed not in (None, "") or true_cutoff not in (None, ""):
+            physical_cutoff = {
+                "schema": "metar_recoil_physical_cutoff_evidence_v1",
+                "source": "weather_likelihood_features_compact",
+                "physical_cutoff_confirmed": _truthy(cutoff_confirmed),
+                "true_cooling_or_cutoff_confirmed": _truthy(true_cutoff),
+                "evidence_codes": evidence_codes,
+                "evidence_count": int(evidence_count) if evidence_count is not None else len(evidence_codes),
+            }
+    if isinstance(physical_cutoff, Mapping) and physical_cutoff:
+        physical_cutoff_out = copy.deepcopy(dict(physical_cutoff))
+        payload["physical_cutoff_evidence"] = physical_cutoff_out
+        compact["physical_cutoff_evidence"] = physical_cutoff_out
+        metrics["physical_cutoff_evidence"] = physical_cutoff_out
+    recoil_state_ssot = first_value("recoil_state_ssot")
+    if not isinstance(recoil_state_ssot, Mapping):
+        recoil_state = str(first_value("recoil_state") or "").strip()
+        if recoil_state or isinstance(physical_cutoff, Mapping):
+            recoil_state_ssot = {
+                "schema": "metar_recoil_three_state_ssot_v1",
+                "state": recoil_state,
+                "state_label": first_value("recoil_state_label"),
+                "action": first_value("recoil_action"),
+                "momentum_treatment": first_value("recoil_momentum_treatment"),
+                "platform_recoil_active": _truthy(first_value("platform_recoil_active")),
+                "physical_cutoff_confirmed": _truthy(first_value("physical_cutoff_confirmed")),
+                "true_cooling_or_cutoff_confirmed": _truthy(first_value("true_cooling_or_cutoff_confirmed")),
+                "physical_cutoff_evidence": copy.deepcopy(dict(physical_cutoff))
+                if isinstance(physical_cutoff, Mapping)
+                else {},
+                "boundary": "inside_metar_strong_likelihood_not_independent_likelihood",
+                "policy": "platform_noise_pullback_watch_confirmed_cooling_cutoff",
+            }
+    if isinstance(recoil_state_ssot, Mapping) and recoil_state_ssot:
+        recoil_state_out = copy.deepcopy(dict(recoil_state_ssot))
+        payload["recoil_state_ssot"] = recoil_state_out
+        compact["recoil_state_ssot"] = recoil_state_out
+        metrics["recoil_state_ssot"] = recoil_state_out
+    termination_risk = first_value("termination_risk")
+    if isinstance(termination_risk, Mapping) and termination_risk:
+        termination_risk_out = copy.deepcopy(dict(termination_risk))
+        payload["termination_risk"] = termination_risk_out
+        compact["termination_risk"] = termination_risk_out
+        metrics["termination_risk"] = termination_risk_out
+    if compact:
+        payload["weather_likelihood_features_compact"] = compact
+    if metrics:
+        payload["key_metrics"] = metrics
+
+
+def _merge_ui_snapshot_features_into_key_metrics(payload: MutableMapping[str, Any]) -> None:
+    if not isinstance(payload, MutableMapping):
+        return
+    _sync_ui_snapshot_amsc_observation_ssot_fields(payload)
+    metrics_raw = payload.get("key_metrics")
+    metrics_map: Dict[str, Any] = dict(metrics_raw) if isinstance(metrics_raw, Mapping) else {}
+    features = payload.get("weather_likelihood_features_compact")
+    if isinstance(features, Mapping):
+        for key, value in features.items():
+            if value in (None, "", [], {}):
+                continue
+            force_ssot = str(key).startswith(UI_SNAPSHOT_CHENGDU_SUMMARY_FORCE_METRIC_PREFIXES)
+            if force_ssot or metrics_map.get(key) in (None, "", [], {}):
+                metrics_map[key] = copy.deepcopy(value)
+    trajectory_status = payload.get("temperature_trajectory_status")
+    if isinstance(trajectory_status, Mapping):
+        for key in (
+            "observed_temp_c",
+            "observed_today_max_c",
+            "temperature_rise_rate_c_per_hour",
+            "temperature_rise_rate_window",
+            "temperature_momentum_effective_c_per_hour",
+            "temperature_momentum_realization_state",
+            "temperature_momentum_posterior_gate_allowed",
+            "temperature_momentum_posterior_gate_reason",
+            "temperature_trajectory_posterior_status",
+            "temperature_trajectory_rate_hat_c_per_hour",
+        ):
+            value = trajectory_status.get(key)
+            if value not in (None, "", [], {}):
+                metrics_map[key] = copy.deepcopy(value)
+    payload["key_metrics"] = metrics_map
+    _sync_ui_snapshot_amsc_observation_ssot_fields(payload)
+    metrics_map = dict(payload.get("key_metrics") or {}) if isinstance(payload.get("key_metrics"), Mapping) else {}
+    if metrics_map:
+        payload["key_metrics"] = metrics_map
+
+
+def _ui_snapshot_distribution_row_with_event_layer_context(
+    row: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Merge-fill event-level Bayes layers into a bucket row for display only."""
+    if not isinstance(row, Mapping):
+        return {}
+    if not isinstance(payload, Mapping):
+        return dict(row)
+    out = dict(row)
+    label = _row_bucket_label(out)
+    if not label:
+        return out
+
+    existing_layers = _row_layer_contributions(out)
+    layers: Dict[str, Any] = copy.deepcopy(existing_layers) if existing_layers else {}
+    layer_specs = (
+        (
+            "prior",
+            "prior_distribution",
+            "root_prior",
+            "historical_climate_date_site_terrain_weather_type_only",
+        ),
+        (
+            "forecast_weak_likelihood",
+            "forecast_weak_likelihood",
+            "prediction_weak_likelihood",
+            "models_taf_wu_twc_forecasts_only_no_hard_facts",
+        ),
+        (
+            "metar_strong_likelihood",
+            "metar_strong_likelihood",
+            "observation_strong_likelihood",
+            "metar_temperature_momentum_physics_cloud_rain_state_once_no_double_count",
+        ),
+    )
+    for layer_key, direct_key, role, boundary in layer_specs:
+        distribution = _ui_snapshot_event_layer_distribution(
+            payload,
+            direct_key=direct_key,
+            layer_key=layer_key,
+        )
+        if not distribution:
+            continue
+        layer = _row_mapping_value(layers.get(layer_key))
+        if not layer:
+            layer = _ui_snapshot_event_layer_metadata(payload, layer_key)
+        layer.setdefault("role", role)
+        layer.setdefault("boundary", boundary)
+        if layer_key == "forecast_weak_likelihood":
+            beta = to_float(payload.get("beta_weak"))
+            if beta is not None and math.isfinite(beta):
+                layer.setdefault("beta", float(beta))
+        elif layer_key == "metar_strong_likelihood":
+            beta = to_float(payload.get("beta_strong"))
+            if beta is not None and math.isfinite(beta):
+                layer.setdefault("beta", float(beta))
+        layer.setdefault("distribution", copy.deepcopy(distribution))
+        layers[layer_key] = layer
+
+    if layers and out.get("q_bayes_layer_contributions") in (None, "", [], {}):
+        out["q_bayes_layer_contributions"] = layers
+    for row_key, payload_key in (
+        ("q_bayes_phase", "phase"),
+        ("q_bayes_beta_weak", "beta_weak"),
+        ("q_bayes_beta_strong", "beta_strong"),
+        ("q_bayes_phase_reason", "phase_reason"),
+        ("q_bayes_hard_mask_reason", "hard_mask_reason"),
+    ):
+        value = payload.get(payload_key)
+        if out.get(row_key) in (None, "", [], {}) and value not in (None, "", [], {}):
+            out[row_key] = value
+    chain = _hierarchical_bayes_chain_for_distribution_row(out)
+    if chain:
+        if out.get("q_prior") in (None, "", [], {}) and chain.get("prior_prob") is not None:
+            out["q_prior"] = chain.get("prior_prob")
+        if out.get("q_likelihood") in (None, "", [], {}) and chain.get("likelihood_prob") is not None:
+            out["q_likelihood"] = chain.get("likelihood_prob")
+        if out.get("bayes_chain") in (None, "", [], {}):
+            out["bayes_chain"] = chain
+    return out
+
+
+def _attach_ui_snapshot_sections_to_item(item: MutableMapping[str, Any]) -> None:
+    if not isinstance(item, MutableMapping):
+        return
+    ssot = _compact_posterior_ssot_fact_for_ui_snapshot(item.get("posterior_ssot_fact"))
+    if ssot:
+        item["posterior_ssot_fact"] = ssot
+    sections = dict(item.get("ui_sections") or {}) if isinstance(item.get("ui_sections"), Mapping) else {}
+    prior_section = _build_ui_snapshot_prior_section(item)
+    if prior_section:
+        sections["prior"] = prior_section
+    weak_section = _build_ui_snapshot_forecast_weak_section(item)
+    if weak_section:
+        sections["forecast_weak"] = weak_section
+    observation_section = _build_ui_snapshot_observation_strong_section(item)
+    if observation_section:
+        amsc_section = _build_ui_snapshot_amsc_metar_ssot_section(item, observation_section)
+        if amsc_section:
+            peak_estimate = amsc_section.get("trajectory_peak_estimate")
+            if isinstance(peak_estimate, Mapping) and peak_estimate:
+                observation_section["trajectory_peak_estimate"] = copy.deepcopy(peak_estimate)
+                item["temperature_trajectory_peak_estimate"] = copy.deepcopy(peak_estimate)
+                by_bucket = peak_estimate.get("path_reach_probability_by_bucket")
+                if isinstance(by_bucket, Mapping) and by_bucket:
+                    item["path_reach_probability_by_bucket"] = copy.deepcopy(by_bucket)
+            observation_section["amsc_metar_ssot"] = copy.deepcopy(amsc_section)
+            sections["amsc_metar_ssot"] = copy.deepcopy(amsc_section)
+            item["amsc_metar_ssot"] = copy.deepcopy(amsc_section)
+        sections["observation_strong"] = observation_section
+        observations = copy.deepcopy(observation_section.get("source_observations") or [])
+        if observations:
+            if item.get("source_observations") in (None, "", [], {}):
+                item["source_observations"] = observations
+            trace = (
+                dict(item.get("source_acquisition_trace") or {})
+                if isinstance(item.get("source_acquisition_trace"), Mapping)
+                else {}
+            )
+            if trace.get("source_observations") in (None, "", [], {}):
+                trace["source_observations"] = observations
+            if trace.get("source_observation_ids") in (None, "", [], {}):
+                trace["source_observation_ids"] = [
+                    str(obs.get("source_observation_id") or "")
+                    for obs in observations
+                    if isinstance(obs, Mapping) and obs.get("source_observation_id")
+                ]
+            trace.setdefault("schema", "ui_snapshot_derived_source_trace_v1")
+            trace.setdefault("read_only", True)
+            trace.setdefault("display_only", True)
+            trace.setdefault("source", "facts.items[].weather_likelihood_features_compact")
+            trace.setdefault(
+                "boundary",
+                "display_only_from_existing_fact_fields_no_frontend_recompute_no_db_write",
+            )
+            item["source_acquisition_trace"] = trace
+            if item.get("source_latency_trace") in (None, "", [], {}):
+                item["source_latency_trace"] = [
+                    {
+                        "source_event_id": str(obs.get("source_event_id") or ""),
+                        "source_observation_id": str(obs.get("source_observation_id") or ""),
+                        "source_id": str(obs.get("source_id") or ""),
+                        "source_class": str(obs.get("source_class") or ""),
+                        "role": str(obs.get("role") or ""),
+                        "station_id": str(obs.get("station_id") or ""),
+                        "event_date": str(obs.get("event_date") or ""),
+                        "valid_time": str(obs.get("valid_time") or ""),
+                        "valid_time_local": str(obs.get("valid_time_local") or ""),
+                        "fetched_at": str(obs.get("fetched_at") or ""),
+                        "temperature_c": obs.get("temperature_c"),
+                        "observed_today_max_c": obs.get("observed_today_max_c"),
+                        "hard_eligible": bool(obs.get("hard_eligible")),
+                        "display_only": bool(obs.get("ui_display_derived_from_fact_features")),
+                    }
+                        for obs in observations
+                        if isinstance(obs, Mapping)
+                ]
+    hard_mask_section = _build_ui_snapshot_hard_mask_section(item)
+    if hard_mask_section:
+        sections["hard_mask"] = hard_mask_section
+    physical_high_section = _build_ui_snapshot_physical_high_posterior_section(item)
+    if physical_high_section:
+        sections["physical_high_posterior"] = physical_high_section
+    bayes_section = _build_ui_snapshot_bayes_posterior_ssot_section(item)
+    if bayes_section:
+        sections["bayes_posterior_ssot"] = bayes_section
+    sections.setdefault("schema", "ui_snapshot_item_sections_v1")
+    sections.setdefault("read_only", True)
+    item["ui_sections"] = sections
+    _merge_ui_snapshot_features_into_key_metrics(item)
+    _merge_fill_ui_snapshot_ssot_into_chengdu_summary(item)
+
+
+def _sync_ui_temperature_trajectory_top_level_fields(
+    payload: MutableMapping[str, Any],
+    trajectory_status: Mapping[str, Any],
+) -> None:
+    if not isinstance(payload, MutableMapping) or not isinstance(trajectory_status, Mapping):
+        return
+    field_map = {
+        "observed_temp_c": "observed_temp_c",
+        "observed_today_max_c": "observed_today_max_c",
+        "temperature_rise_rate_c_per_hour": "temperature_rise_rate_c_per_hour",
+        "temperature_rise_rate_window": "temperature_rise_rate_window",
+        "temperature_momentum_effective_c_per_hour": "temperature_momentum_effective_c_per_hour",
+        "temperature_momentum_realization_state": "temperature_momentum_realization_state",
+        "temperature_momentum_posterior_gate_allowed": "temperature_momentum_posterior_gate_allowed",
+        "temperature_momentum_posterior_gate_reason": "temperature_momentum_posterior_gate_reason",
+        "temperature_trajectory_path_mu_c": "temperature_trajectory_path_mu_c",
+        "temperature_trajectory_path_sigma_c": "temperature_trajectory_path_sigma_c",
+        "temperature_trajectory_rate_hat_c_per_hour": "temperature_trajectory_rate_hat_c_per_hour",
+        "temperature_trajectory_accel_hat_c_per_hour2": "temperature_trajectory_accel_hat_c_per_hour2",
+    }
+    for target_key, source_key in field_map.items():
+        value = trajectory_status.get(source_key)
+        if payload.get(target_key) in (None, "", [], {}) and value not in (None, "", [], {}):
+            payload[target_key] = value
+
+
+def _attach_ui_temperature_trajectory_status_from_payload(payload: MutableMapping[str, Any]) -> None:
+    if not isinstance(payload, MutableMapping):
+        return
+    _normalize_ui_temperature_trajectory_root_fields(payload)
+    has_root_trajectory = isinstance(payload.get("temperature_trajectory"), Mapping) and bool(payload.get("temperature_trajectory"))
+    if (
+        not has_root_trajectory
+        and isinstance(payload.get("temperature_trajectory_status"), Mapping)
+        and payload.get("temperature_trajectory_status")
+    ):
+        _sync_ui_temperature_trajectory_top_level_fields(payload, payload.get("temperature_trajectory_status") or {})
+        return
+    distribution = payload.get("distribution")
+    trajectory_status = _ui_temperature_trajectory_status_from_payload(payload, distribution)
+    if not trajectory_status:
+        if isinstance(payload.get("temperature_trajectory_status"), Mapping) and payload.get("temperature_trajectory_status"):
+            _sync_ui_temperature_trajectory_top_level_fields(payload, payload.get("temperature_trajectory_status") or {})
+        return
+    payload["temperature_trajectory_status"] = trajectory_status
+    _sync_ui_temperature_trajectory_top_level_fields(payload, trajectory_status)
+    intraday = payload.get("chengdu_intraday_summary")
+    if isinstance(intraday, MutableMapping):
+        intraday["temperature_trajectory_status"] = trajectory_status
+    _merge_ui_snapshot_features_into_key_metrics(payload)
+    _merge_fill_ui_snapshot_ssot_into_chengdu_summary(payload)
+
+
+def _ui_snapshot_contract_keys(*groups: Sequence[str]) -> Tuple[str, ...]:
+    out: List[str] = []
+    seen: Set[str] = set()
+    for group in groups:
+        for raw_key in group:
+            key = str(raw_key or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+    return tuple(out)
+
+
 def _slim_fact_payload_for_ui_snapshot_summary(
     payload: Any,
     *,
@@ -14475,6 +18468,12 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "model_info",
         "model_snapshot_id",
         "model_raw_top_history",
+        "model_member_cache_snapshot",
+        "model_members_decimal_raw",
+        "model_members",
+        "model_member_counts_raw",
+        "model_member_counts",
+        "model_provenance",
         "market_snapshot_id",
         "model_count",
         "equal_model_count",
@@ -14530,7 +18529,6 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "q_bayes_temperature_trajectory_status",
         "q_bayes_temperature_trajectory_na_reason",
         "q_bayes_temperature_trajectory_enabled",
-        "q_bayes_temperature_trajectory_evidence",
         "q_bayes_temperature_trajectory_source",
         "q_bayes_temperature_trajectory_role",
         "q_bayes_temperature_trajectory_source_class",
@@ -14558,12 +18556,32 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "bucket_series_run_date",
         "lead_day_hit_rates",
         "first_prediction_hit_rates",
+        "forecast_source_accuracy",
+    )
+    top_level_keys = _ui_snapshot_contract_keys(
+        top_level_keys,
+        UI_SNAPSHOT_FRONTEND_CONTRACT_TOP_LEVEL_KEYS,
     )
     compact_payload: Dict[str, Any] = {
         key: payload.get(key)
         for key in top_level_keys
         if key in payload and payload.get(key) not in (None, "")
     }
+    lineage = payload.get("lineage_state")
+    if isinstance(lineage, Mapping):
+        for key in (
+            "fact_snapshot_id",
+            "posterior_run_id",
+            "correlation_id",
+            "source_event_id",
+            "source_event_ids",
+            "source_observation_id",
+            "source_observation_ids",
+            "review_id",
+        ):
+            value = lineage.get(key)
+            if compact_payload.get(key) in (None, "", [], {}) and value not in (None, "", [], {}):
+                compact_payload[key] = copy.deepcopy(value)
     _attach_chengdu_model_weight_shadow_for_ui_snapshot(compact_payload)
     posterior_distribution = _compact_posterior_temperature_distribution_for_ui_snapshot(
         payload.get("posterior_temperature_distribution")
@@ -14630,6 +18648,7 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         compact_payload["weather_likelihood_features_compact"] = _normalize_ui_temperature_rise_rate_fields(
             compact_features
         )
+    _sync_ui_snapshot_amsc_observation_ssot_fields(compact_payload, source_payload=payload)
     compact_intraday = _compact_chengdu_intraday_summary_for_ui_snapshot(
         compact_payload.get("chengdu_intraday_summary")
     )
@@ -14661,9 +18680,12 @@ def _slim_fact_payload_for_ui_snapshot_summary(
             if isinstance(selection, Mapping) and isinstance(selection.get("target_switch_context"), Mapping):
                 compact_payload["target_switch_context"] = selection.get("target_switch_context")
         _promote_chengdu_intraday_observation_fields(compact_payload, compact_intraday)
-    trajectory_status = _ui_temperature_trajectory_status_from_payload(payload, distribution)
+        _sync_ui_snapshot_amsc_observation_ssot_fields(compact_payload, source_payload=payload)
+    _normalize_ui_temperature_trajectory_root_fields(compact_payload)
+    trajectory_status = _ui_temperature_trajectory_status_from_payload(compact_payload, distribution)
     if trajectory_status:
         compact_payload["temperature_trajectory_status"] = trajectory_status
+        _sync_ui_temperature_trajectory_top_level_fields(compact_payload, trajectory_status)
         if isinstance(compact_payload.get("chengdu_intraday_summary"), MutableMapping):
             compact_payload["chengdu_intraday_summary"]["temperature_trajectory_status"] = trajectory_status
     _attach_rebound_regime_signal(payload, distribution)
@@ -14690,8 +18712,12 @@ def _slim_fact_payload_for_ui_snapshot_summary(
     if isinstance(distribution, list):
         qm_meta_attached = False
         for raw_row in distribution:
+            row_for_compact = _ui_snapshot_distribution_row_with_event_layer_context(
+                raw_row if isinstance(raw_row, Mapping) else {},
+                payload,
+            )
             row = _compact_distribution_row_for_ui_snapshot(
-                raw_row,
+                row_for_compact,
                 include_qm_meta=not qm_meta_attached,
                 include_physical_detail=bool(include_physical_detail),
                 summary_minimal=not bool(include_physical_detail),
@@ -14735,7 +18761,18 @@ def _slim_fact_payload_for_ui_snapshot_summary(
                 if not merged_mean_bucket.get(key):
                     merged_mean_bucket[key] = value
             compact_payload["mean_bucket"] = merged_mean_bucket
-    if not compact_payload.get("mean_bucket") and not compact_payload.get("mean_bucket_na_reason"):
+    _suppress_ui_target_fields_when_posterior_ssot_unavailable(compact_payload)
+    posterior_ssot = compact_payload.get("posterior_ssot_fact")
+    posterior_ssot_available = (
+        isinstance(posterior_ssot, Mapping)
+        and str(posterior_ssot.get("schema") or "") == "bayes_posterior_ssot_fact_v1"
+        and str(posterior_ssot.get("state") or "") == "available"
+    )
+    if (
+        not posterior_ssot_available
+        and not compact_payload.get("mean_bucket")
+        and not compact_payload.get("mean_bucket_na_reason")
+    ):
         mean_bucket_na_reason = mean_bucket_na_reason_from_distribution_q_fields(compact_rows)
         if mean_bucket_na_reason:
             compact_payload["mean_bucket_na_reason"] = mean_bucket_na_reason
@@ -14747,6 +18784,8 @@ def _slim_fact_payload_for_ui_snapshot_summary(
     _align_item_target_fields_to_canonical_posterior_top(compact_payload)
     _sync_ui_probability_copy_fields_to_canonical(compact_payload)
     _compact_ui_snapshot_target_fields_in_place(compact_payload)
+    _suppress_ui_target_fields_when_posterior_ssot_unavailable(compact_payload)
+    _attach_ui_snapshot_sections_to_item(compact_payload)
     return compact_payload
 
 
@@ -14916,60 +18955,12 @@ def _compact_replaced_event_fact_history_row(
     fact_as_of: str = "",
     fact_json: str = "",
 ) -> bool:
-    old_fact_id = int(fact_id or 0)
-    if old_fact_id <= 0:
-        return False
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT 1 FROM event_fact_latest WHERE fact_id = ? LIMIT 1", (old_fact_id,))
-        if cur.fetchone():
-            return False
-    except sqlite3.Error:
-        return False
-
-    raw = str(fact_json or "")
-    old_as_of = str(fact_as_of or "")
-    if not raw:
-        try:
-            cur.execute(
-                "SELECT fact_as_of, fact_json FROM event_fact_history WHERE id = ?",
-                (old_fact_id,),
-            )
-            row = cur.fetchone()
-        except sqlite3.Error:
-            row = None
-        if not row:
-            return False
-        old_as_of = old_as_of or str(row[0] or "")
-        raw = str(row[1] or "")
-    payload = safe_json_loads(raw)
-    if not isinstance(payload, Mapping) or bool(payload.get("history_compacted")):
-        return False
-    compact = _compact_fact_payload_for_history_storage(
-        payload,
-        fact_as_of=old_as_of,
+    return compact_weather_replaced_event_fact_history_row(
+        conn,
+        int(fact_id or 0),
+        fact_as_of=fact_as_of,
+        fact_json=fact_json,
     )
-    if not compact:
-        return False
-    compact_json = json.dumps(compact, ensure_ascii=False)
-    if len(compact_json) >= len(raw):
-        return False
-    try:
-        cur.execute(
-            """
-            UPDATE event_fact_history
-            SET fact_json = ?
-            WHERE id = ?
-              AND NOT EXISTS (
-                  SELECT 1 FROM event_fact_latest
-                  WHERE event_fact_latest.fact_id = event_fact_history.id
-              )
-            """,
-            (compact_json, old_fact_id),
-        )
-    except sqlite3.Error:
-        return False
-    return cur.rowcount > 0
 
 
 def _display_probability_model_value(row: Mapping[str, Any]) -> Optional[float]:
@@ -16428,55 +20419,62 @@ def reconcile_stale_trade_blockers(
         event_date = str(row["event_date"] or "")
         outcome = str(row["outcome"] or "")
         side = str(row["side"] or "")
+        updated_rows = 0
         try:
             if clear_reason == "no_order_id_no_position":
-                cur.execute(
-                    """
-                    UPDATE edge_trades
-                    SET state = 'exit',
-                        position_size = 0.0,
-                        last_order_id = '',
-                        last_error = '',
-                        last_status = 'no_position',
-                        last_action = 'blocker_reconcile',
-                        last_action_at = ?,
-                        updated_at = ?
-                    WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                      AND COALESCE(last_error, '') = ?
-                    """,
-                    (now_iso, now_iso, slug, event_date, outcome, side, error_text),
+                updated_rows = update_edge_trade_by_key(
+                    cur,
+                    slug=slug,
+                    event_date=event_date,
+                    outcome=outcome,
+                    side=side,
+                    require_last_error=error_text,
+                    values={
+                        "state": "exit",
+                        "position_size": 0.0,
+                        "last_order_id": "",
+                        "last_error": "",
+                        "last_status": "no_position",
+                        "last_action": "blocker_reconcile",
+                        "last_action_at": now_iso,
+                        "updated_at": now_iso,
+                    },
                 )
             elif clear_reason == "pending_timeout_has_position":
-                cur.execute(
-                    """
-                    UPDATE edge_trades
-                    SET last_error = '',
-                        last_status = 'entry_recovered',
-                        last_action = 'blocker_reconcile',
-                        last_action_at = ?,
-                        updated_at = ?
-                    WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                      AND COALESCE(last_error, '') = ?
-                    """,
-                    (now_iso, now_iso, slug, event_date, outcome, side, error_text),
+                updated_rows = update_edge_trade_by_key(
+                    cur,
+                    slug=slug,
+                    event_date=event_date,
+                    outcome=outcome,
+                    side=side,
+                    require_last_error=error_text,
+                    values={
+                        "last_error": "",
+                        "last_status": "entry_recovered",
+                        "last_action": "blocker_reconcile",
+                        "last_action_at": now_iso,
+                        "updated_at": now_iso,
+                    },
                 )
             else:
-                cur.execute(
-                    """
-                    UPDATE edge_trades
-                    SET last_error = '',
-                        last_action = 'blocker_reconcile',
-                        last_action_at = ?,
-                        updated_at = ?
-                    WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ?
-                      AND COALESCE(last_error, '') = ?
-                    """,
-                    (now_iso, now_iso, slug, event_date, outcome, side, error_text),
+                updated_rows = update_edge_trade_by_key(
+                    cur,
+                    slug=slug,
+                    event_date=event_date,
+                    outcome=outcome,
+                    side=side,
+                    require_last_error=error_text,
+                    values={
+                        "last_error": "",
+                        "last_action": "blocker_reconcile",
+                        "last_action_at": now_iso,
+                        "updated_at": now_iso,
+                    },
                 )
         except sqlite3.OperationalError:
             continue
-        if cur.rowcount and cur.rowcount > 0:
-            cleared += int(cur.rowcount)
+        if updated_rows > 0:
+            cleared += int(updated_rows)
 
     if cleared:
         try:
@@ -16539,16 +20537,22 @@ def reconcile_stale_open_order_blockers(conn: sqlite3.Connection, active_order_i
         outcome = str(row["outcome"] or "")
         side = str(row["side"] or "")
         try:
-            cur.execute(
-                """
-                UPDATE edge_trades
-                SET last_error = '', last_action = 'open_order_reconcile', last_action_at = ?, updated_at = ?
-                WHERE slug = ? AND event_date = ? AND outcome = ? AND side = ? AND COALESCE(last_error, '') = ?
-                """,
-                (now_iso, now_iso, slug, event_date, outcome, side, error_text),
+            updated_rows = update_edge_trade_by_key(
+                cur,
+                slug=slug,
+                event_date=event_date,
+                outcome=outcome,
+                side=side,
+                require_last_error=error_text,
+                values={
+                    "last_error": "",
+                    "last_action": "open_order_reconcile",
+                    "last_action_at": now_iso,
+                    "updated_at": now_iso,
+                },
             )
-            if cur.rowcount and cur.rowcount > 0:
-                cleared += int(cur.rowcount)
+            if updated_rows > 0:
+                cleared += int(updated_rows)
         except sqlite3.OperationalError:
             continue
     if cleared:
@@ -24126,6 +28130,160 @@ def _save_feedback_snapshot_to_db(
     )
 
 
+def materialize_forecast_source_accuracy_report(conn: sqlite3.Connection) -> Dict[str, Any]:
+    """Copy the daily research report into archive SSOT without changing any model.
+
+    This is deliberately a feedback-snapshot materialization, not a runtime
+    source-weight activation.  The UI subsequently reads archive.db only.
+    """
+    try:
+        report = json.loads(FORECAST_SOURCE_ACCURACY_REPORT_PATH.read_text(encoding="utf-8"))
+        if not isinstance(report, dict):
+            raise ValueError("forecast_source_accuracy_report_not_mapping")
+        if report.get("schema") != "forecast_source_accuracy_report_v1":
+            raise ValueError("forecast_source_accuracy_report_schema_invalid")
+        if report.get("production_weight_input") is not False:
+            raise ValueError("forecast_source_accuracy_report_must_be_research_only")
+        report_sha256 = str(report.get("report_sha256") or "")
+        if not re.fullmatch(r"[0-9a-f]{64}", report_sha256):
+            raise ValueError("forecast_source_accuracy_report_sha_missing")
+        try:
+            official_formal = json.loads(OFFICIAL_FORECAST_SOURCE_ACCURACY_REPORT_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            official_formal = {
+                "schema": "official_forecast_source_accuracy_report_v1",
+                "state": "pending_formal_samples",
+                "research_only": True,
+                "production_weight_input": False,
+                "rows": [],
+                "na_reason": "official_formal_accuracy_report_not_materialized",
+            }
+        if not isinstance(official_formal, dict) or official_formal.get("schema") != "official_forecast_source_accuracy_report_v1":
+            raise ValueError("official_forecast_source_accuracy_report_schema_invalid")
+        if official_formal.get("production_weight_input") is not False:
+            raise ValueError("official_forecast_source_accuracy_report_must_be_research_only")
+        formal_sha256 = str(official_formal.get("report_sha256") or "")
+        materialization_signature = hashlib.sha256(
+            json.dumps({"legacy_report_sha256": report_sha256, "official_formal_report_sha256": formal_sha256, "official_formal_state": official_formal.get("state")}, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        latest = _load_latest_feedback_snapshot_from_db(
+            conn,
+            kind=FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+            days=0,
+        )
+        if isinstance(latest, dict) and str(latest.get("materialization_signature") or "") == materialization_signature:
+            return {
+                **report,
+                "official_formal": official_formal,
+                "materialization_signature": materialization_signature,
+                "materialized": True,
+                "materialized_kind": FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+                "materialized_write_skipped": True,
+                "materialized_write_skip_reason": "unchanged_report_sha256",
+                "materialized_existing_snapshot_id": int((latest.get("_meta") or {}).get("id") or 0),
+            }
+        report["materialized"] = True
+        report["materialized_kind"] = FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND
+        report["materialized_at"] = now_text()
+        report["official_formal"] = official_formal
+        report["materialization_signature"] = materialization_signature
+        _save_feedback_snapshot_to_db(
+            conn,
+            kind=FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+            days=0,
+            end_date=str(report.get("generated_at") or "")[:10],
+            payload=report,
+            ok=True,
+            error="",
+        )
+        return report
+    except Exception as exc:
+        payload = {
+            "schema": "forecast_source_accuracy_snapshot_error_v1",
+            "ok": False,
+            "research_only": True,
+            "production_weight_input": False,
+            "na_reason": "forecast_source_accuracy_report_unavailable",
+            "error": f"{type(exc).__name__}: {exc}",
+            "generated_at": now_text(),
+            "materialized": True,
+            "materialized_kind": FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+        }
+        _save_feedback_snapshot_to_db(
+            conn,
+            kind=FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+            days=0,
+            end_date="",
+            payload=payload,
+            ok=False,
+            error=str(payload["error"]),
+        )
+        return payload
+
+
+def materialize_joint_weak_bias_research_readiness(conn: sqlite3.Connection) -> Dict[str, Any]:
+    """Copy one verified research readiness report into archive feedback SSOT.
+
+    This is a display/status materialization only.  It cannot approve an
+    artifact or alter posterior, execution, source weights, or orders.
+    """
+
+    try:
+        latest_path = JOINT_WEAK_BIAS_RESEARCH_ROOT / "latest.json"
+        latest = safe_json_loads(latest_path.read_text(encoding="utf-8"))
+        if not isinstance(latest, dict) or latest.get("schema") != "joint_weak_bias_research_pipeline_v1":
+            raise ValueError("joint_weak_bias_research_latest_pointer_invalid")
+        pipeline_sha = str(latest.get("pipeline_sha256") or "")
+        pipeline_contract_version = str(latest.get("pipeline_contract_version") or "")
+        pipeline_contract_sha = str(latest.get("pipeline_contract_sha256") or "")
+        report_path = Path(str(latest.get("report_path") or "")).expanduser().resolve()
+        root = JOINT_WEAK_BIAS_RESEARCH_ROOT.resolve()
+        if root not in report_path.parents:
+            raise ValueError("joint_weak_bias_research_report_outside_research_root")
+        report = safe_json_loads(report_path.read_text(encoding="utf-8"))
+        if not isinstance(report, dict) or report.get("schema") != "joint_weak_bias_research_pipeline_v1":
+            raise ValueError("joint_weak_bias_research_report_schema_invalid")
+        if str(report.get("pipeline_sha256") or "") != pipeline_sha or not re.fullmatch(r"[0-9a-f]{64}", pipeline_sha):
+            raise ValueError("joint_weak_bias_research_report_sha_invalid")
+        if (
+            pipeline_contract_version != "joint_weak_bias_research_pipeline_contract_v2"
+            or str(report.get("pipeline_contract_version") or "") != pipeline_contract_version
+            or str(report.get("pipeline_contract_sha256") or "") != pipeline_contract_sha
+            or not re.fullmatch(r"[0-9a-f]{64}", pipeline_contract_sha)
+        ):
+            raise ValueError("joint_weak_bias_research_pipeline_contract_identity_invalid")
+        boundary = report.get("boundary") if isinstance(report.get("boundary"), Mapping) else {}
+        readiness = report.get("readiness") if isinstance(report.get("readiness"), Mapping) else {}
+        if boundary.get("research_only") is not True or boundary.get("writes_posterior") is not False or boundary.get("places_orders") is not False:
+            raise ValueError("joint_weak_bias_research_boundary_invalid")
+        if readiness.get("schema") != "joint_weak_bias_research_readiness_v1" or readiness.get("production_weight_input") is not False:
+            raise ValueError("joint_weak_bias_research_readiness_invalid")
+        payload = {
+            "schema": "joint_weak_bias_research_snapshot_v1",
+            "research_only": True,
+            "production_weight_input": False,
+            "pipeline_sha256": pipeline_sha,
+            "pipeline_contract_version": pipeline_contract_version,
+            "pipeline_contract_sha256": pipeline_contract_sha,
+            "dataset_sha256": str(report.get("dataset_sha256") or ""),
+            "readiness": dict(readiness),
+            "materialization_signature": hashlib.sha256(json.dumps({"pipeline_sha256": pipeline_sha, "pipeline_contract_sha256": pipeline_contract_sha, "dataset_sha256": report.get("dataset_sha256")}, sort_keys=True).encode()).hexdigest(),
+        }
+        latest_snapshot = _load_latest_feedback_snapshot_from_db(conn, kind=JOINT_WEAK_BIAS_RESEARCH_SNAPSHOT_KIND, days=0)
+        if isinstance(latest_snapshot, dict) and str(latest_snapshot.get("materialization_signature") or "") == payload["materialization_signature"]:
+            return {**payload, "materialized": True, "materialized_write_skipped": True, "materialized_write_skip_reason": "unchanged_pipeline_sha256"}
+        _save_feedback_snapshot_to_db(conn, kind=JOINT_WEAK_BIAS_RESEARCH_SNAPSHOT_KIND, days=0, end_date="", payload=payload, ok=True, error="")
+        return {**payload, "materialized": True, "materialized_write_skipped": False}
+    except Exception as exc:
+        payload = {
+            "schema": "joint_weak_bias_research_snapshot_error_v1", "ok": False,
+            "research_only": True, "production_weight_input": False,
+            "na_reason": "joint_weak_bias_research_report_unavailable", "error": f"{type(exc).__name__}: {exc}",
+        }
+        _save_feedback_snapshot_to_db(conn, kind=JOINT_WEAK_BIAS_RESEARCH_SNAPSHOT_KIND, days=0, end_date="", payload=payload, ok=False, error=str(payload["error"]))
+        return payload
+
+
 def _load_latest_feedback_snapshot_from_db(
     conn: sqlite3.Connection,
     *,
@@ -24405,6 +28563,8 @@ def run_feedback_loop_once(
     place_payload: Dict[str, Any] = {"ok": False, "error": "not_available"}
     hit_stats_payloads: List[Dict[str, Any]] = []
     source_lead_day_payload: Dict[str, Any] = {"ok": False, "error": "not_available", "days": SOURCE_LEAD_DAY_HIT_RATE_SNAPSHOT_DAYS}
+    forecast_source_accuracy_payload: Dict[str, Any] = {"ok": False, "error": "not_available"}
+    joint_weak_bias_research_payload: Dict[str, Any] = {"ok": False, "error": "not_available"}
     strategy_payload: Dict[str, Any] = {"ok": False, "error": "not_available"}
     orphan_fill_payload: Dict[str, Any] = {"ok": False, "error": "not_available"}
     try:
@@ -24415,7 +28575,13 @@ def run_feedback_loop_once(
     exit_policy_payload: Dict[str, Any] = {"ok": False, "error": "not_available", "days": 1}
     edge_bias_gate_suggestion: Optional[Dict[str, Any]] = None
 
-    with open_db() as conn:
+    with open_db(owner="ui.server.run_feedback_loop_once") as conn:
+        def _feedback_stage_commit() -> None:
+            try:
+                conn.commit()
+            except sqlite3.Error:
+                pass
+
         _ensure_feedback_tables(conn)
         # Model / place bias (from settled event_runs).
         try:
@@ -24450,6 +28616,7 @@ def run_feedback_loop_once(
                 ok=False,
                 error=str(model_payload.get("error") or ""),
             )
+        _feedback_stage_commit()
         try:
             if scan_compute_place_bias_stats:
                 place_bias = scan_compute_place_bias_stats(int(place_bias_days), end_date=end_date_key)
@@ -24482,6 +28649,7 @@ def run_feedback_loop_once(
                 ok=False,
                 error=str(place_payload.get("error") or ""),
             )
+        _feedback_stage_commit()
         # Market / four-model / final-weighting hit stats vs settled events.
         for hit_days in hit_stats_days_values:
             try:
@@ -24515,6 +28683,7 @@ def run_feedback_loop_once(
                     ok=False,
                     error=str(hit_stats_payload.get("error") or ""),
                 )
+            _feedback_stage_commit()
             hit_stats_payloads.append(hit_stats_payload)
         # Source/model D2-D0 hit rates vs final settled bucket.
         # Stored separately from prediction_hit_stats because model value-bucket and
@@ -24533,6 +28702,26 @@ def run_feedback_loop_once(
                 "end_date": end_date_key,
                 "error": f"{type(exc).__name__}: {exc}",
                 "na_reason": "source_lead_day_hit_rate_materialize_failed",
+            }
+        try:
+            forecast_source_accuracy_payload = materialize_forecast_source_accuracy_report(conn)
+        except Exception as exc:
+            forecast_source_accuracy_payload = {
+                "ok": False,
+                "research_only": True,
+                "production_weight_input": False,
+                "na_reason": "forecast_source_accuracy_materialize_failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        try:
+            joint_weak_bias_research_payload = materialize_joint_weak_bias_research_readiness(conn)
+        except Exception as exc:
+            joint_weak_bias_research_payload = {
+                "ok": False,
+                "research_only": True,
+                "production_weight_input": False,
+                "na_reason": "joint_weak_bias_research_materialize_failed",
+                "error": f"{type(exc).__name__}: {exc}",
             }
         # Commit the lightweight bias/hit snapshots before heavier strategy/orphan work.
         # This keeps the background hit-rate panel fresh even if later feedback stages time out.
@@ -24579,6 +28768,7 @@ def run_feedback_loop_once(
                 ok=False,
                 error=str(strategy_payload.get("error") or ""),
             )
+        _feedback_stage_commit()
         # Orphan fills (fills missing auto_orders provenance).
         try:
             orphan_days = int(orphan_fill_days or 60)
@@ -24609,6 +28799,7 @@ def run_feedback_loop_once(
                 ok=False,
                 error=str(orphan_fill_payload.get("error") or ""),
             )
+        _feedback_stage_commit()
         # Auto-optimizer (conservative): propose edge-bias confidence threshold from calibration bins.
         try:
             if edge_payload and edge_payload.get("ok"):
@@ -24628,6 +28819,7 @@ def run_feedback_loop_once(
                     )
         except Exception:
             edge_bias_gate_suggestion = None
+        _feedback_stage_commit()
         try:
             counterfactual_payload = _load_latest_feedback_snapshot_from_db(
                 conn,
@@ -24690,6 +28882,20 @@ def run_feedback_loop_once(
             "snapshot_kind": SOURCE_LEAD_DAY_HIT_RATE_SNAPSHOT_KIND,
             "materialized_at": str(source_lead_day_payload.get("materialized_at") or ""),
             "na_reason": str(source_lead_day_payload.get("na_reason") or source_lead_day_payload.get("error") or ""),
+        },
+        "forecast_source_accuracy": {
+            "ok": bool(forecast_source_accuracy_payload.get("schema") == "forecast_source_accuracy_report_v1"),
+            "snapshot_kind": FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+            "report_sha256": str(forecast_source_accuracy_payload.get("report_sha256") or ""),
+            "generated_at": str(forecast_source_accuracy_payload.get("generated_at") or ""),
+            "na_reason": str(forecast_source_accuracy_payload.get("na_reason") or forecast_source_accuracy_payload.get("error") or ""),
+        },
+        "joint_weak_bias_research": {
+            "ok": bool(joint_weak_bias_research_payload.get("schema") == "joint_weak_bias_research_snapshot_v1"),
+            "snapshot_kind": JOINT_WEAK_BIAS_RESEARCH_SNAPSHOT_KIND,
+            "pipeline_sha256": str(joint_weak_bias_research_payload.get("pipeline_sha256") or ""),
+            "readiness_state": str(((joint_weak_bias_research_payload.get("readiness") or {}) if isinstance(joint_weak_bias_research_payload, dict) else {}).get("state") or ""),
+            "na_reason": str(joint_weak_bias_research_payload.get("na_reason") or joint_weak_bias_research_payload.get("error") or ""),
         },
         "strategy_stats": {"ok": bool(strategy_payload.get("ok")), "days": int(strategy_days)},
         "entry_counterfactual_review": {
@@ -24801,6 +29007,31 @@ _OPTIMIZER_AUTO_APPLY_CACHE: Dict[str, Any] = {
     "plist_path": "",
 }
 
+LEGACY_OPTIMIZER_APPLY_RETIRED_REASON = "legacy_optimizer_apply_retired_use_parameter_change_governance"
+
+
+def _legacy_optimizer_apply_retired_payload(*, source: str, end_date: str = "") -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "enabled": False,
+        "applied": False,
+        "applied_any": False,
+        "status": "retired_no_write",
+        "source": str(source or ""),
+        "end_date": str(end_date or ""),
+        "reason_code": LEGACY_OPTIMIZER_APPLY_RETIRED_REASON,
+        "reason_text": "旧 optimizer apply 已退役；生产参数变更必须来自 approved calibration candidate。",
+        "next_boundary": "create_parameter_change_request_from_approved_calibration_candidate",
+        "guards": {
+            "writes_archive_db": False,
+            "writes_config_files": False,
+            "changes_parameters": False,
+            "restarts_launchd": False,
+            "places_orders": False,
+        },
+        "generated_at": now_text(),
+    }
+
 
 def _infer_optimizer_auto_apply_enabled() -> Tuple[bool, str]:
     """
@@ -24822,11 +29053,11 @@ def _infer_optimizer_auto_apply_enabled() -> Tuple[bool, str]:
             "ts": time.monotonic(),
             "ts_wall": now_text(),
             "ttl_sec": float(_OPTIMIZER_AUTO_APPLY_CACHE.get("ttl_sec") or 30.0),
-            "enabled": True,
-            "source": "env",
+            "enabled": False,
+            "source": "retired_env",
             "plist_path": str(_OPTIMIZER_AUTO_APPLY_CACHE.get("plist_path") or ""),
         }
-        return True, "env"
+        return False, "retired_env"
     now_ts = time.monotonic()
     cached = _OPTIMIZER_AUTO_APPLY_CACHE
     age = now_ts - float(cached.get("ts") or 0.0)
@@ -24908,6 +29139,9 @@ def _infer_optimizer_auto_apply_enabled() -> Tuple[bool, str]:
         if val is not None:
             enabled = bool(val)
             source = "plist"
+    if enabled:
+        enabled = False
+        source = f"retired_{source}"
     _OPTIMIZER_AUTO_APPLY_CACHE = {
         "ts": now_ts,
         "ts_wall": now_text(),
@@ -25021,178 +29255,19 @@ def apply_edge_bias_gate_suggestion(
     Apply latest `edge_bias_gate_suggestion` to auto-trade config.
     This is conservative: gated by min interval, max delta, and requires suggestion meets coverage target.
     """
-    if not DB_PATH.exists():
-        return {"ok": False, "error": "db_missing"}
-    try:
-        days = int(days)
-    except Exception:
-        days = 30
-    if days <= 0:
-        days = 30
-    end_date_key = _normalize_date_key(end_date) or _today_et_key()
-
-    cfg = auto_trade_config_defaults()
-    cfg.update(load_auto_trade_config())
-    current = to_float(cfg.get("entry_edge_confidence_min"))
-    current = float(current) if current is not None and math.isfinite(current) else None
-    require_conf = bool(cfg.get("entry_require_edge_confidence", True))
-    if not require_conf:
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "gate_disabled", "reason_text": "entry_require_edge_confidence 已关闭"}
-
-    suggestion = load_feedback_snapshot("edge_bias_gate_suggestion", days)
-    if not isinstance(suggestion, dict) or not suggestion.get("ok"):
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "missing_suggestion", "reason_text": "缺少可用建议快照"}
-    meta = suggestion.get("_meta") if isinstance(suggestion.get("_meta"), dict) else {}
-    snapshot_id = None
-    try:
-        snapshot_id = int(meta.get("id") or 0) or None
-    except Exception:
-        snapshot_id = None
-    proposal = suggestion.get("proposal") if isinstance(suggestion.get("proposal"), dict) else {}
-    proposed = to_float(proposal.get("entry_edge_confidence_min"))
-    proposed = float(proposed) if proposed is not None and math.isfinite(proposed) else None
-    if proposed is None:
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "proposal_missing", "reason_text": "建议缺少 entry_edge_confidence_min"}
-    metrics = suggestion.get("metrics") if isinstance(suggestion.get("metrics"), dict) else {}
-    meets = bool(metrics.get("meets_target"))
-    if not meets:
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "not_meet_target", "reason_text": "建议未满足覆盖率目标"}
-
-    try:
-        min_samples = int(os.environ.get("PM_OPTIMIZER_EDGE_BIAS_MIN_SAMPLES", "200") or 200)
-    except Exception:
-        min_samples = 200
-    try:
-        total_samples = int(metrics.get("total_bin_samples") or 0)
-    except Exception:
-        total_samples = 0
-    if total_samples and total_samples < max(1, min_samples):
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "insufficient_samples", "reason_text": f"样本不足({total_samples}<{min_samples})"}
-
-    # Clamp and max delta gate.
-    try:
-        conf_min = float(os.environ.get("PM_OPTIMIZER_EDGE_BIAS_CONF_MIN", "0.50") or 0.50)
-        conf_max = float(os.environ.get("PM_OPTIMIZER_EDGE_BIAS_CONF_MAX", "0.95") or 0.95)
-    except Exception:
-        conf_min, conf_max = 0.50, 0.95
-    if proposed < conf_min:
-        proposed = conf_min
-    if proposed > conf_max:
-        proposed = conf_max
-    try:
-        max_delta = float(os.environ.get("PM_OPTIMIZER_EDGE_BIAS_MAX_DELTA", "0.15") or 0.15)
-    except Exception:
-        max_delta = 0.15
-    if current is not None and abs(proposed - current) > max(0.0, max_delta) + 1e-9:
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "delta_too_large", "reason_text": f"变化过大({proposed:.3f} vs {current:.3f})"}
-    if current is not None and abs(proposed - current) <= 1e-6:
-        return {"ok": True, "applied": False, "status": "no_change", "reason_code": "already_applied", "reason_text": "当前值已等于建议值"}
-
-    # Min interval gate.
-    try:
-        min_interval = int(os.environ.get("PM_OPTIMIZER_MIN_APPLY_INTERVAL_SEC", "43200") or 43200)
-    except Exception:
-        min_interval = 43200
-    last_applied_at = ""
-    with open_db() as conn:
-        last_applied_at = _latest_optimizer_applied_at(conn, kind="edge_bias_gate_apply")
-    last_dt = parse_iso_ts(last_applied_at) if last_applied_at else None
-    if last_dt and min_interval > 0 and (time.time() - last_dt.timestamp()) < min_interval:
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "min_interval", "reason_text": f"距离上次应用过近({last_applied_at})"}
-
-    if _auto_trade_runtime_lock_active():
-        return {"ok": True, "applied": False, "status": "skipped", "reason_code": "auto_trade_running", "reason_text": "auto-trade 运行中，跳过自动改参"}
-
-    before = {"entry_edge_confidence_min": current}
-    after = {"entry_edge_confidence_min": proposed}
-
-    payload = load_auto_trade_config()
-    payload["entry_edge_confidence_min"] = float(proposed)
-    full_config = auto_trade_config_defaults()
-    full_config.update(payload)
-    validation = validate_auto_trade_config(full_config)
-    if not validation.get("ok"):
-        return {"ok": False, "error": "invalid_config", "errors": validation.get("errors") or []}
-
-    restart_res = None
-    scan_res = None
-    with open_db() as conn:
-        action_id = _write_optimizer_action(
-            conn,
-            kind="edge_bias_gate_apply",
-            days=int(days),
-            end_date=end_date_key,
-            suggestion_snapshot_id=snapshot_id,
-            status="pending",
-            reason_code="",
-            reason_text="",
-            before=before,
-            after=after,
-        )
-        conn.commit()
-        try:
-            save_auto_trade_config(payload)
-            apply_auto_trade_config(payload)
-            restart_res = restart_auto_trade_watcher() if restart else None
-            scan_res = start_scan(False, False) if scan else None
-            _write_optimizer_action(
-                conn,
-                kind="edge_bias_gate_apply",
-                days=int(days),
-                end_date=end_date_key,
-                suggestion_snapshot_id=snapshot_id,
-                status="applied",
-                reason_code="applied",
-                reason_text=f"entry_edge_confidence_min={proposed:.3f}",
-                before=before,
-                after=after,
-                restart=restart_res,
-                scan=scan_res,
-            )
-            conn.commit()
-        except Exception as exc:
-            _write_optimizer_action(
-                conn,
-                kind="edge_bias_gate_apply",
-                days=int(days),
-                end_date=end_date_key,
-                suggestion_snapshot_id=snapshot_id,
-                status="failed",
-                reason_code="apply_failed",
-                reason_text=f"{type(exc).__name__}: {exc}",
-                before=before,
-                after=after,
-                restart=restart_res,
-                scan=scan_res,
-            )
-            conn.commit()
-            return {"ok": False, "error": "apply_failed", "detail": f"{type(exc).__name__}: {exc}", "action_id": action_id}
-
-    return {
-        "ok": True,
-        "applied": True,
-        "kind": "edge_bias_gate_apply",
-        "days": int(days),
-        "end_date": end_date_key,
-        "before": before,
-        "after": after,
-        "restart": restart_res,
-        "scan": scan_res,
-    }
+    return _legacy_optimizer_apply_retired_payload(
+        source="apply_edge_bias_gate_suggestion",
+        end_date=end_date,
+    )
 
 
 def apply_optimizer_suggestions(*, end_date: str = "") -> Dict[str, Any]:
-    enabled = str(os.environ.get("PM_OPTIMIZER_AUTO_APPLY", "") or "").strip().lower() in {"1", "true", "yes", "on"}
-    if not enabled:
-        return {"ok": True, "enabled": False, "applied_any": False, "items": {}}
-    out: Dict[str, Any] = {}
-    applied_any = False
-    try:
-        out["edge_bias_gate"] = apply_edge_bias_gate_suggestion(days=30, end_date=end_date, restart=True, scan=False)
-        applied_any = applied_any or bool(out["edge_bias_gate"].get("applied"))
-    except Exception as exc:
-        out["edge_bias_gate"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    return {"ok": True, "enabled": True, "applied_any": applied_any, "items": out, "generated_at": now_text()}
+    payload = _legacy_optimizer_apply_retired_payload(
+        source="apply_optimizer_suggestions",
+        end_date=end_date,
+    )
+    payload["items"] = {"edge_bias_gate": _legacy_optimizer_apply_retired_payload(source="edge_bias_gate", end_date=end_date)}
+    return payload
 
 
 def suggest_edge_bias_gate_from_payload(edge_bias_payload: Dict[str, Any], *, days: int) -> Optional[Dict[str, Any]]:
@@ -26419,32 +30494,14 @@ def _auto_trade_cleanup_stale_runs(now_dt: Optional[datetime] = None) -> Dict[st
                     (now_iso, f"stale_timeout age>={int(stuck_sec)}s", cutoff),
                 )
                 stale_rows = int(cur.rowcount or 0)
-                cur.execute(
-                    """
-                    UPDATE auto_trade_jobs
-                    SET state='stuck',
-                        lease_until='',
-                        ended_at=CASE
-                          WHEN COALESCE(ended_at, '') = '' THEN ?
-                          ELSE ended_at
-                        END,
-                        last_error=CASE
-                          WHEN TRIM(COALESCE(last_error, '')) = '' THEN 'worker_stuck_timeout'
-                          ELSE last_error
-                        END,
-                        updated_at=?
-                    WHERE lower(COALESCE(state, '')) IN ('queued', 'running', 'retrying')
-                      AND (
-                        (COALESCE(lease_until, '') <> '' AND lease_until <= ?)
-                        OR (COALESCE(started_at, '') <> '' AND started_at <= ?)
-                        OR (COALESCE(updated_at, '') <> '' AND updated_at <= ?)
-                      )
-                    """,
-                    (now_iso, now_iso, now_iso, cutoff, cutoff),
+                stuck_count = mark_stale_auto_trade_jobs_stuck(
+                    cur,
+                    now_iso=now_iso,
+                    cutoff_iso=cutoff,
                 )
                 conn.commit()
                 cleaned["db_rows"] = recovered_rows + stale_rows
-                cleaned["stuck_jobs"] = int(cur.rowcount or 0)
+                cleaned["stuck_jobs"] = int(stuck_count or 0)
         except Exception:
             pass
     return cleaned
@@ -27372,7 +31429,6 @@ def _launchd_service_labels() -> List[str]:
         "com.weather.auto_trade_entry_1m",
         "com.weather.trade_engine",
         "com.weather.daily_scan",
-        "com.weather.exit_retry_watch",
     ]
 
 
@@ -27788,10 +31844,16 @@ def materialize_facts_http(run_date: str, days: int = 1) -> Dict[str, Any]:
 
 
 def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> Dict[str, Any]:
-    # Explicit, real-money operation: require local caller + (enable=1) + (confirm=1).
+    # Explicit, real-money operation: require local caller + per-request enable,
+    # manual intent, and an operator confirmation phrase.
     local_only = client_ip in {"127.0.0.1", "::1"}
-    enable_flag = params.get("enable", [""])[0] == "1" or _env_bool("PM_AUTO_TRADE_SMOKE_TEST_ENABLED", False)
-    confirm_flag = params.get("confirm", [""])[0] == "1"
+    request_enable_flag = params.get("enable", [""])[0] == "1"
+    env_enable_flag = _env_bool("PM_AUTO_TRADE_SMOKE_TEST_ENABLED", False)
+    enable_flag = bool(request_enable_flag or env_enable_flag)
+    intent_flag = params.get("intent", [""])[0] == "manual_smoke_test"
+    confirm_raw = str(params.get("confirm", [""])[0] or "").strip()
+    confirm_phrase = AUTO_TRADE_SMOKE_TEST_CONFIRM_PHRASE or "REAL_MONEY_SMOKE_TEST"
+    confirm_flag = bool(confirm_raw and confirm_raw == confirm_phrase)
     if not local_only:
         return {"ok": False, "error": "local_only", "client_ip": client_ip}
     if not enable_flag:
@@ -27800,11 +31862,18 @@ def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> 
             "error": "smoke_test_disabled",
             "hint": "pass enable=1 (per request) or set PM_AUTO_TRADE_SMOKE_TEST_ENABLED=1",
         }
-    if not confirm_flag:
+    if not (request_enable_flag and intent_flag and confirm_flag):
         return {
             "ok": False,
-            "error": "missing_confirm",
-            "hint": "pass confirm=1 to place real orders (BUY then SELL)",
+            "error": "missing_manual_confirm",
+            "hint": (
+                "real smoke test requires enable=1, intent=manual_smoke_test, "
+                "and confirm=<PM_AUTO_TRADE_SMOKE_TEST_CONFIRM_PHRASE>"
+            ),
+            "manual_confirm_required": True,
+            "request_enable": bool(request_enable_flag),
+            "manual_intent": bool(intent_flag),
+            "confirm_phrase_matched": bool(confirm_flag),
         }
     if not DB_PATH.exists():
         return {"ok": False, "error": "db_missing"}
@@ -27969,6 +32038,22 @@ def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> 
         if ask is not None and math.isfinite(ask) and ask > 0:
             entry_price = entry_price_override if entry_price_override is not None else float(ask)
 
+        def _smoke_order_context(intent_action: str) -> Dict[str, Any]:
+            return {
+                "execution_domain": "manual_smoke_test",
+                "order_execution_domain": "manual_smoke_test",
+                "order_execution_source": "ui_auto_trade_smoke_test_http",
+                "order_execution_reason": "manual_real_money_smoke_test",
+                "manual_confirm_source": "ui_auto_trade_smoke_test_http",
+                "intent_action": str(intent_action or "").strip() or "manual_smoke_test",
+                "strategy_source": "smoke_test",
+                "entry_order_submit_source": "ui_auto_trade_smoke_test",
+                "slug": str(target.get("slug") or ""),
+                "event_date": str(target.get("event_date") or ""),
+                "outcome": str(target.get("outcome") or ""),
+                "outcome_side": str(target.get("side") or ""),
+            }
+
         def _wait_matched(order_id: str, timeout_sec: float = 30.0) -> Tuple[bool, Dict[str, Any]]:
             deadline = time.time() + max(1.0, float(timeout_sec or 0))
             last_payload: Dict[str, Any] = {}
@@ -27994,6 +32079,7 @@ def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> 
             price=entry_price,
             size=size,
             order_type="GTC",
+            order_context=_smoke_order_context("entry"),
         )
         if not buy_ok:
             return {"ok": False, "error": "buy_failed", "target": target, "detail": buy_payload}
@@ -28019,79 +32105,36 @@ def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> 
         with open_db() as conn:
             cur = conn.cursor()
             try:
-                cur.execute(
-                    """
-                    INSERT OR IGNORE INTO auto_orders (
-                      order_id, slug, event_date, outcome, side, action, price, size, order_type,
-                      q_raw, q_calibrated, q_edge, strategy, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        buy_order_id,
-                        target["slug"],
-                        target["event_date"],
-                        target["outcome"],
-                        target["side"],
-                        "entry",
-                        buy_price,
-                        buy_size,
-                        "GTC",
-                        None,
-                        None,
-                        None,
-                        "smoke_test",
-                        now_iso,
-                    ),
+                insert_auto_order_ignore(
+                    cur,
+                    order_id=buy_order_id,
+                    slug=target["slug"],
+                    event_date=target["event_date"],
+                    outcome=target["outcome"],
+                    side=target["side"],
+                    action="entry",
+                    price=buy_price,
+                    size=buy_size,
+                    order_type="GTC",
+                    q_raw=None,
+                    q_calibrated=None,
+                    q_edge=None,
+                    strategy="smoke_test",
+                    created_at=now_iso,
                 )
             except sqlite3.OperationalError:
                 pass
             try:
-                cur.execute(
-                    """
-                    INSERT INTO edge_trades (
-                      slug, event_date, outcome, side, state,
-                      entry_at, last_order_id, entry_price, entry_size,
-                      last_action, last_action_price, last_action_size, last_action_order_type, last_action_at,
-                      last_status, last_error, position_size, avg_price, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(slug, event_date, outcome, side)
-                    DO UPDATE SET state=excluded.state,
-                                  entry_at=COALESCE(excluded.entry_at, edge_trades.entry_at),
-                                  last_order_id=excluded.last_order_id,
-                                  entry_price=COALESCE(excluded.entry_price, edge_trades.entry_price),
-                                  entry_size=COALESCE(excluded.entry_size, edge_trades.entry_size),
-                                  last_action=excluded.last_action,
-                                  last_action_price=excluded.last_action_price,
-                                  last_action_size=excluded.last_action_size,
-                                  last_action_order_type=excluded.last_action_order_type,
-                                  last_action_at=excluded.last_action_at,
-                                  last_status=excluded.last_status,
-                                  last_error=excluded.last_error,
-                                  position_size=excluded.position_size,
-                                  avg_price=COALESCE(excluded.avg_price, edge_trades.avg_price),
-                                  updated_at=excluded.updated_at
-                    """,
-                    (
-                        target["slug"],
-                        target["event_date"],
-                        target["outcome"],
-                        target["side"],
-                        "entry",
-                        now_iso,
-                        buy_order_id,
-                        buy_price,
-                        buy_size,
-                        "smoke_test_entry",
-                        buy_price,
-                        buy_size,
-                        "GTC",
-                        now_iso,
-                        "buy_matched",
-                        "",
-                        buy_size,
-                        buy_price,
-                        now_iso,
-                    ),
+                upsert_smoke_test_entry(
+                    cur,
+                    slug=target["slug"],
+                    event_date=target["event_date"],
+                    outcome=target["outcome"],
+                    side=target["side"],
+                    order_id=buy_order_id,
+                    price=buy_price,
+                    size=buy_size,
+                    now_iso=now_iso,
                 )
             except sqlite3.OperationalError:
                 pass
@@ -28116,6 +32159,7 @@ def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> 
             price=sell_price,
             size=buy_size,
             order_type="GTC",
+            order_context=_smoke_order_context("exit"),
         )
         if not sell_ok:
             return {
@@ -28152,63 +32196,45 @@ def auto_trade_smoke_test_http(params: Dict[str, List[str]], client_ip: str) -> 
         with open_db() as conn:
             cur = conn.cursor()
             try:
-                cur.execute(
-                    """
-                    INSERT OR IGNORE INTO auto_orders (
-                      order_id, slug, event_date, outcome, side, action, price, size, order_type,
-                      q_raw, q_calibrated, q_edge, strategy, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        sell_order_id,
-                        target["slug"],
-                        target["event_date"],
-                        target["outcome"],
-                        target["side"],
-                        "exit",
-                        sell_price_eff,
-                        sell_size,
-                        "GTC",
-                        None,
-                        None,
-                        None,
-                        "smoke_test",
-                        now2_iso,
-                    ),
+                insert_auto_order_ignore(
+                    cur,
+                    order_id=sell_order_id,
+                    slug=target["slug"],
+                    event_date=target["event_date"],
+                    outcome=target["outcome"],
+                    side=target["side"],
+                    action="exit",
+                    price=sell_price_eff,
+                    size=sell_size,
+                    order_type="GTC",
+                    q_raw=None,
+                    q_calibrated=None,
+                    q_edge=None,
+                    strategy="smoke_test",
+                    created_at=now2_iso,
                 )
             except sqlite3.OperationalError:
                 pass
             try:
-                cur.execute(
-                    """
-                    UPDATE edge_trades
-                    SET state='exit',
-                        last_order_id=?,
-                        last_action=?,
-                        last_action_price=?,
-                        last_action_size=?,
-                        last_action_order_type=?,
-                        last_action_at=?,
-                        last_status=?,
-                        last_error='',
-                        position_size=0,
-                        updated_at=?
-                    WHERE slug=? AND event_date=? AND outcome=? AND side=?
-                    """,
-                    (
-                        sell_order_id,
-                        "smoke_test_exit",
-                        sell_price_eff,
-                        sell_size,
-                        "GTC",
-                        now2_iso,
-                        "sell_matched",
-                        now2_iso,
-                        target["slug"],
-                        target["event_date"],
-                        target["outcome"],
-                        target["side"],
-                    ),
+                update_edge_trade_by_key(
+                    cur,
+                    slug=target["slug"],
+                    event_date=target["event_date"],
+                    outcome=target["outcome"],
+                    side=target["side"],
+                    values={
+                        "state": "exit",
+                        "last_order_id": sell_order_id,
+                        "last_action": "smoke_test_exit",
+                        "last_action_price": sell_price_eff,
+                        "last_action_size": sell_size,
+                        "last_action_order_type": "GTC",
+                        "last_action_at": now2_iso,
+                        "last_status": "sell_matched",
+                        "last_error": "",
+                        "position_size": 0,
+                        "updated_at": now2_iso,
+                    },
                 )
             except sqlite3.OperationalError:
                 pass
@@ -28570,9 +32596,6 @@ def _record_auto_trade_fallback_decisions(
 ) -> int:
     if not targets or not DB_PATH.exists():
         return 0
-    signal_z = _env_float("PM_EDGE_TRADEABILITY_SIGNAL_Z")
-    if signal_z is None or not math.isfinite(signal_z) or signal_z <= 0:
-        signal_z = 1.64
     now_iso = utc_now_iso()
     payload_details = details if isinstance(details, dict) else {}
     rows: List[Tuple[Any, ...]] = []
@@ -28589,7 +32612,7 @@ def _record_auto_trade_fallback_decisions(
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
-        row_details = enrich_signal_observability(payload_details, signal_z=float(signal_z))
+        row_details = dict(payload_details)
         for item_key, item_val in item.items():
             if item_key in {"outcome", "side"}:
                 continue
@@ -28597,23 +32620,10 @@ def _record_auto_trade_fallback_decisions(
                 continue
             if isinstance(item_val, (str, int, float, bool)) or item_val is None:
                 row_details[item_key] = item_val
-        reason_codes = [str(reason_code or "").strip()] if str(reason_code or "").strip() else []
-        if callable(scan_build_entry_usable_edge_audit):
-            row_details.update(
-                scan_build_entry_usable_edge_audit(
-                    row_details,
-                    reason_codes=reason_codes,
-                )
-            )
-        else:
-            row_details.setdefault("entry_usable_edge_na_reason", "edge_tradeability_missing")
-            row_details.setdefault("entry_usable_edge_base_source", "edge_tradeability_missing")
-            row_details.setdefault("entry_usable_edge_size_scale", 0.0)
-            row_details.setdefault("entry_usable_edge_block_nonpositive", True)
-            row_details.setdefault("entry_usable_edge_version", "audit_v1_2026_05_05")
         if callable(scan_entry_strategy_family_from_details):
             row_details["entry_strategy_family"] = scan_entry_strategy_family_from_details(row_details)
-        row_details["entry_usable_edge_order_guard_version"] = SCAN_ENTRY_USABLE_EDGE_ORDER_GUARD_VERSION
+        row_details["entry_usable_edge_diagnostic_only"] = True
+        row_details["entry_usable_edge_runtime_influence"] = False
         compact_fn = (
             _compact_scan_decision_details
             if callable(_compact_scan_decision_details)
@@ -28650,19 +32660,7 @@ def _record_auto_trade_fallback_decisions(
         with open_db(timeout_sec=0.3, busy_timeout_ms=300) as conn:
             ensure_fact_tables(conn)
             cur = conn.cursor()
-            cur.executemany(
-                """
-                INSERT INTO auto_trade_decisions(
-                    run_id, run_date, slug, event_date, title,
-                    outcome, side, action,
-                    decided_state, will_order,
-                    reason_codes_json, reasons_json, details_json,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                rows,
-            )
+            insert_auto_trade_decision_rows(cur, rows)
             conn.commit()
             return len(rows)
     except Exception:
@@ -30670,189 +34668,6 @@ def auto_trade_digest(run_date: str, limit: int = 10) -> Dict[str, Any]:
     }
 
 
-def _trace_refresh_market_event_allowed(
-    run_date: str,
-    slug: str,
-    event_date: str,
-    now_ts: float,
-    *,
-    cooldown_sec: Optional[float] = None,
-) -> bool:
-    if not run_date or not slug or not event_date:
-        return False
-    cooldown = to_float(cooldown_sec)
-    if cooldown is None or not math.isfinite(cooldown) or cooldown <= 0:
-        cooldown = float(AUTO_TRADE_TRACE_MARKET_REFRESH_COOLDOWN_SEC)
-    key = f"{run_date}|{slug}|{event_date}"
-    with _AUTO_TRADE_TRACE_MARKET_REFRESH_AT_LOCK:
-        last_at = _AUTO_TRADE_TRACE_MARKET_REFRESH_AT.get(key)
-        if last_at is not None and (now_ts - float(last_at)) < float(cooldown):
-            return False
-        _AUTO_TRADE_TRACE_MARKET_REFRESH_AT[key] = now_ts
-        if len(_AUTO_TRADE_TRACE_MARKET_REFRESH_AT) > 800:
-            cutoff = now_ts - max(float(cooldown) * 4.0, 120.0)
-            stale_keys = [k for k, ts in _AUTO_TRADE_TRACE_MARKET_REFRESH_AT.items() if ts < cutoff]
-            for stale_key in stale_keys[:400]:
-                _AUTO_TRADE_TRACE_MARKET_REFRESH_AT.pop(stale_key, None)
-                _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_AT.pop(stale_key, None)
-                _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_CREATED.pop(stale_key, None)
-    return True
-
-
-def _trace_mark_market_refresh_success(
-    run_date: str,
-    slug: str,
-    event_date: str,
-    *,
-    created_at: str,
-    now_ts: float,
-) -> None:
-    if not run_date or not slug or not event_date:
-        return
-    key = f"{run_date}|{slug}|{event_date}"
-    with _AUTO_TRADE_TRACE_MARKET_REFRESH_AT_LOCK:
-        _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_AT[key] = now_ts
-        _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_CREATED[key] = str(created_at or "")
-
-
-def _trace_get_market_refresh_success_created_at(
-    run_date: str,
-    slug: str,
-    event_date: str,
-    *,
-    now_ts: float,
-) -> str:
-    if not run_date or not slug or not event_date:
-        return ""
-    key = f"{run_date}|{slug}|{event_date}"
-    with _AUTO_TRADE_TRACE_MARKET_REFRESH_AT_LOCK:
-        ts = _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_AT.get(key)
-        if ts is None:
-            return ""
-        if (now_ts - float(ts)) > float(AUTO_TRADE_TRACE_MARKET_REFRESH_HINT_SEC):
-            _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_AT.pop(key, None)
-            _AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_CREATED.pop(key, None)
-            return ""
-        return str(_AUTO_TRADE_TRACE_MARKET_REFRESH_SUCCESS_CREATED.get(key) or "")
-
-
-def _trace_apply_market_refresh_pending_hint(
-    run_date_key: str,
-    payload: Dict[str, Any],
-    refresh_meta: Dict[str, Any],
-) -> None:
-    if not isinstance(payload, dict) or not payload.get("ok"):
-        return
-    items = payload.get("items")
-    if not isinstance(items, list) or not items:
-        return
-    event_refresh_created: Dict[Tuple[str, str], str] = {}
-    now_ts = time.time()
-    events = refresh_meta.get("events") if isinstance(refresh_meta, dict) else None
-    if isinstance(events, list):
-        for event in events:
-            if not isinstance(event, dict):
-                continue
-            if not bool(event.get("ok")):
-                continue
-            slug = str(event.get("slug") or "").strip()
-            event_date = str(event.get("event_date") or "").strip()
-            if not slug or not event_date:
-                continue
-            created_at = str(event.get("created_at") or "").strip()
-            if created_at:
-                event_refresh_created[(slug, event_date)] = created_at
-                _trace_mark_market_refresh_success(
-                    run_date_key,
-                    slug,
-                    event_date,
-                    created_at=created_at,
-                    now_ts=now_ts,
-                )
-    hint = "盘口已补拉，已入队等待 worker 决策"
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        trade = item.get("trade_info")
-        if isinstance(trade, dict):
-            pos_val = to_float(trade.get("position_size"))
-            fills_val = to_float(trade.get("fills_count"))
-            has_live_exposure = bool(
-                (pos_val is not None and math.isfinite(pos_val) and pos_val > TIME_EDGE_Q_EPS)
-                or (fills_val is not None and math.isfinite(fills_val) and fills_val > 0)
-            )
-            if has_live_exposure:
-                # 已持仓/已成交时进度应进入退出监控，不再回退为“待决策”。
-                continue
-        slug = str(item.get("slug") or "").strip()
-        event_date = str(item.get("event_date") or "").strip()
-        if not slug or not event_date:
-            continue
-        refresh_created = event_refresh_created.get((slug, event_date))
-        if not refresh_created:
-            refresh_created = _trace_get_market_refresh_success_created_at(
-                run_date_key,
-                slug,
-                event_date,
-                now_ts=now_ts,
-            )
-        if not refresh_created:
-            continue
-        decision = item.get("entry_decision")
-        if not isinstance(decision, dict):
-            continue
-        reason_codes = decision.get("reason_codes")
-        codes = [str(code or "").strip() for code in reason_codes] if isinstance(reason_codes, list) else []
-        if not any(code in {"market_tick_stale", "market_tick_missing"} for code in codes):
-            continue
-        decision_at = parse_any_ts(str(decision.get("created_at") or ""))
-        refreshed_at_dt = parse_any_ts(refresh_created)
-        if decision_at is not None and refreshed_at_dt is not None and refreshed_at_dt <= decision_at:
-            continue
-        decision["reason_text"] = hint
-        decision["reason_detail"] = hint
-        decision["stale_after_refresh"] = True
-        decision["refresh_created_at"] = refresh_created
-        progress = item.get("progress")
-        if isinstance(progress, dict):
-            progress["tone"] = "warn"
-            progress["label"] = "待重算"
-            progress["detail"] = hint
-            progress["stage"] = "decision_refresh_pending"
-        trace = item.get("trace")
-        if isinstance(trace, dict):
-            trace["flow_status"] = "pending"
-            trace["flow_step"] = "决策"
-            trace["bottleneck"] = hint
-            steps = trace.get("steps")
-            if isinstance(steps, list):
-                for step in steps:
-                    if not isinstance(step, dict):
-                        continue
-                    label = str(step.get("label") or "").strip()
-                    if label == "决策":
-                        step["status"] = "warn"
-                        step["detail"] = hint
-                    elif label == "下单":
-                        step_detail = str(step.get("detail") or "")
-                        if step_detail == "决策阻断":
-                            step["status"] = "warn"
-                            step["detail"] = "等待新决策"
-        reasons = item.get("no_order_reasons")
-        if isinstance(reasons, list):
-            cleaned = []
-            for reason in reasons:
-                text = str(reason or "").strip()
-                if not text:
-                    continue
-                if "盘口时效阻断" in text:
-                    continue
-                cleaned.append(text)
-            refresh_note = f"{hint} @ {refresh_created}" if refresh_created else hint
-            cleaned.insert(0, refresh_note)
-            item["no_order_reasons"] = cleaned
-
-
 def _trace_payload_has_live_position_events(payload: Dict[str, Any]) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -30879,31 +34694,6 @@ def _trace_payload_has_live_position_events(payload: Dict[str, Any]) -> bool:
         pos_val = to_float(trade.get("position_size"))
         if pos_val is not None and math.isfinite(pos_val) and pos_val > TIME_EDGE_Q_EPS:
             return True
-    return False
-
-
-def _trace_payload_has_refresh_pending_marker(payload: Dict[str, Any]) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    items = payload.get("items")
-    if not isinstance(items, list) or not items:
-        return False
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        decision = item.get("entry_decision")
-        if isinstance(decision, dict) and bool(decision.get("stale_after_refresh")):
-            return True
-        progress = item.get("progress")
-        if isinstance(progress, dict):
-            stage = str(progress.get("stage") or "").strip()
-            if stage == "decision_refresh_pending":
-                return True
-        reasons = item.get("no_order_reasons")
-        if isinstance(reasons, list):
-            for reason in reasons:
-                if "盘口已补拉，已入队等待 worker 决策" in str(reason or ""):
-                    return True
     return False
 
 
@@ -31050,347 +34840,6 @@ def _trace_source_signature(
     return sig
 
 
-def _trace_refresh_market_ticks_for_blocked(
-    run_date_key: str,
-    payload: Dict[str, Any],
-) -> Dict[str, Any]:
-    meta: Dict[str, Any] = {
-        "attempted": 0,
-        "eligible": 0,
-        "eligible_blocked": 0,
-        "eligible_live": 0,
-        "success_count": 0,
-        "failed_count": 0,
-        "skipped_cooldown": 0,
-        "events": [],
-        "na_reason": "",
-        "live_realtime_enabled": bool(AUTO_TRADE_TRACE_LIVE_POSITION_REALTIME),
-    }
-    if not isinstance(payload, dict) or not payload.get("ok"):
-        meta["na_reason"] = "payload_not_ok"
-        return meta
-    if scan_refresh_market_ticks_for_event is None:
-        meta["na_reason"] = "refresh_market_ticks_unavailable"
-        return meta
-    items = payload.get("items")
-    if not isinstance(items, list):
-        items = []
-    not_ok_items = payload.get("not_ok_items")
-    if not isinstance(not_ok_items, list):
-        not_ok_items = []
-
-    blocked_events: List[Dict[str, Any]] = []
-    blocked_seen: set[Tuple[str, str]] = set()
-    refreshable_codes = {
-        "market_tick_stale",
-        "market_tick_missing",
-        "market_ask_missing",
-        "market_ask_missing_bid_only",
-        "market_ask_missing_no_bid",
-        "market_spread_missing",
-        "orderbook_missing",
-    }
-
-    def _add_blocked_event(
-        slug: str,
-        event_date: str,
-        reason_codes: List[str],
-        target_type: str,
-    ) -> None:
-        slug_key = str(slug or "").strip()
-        date_key = date_only(str(event_date or ""))
-        if not slug_key or not date_key:
-            return
-        event_key = (slug_key, date_key)
-        if event_key in blocked_seen:
-            return
-        blocked_seen.add(event_key)
-        blocked_events.append(
-            {
-                "slug": slug_key,
-                "event_date": date_key,
-                "reason_codes": [str(code or "").strip() for code in reason_codes if str(code or "").strip()],
-                "target_type": target_type,
-            }
-        )
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if not bool(item.get("entry_ok")):
-            continue
-        decision = item.get("entry_decision")
-        if not isinstance(decision, dict):
-            continue
-        reason_codes = decision.get("reason_codes")
-        codes = [str(code or "").strip() for code in reason_codes] if isinstance(reason_codes, list) else []
-        stale_codes = [code for code in codes if code in {"market_tick_stale", "market_tick_missing"}]
-        if not stale_codes:
-            continue
-        _add_blocked_event(
-            str(item.get("slug") or ""),
-            str(item.get("event_date") or ""),
-            stale_codes,
-            "blocked",
-        )
-    for item in not_ok_items:
-        if not isinstance(item, dict):
-            continue
-        decision = item.get("entry_decision")
-        if not isinstance(decision, dict):
-            continue
-        reason_codes = decision.get("reason_codes")
-        codes = [str(code or "").strip() for code in reason_codes] if isinstance(reason_codes, list) else []
-        target_codes = [code for code in codes if code in refreshable_codes]
-        if not target_codes:
-            continue
-        _add_blocked_event(
-            str(item.get("slug") or ""),
-            str(item.get("event_date") or ""),
-            target_codes,
-            "blocked_not_ok",
-        )
-
-    # Fallback: payload may hide non-stat blockers; query latest completed run directly.
-    try:
-        with open_db_ro_fast(timeout_sec=0.2, busy_timeout_ms=200) as conn:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT id
-                FROM auto_trade_runs
-                WHERE run_date = ? AND ended_at IS NOT NULL AND ended_at <> ''
-                ORDER BY ended_at DESC, id DESC
-                LIMIT 1
-                """,
-                (run_date_key,),
-            )
-            row = cur.fetchone()
-            run_id = int(row["id"] or 0) if row else 0
-            if run_id > 0:
-                cur.execute(
-                    """
-                    SELECT slug, event_date, reason_codes_json
-                    FROM auto_trade_decisions
-                    WHERE run_id = ?
-                      AND action = 'entry'
-                      AND COALESCE(will_order, 0) <= 0
-                    ORDER BY id DESC
-                    LIMIT 800
-                    """,
-                    (run_id,),
-                )
-                for drow in cur.fetchall():
-                    reason_codes = _safe_json_loads_any(drow["reason_codes_json"])
-                    codes = (
-                        [str(code or "").strip() for code in reason_codes]
-                        if isinstance(reason_codes, list)
-                        else []
-                    )
-                    target_codes = [code for code in codes if code in refreshable_codes]
-                    if not target_codes:
-                        continue
-                    _add_blocked_event(
-                        str(drow["slug"] or ""),
-                        str(drow["event_date"] or ""),
-                        target_codes,
-                        "blocked_run_latest",
-                    )
-    except Exception:
-        pass
-
-    meta["eligible_blocked"] = len(blocked_events)
-
-    entry_events: List[Dict[str, Any]] = []
-    entry_seen: set[Tuple[str, str]] = set()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if not bool(item.get("entry_ok")):
-            continue
-        edge_val = to_float(item.get("edge_realizable"))
-        if edge_val is None or not math.isfinite(edge_val) or edge_val <= TIME_EDGE_Q_EPS:
-            continue
-        trace = item.get("trace") if isinstance(item.get("trace"), dict) else {}
-        flow_status = str(trace.get("flow_status") or "").strip().lower()
-        pending = 1 if flow_status == "pending" else 0
-        bottleneck_text = str(trace.get("bottleneck") or "").strip()
-        worker_inflight = 1 if ("worker 执行中" in bottleneck_text or "worker执行中" in bottleneck_text) else 0
-        slug = str(item.get("slug") or "").strip()
-        event_date = str(item.get("event_date") or "").strip()
-        if not slug or not event_date:
-            continue
-        event_key = (slug, event_date)
-        if event_key in blocked_seen or event_key in entry_seen:
-            continue
-        entry_seen.add(event_key)
-        entry_events.append(
-            {
-                "slug": slug,
-                "event_date": event_date,
-                "reason_codes": ["entry_ok"],
-                "target_type": "entry_ok",
-                "edge_realizable": float(edge_val),
-                "pending": pending,
-                "worker_inflight": worker_inflight,
-            }
-        )
-    entry_events.sort(
-        key=lambda it: (int(it.get("worker_inflight") or 0), int(it.get("pending") or 0), float(it.get("edge_realizable") or 0.0)),
-        reverse=True,
-    )
-    meta["eligible_entry"] = len(entry_events)
-
-    live_events: List[Dict[str, Any]] = []
-    live_seen: set[Tuple[str, str]] = set()
-    if AUTO_TRADE_TRACE_LIVE_POSITION_REALTIME:
-        live_events_raw = payload.get("live_position_events")
-        if isinstance(live_events_raw, list):
-            for event in live_events_raw:
-                if not isinstance(event, dict):
-                    continue
-                slug = str(event.get("slug") or "").strip()
-                event_date = str(event.get("event_date") or "").strip()
-                if not slug or not event_date:
-                    continue
-                event_key = (slug, event_date)
-                if event_key in blocked_seen or event_key in live_seen:
-                    continue
-                live_seen.add(event_key)
-                live_events.append(
-                    {
-                        "slug": slug,
-                        "event_date": event_date,
-                        "reason_codes": ["live_position_realtime"],
-                        "target_type": "live_position",
-                    }
-                )
-    meta["eligible_live"] = len(live_events)
-    meta["eligible"] = (
-        int(meta["eligible_entry"] or 0)
-        + int(meta["eligible_blocked"] or 0)
-        + int(meta["eligible_live"] or 0)
-    )
-    if not items and not not_ok_items and not blocked_events and not live_events:
-        meta["na_reason"] = "no_trace_items"
-        return meta
-    if not entry_events and not blocked_events and not live_events:
-        meta["na_reason"] = "no_market_tick_targets"
-        return meta
-
-    refresh_targets: List[Dict[str, Any]] = []
-    now_ts = time.time()
-    entry_added = 0
-    blocked_added = 0
-    live_added = 0
-    for event in entry_events:
-        if entry_added >= AUTO_TRADE_TRACE_ENTRY_REFRESH_MAX_EVENTS:
-            break
-        slug = str(event.get("slug") or "")
-        event_date = str(event.get("event_date") or "")
-        if not _trace_refresh_market_event_allowed(
-            run_date_key,
-            slug,
-            event_date,
-            now_ts,
-            cooldown_sec=float(AUTO_TRADE_TRACE_ENTRY_MARKET_REFRESH_COOLDOWN_SEC),
-        ):
-            meta["skipped_cooldown"] = int(meta.get("skipped_cooldown") or 0) + 1
-            continue
-        refresh_targets.append(event)
-        entry_added += 1
-    for event in blocked_events:
-        if blocked_added >= AUTO_TRADE_TRACE_REFRESH_MAX_EVENTS:
-            break
-        slug = str(event.get("slug") or "")
-        event_date = str(event.get("event_date") or "")
-        if not _trace_refresh_market_event_allowed(
-            run_date_key,
-            slug,
-            event_date,
-            now_ts,
-            cooldown_sec=float(AUTO_TRADE_TRACE_MARKET_REFRESH_COOLDOWN_SEC),
-        ):
-            meta["skipped_cooldown"] = int(meta.get("skipped_cooldown") or 0) + 1
-            continue
-        refresh_targets.append(event)
-        blocked_added += 1
-
-    for event in live_events:
-        if live_added >= AUTO_TRADE_TRACE_LIVE_REFRESH_MAX_EVENTS:
-            break
-        slug = str(event.get("slug") or "")
-        event_date = str(event.get("event_date") or "")
-        if not _trace_refresh_market_event_allowed(
-            run_date_key,
-            slug,
-            event_date,
-            now_ts,
-            cooldown_sec=float(AUTO_TRADE_TRACE_LIVE_MARKET_REFRESH_COOLDOWN_SEC),
-        ):
-            meta["skipped_cooldown"] = int(meta.get("skipped_cooldown") or 0) + 1
-            continue
-        refresh_targets.append(event)
-        live_added += 1
-    meta["selected_entry"] = entry_added
-    meta["selected_blocked"] = blocked_added
-    meta["selected_live"] = live_added
-
-    if not refresh_targets:
-        meta["na_reason"] = "all_targets_in_cooldown"
-        return meta
-
-    refresh_args = argparse.Namespace(
-        tz="local",
-        depth_levels=AUTO_TRADE_TRACE_MARKET_REFRESH_DEPTH_LEVELS,
-        market_refresh_max_outcomes=AUTO_TRADE_TRACE_MARKET_REFRESH_MAX_OUTCOMES,
-        market_refresh_time_budget_sec=AUTO_TRADE_TRACE_MARKET_REFRESH_TIME_BUDGET_SEC,
-        market_refresh_clob_timeout_sec=AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_TIMEOUT_SEC,
-        market_refresh_clob_retries=AUTO_TRADE_TRACE_MARKET_REFRESH_CLOB_RETRIES,
-    )
-    for target in refresh_targets:
-        slug = str(target.get("slug") or "")
-        event_date = str(target.get("event_date") or "")
-        if not slug or not event_date:
-            continue
-        event_result: Dict[str, Any] = {
-            "slug": slug,
-            "event_date": event_date,
-            "reason_codes": list(target.get("reason_codes") or []),
-            "target_type": str(target.get("target_type") or ""),
-            "ok": False,
-            "note": "",
-            "rows": 0,
-            "created_at": "",
-        }
-        try:
-            ok, note, rows, _rows_payload, created_at = scan_refresh_market_ticks_for_event(
-                slug,
-                event_date,
-                refresh_args,
-                event_detail=None,
-            )
-            event_result["ok"] = bool(ok)
-            event_result["note"] = str(note or "")
-            event_result["rows"] = int(rows or 0)
-            event_result["created_at"] = str(created_at or "")
-            if ok:
-                meta["success_count"] = int(meta.get("success_count") or 0) + 1
-            else:
-                meta["failed_count"] = int(meta.get("failed_count") or 0) + 1
-        except Exception as exc:
-            meta["failed_count"] = int(meta.get("failed_count") or 0) + 1
-            event_result["note"] = f"exception:{exc.__class__.__name__}"
-        meta["attempted"] = int(meta.get("attempted") or 0) + 1
-        events = meta.get("events")
-        if isinstance(events, list):
-            events.append(event_result)
-
-    if int(meta.get("attempted") or 0) <= 0:
-        meta["na_reason"] = "no_refresh_attempt"
-    return meta
-
-
 def auto_trade_trace(run_date: str, limit: int = 20, readonly: bool = False) -> Dict[str, Any]:
     try:
         limit_val = int(limit or 0)
@@ -31449,10 +34898,9 @@ def auto_trade_trace(run_date: str, limit: int = 20, readonly: bool = False) -> 
             return False
 
     def _compute_payload() -> Dict[str, Any]:
-        try:
-            _auto_trade_cleanup_stale_runs()
-        except Exception:
-            pass
+        # UI trace is a read-only projection. Stale execution state is repaired
+        # by the execution worker, never by an HTTP read competing with the
+        # observation-to-posterior writer lane.
         cfg = auto_trade_config_defaults()
         try:
             cfg.update(load_auto_trade_config())
@@ -35761,8 +39209,6 @@ def auto_trade_trace(run_date: str, limit: int = 20, readonly: bool = False) -> 
             "trace_sync_mode": {
                 "live_position_realtime": bool(AUTO_TRADE_TRACE_LIVE_POSITION_REALTIME),
                 "live_cache_sec": int(AUTO_TRADE_TRACE_LIVE_CACHE_SEC),
-                "live_market_refresh_cooldown_sec": int(AUTO_TRADE_TRACE_LIVE_MARKET_REFRESH_COOLDOWN_SEC),
-                "live_refresh_max_events": int(AUTO_TRADE_TRACE_LIVE_REFRESH_MAX_EVENTS),
                 "default_cache_sec": int(AUTO_TRADE_TRACE_CACHE_SEC),
             },
             "exit_edge_headroom_min": float(exit_edge_headroom_min),
@@ -35779,75 +39225,18 @@ def auto_trade_trace(run_date: str, limit: int = 20, readonly: bool = False) -> 
                 seed_not_ok = payload.get("not_ok_items") if isinstance(payload.get("not_ok_items"), list) else []
                 if bool(payload.get("warming")) or (not seed_items and not seed_not_ok):
                     payload = _compute_payload()
-            refresh_meta: Dict[str, Any] = {}
+            refresh_meta: Dict[str, Any] = {
+                "attempted": 0,
+                "eligible": 0,
+                "success_count": 0,
+                "failed_count": 0,
+                "skipped_cooldown": 0,
+                "events": [],
+                "na_reason": "ui_trace_read_only_no_market_refresh",
+            }
             if isinstance(payload, dict) and payload.get("ok"):
-                # Publish base payload first so trace panel doesn't stay in "warming" while
-                # market tick refresh (network path) is still running.
-                payload["market_tick_refresh"] = {
-                    "attempted": 0,
-                    "eligible": 0,
-                    "success_count": 0,
-                    "failed_count": 0,
-                    "skipped_cooldown": 0,
-                    "events": [],
-                    "na_reason": "refresh_pending",
-                }
-                _AUTO_TRADE_TRACE_CACHE[run_date_key] = (time.time(), dict(payload))
-                try:
-                    refresh_meta = _trace_refresh_market_ticks_for_blocked(run_date_key, payload)
-                except Exception as exc:
-                    refresh_meta = {
-                        "attempted": 0,
-                        "eligible": 0,
-                        "success_count": 0,
-                        "failed_count": 0,
-                        "skipped_cooldown": 0,
-                        "events": [],
-                        "na_reason": f"refresh_exception:{exc.__class__.__name__}",
-                    }
-                if int(refresh_meta.get("success_count") or 0) > 0:
-                    payload_after = _compute_payload()
-                    if isinstance(payload_after, dict) and payload_after.get("ok"):
-                        payload = payload_after
-                    else:
-                        refresh_meta["recompute_error"] = str(
-                            payload_after.get("error") if isinstance(payload_after, dict) else "payload_not_ok"
-                        )
-                try:
-                    _trace_apply_market_refresh_pending_hint(run_date_key, payload, refresh_meta)
-                except Exception:
-                    pass
                 payload["market_tick_refresh"] = refresh_meta
             _AUTO_TRADE_TRACE_CACHE[run_date_key] = (time.time(), payload)
-            if isinstance(payload, dict) and payload.get("ok"):
-                try:
-                    diag = auto_trade_env_diagnostics()
-                    auto_enabled = bool(diag.get("enabled"))
-                    auto_dry_run = bool(diag.get("dry_run"))
-                    missing_env = diag.get("missing") if isinstance(diag.get("missing"), list) else []
-                    new_open_candidate_count = 0
-                    try:
-                        new_open_candidate_count = int(payload.get("new_open_candidate_count") or 0)
-                    except (TypeError, ValueError):
-                        new_open_candidate_count = 0
-                    throttle = payload.get("throttle") if isinstance(payload, dict) else None
-                    wait_sec = 0
-                    if isinstance(throttle, dict):
-                        try:
-                            wait_sec = int(throttle.get("wait_sec") or 0)
-                        except (TypeError, ValueError):
-                            wait_sec = 0
-                    if (
-                        new_open_candidate_count > 0
-                        and auto_enabled
-                        and (not auto_dry_run)
-                        and (not missing_env)
-                        and wait_sec <= 0
-                    ):
-                        _AUTO_TRADE_TRACE_TRIGGER_AT[run_date_key] = time.time()
-                        start_auto_trade_run(run_date_key, force=True)
-                except Exception:
-                    pass
         finally:
             _trace_refresh_done()
 
@@ -35963,43 +39352,6 @@ def auto_trade_trace(run_date: str, limit: int = 20, readonly: bool = False) -> 
                 stale_payload["cache_age_sec"] = round(max(0.0, cache_age_sec), 3)
                 return stale_payload
             return payload
-            if (
-                (not has_live_positions)
-                and cache_age_sec >= float(AUTO_TRADE_TRACE_PENDING_RECOMPUTE_SEC)
-                and isinstance(payload, dict)
-                and _trace_payload_has_refresh_pending_marker(payload)
-            ):
-                try:
-                    payload_now = _compute_payload()
-                except Exception:
-                    payload_now = None
-                if isinstance(payload_now, dict) and payload_now.get("ok"):
-                    refresh_meta = payload.get("market_tick_refresh") if isinstance(payload, dict) else None
-                    if isinstance(refresh_meta, dict):
-                        try:
-                            _trace_apply_market_refresh_pending_hint(run_date_key, payload_now, refresh_meta)
-                        except Exception:
-                            pass
-                        payload_now["market_tick_refresh"] = refresh_meta
-                    _AUTO_TRADE_TRACE_CACHE[run_date_key] = (time.time(), payload_now)
-                    return payload_now
-            if (
-                isinstance(payload, dict)
-                and payload.get("warming")
-                and cache_age_sec >= min(4.0, float(AUTO_TRADE_TRACE_PENDING_RECOMPUTE_SEC))
-            ):
-                try:
-                    payload_now = _compute_payload()
-                except Exception as exc:
-                    payload_now = None
-                    payload["ok"] = False
-                    payload["warming"] = False
-                    payload["error"] = f"trace_compute_failed:{exc.__class__.__name__}"
-                if isinstance(payload_now, dict) and payload_now.get("ok"):
-                    _AUTO_TRADE_TRACE_CACHE[run_date_key] = (time.time(), payload_now)
-                    return payload_now
-                _AUTO_TRADE_TRACE_CACHE[run_date_key] = (time.time(), payload)
-                return payload
         return payload
 
     # Cold-start path: avoid blocking UI; compute asynchronously and return a warming stub.
@@ -36602,14 +39954,137 @@ def trade_sync_process_active(timeout_sec: float = 0.4) -> bool:
     return False
 
 
+def _ui_sql_requires_write_gate(sql: Any) -> bool:
+    text = str(sql or "").strip()
+    if not text:
+        return False
+    while text.startswith("--"):
+        _, _, rest = text.partition("\n")
+        text = rest.strip()
+    if not text:
+        return False
+    first = text.split(None, 1)[0].strip().upper()
+    if first in {
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "REPLACE",
+        "CREATE",
+        "ALTER",
+        "DROP",
+        "VACUUM",
+        "REINDEX",
+    }:
+        return True
+    if first == "PRAGMA":
+        upper = text.upper()
+        return "JOURNAL_MODE" in upper or "WAL_CHECKPOINT" in upper
+    if first == "WITH":
+        upper = text.upper()
+        return any(token in upper for token in (" INSERT ", " UPDATE ", " DELETE ", " REPLACE "))
+    return False
+
+
+class _UiQueuedWriteCursor(sqlite3.Cursor):
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+        if _ui_sql_requires_write_gate(sql):
+            ensure_gate = getattr(self.connection, "_ensure_archive_db_write_gate", None)
+            if callable(ensure_gate):
+                ensure_gate()
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters: Any, /) -> sqlite3.Cursor:
+        if _ui_sql_requires_write_gate(sql):
+            ensure_gate = getattr(self.connection, "_ensure_archive_db_write_gate", None)
+            if callable(ensure_gate):
+                ensure_gate()
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str, /) -> sqlite3.Cursor:
+        if _ui_sql_requires_write_gate(sql_script):
+            ensure_gate = getattr(self.connection, "_ensure_archive_db_write_gate", None)
+            if callable(ensure_gate):
+                ensure_gate()
+        return super().executescript(sql_script)
+
+
+class _UiQueuedWriteConnection(sqlite3.Connection):
+    def cursor(self, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
+        kwargs.setdefault("factory", _UiQueuedWriteCursor)
+        return super().cursor(*args, **kwargs)
+
+    def _ensure_archive_db_write_gate(self) -> None:
+        if getattr(self, "_archive_db_write_gate_cm", None) is not None:
+            return
+        owner = str(getattr(self, "_archive_db_write_gate_owner", "ui.server.open_db") or "")
+        gate_cm = archive_db_write_gate(DB_PATH, owner=owner or "ui.server.open_db")
+        gate_cm.__enter__()
+        try:
+            setattr(self, "_archive_db_write_gate_cm", gate_cm)
+        except Exception:
+            gate_cm.__exit__(None, None, None)
+            raise
+
+    def _release_archive_db_write_gate(self) -> None:
+        gate_cm = getattr(self, "_archive_db_write_gate_cm", None)
+        if gate_cm is None:
+            return
+        try:
+            setattr(self, "_archive_db_write_gate_cm", None)
+        except Exception:
+            pass
+        try:
+            gate_cm.__exit__(None, None, None)
+        except Exception:
+            pass
+
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+        if _ui_sql_requires_write_gate(sql):
+            self._ensure_archive_db_write_gate()
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters: Any, /) -> sqlite3.Cursor:
+        if _ui_sql_requires_write_gate(sql):
+            self._ensure_archive_db_write_gate()
+        return super().executemany(sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str, /) -> sqlite3.Cursor:
+        if _ui_sql_requires_write_gate(sql_script):
+            self._ensure_archive_db_write_gate()
+        return super().executescript(sql_script)
+
+    def commit(self) -> None:
+        try:
+            return super().commit()
+        finally:
+            self._release_archive_db_write_gate()
+
+    def rollback(self) -> None:
+        try:
+            return super().rollback()
+        finally:
+            self._release_archive_db_write_gate()
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self._release_archive_db_write_gate()
+
+
 @contextmanager
 def open_db(
     timeout_sec: Optional[float] = None,
     busy_timeout_ms: Optional[int] = None,
+    owner: str = "ui.server.open_db",
 ) -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(DB_PATH, timeout=timeout_sec if timeout_sec is not None else DB_CONNECT_TIMEOUT_SEC)
+    conn = sqlite3.connect(
+        DB_PATH,
+        timeout=timeout_sec if timeout_sec is not None else DB_CONNECT_TIMEOUT_SEC,
+        factory=_UiQueuedWriteConnection,
+    )
+    setattr(conn, "_archive_db_write_gate_owner", str(owner or "ui.server.open_db"))
     try:
-        conn.execute(f"PRAGMA journal_mode={DB_JOURNAL_MODE}")
         conn.execute("PRAGMA synchronous=NORMAL")
         timeout_val = int(busy_timeout_ms if busy_timeout_ms is not None else DB_BUSY_TIMEOUT_MS)
         conn.execute(f"PRAGMA busy_timeout={timeout_val}")
@@ -36653,6 +40128,26 @@ def open_db_ro_fast(timeout_sec: float = 0.2, busy_timeout_ms: int = 200) -> Ite
             conn.close()
         except sqlite3.Error:
             pass
+
+
+@contextmanager
+def open_db_ro_snapshot(
+    timeout_sec: float = 0.2,
+    busy_timeout_ms: int = 200,
+) -> Iterator[sqlite3.Connection]:
+    """Pin all reads on one connection to a single SQLite snapshot."""
+    with open_db_ro_fast(timeout_sec=timeout_sec, busy_timeout_ms=busy_timeout_ms) as conn:
+        conn.execute("BEGIN DEFERRED")
+        # BEGIN alone does not establish SQLite's read snapshot.  The first read
+        # does; pin it here before any snapshot section is assembled.
+        conn.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone()
+        try:
+            yield conn
+        finally:
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
 
 
 def safe_json_loads(value: Optional[str]) -> Dict[str, Any]:
@@ -37501,29 +40996,12 @@ def _fact_payload_fast_trade_latest(payload: Mapping[str, Any]) -> bool:
 def _fact_payload_target_probability(payload: Mapping[str, Any]) -> Tuple[str, Optional[float]]:
     if not isinstance(payload, Mapping):
         return "", None
-    for key in ("posterior_target_bucket_selection", "target_bucket_selection", "target_realization_capital_plan"):
-        value = payload.get(key)
-        if not isinstance(value, Mapping):
-            continue
-        label = str(value.get("target_bucket") or value.get("bucket") or value.get("outcome") or "").strip()
-        prob: Optional[float] = None
-        for prob_key in (
-            "target_probability",
-            "target_posterior",
-            "target_bucket_probability",
-            "posterior",
-            "target_probability_pct",
-            "target_bucket_probability_pct",
-        ):
-            prob = _prob01_for_fast_trade_fact(value.get(prob_key))
-            if prob is not None:
-                break
-        if label and prob is not None:
-            return label, float(prob)
-    label, prob = _top_target_from_ctp_for_fast_trade(payload)
-    if label and prob is not None:
-        return label, prob
-    return _top_target_from_fact_rows_for_fast_trade(payload)
+    target = _canonical_target_from_fact_payload(payload)
+    label = str(target.get("label") or "").strip() if isinstance(target, Mapping) else ""
+    prob = _prob01_for_fast_trade_fact(target.get("prob")) if isinstance(target, Mapping) else None
+    if prob is None and isinstance(target, Mapping):
+        prob = _prob01_for_fast_trade_fact(target.get("prob_pct"))
+    return label, float(prob) if label and prob is not None else None
 
 
 def _fast_trade_latest_should_hold(
@@ -37580,110 +41058,14 @@ def _event_fact_latest_update_allowed(
     existing_model_snapshot_id: Optional[int] = None,
     incoming_model_snapshot_id: Optional[int] = None,
 ) -> bool:
-    existing_dt = parse_iso_ts(str(existing_fact_as_of or ""))
-    incoming_dt = parse_iso_ts(str(incoming_fact_as_of or ""))
-    existing_rank = _fact_payload_hard_source_rank(existing_payload)
-    incoming_rank = _fact_payload_hard_source_rank(incoming_payload)
-    existing_observation_path_rank = _fact_payload_observation_path_materialization_rank(existing_payload)
-    incoming_observation_path_rank = _fact_payload_observation_path_materialization_rank(incoming_payload)
-    existing_hard_source_direct_ssot = bool(existing_payload.get("hard_source_direct_ssot_write"))
-    incoming_hard_source_direct_ssot = bool(incoming_payload.get("hard_source_direct_ssot_write"))
-    existing_value = _fact_payload_hard_observation_value(existing_payload)
-    incoming_value = _fact_payload_hard_observation_value(incoming_payload)
-    existing_source = _fact_payload_observed_today_max_source(existing_payload)
-    incoming_source = _fact_payload_observed_today_max_source(incoming_payload)
-    existing_model_id = (
-        _to_int(existing_model_snapshot_id)
-        if existing_model_snapshot_id is not None
-        else _fact_payload_model_snapshot_id(existing_payload)
-    )
-    incoming_model_id = (
-        _to_int(incoming_model_snapshot_id)
-        if incoming_model_snapshot_id is not None
-        else _fact_payload_model_snapshot_id(incoming_payload)
-    )
-    incoming_newer_model_snapshot = (
-        existing_model_id is not None
-        and incoming_model_id is not None
-        and int(incoming_model_id) > int(existing_model_id)
-    )
-    incoming_hard_observation_not_regressed = (
-        existing_value is None
-        or (incoming_value is not None and float(incoming_value) + 1e-9 >= float(existing_value))
-    )
-    same_wu_twc_intraday = (
-        _fact_source_is_wu_twc_intraday(existing_source)
-        and _fact_source_is_wu_twc_intraday(incoming_source)
-    )
-    existing_awc_features = _awc_features_from_fact_payload_for_merge_fill(existing_payload)
-    incoming_awc_features = _awc_features_from_fact_payload_for_merge_fill(incoming_payload)
-    if _fast_trade_latest_should_hold(
+    return weather_event_fact_latest_update_allowed(
+        existing_fact_as_of=existing_fact_as_of,
         existing_payload=existing_payload,
+        incoming_fact_as_of=incoming_fact_as_of,
         incoming_payload=incoming_payload,
-        existing_awc_features=existing_awc_features,
-        incoming_awc_features=incoming_awc_features,
-    ):
-        return False
-    if existing_awc_features and incoming_awc_features:
-        existing_awc_latest = _awc_feature_ts(existing_awc_features, "zuuu_metar_raw_awc_latest_at")
-        incoming_awc_latest = _awc_feature_ts(incoming_awc_features, "zuuu_metar_raw_awc_latest_at")
-        incoming_awc_max_stronger = _awc_candidate_today_max_is_stronger(
-            incoming_awc_features,
-            existing_awc_features,
-        )
-        if (
-            existing_awc_latest is not None
-            and incoming_awc_latest is not None
-            and incoming_awc_latest < existing_awc_latest
-            and not incoming_awc_max_stronger
-        ):
-            return False
-
-    if existing_value is not None:
-        if incoming_value is None and existing_rank >= 2:
-            return False
-        if incoming_value is not None and float(incoming_value) + 1e-9 < float(existing_value):
-            if (
-                same_wu_twc_intraday
-                and (existing_dt is None or incoming_dt is None or incoming_dt >= existing_dt)
-            ):
-                pass
-            elif existing_rank >= incoming_rank or existing_rank >= 2:
-                return False
-
-    if existing_dt is not None and incoming_dt is not None and incoming_dt < existing_dt:
-        if incoming_value is not None and existing_value is not None and float(incoming_value) > float(existing_value) + 1e-9:
-            return True
-        if incoming_rank > existing_rank and incoming_value is not None:
-            return True
-        if (
-            incoming_newer_model_snapshot
-            and incoming_rank >= existing_rank
-            and incoming_observation_path_rank >= existing_observation_path_rank
-            and incoming_hard_observation_not_regressed
-        ):
-            return True
-        return False
-    if existing_dt is not None and incoming_dt is None:
-        return False
-    if (
-        incoming_hard_source_direct_ssot
-        and not existing_hard_source_direct_ssot
-        and incoming_rank >= existing_rank
-        and incoming_hard_observation_not_regressed
-    ):
-        return True
-    if (
-        existing_rank >= incoming_rank
-        and existing_observation_path_rank > incoming_observation_path_rank
-        and not (
-            incoming_value is not None
-            and existing_value is not None
-            and float(incoming_value) > float(existing_value) + 1e-9
-        )
-    ):
-        return False
-    return True
+        existing_model_snapshot_id=existing_model_snapshot_id,
+        incoming_model_snapshot_id=incoming_model_snapshot_id,
+    )
 
 
 def _touch_ui_snapshot_dirty_stamp(reason: str = "") -> None:
@@ -37703,81 +41085,25 @@ def _touch_ui_snapshot_dirty_stamp(reason: str = "") -> None:
 
 
 def _upsert_event_fact_latest(conn: sqlite3.Connection, slug: str, event_date: str, fact_id: int) -> bool:
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            """
-            SELECT fact_as_of, fact_json, model_snapshot_id
-            FROM event_fact_history
-            WHERE id = ?
-            """,
-            (int(fact_id),),
-        )
-        incoming_row = cur.fetchone()
-    except sqlite3.Error:
-        incoming_row = None
-    if not incoming_row:
-        return False
-    incoming_fact_as_of = str(incoming_row[0] or "")
-    incoming_payload = safe_json_loads(str(incoming_row[1] or ""))
-    if not isinstance(incoming_payload, dict):
-        incoming_payload = {}
-    incoming_model_snapshot_id = _to_int(incoming_row[2]) if len(incoming_row) > 2 else None
-
-    try:
-        cur.execute(
-            """
-            SELECT l.fact_id, h.fact_as_of, h.fact_json, h.model_snapshot_id
-            FROM event_fact_latest l
-            JOIN event_fact_history h ON h.id = l.fact_id
-            WHERE l.slug = ? AND l.event_date = ?
-            """,
-            (slug, event_date),
-        )
-        existing_row = cur.fetchone()
-    except sqlite3.Error:
-        existing_row = None
-    if existing_row:
-        existing_fact_id = int(existing_row[0] or 0)
-        existing_fact_as_of = str(existing_row[1] or "")
-        existing_fact_json = str(existing_row[2] or "")
-        existing_model_snapshot_id = _to_int(existing_row[3]) if len(existing_row) > 3 else None
-        existing_payload = safe_json_loads(existing_fact_json)
-        if not isinstance(existing_payload, dict):
-            existing_payload = {}
-        if not _event_fact_latest_update_allowed(
-            existing_fact_as_of=existing_fact_as_of,
-            existing_payload=existing_payload,
-            incoming_fact_as_of=incoming_fact_as_of,
-            incoming_payload=incoming_payload,
-            existing_model_snapshot_id=existing_model_snapshot_id,
-            incoming_model_snapshot_id=incoming_model_snapshot_id,
-        ):
-            return False
-    else:
-        existing_fact_id = 0
-        existing_fact_as_of = ""
-        existing_fact_json = ""
-
-    cur.execute(
-        """
-        INSERT INTO event_fact_latest(slug, event_date, fact_id, updated_at)
-        VALUES(?, ?, ?, ?)
-        ON CONFLICT(slug, event_date) DO UPDATE SET
-            fact_id=excluded.fact_id,
-            updated_at=excluded.updated_at
-        """,
-        (slug, event_date, int(fact_id), now_text()),
+    plan = build_weather_fact_latest_repoint_plan(
+        conn,
+        slug=slug,
+        event_date=event_date,
+        fact_id=int(fact_id or 0),
+        enable_apply_contract=True,
+        include_payload=True,
     )
-    if existing_fact_id and existing_fact_id != int(fact_id):
-        _compact_replaced_event_fact_history_row(
-            conn,
-            existing_fact_id,
-            fact_as_of=existing_fact_as_of,
-            fact_json=existing_fact_json,
-        )
-    _touch_ui_snapshot_dirty_stamp(f"event_fact_latest:{slug}:{event_date}:{int(fact_id)}")
-    return True
+    result = apply_weather_fact_latest_repoint_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=False,
+        updated_at=now_text(),
+    )
+    if bool(result.get("latest_repointed")):
+        _touch_ui_snapshot_dirty_stamp(f"event_fact_latest:{slug}:{event_date}:{int(fact_id or 0)}")
+        return True
+    return False
 
 
 def _settlement_actual_boundary_profile_from_c(
@@ -37948,6 +41274,9 @@ def _sync_target_bucket_fields_from_capital_plan(item: Dict[str, Any]) -> None:
     plan = item.get("target_realization_capital_plan")
     if not isinstance(plan, Mapping) or plan.get("ok") is not True:
         return
+    if not _target_realization_plan_target_is_ssot(plan):
+        item["target_bucket_sync_skipped_reason"] = "target_realization_capital_plan_not_posterior_ssot_source"
+        return
     target_bucket = str(plan.get("target_bucket") or "").strip()
     if not target_bucket:
         return
@@ -37981,7 +41310,9 @@ def _sync_target_bucket_fields_from_capital_plan(item: Dict[str, Any]) -> None:
     selection["target_bucket_selection_source"] = str(
         plan.get("target_bucket_selection_source") or selection.get("target_bucket_selection_source") or ""
     )
+    selection["selection_runtime_recomputed"] = False
     item["target_bucket_selection"] = selection
+    item["posterior_target_bucket_selection"] = dict(selection)
 
 
 def _normalize_fact_distribution_posterior_ssot_fields(
@@ -38078,22 +41409,75 @@ def _normalize_fact_distribution_posterior_ssot_fields(
     return bool(changed)
 
 
-def _refresh_fact_trade_derivatives_after_target_update(item: Dict[str, Any], distribution: Any) -> None:
-    time_structure_min = 0.1
+_POSTERIOR_SSOT_PREVIEW_COPY_KEYS: Tuple[str, ...] = (
+    "posterior_temperature_distribution",
+    "posterior_temperature_distribution_map",
+    "posterior_ssot_fact",
+    "posterior_target_bucket_selection",
+    "target_bucket_selection",
+    "ssot_target_bucket",
+    "target_bucket",
+    "target_bucket_source",
+    "target_bucket_source_semantics",
+    "target_bucket_probability_field",
+    "target_bucket_probability",
+    "target_bucket_probability_pct",
+    "posterior_highest_bucket_label",
+    "posterior_highest_probability_pct",
+    "phase",
+    "beta_weak",
+    "beta_strong",
+    "phase_reason",
+    "hard_mask_reason",
+    "phase_weighting_state",
+    "distribution",
+    "rows",
+)
+
+
+def _materialize_posterior_ssot_preview_for_fact_write(
+    item: Dict[str, Any],
+    *,
+    event_date: str,
+    fact_as_of: str,
+) -> bool:
+    if not isinstance(item, dict):
+        return False
     try:
-        time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
-    except (TypeError, ValueError):
-        time_structure_min = 0.1
-    if not math.isfinite(time_structure_min) or time_structure_min <= 0:
-        time_structure_min = 0.1
-    compute_edge = globals().get("_compute_edge_fields_in_place")
-    if callable(compute_edge) and isinstance(distribution, list):
-        for row in distribution:
-            if isinstance(row, dict):
-                try:
-                    compute_edge(row, time_structure_min)
-                except Exception:
-                    pass
+        effective, operations = merge_fill_weather_fact_payload(
+            item,
+            source_acquisition_trace=_ui_fact_write_source_trace_for_plan(item),
+            phase0_contract_context={
+                "event_date": str(event_date or item.get("event_date") or ""),
+                "fact_as_of": str(fact_as_of or item.get("fact_as_of") or ""),
+                "write_reason": "ui_event_fact_history_pre_writer_derivative_sync",
+            },
+        )
+    except Exception:
+        return False
+    ssot = effective.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping) or str(ssot.get("state") or "") != "available":
+        return False
+    changed = False
+    for key in _POSTERIOR_SSOT_PREVIEW_COPY_KEYS:
+        if key not in effective:
+            continue
+        value = copy.deepcopy(effective.get(key))
+        if item.get(key) != value:
+            item[key] = value
+            changed = True
+    if changed:
+        provenance = dict(item.get("fact_provenance") or {})
+        provenance["posterior_ssot_pre_writer_derivative_sync"] = {
+            "applied": True,
+            "source": "weather_fact_snapshot_writer.merge_fill_fact_payload",
+            "operation_count": len(operations) if isinstance(operations, list) else 0,
+        }
+        item["fact_provenance"] = provenance
+    return changed
+
+
+def _refresh_fact_trade_derivatives_after_target_update(item: Dict[str, Any], distribution: Any) -> None:
     hydrate_top = globals().get("_hydrate_fact_market_top_label")
     if callable(hydrate_top):
         try:
@@ -38532,28 +41916,6 @@ def _standard_normal_cdf(value: float, mu: float, sigma: float) -> float:
     return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
-def _bucket_path_likelihood_probability(
-    label: str,
-    *,
-    mu_c: float,
-    sigma_c: float,
-    rounding_rule: str,
-) -> Optional[float]:
-    try:
-        bounds = bayes_temperature_bucket_bounds(str(label or ""), rounding_rule or "whole_degrees")
-    except Exception:
-        bounds = None
-    if not bounds:
-        return None
-    low, high = bounds
-    prob = _standard_normal_cdf(float(high), float(mu_c), float(sigma_c)) - _standard_normal_cdf(
-        float(low), float(mu_c), float(sigma_c)
-    )
-    if not math.isfinite(float(prob)):
-        return None
-    return max(0.0, min(1.0, float(prob)))
-
-
 def _local_hour_from_fact_as_of(fact_as_of: str, event_tz: str) -> Optional[float]:
     dt = parse_any_ts(str(fact_as_of or ""))
     if dt is None:
@@ -38567,351 +41929,6 @@ def _local_hour_from_fact_as_of(fact_as_of: str, event_tz: str) -> Optional[floa
         return float(local_dt.hour + local_dt.minute / 60.0 + local_dt.second / 3600.0)
     except Exception:
         return None
-
-
-def _observation_path_likelihood_time_scale(
-    *,
-    fact_as_of: str,
-    event_tz: str,
-    event_date: str,
-    peak_hour_local: Optional[float],
-    momentum_state: str,
-) -> Tuple[float, str, Optional[float]]:
-    today_key = _fact_as_of_local_date_key(fact_as_of, event_tz)
-    if today_key != _normalize_date_key(event_date):
-        return 0.0, "not_d0_local_event_date", None
-    hour = _local_hour_from_fact_as_of(fact_as_of, event_tz)
-    if hour is None:
-        return 0.35, "d0_hour_missing", None
-    peak_hour = float(peak_hour_local) if peak_hour_local is not None and math.isfinite(float(peak_hour_local)) else 15.0
-    state = str(momentum_state or "").strip().lower()
-    if hour < 7.5:
-        scale = 0.18
-        reason = "overnight_low_weight"
-    elif hour < 10.0:
-        scale = 0.45
-        reason = "morning_partial_weight"
-    elif hour <= peak_hour + 1.5:
-        scale = 0.85
-        reason = "intraday_peak_window_weight"
-    else:
-        scale = 1.0
-        reason = "post_peak_observation_weight"
-    if state in {"cooling", "flat", "not_realized"} and hour >= peak_hour - 1.0:
-        scale = max(scale, 0.95)
-        reason = "cooling_near_or_after_peak_weight"
-    return max(0.0, min(1.0, scale)), reason, hour
-
-
-def _materialize_observation_path_likelihood(
-    item: Dict[str, Any],
-    rows_obj: Any,
-    *,
-    slug: str,
-    event_date: str,
-    fact_as_of: str,
-    snapshot_id: Any = 0,
-) -> bool:
-    if not isinstance(rows_obj, list) or not _is_chengdu_zuuu_fact_payload(slug, item):
-        return False
-    if bool(item.get("final_bucket_lock")):
-        return False
-    final_meta = item.get("hard_source_posterior_override")
-    if isinstance(final_meta, Mapping) and bool(final_meta.get("final_bucket_lock")):
-        return False
-    feature_maps = [
-        item.get("weather_likelihood_features"),
-        item.get("weather_likelihood_features_compact"),
-    ]
-    for feature_map in feature_maps:
-        if not isinstance(feature_map, Mapping):
-            continue
-        if _truthy(feature_map.get("temperature_momentum_posterior_gate_allowed")):
-            return False
-        state_text = str(feature_map.get("temperature_momentum_realization_state") or "").strip().lower()
-        rate_val = to_float(
-            feature_map.get("temperature_momentum_posterior_effective_c_per_hour")
-            if feature_map.get("temperature_momentum_posterior_effective_c_per_hour") is not None
-            else feature_map.get("temperature_rise_rate_c_per_hour")
-        )
-        if state_text in {"sustained_warming", "emerging_warming"} and rate_val is not None and float(rate_val) >= 0.25:
-            return False
-    try:
-        summary = build_chengdu_intraday_summary_from_payload(
-            item,
-            slug=slug,
-            event_date=event_date,
-            created_at=fact_as_of,
-            snapshot_id=snapshot_id,
-            snapshot_source="event_fact_history.observation_path_likelihood",
-        )
-    except Exception as exc:
-        provenance = dict(item.get("fact_provenance") or {})
-        provenance["observation_path_likelihood_error"] = str(exc)[:300]
-        item["fact_provenance"] = provenance
-        return False
-    if not isinstance(summary, Mapping) or not summary.get("ok"):
-        return False
-    selection = summary.get("target_bucket_selection")
-    if not isinstance(selection, Mapping):
-        selection = {}
-    explicit_candidate = selection.get("trajectory_candidate")
-    if isinstance(explicit_candidate, Mapping) and _row_label(explicit_candidate):
-        return False
-    for context_key in ("early_switch_context", "forecast_path_breakout_context"):
-        context = selection.get(context_key)
-        if not isinstance(context, Mapping):
-            continue
-        candidate_bucket = str(context.get("candidate_bucket") or "").strip()
-        if candidate_bucket:
-            return False
-    observation_led = selection.get("observation_led_bayes")
-    if not isinstance(observation_led, Mapping):
-        observation_led = summary.get("observation_led_bayes")
-    if not isinstance(observation_led, Mapping):
-        observation_led = {}
-    path_distribution = summary.get("temperature_path_distribution")
-    if not isinstance(path_distribution, Mapping):
-        path_distribution = {}
-    mu = to_float(
-        observation_led.get("peak_estimator_mu_c")
-        if observation_led.get("peak_estimator_mu_c") is not None
-        else path_distribution.get("peak_estimator_mu_c")
-    )
-    if mu is None or not math.isfinite(float(mu)):
-        return False
-    sigma = to_float(
-        observation_led.get("peak_estimator_sigma_c")
-        if observation_led.get("peak_estimator_sigma_c") is not None
-        else path_distribution.get("peak_estimator_sigma_c")
-    )
-    if sigma is None or not math.isfinite(float(sigma)) or float(sigma) <= 0.05:
-        sigma = 1.25
-    sigma = max(0.30, min(3.25, float(sigma)))
-    observed_max = to_float(
-        observation_led.get("observed_today_max_c")
-        if observation_led.get("observed_today_max_c") is not None
-        else path_distribution.get("observed_today_max_c")
-    )
-    observed_current = to_float(
-        observation_led.get("observed_temp_c")
-        if observation_led.get("observed_temp_c") is not None
-        else path_distribution.get("observed_current_temp_c")
-    )
-    if observed_max is None and observed_current is None:
-        return False
-    reliability = path_distribution.get("reliability") if isinstance(path_distribution.get("reliability"), Mapping) else {}
-    reliability_score = to_float(reliability.get("score") if isinstance(reliability, Mapping) else None)
-    reliability_state = str(reliability.get("state") if isinstance(reliability, Mapping) else "").strip().lower()
-    if reliability_score is None:
-        reliability_score = 0.35 if reliability_state in {"low", "missing"} else 0.55
-    reliability_scale = max(0.25, min(1.0, float(reliability_score)))
-    momentum_gate = observation_led.get("temperature_momentum_gate")
-    if not isinstance(momentum_gate, Mapping):
-        momentum_gate = selection.get("target_momentum_gate")
-    if not isinstance(momentum_gate, Mapping):
-        momentum_gate = {}
-    momentum_state = str(
-        momentum_gate.get("state")
-        or observation_led.get("temperature_momentum_realization_state")
-        or ""
-    ).strip().lower()
-    intraday_window = observation_led.get("intraday_window")
-    peak_hour = None
-    if isinstance(intraday_window, Mapping):
-        peak_hour = to_float(intraday_window.get("peak_hour_local"))
-    time_scale, time_reason, local_hour = _observation_path_likelihood_time_scale(
-        fact_as_of=fact_as_of,
-        event_tz=str(item.get("event_tz") or item.get("tz") or "Asia/Shanghai"),
-        event_date=event_date,
-        peak_hour_local=peak_hour,
-        momentum_state=momentum_state,
-    )
-    if time_scale <= 0.0:
-        return False
-    block_reason = ""
-    if time_reason in {"overnight_low_weight", "morning_partial_weight"}:
-        block_reason = _d0_observed_max_not_final_materialization_block_reason(
-            item,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            event_tz=str(item.get("event_tz") or item.get("tz") or "Asia/Shanghai"),
-            local_hour=local_hour,
-            early_window_only=True,
-        )
-    if block_reason:
-        provenance = dict(item.get("fact_provenance") or {})
-        provenance["observation_path_likelihood"] = {
-            "applied": False,
-            "source": "chengdu_intraday_summary.observation_path_likelihood",
-            "skipped_reason": block_reason,
-            "posterior_materialized": False,
-            "diagnostic_only": True,
-            "observed_today_max_c": float(observed_max) if observed_max is not None else None,
-            "observed_current_temp_c": float(observed_current) if observed_current is not None else None,
-            "time_scale": float(time_scale),
-            "time_reason": time_reason,
-            "local_hour": local_hour,
-            "snapshot_source": "event_fact_history.write",
-        }
-        item["fact_provenance"] = provenance
-        item["observation_path_likelihood_applied"] = False
-        item["observation_path_likelihood_posterior_materialized"] = False
-        return False
-    base_evidence = 36.0
-    try:
-        base_evidence = float(os.environ.get("PM_BAYES_OBSERVATION_PATH_LIKELIHOOD_EVIDENCE", "36"))
-    except (TypeError, ValueError):
-        base_evidence = 36.0
-    if not math.isfinite(base_evidence) or base_evidence <= 0.0:
-        return False
-    physical_scale = to_float(path_distribution.get("physical_weather_path_probability_scale"))
-    if physical_scale is None:
-        physical_scale = to_float(observation_led.get("physical_weather_path_probability_scale"))
-    if physical_scale is None or not math.isfinite(float(physical_scale)):
-        physical_scale = 1.0
-    physical_scale = max(0.55, min(1.25, float(physical_scale)))
-    evidence = max(0.0, float(base_evidence) * float(time_scale) * float(reliability_scale))
-    if evidence <= 0.0:
-        return False
-
-    labels: List[str] = []
-    path_probs: List[Optional[float]] = []
-    for row in rows_obj:
-        label = _row_label(row) if isinstance(row, Mapping) else ""
-        labels.append(label)
-        if not label:
-            path_probs.append(None)
-            continue
-        prob = _bucket_path_likelihood_probability(
-            label,
-            mu_c=float(mu),
-            sigma_c=float(sigma),
-            rounding_rule=str(item.get("rounding_rule") or "whole_degrees"),
-        )
-        if prob is not None:
-            prob = max(0.0, min(1.0, float(prob) * float(physical_scale)))
-        path_probs.append(prob)
-    if not any(prob is not None and prob > 0.0 for prob in path_probs):
-        return False
-
-    base_alphas: List[float] = []
-    for row in rows_obj:
-        if not isinstance(row, Mapping):
-            base_alphas.append(0.0)
-            continue
-        components = row.get("q_temperature_bucket_score_components")
-        alpha = 0.0
-        if isinstance(components, Mapping):
-            for value in components.values():
-                numeric = to_float(value)
-                if numeric is not None and math.isfinite(float(numeric)):
-                    alpha += max(0.0, float(numeric))
-            previous_component = to_float(components.get("observation_path_likelihood"))
-            if previous_component is not None and math.isfinite(float(previous_component)):
-                alpha = max(0.0, float(alpha) - max(0.0, float(previous_component)))
-        if alpha <= 0.0:
-            q = _posterior_probability_from_row(row)
-            alpha = max(0.0, float(q or 0.0)) * 60.0
-        base_alphas.append(alpha)
-    alpha_total = sum(alpha for alpha in base_alphas if alpha > 0.0)
-    if alpha_total <= 0.0:
-        return False
-
-    next_alphas: List[float] = []
-    for row, base_alpha, path_prob in zip(rows_obj, base_alphas, path_probs):
-        if not isinstance(row, Mapping):
-            next_alphas.append(0.0)
-            continue
-        if bool(row.get("q_posterior_observed_constraints_hard_zero")) or bool(row.get("impossible_by_observed_max")):
-            base_prob = _posterior_probability_from_row(row)
-            if base_prob is not None and base_prob <= 1e-9:
-                next_alphas.append(0.0)
-                continue
-        pp = max(0.0, float(path_prob or 0.0))
-        next_alphas.append(max(0.0, float(base_alpha)) + float(evidence) * pp)
-    next_total = sum(alpha for alpha in next_alphas if alpha > 0.0)
-    if next_total <= 0.0:
-        return False
-
-    changed = False
-    for idx, row in enumerate(rows_obj):
-        if not isinstance(row, dict):
-            continue
-        next_prob = max(0.0, float(next_alphas[idx]) / float(next_total))
-        old_prob = _posterior_probability_from_row(row)
-        if old_prob is not None and abs(float(old_prob) - next_prob) > 1e-9:
-            changed = True
-        row["observation_path_likelihood_applied"] = True
-        row["observation_path_likelihood_probability"] = path_probs[idx]
-        row["observation_path_likelihood_probability_pct"] = (
-            float(path_probs[idx]) * 100.0 if path_probs[idx] is not None else None
-        )
-        row["observation_path_likelihood_evidence"] = float(evidence)
-        row["observation_path_likelihood_mu_c"] = float(mu)
-        row["observation_path_likelihood_sigma_c"] = float(sigma)
-        row["observation_path_likelihood_time_scale"] = float(time_scale)
-        row["observation_path_likelihood_reliability_scale"] = float(reliability_scale)
-        row["observation_path_likelihood_physical_scale"] = float(physical_scale)
-        components = dict(row.get("q_temperature_bucket_score_components") or {})
-        components["observation_path_likelihood"] = float(evidence) * max(0.0, float(path_probs[idx] or 0.0))
-        row["q_temperature_bucket_score_components"] = components
-        row["observation_path_likelihood_posterior_materialized"] = True
-        for key in (
-            "q_temperature_bucket_posterior",
-            "q_bayes_posterior",
-            "q_contract_payout_posterior",
-            "q_entry",
-        ):
-            if f"{key}_pre_observation_path_likelihood" not in row:
-                row[f"{key}_pre_observation_path_likelihood"] = to_float(row.get(key))
-            row[key] = next_prob
-            row[f"{key}_pct"] = next_prob * 100.0
-        no_prob = max(0.0, min(1.0, 1.0 - next_prob))
-        row["q_bayes_posterior_no"] = no_prob
-        row["q_entry_no"] = no_prob
-        row["target_bucket_probability"] = next_prob
-        row["target_bucket_probability_pct"] = next_prob * 100.0
-        row["target_bucket_probability_field"] = "q_temperature_bucket_posterior"
-
-    if not changed:
-        return False
-    top_label = _top_label_from_distribution(rows_obj, "q_temperature_bucket_posterior")
-    provenance = dict(item.get("fact_provenance") or {})
-    provenance["observation_path_likelihood"] = {
-        "applied": True,
-        "source": "chengdu_intraday_summary.observation_path_likelihood",
-        "peak_estimator_mu_c": float(mu),
-        "peak_estimator_sigma_c": float(sigma),
-        "observed_today_max_c": float(observed_max) if observed_max is not None else None,
-        "observed_current_temp_c": float(observed_current) if observed_current is not None else None,
-        "evidence": float(evidence),
-        "time_scale": float(time_scale),
-        "time_reason": time_reason,
-        "local_hour": local_hour,
-        "reliability_state": reliability_state,
-        "reliability_scale": float(reliability_scale),
-        "physical_weather_state": str(
-            observation_led.get("physical_weather_state")
-            or path_distribution.get("physical_weather_state")
-            or ""
-        ),
-        "physical_weather_peak_mu_adjustment_c": to_float(
-            observation_led.get("physical_weather_peak_mu_adjustment_c")
-            if observation_led.get("physical_weather_peak_mu_adjustment_c") is not None
-            else path_distribution.get("physical_weather_peak_mu_adjustment_c")
-        ),
-        "posterior_top_after": top_label,
-        "posterior_materialized": True,
-        "snapshot_source": "event_fact_history.write",
-    }
-    item["fact_provenance"] = provenance
-    item["observation_path_likelihood_applied"] = True
-    item["observation_path_likelihood_posterior_materialized"] = True
-    item["observation_path_likelihood_target_bucket"] = top_label
-    item["observation_path_likelihood_peak_mu_c"] = float(mu)
-    item["observation_path_likelihood_sigma_c"] = float(sigma)
-    return True
 
 
 _CHENGDU_INTRADAY_SUMMARY_ROW_KEEP_EXISTING_KEYS: Set[str] = {
@@ -39033,37 +42050,22 @@ def _merge_chengdu_intraday_summary_distribution_into_fact_item(
     )
     block_reason = ""
     if observation_led_materialization:
-        block_reason = _d0_observed_max_not_final_materialization_block_reason(
-            item,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            event_tz=event_tz,
-            early_window_only=True,
-        )
+        if not _intraday_summary_can_materialize_target_fields(item, intraday_summary):
+            block_reason = "posterior_ssot_fact_missing_for_intraday_observation_led_materialization"
+        else:
+            block_reason = _d0_observed_max_not_final_materialization_block_reason(
+                item,
+                event_date=event_date,
+                fact_as_of=fact_as_of,
+                event_tz=event_tz,
+                early_window_only=True,
+            )
     if block_reason:
-        next_observation_led = dict(observation_led) if isinstance(observation_led, Mapping) else {}
-        next_observation_led.setdefault("applied", bool(observation_led_materialization))
-        next_observation_led["posterior_materialized"] = False
-        next_observation_led["diagnostic_only"] = True
-        next_observation_led["materialization_block_reason"] = block_reason
-        item["observation_led_likelihood"] = next_observation_led
-        item["observation_led_likelihood_applied"] = bool(next_observation_led.get("applied"))
-        item["observation_led_likelihood_posterior_materialized"] = False
-        provenance = dict(item.get("fact_provenance") or {})
-        provenance["observation_led_likelihood"] = {
-            "applied": bool(next_observation_led.get("applied")),
-            "source": "chengdu_intraday_summary.bucket_probabilities",
-            "target_bucket_before": next_observation_led.get("target_bucket_before"),
-            "target_bucket_after": next_observation_led.get("target_bucket_after"),
-            "posterior_materialized": False,
-            "diagnostic_only": True,
-            "skipped_reason": block_reason,
-        }
-        item["fact_provenance"] = provenance
+        _mark_intraday_summary_diagnostic_only(item, block_reason, intraday_summary)
         return False
 
     changed = False
-    preserve_ssot_posterior = _preserve_event_fact_distribution_posterior(item)
+    preserve_ssot_posterior = _payload_has_available_posterior_ssot_target(item) or _preserve_event_fact_distribution_posterior(item)
 
     def merge_rows(rows_obj: Any) -> None:
         nonlocal changed
@@ -39226,6 +42228,7 @@ def _upsert_event_fact_summary_cache(
         snapshot_id=fact_id,
     )
     _attach_model_raw_top_history_for_ui_snapshot(conn, item_for_summary)
+    _attach_model_member_cache_snapshot_for_ui_snapshot(conn, item_for_summary)
     _attach_model_bucket_rule_comparison_for_ui_snapshot(conn, item_for_summary)
     summary = _slim_fact_payload_for_ui_snapshot_summary(
         item_for_summary,
@@ -39254,28 +42257,24 @@ def _upsert_event_fact_summary_cache(
     summary.setdefault("fact_as_of", fact_as_of)
     summary["summary_cache_source"] = "event_fact_summary_cache"
     summary["summary_cache_version"] = EVENT_FACT_SUMMARY_CACHE_VERSION
-    summary_json = json.dumps(summary, ensure_ascii=False)
-    try:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO event_fact_summary_cache(
-                fact_id, slug, event_date, run_date, fact_as_of, summary_json, created_at
-            )
-            VALUES(?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                int(fact_id),
-                slug,
-                _normalize_date_key(event_date),
-                _normalize_date_key(run_date),
-                fact_as_of,
-                summary_json,
-                now_text(),
-            ),
-        )
-    except sqlite3.Error:
-        return False
-    return True
+    plan = build_weather_fact_summary_cache_repair_plan(
+        fact_id=int(fact_id),
+        slug=slug,
+        event_date=_normalize_date_key(event_date),
+        run_date=_normalize_date_key(run_date),
+        fact_as_of=fact_as_of,
+        payload=summary,
+        write_reason="ui_event_fact_summary_cache",
+        enable_apply_contract=True,
+    )
+    result = apply_weather_fact_summary_cache_repair_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=False,
+        created_at=now_text(),
+    )
+    return bool(result.get("summary_cache_written"))
 
 
 def _fact_fast_trade_write_enabled(item: Mapping[str, Any]) -> bool:
@@ -39298,6 +42297,93 @@ _FAST_TRADE_FACT_DROP_KEYS = {
     "decision",
     "key_metrics",
 }
+
+_FAST_TRADE_UI_SNAPSHOT_KEEP_TOP_LEVEL_KEYS = frozenset()
+
+
+def _compact_ui_contract_value_for_fast_trade(value: Any, *, key: str = "", depth: int = 0) -> Any:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    num = to_float(value)
+    if num is not None and math.isfinite(float(num)) and not isinstance(value, str):
+        return float(num)
+    key_text = str(key or "").strip().lower()
+    allowed_text_key = (
+        key_text in {"title", "summary", "detail", "text", "source", "role", "status", "state", "reason"}
+        or key_text.endswith(
+            (
+                "_at",
+                "_utc",
+                "_source",
+                "_status",
+                "_state",
+                "_reason",
+                "_label",
+                "_bucket",
+                "_field",
+                "_semantics",
+                "_role",
+            )
+        )
+    )
+    if isinstance(value, str):
+        text = _target_realization_clean_path_text(value)
+        return text[:240] if allowed_text_key and text else None
+    if depth >= 4:
+        return None
+    if isinstance(value, Mapping):
+        out: Dict[str, Any] = {}
+        for raw_key, raw_value in value.items():
+            child_key = str(raw_key or "").strip()
+            if not child_key:
+                continue
+            child_value = _compact_ui_contract_value_for_fast_trade(
+                raw_value,
+                key=child_key,
+                depth=depth + 1,
+            )
+            if child_value not in (None, "", [], {}):
+                out[child_key] = child_value
+        return out or None
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        out_list: List[Any] = []
+        for item in list(value)[:8]:
+            child_value = _compact_ui_contract_value_for_fast_trade(
+                item,
+                key=key,
+                depth=depth + 1,
+            )
+            if child_value not in (None, "", [], {}):
+                out_list.append(child_value)
+        return out_list or None
+    return None
+
+
+def _compact_fast_trade_ui_snapshot_contract_fields(item: MutableMapping[str, Any]) -> None:
+    if not isinstance(item, MutableMapping):
+        return
+    compact_intraday = _compact_chengdu_intraday_summary_for_ui_snapshot(
+        item.get("chengdu_intraday_summary")
+    )
+    if compact_intraday:
+        item["chengdu_intraday_summary"] = compact_intraday
+    for key in (
+        "target_bucket_outlook",
+        "temperature_path_distribution",
+        "temperature_realization_reliability",
+        "target_switch_context",
+    ):
+        value = item.get(key)
+        if isinstance(value, Mapping):
+            item[key] = _target_realization_clean_nested_path_texts(value)
+    for key in _FAST_TRADE_UI_SNAPSHOT_KEEP_TOP_LEVEL_KEYS:
+        compact_value = _compact_ui_contract_value_for_fast_trade(item.get(key), key=key)
+        if compact_value not in (None, "", [], {}):
+            item[key] = compact_value
+        else:
+            item.pop(key, None)
 
 
 def _compact_physical_components_for_fast_trade(value: Any, *, max_components: int = 8) -> Dict[str, float]:
@@ -39391,6 +42477,56 @@ def _compact_physical_component_groups_for_fast_trade(
     return out
 
 
+def _state_evidence_trace_from_component_groups_for_ui(
+    value: Any,
+    *,
+    source: str = "metar_strong_likelihood.component_groups",
+) -> Dict[str, Any]:
+    groups = _compact_physical_component_groups_for_fast_trade(value)
+    if not groups:
+        return {}
+    return {
+        "schema": "metar_strong_state_evidence_trace_v1",
+        "source": str(source or "metar_strong_likelihood.component_groups"),
+        "role": "state_evidence_trace",
+        "replaces": "q_bayes_physical_likelihood_component_groups",
+        "dedupe_boundary": "METAR physical evidence is consumed inside L_metar_strong, not as an independent probability channel",
+        "group_count": len(groups),
+        "groups": groups,
+    }
+
+
+def _compact_state_evidence_trace_for_ui(
+    value: Any,
+    *,
+    fallback_component_groups: Any = None,
+    source: str = "metar_strong_likelihood.component_groups",
+) -> Dict[str, Any]:
+    groups: Dict[str, Any] = {}
+    trace_source = str(source or "metar_strong_likelihood.component_groups")
+    dedupe_boundary = (
+        "METAR physical evidence is consumed inside L_metar_strong, not as an independent probability channel"
+    )
+    if isinstance(value, Mapping):
+        raw_groups = value.get("groups")
+        groups = _compact_physical_component_groups_for_fast_trade(raw_groups)
+        trace_source = str(value.get("source") or trace_source)
+        dedupe_boundary = str(value.get("dedupe_boundary") or dedupe_boundary)
+    if not groups:
+        groups = _compact_physical_component_groups_for_fast_trade(fallback_component_groups)
+    if not groups:
+        return {}
+    return {
+        "schema": "metar_strong_state_evidence_trace_v1",
+        "source": trace_source,
+        "role": "state_evidence_trace",
+        "replaces": "q_bayes_physical_likelihood_component_groups",
+        "dedupe_boundary": dedupe_boundary,
+        "group_count": len(groups),
+        "groups": groups,
+    }
+
+
 def _compact_physical_likelihood_row_for_fast_trade(row: MutableMapping[str, Any]) -> None:
     groups = _compact_physical_component_groups_for_fast_trade(
         row.get("q_bayes_physical_likelihood_component_groups")
@@ -39398,6 +42534,14 @@ def _compact_physical_likelihood_row_for_fast_trade(row: MutableMapping[str, Any
     components = _compact_physical_components_for_fast_trade(
         row.get("q_bayes_physical_likelihood_components")
     )
+    trace = _compact_state_evidence_trace_for_ui(
+        row.get("state_evidence_trace"),
+        fallback_component_groups=groups,
+    )
+    if trace:
+        row["state_evidence_trace"] = trace
+    else:
+        row.pop("state_evidence_trace", None)
     if groups:
         row["q_bayes_physical_likelihood_component_groups"] = groups
     else:
@@ -39464,6 +42608,13 @@ def _attach_physical_likelihood_audit_fields_from_features(
         components = _compact_physical_components_for_fast_trade(
             physical_row.get("components")
         )
+        trace = _compact_state_evidence_trace_for_ui(
+            physical_row.get("state_evidence_trace"),
+            fallback_component_groups=groups,
+        )
+        if trace and not isinstance(raw_row.get("state_evidence_trace"), Mapping):
+            raw_row["state_evidence_trace"] = trace
+            changed = True
         if groups and not isinstance(raw_row.get("q_bayes_physical_likelihood_component_groups"), Mapping):
             raw_row["q_bayes_physical_likelihood_component_groups"] = groups
             changed = True
@@ -39513,11 +42664,15 @@ _FAST_TRADE_ROW_DROP_KEYS = {
     "metar_cross_check_summary",
     "metar_cross_check_sources",
     "per_model_q",
-    "q_bayes_physical_likelihood_evidence_scale_details",
+    "q_bayes_physical_likelihood_scale_details",
     "q_model_member_bucket_rule_meta",
     "hard_source_posterior_override_window",
     "zuuu_metar_raw_awc_today_temperature_points",
 }
+
+_FAST_TRADE_UI_SNAPSHOT_KEEP_ROW_KEYS = frozenset(
+    key for key in _FAST_TRADE_ROW_DROP_KEYS if key in UI_SNAPSHOT_FRONTEND_COMPACT_ROW_OBJECT_KEYS
+)
 
 
 def _prob01_for_fast_trade_fact(value: Any) -> Optional[float]:
@@ -39594,51 +42749,14 @@ def _top_target_from_ctp_for_fast_trade(item: Mapping[str, Any]) -> Tuple[str, O
 def _compact_target_selection_for_fast_trade_fact(item: MutableMapping[str, Any]) -> None:
     if not isinstance(item, MutableMapping):
         return
-    ctp_first = bool(item.get("posterior_target_direct_fast_trade_write"))
-    if ctp_first:
-        best_label, best_prob = _top_target_from_ctp_for_fast_trade(item)
-        probability_field = "posterior_temperature_distribution.bucket_probabilities"
-        if not best_label or best_prob is None:
-            best_label, best_prob = _top_target_from_fact_rows_for_fast_trade(item)
-            probability_field = "event_fact_latest.distribution.q_temperature_bucket_posterior"
-    else:
-        best_label, best_prob = _top_target_from_fact_rows_for_fast_trade(item)
-        probability_field = "event_fact_latest.distribution.q_temperature_bucket_posterior"
-        if not best_label or best_prob is None:
-            best_label, best_prob = _top_target_from_ctp_for_fast_trade(item)
-            probability_field = "posterior_temperature_distribution.bucket_probabilities"
-    for key in ("posterior_target_bucket_selection", "target_bucket_selection", "target_realization_capital_plan"):
-        if best_label and best_prob is not None:
-            break
-        existing = item.get(key)
-        if not isinstance(existing, Mapping):
-            continue
-        label = str(
-            existing.get("target_bucket")
-            or existing.get("bucket")
-            or existing.get("outcome")
-            or ""
-        ).strip()
-        prob = None
-        for prob_key in (
-            "target_probability",
-            "target_posterior",
-            "posterior",
-            "target_bucket_probability",
-            "target_probability_pct",
-            "target_bucket_probability_pct",
-        ):
-            prob = _prob01_for_fast_trade_fact(existing.get(prob_key))
-            if prob is not None:
-                break
-        if label:
-            best_label = label
-        if prob is not None:
-            best_prob = float(prob)
-            probability_field = f"{key}.target_probability"
-        if best_label and best_prob is not None:
-            break
+    canonical = _canonical_target_from_fact_payload(item)
+    best_label = str(canonical.get("label") or "").strip() if isinstance(canonical, Mapping) else ""
+    best_prob = _prob01_for_fast_trade_fact(canonical.get("prob")) if isinstance(canonical, Mapping) else None
+    probability_field = str(
+        canonical.get("probability_field") or "posterior_ssot_fact.target_probability"
+    ) if isinstance(canonical, Mapping) else "posterior_ssot_fact.target_probability"
     if not best_label or best_prob is None:
+        item["target_bucket_compaction_skipped_reason"] = "posterior_ssot_fact_missing"
         return
     selection = {
         "target_bucket": best_label,
@@ -39648,10 +42766,13 @@ def _compact_target_selection_for_fast_trade_fact(item: MutableMapping[str, Any]
         "target_bucket_probability": float(best_prob),
         "target_bucket_probability_pct": float(best_prob) * 100.0,
         "target_probability_field": probability_field,
-        "target_bucket_source": "awc_fast_trade_fact_write",
-        "target_bucket_source_semantics": "posterior_temperature_distribution",
-        "source": "awc_fast_trade_fact_write",
+        "target_bucket_source": "posterior_ssot_fact.top_bucket",
+        "target_bucket_source_semantics": "bayes_posterior_ssot_fact_v1",
+        "ssot_source": "posterior_ssot_fact",
+        "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+        "source": "posterior_ssot_fact",
         "fast_trade_compacted": True,
+        "selection_runtime_recomputed": False,
     }
     item["posterior_target_bucket_selection"] = dict(selection)
     item["target_bucket_selection"] = dict(selection)
@@ -39810,6 +42931,28 @@ def _compact_rows_for_fast_trade_fact(
                 continue
             row_for_compact = dict(raw_row)
             _compact_physical_likelihood_row_for_fast_trade(row_for_compact)
+            qm_meta = _compact_qm_meta_for_ui_snapshot(row_for_compact.get("q_ensemble_qm_meta"))
+            if qm_meta:
+                row_for_compact["q_ensemble_qm_meta"] = qm_meta
+            else:
+                row_for_compact.pop("q_ensemble_qm_meta", None)
+            bayes_chain = _compact_bayes_chain_for_bucket_series(row_for_compact)
+            if bayes_chain:
+                row_for_compact["bayes_chain"] = bayes_chain
+            else:
+                row_for_compact.pop("bayes_chain", None)
+            d0_explanation = _compact_physical_d0_explanation_for_ui_snapshot(
+                row_for_compact.get("q_bayes_physical_d0_explanation")
+            )
+            if d0_explanation:
+                row_for_compact["q_bayes_physical_d0_explanation"] = d0_explanation
+            else:
+                row_for_compact.pop("q_bayes_physical_d0_explanation", None)
+            per_model = _compact_per_model_q_for_ui_snapshot(row_for_compact.get("per_model_q"))
+            if per_model:
+                row_for_compact["per_model_q"] = per_model
+            else:
+                row_for_compact.pop("per_model_q", None)
             if not keep_physical_audit_fields:
                 row_for_compact.pop("q_bayes_physical_likelihood_component_groups", None)
                 row_for_compact.pop("q_bayes_physical_likelihood_components", None)
@@ -39817,7 +42960,7 @@ def _compact_rows_for_fast_trade_fact(
                 {
                     key: value
                     for key, value in row_for_compact.items()
-                    if key not in _FAST_TRADE_ROW_DROP_KEYS
+                    if key not in _FAST_TRADE_ROW_DROP_KEYS or key in _FAST_TRADE_UI_SNAPSHOT_KEEP_ROW_KEYS
                 }
             )
         item[rows_key] = compact_rows
@@ -39846,6 +42989,7 @@ def _compact_fact_payload_for_fast_trade_write(item: MutableMapping[str, Any]) -
                     "latest_temp_c": same_max_meta.get("latest_temp_c"),
                 },
             }
+    _compact_fast_trade_ui_snapshot_contract_fields(item)
     for key in _FAST_TRADE_FACT_DROP_KEYS:
         if (
             key == "temperature_realization_reliability"
@@ -39859,10 +43003,12 @@ def _compact_fact_payload_for_fast_trade_write(item: MutableMapping[str, Any]) -
     provenance = dict(item.get("fact_provenance") or {})
     provenance["awc_fast_trade_fact_write"] = {
         "source": "refresh_awc_fact_for_chengdu_event",
-        "purpose": "trade_path_first_ui_rich_fields_deferred",
-        "dropped_top_level_keys": sorted(_FAST_TRADE_FACT_DROP_KEYS),
-        "dropped_row_keys": sorted(_FAST_TRADE_ROW_DROP_KEYS),
-    }
+            "purpose": "trade_path_first_ui_rich_fields_deferred",
+            "dropped_top_level_keys": sorted(_FAST_TRADE_FACT_DROP_KEYS),
+            "dropped_row_keys": sorted(_FAST_TRADE_ROW_DROP_KEYS),
+            "ui_contract_kept_top_level_keys": sorted(_FAST_TRADE_UI_SNAPSHOT_KEEP_TOP_LEVEL_KEYS),
+            "ui_contract_kept_row_keys": sorted(_FAST_TRADE_UI_SNAPSHOT_KEEP_ROW_KEYS),
+        }
     item["fact_provenance"] = provenance
 
 
@@ -39900,27 +43046,1246 @@ def _upsert_event_fact_summary_cache_fast_trade(
     summary["summary_cache_source"] = "event_fact_summary_cache_fast_trade"
     summary["summary_cache_version"] = EVENT_FACT_SUMMARY_CACHE_VERSION
     summary["fast_trade_summary_cache"] = True
+    plan = build_weather_fact_summary_cache_repair_plan(
+        fact_id=int(fact_id),
+        slug=slug,
+        event_date=_normalize_date_key(event_date),
+        run_date=_normalize_date_key(run_date),
+        fact_as_of=fact_as_of,
+        payload=summary,
+        write_reason="ui_event_fact_summary_cache_fast_trade",
+        enable_apply_contract=True,
+    )
+    result = apply_weather_fact_summary_cache_repair_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=False,
+        created_at=now_text(),
+    )
+    return bool(result.get("summary_cache_written"))
+
+
+def _ui_fact_write_latest_context_for_plan(
+    conn: Optional[sqlite3.Connection],
+    slug: str,
+    event_date: str,
+) -> Tuple[Optional[int], str, Dict[str, Any]]:
+    if conn is None or not slug or not event_date:
+        return None, "", {}
     try:
-        conn.execute(
+        row = conn.execute(
             """
-            INSERT OR REPLACE INTO event_fact_summary_cache(
-                fact_id, slug, event_date, run_date, fact_as_of, summary_json, created_at
-            )
-            VALUES(?, ?, ?, ?, ?, ?, ?)
+            SELECT l.fact_id, h.fact_as_of, h.fact_json
+            FROM event_fact_latest l
+            JOIN event_fact_history h ON h.id = l.fact_id
+            WHERE l.slug = ? AND l.event_date = ?
+            LIMIT 1
             """,
-            (
-                int(fact_id),
-                slug,
-                _normalize_date_key(event_date),
-                _normalize_date_key(run_date),
-                fact_as_of,
-                json.dumps(summary, ensure_ascii=False, separators=(",", ":")),
-                now_text(),
-            ),
-        )
+            (slug, event_date),
+        ).fetchone()
     except sqlite3.Error:
-        return False
+        return None, "", {}
+    if not row:
+        return None, "", {}
+    try:
+        fact_id = int(row[0]) if row[0] not in (None, "") else None
+    except (TypeError, ValueError):
+        fact_id = None
+    payload = safe_json_loads(str(row[2] or ""))
+    return fact_id, str(row[1] or ""), payload if isinstance(payload, dict) else {}
+
+
+def _ui_fact_write_source_event_ids_for_plan(item: Mapping[str, Any]) -> List[str]:
+    out: List[str] = []
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if text and text not in out:
+            out.append(text)
+
+    for key in ("source_event_id", "posterior_source_event_id", "hard_source_source_event_id"):
+        add(item.get(key))
+    for key in ("source_event_ids", "hard_observation_candidate_ids", "forecast_weak_ids"):
+        values = item.get(key)
+        if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
+            for value in values:
+                add(value)
+    observations = item.get("source_observations")
+    if isinstance(observations, Sequence) and not isinstance(observations, (str, bytes, bytearray)):
+        for obs in observations:
+            if isinstance(obs, Mapping):
+                add(obs.get("source_event_id"))
+    lineage = item.get("source_lineage")
+    if isinstance(lineage, Mapping):
+        values = lineage.get("source_event_ids")
+        if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
+            for value in values:
+                add(value)
+    return out
+
+
+def _ui_fact_write_fill_source_observation_id(
+    obs: Mapping[str, Any],
+    *,
+    item: Mapping[str, Any],
+) -> Dict[str, Any]:
+    out = copy.deepcopy(dict(obs or {}))
+    if str(out.get("source_observation_id") or "").strip():
+        return out
+    source_event_id = str(out.get("source_event_id") or "").strip()
+    source_id = str(
+        out.get("source_id")
+        or item.get("observed_today_max_source")
+        or item.get("hard_source_observed_source")
+        or "ui_fact_writer_compat"
+    ).strip()
+    valid_time = str(
+        out.get("valid_time")
+        or item.get("fact_as_of")
+        or item.get("observed_today_max_at")
+        or item.get("hard_source_observed_at")
+        or item.get("created_at")
+        or ""
+    ).strip()
+    fetched_at = str(out.get("fetched_at") or item.get("fact_as_of") or item.get("created_at") or valid_time).strip()
+    raw_ref = str(out.get("raw_ref") or source_event_id or f"ui_fact_writer_compat:{source_id}:{valid_time}").strip()
+    generated = build_source_observation(
+        source_id=source_id,
+        station_id=str(out.get("station_id") or item.get("station_id") or "ZUUU"),
+        event_date=str(out.get("event_date") or item.get("event_date") or ""),
+        valid_time=valid_time,
+        fetched_at=fetched_at,
+        response_completed_at=str(out.get("response_completed_at") or fetched_at),
+        temperature_c=to_float(out.get("temperature_c") if out.get("temperature_c") is not None else item.get("temperature_c")),
+        observed_today_max_c=to_float(
+            out.get("observed_today_max_c")
+            if out.get("observed_today_max_c") is not None
+            else item.get("observed_today_max_c")
+        ),
+        raw_ref=raw_ref,
+        raw_payload={
+            "source_event_id": source_event_id,
+            "lineage_only_from_ui_fact_writer_compat": bool(out.get("lineage_only_from_ui_fact_writer_compat")),
+        },
+        parser_version="ui_fact_writer_compat_source_trace_v1",
+        overrides={
+            "source_class": str(out.get("source_class") or "unknown_source"),
+            "role": str(out.get("role") or "ui_fact_writer_compat_lineage"),
+            "hard_eligible": bool(out.get("hard_eligible")),
+            "demotion_reason": str(out.get("demotion_reason") or "ui_fact_writer_compat_lineage_only"),
+        },
+        payload={
+            "source_event_id": source_event_id,
+            "lineage_only_from_ui_fact_writer_compat": bool(out.get("lineage_only_from_ui_fact_writer_compat")),
+        },
+    )
+    out.setdefault("schema", "source_observation_v1")
+    out.setdefault("source_id", source_id)
+    out.setdefault("station_id", generated.station_id)
+    out.setdefault("event_date", generated.event_date)
+    out.setdefault("valid_time", generated.valid_time)
+    out.setdefault("fetched_at", generated.fetched_at)
+    out.setdefault("raw_ref", generated.raw_ref)
+    out.setdefault("raw_sha256", generated.raw_sha256)
+    out["source_observation_id"] = generated.source_observation_id
+    return out
+
+
+def _ui_fact_write_source_trace_for_plan(item: Mapping[str, Any]) -> Dict[str, Any]:
+    trace = item.get("source_acquisition_trace")
+    if isinstance(trace, Mapping):
+        out = copy.deepcopy(dict(trace))
+        out.setdefault("read_only", True)
+        out.setdefault("source_observations", [])
+        out.setdefault("source_latency_trace", [])
+        observations = [
+            _ui_fact_write_fill_source_observation_id(obs, item=item)
+            for obs in out.get("source_observations") or []
+            if isinstance(obs, Mapping)
+        ]
+        out["source_observations"] = observations
+        by_event = {
+            str(obs.get("source_event_id") or "").strip(): str(obs.get("source_observation_id") or "").strip()
+            for obs in observations
+            if str(obs.get("source_event_id") or "").strip() and str(obs.get("source_observation_id") or "").strip()
+        }
+        for latency in out.get("source_latency_trace") or []:
+            if not isinstance(latency, dict) or str(latency.get("source_observation_id") or "").strip():
+                continue
+            source_event_id = str(latency.get("source_event_id") or "").strip()
+            if source_event_id in by_event:
+                latency["source_observation_id"] = by_event[source_event_id]
+        out["source_observation_ids"] = [
+            str(obs.get("source_observation_id") or "").strip()
+            for obs in observations
+            if str(obs.get("source_observation_id") or "").strip()
+        ]
+        out.setdefault("next_boundary", "weather_fact_snapshot_writer_no_apply_plan")
+        return out
+
+    observations_raw = item.get("source_observations")
+    observations: List[Dict[str, Any]] = []
+    if isinstance(observations_raw, Sequence) and not isinstance(observations_raw, (str, bytes, bytearray)):
+        for obs in observations_raw:
+            if isinstance(obs, Mapping):
+                observations.append(_ui_fact_write_fill_source_observation_id(obs, item=item))
+    known_ids = {
+        str(obs.get("source_event_id") or "").strip()
+        for obs in observations
+        if isinstance(obs, Mapping) and str(obs.get("source_event_id") or "").strip()
+    }
+    hard_rank = _fact_payload_hard_source_rank(item)
+    for source_event_id in _ui_fact_write_source_event_ids_for_plan(item):
+        if source_event_id in known_ids:
+            continue
+        observations.append(
+            _ui_fact_write_fill_source_observation_id(
+                {
+                    "source_event_id": source_event_id,
+                    "source_class": "hard_observation_candidate" if hard_rank >= 1 else "unknown_source",
+                    "hard_eligible": bool(hard_rank >= 1),
+                    "lineage_only_from_ui_fact_writer_compat": True,
+                },
+                item=item,
+            )
+        )
+    hard_ids = [
+        str(obs.get("source_event_id") or "").strip()
+        for obs in observations
+        if isinstance(obs, Mapping)
+        and str(obs.get("source_event_id") or "").strip()
+        and str(obs.get("source_class") or "") == "hard_observation_candidate"
+        and bool(obs.get("hard_eligible", True))
+    ]
+    return {
+        "schema": "ui_fact_writer_compat_source_trace_v1",
+        "read_only": True,
+        "synthetic_from_ui_fact_writer_compat": True,
+        "source_observations": observations,
+        "source_event_ids": [
+            str(obs.get("source_event_id") or "").strip()
+            for obs in observations
+            if isinstance(obs, Mapping) and str(obs.get("source_event_id") or "").strip()
+        ],
+        "source_observation_ids": [
+            str(obs.get("source_observation_id") or "").strip()
+            for obs in observations
+            if isinstance(obs, Mapping) and str(obs.get("source_observation_id") or "").strip()
+        ],
+        "source_latency_trace": [],
+        "hard_observation_candidate_ids": hard_ids,
+        "forecast_weak_ids": [],
+        "diagnostic_current_ids": [],
+        "next_boundary": "weather_fact_snapshot_writer_no_apply_plan",
+    }
+
+
+def build_ui_event_fact_write_compat_plan(
+    conn: Optional[sqlite3.Connection],
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    model_snapshot_id: Optional[int],
+    market_snapshot_id: Optional[int],
+    composer_version: str,
+    item: Mapping[str, Any],
+    include_payload: bool = False,
+    enable_apply_contract: bool = False,
+) -> Dict[str, Any]:
+    incoming_payload = copy.deepcopy(dict(item or {}))
+    incoming_payload.setdefault("run_date", run_date)
+    incoming_payload.setdefault("slug", slug)
+    incoming_payload.setdefault("event_date", event_date)
+    if model_snapshot_id is not None:
+        incoming_payload.setdefault("model_snapshot_id", model_snapshot_id)
+    if market_snapshot_id is not None:
+        incoming_payload.setdefault("market_snapshot_id", market_snapshot_id)
+    current_fact_id, current_fact_as_of, current_payload = _ui_fact_write_latest_context_for_plan(
+        conn,
+        slug,
+        event_date,
+    )
+    source_trace = _ui_fact_write_source_trace_for_plan(incoming_payload)
+    plan = build_weather_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=incoming_payload,
+        current_fact_id=current_fact_id,
+        current_fact_as_of=current_fact_as_of,
+        current_payload=current_payload,
+        source_acquisition_trace=source_trace,
+        composer_version=str(composer_version or FACTS_COMPOSER_VERSION),
+        write_reason="ui_event_fact_write_compat_no_apply",
+        include_payload=include_payload,
+        enable_apply_contract=enable_apply_contract,
+    )
+    plan["ui_fact_writer_compat_adapter"] = {
+        "schema": "ui_fact_writer_compat_adapter_v1",
+        "read_only": True,
+        "dry_run": True,
+        "apply_contract_enabled": bool(enable_apply_contract),
+        "legacy_helper": "_insert_event_fact_history",
+        "legacy_latest_helper": "_upsert_event_fact_latest",
+        "production_write_path_changed": False,
+        "uses_weather_fact_snapshot_writer_plan": True,
+        "current_fact_id": current_fact_id,
+        "current_fact_as_of": current_fact_as_of,
+        "next_boundary": (
+            "apply_ui_event_fact_write_compat_plan_requires_allow_apply_true"
+            if enable_apply_contract
+            else "review_ui_helper_migration_before_apply_path"
+        ),
+    }
+    return plan
+
+
+def apply_ui_event_fact_write_compat_plan(
+    conn: Optional[sqlite3.Connection],
+    plan: Mapping[str, Any],
+    *,
+    allow_apply: bool = False,
+    commit: bool = False,
+) -> Dict[str, Any]:
+    result = apply_weather_fact_snapshot_write_plan(
+        conn,
+        plan,
+        allow_apply=allow_apply,
+        commit=commit,
+    )
+    out = dict(result)
+    out["ui_fact_writer_compat_apply"] = {
+        "schema": "ui_fact_writer_compat_apply_v1",
+        "uses_weather_fact_snapshot_writer_apply": True,
+        "production_write_path_changed": False,
+        "legacy_helper_replaced": False,
+        "allow_apply": bool(allow_apply),
+        "commit": bool(commit),
+        "next_boundary": "compare_apply_result_with_legacy_alignment_before_helper_switch",
+    }
+    return out
+
+
+def _ui_fact_writer_plan_action(plan: Mapping[str, Any], action: str) -> Dict[str, Any]:
+    for row in plan.get("plan_actions") or []:
+        if isinstance(row, Mapping) and str(row.get("action") or "") == action:
+            return dict(row)
+    return {}
+
+
+def _ui_fact_writer_payload_projection(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    projection: Dict[str, Any] = {}
+    for key in (
+        "run_date",
+        "slug",
+        "event_date",
+        "target_bucket",
+        "ssot_target_bucket",
+        "hard_source_direct_ssot_write",
+        "hard_source_observed_value_c",
+        "observed_today_max_c",
+        "observed_today_max_source",
+    ):
+        if key in payload:
+            projection[key] = payload.get(key)
+    for rows_key in ("distribution", "rows"):
+        rows = payload.get(rows_key)
+        if isinstance(rows, list):
+            projection[f"{rows_key}_count"] = len(rows)
+            labels: List[str] = []
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                label = str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip()
+                if label:
+                    labels.append(label)
+            projection[f"{rows_key}_labels"] = labels
+    return projection
+
+
+def build_ui_event_fact_write_compat_alignment_audit(
+    conn: Optional[sqlite3.Connection],
+    *,
+    plan: Mapping[str, Any],
+    legacy_fact_id: int,
+    legacy_latest_updated: Optional[bool] = None,
+    include_payload: bool = False,
+) -> Dict[str, Any]:
+    plan_map = dict(plan or {})
+    fact_id = _to_int(legacy_fact_id) or 0
+    legacy_payload: Dict[str, Any] = {}
+    legacy_row_present = False
+    legacy_summary_cache_present = False
+    latest_points_to_legacy = False
+    if conn is not None and fact_id > 0:
+        try:
+            row = conn.execute(
+                """
+                SELECT fact_json
+                FROM event_fact_history
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (int(fact_id),),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        if row:
+            legacy_row_present = True
+            payload = safe_json_loads(str(row[0] or ""))
+            legacy_payload = payload if isinstance(payload, dict) else {}
+        try:
+            summary_row = conn.execute(
+                """
+                SELECT 1
+                FROM event_fact_summary_cache
+                WHERE fact_id = ?
+                LIMIT 1
+                """,
+                (int(fact_id),),
+            ).fetchone()
+        except sqlite3.Error:
+            summary_row = None
+        legacy_summary_cache_present = bool(summary_row)
+        slug = str(plan_map.get("slug") or legacy_payload.get("slug") or "")
+        event_date = str(plan_map.get("event_date") or legacy_payload.get("event_date") or "")
+        if slug and event_date:
+            try:
+                latest_row = conn.execute(
+                    """
+                    SELECT fact_id
+                    FROM event_fact_latest
+                    WHERE slug = ? AND event_date = ?
+                    LIMIT 1
+                    """,
+                    (slug, event_date),
+                ).fetchone()
+            except sqlite3.Error:
+                latest_row = None
+            latest_points_to_legacy = bool(latest_row and int(latest_row[0] or 0) == int(fact_id))
+
+    append_action = _ui_fact_writer_plan_action(plan_map, "append_event_fact_history")
+    latest_action = _ui_fact_writer_plan_action(plan_map, "repoint_event_fact_latest")
+    summary_action = _ui_fact_writer_plan_action(plan_map, "upsert_event_fact_summary_cache")
+    latest_actual = bool(latest_points_to_legacy if legacy_latest_updated is None else legacy_latest_updated)
+    checks = [
+        {
+            "name": "append_event_fact_history",
+            "expected": bool(append_action.get("would_write")),
+            "actual": legacy_row_present,
+        },
+        {
+            "name": "repoint_event_fact_latest",
+            "expected": bool(latest_action.get("would_write")),
+            "actual": latest_actual,
+            "plan_block_reason": str(latest_action.get("block_reason") or ""),
+        },
+        {
+            "name": "upsert_event_fact_summary_cache",
+            "expected": bool(summary_action.get("would_write")),
+            "actual": legacy_summary_cache_present,
+        },
+    ]
+    for check in checks:
+        check["ok"] = bool(check["expected"]) == bool(check["actual"])
+
+    effective_payload = plan_map.get("effective_payload")
+    payload_alignment: Dict[str, Any] = {
+        "checked": isinstance(effective_payload, Mapping) and bool(legacy_payload),
+        "projection_matches": None,
+        "legacy_projection": {},
+        "plan_projection": {},
+        "non_blocking_reason": "",
+    }
+    if isinstance(effective_payload, Mapping) and legacy_payload:
+        legacy_projection = _ui_fact_writer_payload_projection(legacy_payload)
+        plan_projection = _ui_fact_writer_payload_projection(effective_payload)
+        payload_alignment.update(
+            {
+                "projection_matches": legacy_projection == plan_projection,
+                "legacy_projection": legacy_projection,
+                "plan_projection": plan_projection,
+                "non_blocking_reason": "legacy_helper_materializes_extra_fields_before_insert",
+            }
+        )
+    else:
+        payload_alignment["non_blocking_reason"] = "effective_payload_or_legacy_payload_missing"
+
+    return {
+        "schema": "ui_fact_writer_compat_alignment_audit_v1",
+        "ok": all(bool(check.get("ok")) for check in checks),
+        "read_only": True,
+        "guards": {
+            "writes_archive_db": False,
+            "writes_facts_sqlite": False,
+            "writes_auto_trade_decisions": False,
+            "places_orders": False,
+            "restarts_launchd": False,
+            "historical_backfill": False,
+            "changes_parameters": False,
+            "executes_sql": False,
+        },
+        "legacy_fact_id": int(fact_id),
+        "plan_fact_snapshot_id": str(plan_map.get("fact_snapshot_id") or ""),
+        "action_alignment": checks,
+        "payload_alignment": payload_alignment,
+        "legacy_state": {
+            "history_row_present": legacy_row_present,
+            "latest_points_to_legacy": latest_points_to_legacy,
+            "summary_cache_present": legacy_summary_cache_present,
+            "legacy_latest_updated_arg": legacy_latest_updated,
+        },
+        "boundary": {
+            "production_write_path_changed": False,
+            "audit_reads_only": True,
+            "payload_projection_non_blocking": True,
+        },
+        "next_boundary": "use_alignment_audit_before_ui_helper_apply_migration",
+    }
+
+
+def _ui_fact_writer_history_row_for_parity(
+    conn: Optional[sqlite3.Connection],
+    fact_id: int,
+) -> Dict[str, Any]:
+    if conn is None or int(fact_id or 0) <= 0:
+        return {}
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                id, run_date, slug, event_date, fact_as_of,
+                model_snapshot_id, market_snapshot_id, composer_version,
+                market_updated_at, model_updated_at, market_stale_sec, model_cache_age_sec,
+                best_side, best_outcome, best_edge_score, best_signal_edge_entry,
+                fact_json, created_at
+            FROM event_fact_history
+            WHERE id = ?
+            LIMIT 1
+            """,
+            (int(fact_id),),
+        ).fetchone()
+    except sqlite3.Error:
+        return {}
+    if not row:
+        return {}
+    keys = [
+        "id",
+        "run_date",
+        "slug",
+        "event_date",
+        "fact_as_of",
+        "model_snapshot_id",
+        "market_snapshot_id",
+        "composer_version",
+        "market_updated_at",
+        "model_updated_at",
+        "market_stale_sec",
+        "model_cache_age_sec",
+        "best_side",
+        "best_outcome",
+        "best_edge_score",
+        "best_signal_edge_entry",
+        "fact_json",
+        "created_at",
+    ]
+    if isinstance(row, sqlite3.Row):
+        return {key: row[key] for key in keys if key in row.keys()}
+    return {key: row[idx] for idx, key in enumerate(keys)}
+
+
+def _ui_fact_writer_summary_state_for_parity(
+    conn: Optional[sqlite3.Connection],
+    fact_id: int,
+) -> Dict[str, Any]:
+    if conn is None or int(fact_id or 0) <= 0:
+        return {"present": False, "summary_source": "", "summary_version": ""}
+    try:
+        row = conn.execute(
+            """
+            SELECT summary_json
+            FROM event_fact_summary_cache
+            WHERE fact_id = ?
+            LIMIT 1
+            """,
+            (int(fact_id),),
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    if not row:
+        return {"present": False, "summary_source": "", "summary_version": ""}
+    raw = row["summary_json"] if isinstance(row, sqlite3.Row) else row[0]
+    payload = safe_json_loads(str(raw or ""))
+    payload_map = payload if isinstance(payload, dict) else {}
+    return {
+        "present": True,
+        "summary_source": str(payload_map.get("summary_cache_source") or ""),
+        "summary_version": str(payload_map.get("summary_cache_version") or payload_map.get("summary_cache_schema") or ""),
+    }
+
+
+def _ui_fact_writer_storage_projection_for_parity(row: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "run_date": str(row.get("run_date") or ""),
+        "slug": str(row.get("slug") or ""),
+        "event_date": str(row.get("event_date") or ""),
+        "fact_as_of": str(row.get("fact_as_of") or ""),
+        "model_snapshot_id": row.get("model_snapshot_id"),
+        "market_snapshot_id": row.get("market_snapshot_id"),
+        "composer_version": str(row.get("composer_version") or ""),
+        "market_updated_at": str(row.get("market_updated_at") or ""),
+        "market_stale_sec": row.get("market_stale_sec"),
+        "model_cache_age_sec": row.get("model_cache_age_sec"),
+        "best_side": str(row.get("best_side") or ""),
+        "best_outcome": str(row.get("best_outcome") or ""),
+    }
+
+
+def build_ui_event_fact_write_apply_parity_audit(
+    conn: Optional[sqlite3.Connection],
+    *,
+    legacy_fact_id: int,
+    writer_fact_id: int,
+    legacy_latest_updated: Optional[bool] = None,
+    writer_apply_result: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    legacy_row = _ui_fact_writer_history_row_for_parity(conn, int(legacy_fact_id or 0))
+    writer_row = _ui_fact_writer_history_row_for_parity(conn, int(writer_fact_id or 0))
+    legacy_payload_raw = safe_json_loads(str(legacy_row.get("fact_json") or ""))
+    writer_payload_raw = safe_json_loads(str(writer_row.get("fact_json") or ""))
+    legacy_payload = legacy_payload_raw if isinstance(legacy_payload_raw, dict) else {}
+    writer_payload = writer_payload_raw if isinstance(writer_payload_raw, dict) else {}
+    legacy_summary = _ui_fact_writer_summary_state_for_parity(conn, int(legacy_fact_id or 0))
+    writer_summary = _ui_fact_writer_summary_state_for_parity(conn, int(writer_fact_id or 0))
+    writer_result = dict(writer_apply_result or {})
+    storage_projection_legacy = _ui_fact_writer_storage_projection_for_parity(legacy_row)
+    storage_projection_writer = _ui_fact_writer_storage_projection_for_parity(writer_row)
+    payload_projection_legacy = _ui_fact_writer_payload_projection(legacy_payload)
+    payload_projection_writer = _ui_fact_writer_payload_projection(writer_payload)
+    writer_latest_repointed = bool(writer_result.get("latest_repointed"))
+    if "latest_repointed" not in writer_result:
+        writer_latest_repointed = False
+    checks = [
+        {
+            "name": "history_rows_present",
+            "legacy": bool(legacy_row),
+            "writer": bool(writer_row),
+            "ok": bool(legacy_row) and bool(writer_row),
+            "blocking": True,
+        },
+        {
+            "name": "storage_projection_matches",
+            "legacy": storage_projection_legacy,
+            "writer": storage_projection_writer,
+            "ok": storage_projection_legacy == storage_projection_writer,
+            "blocking": True,
+        },
+        {
+            "name": "payload_projection_matches",
+            "legacy": payload_projection_legacy,
+            "writer": payload_projection_writer,
+            "ok": payload_projection_legacy == payload_projection_writer,
+            "blocking": True,
+        },
+        {
+            "name": "summary_cache_presence_matches",
+            "legacy": bool(legacy_summary.get("present")),
+            "writer": bool(writer_summary.get("present")),
+            "ok": bool(legacy_summary.get("present")) == bool(writer_summary.get("present")),
+            "blocking": True,
+        },
+        {
+            "name": "latest_repoint_policy_matches",
+            "legacy": bool(legacy_latest_updated),
+            "writer": writer_latest_repointed,
+            "ok": legacy_latest_updated is None or bool(legacy_latest_updated) == writer_latest_repointed,
+            "blocking": True,
+        },
+        {
+            "name": "summary_cache_source_may_differ_during_migration",
+            "legacy": str(legacy_summary.get("summary_source") or ""),
+            "writer": str(writer_summary.get("summary_source") or ""),
+            "ok": True,
+            "blocking": False,
+        },
+    ]
+    blocking_ok = all(bool(row.get("ok")) for row in checks if bool(row.get("blocking")))
+    return {
+        "schema": "ui_fact_writer_apply_parity_audit_v1",
+        "ok": blocking_ok,
+        "read_only": True,
+        "guards": {
+            "writes_archive_db": False,
+            "writes_facts_sqlite": False,
+            "writes_auto_trade_decisions": False,
+            "places_orders": False,
+            "restarts_launchd": False,
+            "historical_backfill": False,
+            "changes_parameters": False,
+            "executes_sql": False,
+        },
+        "legacy_fact_id": int(legacy_fact_id or 0),
+        "writer_fact_id": int(writer_fact_id or 0),
+        "checks": checks,
+        "legacy_summary_state": legacy_summary,
+        "writer_summary_state": writer_summary,
+        "boundary": {
+            "production_write_path_changed": False,
+            "audit_reads_only": True,
+            "legacy_helper_replaced": False,
+            "summary_cache_source_difference_is_non_blocking": True,
+        },
+        "next_boundary": "switch_ui_helper_only_after_apply_parity_audit_is_green",
+    }
+
+
+def build_event_fact_history_insert_function_parity_audit(
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    model_snapshot_id: Optional[int],
+    market_snapshot_id: Optional[int],
+    composer_version: str,
+    item: Mapping[str, Any],
+) -> Dict[str, Any]:
+    audit_conn = sqlite3.connect(":memory:")
+    audit_conn.row_factory = sqlite3.Row
+    try:
+        ensure_fact_tables(audit_conn)
+        writer_item = copy.deepcopy(dict(item or {}))
+        writer_fact_id = _insert_event_fact_history(
+            audit_conn,
+            run_date=run_date,
+            slug=slug,
+            event_date=event_date,
+            fact_as_of=fact_as_of,
+            model_snapshot_id=model_snapshot_id,
+            market_snapshot_id=market_snapshot_id,
+            composer_version=composer_version,
+            item=writer_item,
+            use_writer_apply=True,
+            write_latest=True,
+        )
+        history_present = bool(
+            audit_conn.execute(
+                "SELECT 1 FROM event_fact_history WHERE id = ? LIMIT 1",
+                (int(writer_fact_id or 0),),
+            ).fetchone()
+        )
+        summary_present = bool(
+            audit_conn.execute(
+                "SELECT 1 FROM event_fact_summary_cache WHERE fact_id = ? LIMIT 1",
+                (int(writer_fact_id or 0),),
+            ).fetchone()
+        )
+        latest_points_to_writer = bool(
+            audit_conn.execute(
+                "SELECT 1 FROM event_fact_latest WHERE slug = ? AND event_date = ? AND fact_id = ? LIMIT 1",
+                (slug, event_date, int(writer_fact_id or 0)),
+            ).fetchone()
+        )
+        checks = [
+            {
+                "name": "history_row_present",
+                "ok": history_present,
+                "blocking": True,
+            },
+            {
+                "name": "summary_cache_present",
+                "ok": summary_present,
+                "blocking": True,
+            },
+            {
+                "name": "latest_repoint_owned_by_writer",
+                "ok": latest_points_to_writer,
+                "blocking": True,
+            },
+        ]
+        audit = {
+            "schema": "ui_fact_writer_single_path_audit_v1",
+            "ok": all(bool(row.get("ok")) for row in checks if bool(row.get("blocking"))),
+            "checks": checks,
+        }
+        return {
+            "schema": "ui_event_fact_history_insert_function_parity_audit_v1",
+            "ok": bool(audit.get("ok")),
+            "archive_db_read_only": True,
+            "uses_in_memory_db": True,
+            "guards": {
+                "writes_archive_db": False,
+                "writes_facts_sqlite": False,
+                "writes_auto_trade_decisions": False,
+                "places_orders": False,
+                "restarts_launchd": False,
+                "historical_backfill": False,
+                "changes_parameters": False,
+                "executes_sql": True,
+                "executes_sql_in_memory": True,
+            },
+            "function_paths": {
+                "legacy": "",
+                "writer": "_insert_event_fact_history(use_writer_apply=True, write_latest=True)",
+                "legacy_path_removed": True,
+                "latest_repoint_owned_by_weather_fact_snapshot_writer": True,
+            },
+            "legacy_fact_id": 0,
+            "writer_fact_id": int(writer_fact_id or 0),
+            "parity_audit": audit,
+            "next_boundary": "keep_single_writer_path_audit_green",
+        }
+    finally:
+        audit_conn.close()
+
+
+def _event_fact_history_insert_function_parity_sample_inputs() -> List[Dict[str, Any]]:
+    def _attach_sample_prior_contract(item: MutableMapping[str, Any]) -> None:
+        labels: List[str] = []
+        for container_key in ("distribution", "rows"):
+            rows = item.get(container_key)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                label = str(row.get("outcome") or row.get("label") or "").strip()
+                if label and label not in labels:
+                    labels.append(label)
+        if not labels:
+            labels = ["32°C"]
+        probability = 1.0 / float(len(labels))
+        item.setdefault("prior_distribution", {label: probability for label in labels})
+        item.setdefault("prior_na_reason", "")
+        item.setdefault(
+            "prior_meta",
+            {
+                "schema": "temperature_prior_meta_v1",
+                "state": "available",
+                "source": "function_parity_sample_history_prior",
+                "boundary": "historical_climate_date_site_terrain_weather_type_only_no_forecast_no_metar_no_market",
+                "sample_count": max(10, len(labels)),
+                "shrinkage_target": "broader_settled_history",
+                "date_window_days": 15,
+                "prior_na_reason": "",
+            },
+        )
+
+    base_slug = "highest-temperature-in-chengdu-on-july-3-2026"
+    base_kwargs: Dict[str, Any] = {
+        "run_date": "2026-07-03",
+        "slug": base_slug,
+        "event_date": "2026-07-03",
+        "fact_as_of": "2026-07-03T07:05:30+00:00",
+        "model_snapshot_id": 1001,
+        "market_snapshot_id": 2001,
+        "composer_version": FACTS_COMPOSER_VERSION,
+    }
+    baseline_item: Dict[str, Any] = {
+        "slug": base_slug,
+        "event_date": "2026-07-03",
+        "run_date": "2026-07-03",
+        "station_id": "ZUUU",
+        "market_var": "temperature_2m_max",
+        "source_event_ids": ["srcevt_parity_baseline"],
+        "market_updated_at": "2026-07-03T07:05:00+00:00",
+        "distribution": [
+            {"outcome": "31°C", "q_bayes_posterior": 0.31, "edge_score_yes": 0.04},
+            {"outcome": "32°C", "q_bayes_posterior": 0.53, "edge_score_yes": 0.12, "signal_edge_entry": 0.03},
+        ],
+    }
+    awc_features = {
+        "schema": "function_parity_awc_features_v1",
+        "weather_likelihood_refreshed_at": "2026-07-03T07:05:25+00:00",
+        "zuuu_metar_raw_awc_latest_at": "2026-07-03T15:05:00+08:00",
+        "zuuu_metar_raw_awc_fetched_at": "2026-07-03T07:05:25+00:00",
+        "zuuu_metar_raw_awc_today_max_c": 32.0,
+        "zuuu_metar_raw_awc_today_max_at": "2026-07-03T15:05:00+08:00",
+        "zuuu_metar_raw_awc_latest_temp_c": 32.0,
+        "zuuu_metar_raw_awc_latest_dewpoint_c": 23.0,
+        "temperature_momentum_available_horizons": ["1h"],
+        "temperature_momentum_1h_c_per_hour": 1.0,
+    }
+    awc_item = copy.deepcopy(baseline_item)
+    awc_item.update(
+        {
+            "source_event_ids": ["srcevt_parity_awc_hard_source"],
+            "weather_likelihood_features": copy.deepcopy(awc_features),
+            "distribution": [
+                {"outcome": "31°C", "q_bayes_posterior": 0.18, "edge_score_yes": 0.01},
+                {"outcome": "32°C", "q_bayes_posterior": 0.67, "edge_score_yes": 0.14},
+                {"outcome": "33°C", "q_bayes_posterior": 0.15, "edge_score_yes": 0.06},
+            ],
+        }
+    )
+    hard_source_direct_item = copy.deepcopy(awc_item)
+    hard_source_direct_item.update(
+        {
+            "source_event_ids": ["srcevt_parity_hard_source_direct"],
+            "hard_source_direct": True,
+            "hard_source_direct_ssot_write": True,
+            "hard_source_observed_source": "zuuu_metar_raw_awc",
+            "hard_source_observed_value_c": 32.0,
+            "hard_source_acceptance_state": "accepted",
+            "ssot_target_bucket": "32°C",
+            "target_bucket": "32°C",
+        }
+    )
+    stale_item = copy.deepcopy(baseline_item)
+    stale_item.update(
+        {
+            "source_event_ids": ["srcevt_parity_stale_market"],
+            "market_updated_at": "2026-07-03T07:01:00+00:00",
+            "market_stale_sec": 285,
+            "model_cache_age_sec": 155,
+            "rows": [
+                {"label": "31°C", "q_bayes_posterior": 0.35, "edge_score_yes": 0.02},
+                {"label": "32°C", "q_bayes_posterior": 0.47, "edge_score_yes": 0.09},
+            ],
+        }
+    )
+    fast_trade_item = copy.deepcopy(awc_item)
+    fast_trade_item.update(
+        {
+            "source_event_ids": ["srcevt_parity_fast_trade"],
+            "awc_hard_observation_fast_trade_write": True,
+            "posterior_target_direct_fast_trade_write": True,
+            "posterior_target_direct": {"target_bucket": "32°C", "source": "posterior_target_direct"},
+            "target_bucket_selection": {"target_bucket": "32°C", "selection_source": "function_parity"},
+            "chengdu_intraday_summary": {"large_field": "should_be_compacted_for_fast_trade"},
+            "target_switch_context": {"large_field": "should_be_compacted_for_fast_trade"},
+            "decision": {"large_field": "should_be_compacted_for_fast_trade"},
+            "fact_provenance": {
+                "awc_same_max_latest_time_advanced": {
+                    "observed_at_utc": "2026-07-03T07:05:00+00:00",
+                    "observed_today_max_c": 32.0,
+                    "latest_temp_c": 32.0,
+                }
+            },
+            "rows": [
+                {"label": "31°C", "q_bayes_posterior": 0.15, "edge_score_yes": 0.02},
+                {"label": "32°C", "q_bayes_posterior": 0.74, "edge_score_yes": 0.16},
+            ],
+        }
+    )
+    samples = [
+        ("baseline_distribution", "minimal_distribution_writer_apply_parity", baseline_item, {}),
+        ("awc_hard_source_observation", "awc_hard_source_fields_and_distribution_materialization", awc_item, {}),
+        ("hard_source_direct_ssot", "hard_source_direct_ssot_payload_boundary", hard_source_direct_item, {}),
+        ("stale_market_rows", "market_stale_and_rows_payload_projection", stale_item, {}),
+        ("fast_trade_compact_payload", "fast_trade_payload_compaction_and_summary_cache", fast_trade_item, {}),
+    ]
+    out: List[Dict[str, Any]] = []
+    for idx, (case_id, reason, item, overrides) in enumerate(samples, start=1):
+        _attach_sample_prior_contract(item)
+        kwargs = dict(base_kwargs)
+        kwargs["model_snapshot_id"] = int(base_kwargs["model_snapshot_id"]) + idx
+        kwargs["market_snapshot_id"] = int(base_kwargs["market_snapshot_id"]) + idx
+        kwargs.update(overrides)
+        kwargs["item"] = item
+        out.append({"case_id": case_id, "case_reason": reason, "kwargs": kwargs})
+    return out
+
+
+def build_event_fact_history_insert_function_parity_sample_suite() -> Dict[str, Any]:
+    case_results: List[Dict[str, Any]] = []
+    for sample in _event_fact_history_insert_function_parity_sample_inputs():
+        kwargs = copy.deepcopy(dict(sample.get("kwargs") or {}))
+        audit = build_event_fact_history_insert_function_parity_audit(**kwargs)
+        blocking_checks = [
+            {
+                "name": str(row.get("name") or ""),
+                "ok": bool(row.get("ok")),
+            }
+            for row in audit.get("parity_audit", {}).get("checks", [])
+            if isinstance(row, Mapping) and bool(row.get("blocking"))
+        ]
+        case_results.append(
+            {
+                "case_id": str(sample.get("case_id") or ""),
+                "case_reason": str(sample.get("case_reason") or ""),
+                "ok": bool(audit.get("ok")),
+                "legacy_fact_id": int(audit.get("legacy_fact_id") or 0),
+                "writer_fact_id": int(audit.get("writer_fact_id") or 0),
+                "blocking_checks": blocking_checks,
+            }
+        )
+    sample_case_ids = [str(row.get("case_id") or "") for row in case_results]
+    return {
+        "schema": "ui_event_fact_history_insert_function_parity_sample_suite_v1",
+        "ok": all(bool(row.get("ok")) for row in case_results),
+        "archive_db_read_only": True,
+        "uses_in_memory_db": True,
+        "sample_case_ids": sample_case_ids,
+        "sample_count": len(case_results),
+        "case_results": case_results,
+        "coverage": {
+            "baseline_distribution": "minimal legacy helper append path",
+            "awc_hard_source_observation": "AWC hard-source fields and observed-temperature materialization",
+            "hard_source_direct_ssot": "hard-source direct SSOT payload boundary",
+            "stale_market_rows": "stale market/model cache storage projection and rows payload",
+            "fast_trade_compact_payload": "fast-trade payload compaction and fast summary cache branch",
+        },
+        "guards": {
+            "writes_archive_db": False,
+            "writes_facts_sqlite": False,
+            "writes_auto_trade_decisions": False,
+            "places_orders": False,
+            "restarts_launchd": False,
+            "historical_backfill": False,
+            "changes_parameters": False,
+            "executes_sql": True,
+            "executes_sql_in_memory": True,
+        },
+        "next_boundary": "keep_sample_suite_green_before_enabling_default_writer_apply",
+    }
+
+
+def _finalize_event_fact_history_materialized_payload_for_storage(
+    *,
+    item: MutableMapping[str, Any],
+    fact_as_of: str,
+) -> Dict[str, Any]:
+    distribution = item.get("distribution")
+    rows_payload = item.get("rows")
+    best_side, best_outcome, best_edge_score, best_signal_edge = _best_edge_from_fact_distribution(distribution)
+    market_updated_at = str(item.get("market_updated_at") or "")
+    market_stale_sec = _to_int(item.get("market_stale_sec"))
+    model_cache_age_sec = _to_int(item.get("model_cache_age_sec"))
+    final_features_raw = item.get("weather_likelihood_features")
+    if isinstance(final_features_raw, Mapping):
+        final_features_for_compact = _normalize_awc_primary_temperature_momentum_metadata(
+            dict(final_features_raw)
+        )
+        item["weather_likelihood_features"] = final_features_for_compact
+        item["weather_likelihood_features_compact"] = _compact_weather_likelihood_features_for_ui(
+            final_features_for_compact
+        )
+        physical_audit_attached = False
+        if isinstance(distribution, list):
+            physical_audit_attached = _attach_physical_likelihood_audit_fields_from_features(
+                distribution,
+                final_features_for_compact,
+                fact_as_of=fact_as_of,
+                source="event_fact_history.write.distribution",
+            ) or physical_audit_attached
+        if isinstance(rows_payload, list):
+            physical_audit_attached = _attach_physical_likelihood_audit_fields_from_features(
+                rows_payload,
+                final_features_for_compact,
+                fact_as_of=fact_as_of,
+                source="event_fact_history.write.rows",
+            ) or physical_audit_attached
+        if physical_audit_attached:
+            provenance = dict(item.get("fact_provenance") or {})
+            provenance["physical_likelihood_audit_fields_materialized"] = {
+                "source": "event_fact_history.write",
+                "policy": "fill_missing_only_from_weather_likelihood_features",
+                "fact_as_of": fact_as_of,
+            }
+            item["fact_provenance"] = provenance
+    fast_trade_write = _fact_fast_trade_write_enabled(item)
+    if fast_trade_write:
+        _compact_fact_payload_for_fast_trade_write(item)
+    payload = json.dumps(
+        item,
+        ensure_ascii=False,
+        separators=(",", ":") if fast_trade_write else None,
+    )
+    return {
+        "schema": "ui_event_fact_history_materialized_payload_v1",
+        "read_only": True,
+        "executes_sql": False,
+        "item": item,
+        "payload": payload,
+        "fast_trade_write": fast_trade_write,
+        "best_side": best_side,
+        "best_outcome": best_outcome,
+        "best_edge_score": best_edge_score,
+        "best_signal_edge": best_signal_edge,
+        "market_updated_at": market_updated_at,
+        "market_stale_sec": market_stale_sec,
+        "model_cache_age_sec": model_cache_age_sec,
+        "next_boundary": "insert_materialized_event_fact_history_row_or_writer_apply",
+    }
+
+
+def _insert_materialized_event_fact_history_row(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    model_snapshot_id: Optional[int],
+    market_snapshot_id: Optional[int],
+    composer_version: str,
+    materialized: Mapping[str, Any],
+    write_latest: bool = False,
+) -> int:
+    return _insert_materialized_event_fact_history_row_via_writer_apply(
+        conn,
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        model_snapshot_id=model_snapshot_id,
+        market_snapshot_id=market_snapshot_id,
+        composer_version=composer_version,
+        materialized=materialized,
+        write_latest=write_latest,
+    )
+
+
+def _event_fact_history_writer_apply_enabled(value: Optional[bool]) -> bool:
     return True
+
+
+def _materialized_event_fact_history_payload_for_writer(
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    model_snapshot_id: Optional[int],
+    market_snapshot_id: Optional[int],
+    composer_version: str,
+    materialized: Mapping[str, Any],
+) -> Dict[str, Any]:
+    raw_payload = safe_json_loads(str(materialized.get("payload") or ""))
+    payload = copy.deepcopy(raw_payload if isinstance(raw_payload, dict) else dict(materialized.get("item") or {}))
+    payload.setdefault("run_date", run_date)
+    payload.setdefault("slug", slug)
+    payload.setdefault("event_date", event_date)
+    payload.setdefault("composer_version", composer_version)
+    if model_snapshot_id is not None:
+        payload.setdefault("model_snapshot_id", model_snapshot_id)
+    if market_snapshot_id is not None:
+        payload.setdefault("market_snapshot_id", market_snapshot_id)
+    for key in ("market_updated_at", "market_stale_sec", "model_cache_age_sec"):
+        value = materialized.get(key)
+        if value not in (None, ""):
+            payload.setdefault(key, value)
+    payload.setdefault(
+        "fact_writer_migration_context",
+        {
+            "schema": "ui_event_fact_history_writer_apply_context_v1",
+            "source_helper": "_insert_event_fact_history",
+            "materialized_payload_schema": str(materialized.get("schema") or ""),
+            "latest_repoint_owned_by_weather_fact_snapshot_writer": True,
+        },
+    )
+    return payload
+
+
+def build_materialized_event_fact_history_writer_apply_plan(
+    conn: Optional[sqlite3.Connection],
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    model_snapshot_id: Optional[int],
+    market_snapshot_id: Optional[int],
+    composer_version: str,
+    materialized: Mapping[str, Any],
+    include_payload: bool = True,
+    write_latest: bool = False,
+) -> Dict[str, Any]:
+    incoming_payload = _materialized_event_fact_history_payload_for_writer(
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+        model_snapshot_id=model_snapshot_id,
+        market_snapshot_id=market_snapshot_id,
+        composer_version=composer_version,
+        materialized=materialized,
+    )
+    source_trace = _ui_fact_write_source_trace_for_plan(incoming_payload)
+    current_fact_id, current_fact_as_of, current_payload = _ui_fact_write_latest_context_for_plan(
+        conn,
+        slug,
+        event_date,
+    )
+    plan = build_weather_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=incoming_payload,
+        current_fact_id=current_fact_id,
+        current_fact_as_of=current_fact_as_of,
+        current_payload=current_payload,
+        source_acquisition_trace=source_trace,
+        composer_version=str(composer_version or FACTS_COMPOSER_VERSION),
+        write_reason="ui_event_fact_history_materialized_writer_apply",
+        include_payload=include_payload,
+        enable_apply_contract=True,
+        write_latest=bool(write_latest),
+    )
+    plan["ui_fact_writer_materialized_apply_adapter"] = {
+        "schema": "ui_fact_writer_materialized_apply_adapter_v1",
+        "read_only": True,
+        "dry_run": True,
+        "source_helper": "_insert_event_fact_history",
+        "materialized_payload_schema": str(materialized.get("schema") or ""),
+        "latest_repoint_owned_by_weather_fact_snapshot_writer": bool(write_latest),
+        "production_default_path_changed": True,
+        "kill_switch_env": "",
+        "current_fact_id": current_fact_id,
+        "current_fact_as_of": current_fact_as_of,
+        "next_boundary": "ui_fact_helper_history_latest_cache_owner_is_weather_fact_snapshot_writer",
+    }
+    return plan
+
+
+def _insert_materialized_event_fact_history_row_via_writer_apply(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    model_snapshot_id: Optional[int],
+    market_snapshot_id: Optional[int],
+    composer_version: str,
+    materialized: Mapping[str, Any],
+    write_latest: bool = False,
+) -> int:
+    plan = build_materialized_event_fact_history_writer_apply_plan(
+        conn,
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        model_snapshot_id=model_snapshot_id,
+        market_snapshot_id=market_snapshot_id,
+        composer_version=composer_version,
+        materialized=materialized,
+        include_payload=True,
+        write_latest=write_latest,
+    )
+    result = apply_weather_fact_snapshot_write_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=False,
+        created_at=now_text(),
+    )
+    if not bool(result.get("ok")) or not bool(result.get("applied")):
+        contract = result.get("posterior_ssot_apply_contract")
+        if not isinstance(contract, Mapping):
+            contract = result.get("prior_layer_contract")
+        issues = contract.get("issues") if isinstance(contract, Mapping) else None
+        issues_text = f"; issues={issues}" if issues else ""
+        raise RuntimeError(
+            "weather_fact_snapshot_writer apply failed: "
+            f"{result.get('block_reason') or result.get('error') or 'unknown'}{issues_text}"
+        )
+    return int(result.get("fact_id") or 0)
 
 
 def _insert_event_fact_history(
@@ -39934,12 +44299,15 @@ def _insert_event_fact_history(
     market_snapshot_id: Optional[int],
     composer_version: str,
     item: Dict[str, Any],
+    use_writer_apply: Optional[bool] = None,
+    write_latest: bool = False,
 ) -> int:
     hard_source_override_meta: Dict[str, Any] = {}
     hard_source_override_applied = False
     features = _merge_compact_weather_features_into_fact_item(item)
     fast_trade_write_requested = _fact_fast_trade_write_enabled(item)
     hard_source_direct_ssot_write = bool(item.get("hard_source_direct_ssot_write"))
+    market_discovery_pending_model = _market_discovery_pending_model_payload(item)
     if (
         not fast_trade_write_requested
         and not hard_source_direct_ssot_write
@@ -40118,469 +44486,104 @@ def _insert_event_fact_history(
             row["posterior_settlement_candidate_bucket_hard_zero_reasons"] = reason_list
         return changed
 
-    hard_source_ignore_window = True
-    hard_source_window_enabled_for_fast_write = _env_bool(
-        "PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED",
-        True,
-    )
-    hard_source_override_allowed = True
-    if fast_trade_write_requested and not hard_source_window_enabled_for_fast_write:
-        hard_source_ignore_window = False
-        hard_source_override_allowed = False
-
     distribution = item.get("distribution")
-    if isinstance(distribution, list):
-        base_probs = _posterior_base_probs(distribution)
-        apply_posterior_observed_constraints_to_distribution(distribution)
-        if hard_source_override_allowed:
-            hard_source_override_meta = apply_hard_source_posterior_override_to_distribution(
-                distribution,
-                features,
-                base_probs=base_probs,
-                market_var=market_var,
-                rounding_rule=rounding_rule,
-                event_tz=event_tz,
-                event_date=event_date,
-                ignore_window=hard_source_ignore_window,
-            )
-            hard_source_override_applied = bool(hard_source_override_meta.get("applied"))
-        else:
-            _apply_fast_trade_hard_source_lower_bound(distribution)
-            hard_source_override_meta = _fast_trade_hard_source_meta(distribution)
     rows_payload = item.get("rows")
-    if isinstance(rows_payload, list):
-        rows_base_probs = _posterior_base_probs(rows_payload)
-        apply_posterior_observed_constraints_to_distribution(rows_payload)
-        rows_override_meta = (
-            apply_hard_source_posterior_override_to_distribution(
-                rows_payload,
-                features,
-                base_probs=rows_base_probs,
-                market_var=market_var,
-                rounding_rule=rounding_rule,
-                event_tz=event_tz,
-                event_date=event_date,
-                ignore_window=hard_source_ignore_window,
-            )
-            if hard_source_override_allowed
-            else _fast_trade_hard_source_meta(rows_payload)
-        )
-        if not hard_source_override_allowed:
-            _apply_fast_trade_hard_source_lower_bound(rows_payload)
-        if bool(rows_override_meta.get("applied")) and not hard_source_override_applied:
-            hard_source_override_meta = rows_override_meta
-            hard_source_override_applied = True
-    if not hard_source_override_allowed:
-        item["hard_source_posterior_override"] = dict(hard_source_override_meta)
-        item["hard_source_posterior_override_meta"] = dict(hard_source_override_meta)
-        item["hard_source_posterior_override_applied"] = False
-        item["hard_source_posterior_override_constraint_mode"] = str(
-            hard_source_override_meta.get("decision_basis") or ""
-        )
-    if hard_source_override_applied:
-        item["hard_source_posterior_override"] = dict(hard_source_override_meta)
-        item["hard_source_posterior_override_applied"] = True
-        target_bucket = (
-            _top_label_from_rows(item.get("distribution"))
-            or _top_label_from_rows(item.get("rows"))
-            or str(hard_source_override_meta.get("target_bucket") or "").strip()
-        )
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-            item["hard_source_posterior_override_target_bucket"] = target_bucket
-        item["hard_source_posterior_override_constraint_mode"] = str(
-            hard_source_override_meta.get("constraint_mode") or ""
-        )
-        _promote_hard_source_final_lock_fields(
-            item,
-            hard_source_override_meta,
-            target_bucket=target_bucket,
-            features=features,
-        )
-        provenance = dict(item.get("fact_provenance") or {})
-        provenance["hard_source_posterior_override"] = {
-            "source": hard_source_override_meta.get("source"),
-            "value_c": hard_source_override_meta.get("value_c"),
-            "target_bucket": hard_source_override_meta.get("target_bucket"),
-            "window": hard_source_override_meta.get("window"),
-            "decision_basis": hard_source_override_meta.get("decision_basis"),
-            "final_bucket_lock": bool(hard_source_override_meta.get("final_bucket_lock")),
-        }
-        item["fact_provenance"] = provenance
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-    d0_guard_applied = False
-    if isinstance(distribution, list):
-        d0_guard_applied = _materialize_d0_observed_feasibility_guard(
-            item,
-            distribution,
-            features,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            event_tz=event_tz,
-        ) or d0_guard_applied
-    if isinstance(rows_payload, list):
-        d0_guard_applied = _materialize_d0_observed_feasibility_guard(
-            item,
-            rows_payload,
-            features,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            event_tz=event_tz,
-        ) or d0_guard_applied
-    if d0_guard_applied:
-        target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-    observation_path_likelihood_applied = False
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write and isinstance(distribution, list):
-        observation_path_likelihood_applied = _materialize_observation_path_likelihood(
-            item,
-            distribution,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        ) or observation_path_likelihood_applied
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write and isinstance(rows_payload, list):
-        observation_path_likelihood_applied = _materialize_observation_path_likelihood(
-            item,
-            rows_payload,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        ) or observation_path_likelihood_applied
-    if observation_path_likelihood_applied:
-        target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-    momentum_likelihood_applied = False
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write and isinstance(distribution, list):
-        momentum_likelihood_applied = _materialize_temperature_momentum_likelihood(
-            item,
-            distribution,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        ) or momentum_likelihood_applied
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write and isinstance(rows_payload, list):
-        momentum_likelihood_applied = _materialize_temperature_momentum_likelihood(
-            item,
-            rows_payload,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        ) or momentum_likelihood_applied
-    if momentum_likelihood_applied:
-        target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write:
-        _attach_chengdu_intraday_summary_fields_for_fact_write(
-            item,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        )
-    observation_path_likelihood_post_summary_applied = False
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write and isinstance(distribution, list):
-        observation_path_likelihood_post_summary_applied = _materialize_observation_path_likelihood(
-            item,
-            distribution,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        ) or observation_path_likelihood_post_summary_applied
-    if not fast_trade_write_requested and not hard_source_direct_ssot_write and isinstance(rows_payload, list):
-        observation_path_likelihood_post_summary_applied = _materialize_observation_path_likelihood(
-            item,
-            rows_payload,
-            slug=slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
-        ) or observation_path_likelihood_post_summary_applied
-    if observation_path_likelihood_post_summary_applied:
-        target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
     if hard_source_direct_ssot_write:
         # Keep recomputed path/plan fields, but do not persist the narrative
         # switch context in the base fact; UI/read-side summaries rebuild it.
         item.pop("chengdu_intraday_summary", None)
         item.pop("target_switch_context", None)
-    posterior_ssot_write_changed = False
-    if isinstance(distribution, list):
-        posterior_ssot_write_changed = _normalize_fact_distribution_posterior_ssot_fields(
-            item,
-            distribution,
-            source="event_fact_history.write.distribution",
-        ) or posterior_ssot_write_changed
-    if isinstance(rows_payload, list):
-        posterior_ssot_write_changed = _normalize_fact_distribution_posterior_ssot_fields(
-            item,
-            rows_payload,
-            source="event_fact_history.write.rows",
-        ) or posterior_ssot_write_changed
-    if posterior_ssot_write_changed:
-        target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-    if (
-        not hard_source_direct_ssot_write
-        and not fast_trade_write_requested
-        and _is_chengdu_zuuu_fact_payload(slug, item)
-    ):
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-        final_observation_path_likelihood_applied = False
-        if isinstance(distribution, list):
-            final_observation_path_likelihood_applied = _materialize_observation_path_likelihood(
-                item,
-                distribution,
-                slug=slug,
-                event_date=event_date,
-                fact_as_of=fact_as_of,
-                snapshot_id=model_snapshot_id or 0,
-            ) or final_observation_path_likelihood_applied
-        if isinstance(rows_payload, list):
-            final_observation_path_likelihood_applied = _materialize_observation_path_likelihood(
-                item,
-                rows_payload,
-                slug=slug,
-                event_date=event_date,
-                fact_as_of=fact_as_of,
-                snapshot_id=model_snapshot_id or 0,
-            ) or final_observation_path_likelihood_applied
-        if final_observation_path_likelihood_applied:
-            _normalize_fact_distribution_posterior_ssot_fields(
-                item,
-                distribution,
-                source="event_fact_history.write.final_observation_path_likelihood",
+    if hard_source_direct_ssot_write:
+        _merge_compact_weather_features_into_fact_item(item)
+
+    # Chengdu/ZUUU production facts must be materialized by the one approved
+    # probability composer before any UI-side compatibility writer persists
+    # them.  Observation/market refreshes may carry an older posterior in the
+    # payload they merge; persisting that stale posterior would move
+    # event_fact_latest back to a retired probability model.  Re-project from
+    # the merged as-of evidence and fail closed when the canonical composer is
+    # unavailable.
+    source_trace_for_projection = item.get("source_acquisition_trace")
+    has_canonical_source_observations = bool(item.get("source_observations")) or bool(
+        isinstance(source_trace_for_projection, Mapping)
+        and source_trace_for_projection.get("source_observations")
+    )
+    if _is_chengdu_zuuu_fact_payload(slug, item) and has_canonical_source_observations:
+        from posterior_ssot_projection_runtime import build_fact_projection_no_apply
+
+        current_fact_id, current_fact_as_of, _current_payload = _ui_fact_write_latest_context_for_plan(
+            conn,
+            slug,
+            event_date,
+        )
+        projection = build_fact_projection_no_apply(
+            slug=slug,
+            event_date=event_date,
+            run_date=run_date,
+            fact_as_of=fact_as_of,
+            payload=item,
+            current_fact_id=current_fact_id,
+            current_fact_as_of=current_fact_as_of,
+            composer_version=str(composer_version or FACTS_COMPOSER_VERSION),
+            conn=conn,
+            write_reason="ui_compat_input_canonical_posterior_projection",
+        )
+        projected_payload = projection.get("projected_payload")
+        projected_ssot = (
+            projected_payload.get("posterior_ssot_fact")
+            if isinstance(projected_payload, Mapping)
+            else None
+        )
+        if (
+            projection.get("ok") is not True
+            or not isinstance(projected_payload, Mapping)
+            or not isinstance(projected_ssot, Mapping)
+            or str(projected_ssot.get("state") or "") != "available"
+            or str(projected_ssot.get("production_model_family") or "")
+            != "joint_weak_physical_strong"
+        ):
+            raise RuntimeError(
+                "canonical Chengdu posterior projection unavailable; "
+                f"issues={list(projection.get('issues') or [])}"
             )
-            if isinstance(rows_payload, list):
-                _normalize_fact_distribution_posterior_ssot_fields(
-                    item,
-                    rows_payload,
-                    source="event_fact_history.write.final_observation_path_likelihood.rows",
-                )
-            target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-            if target_bucket:
-                item["model_top_label"] = target_bucket
-                item["single_temperature_top_label"] = target_bucket
-                item["atomic_temperature_top_label"] = target_bucket
-                item["contract_payout_top_label"] = target_bucket
-            _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-    if (
-        not hard_source_direct_ssot_write
-        and not fast_trade_write_requested
-        and _is_chengdu_zuuu_fact_payload(slug, item)
-    ):
-        _attach_chengdu_intraday_summary_fields_for_fact_write(
-            item,
+        item = dict(projected_payload)
+        provenance = dict(item.get("fact_provenance") or {})
+        provenance["canonical_probability_projection_before_write"] = {
+            "source": "posterior_ssot_projection_runtime",
+            "production_model_family": "joint_weak_physical_strong",
+            "settlement_s_used_by_physical_prior": False,
+            "legacy_probability_payload_persisted": False,
+        }
+        item["fact_provenance"] = provenance
+    materialized = _finalize_event_fact_history_materialized_payload_for_storage(
+        item=item,
+        fact_as_of=fact_as_of,
+    )
+    if _event_fact_history_writer_apply_enabled(use_writer_apply):
+        return _insert_materialized_event_fact_history_row_via_writer_apply(
+            conn,
+            run_date=run_date,
             slug=slug,
             event_date=event_date,
             fact_as_of=fact_as_of,
-            snapshot_id=model_snapshot_id or 0,
+            model_snapshot_id=model_snapshot_id,
+            market_snapshot_id=market_snapshot_id,
+            composer_version=composer_version,
+            materialized=materialized,
+            write_latest=write_latest,
         )
-        _attach_target_realization_capital_plan(item)
-        _attach_target_switch_context(item)
-        final_features = _merge_compact_weather_features_into_fact_item(item)
-        if _features_have_awc_hard_observation(final_features) and not (
-            final_features.get("temperature_momentum_available_horizons")
-            and to_float(final_features.get("temperature_momentum_1h_c_per_hour")) is not None
-        ):
-            awc_overlay_as_of, awc_overlay_payload = _latest_awc_hard_observation_payload_for_merge_fill(
-                conn,
-                slug,
-                event_date,
-            )
-            awc_overlay_features = _awc_features_from_fact_payload_for_merge_fill(awc_overlay_payload)
-            if awc_overlay_features and _weather_feature_overlay_is_stronger(awc_overlay_features, final_features):
-                refreshed_at = str(
-                    awc_overlay_features.get("weather_likelihood_refreshed_at")
-                    or awc_overlay_features.get("zuuu_metar_raw_awc_fetched_at")
-                    or awc_overlay_as_of
-                    or ""
-                )
-                overlay_fields = _distribution_weather_feature_fields(
-                    awc_overlay_features,
-                    refreshed_at=refreshed_at,
-                )
-                if overlay_fields:
-                    final_features = dict(final_features)
-                    final_features.update(overlay_fields)
-                    item["weather_likelihood_features"] = final_features
-                    item["weather_likelihood_features_compact"] = _compact_weather_likelihood_features_for_ui(final_features)
-                    provenance = dict(item.get("fact_provenance") or {})
-                    provenance["awc_hard_observation_momentum_merge_fill"] = {
-                        "source": "event_fact_history.write.final",
-                        "existing_fact_as_of": awc_overlay_as_of,
-                        "refreshed_at": refreshed_at,
-                    }
-                    item["fact_provenance"] = provenance
-        final_features_for_overlay = _merge_compact_weather_features_into_fact_item(item)
-        final_overlay_applied = False
-        if isinstance(distribution, list):
-            final_overlay_applied = _materialize_final_temperature_trajectory_overlay_for_fact_write(
-                item,
-                distribution,
-                final_features_for_overlay,
-                slug=slug,
-                event_date=event_date,
-                fact_as_of=fact_as_of,
-                market_var=market_var,
-                rounding_rule=rounding_rule,
-                event_tz=event_tz,
-                source="event_fact_history.write.final_distribution",
-            ) or final_overlay_applied
-        if isinstance(rows_payload, list):
-            final_overlay_applied = _materialize_final_temperature_trajectory_overlay_for_fact_write(
-                item,
-                rows_payload,
-                final_features_for_overlay,
-                slug=slug,
-                event_date=event_date,
-                fact_as_of=fact_as_of,
-                market_var=market_var,
-                rounding_rule=rounding_rule,
-                event_tz=event_tz,
-                source="event_fact_history.write.final_rows",
-            ) or final_overlay_applied
-        if final_overlay_applied:
-            target_bucket = _top_label_from_rows(item.get("distribution")) or _top_label_from_rows(item.get("rows"))
-            if target_bucket:
-                item["model_top_label"] = target_bucket
-                item["single_temperature_top_label"] = target_bucket
-                item["atomic_temperature_top_label"] = target_bucket
-                item["contract_payout_top_label"] = target_bucket
-            _refresh_fact_trade_derivatives_after_target_update(item, distribution)
-    elif hard_source_direct_ssot_write:
-        _merge_compact_weather_features_into_fact_item(item)
-    best_side, best_outcome, best_edge_score, best_signal_edge = _best_edge_from_fact_distribution(distribution)
-    market_updated_at = str(item.get("market_updated_at") or "")
-    market_stale_sec = _to_int(item.get("market_stale_sec"))
-    model_cache_age_sec = _to_int(item.get("model_cache_age_sec"))
-    final_features_raw = item.get("weather_likelihood_features")
-    if isinstance(final_features_raw, Mapping):
-        final_features_for_compact = _normalize_awc_primary_temperature_momentum_metadata(
-            dict(final_features_raw)
-        )
-        item["weather_likelihood_features"] = final_features_for_compact
-        item["weather_likelihood_features_compact"] = _compact_weather_likelihood_features_for_ui(
-            final_features_for_compact
-        )
-        physical_audit_attached = False
-        if isinstance(distribution, list):
-            physical_audit_attached = _attach_physical_likelihood_audit_fields_from_features(
-                distribution,
-                final_features_for_compact,
-                fact_as_of=fact_as_of,
-                source="event_fact_history.write.distribution",
-            ) or physical_audit_attached
-        if isinstance(rows_payload, list):
-            physical_audit_attached = _attach_physical_likelihood_audit_fields_from_features(
-                rows_payload,
-                final_features_for_compact,
-                fact_as_of=fact_as_of,
-                source="event_fact_history.write.rows",
-            ) or physical_audit_attached
-        if physical_audit_attached:
-            provenance = dict(item.get("fact_provenance") or {})
-            provenance["physical_likelihood_audit_fields_materialized"] = {
-                "source": "event_fact_history.write",
-                "policy": "fill_missing_only_from_weather_likelihood_features",
-                "fact_as_of": fact_as_of,
-            }
-            item["fact_provenance"] = provenance
-    fast_trade_write = _fact_fast_trade_write_enabled(item)
-    if fast_trade_write:
-        _compact_fact_payload_for_fast_trade_write(item)
-    payload = json.dumps(
-        item,
-        ensure_ascii=False,
-        separators=(",", ":") if fast_trade_write else None,
+    return _insert_materialized_event_fact_history_row(
+        conn,
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        model_snapshot_id=model_snapshot_id,
+        market_snapshot_id=market_snapshot_id,
+        composer_version=composer_version,
+        materialized=materialized,
+        write_latest=write_latest,
     )
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO event_fact_history(
-            run_date, slug, event_date, fact_as_of,
-            model_snapshot_id, market_snapshot_id, composer_version,
-            market_updated_at, model_updated_at, market_stale_sec, model_cache_age_sec,
-            best_side, best_outcome, best_edge_score, best_signal_edge_entry,
-            fact_json, created_at
-        )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            run_date,
-            slug,
-            event_date,
-            fact_as_of,
-            model_snapshot_id,
-            market_snapshot_id,
-            composer_version,
-            market_updated_at or None,
-            None,
-            market_stale_sec,
-            model_cache_age_sec,
-            best_side or None,
-            best_outcome or None,
-            best_edge_score,
-            best_signal_edge,
-            payload,
-            now_text(),
-        ),
-    )
-    fact_id = int(cur.lastrowid or 0)
-    if fact_id:
-        if fast_trade_write:
-            _upsert_event_fact_summary_cache_fast_trade(
-                conn,
-                fact_id=fact_id,
-                run_date=run_date,
-                slug=slug,
-                event_date=event_date,
-                fact_as_of=fact_as_of,
-                item=item,
-            )
-        else:
-            _upsert_event_fact_summary_cache(
-                conn,
-                fact_id=fact_id,
-                run_date=run_date,
-                slug=slug,
-                event_date=event_date,
-                fact_as_of=fact_as_of,
-                item=item,
-            )
-    return fact_id
 
 
 def _sqlite_operational_error_is_lock(exc: sqlite3.OperationalError) -> bool:
@@ -40633,9 +44636,9 @@ def _insert_event_fact_history_and_upsert_latest_with_lock_retry(
                 market_snapshot_id=market_snapshot_id,
                 composer_version=composer_version,
                 item=item,
+                write_latest=True,
             )
             if fact_id:
-                _upsert_event_fact_latest(conn, slug, event_date, fact_id)
                 conn.commit()
             return int(fact_id or 0)
         except sqlite3.OperationalError as exc:
@@ -41184,9 +45187,10 @@ def upsert_event_fact_from_run_item(
         market_snapshot_id=market_snapshot_id,
         composer_version=FACTS_COMPOSER_VERSION,
         item=item,
+        write_latest=True,
     )
     if fact_id:
-        _upsert_event_fact_latest(conn, slug, event_date_key, fact_id)
+        _touch_ui_snapshot_dirty_stamp(f"event_fact_history:{slug}:{event_date_key}:{int(fact_id)}")
     return fact_id if fact_id else None
 
 
@@ -41368,6 +45372,11 @@ def _awc_fact_row_fields(features: Mapping[str, Any], refreshed_at: str) -> Dict
             "observed_today_max_c",
             "observed_today_max_source",
             "observed_today_max_trusted",
+            "observed_today_max_final",
+            "hard_source_final_daily_max",
+            "temperature_observation_final_daily_max",
+            "hard_source_final_daily_max_source",
+            "hard_source_final_lock_reason",
             "metar_temperature_c",
             "dewpoint_c",
             "is_raining_observed",
@@ -41877,6 +45886,145 @@ def _awc_recent_window_fetch_hours(
     return fetch_hours, "existing_awc_fact_recent_window"
 
 
+def _awc_event_end_final_daily_max_state(
+    awc_features: Mapping[str, Any],
+    *,
+    payload: Mapping[str, Any],
+    event_end_utc: str = "",
+) -> Dict[str, Any]:
+    if not isinstance(awc_features, Mapping):
+        return {"final": False, "reason": "awc_features_missing"}
+    if _awc_feature_truthy(awc_features.get("zuuu_metar_raw_awc_date_mismatch")):
+        return {"final": False, "reason": "awc_event_date_mismatch"}
+    today_max = to_float(awc_features.get("zuuu_metar_raw_awc_today_max_c"))
+    if today_max is None:
+        return {"final": False, "reason": "awc_today_max_missing"}
+    payload_market_meta = payload.get("market_meta")
+    if not isinstance(payload_market_meta, Mapping):
+        payload_market_meta = {}
+    event_end_text = str(
+        event_end_utc
+        or payload.get("event_end_utc")
+        or payload_market_meta.get("event_end_utc")
+        or ""
+    ).strip()
+    event_end_dt = parse_iso_ts(event_end_text)
+    if event_end_dt is None:
+        return {"final": False, "reason": "event_end_utc_missing"}
+    latest_dt = _awc_feature_ts(awc_features, "zuuu_metar_raw_awc_latest_at")
+    if latest_dt is None:
+        return {"final": False, "reason": "awc_latest_at_missing", "event_end_utc": event_end_text}
+    if latest_dt.tzinfo is None:
+        latest_dt = latest_dt.replace(tzinfo=timezone.utc)
+    if event_end_dt.tzinfo is None:
+        event_end_dt = event_end_dt.replace(tzinfo=timezone.utc)
+    latest_utc = latest_dt.astimezone(timezone.utc)
+    event_end_utc_dt = event_end_dt.astimezone(timezone.utc)
+    post_peak_state = _awc_post_peak_final_daily_max_state(
+        awc_features,
+        payload=payload,
+        latest_utc=latest_utc,
+        event_end_utc=event_end_utc_dt,
+        today_max_c=float(today_max),
+    )
+    if post_peak_state.get("final"):
+        return post_peak_state
+    if latest_utc + timedelta(seconds=1) < event_end_utc_dt:
+        return {
+            "final": False,
+            "reason": "awc_latest_before_event_end",
+            "event_end_utc": event_end_utc_dt.isoformat(),
+            "latest_at": latest_utc.isoformat(),
+            "today_max_c": float(today_max),
+        }
+    return {
+        "final": True,
+        "reason": "awc_latest_covers_event_end",
+        "event_end_utc": event_end_utc_dt.isoformat(),
+        "latest_at": latest_utc.isoformat(),
+        "today_max_c": float(today_max),
+        "today_max_at": str(awc_features.get("zuuu_metar_raw_awc_today_max_at") or ""),
+    }
+
+
+def _awc_post_peak_final_daily_max_state(
+    awc_features: Mapping[str, Any],
+    *,
+    payload: Mapping[str, Any],
+    latest_utc: datetime,
+    event_end_utc: datetime,
+    today_max_c: float,
+) -> Dict[str, Any]:
+    today_max_at = _awc_feature_ts(awc_features, "zuuu_metar_raw_awc_today_max_at")
+    latest_temp = to_float(awc_features.get("zuuu_metar_raw_awc_latest_temp_c"))
+    today_max_utc = None
+    if today_max_at is not None:
+        if today_max_at.tzinfo is None:
+            today_max_at = today_max_at.replace(tzinfo=timezone.utc)
+        today_max_utc = today_max_at.astimezone(timezone.utc)
+    temp_drop_c = float(today_max_c) - float(latest_temp) if latest_temp is not None else None
+    elapsed_min = (
+        (latest_utc - today_max_utc).total_seconds() / 60.0
+        if today_max_utc is not None
+        else None
+    )
+    return {
+        "final": False,
+        "reason": "awc_post_peak_cooling_is_probabilistic_not_final",
+        "event_end_utc": event_end_utc.isoformat(),
+        "latest_at": latest_utc.isoformat(),
+        "today_max_c": float(today_max_c),
+        "today_max_at": today_max_utc.isoformat() if today_max_utc is not None else "",
+        "latest_temp_c": float(latest_temp) if latest_temp is not None else None,
+        "temp_drop_c": temp_drop_c,
+        "elapsed_min": elapsed_min,
+        "prediction_window_cannot_emit_final_lock": True,
+        "required_final_evidence": "event_end_complete_day_or_official_settlement",
+    }
+
+
+def _apply_awc_event_end_final_daily_max(
+    awc_features: MutableMapping[str, Any],
+    *,
+    payload: Mapping[str, Any],
+    event_end_utc: str = "",
+) -> Dict[str, Any]:
+    state = _awc_event_end_final_daily_max_state(
+        awc_features,
+        payload=payload,
+        event_end_utc=event_end_utc,
+    )
+    awc_features["zuuu_metar_raw_awc_final_daily_max_state"] = str(
+        state.get("reason") or ("final" if state.get("final") else "not_final")
+    )
+    if state.get("event_end_utc"):
+        awc_features["zuuu_metar_raw_awc_final_event_end_utc"] = state.get("event_end_utc")
+    if state.get("latest_at"):
+        awc_features["zuuu_metar_raw_awc_final_latest_at"] = state.get("latest_at")
+    if not bool(state.get("final")):
+        awc_features["zuuu_metar_raw_awc_final_daily_max"] = False
+        return state
+    value = to_float(state.get("today_max_c"))
+    if value is not None:
+        awc_features["observed_today_max_c"] = float(value)
+    awc_features["observed_today_max_source"] = "zuuu_metar_raw_awc"
+    awc_features["observed_today_max_trusted"] = True
+    awc_features["observed_today_max_final"] = True
+    awc_features["hard_source_final_daily_max"] = True
+    awc_features["temperature_observation_final_daily_max"] = True
+    reason = str(state.get("reason") or "awc_latest_covers_event_end")
+    awc_features["hard_source_final_daily_max_source"] = (
+        "zuuu_metar_raw_awc_post_peak_cooling"
+        if reason == "awc_latest_after_today_max_and_cooling_post_peak"
+        else "zuuu_metar_raw_awc_event_end_coverage"
+    )
+    awc_features["hard_source_final_lock_reason"] = reason
+    awc_features["zuuu_metar_raw_awc_final_daily_max"] = True
+    awc_features["zuuu_metar_raw_awc_final_daily_max_reason"] = reason
+    awc_features["zuuu_metar_raw_awc_final_daily_max_at"] = str(state.get("today_max_at") or "")
+    return state
+
+
 def refresh_awc_fact_for_chengdu_event(
     db_path: Path | str = DB_PATH,
     *,
@@ -41901,12 +46049,19 @@ def refresh_awc_fact_for_chengdu_event(
         return _timed_result({"ok": False, "status": "db_missing", "db_path": str(db)})
     timeout_sec = DB_CONNECT_TIMEOUT_SEC if connect_timeout_sec is None else max(0.05, float(connect_timeout_sec))
     busy_ms = DB_BUSY_TIMEOUT_MS if busy_timeout_ms is None else max(0, int(busy_timeout_ms))
-    conn = sqlite3.connect(str(db), timeout=timeout_sec)
+    conn = sqlite3.connect(str(db), timeout=timeout_sec, factory=_UiQueuedWriteConnection)
+    setattr(conn, "_archive_db_write_gate_owner", "ui.server.refresh_awc_fact_for_chengdu_event")
     conn.row_factory = sqlite3.Row
     try:
         latest_start_ts = time.time()
         conn.execute(f"PRAGMA busy_timeout={busy_ms}")
         ensure_fact_tables(conn)
+        # ``ensure_fact_tables`` is a write-capable schema operation and
+        # therefore acquires the archive write gate on this queued connection.
+        # The following AWC request is external I/O; commit here so the gate is
+        # released before any network wait.  The later fact upsert starts its
+        # own short, atomic write transaction.
+        conn.commit()
         latest_row = _latest_chengdu_fact_row_for_awc_refresh(conn, event_key)
         if latest_row is None:
             timings_ms["latest_fact_ms"] = int(max(0.0, (time.time() - latest_start_ts) * 1000.0))
@@ -41935,6 +46090,19 @@ def refresh_awc_fact_for_chengdu_event(
             existing_features = decision_payload.get("weather_likelihood_features_compact")
         if not isinstance(existing_features, Mapping):
             existing_features = {}
+        decision_market_meta = decision_payload.get("market_meta")
+        if not isinstance(decision_market_meta, Mapping):
+            decision_market_meta = {}
+        payload_market_meta = payload.get("market_meta")
+        if not isinstance(payload_market_meta, Mapping):
+            payload_market_meta = {}
+        event_end_utc = str(
+            decision_payload.get("event_end_utc")
+            or payload.get("event_end_utc")
+            or decision_market_meta.get("event_end_utc")
+            or payload_market_meta.get("event_end_utc")
+            or ""
+        ).strip()
         station_id = str(decision_payload.get("station_id") or payload.get("station_id") or "ZUUU").strip() or "ZUUU"
         event_tz = str(
             decision_payload.get("event_tz")
@@ -41977,6 +46145,11 @@ def refresh_awc_fact_for_chengdu_event(
                 awc_features["zuuu_metar_raw_awc_fetch_hours"] = int(fetch_hours)
                 awc_features["zuuu_metar_raw_awc_fetch_hours_reason"] = fetch_hours_reason
                 awc_features["zuuu_metar_raw_awc_requested_hours"] = max(1, int(hours or 48))
+                _apply_awc_event_end_final_daily_max(
+                    awc_features,
+                    payload=decision_payload,
+                    event_end_utc=event_end_utc,
+                )
         except Exception as exc:
             timings_ms["awc_fetch_features_ms"] = int(max(0.0, (time.time() - awc_fetch_start_ts) * 1000.0))
             return _timed_result(
@@ -42004,6 +46177,14 @@ def refresh_awc_fact_for_chengdu_event(
             awc_features,
             heartbeat_sec=heartbeat_sec,
         )
+        if (
+            not needed
+            and _awc_feature_truthy(awc_features.get("zuuu_metar_raw_awc_final_daily_max"))
+            and not _awc_feature_truthy(existing_features.get("hard_source_final_daily_max"))
+            and not _awc_feature_truthy(existing_features.get("observed_today_max_final"))
+        ):
+            needed = True
+            reason = "awc_final_daily_max_state_changed"
         if not needed:
             existing_compact = payload.get("weather_likelihood_features_compact")
             rebuilt_compact = _compact_weather_likelihood_features_for_ui(existing_features)
@@ -42031,8 +46212,21 @@ def refresh_awc_fact_for_chengdu_event(
                     "status": "skipped",
                     "reason": reason,
                     "event_date": event_key,
+                    "station_id": station_id,
                     "awc_latest_at": awc_features.get("zuuu_metar_raw_awc_latest_at") or "",
+                    "awc_today_max_at": awc_features.get("zuuu_metar_raw_awc_today_max_at") or "",
                     "awc_today_max_c": awc_features.get("zuuu_metar_raw_awc_today_max_c"),
+                    "awc_latest_temp_c": awc_features.get("zuuu_metar_raw_awc_latest_temp_c"),
+                    "awc_latest_dewpoint_c": awc_features.get("zuuu_metar_raw_awc_latest_dewpoint_c"),
+                    "awc_fetched_at": awc_features.get("zuuu_metar_raw_awc_fetched_at") or "",
+                    "awc_source_url": awc_features.get("zuuu_metar_raw_awc_url")
+                    or awc_features.get("zuuu_metar_raw_awc_source_url")
+                    or "",
+                    "awc_latest_raw": awc_features.get("zuuu_metar_raw_awc_latest_raw") or "",
+                    "awc_final_daily_max": awc_features.get("zuuu_metar_raw_awc_final_daily_max"),
+                    "awc_final_daily_max_state": awc_features.get("zuuu_metar_raw_awc_final_daily_max_state") or "",
+                    "awc_final_event_end_utc": awc_features.get("zuuu_metar_raw_awc_final_event_end_utc") or "",
+                    "hard_source_final_daily_max": awc_features.get("hard_source_final_daily_max"),
                     "awc_fetch_hours": int(fetch_hours),
                     "awc_fetch_hours_reason": fetch_hours_reason,
                     "cross_checks_included": awc_features.get("zuuu_metar_raw_awc_cross_checks_included"),
@@ -42084,15 +46278,48 @@ def refresh_awc_fact_for_chengdu_event(
                 "status": "updated" if fact_id else "insert_failed",
                 "reason": reason,
                 "event_date": event_key,
+                "station_id": station_id,
                 "slug": item["slug"],
                 "fact_id": fact_id,
                 "fact_as_of": refreshed_at,
                 "awc_latest_at": item_features.get("zuuu_metar_raw_awc_latest_at")
                 or awc_features.get("zuuu_metar_raw_awc_latest_at")
                 or "",
+                "awc_today_max_at": item_features.get("zuuu_metar_raw_awc_today_max_at")
+                or awc_features.get("zuuu_metar_raw_awc_today_max_at")
+                or "",
                 "awc_today_max_c": item_features.get("zuuu_metar_raw_awc_today_max_c")
                 if item_features.get("zuuu_metar_raw_awc_today_max_c") not in (None, "")
                 else awc_features.get("zuuu_metar_raw_awc_today_max_c"),
+                "awc_latest_temp_c": item_features.get("zuuu_metar_raw_awc_latest_temp_c")
+                if item_features.get("zuuu_metar_raw_awc_latest_temp_c") not in (None, "")
+                else awc_features.get("zuuu_metar_raw_awc_latest_temp_c"),
+                "awc_latest_dewpoint_c": item_features.get("zuuu_metar_raw_awc_latest_dewpoint_c")
+                if item_features.get("zuuu_metar_raw_awc_latest_dewpoint_c") not in (None, "")
+                else awc_features.get("zuuu_metar_raw_awc_latest_dewpoint_c"),
+                "awc_fetched_at": item_features.get("zuuu_metar_raw_awc_fetched_at")
+                or awc_features.get("zuuu_metar_raw_awc_fetched_at")
+                or refreshed_at,
+                "awc_source_url": item_features.get("zuuu_metar_raw_awc_url")
+                or item_features.get("zuuu_metar_raw_awc_source_url")
+                or awc_features.get("zuuu_metar_raw_awc_url")
+                or awc_features.get("zuuu_metar_raw_awc_source_url")
+                or "",
+                "awc_latest_raw": item_features.get("zuuu_metar_raw_awc_latest_raw")
+                or awc_features.get("zuuu_metar_raw_awc_latest_raw")
+                or "",
+                "awc_final_daily_max": item_features.get("zuuu_metar_raw_awc_final_daily_max")
+                if item_features.get("zuuu_metar_raw_awc_final_daily_max") not in (None, "")
+                else awc_features.get("zuuu_metar_raw_awc_final_daily_max"),
+                "awc_final_daily_max_state": item_features.get("zuuu_metar_raw_awc_final_daily_max_state")
+                or awc_features.get("zuuu_metar_raw_awc_final_daily_max_state")
+                or "",
+                "awc_final_event_end_utc": item_features.get("zuuu_metar_raw_awc_final_event_end_utc")
+                or awc_features.get("zuuu_metar_raw_awc_final_event_end_utc")
+                or "",
+                "hard_source_final_daily_max": item_features.get("hard_source_final_daily_max")
+                if item_features.get("hard_source_final_daily_max") not in (None, "")
+                else awc_features.get("hard_source_final_daily_max"),
                 "awc_today_max_source": "merged_fact_payload"
                 if item_features.get("zuuu_metar_raw_awc_today_max_c") not in (None, "")
                 else "incoming_awc_features",
@@ -42187,7 +46414,8 @@ def refresh_precip_nowcast_fact_for_chengdu_event(
     event_key = _normalize_date_key(event_date) or _chengdu_today_date_key()
     if not db.exists():
         return {"ok": False, "status": "db_missing", "db_path": str(db)}
-    conn = sqlite3.connect(str(db), timeout=DB_CONNECT_TIMEOUT_SEC)
+    conn = sqlite3.connect(str(db), timeout=DB_CONNECT_TIMEOUT_SEC, factory=_UiQueuedWriteConnection)
+    setattr(conn, "_archive_db_write_gate_owner", "ui.server.refresh_precip_nowcast_fact_for_chengdu_event")
     conn.row_factory = sqlite3.Row
     try:
         conn.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}")
@@ -42767,8 +46995,22 @@ def _target_realization_selection_candidates(item: Mapping[str, Any]) -> List[Tu
 
 def _target_realization_selected_labels(item: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]) -> Tuple[str, str, str]:
     row_labels = {str(row.get("label") or "").strip() for row in rows}
-    posterior_leader = rows[0] if rows else {}
-    posterior_leader_label = str(posterior_leader.get("label") or "").strip() if isinstance(posterior_leader, Mapping) else ""
+
+    def eligible_second_label(row: Mapping[str, Any], target_label: str) -> str:
+        if not isinstance(row, Mapping) or _ssot_row_is_hard_zero(row):
+            return ""
+        label = str(row.get("label") or row.get("outcome") or row.get("bucket") or "").strip()
+        if not label or label == target_label:
+            return ""
+        prob = None
+        for key in ("probability", "posterior", "q_temperature_bucket_posterior", "q_bayes_posterior"):
+            prob = _ui_snapshot_prob01_from_value(row.get(key))
+            if prob is not None:
+                break
+        if prob is not None and prob <= 0.0:
+            return ""
+        return label
+
     hard_source_candidates = _target_realization_selection_candidates(item)
     for selection, source in hard_source_candidates:
         if "target_bucket_outlook" not in source or not _target_realization_outlook_is_hard_source(selection):
@@ -42779,26 +47021,92 @@ def _target_realization_selected_labels(item: Mapping[str, Any], rows: Sequence[
             if not second_label or second_label == target_label or second_label not in row_labels:
                 second_label = next(
                     (
-                        str(row.get("label") or "").strip()
+                        eligible_second_label(row, target_label)
                         for row in rows
-                        if str(row.get("label") or "").strip()
-                        and str(row.get("label") or "").strip() != target_label
+                        if eligible_second_label(row, target_label)
                     ),
                     "",
                 )
-            return target_label, second_label, source
-    if posterior_leader_label:
-        second_label = next(
-            (
-                str(row.get("label") or "").strip()
-                for row in rows
-                if str(row.get("label") or "").strip()
-                and str(row.get("label") or "").strip() != posterior_leader_label
-            ),
-            "",
+            return target_label, second_label, f"hard_source_{source}"
+
+    posterior_ssot = item.get("posterior_ssot_fact")
+    posterior_ssot = posterior_ssot if isinstance(posterior_ssot, Mapping) else {}
+    ssot_state = str(posterior_ssot.get("state") or "").strip().lower()
+    ssot_label = str(
+        posterior_ssot.get("target_bucket")
+        or posterior_ssot.get("top_bucket")
+        or posterior_ssot.get("selected_bucket")
+        or ""
+    ).strip()
+    if ssot_label and ssot_label in row_labels and (not ssot_state or ssot_state in {"available", "ready", "ok"}):
+        second_label = ""
+        ranked = posterior_ssot.get("bucket_probabilities") or posterior_ssot.get("ranked_bucket_probabilities")
+        ranked_rows = _compact_posterior_ssot_bucket_rows_for_ui_snapshot(ranked, limit=max(2, len(rows)))
+        ranked_rows = _sorted_posterior_ssot_bucket_rows_for_ui_snapshot(
+            ranked_rows,
+            limit=max(2, len(rows)),
         )
-        return posterior_leader_label, second_label, "posterior_distribution_top1"
-    return "", "", "distribution_probability_order"
+        for ranked_row in ranked_rows:
+            candidate = str(
+                ranked_row.get("outcome")
+                or ranked_row.get("label")
+                or ranked_row.get("bucket")
+                or ""
+            ).strip()
+            candidate_prob = _ui_snapshot_prob01_from_value(ranked_row.get("probability"))
+            if (
+                candidate
+                and candidate != ssot_label
+                and candidate in row_labels
+                and not _ssot_row_is_hard_zero(ranked_row)
+                and candidate_prob is not None
+                and candidate_prob > 0.0
+            ):
+                second_label = candidate
+                break
+        if not second_label:
+            second_label = next(
+                (
+                    eligible_second_label(row, ssot_label)
+                    for row in rows
+                    if eligible_second_label(row, ssot_label)
+                ),
+                "",
+            )
+        return ssot_label, second_label, "posterior_ssot_fact.top_bucket"
+
+    for selection, source in hard_source_candidates:
+        source_text = str(
+            selection.get("ssot_source")
+            or selection.get("target_bucket_selection_source")
+            or selection.get("source")
+            or source
+            or ""
+        )
+        if "posterior_ssot_fact" not in source_text:
+            continue
+        target_label = str(selection.get("target_bucket") or selection.get("bucket") or "").strip()
+        if target_label and target_label in row_labels:
+            second_label = str(selection.get("second_target_bucket") or "").strip()
+            if not second_label or second_label == target_label or second_label not in row_labels:
+                second_label = next(
+                    (
+                        eligible_second_label(row, target_label)
+                        for row in rows
+                        if eligible_second_label(row, target_label)
+                    ),
+                    "",
+                )
+            return target_label, second_label, "posterior_ssot_fact.selection"
+
+    return "", "", "posterior_ssot_fact_missing"
+
+
+def _target_realization_plan_target_is_ssot(plan: Mapping[str, Any]) -> bool:
+    if not isinstance(plan, Mapping):
+        return False
+    source = str(plan.get("target_bucket_selection_source") or "").strip()
+    return bool(source.startswith("posterior_ssot_fact") or source.startswith("hard_source_"))
 
 
 def _target_realization_path_distribution_bucket_fields(
@@ -43144,7 +47452,6 @@ def _target_realization_leg_role_label(role: str) -> str:
         "second_target_yes": "资金第二腿买入 YES",
         "second_target_entry": "资金第二腿买入",
         "old_bucket_reverse": "旧桶反向买入腿",
-        "remote_no": "远端 NO 防守",
     }.get(role, role)
 
 
@@ -43235,33 +47542,37 @@ def _target_realization_bucket_final_probability_label(label: Any) -> str:
         spec = None
     if spec is not None:
         if getattr(spec, "kind", "") == "le":
-            return "最终守住低边界后验"
+            return "守住低边界概率"
         if getattr(spec, "kind", "") == "ge":
-            return "最终突破高边界后验"
-        return "单温度桶落桶后验"
+            return "突破高边界概率"
+        return "最终概率"
     lower = text.lower()
     if "or below" in lower or "or lower" in lower or lower.startswith("<=") or "below" in lower:
-        return "最终守住低边界后验"
+        return "守住低边界概率"
     if "or higher" in lower or "or above" in lower or lower.startswith(">=") or "higher" in lower:
-        return "最终突破高边界后验"
-    return "单温度桶落桶后验"
+        return "突破高边界概率"
+    return "最终概率"
 
 
 def _target_realization_clean_path_text(text: Any) -> str:
     out = str(text or "").strip()
     if not out:
         return ""
-    out = re.sub(r"\bposterior\b", "落桶后验", out, flags=re.IGNORECASE)
-    out = out.replace("最终后验", "落桶后验")
-    out = out.replace("路径可兑现", "路径执行概率")
-    out = out.replace("第二可兑现", "第二目标路径执行概率")
-    out = out.replace("可兑现", "路径执行概率")
+    out = re.sub(r"\bposterior\b", "最终概率", out, flags=re.IGNORECASE)
+    out = out.replace("最高温落桶后验", "最终概率")
+    out = out.replace("落桶后验", "最终概率")
+    out = out.replace("最终后验", "最终概率")
+    out = out.replace("后验", "最终概率")
+    out = out.replace("路径可兑现", "路径触达")
+    out = out.replace("第二可兑现", "第二目标路径触达")
+    out = out.replace("路径执行概率", "路径触达")
+    out = out.replace("可兑现", "路径触达")
     out = out.replace("突破候选", "第二目标")
     out = out.replace("达标", "满足")
-    out = re.sub(r"最终超过\s*([^：；。，]+?or below)", r"最终守住低边界 \1", out, flags=re.IGNORECASE)
-    out = re.sub(r"最终超过\s*([^：；。，]+?or lower)", r"最终守住低边界 \1", out, flags=re.IGNORECASE)
-    out = re.sub(r"最终超过\s*([^：；。，]+?or higher)", r"最终突破高边界 \1", out, flags=re.IGNORECASE)
-    out = re.sub(r"最终超过\s*([^：；。，]+?or above)", r"最终突破高边界 \1", out, flags=re.IGNORECASE)
+    out = re.sub(r"最终超过\s*([^：；。，]+?or below)", r"守住低边界 \1", out, flags=re.IGNORECASE)
+    out = re.sub(r"最终超过\s*([^：；。，]+?or lower)", r"守住低边界 \1", out, flags=re.IGNORECASE)
+    out = re.sub(r"最终超过\s*([^：；。，]+?or higher)", r"突破高边界 \1", out, flags=re.IGNORECASE)
+    out = re.sub(r"最终超过\s*([^：；。，]+?or above)", r"突破高边界 \1", out, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", out).strip()
 
 
@@ -43418,938 +47729,155 @@ def _merge_fill_target_path_distribution_metadata(
     return out
 
 
+def _target_realization_v3_iso_datetime(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _target_realization_v3_context(item: Mapping[str, Any]) -> Dict[str, Any]:
+    ssot = item.get("posterior_ssot_fact")
+    ssot = ssot if isinstance(ssot, Mapping) else {}
+    observation_chain = ssot.get("observation_chain")
+    observation_chain = observation_chain if isinstance(observation_chain, Mapping) else {}
+    hard_constraints = ssot.get("hard_constraints")
+    hard_constraints = hard_constraints if isinstance(hard_constraints, Mapping) else {}
+    posterior_hard = hard_constraints.get("posterior")
+    posterior_hard = posterior_hard if isinstance(posterior_hard, Mapping) else {}
+    metar_hard = hard_constraints.get("metar_strong")
+    metar_hard = metar_hard if isinstance(metar_hard, Mapping) else {}
+    features = item.get("weather_likelihood_features_compact")
+    if not isinstance(features, Mapping):
+        features = item.get("weather_likelihood_features")
+    features = features if isinstance(features, Mapping) else {}
+    trajectory_state = str(
+        observation_chain.get("temperature_trajectory_state")
+        or observation_chain.get("temperature_trajectory_gate_state")
+        or features.get("temperature_trajectory_state")
+        or features.get("temperature_momentum_realization_state")
+        or "neutral"
+    ).strip()
+    current_temperature_c = None
+    for value in (
+        posterior_hard.get("current_temperature_c"),
+        metar_hard.get("current_temperature_c"),
+        features.get("zuuu_metar_raw_amsc_latest_temp_c"),
+        features.get("zuuu_metar_raw_awc_latest_temp_c"),
+        features.get("current_temperature_c"),
+        features.get("observed_temp_c"),
+    ):
+        current_temperature_c = to_float(value)
+        if current_temperature_c is not None and math.isfinite(current_temperature_c):
+            break
+    fact_at = _target_realization_v3_iso_datetime(
+        item.get("fact_as_of") or ssot.get("fact_as_of") or item.get("created_at")
+    )
+    peak_candidates: List[datetime] = []
+    for value in (
+        features.get("earliest_plausible_peak_at"),
+        features.get("expected_peak_window_start_at"),
+        features.get("expected_peak_at_local"),
+        features.get("taf_forecast_peak_at"),
+        features.get("wu_forecast_peak_at"),
+        item.get("event_peak_time_utc"),
+    ):
+        parsed = _target_realization_v3_iso_datetime(value)
+        if parsed is not None:
+            peak_candidates.append(parsed)
+    minutes_to_peak = None
+    if fact_at is not None and peak_candidates:
+        minutes_to_peak = min(
+            (candidate.astimezone(timezone.utc) - fact_at.astimezone(timezone.utc)).total_seconds()
+            / 60.0
+            for candidate in peak_candidates
+        )
+    return {
+        "trajectory_state": trajectory_state,
+        "current_temperature_c": current_temperature_c,
+        "minutes_to_earliest_peak": minutes_to_peak,
+    }
+
+
+def _target_realization_v3_pending_orders(
+    item: Mapping[str, Any],
+    auto_orders_map: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    slug = str(item.get("slug") or "").strip()
+    event_date = _normalize_date_key(str(item.get("event_date") or ""))
+    pending: List[Dict[str, Any]] = []
+    seen: Set[Tuple[str, str, str, str]] = set()
+
+    def add(raw: Any) -> None:
+        if not isinstance(raw, Mapping) and not hasattr(raw, "keys"):
+            return
+        raw_slug = str(_row_get(raw, "slug") or slug).strip()
+        raw_date = _normalize_date_key(str(_row_get(raw, "event_date") or event_date))
+        if slug and raw_slug and raw_slug != slug:
+            return
+        if event_date and raw_date and raw_date != event_date:
+            return
+        outcome = str(_row_get(raw, "outcome") or _row_get(raw, "bucket") or "").strip()
+        side = str(_row_get(raw, "side") or "").strip().upper()
+        action = str(_row_get(raw, "action") or "entry").strip().upper()
+        state = str(
+            _row_get(raw, "order_status")
+            or _row_get(raw, "status")
+            or _row_get(raw, "state")
+            or "pending"
+        ).strip().lower()
+        if not outcome or side not in {"YES", "NO"}:
+            return
+        key = (str(_row_get(raw, "order_id") or ""), outcome, side, action)
+        if key in seen:
+            return
+        seen.add(key)
+        pending.append(
+            {
+                "bucket": outcome,
+                "side": side,
+                "action": action,
+                "state": state,
+                "size": to_float(_row_get(raw, "remaining_size") or _row_get(raw, "size")),
+                "price": to_float(_row_get(raw, "price")),
+                "notional": to_float(_row_get(raw, "remaining_notional") or _row_get(raw, "notional")),
+            }
+        )
+
+    for key in ("order_list", "trade_list", "open_orders", "pending_orders"):
+        for raw in item.get(key) or []:
+            add(raw)
+    for raw in (auto_orders_map or {}).values():
+        add(raw)
+    return pending
+
+
 def _build_target_realization_capital_plan(
     item: Mapping[str, Any],
     trade_map: Optional[Dict[Tuple[str, str], List[Any]]] = None,
     fills_map: Optional[Dict[Tuple[str, str, str, str], List[Any]]] = None,
     auto_orders_map: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    distribution_raw = item.get("distribution") or item.get("rows") or []
-    if not isinstance(distribution_raw, list):
-        return {"ok": False, "reason": "distribution_missing"}
-    path_distribution = item.get("temperature_path_distribution")
-    if not isinstance(path_distribution, Mapping):
-        path_distribution = {}
-    summary = item.get("chengdu_intraday_summary")
-    summary_path_distribution = (
-        summary.get("temperature_path_distribution")
-        if isinstance(summary, Mapping) and isinstance(summary.get("temperature_path_distribution"), Mapping)
-        else {}
-    )
-    if summary_path_distribution:
-        path_distribution = _merge_fill_target_path_distribution_metadata(
-            dict(path_distribution),
-            summary_path_distribution,
-        )
-    path_bucket_fields = _target_realization_path_distribution_bucket_fields(path_distribution)
-    hard_source_outlook = _target_realization_item_hard_source_outlook(item)
-    prefer_constrained_distribution = bool(hard_source_outlook)
-    rows: List[Dict[str, Any]] = []
-    for raw in distribution_raw:
-        if not isinstance(raw, Mapping):
-            continue
-        label = str(raw.get("outcome") or "").strip()
-        path_fields = path_bucket_fields.get(label) or {}
-        prob = _target_realization_row_prob(raw, prefer_constrained=prefer_constrained_distribution)
-        outlook_prob = _target_realization_outlook_probability(hard_source_outlook, label) if hard_source_outlook else None
-        if outlook_prob is not None:
-            prob = outlook_prob
-        if prob is None or not math.isfinite(prob):
-            prob = to_float(path_fields.get("posterior"))
-        if not label or prob is None:
-            continue
-        rows.append({"label": label, "prob": prob, "row": raw, "key": bucket_sort_key(label)})
-    if not rows:
-        return {"ok": False, "reason": "posterior_distribution_missing"}
-    rows.sort(key=lambda entry: (-float(entry["prob"]), entry["key"]))
-    target_label, second_label, selection_source = _target_realization_selected_labels(item, rows)
-    row_by_label = {str(entry["label"]): entry for entry in rows}
-    target = row_by_label.get(target_label) if target_label else None
-    if target is None:
-        target = rows[0]
-    second = row_by_label.get(second_label) if second_label else None
-    if second is None:
-        second = next((entry for entry in rows if str(entry["label"]) != str(target["label"])), None)
-    trade_follow = path_distribution.get("trade_follow")
-    if not isinstance(trade_follow, Mapping):
-        trade_follow = {}
-    path_trade_follow_allowed = trade_follow.get("allowed") is True
-    path_trade_follow_reason = str(trade_follow.get("reason") or "").strip()
-    path_trade_follow_block_yes = bool(trade_follow and not path_trade_follow_allowed)
-
-    def _remote_no_momentum_direction_from_item() -> Tuple[str, Optional[float], str]:
-        containers: List[Mapping[str, Any]] = []
-        seen_container_ids: Set[int] = set()
-
-        def add_container(value: Any) -> None:
-            if not isinstance(value, Mapping):
-                return
-            ident = id(value)
-            if ident in seen_container_ids:
-                return
-            seen_container_ids.add(ident)
-            containers.append(value)
-
-        def add_common_nested(value: Any) -> None:
-            if not isinstance(value, Mapping):
-                return
-            add_container(value)
-            for key in (
-                "target_switch_context",
-                "trajectory_momentum_impact",
-                "temperature_momentum",
-                "temperature_momentum_gate",
-                "temperature_trend",
-                "observation_led_bayes",
-                "forecast_reference_bayes",
-                "target_bucket_selection",
-                "posterior_target_bucket_selection",
-                "features",
-                "weather_features",
-                "likelihood_features",
-                "physical_likelihood",
-                "physical_weather_modifier",
-            ):
-                nested = value.get(key)
-                if isinstance(nested, Mapping):
-                    add_container(nested)
-                    for child_key in (
-                        "target_switch_context",
-                        "trajectory_momentum_impact",
-                        "temperature_momentum",
-                        "temperature_momentum_gate",
-                        "observed_bucket_candidate",
-                    ):
-                        child = nested.get(child_key)
-                        if isinstance(child, Mapping):
-                            add_container(child)
-
-        for root in (item, path_distribution, summary):
-            add_common_nested(root)
-
-        rate_keys = (
-            "temperature_momentum_posterior_effective_c_per_hour",
-            "temperature_momentum_effective_c_per_hour",
-            "temperature_momentum_context_effective_c_per_hour",
-            "momentum_rate_c_per_hour",
-            "temperature_momentum_1h_c_per_hour",
-            "effective_c_per_hour",
-            "temperature_trajectory_stable_rate_c_per_hour",
-            "temperature_rise_rate_c_per_hour",
-            "momentum_rate",
-        )
-        state_keys = (
-            "temperature_momentum_realization_state",
-            "temperature_momentum_posterior_gate_state",
-            "temperature_momentum_posterior_gate_reason",
-            "momentum_state",
-            "state",
-            "direction",
-            "switch_direction",
-            "trajectory_direction",
-            "target_direction",
-            "reason",
-        )
-        selected_rate: Optional[float] = None
-        selected_source = ""
-        state_texts: List[str] = []
-        for container in containers:
-            for key in rate_keys:
-                value = to_float(container.get(key))
-                if value is not None and math.isfinite(value):
-                    selected_rate = float(value)
-                    selected_source = str(key)
-                    break
-            if selected_rate is not None:
-                break
-        for container in containers:
-            for key in state_keys:
-                value = container.get(key)
-                if value not in (None, ""):
-                    state_texts.append(str(value).strip().lower())
-        state_text = " ".join(state_texts)
-        if selected_rate is not None:
-            if selected_rate >= 0.12:
-                return "warming", selected_rate, selected_source
-            if selected_rate <= -0.12:
-                return "cooling", selected_rate, selected_source
-        cooling_tokens = (
-            "cooling",
-            "lower_candidate_supported",
-            "target_warming_blocked",
-            "downward",
-            "downtrend",
-            "trend_down",
-            "direction_down",
-            "switch_down",
-        )
-        warming_tokens = (
-            "warming",
-            "higher_candidate_supported",
-            "target_warming_supported",
-            "upward",
-            "uptrend",
-            "trend_up",
-            "direction_up",
-            "switch_up",
-            "sustained_warming",
-            "emerging_warming",
-        )
-        if any(token in state_text for token in cooling_tokens):
-            return "cooling", selected_rate, "momentum_state"
-        if any(token in state_text for token in warming_tokens):
-            return "warming", selected_rate, "momentum_state"
-        return "neutral", selected_rate, selected_source
-
-    remote_no_momentum_direction, remote_no_momentum_rate_c_per_hour, remote_no_momentum_source = (
-        _remote_no_momentum_direction_from_item()
-    )
-    if remote_no_momentum_direction == "warming":
-        remote_no_lower_defaults = (2.0, 10.0)
-        remote_no_upper_defaults = (3.0, 10.0)
-        remote_no_directional_window_policy = "warming_lower_near_broad_upper_far"
-    elif remote_no_momentum_direction == "cooling":
-        remote_no_lower_defaults = (3.0, 10.0)
-        remote_no_upper_defaults = (2.0, 10.0)
-        remote_no_directional_window_policy = "cooling_upper_near_broad_lower_far"
-    else:
-        remote_no_lower_defaults = (2.0, 3.0)
-        remote_no_upper_defaults = (3.0, 4.0)
-        remote_no_directional_window_policy = "neutral_conservative"
-
-    bankroll = _target_realization_env_float(
-        ("PM_TARGET_REALIZATION_BANKROLL_USDC", "PM_BANKROLL_USDC", "PM_AUTO_TRADE_BANKROLL_USDC"),
-        900.0,
-    )
-    reserve_ratio = min(
-        0.95,
-        max(
-            0.0,
-            _target_realization_env_float(
-                ("PM_TARGET_REALIZATION_RESERVE_RATIO", "PM_KELLY_RESERVE_RATIO"),
-                0.20,
-            ),
-        ),
-    )
-    kelly_fraction = min(
-        1.0,
-        max(
-            0.0,
-            _target_realization_env_float(
-                ("PM_TARGET_REALIZATION_FRACTION", "PM_KELLY_FRACTION"),
-                1.00,
-            ),
-        ),
-    )
-    yes_ratio = min(
-        1.0,
-        max(
-            0.0,
-            _target_realization_env_float(
-                ("PM_TARGET_REALIZATION_YES_RATIO", "PM_KELLY_YES_RATIO"),
-                0.20,
-            ),
-        ),
-    )
-    no_ratio = min(
-        1.0,
-        max(
-            0.0,
-            _target_realization_env_float(
-                ("PM_TARGET_REALIZATION_NO_RATIO", "PM_KELLY_NO_RATIO"),
-                0.80,
-            ),
-        ),
-    )
-    ratio_total = yes_ratio + no_ratio
-    if ratio_total <= 0:
-        yes_ratio, no_ratio = 0.20, 0.80
-    else:
-        yes_ratio, no_ratio = yes_ratio / ratio_total, no_ratio / ratio_total
-
-    offset = _target_realization_event_offset(str(item.get("event_date") or ""), str(item.get("run_date") or ""))
-    market_ratios = {
-        0: _target_realization_env_float(("PM_TARGET_REALIZATION_TODAY_RATIO", "PM_KELLY_MARKET_TODAY_RATIO"), 0.60),
-        1: _target_realization_env_float(("PM_TARGET_REALIZATION_TOMORROW_RATIO", "PM_KELLY_MARKET_TOMORROW_RATIO"), 0.30),
-        2: _target_realization_env_float(("PM_TARGET_REALIZATION_DAY_AFTER_RATIO", "PM_KELLY_MARKET_DAY_AFTER_RATIO"), 0.10),
-    }
-    market_ratio = float(market_ratios.get(offset if offset is not None else -999, 0.0) or 0.0)
-    ratio_sum = sum(max(0.0, float(v or 0.0)) for v in market_ratios.values())
-    if ratio_sum > 0 and market_ratio > 0:
-        market_ratio = market_ratio / ratio_sum
-    allocatable = max(0.0, bankroll * (1.0 - reserve_ratio))
-    market_budget = allocatable * market_ratio
-    yes_pool = market_budget * yes_ratio
-    no_pool = market_budget * no_ratio
-    yes_single_leg_max_notional = max(
-        0.0,
-        _target_realization_env_float(
-            ("PM_TARGET_REALIZATION_YES_MAX_NOTIONAL_USDC",),
-            20.0,
-        ),
-    )
-    remote_no_single_leg_max_notional = max(
-        0.0,
-        _target_realization_env_float(
-            ("PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC",),
-            100.0,
-        ),
-    )
-    target_realization_max_entry_price = min(
-        1.0,
-        max(
-            0.0,
-            _target_realization_env_float(
-                ("PM_TARGET_REALIZATION_MAX_ENTRY_PRICE",),
-                0.98,
-            ),
-        ),
-    )
-    remote_no_max_price = min(
-        1.0,
-        max(
-            0.0,
-            _target_realization_env_float(
-                ("PM_TARGET_REALIZATION_REMOTE_NO_MAX_PRICE",),
-                target_realization_max_entry_price,
-            ),
-        ),
-    )
-    remote_no_lower_min_bucket_distance = int(
-        max(
-            1,
-            min(
-                20,
-                round(
-                    _target_realization_env_float(
-                        (
-                            "PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MIN_BUCKET_DISTANCE",
-                            "PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE",
-                        ),
-                        remote_no_lower_defaults[0],
-                    )
-                ),
-            ),
-        )
-    )
-    remote_no_lower_max_bucket_distance = int(
-        max(
-            remote_no_lower_min_bucket_distance,
-            min(
-                20,
-                round(
-                    _target_realization_env_float(
-                        (
-                            "PM_TARGET_REALIZATION_REMOTE_NO_LOWER_MAX_BUCKET_DISTANCE",
-                            "PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE",
-                        ),
-                        remote_no_lower_defaults[1],
-                    )
-                ),
-            ),
-        )
-    )
-    remote_no_upper_min_bucket_distance = int(
-        max(
-            1,
-            min(
-                20,
-                round(
-                    _target_realization_env_float(
-                        (
-                            "PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MIN_BUCKET_DISTANCE",
-                            "PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE",
-                        ),
-                        remote_no_upper_defaults[0],
-                    )
-                ),
-            ),
-        )
-    )
-    remote_no_upper_max_bucket_distance = int(
-        max(
-            remote_no_upper_min_bucket_distance,
-            min(
-                20,
-                round(
-                    _target_realization_env_float(
-                        (
-                            "PM_TARGET_REALIZATION_REMOTE_NO_UPPER_MAX_BUCKET_DISTANCE",
-                            "PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE",
-                        ),
-                        remote_no_upper_defaults[1],
-                    )
-                ),
-            ),
-        )
-    )
-    remote_no_buckets_per_side = int(
-        max(
-            1,
-            min(
-                10,
-                round(
-                    _target_realization_env_float(
-                        ("PM_TARGET_REALIZATION_REMOTE_NO_BUCKETS_PER_SIDE",),
-                        10.0,
-                    )
-                ),
-            ),
-        )
-    )
-    yes_dual_head_max_gap_pp = max(
-        0.0,
-        _target_realization_env_float(
-            ("PM_TARGET_REALIZATION_DUAL_YES_MAX_GAP_PP",),
-            8.0,
-        ),
-    )
-    yes_dual_head_gap_pp: Optional[float] = None
-    if second:
-        yes_dual_head_gap_pp = abs(float(target["prob"]) - float(second["prob"])) * 100.0
-    yes_dual_head_active = bool(
-        second
-        and yes_dual_head_gap_pp is not None
-        and yes_dual_head_gap_pp <= yes_dual_head_max_gap_pp + 1e-9
-    )
-    positions = _target_realization_position_map(item, trade_map, fills_map, auto_orders_map)
-
-    def row_for_label(label: str) -> Optional[Dict[str, Any]]:
-        for entry in rows:
-            if entry["label"] == label:
-                return entry["row"]  # type: ignore[return-value]
-        return None
-
-    def add_leg(role: str, label: str, side: str, prob: float, row: Mapping[str, Any]) -> Dict[str, Any]:
-        side_upper = side.upper()
-        price = market_price_for_row(dict(row), "no" if side_upper == "NO" else "yes")
-        rel, rel_source, rel_meta = _target_realization_row_reliability(row, side_upper)
-        path_fields = path_bucket_fields.get(label) or {}
-        path_probability_override = to_float(path_fields.get("path_probability"))
-        if path_probability_override is not None and math.isfinite(path_probability_override):
-            path_probability_override = min(1.0, max(0.0, float(path_probability_override)))
-            rel_meta = dict(rel_meta or {})
-            rel_meta["probability"] = float(path_probability_override)
-            rel_meta["source"] = str(
-                path_fields.get("path_probability_source") or "temperature_path_distribution"
-            )
-            rel = (
-                1.0 - float(path_probability_override)
-                if side_upper == "NO"
-                else float(path_probability_override)
-            )
-            rel_source = (
-                "temperature_path_distribution_not_reach_probability"
-                if side_upper == "NO"
-                else "temperature_path_distribution_reach_probability"
-            )
-        elif (
-            role in {"target_yes", "second_target_yes"}
-            and side_upper == "YES"
-            and path_fields.get("path_probability_present") is True
-        ):
-            rel_meta = {
-                "probability": None,
-                "source": str(path_fields.get("path_probability_source") or "temperature_path_distribution"),
-                "mode": "temperature_path_distribution_path_probability_missing",
-            }
-            rel = 0.0
-            rel_source = "temperature_path_distribution_path_probability_missing"
-        side_budget = no_pool if side_upper == "NO" else yes_pool
-        prob_for_size = 1.0 - prob if side_upper == "NO" else prob
-        target_notional = side_budget * kelly_fraction * max(0.0, min(1.0, prob_for_size)) * rel
-        target_notional_before_caps = float(target_notional)
-        target_notional_cap = (
-            remote_no_single_leg_max_notional if side_upper == "NO" else yes_single_leg_max_notional
-        )
-        if target_notional_cap > 0:
-            target_notional = min(float(target_notional), float(target_notional_cap))
-        block_reason = ""
-        if (
-            role == "remote_no"
-            and side_upper == "NO"
-            and price is not None
-            and math.isfinite(price)
-            and float(price) > float(remote_no_max_price) + 1e-9
-        ):
-            block_reason = "remote_no_price_too_high"
-            target_notional = 0.0
-        elif (
-            price is not None
-            and math.isfinite(price)
-            and float(price) > float(target_realization_max_entry_price) + 1e-9
-        ):
-            block_reason = "entry_price_too_high"
-            target_notional = 0.0
-        if role == "second_target_yes" and side_upper == "YES" and not yes_dual_head_active:
-            block_reason = "second_target_gap_too_wide"
-            target_notional = 0.0
-        cur = positions.get((label, side_upper)) or {}
-        current_notional = max(0.0, float(cur.get("notional") or 0.0))
-        current_size = max(0.0, float(cur.get("size") or 0.0))
-        if (
-            path_trade_follow_block_yes
-            and side_upper == "YES"
-            and role in {"target_yes", "second_target_yes"}
-        ):
-            block_reason = "temperature_path_trade_follow_not_allowed"
-            target_notional = current_notional
-        target_notional_cap_applied = bool(
-            target_notional_cap > 0
-            and target_notional_before_caps > float(target_notional_cap) + 1e-9
-            and not (
-                path_trade_follow_block_yes
-                and side_upper == "YES"
-                and role in {"target_yes", "second_target_yes"}
-            )
-        )
-        delta = target_notional - current_notional
-        target_size = target_notional / price if price is not None and price > 1e-9 else None
-        delta_size = delta / price if price is not None and price > 1e-9 else None
-        if market_ratio <= 0:
-            action = "outside_three_day_window"
-            action_label = "近三天外不分配"
-        elif block_reason:
-            action = "hold"
-            action_label = "路径门控禁止跟随" if block_reason == "temperature_path_trade_follow_not_allowed" else "价格过高/不新增"
-        elif delta > 0.50:
-            action = "add"
-            action_label = "补到目标"
-        elif delta < -0.50:
-            action = "over_target"
-            action_label = "已超目标/持有不追"
-        else:
-            action = "hold"
-            action_label = "维持"
-        return {
-            "role": role,
-            "role_label": _target_realization_leg_role_label(role),
-            "bucket": label,
-            "side": side_upper,
-            "posterior": prob,
-            "prob_for_size": prob_for_size,
-            "target_realization_reliability": rel,
-            "target_realization_reliability_source": rel_source,
-            "target_realization_reliability_mode": rel_meta.get("mode") if rel_meta else "",
-            "target_realization_threshold_c": rel_meta.get("threshold_c") if rel_meta else None,
-            "target_realization_path_probability": rel_meta.get("probability") if rel_meta else None,
-            "target_realization_path_probability_source": rel_meta.get("source") if rel_meta else "",
-            "target_realization_observed_max_c": rel_meta.get("observed_max_c") if rel_meta else None,
-            "target_realization_peak_mu_c": rel_meta.get("peak_estimator_mu_c") if rel_meta else None,
-            "target_realization_peak_sigma_c": rel_meta.get("peak_estimator_sigma_c") if rel_meta else None,
-            "price": price,
-            "target_notional_before_caps": target_notional_before_caps,
-            "target_notional_cap_usdc": target_notional_cap,
-            "target_notional_cap_applied": target_notional_cap_applied,
-            "target_notional": target_notional,
-            "target_size": target_size,
-            "current_notional": current_notional,
-            "current_size": current_size,
-            "delta_notional": delta,
-            "delta_size": delta_size,
-            "action": action,
-            "action_label": action_label,
-            "block_reason": block_reason,
-            "temperature_path_trade_follow_allowed": path_trade_follow_allowed if role in {"target_yes", "second_target_yes"} else None,
-            "temperature_path_trade_follow_reason": path_trade_follow_reason if role in {"target_yes", "second_target_yes"} else "",
-            "remote_no_max_price": remote_no_max_price if role == "remote_no" and side_upper == "NO" else None,
-            "target_realization_order_price_cap": remote_no_max_price if role == "remote_no" and side_upper == "NO" else None,
-            "target_realization_max_entry_price": target_realization_max_entry_price,
-            "yes_dual_head_active": yes_dual_head_active if role in {"target_yes", "second_target_yes"} else None,
-            "yes_dual_head_gap_pp": yes_dual_head_gap_pp if role in {"target_yes", "second_target_yes"} else None,
-            "yes_dual_head_max_gap_pp": yes_dual_head_max_gap_pp if role in {"target_yes", "second_target_yes"} else None,
-            "remote_no_sizing_probability": prob_for_size if role == "remote_no" and side_upper == "NO" else None,
-            "position_source": cur.get("source") or "",
-        }
-
-    legs: List[Dict[str, Any]] = []
-    target_row = row_for_label(str(target["label"])) or {}
-    legs.append(add_leg("target_yes", str(target["label"]), "YES", float(target["prob"]), target_row))
-    if second:
-        second_row = row_for_label(str(second["label"])) or {}
-        legs.append(add_leg("second_target_yes", str(second["label"]), "YES", float(second["prob"]), second_row))
-
-    ordered_bucket_rows: List[Dict[str, Any]] = []
-    seen_bucket_labels: Set[str] = set()
-    for entry in sorted(rows, key=lambda candidate: bucket_sort_key(str(candidate["label"]))):
-        label = str(entry["label"])
-        if label in seen_bucket_labels:
-            continue
-        seen_bucket_labels.add(label)
-        ordered_bucket_rows.append(entry)
-    bucket_index_by_label = {
-        str(entry["label"]): idx
-        for idx, entry in enumerate(ordered_bucket_rows)
-    }
-    target_bucket_index = bucket_index_by_label.get(str(target["label"]))
-    excluded_remote_no_labels = {str(target["label"])}
-    if second:
-        excluded_remote_no_labels.add(str(second["label"]))
-    remote_candidates_by_direction: Dict[str, List[Dict[str, Any]]] = {
-        "below_target": [],
-        "above_target": [],
-    }
-    if target_bucket_index is not None:
-        for idx, entry in enumerate(ordered_bucket_rows):
-            label = str(entry["label"])
-            if label in excluded_remote_no_labels:
-                continue
-            directional_distance = int(idx) - int(target_bucket_index)
-            if directional_distance < 0:
-                direction = "below_target"
-                distance = abs(directional_distance)
-                min_distance = remote_no_lower_min_bucket_distance
-                max_distance = remote_no_lower_max_bucket_distance
-            elif directional_distance > 0:
-                direction = "above_target"
-                distance = directional_distance
-                min_distance = remote_no_upper_min_bucket_distance
-                max_distance = remote_no_upper_max_bucket_distance
-            else:
-                continue
-            if not (min_distance <= distance <= max_distance):
-                continue
-            candidate = dict(entry)
-            candidate["remote_no_bucket_distance"] = distance
-            candidate["remote_no_bucket_direction"] = direction
-            candidate["remote_no_min_bucket_distance"] = min_distance
-            candidate["remote_no_max_bucket_distance"] = max_distance
-            remote_candidates_by_direction[direction].append(candidate)
-        for direction, candidates in remote_candidates_by_direction.items():
-            candidates.sort(
-                key=lambda entry: (
-                    int(entry.get("remote_no_bucket_distance") or 0),
-                    bucket_sort_key(str(entry["label"])),
-                )
-            )
-            remote_candidates_by_direction[direction] = candidates[:remote_no_buckets_per_side]
-    for direction in ("below_target", "above_target"):
-        for entry in remote_candidates_by_direction.get(direction, []):
-            remote_row = row_for_label(str(entry["label"])) or {}
-            remote_leg = add_leg("remote_no", str(entry["label"]), "NO", float(entry["prob"]), remote_row)
-            remote_leg["remote_no_bucket_distance"] = int(entry.get("remote_no_bucket_distance") or 0)
-            remote_leg["remote_no_bucket_direction"] = str(entry.get("remote_no_bucket_direction") or direction)
-            remote_leg["remote_no_min_bucket_distance"] = int(entry.get("remote_no_min_bucket_distance") or 0)
-            remote_leg["remote_no_max_bucket_distance"] = int(entry.get("remote_no_max_bucket_distance") or 0)
-            legs.append(remote_leg)
-
-    remote_no_legs = [
-        leg
-        for leg in legs
-        if str(leg.get("role") or "") == "remote_no"
-        and str(leg.get("side") or "").upper() == "NO"
-    ]
-    remote_no_weighted_pool = max(0.0, float(no_pool) * float(kelly_fraction))
-    remote_no_weight_sum = 0.0
-    remote_no_weights: Dict[int, float] = {}
-    for idx, leg in enumerate(remote_no_legs):
-        if str(leg.get("block_reason") or "").strip():
-            remote_no_weights[idx] = 0.0
-            continue
-        no_probability = max(0.0, min(1.0, float(to_float(leg.get("prob_for_size")) or 0.0)))
-        weight = no_probability
-        remote_no_weights[idx] = float(weight)
-        remote_no_weight_sum += float(weight)
-    if remote_no_legs and remote_no_weight_sum > 1e-12:
-        for idx, leg in enumerate(remote_no_legs):
-            price = to_float(leg.get("price"))
-            current_notional = max(0.0, float(to_float(leg.get("current_notional")) or 0.0))
-            current_size = max(0.0, float(to_float(leg.get("current_size")) or 0.0))
-            weight = float(remote_no_weights.get(idx) or 0.0)
-            target_notional_before_caps = (
-                remote_no_weighted_pool * weight / remote_no_weight_sum if weight > 0 else 0.0
-            )
-            target_notional = target_notional_before_caps
-            if remote_no_single_leg_max_notional > 0:
-                target_notional = min(target_notional, float(remote_no_single_leg_max_notional))
-            if str(leg.get("block_reason") or "").strip():
-                target_notional = 0.0
-            delta = target_notional - current_notional
-            target_size = target_notional / price if price is not None and price > 1e-9 else None
-            delta_size = delta / price if price is not None and price > 1e-9 else None
-            if market_ratio <= 0:
-                action = "outside_three_day_window"
-                action_label = "近三天外不分配"
-            elif str(leg.get("block_reason") or "").strip():
-                action = "hold"
-                action_label = "价格过高/不新增"
-            elif delta > 0.50:
-                action = "add"
-                action_label = "补到目标"
-            elif delta < -0.50:
-                action = "over_target"
-                action_label = "已超目标/持有不追"
-            else:
-                action = "hold"
-                action_label = "维持"
-            leg.update(
-                {
-                    "remote_no_sizing_mode": "ring_probability_weighted_by_no_posterior",
-                    "remote_no_sizing_weight": weight,
-                    "remote_no_sizing_weight_sum": remote_no_weight_sum,
-                    "remote_no_sizing_pool_usdc": remote_no_weighted_pool,
-                    "target_notional_before_caps": target_notional_before_caps,
-                    "target_notional_cap_usdc": remote_no_single_leg_max_notional,
-                    "target_notional_cap_applied": bool(
-                        remote_no_single_leg_max_notional > 0
-                        and target_notional_before_caps
-                        > float(remote_no_single_leg_max_notional) + 1e-9
-                    ),
-                    "target_notional": target_notional,
-                    "target_size": target_size,
-                    "current_notional": current_notional,
-                    "current_size": current_size,
-                    "delta_notional": delta,
-                    "delta_size": delta_size,
-                    "action": action,
-                    "action_label": action_label,
-                }
-            )
-
-    add_legs = [leg for leg in legs if leg.get("action") == "add"]
-    over_legs = [leg for leg in legs if leg.get("action") == "over_target"]
-    target_side = "YES"
-
-    def switch_leg(
-        *,
-        group: str,
-        role: str,
-        execution_action: str,
-        bucket: str,
-        side: str,
-        position_effect: str,
-        position: Optional[Mapping[str, Any]] = None,
-        paired_exit: Optional[Mapping[str, Any]] = None,
-        enabled: bool = True,
-        reason: str = "",
-    ) -> Dict[str, Any]:
-        pos = position if isinstance(position, Mapping) else {}
-        paired = paired_exit if isinstance(paired_exit, Mapping) else {}
-        outcome = str(bucket or "").strip()
-        side_upper = str(side or "").strip().upper()
-        return {
-            "leg_group": group,
-            "target_realization_leg_role": role,
-            "target_realization_execution_action": execution_action,
-            "execution_action": execution_action,
-            "outcome": outcome,
-            "bucket": outcome,
-            "side": side_upper,
-            "target_realization_position_effect": position_effect,
-            "position_effect": position_effect,
-            "sell_old_buy_new_semantics": {
-                "sell_old": "sell_old_position_side",
-                "buy_new": "buy_new_bucket_side",
-                "buy_old_reverse": "buy_old_bucket_opposite_side",
-            }.get(group, group),
-            "leg_enabled": bool(enabled),
-            "leg_reason": reason,
-            "position_size": to_float(pos.get("size") or pos.get("position_size")),
-            "current_notional": to_float(pos.get("notional") or pos.get("current_notional")),
-            "position_source": str(pos.get("source") or ""),
-            "paired_exit_outcome": paired.get("outcome"),
-            "paired_exit_side": paired.get("side"),
-            "paired_exit_execution_action": "SELL" if paired else None,
-            "held_target_bucket": paired.get("outcome"),
-            "held_target_side": paired.get("side"),
-        }
-
-    target_bucket_label = str(target["label"])
-    active_position_legs = [
-        {
-            "outcome": outcome,
-            "bucket": outcome,
-            "side": side,
-            "position_size": float(pos.get("size") or 0.0),
-            "current_notional": float(pos.get("notional") or 0.0),
-            "source": str(pos.get("source") or ""),
-        }
-        for (outcome, side), pos in positions.items()
-        if to_float(pos.get("size")) is not None and float(to_float(pos.get("size")) or 0.0) > 0.000001
-    ]
-    allowed_position_keys = {
-        (target_bucket_label, target_side),
-        *{
-            (str(leg.get("bucket") or ""), str(leg.get("side") or "").upper())
-            for leg in legs
-            if str(leg.get("role") or "") == "remote_no"
-            and str(leg.get("side") or "").upper() == "NO"
-        },
-    }
-    if yes_dual_head_active and second:
-        allowed_position_keys.add((str(second["label"]), "YES"))
-    old_positions = [
-        item for item in active_position_legs
-        if (str(item.get("outcome") or ""), str(item.get("side") or "").upper())
-        not in allowed_position_keys
-    ]
-    sell_old_legs = [
-        switch_leg(
-            group="sell_old",
-            role="old_bucket_exit",
-            execution_action="SELL",
-            bucket=str(item.get("outcome") or ""),
-            side=str(item.get("side") or ""),
-            position_effect="close_old_bucket_side",
-            position=item,
-            enabled=True,
-            reason="active_position_differs_from_target_bucket",
-        )
-        for item in old_positions
-    ]
-    buy_new_enabled = not bool(path_trade_follow_block_yes)
-    buy_new_leg = switch_leg(
-        group="buy_new",
-        role="new_bucket_entry",
-        execution_action="BUY",
-        bucket=target_bucket_label,
-        side=target_side,
-        position_effect="open_or_add_new_bucket_side",
-        enabled=buy_new_enabled,
-        reason="capital_plan_target_bucket" if buy_new_enabled else "temperature_path_trade_follow_blocks_new_bucket",
-    )
-    reverse_legs: List[Dict[str, Any]] = []
-    seen_reverse_keys = {(target_bucket_label, target_side)}
-    for item in old_positions:
-        old_outcome = str(item.get("outcome") or "")
-        old_side = str(item.get("side") or "").upper()
-        reverse_side = "NO" if old_side == "YES" else ("YES" if old_side == "NO" else "")
-        if not old_outcome or reverse_side not in {"YES", "NO"}:
-            continue
-        key = (old_outcome, reverse_side)
-        if key in seen_reverse_keys:
-            buy_new_leg["also_old_bucket_reverse"] = True
-            buy_new_leg["paired_exit_outcome"] = old_outcome
-            buy_new_leg["paired_exit_side"] = old_side
-            buy_new_leg["paired_exit_execution_action"] = "SELL"
-            buy_new_leg["held_target_bucket"] = old_outcome
-            buy_new_leg["held_target_side"] = old_side
-            continue
-        seen_reverse_keys.add(key)
-        reverse_legs.append(
-            switch_leg(
-                group="buy_old_reverse",
-                role="old_bucket_reverse",
-                execution_action="BUY",
-                bucket=old_outcome,
-                side=reverse_side,
-                position_effect="open_or_add_old_bucket_opposite_side",
-                paired_exit=item,
-                enabled=buy_new_enabled,
-                reason="old_bucket_opposite_side_after_target_switch",
-            )
-        )
-    sell_old_buy_new_legs = [*sell_old_legs, buy_new_leg, *reverse_legs]
-    if path_trade_follow_block_yes:
-        summary = f"路径概率门控禁止 YES 跟随：{path_trade_follow_reason or 'temperature_path_trade_follow_not_allowed'}；目标桶/资金第二腿只展示观察，不新增 YES。"
-    elif market_ratio <= 0:
-        summary = "该事件不在今天/明天/后天资金分配窗口内，只展示观察，不新增仓位。"
-    elif add_legs:
-        summary = "按目标桶触达/不触达口径补仓：" + "；".join(
-            f"{leg['role_label']} {leg['bucket']} {leg['side']} 约 ${float(leg['delta_notional']):.2f}"
-            for leg in add_legs[:4]
-        )
-    elif over_legs:
-        summary = "当前已有仓位已达到或超过目标仓位，持有不追，不因目标仓位下降主动卖出。"
-    else:
-        summary = "当前仓位接近目标仓位，维持。"
-    ui_risk_explanation = _build_target_realization_ui_risk_explanation(
-        target=target,
-        second=second,
-        legs=legs,
-        path_distribution=path_distribution,
-        trade_follow=trade_follow,
-        path_trade_follow_allowed=path_trade_follow_allowed if trade_follow else None,
-        path_trade_follow_reason=path_trade_follow_reason,
-        summary=summary,
-    )
-
+    existing = item.get("target_realization_capital_plan") if isinstance(item, Mapping) else None
+    if (
+        isinstance(existing, Mapping)
+        and str(existing.get("version") or "").strip() == "strong_posterior_three_leg_strategy_v2"
+    ):
+        # UI is a reader: strategy plans are committed by the posterior
+        # transaction, never recomputed from rows or environment here.
+        return dict(existing)
     return {
-        "ok": True,
-        "version": "target_realization_capital_plan_v2",
-        "computed_at": now_text(),
-        "source": "ui_snapshot_ssot",
-        "strategy": "target_realization_yes_and_remote_no",
-        "capital_plan_mode": "target_yes_plus_directional_remote_no_ring",
-        "pool_notional_basis": "target YES capped per leg; remote NO ring allocated by normalized NO posterior probability",
-        "target_bucket_selection_source": selection_source,
-        "target_bucket": str(target["label"]),
-        "target_posterior": float(target["prob"]),
-        "second_target_bucket": str(second["label"]) if second else "",
-        "second_target_posterior": float(second["prob"]) if second else None,
-        "event_offset_days": offset,
-        "bankroll_usdc": bankroll,
-        "reserve_ratio": reserve_ratio,
-        "reserve_usdc": bankroll * reserve_ratio,
-        "allocatable_usdc": allocatable,
-        "market_ratio": market_ratio,
-        "market_budget_usdc": market_budget,
-        "kelly_fraction": kelly_fraction,
-        "yes_ratio": yes_ratio,
-        "no_ratio": no_ratio,
-        "yes_pool_usdc": yes_pool,
-        "no_pool_usdc": no_pool,
-        "yes_single_leg_max_notional_usdc": yes_single_leg_max_notional,
-        "remote_no_single_leg_max_notional_usdc": remote_no_single_leg_max_notional,
-        "target_realization_max_entry_price": target_realization_max_entry_price,
-        "remote_no_sizing_mode": "ring_probability_weighted_by_no_posterior",
-        "remote_no_sizing_pool_usdc": remote_no_weighted_pool,
-        "remote_no_max_price": remote_no_max_price,
-        "yes_dual_head_active": yes_dual_head_active,
-        "yes_dual_head_gap_pp": yes_dual_head_gap_pp,
-        "yes_dual_head_max_gap_pp": yes_dual_head_max_gap_pp,
-        "remote_no_momentum_direction": remote_no_momentum_direction,
-        "remote_no_momentum_rate_c_per_hour": remote_no_momentum_rate_c_per_hour,
-        "remote_no_momentum_source": remote_no_momentum_source,
-        "remote_no_directional_window_policy": remote_no_directional_window_policy,
-        "remote_no_min_bucket_distance": min(remote_no_lower_min_bucket_distance, remote_no_upper_min_bucket_distance),
-        "remote_no_max_bucket_distance": max(remote_no_lower_max_bucket_distance, remote_no_upper_max_bucket_distance),
-        "remote_no_lower_min_bucket_distance": remote_no_lower_min_bucket_distance,
-        "remote_no_lower_max_bucket_distance": remote_no_lower_max_bucket_distance,
-        "remote_no_upper_min_bucket_distance": remote_no_upper_min_bucket_distance,
-        "remote_no_upper_max_bucket_distance": remote_no_upper_max_bucket_distance,
-        "remote_no_buckets_per_side": remote_no_buckets_per_side,
-        "remote_no_bucket_direction": "below_and_above_target",
-        "temperature_path_trade_follow_allowed": path_trade_follow_allowed if trade_follow else None,
-        "temperature_path_trade_follow_reason": path_trade_follow_reason,
-        "temperature_path_trade_follow_block_yes": path_trade_follow_block_yes,
-        "position_legs_resolved": True,
-        "sell_old_buy_new_legs_source": "target_realization_capital_plan.positions",
-        "active_position_legs": active_position_legs,
-        "active_old_position_count": len(old_positions),
-        "active_target_position_count": len(active_position_legs) - len(old_positions),
-        "sell_old_legs": sell_old_legs,
-        "sell_old_leg": sell_old_legs[0] if sell_old_legs else None,
-        "buy_new_legs": [buy_new_leg],
-        "buy_new_leg": buy_new_leg,
-        "buy_old_reverse_legs": reverse_legs,
-        "buy_old_reverse_leg": reverse_legs[0] if reverse_legs else None,
-        "sell_old_buy_new_legs": sell_old_buy_new_legs,
-        "sell_old_buy_new_missing_reason": "" if active_position_legs else "no_active_position",
-        "no_active_old_position_reason": "" if old_positions else "no_active_old_position_to_sell",
-        "over_target_execution_policy": "hold_no_forced_exit",
-        "legs": legs,
-        "summary": summary,
-        "ui_risk_explanation": ui_risk_explanation,
-        "risk_explanation": ui_risk_explanation,
-        "hard_constraints": [
-            "target_bucket_changes_trigger_rebalance",
-            "target_unrealizable_trigger_clear_and_switch",
-            "over_target_does_not_force_sell",
-            "remote_no_price_cap",
-            "entry_price_cap_98c",
-            "remote_no_single_leg_notional_cap",
-            "target_yes_single_leg_notional_cap",
-            "second_yes_requires_top1_top2_close_posterior",
-            "remote_no_size_weighted_by_no_posterior",
-            "remote_no_directional_window_by_temperature_momentum",
-            "remote_no_below_and_above_target_bucket_distance_window",
-            "temperature_path_trade_follow_blocks_yes_adds",
-            "price_used_for_limit_and_size_only",
-            "no_take_profit_no_stop_loss",
-        ],
+        "ok": False,
+        "version": "strong_posterior_three_leg_strategy_v2",
+        "reason": "committed_dynamic_three_leg_plan_missing",
+        "ui_probability_recomputed": False,
     }
-
 
 def _attach_target_realization_capital_plan(
     item: Dict[str, Any],
@@ -44358,6 +47886,12 @@ def _attach_target_realization_capital_plan(
     auto_orders_map: Optional[Dict[str, Any]] = None,
 ) -> None:
     if not isinstance(item, dict):
+        return
+    existing = item.get("target_realization_capital_plan")
+    if (
+        isinstance(existing, Mapping)
+        and str(existing.get("version") or "") == "strong_posterior_three_leg_strategy_v2"
+    ):
         return
     try:
         item["target_realization_capital_plan"] = _build_target_realization_capital_plan(
@@ -44372,6 +47906,61 @@ def _attach_target_realization_capital_plan(
             "reason": "capital_plan_error",
             "error": str(exc),
         }
+
+
+def _latest_target_realization_v3_plan_for_ui(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+) -> Dict[str, Any]:
+    try:
+        row = conn.execute(
+            """
+            SELECT id, details_json, created_at
+            FROM auto_trade_decisions
+            WHERE slug = ? AND substr(event_date, 1, 10) = ?
+              AND json_extract(
+                    details_json,
+                    '$.target_realization_capital_plan.version'
+                  ) = 'strong_posterior_three_leg_strategy_v2'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(slug or "").strip(), _normalize_date_key(str(event_date or ""))),
+        ).fetchone()
+    except sqlite3.Error:
+        return {}
+    if row is None:
+        return {}
+    try:
+        details = json.loads(str(row["details_json"] or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    plan = details.get("target_realization_capital_plan") if isinstance(details, Mapping) else None
+    if not isinstance(plan, Mapping):
+        return {}
+    output = dict(plan)
+    output["source"] = "auto_trade_decisions"
+    output["decision_id"] = int(row["id"] or 0)
+    output["decision_created_at"] = str(row["created_at"] or "")
+    output["ui_probability_recomputed"] = False
+    try:
+        lock_rows = conn.execute(
+            """
+            SELECT outcome, side, lock_type, state, source_order_id,
+                   plan_id, locked_at, expires_at, updated_at
+            FROM target_realization_execution_locks
+            WHERE slug = ? AND substr(event_date, 1, 10) = ?
+              AND state IN ('active', 'pending')
+            ORDER BY updated_at DESC, outcome, side, lock_type
+            """,
+            (str(slug or "").strip(), _normalize_date_key(str(event_date or ""))),
+        ).fetchall()
+    except sqlite3.Error:
+        lock_rows = []
+    output["execution_locks"] = [dict(lock) for lock in lock_rows]
+    return output
 
 
 def _row_for_outcome(distribution: Any, label: str) -> Dict[str, Any]:
@@ -44428,6 +48017,16 @@ def build_target_switch_context(payload: Mapping[str, Any]) -> Dict[str, Any]:
     hard_source_outlook = target_outlook if _target_realization_outlook_is_hard_source(target_outlook) else {}
     prefer_constrained_distribution = bool(hard_source_outlook)
     plan_target_label = str(plan.get("target_bucket") or "").strip() if plan.get("ok") is True else ""
+    if plan_target_label and not _target_realization_plan_target_is_ssot(plan):
+        plan_target_label = ""
+    if not plan_target_label and not hard_source_outlook:
+        return {
+            "version": "target_switch_context_v1",
+            "status": "target_bucket_missing",
+            "reason": "posterior_ssot_fact_target_missing",
+            "target_bucket": "",
+            "candidate_bucket": "",
+        }
     ssot_candidate_label = str(plan.get("second_target_bucket") or "").strip()
     if not ssot_candidate_label:
         ssot_candidate_label = (
@@ -44789,7 +48388,7 @@ def build_target_switch_context(payload: Mapping[str, Any]) -> Dict[str, Any]:
         if candidate_ask is not None:
             summary += f"；资金第二腿 ask {candidate_ask:.3f}"
         if candidate_prob is not None:
-            summary += f"，落桶后验 {candidate_prob * 100:.1f}%"
+            summary += f"，最终概率 {candidate_prob * 100:.1f}%"
         if delta_notional is not None:
             summary += f"，目标仓位差 ${delta_notional:.2f}"
         summary += "。"
@@ -52247,6 +55846,107 @@ def _safe_first_prediction_hit_rates_snapshot_only(conn: sqlite3.Connection) -> 
     return snapshot
 
 
+def _compact_forecast_source_accuracy_for_ui(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    if value.get("schema") != "forecast_source_accuracy_report_v1":
+        return {
+            "schema": "ui_forecast_source_accuracy_v1",
+            "state": "unavailable",
+            "na_reason": str(value.get("na_reason") or value.get("error") or "forecast_source_accuracy_report_missing"),
+        }
+    rows = value.get("rows") if isinstance(value.get("rows"), list) else []
+    compact_rows: List[Dict[str, Any]] = []
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            continue
+        compact = {
+            key: raw.get(key)
+            for key in (
+                "source_id",
+                "provider_family",
+                "horizon",
+                "season",
+                "sample_count",
+                "event_day_count",
+                "event_date_from",
+                "event_date_through",
+                "interval_mae_c",
+                "mean_bias_c",
+                "rmse_c",
+                "nll",
+                "rps",
+                "top1_hit_rate_diagnostic_only",
+                "ranking_state",
+                "ranking_na_reason",
+            )
+            if raw.get(key) not in (None, "", [], {})
+        }
+        if compact:
+            compact_rows.append(compact)
+    coverage = value.get("coverage") if isinstance(value.get("coverage"), Mapping) else {}
+    formal = value.get("official_formal") if isinstance(value.get("official_formal"), Mapping) else {}
+    formal_rows = formal.get("rows") if isinstance(formal.get("rows"), list) else []
+    compact_formal_rows: List[Dict[str, Any]] = []
+    for raw in formal_rows:
+        if not isinstance(raw, Mapping):
+            continue
+        compact = {
+            key: raw.get(key)
+            for key in (
+                "source_id", "horizon", "season", "sample_count", "event_day_count",
+                "event_date_from", "event_date_through", "physical_x_mae_c", "mean_bias_c",
+                "rmse_c", "ranking_state", "ranking_na_reason",
+            )
+            if raw.get(key) not in (None, "", [], {})
+        }
+        if compact:
+            compact_formal_rows.append(compact)
+    return {
+        "schema": "ui_forecast_source_accuracy_v1",
+        "state": "available",
+        "research_only": True,
+        "production_weight_input": False,
+        "generated_at": str(value.get("generated_at") or ""),
+        "report_sha256": str(value.get("report_sha256") or ""),
+        "source_data_policy": str(value.get("source_data_policy") or ""),
+        "method": dict(value.get("method") or {}) if isinstance(value.get("method"), Mapping) else {},
+        "coverage": {
+            key: coverage.get(key)
+            for key in ("available_score_rows", "grouped_score_rows", "distinct_event_days", "excluded_counts")
+            if coverage.get(key) not in (None, "", [], {})
+        },
+        "rows": compact_rows,
+        "official_formal": {
+            "schema": str(formal.get("schema") or "official_forecast_source_accuracy_report_v1"),
+            "state": str(formal.get("state") or "pending_formal_samples"),
+            "generated_at": str(formal.get("generated_at") or ""),
+            "report_sha256": str(formal.get("report_sha256") or ""),
+            "label": str(formal.get("label") or "closed_amsc_physical_x_final"),
+            "rows": compact_formal_rows,
+            "na_reason": str(formal.get("na_reason") or ""),
+        },
+        "na_reason": "",
+    }
+
+
+def _safe_forecast_source_accuracy_snapshot_only(conn: sqlite3.Connection) -> Dict[str, Any]:
+    try:
+        snapshot = _load_latest_feedback_snapshot_ro(
+            conn,
+            kind=FORECAST_SOURCE_ACCURACY_SNAPSHOT_KIND,
+            days=0,
+            ok_only=True,
+        )
+    except Exception as exc:
+        return {
+            "schema": "ui_forecast_source_accuracy_v1",
+            "state": "unavailable",
+            "na_reason": f"forecast_source_accuracy_snapshot_read_failed:{type(exc).__name__}",
+        }
+    return _compact_forecast_source_accuracy_for_ui(snapshot)
+
+
 def _load_latest_feedback_snapshot_ro(
     conn: sqlite3.Connection,
     *,
@@ -54206,62 +57906,6 @@ def _apply_market_quote_fallback_for_side_in_place(
     return touched
 
 
-def _distribution_needs_edge_recompute(distribution: List[Dict[str, Any]]) -> bool:
-    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
-    v2_enabled = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    for dist_row in distribution:
-        if not isinstance(dist_row, dict):
-            continue
-        ask_yes = to_float(dist_row.get("best_ask"))
-        ask_no = to_float(dist_row.get("best_ask_no"))
-        es_yes = to_float(dist_row.get("edge_score_yes"))
-        es_no = to_float(dist_row.get("edge_score_no"))
-        exs_yes = to_float(dist_row.get("exec_edge_score_yes"))
-        exs_no = to_float(dist_row.get("exec_edge_score_no"))
-        lcb_yes_missing = (
-            tradeability_enabled
-            and (
-                to_float(dist_row.get("edge_signal_lcb_yes")) is None
-                or to_float(dist_row.get("edge_path_p_reach_lcb_yes")) is None
-                or _coalesce_numeric(
-                    dist_row.get("edge_tradeability_profit_value_yes"),
-                    dist_row.get("edge_tradeability_edge_lcb_yes"),
-                ) is None
-                or dist_row.get("edge_tradeability_pass_yes") is None
-            )
-        )
-        lcb_no_missing = (
-            tradeability_enabled
-            and (
-                to_float(dist_row.get("edge_signal_lcb_no")) is None
-                or to_float(dist_row.get("edge_path_p_reach_lcb_no")) is None
-                or _coalesce_numeric(
-                    dist_row.get("edge_tradeability_profit_value_no"),
-                    dist_row.get("edge_tradeability_edge_lcb_no"),
-                ) is None
-                or dist_row.get("edge_tradeability_pass_no") is None
-            )
-        )
-        v2_yes_missing = v2_enabled and to_float(dist_row.get("edge_realizable_v2_yes")) is None
-        v2_no_missing = v2_enabled and to_float(dist_row.get("edge_realizable_v2_no")) is None
-        if ask_yes is not None and math.isfinite(ask_yes) and (es_yes is None or not math.isfinite(es_yes)):
-            return True
-        if ask_no is not None and math.isfinite(ask_no) and (es_no is None or not math.isfinite(es_no)):
-            return True
-        if ask_yes is not None and math.isfinite(ask_yes) and (exs_yes is None or not math.isfinite(exs_yes)):
-            return True
-        if ask_no is not None and math.isfinite(ask_no) and (exs_no is None or not math.isfinite(exs_no)):
-            return True
-        if ask_yes is not None and math.isfinite(ask_yes) and (lcb_yes_missing or v2_yes_missing):
-            return True
-        if ask_no is not None and math.isfinite(ask_no) and (lcb_no_missing or v2_no_missing):
-            return True
-    return False
 
 
 def _hydrate_distribution_market_fields_in_place(
@@ -54341,23 +57985,7 @@ def _hydrate_distribution_market_fields_in_place(
             touched_market = True
         if _apply_market_quote_fallback_for_side_in_place(dist_row, "NO"):
             touched_market = True
-    if not touched_market and not _distribution_needs_edge_recompute(distribution):
-        return False
-    try:
-        time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
-    except (TypeError, ValueError):
-        time_structure_min = 0.1
-    if not math.isfinite(time_structure_min) or time_structure_min <= 0:
-        time_structure_min = 0.1
-    for dist_row in distribution:
-        if not isinstance(dist_row, dict):
-            continue
-        if event_date_key and dist_row.get("event_date") is None:
-            dist_row["event_date"] = event_date_key
-        if run_date_key and dist_row.get("run_date") is None:
-            dist_row["run_date"] = run_date_key
-        _compute_edge_fields_in_place(dist_row, time_structure_min)
-    return True
+    return touched_market
 
 
 def _prepare_summary_distribution_market_fields_in_place(
@@ -54503,7 +58131,7 @@ def _event_run_payload_model_candidate(
 
 
 def _ssot_env_float(key: str, default: Optional[float] = None) -> Optional[float]:
-    raw = _env_value_with_path_follow_alias(key)
+    raw = os.environ.get(key)
     if raw is None or str(raw).strip() == "":
         return default
     try:
@@ -54514,7 +58142,7 @@ def _ssot_env_float(key: str, default: Optional[float] = None) -> Optional[float
 
 
 def _ssot_env_int(key: str, default: Optional[int] = None) -> Optional[int]:
-    raw = _env_value_with_path_follow_alias(key)
+    raw = os.environ.get(key)
     if raw is None or str(raw).strip() == "":
         return default
     try:
@@ -54595,7 +58223,7 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
         max(0.0, float(lcb_global_plain_no_peak_exclude_min_price)),
     )
     lcb_global_signal_soft_band_mode = str(
-        _env_value_with_path_follow_alias("PM_LCB_GLOBAL_SIGNAL_SOFT_BAND_MODE") or "shadow"
+        os.environ.get("PM_LCB_GLOBAL_SIGNAL_SOFT_BAND_MODE") or "shadow"
     ).strip().lower()
     if lcb_global_signal_soft_band_mode not in {"off", "shadow", "small_live"}:
         lcb_global_signal_soft_band_mode = "shadow"
@@ -54828,7 +58456,7 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
         "kelly_max_notional_usdc": _ssot_env_float("PM_KELLY_MAX_NOTIONAL_USDC", 10.0),
         "kelly_block_nonpositive": _env_bool("PM_KELLY_BLOCK_NONPOSITIVE", False),
         "entry_only_realizable": entry_only_realizable,
-        "entry_usable_edge_size_scale_enabled": _env_bool("PM_ENTRY_USABLE_EDGE_SIZE_SCALE_ENABLED", True),
+        "entry_usable_edge_size_scale_enabled": False,
         "entry_usable_edge_size_target": float(entry_usable_edge_size_target),
         "entry_usable_edge_min_size_scale": float(entry_usable_edge_min_size_scale),
         "entry_usable_edge_block_nonpositive": _env_bool("PM_ENTRY_USABLE_EDGE_BLOCK_NONPOSITIVE", False),
@@ -54944,7 +58572,7 @@ def _ssot_entry_policy_snapshot() -> Dict[str, Any]:
         },
         "temp_event_min_edge_score_entry": _ssot_env_float("PM_AUTO_TRADE_TEMPERATURE_EVENT_MIN_EDGE_SCORE_ENTRY", 0.0),
     }
-    return _with_path_probability_follow_config_aliases(policy)
+    return policy
 
 
 def _ssot_candidate_requires_plain_lcb_path_gate(
@@ -55173,52 +58801,89 @@ def _ssot_prob_from_any(value: Any) -> Optional[float]:
 def _ssot_target_context_from_payload(item: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(item, Mapping):
         return {}
+    posterior_ssot = item.get("posterior_ssot_fact")
+    posterior_ssot = posterior_ssot if isinstance(posterior_ssot, Mapping) else {}
+    ssot_state = str(posterior_ssot.get("state") or "").strip().lower()
+    ssot_available = bool(posterior_ssot and (not ssot_state or ssot_state in {"available", "ready", "ok"}))
     plan = item.get("target_realization_capital_plan")
     plan = plan if isinstance(plan, Mapping) else {}
     path = item.get("temperature_path_distribution")
     path = path if isinstance(path, Mapping) else {}
     outlook = item.get("target_bucket_outlook")
     outlook = outlook if isinstance(outlook, Mapping) else {}
-    selection = item.get("target_bucket_selection")
-    selection = selection if isinstance(selection, Mapping) else {}
-    target_bucket = str(
-        plan.get("target_bucket")
-        or path.get("target_bucket")
-        or selection.get("target_bucket")
-        or outlook.get("target_bucket")
-        or outlook.get("final_bucket")
-        or item.get("target_bucket")
-        or ""
-    ).strip()
-    second_bucket = str(
-        plan.get("second_target_bucket")
-        or path.get("second_target_bucket")
-        or selection.get("second_target_bucket")
-        or outlook.get("second_target_bucket")
-        or ""
-    ).strip()
-    target_prob = _ssot_prob_from_any(
-        plan.get("target_posterior")
-        or path.get("target_bucket_posterior")
-        or path.get("target_bucket_posterior_pct")
-        or selection.get("target_bucket_probability")
-        or selection.get("target_probability_pct")
-        or outlook.get("target_bucket_probability")
-        or outlook.get("target_bucket_probability_pct")
-        or outlook.get("final_bucket_probability")
-        or outlook.get("final_bucket_probability_pct")
-    )
-    second_prob = _ssot_prob_from_any(
-        plan.get("second_target_posterior")
-        or path.get("second_target_bucket_posterior")
-        or path.get("second_target_bucket_posterior_pct")
-        or selection.get("second_target_probability")
-        or selection.get("second_target_probability_pct")
-        or outlook.get("second_target_probability")
-        or outlook.get("second_target_probability_pct")
-    )
+
+    hard_source_outlook = outlook if _target_realization_outlook_is_hard_source(outlook) else {}
+    source = ""
+    target_bucket = ""
+    second_bucket = ""
+    target_prob: Optional[float] = None
+    second_prob: Optional[float] = None
+    if ssot_available:
+        target_bucket = str(
+            posterior_ssot.get("target_bucket")
+            or posterior_ssot.get("top_bucket")
+            or posterior_ssot.get("selected_bucket")
+            or ""
+        ).strip()
+        target_prob = _ssot_prob_from_any(
+            posterior_ssot.get("target_probability")
+            or posterior_ssot.get("target_bucket_probability")
+            or posterior_ssot.get("probability")
+            or posterior_ssot.get("posterior")
+        )
+        source = "posterior_ssot_fact"
+        ranked = posterior_ssot.get("bucket_probabilities") or posterior_ssot.get("ranked_bucket_probabilities")
+        ranked_rows = _compact_posterior_ssot_bucket_rows_for_ui_snapshot(ranked, limit=12)
+        ranked_rows = _sorted_posterior_ssot_bucket_rows_for_ui_snapshot(ranked_rows, limit=12)
+        for ranked_row in ranked_rows:
+            candidate = str(
+                ranked_row.get("outcome")
+                or ranked_row.get("label")
+                or ranked_row.get("bucket")
+                or ""
+            ).strip()
+            candidate_prob = _ssot_prob_from_any(ranked_row.get("probability"))
+            if (
+                candidate
+                and candidate != target_bucket
+                and not _ssot_row_is_hard_zero(ranked_row)
+                and candidate_prob is not None
+                and candidate_prob > 0.0
+            ):
+                second_bucket = candidate
+                second_prob = _ssot_prob_from_any(
+                    ranked_row.get("probability")
+                    or ranked_row.get("posterior")
+                    or ranked_row.get("target_probability")
+                    or ranked_row.get("probability_pct")
+                    or ranked_row.get("posterior_pct")
+                )
+                break
+    elif hard_source_outlook:
+        target_bucket = str(
+            hard_source_outlook.get("target_bucket")
+            or hard_source_outlook.get("final_bucket")
+            or hard_source_outlook.get("posterior_final_bucket")
+            or ""
+        ).strip()
+        second_bucket = str(hard_source_outlook.get("second_target_bucket") or "").strip()
+        target_prob = _ssot_prob_from_any(
+            hard_source_outlook.get("target_bucket_probability")
+            or hard_source_outlook.get("target_bucket_probability_pct")
+            or hard_source_outlook.get("target_final_probability_pct")
+            or hard_source_outlook.get("final_bucket_probability")
+            or hard_source_outlook.get("final_bucket_probability_pct")
+        )
+        second_prob = _ssot_prob_from_any(
+            hard_source_outlook.get("second_target_probability")
+            or hard_source_outlook.get("second_target_probability_pct")
+        )
+        source = "hard_source_target_bucket_outlook"
+    else:
+        return {}
+
     reliability = _ssot_prob_from_any(
-        plan.get("target_realization_reliability")
+        (plan.get("target_realization_reliability") if _target_realization_plan_target_is_ssot(plan) else None)
         or path.get("target_bucket_path_probability")
         or path.get("target_bucket_path_probability_pct")
         or item.get("target_realization_reliability")
@@ -55227,6 +58892,8 @@ def _ssot_target_context_from_payload(item: Mapping[str, Any]) -> Dict[str, Any]
     if target_bucket:
         out["target_bucket"] = target_bucket
         out["posterior_settlement_target_bucket"] = target_bucket
+        out["target_bucket_source"] = source
+        out["posterior_settlement_target_bucket_source"] = source
     if target_prob is not None:
         out["target_posterior"] = target_prob
         out["posterior_settlement_target_posterior"] = target_prob
@@ -55393,63 +59060,6 @@ def _ssot_candidate_from_row(
     edge_realizable_p_realize_missing = None
     edge_realizable_p_realize_low_sample = None
     edge_realizable_p_realize_samples_min = None
-    v2_enabled = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
-    if v2_enabled and exec_edge_entry is not None and math.isfinite(exec_edge_entry):
-        exec_entry_price = to_float(row.get("exec_entry_price_yes") if side == "YES" else row.get("exec_entry_price_no"))
-        if exec_entry_price is None or not math.isfinite(exec_entry_price):
-            exec_entry_price = ask
-        exec_fee_bps = to_float(row.get("exec_fee_bps"))
-        depth_ratio = to_float(row.get("depth_ratio_yes") if side == "YES" else row.get("depth_ratio_no"))
-        base_bid = to_float(row.get("best_bid") if side == "YES" else row.get("best_bid_no"))
-        days_to_settle_val = float(days_to_event) if days_to_event is not None else None
-        hours_to_settle_val = (
-            float(days_to_event) * 24.0 if days_to_event is not None else None
-        )
-        order_type = str(os.environ.get("PM_AUTO_TRADE_ORDER_TYPE", "GTC") or "GTC").strip().upper()
-        v2_edge, v2_meta = edge_realizable_v2(
-            exec_edge_entry,
-            exec_entry_price,
-            exec_fee_bps,
-            target_exit_price=edge_realizable_target_exit_price,
-            base_bid=base_bid,
-            spread=spread,
-            depth_ratio=depth_ratio,
-            days_to_settle=days_to_settle_val,
-            hours_to_settle=hours_to_settle_val,
-            order_type=order_type,
-        )
-        if v2_edge is not None and math.isfinite(v2_edge):
-            edge_realizable_v2_val = float(v2_edge)
-            try:
-                time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
-            except (TypeError, ValueError):
-                time_structure_min = 0.1
-            if not math.isfinite(time_structure_min) or time_structure_min <= 0:
-                time_structure_min = 0.1
-            tf_val = time_factor if time_factor is not None and math.isfinite(time_factor) else 1.0
-            sf_val = structure_factor if structure_factor is not None and math.isfinite(structure_factor) else 1.0
-            time_structure = max(float(tf_val) * float(sf_val), time_structure_min)
-            edge_realizable_score_v2_val = edge_realizable_score(
-                edge_realizable_v2_val,
-                time_structure,
-                penalty,
-            )
-        if isinstance(v2_meta, dict):
-            edge_realizable_p_realize = to_float(v2_meta.get("p_realize"))
-            edge_realizable_p_converge = to_float(v2_meta.get("p_converge"))
-            edge_realizable_p_fill_entry = to_float(v2_meta.get("p_fill_entry"))
-            edge_realizable_p_fill_exit = to_float(v2_meta.get("p_fill_exit"))
-            edge_realizable_hold_cost = to_float(v2_meta.get("hold_cost"))
-            edge_realizable_p_realize_missing = bool(v2_meta.get("p_realize_missing"))
-            edge_realizable_p_realize_low_sample = bool(v2_meta.get("p_realize_low_sample"))
-            edge_realizable_p_realize_samples_min = to_float(v2_meta.get("p_realize_samples_min"))
-            edge_realizable_delta_exit = to_float(v2_meta.get("delta_exit"))
     candidate = {
         "side": side,
         "outcome": outcome,
@@ -55578,8 +59188,6 @@ def _ssot_candidate_from_row(
         "q_bayes_alpha": _side_float("q_bayes_alpha"),
         "q_bayes_alpha_total": _side_float("q_bayes_alpha_total"),
         "q_bayes_prior_strength": _side_float("q_bayes_prior_strength"),
-        "q_bayes_model_evidence": _side_float("q_bayes_model_evidence"),
-        "q_bayes_nowcast_evidence": _side_float("q_bayes_nowcast_evidence"),
         "q_raw": _side_float("q_raw"),
         "q_entry": q_min_bound,
         "q_calibrated": _side_float("q_calibrated"),
@@ -55640,12 +59248,11 @@ def _ssot_candidate_from_row(
         "trend_pct": trend_pct,
         "trend_consistency_up": trend_consistency_up,
     }
-    if isinstance(strategy_context, Mapping) and strategy_context:
-        profile_context = dict(row)
-        profile_context.update(strategy_context)
-    else:
-        profile_context = row
-    apply_weather_strategy_profile(candidate, profile_context)
+    if isinstance(strategy_context, Mapping):
+        for source_key in ("target_bucket_source", "posterior_settlement_target_bucket_source"):
+            source_value = strategy_context.get(source_key)
+            if source_value not in (None, "") and source_key not in candidate:
+                candidate[source_key] = source_value
     _ssot_normalize_candidate_source_fit(candidate, row)
     return candidate
 
@@ -55956,110 +59563,6 @@ def _ssot_build_auto_trade_ssot(item: Dict[str, Any]) -> Optional[Dict[str, Any]
             days_to_event = None
     if days_to_event is not None and days_to_event < 0:
         days_to_event = 0
-    # SSOT safety: some facts may have valid asks (possibly patched from ticks) but missing derived
-    # fields like `edge_score_yes/no` due to older composer versions. Recompute in-memory so the
-    # auto-trade SSOT candidate never shows "有效优势分 —" when price/q/time/structure are available.
-    needs_recompute = False
-    tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
-    v2_enabled_for_recompute = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    for row in dist:
-        if not isinstance(row, dict):
-            continue
-        if event_date_key and row.get("event_date") is None:
-            row["event_date"] = event_date_key
-        if run_date_key and row.get("run_date") is None:
-            row["run_date"] = run_date_key
-        ask_yes = to_float(row.get("best_ask"))
-        ask_no = to_float(row.get("best_ask_no"))
-        es_yes = to_float(row.get("edge_score_yes"))
-        es_no = to_float(row.get("edge_score_no"))
-        exs_yes = to_float(row.get("exec_edge_score_yes"))
-        exs_no = to_float(row.get("exec_edge_score_no"))
-        ers_yes = to_float(row.get("edge_realizable_score_yes"))
-        ers_no = to_float(row.get("edge_realizable_score_no"))
-        er_yes = to_float(row.get("edge_realizable_yes"))
-        er_no = to_float(row.get("edge_realizable_no"))
-        fee_yes = to_float(row.get("exec_fee_cost_yes"))
-        fee_no = to_float(row.get("exec_fee_cost_no"))
-        lcb_yes_missing = (
-            tradeability_enabled
-            and (
-                to_float(row.get("edge_signal_lcb_yes")) is None
-                or to_float(row.get("edge_path_p_reach_lcb_yes")) is None
-                or _coalesce_numeric(
-                    row.get("edge_tradeability_profit_value_yes"),
-                    row.get("edge_tradeability_edge_lcb_yes"),
-                ) is None
-                or row.get("edge_tradeability_pass_yes") is None
-            )
-        )
-        lcb_no_missing = (
-            tradeability_enabled
-            and (
-                to_float(row.get("edge_signal_lcb_no")) is None
-                or to_float(row.get("edge_path_p_reach_lcb_no")) is None
-                or _coalesce_numeric(
-                    row.get("edge_tradeability_profit_value_no"),
-                    row.get("edge_tradeability_edge_lcb_no"),
-                ) is None
-                or row.get("edge_tradeability_pass_no") is None
-            )
-        )
-        v2_yes_missing = v2_enabled_for_recompute and to_float(row.get("edge_realizable_v2_yes")) is None
-        v2_no_missing = v2_enabled_for_recompute and to_float(row.get("edge_realizable_v2_no")) is None
-        if ask_yes is not None and math.isfinite(ask_yes) and (es_yes is None or not math.isfinite(es_yes)):
-            needs_recompute = True
-            break
-        if ask_no is not None and math.isfinite(ask_no) and (es_no is None or not math.isfinite(es_no)):
-            needs_recompute = True
-            break
-        if ask_yes is not None and math.isfinite(ask_yes) and (exs_yes is None or not math.isfinite(exs_yes)):
-            needs_recompute = True
-            break
-        if ask_no is not None and math.isfinite(ask_no) and (exs_no is None or not math.isfinite(exs_no)):
-            needs_recompute = True
-            break
-        if ask_yes is not None and math.isfinite(ask_yes) and (
-            ers_yes is None or not math.isfinite(ers_yes) or er_yes is None or not math.isfinite(er_yes)
-        ):
-            needs_recompute = True
-            break
-        if ask_no is not None and math.isfinite(ask_no) and (
-            ers_no is None or not math.isfinite(ers_no) or er_no is None or not math.isfinite(er_no)
-        ):
-            needs_recompute = True
-            break
-        if ask_yes is not None and math.isfinite(ask_yes) and (fee_yes is None or not math.isfinite(fee_yes)):
-            needs_recompute = True
-            break
-        if ask_no is not None and math.isfinite(ask_no) and (fee_no is None or not math.isfinite(fee_no)):
-            needs_recompute = True
-            break
-        if ask_yes is not None and math.isfinite(ask_yes) and (lcb_yes_missing or v2_yes_missing):
-            needs_recompute = True
-            break
-        if ask_no is not None and math.isfinite(ask_no) and (lcb_no_missing or v2_no_missing):
-            needs_recompute = True
-            break
-    if needs_recompute:
-        try:
-            time_structure_min = float(os.environ.get("PM_TIME_STRUCTURE_MIN", "0.1"))
-        except (TypeError, ValueError):
-            time_structure_min = 0.1
-        if not math.isfinite(time_structure_min) or time_structure_min <= 0:
-            time_structure_min = 0.1
-        for row in dist:
-            if isinstance(row, dict):
-                if event_date_key and row.get("event_date") is None:
-                    row["event_date"] = event_date_key
-                if run_date_key and row.get("run_date") is None:
-                    row["run_date"] = run_date_key
-                _compute_edge_fields_in_place(row, time_structure_min)
     trade_info_map = _ssot_trade_info_map(item.get("auto_trades"))
     market_top_label = str(item.get("market_top_label") or "")
     strategy_context = _ssot_target_context_from_payload(item)
@@ -56822,6 +60325,13 @@ def build_run_item(
                 force_target_fields=_chengdu_intraday_summary_has_legacy_target_bucket_rule(out),
             )
     _align_snapshot_posterior_derived_fields(out)
+    persisted_v3_plan = _latest_target_realization_v3_plan_for_ui(
+        conn,
+        slug=str(row["slug"] or ""),
+        event_date=event_date_key,
+    )
+    if persisted_v3_plan:
+        out["target_realization_capital_plan"] = persisted_v3_plan
     _attach_target_realization_capital_plan(out)
     _attach_target_switch_context(out)
     out["auto_trade_ssot"] = _safe_build_auto_trade_ssot(out)
@@ -57577,668 +61087,6 @@ def _direction_base(delta: Optional[float], scale: float = 0.02) -> float:
     return 1.0 / (1.0 + math.exp(-x))
 
 
-def _compute_edge_fields_in_place(row: Dict[str, Any], time_structure_min: float) -> None:
-    exec_fee_bps = _ssot_env_float("PM_AUTO_TRADE_EXEC_FEE_BPS", 100.0)
-    edge_tradeability_enabled = _env_bool("PM_EDGE_TRADEABILITY_ENABLED", True)
-    edge_tradeability_signal_z = _env_float("PM_EDGE_TRADEABILITY_SIGNAL_Z")
-    if edge_tradeability_signal_z is None or not math.isfinite(edge_tradeability_signal_z) or edge_tradeability_signal_z <= 0:
-        edge_tradeability_signal_z = 1.64
-    edge_tradeability_slippage_buffer = _env_float("PM_EDGE_TRADEABILITY_SLIPPAGE_BUFFER")
-    if edge_tradeability_slippage_buffer is not None and not math.isfinite(edge_tradeability_slippage_buffer):
-        edge_tradeability_slippage_buffer = None
-    edge_tradeability_policy = load_edge_policy_from_env()
-    lcb_global_enabled = _env_bool("PM_LCB_GLOBAL_ENABLED", False)
-    if lcb_global_enabled:
-        edge_tradeability_policy["enabled"] = True
-        edge_tradeability_policy["mode"] = "enforced"
-        edge_tradeability_policy["require_exec_audit"] = False
-        edge_tradeability_policy["require_v2"] = False
-    lcb_global_signal_lcb_min = _env_float("PM_LCB_GLOBAL_SIGNAL_LCB_MIN")
-    if lcb_global_signal_lcb_min is None or not math.isfinite(lcb_global_signal_lcb_min):
-        lcb_global_signal_lcb_min = 0.35
-    lcb_global_signal_lcb_min = max(0.0, float(lcb_global_signal_lcb_min))
-    lcb_global_path_lcb_min = _env_float("PM_LCB_GLOBAL_PATH_LCB_MIN")
-    if lcb_global_path_lcb_min is None or not math.isfinite(lcb_global_path_lcb_min):
-        lcb_global_path_lcb_min = 0.03
-    lcb_global_path_lcb_min = min(1.0, max(0.0, float(lcb_global_path_lcb_min)))
-    lcb_global_edge_lcb_min = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN")
-    if lcb_global_edge_lcb_min is None or not math.isfinite(lcb_global_edge_lcb_min):
-        lcb_global_edge_lcb_min = 0.0005
-    lcb_global_edge_lcb_min = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min)))
-    lcb_global_edge_lcb_min_d0 = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN_D0")
-    if lcb_global_edge_lcb_min_d0 is None or not math.isfinite(lcb_global_edge_lcb_min_d0):
-        lcb_global_edge_lcb_min_d0 = lcb_global_edge_lcb_min
-    lcb_global_edge_lcb_min_d0 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d0)))
-    lcb_global_edge_lcb_min_d1 = _env_float("PM_LCB_GLOBAL_EDGE_LCB_MIN_D1")
-    if lcb_global_edge_lcb_min_d1 is None or not math.isfinite(lcb_global_edge_lcb_min_d1):
-        lcb_global_edge_lcb_min_d1 = max(float(lcb_global_edge_lcb_min), -0.001)
-    lcb_global_edge_lcb_min_d1 = min(0.10, max(-0.05, float(lcb_global_edge_lcb_min_d1)))
-
-    def _resolve_lcb_global_edge_lcb_min(days_to_event_local: Optional[int]) -> Optional[float]:
-        if days_to_event_local is None:
-            return float(lcb_global_edge_lcb_min)
-        if days_to_event_local <= 0:
-            return float(lcb_global_edge_lcb_min_d0)
-        if days_to_event_local == 1:
-            return float(lcb_global_edge_lcb_min_d1)
-        return float(lcb_global_edge_lcb_min)
-
-    q_round = to_float(row.get("q_round"))
-    q_round_no = to_float(row.get("q_round_no"))
-    if q_round_no is None and q_round is not None:
-        q_round_no = 1.0 - q_round
-        row["q_round_no"] = q_round_no
-    q_cal = to_float(row.get("q_calibrated"))
-    q_raw = to_float(row.get("q_raw"))
-    q_raw_canonical = q_raw if q_raw is not None else q_round
-    q_raw_no = to_float(row.get("q_raw_no"))
-    if q_raw_no is None and q_raw_canonical is not None:
-        q_raw_no = 1.0 - q_raw_canonical
-        if row.get("q_raw_no") is None:
-            row["q_raw_no"] = q_raw_no
-    q_entry = to_float(row.get("q_entry"))
-    if q_entry is None:
-        q_entry = q_cal if q_cal is not None else (q_raw if q_raw is not None else q_round)
-        if q_entry is not None:
-            row["q_entry"] = q_entry
-    q_entry_no = to_float(row.get("q_entry_no"))
-    if q_entry_no is None and q_entry is not None:
-        q_entry_no = 1.0 - q_entry
-        row["q_entry_no"] = q_entry_no
-    ask_yes = to_float(row.get("best_ask"))
-    ask_no = to_float(row.get("best_ask_no"))
-    bid_yes = to_float(row.get("best_bid"))
-    bid_no = to_float(row.get("best_bid_no"))
-    # SSOT: signal_edge_round is the *raw* signal margin (q_raw vs best_ask), not calibrated.
-    if ask_yes is not None and q_raw_canonical is not None:
-        row["signal_edge_round"] = q_raw_canonical - ask_yes
-    if ask_yes is not None and q_entry is not None:
-        row["signal_edge_min"] = q_entry - ask_yes
-    if ask_no is not None and q_raw_no is not None:
-        row["signal_edge_round_no"] = q_raw_no - ask_no
-    if ask_no is not None and q_entry_no is not None:
-        row["signal_edge_min_no"] = q_entry_no - ask_no
-
-    # Recompute time base/time factor after market merge. Model-only snapshots compute these
-    # with missing asks, which clamps base to 0 and time_factor to TIME_FACTOR_MIN.
-    time_trend = to_float(row.get("time_trend"))
-    if time_trend is None or not math.isfinite(time_trend):
-        time_trend = 0.0
-        row["time_trend"] = time_trend
-    time_fresh = to_float(row.get("time_freshness"))
-    if time_fresh is None:
-        # Fallback to the legacy model freshness key when present in snapshot payloads.
-        time_fresh = to_float(row.get("model_cache_freshness"))
-    if time_fresh is None or not math.isfinite(time_fresh):
-        time_fresh = 1.0
-    try:
-        time_factor_min = float(os.environ.get("PM_TIME_FACTOR_MIN", "0.1"))
-    except (TypeError, ValueError):
-        time_factor_min = 0.1
-    if not math.isfinite(time_factor_min) or time_factor_min <= 0:
-        time_factor_min = 0.1
-
-    base_yes = _direction_base((q_entry - ask_yes) if (q_entry is not None and ask_yes is not None) else None)
-    base_no = _direction_base((q_entry_no - ask_no) if (q_entry_no is not None and ask_no is not None) else None)
-    row["time_base_yes"] = base_yes
-    row["time_base_no"] = base_no
-    time_yes = min(max(time_trend + base_yes * time_fresh, time_factor_min), 1.0)
-    time_no = min(max(time_trend + base_no * time_fresh, time_factor_min), 1.0)
-    row["time_factor_yes"] = time_yes
-    row["time_factor_no"] = time_no
-    row["time_factor"] = max(time_yes, time_no)
-    structure = to_float(row.get("structure_factor"))
-    if structure is None:
-        structure = to_float(row.get("structure_factor_yes"))
-    if structure is None:
-        structure = to_float(row.get("structure_factor_no"))
-    time_yes = to_float(row.get("time_factor_yes"))
-    time_no = to_float(row.get("time_factor_no"))
-    spread_yes = to_float(row.get("spread"))
-    spread_no = to_float(row.get("spread_no"))
-    if spread_yes is None and ask_yes is not None and bid_yes is not None and math.isfinite(ask_yes) and math.isfinite(bid_yes):
-        spread_yes = max(float(ask_yes) - float(bid_yes), 0.0)
-        row["spread"] = spread_yes
-    if spread_no is None and ask_no is not None and bid_no is not None and math.isfinite(ask_no) and math.isfinite(bid_no):
-        spread_no = max(float(ask_no) - float(bid_no), 0.0)
-        row["spread_no"] = spread_no
-    pen_yes = _edge_score_penalty(spread_yes, ask_yes) if ask_yes is not None else 0.0
-    pen_no = _edge_score_penalty(spread_no, ask_no) if ask_no is not None else 0.0
-    row["penalty_yes"] = pen_yes
-    row["penalty_no"] = pen_no
-    if q_round is not None and ask_yes is not None and time_yes is not None and structure is not None:
-        edge_points = max(q_round - ask_yes, 0.0) * 100.0
-        time_structure = max(time_yes * structure, time_structure_min)
-        row["edge_score_yes"] = edge_points * time_structure - pen_yes
-    if q_round_no is not None and ask_no is not None and time_no is not None and structure is not None:
-        edge_points = max(q_round_no - ask_no, 0.0) * 100.0
-        time_structure = max(time_no * structure, time_structure_min)
-        row["edge_score_no"] = edge_points * time_structure - pen_no
-    # Backward-compatible fill for legacy facts missing executable-edge fields.
-    # Do not overwrite existing values produced by the scanner's full microstructure path.
-    def _env_cost(name: str, default: float) -> float:
-        try:
-            v = float(os.environ.get(name, str(default)))
-        except (TypeError, ValueError):
-            v = default
-        if not math.isfinite(v):
-            v = default
-        if v < 0:
-            v = 0.0
-        if v > 1:
-            v = v / 100.0
-        return v
-    exec_spread_weight = _env_cost("PM_EXEC_EDGE_SPREAD_WEIGHT", 0.25)
-    exec_depth_penalty_weight = _env_cost("PM_EXEC_EDGE_DEPTH_PENALTY_WEIGHT", 1.0)
-    exec_cancel_cost = _env_cost("PM_EXEC_EDGE_CANCEL_COST", 0.002)
-    exec_retry_cost = _env_cost("PM_EXEC_EDGE_RETRY_COST", 0.001)
-    exec_base_cost = exec_cancel_cost + exec_retry_cost
-
-    def _shortfall_ratio(depth_total: Optional[float], target_size: Optional[float]) -> float:
-        if (
-            target_size is None
-            or not math.isfinite(target_size)
-            or target_size <= 0
-        ):
-            return 0.0
-        if depth_total is None or not math.isfinite(depth_total):
-            return 1.0
-        if depth_total >= target_size:
-            return 0.0
-        return min(1.0, max(0.0, (target_size - depth_total) / target_size))
-
-    def _compute_exec_for_side(
-        side: str,
-        ask: Optional[float],
-        spread: Optional[float],
-        q_entry_side: Optional[float],
-        time_side: Optional[float],
-        penalty_side: float,
-    ) -> None:
-        suffix = "_yes" if side == "YES" else "_no"
-        existing_score = to_float(row.get(f"exec_edge_score{suffix}"))
-        existing_entry = to_float(row.get(f"exec_edge_entry{suffix}"))
-        existing_exit = to_float(row.get(f"exec_edge_exit{suffix}"))
-        existing_realizable = to_float(row.get(f"edge_realizable{suffix}"))
-        existing_realizable_score = to_float(row.get(f"edge_realizable_score{suffix}"))
-        existing_fee_cost = to_float(row.get(f"exec_fee_cost{suffix}"))
-        existing_entry_price = to_float(row.get(f"exec_entry_price{suffix}"))
-        existing_entry_cost = to_float(row.get(f"exec_entry_cost{suffix}"))
-        has_exec = (
-            existing_score is not None and math.isfinite(existing_score)
-            and existing_entry is not None and math.isfinite(existing_entry)
-            and existing_exit is not None and math.isfinite(existing_exit)
-        )
-        has_realizable = (
-            existing_realizable is not None and math.isfinite(existing_realizable)
-            and existing_realizable_score is not None and math.isfinite(existing_realizable_score)
-            and existing_fee_cost is not None and math.isfinite(existing_fee_cost)
-        )
-        has_entry_cost = (
-            existing_entry_price is not None and math.isfinite(existing_entry_price)
-            and existing_entry_cost is not None and math.isfinite(existing_entry_cost)
-        )
-        if has_exec and has_realizable and has_entry_cost:
-            return
-        if q_entry_side is None or not math.isfinite(q_entry_side):
-            return
-        if time_side is None or not math.isfinite(time_side):
-            return
-        if structure is None or not math.isfinite(structure):
-            return
-
-        entry_price = to_float(row.get(f"entry_price{suffix}"))
-        exec_entry_price = to_float(row.get(f"exec_entry_price{suffix}"))
-        if exec_entry_price is None:
-            mode = str(os.environ.get("PM_EXEC_EDGE_ENTRY_PRICE_MODE", "auto") or "auto").strip().lower()
-            if mode == "auto":
-                ot = str(os.environ.get("PM_AUTO_TRADE_ORDER_TYPE", "GTC") or "GTC").strip().upper()
-                mode = "book_vwap" if ot in {"FAK", "FOK"} else "best_ask"
-            if mode not in {"best_ask", "book_vwap", "mid"}:
-                mode = "best_ask"
-            if mode == "best_ask":
-                exec_entry_price = ask
-            elif mode == "mid":
-                mid_max_spread = _env_cost("PM_EXEC_EDGE_ENTRY_MID_MAX_SPREAD", 0.06)
-                best_bid_key0 = "best_bid" if side == "YES" else f"best_bid{suffix}"
-                best_bid0 = to_float(row.get(best_bid_key0))
-                spr0 = to_float(spread)
-                if spr0 is None and ask is not None and best_bid0 is not None:
-                    spr0 = float(ask) - float(best_bid0)
-                if (
-                    ask is not None
-                    and best_bid0 is not None
-                    and math.isfinite(ask)
-                    and math.isfinite(best_bid0)
-                    and spr0 is not None
-                    and math.isfinite(spr0)
-                    and spr0 <= mid_max_spread + 1e-9
-                ):
-                    exec_entry_price = (float(ask) + float(best_bid0)) / 2.0
-                else:
-                    exec_entry_price = ask
-            else:
-                exec_entry_price = entry_price if entry_price is not None else ask
-        if exec_entry_price is None or not math.isfinite(exec_entry_price):
-            return
-        entry_size = to_float(row.get(f"entry_size{suffix}"))
-        ask_depth_total_key = "ask_depth_total" if side == "YES" else f"ask_depth_total{suffix}"
-        ask_depth_topn_key = "ask_depth_topN" if side == "YES" else f"ask_depth_topN{suffix}"
-        ask_depth_total = to_float(row.get(ask_depth_total_key))
-        ask_depth_topn = to_float(row.get(ask_depth_topn_key))
-        depth_total = ask_depth_total
-        if (
-            ask_depth_topn is not None
-            and math.isfinite(ask_depth_topn)
-            and ask_depth_topn > 0
-            and (
-                depth_total is None
-                or not math.isfinite(depth_total)
-                or depth_total <= 0
-            )
-        ):
-            depth_total = float(ask_depth_topn)
-        shortfall = _shortfall_ratio(depth_total, entry_size)
-        slippage = 0.0
-        if ask is not None and math.isfinite(ask):
-            slippage = max(exec_entry_price - ask, 0.0)
-        spread_cost = max(spread, 0.0) * exec_spread_weight if spread is not None and math.isfinite(spread) else 0.0
-        depth_cost = max(spread, 0.0) * shortfall * exec_depth_penalty_weight if spread is not None and math.isfinite(spread) else 0.0
-        exec_entry_cost = to_float(row.get(f"exec_entry_cost{suffix}"))
-        if exec_entry_cost is None or not math.isfinite(exec_entry_cost):
-            exec_entry_cost = slippage + spread_cost + depth_cost + exec_base_cost
-        exec_edge_entry = q_entry_side - exec_entry_price - exec_entry_cost
-
-        best_bid_key = "best_bid" if side == "YES" else f"best_bid{suffix}"
-        best_bid = to_float(row.get(best_bid_key))
-        exec_exit_price = to_float(row.get(f"exec_exit_price{suffix}"))
-        if exec_exit_price is None:
-            if best_bid is not None and math.isfinite(best_bid):
-                exec_exit_price = best_bid
-            else:
-                exec_exit_price = ask
-        if exec_exit_price is None or not math.isfinite(exec_exit_price):
-            return
-        bid_depth_topn_key = "bid_depth_topN" if side == "YES" else f"bid_depth_topN{suffix}"
-        bid_depth_topn = to_float(row.get(bid_depth_topn_key))
-        exit_fill = 1.0
-        if entry_size is not None and math.isfinite(entry_size) and entry_size > 0:
-            if bid_depth_topn is None or not math.isfinite(bid_depth_topn):
-                exit_fill = 1.0 if (best_bid is not None and math.isfinite(best_bid)) else 0.0
-            else:
-                exit_fill = min(1.0, max(0.0, bid_depth_topn / entry_size))
-        exit_spread_cost = max(spread, 0.0) * exec_spread_weight if spread is not None and math.isfinite(spread) else 0.0
-        exit_fill_penalty = max(spread, 0.0) * max(0.0, 1.0 - exit_fill) * exec_depth_penalty_weight if spread is not None and math.isfinite(spread) else 0.0
-        exec_exit_cost = to_float(row.get(f"exec_exit_cost{suffix}"))
-        if exec_exit_cost is None or not math.isfinite(exec_exit_cost):
-            exec_exit_cost = exit_spread_cost + exit_fill_penalty + exec_base_cost
-        exec_edge_exit = q_entry_side - exec_exit_price - exec_exit_cost
-        time_structure = max(time_side * structure, time_structure_min)
-        exec_edge_score = max(exec_edge_entry, 0.0) * 100.0 * time_structure - penalty_side
-        realizable_edge, fee_cost_val = edge_realizable(exec_edge_entry, exec_entry_price, exec_fee_bps)
-        realizable_score = edge_realizable_score(realizable_edge, time_structure, penalty_side)
-
-        if existing_entry is None or not math.isfinite(existing_entry):
-            row[f"exec_edge_entry{suffix}"] = exec_edge_entry
-        if existing_exit is None or not math.isfinite(existing_exit):
-            row[f"exec_edge_exit{suffix}"] = exec_edge_exit
-        if existing_score is None or not math.isfinite(existing_score):
-            row[f"exec_edge_score{suffix}"] = exec_edge_score
-        if row.get(f"edge_realizable{suffix}") is None and realizable_edge is not None and math.isfinite(realizable_edge):
-            row[f"edge_realizable{suffix}"] = realizable_edge
-        if row.get(f"edge_realizable_score{suffix}") is None and realizable_score is not None and math.isfinite(realizable_score):
-            row[f"edge_realizable_score{suffix}"] = realizable_score
-        if row.get(f"exec_fee_cost{suffix}") is None and fee_cost_val is not None and math.isfinite(fee_cost_val):
-            row[f"exec_fee_cost{suffix}"] = fee_cost_val
-        if row.get("exec_fee_bps") is None and exec_fee_bps is not None and math.isfinite(exec_fee_bps):
-            row["exec_fee_bps"] = exec_fee_bps
-        if row.get(f"exec_entry_price{suffix}") is None:
-            row[f"exec_entry_price{suffix}"] = exec_entry_price
-        if row.get(f"exec_entry_cost{suffix}") is None:
-            row[f"exec_entry_cost{suffix}"] = exec_entry_cost
-        if row.get(f"exec_exit_price{suffix}") is None:
-            row[f"exec_exit_price{suffix}"] = exec_exit_price
-        if row.get(f"exec_exit_cost{suffix}") is None:
-            row[f"exec_exit_cost{suffix}"] = exec_exit_cost
-
-    _compute_exec_for_side("YES", ask_yes, spread_yes, q_entry, time_yes, pen_yes)
-    _compute_exec_for_side("NO", ask_no, spread_no, q_entry_no, time_no, pen_no)
-
-    event_date_key = date_only(str(row.get("event_date") or ""))
-    run_date_key = date_only(str(row.get("run_date") or row.get("current_event_date") or ""))
-    days_to_event: Optional[int] = None
-    if event_date_key and run_date_key:
-        event_dt = parse_date(event_date_key)
-        run_dt = parse_date(run_date_key)
-        if event_dt is not None and run_dt is not None:
-            try:
-                days_to_event = int((event_dt - run_dt).days)
-            except Exception:
-                days_to_event = None
-    if days_to_event is not None and days_to_event < 0:
-        days_to_event = 0
-
-    v2_enabled = str(os.environ.get("PM_EDGE_REALIZABLE_V2_ENABLED", "")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-    def _first_numeric(*values: Any) -> Optional[float]:
-        return _coalesce_numeric(*values)
-
-    def _compute_runtime_for_side(
-        side: str,
-        ask: Optional[float],
-        spread: Optional[float],
-        q_entry_side: Optional[float],
-        q_round_side: Optional[float],
-        q_raw_side: Optional[float],
-        time_side: Optional[float],
-        penalty_side: float,
-    ) -> None:
-        suffix = "_yes" if side == "YES" else "_no"
-        if ask is None or not math.isfinite(ask):
-            return
-        if q_entry_side is None or not math.isfinite(q_entry_side):
-            return
-        if time_side is None or not math.isfinite(time_side):
-            return
-        if structure is None or not math.isfinite(structure):
-            return
-
-        exec_edge_entry = to_float(row.get(f"exec_edge_entry{suffix}"))
-        exec_edge_exit = to_float(row.get(f"exec_edge_exit{suffix}"))
-        exec_entry_price = to_float(row.get(f"exec_entry_price{suffix}"))
-        exec_exit_price = to_float(row.get(f"exec_exit_price{suffix}"))
-        exec_fee_cost = to_float(row.get(f"exec_fee_cost{suffix}"))
-        if exec_edge_entry is None or not math.isfinite(exec_edge_entry):
-            return
-        if exec_entry_price is None or not math.isfinite(exec_entry_price):
-            exec_entry_price = ask
-        best_bid = to_float(row.get("best_bid") if side == "YES" else row.get("best_bid_no"))
-        depth_ratio = to_float(row.get(f"depth_ratio{suffix}"))
-        if depth_ratio is None:
-            entry_size = to_float(row.get(f"entry_size{suffix}"))
-            depth_total = _first_numeric(
-                row.get("ask_depth_total" if side == "YES" else f"ask_depth_total{suffix}"),
-                row.get("ask_depth_topN" if side == "YES" else f"ask_depth_topN{suffix}"),
-            )
-            if (
-                entry_size is not None
-                and math.isfinite(entry_size)
-                and entry_size > 0
-                and depth_total is not None
-                and math.isfinite(depth_total)
-            ):
-                depth_ratio = float(depth_total) / float(entry_size)
-                row[f"depth_ratio{suffix}"] = depth_ratio
-        trend_pct = to_float(row.get(f"trend_pct{suffix}"))
-        trend_consistency_up = to_float(row.get(f"trend_consistency_up{suffix}"))
-        q_cal_side = to_float(row.get("q_calibrated" if side == "YES" else "q_calibrated_no"))
-        q_edge_side = to_float(row.get("q_edge" if side == "YES" else "q_edge_no"))
-        if q_edge_side is None:
-            q_edge_side = q_cal_side if q_cal_side is not None else q_raw_side
-        days_to_settle_val = float(days_to_event) if days_to_event is not None else None
-        hours_to_settle_val = float(days_to_event) * 24.0 if days_to_event is not None else None
-        order_type = str(os.environ.get("PM_AUTO_TRADE_ORDER_TYPE", "GTC") or "GTC").strip().upper()
-
-        target_exit_price = _first_numeric(row.get(f"edge_realizable_target_exit_price{suffix}"))
-        target_exit_price_raw = _first_numeric(row.get(f"edge_realizable_target_exit_price_raw{suffix}"))
-        delta_exit = _first_numeric(row.get(f"edge_realizable_delta_exit{suffix}"))
-        delta_exit_raw = _first_numeric(row.get(f"edge_realizable_delta_exit_raw{suffix}"))
-        delta_exit_cap = _first_numeric(row.get(f"edge_realizable_delta_exit_cap{suffix}"))
-        target_exit_clamped = row.get(f"edge_realizable_target_exit_clamped{suffix}")
-        if target_exit_price is not None:
-            row[f"edge_realizable_target_exit_price{suffix}"] = target_exit_price
-        if target_exit_price_raw is not None:
-            row[f"edge_realizable_target_exit_price_raw{suffix}"] = target_exit_price_raw
-        if delta_exit is not None:
-            row[f"edge_realizable_delta_exit{suffix}"] = delta_exit
-        if delta_exit_raw is not None:
-            row[f"edge_realizable_delta_exit_raw{suffix}"] = delta_exit_raw
-        if delta_exit_cap is not None:
-            row[f"edge_realizable_delta_exit_cap{suffix}"] = delta_exit_cap
-        if target_exit_clamped is not None:
-            row[f"edge_realizable_target_exit_clamped{suffix}"] = bool(target_exit_clamped)
-
-        time_structure = max(float(time_side) * float(structure), time_structure_min)
-        edge_realizable_val = to_float(row.get(f"edge_realizable{suffix}"))
-        edge_realizable_score_val = to_float(row.get(f"edge_realizable_score{suffix}"))
-        if edge_realizable_val is None or not math.isfinite(edge_realizable_val):
-            edge_realizable_val, fee_cost_val = edge_realizable(exec_edge_entry, exec_entry_price, exec_fee_bps)
-            if edge_realizable_val is not None and math.isfinite(edge_realizable_val):
-                row[f"edge_realizable{suffix}"] = edge_realizable_val
-            if exec_fee_cost is None and fee_cost_val is not None and math.isfinite(fee_cost_val):
-                exec_fee_cost = fee_cost_val
-                row[f"exec_fee_cost{suffix}"] = fee_cost_val
-        if edge_realizable_score_val is None or not math.isfinite(edge_realizable_score_val):
-            edge_realizable_score_val = edge_realizable_score(edge_realizable_val, time_structure, penalty_side)
-            if edge_realizable_score_val is not None and math.isfinite(edge_realizable_score_val):
-                row[f"edge_realizable_score{suffix}"] = edge_realizable_score_val
-
-        edge_realizable_v2_val = to_float(row.get(f"edge_realizable_v2{suffix}"))
-        edge_realizable_score_v2_val = to_float(row.get(f"edge_realizable_score_v2{suffix}"))
-        edge_realizable_p_realize = to_float(row.get(f"edge_realizable_p_realize{suffix}"))
-        edge_realizable_p_converge = to_float(row.get(f"edge_realizable_p_converge{suffix}"))
-        edge_realizable_p_fill_entry = to_float(row.get(f"edge_realizable_p_fill_entry{suffix}"))
-        edge_realizable_p_fill_exit = to_float(row.get(f"edge_realizable_p_fill_exit{suffix}"))
-        edge_realizable_hold_cost = to_float(row.get(f"edge_realizable_hold_cost{suffix}"))
-        edge_realizable_p_realize_samples_min = to_float(row.get(f"edge_realizable_p_realize_samples_min{suffix}"))
-        edge_realizable_bucket_key = str(row.get(f"edge_realizable_bucket_key{suffix}") or "").strip()
-        if v2_enabled:
-            needs_v2 = any(
-                value is None or not math.isfinite(value)
-                for value in (
-                    edge_realizable_v2_val,
-                    edge_realizable_score_v2_val,
-                    edge_realizable_p_realize,
-                    edge_realizable_p_converge,
-                    edge_realizable_p_fill_entry,
-                    edge_realizable_p_fill_exit,
-                    edge_realizable_hold_cost,
-                )
-            )
-            if needs_v2:
-                v2_edge, v2_meta = edge_realizable_v2(
-                    exec_edge_entry,
-                    exec_entry_price,
-                    exec_fee_bps,
-                    target_exit_price=target_exit_price,
-                    base_bid=best_bid,
-                    spread=spread,
-                    depth_ratio=depth_ratio,
-                    days_to_settle=days_to_settle_val,
-                    hours_to_settle=hours_to_settle_val,
-                    order_type=order_type,
-                )
-                if v2_edge is not None and math.isfinite(v2_edge):
-                    edge_realizable_v2_val = float(v2_edge)
-                    row[f"edge_realizable_v2{suffix}"] = edge_realizable_v2_val
-                    row[f"edge_realizable_v2_raw{suffix}"] = edge_realizable_v2_val
-                if isinstance(v2_meta, dict):
-                    edge_realizable_bucket_key = str(v2_meta.get("bucket_key") or "").strip()
-                    if edge_realizable_bucket_key:
-                        row[f"edge_realizable_bucket_key{suffix}"] = edge_realizable_bucket_key
-                    edge_realizable_p_realize = _first_numeric(v2_meta.get("p_realize"))
-                    edge_realizable_p_converge = _first_numeric(v2_meta.get("p_converge"))
-                    edge_realizable_p_fill_entry = _first_numeric(v2_meta.get("p_fill_entry"))
-                    edge_realizable_p_fill_exit = _first_numeric(v2_meta.get("p_fill_exit"))
-                    edge_realizable_hold_cost = _first_numeric(v2_meta.get("hold_cost"))
-                    edge_realizable_p_realize_samples_min = _first_numeric(v2_meta.get("p_realize_samples_min"))
-                    if edge_realizable_p_realize is not None:
-                        row[f"edge_realizable_p_realize{suffix}"] = edge_realizable_p_realize
-                    if edge_realizable_p_converge is not None:
-                        row[f"edge_realizable_p_converge{suffix}"] = edge_realizable_p_converge
-                    if edge_realizable_p_fill_entry is not None:
-                        row[f"edge_realizable_p_fill_entry{suffix}"] = edge_realizable_p_fill_entry
-                    if edge_realizable_p_fill_exit is not None:
-                        row[f"edge_realizable_p_fill_exit{suffix}"] = edge_realizable_p_fill_exit
-                    if edge_realizable_hold_cost is not None:
-                        row[f"edge_realizable_hold_cost{suffix}"] = edge_realizable_hold_cost
-                    if edge_realizable_p_realize_samples_min is not None:
-                        row[f"edge_realizable_p_realize_samples_min{suffix}"] = edge_realizable_p_realize_samples_min
-                    if "p_realize_missing" in v2_meta:
-                        row[f"edge_realizable_p_realize_missing{suffix}"] = bool(v2_meta.get("p_realize_missing"))
-                    if "p_realize_low_sample" in v2_meta:
-                        row[f"edge_realizable_p_realize_low_sample{suffix}"] = bool(v2_meta.get("p_realize_low_sample"))
-                    if delta_exit is None:
-                        delta_exit = _first_numeric(v2_meta.get("delta_exit"))
-                        if delta_exit is not None:
-                            row[f"edge_realizable_delta_exit{suffix}"] = delta_exit
-            if edge_realizable_v2_val is not None and math.isfinite(edge_realizable_v2_val):
-                edge_realizable_score_v2_val = edge_realizable_score(edge_realizable_v2_val, time_structure, penalty_side)
-                if edge_realizable_score_v2_val is not None and math.isfinite(edge_realizable_score_v2_val):
-                    row[f"edge_realizable_score_v2{suffix}"] = edge_realizable_score_v2_val
-
-        if not edge_tradeability_enabled:
-            return
-
-        signal_lcb = to_float(row.get(f"edge_signal_lcb{suffix}"))
-        path_lcb = to_float(row.get(f"edge_path_p_reach_lcb{suffix}"))
-        tradeability_profit_value = _first_numeric(
-            row.get(f"edge_tradeability_profit_value{suffix}"),
-            row.get(f"edge_tradeability_edge_lcb{suffix}"),
-        )
-        tradeability_pass = row.get(f"edge_tradeability_pass{suffix}")
-        needs_tradeability = (
-            signal_lcb is None
-            or path_lcb is None
-            or tradeability_profit_value is None
-            or tradeability_pass is None
-        )
-        if not needs_tradeability:
-            return
-
-        candidate_ref: Dict[str, Any] = {
-            "strategy": "hard_source_direct" if lcb_global_enabled else "main",
-            "q_raw": q_raw_side,
-            "q_calibrated": q_cal_side,
-            "q_edge": q_edge_side,
-            "trend_pct": trend_pct,
-            "trend_consistency_up": trend_consistency_up,
-            "exec_fee_cost": exec_fee_cost,
-            "edge_realizable": edge_realizable_val,
-            "edge_realizable_v2": edge_realizable_v2_val,
-            "edge_realizable_v2_raw": edge_realizable_v2_val,
-            "edge_realizable_hold_cost": edge_realizable_hold_cost,
-            "edge_realizable_exec_audit_gate_pass": True,
-            "lcb_global_signal_lcb_min": lcb_global_signal_lcb_min,
-            "lcb_global_path_lcb_min": lcb_global_path_lcb_min,
-            "lcb_global_edge_lcb_min": _resolve_lcb_global_edge_lcb_min(days_to_event),
-        }
-        signal_meta = compute_signal_advantage(
-            q_raw=q_raw_side,
-            q_calibrated=q_cal_side,
-            q_edge=q_edge_side,
-            trend_pct=trend_pct,
-            trend_consistency_up=trend_consistency_up,
-            model_spread=to_float(row.get("q_round_model_spread")),
-            signal_z=float(edge_tradeability_signal_z),
-        )
-        signal_alpha = _first_numeric(signal_meta.get("signal_alpha"))
-        signal_lcb = _first_numeric(signal_meta.get("signal_lcb"))
-        if signal_lcb is not None:
-            row[f"edge_signal_lcb{suffix}"] = signal_lcb
-        for key_name, meta_key in (
-            ("edge_signal_alpha", "signal_alpha"),
-            ("edge_signal_sigma", "signal_sigma"),
-            ("edge_signal_confidence", "signal_confidence"),
-        ):
-            val = _first_numeric(signal_meta.get(meta_key))
-            if val is not None:
-                row[f"{key_name}{suffix}"] = val
-        path_meta = estimate_path_probability(
-            signal_alpha=signal_alpha,
-            spread=spread,
-            depth_ratio=depth_ratio,
-            hours_to_settle=hours_to_settle_val,
-            calibration_bucket_key=edge_realizable_bucket_key or None,
-            signal_z=float(edge_tradeability_signal_z),
-        )
-        edge_input_val = edge_realizable_v2_val
-        edge_semantics = "realized_v2"
-        if edge_input_val is None or not math.isfinite(edge_input_val):
-            edge_input_val = edge_realizable_val
-            edge_semantics = "raw_exec"
-        edge_floor_meta = estimate_tradeable_edge_floor(
-            edge_raw=edge_input_val,
-            p_reach=path_meta.get("p_reach"),
-            p_reach_lcb=path_meta.get("p_reach_lcb"),
-            p_reach_ucb=path_meta.get("p_reach_ucb"),
-            spread=spread,
-            fee_cost=exec_fee_cost,
-            hold_cost=edge_realizable_hold_cost,
-            slippage_buffer=edge_tradeability_slippage_buffer,
-            edge_semantics=edge_semantics,
-        )
-        policy_eval = dict(edge_tradeability_policy) if isinstance(edge_tradeability_policy, dict) else {}
-        if lcb_global_enabled:
-            policy_eval["signal_lcb_min"] = max(0.0, float(lcb_global_signal_lcb_min))
-            policy_eval["path_lcb_min"] = min(1.0, max(0.0, float(lcb_global_path_lcb_min)))
-            edge_lcb_min_now = _resolve_lcb_global_edge_lcb_min(days_to_event)
-            if edge_lcb_min_now is not None and math.isfinite(edge_lcb_min_now):
-                policy_eval["edge_lcb_min"] = float(edge_lcb_min_now)
-        policy_meta = evaluate_tradeability(
-            policy=policy_eval,
-            key="|".join(
-                [
-                    str(row.get("slug") or "").strip(),
-                    event_date_key,
-                    str(row.get("outcome") or "").strip(),
-                    side,
-                    str(candidate_ref.get("strategy") or "main"),
-                ]
-            ),
-            signal_lcb=signal_lcb,
-            path_lcb=path_meta.get("p_reach_lcb"),
-            edge_lcb=edge_floor_meta.get("edge_lcb_tradeable"),
-            v2_value=edge_realizable_v2_val,
-            exec_audit_gate_pass=True,
-            enforce_path_gate=bool(edge_floor_meta.get("path_gate_enforced", True)),
-        )
-
-        side_values: Dict[str, Any] = {
-            f"edge_path_p_reach{suffix}": _first_numeric(path_meta.get("p_reach")),
-            f"edge_path_p_reach_lcb{suffix}": _first_numeric(path_meta.get("p_reach_lcb")),
-            f"edge_path_p_reach_ucb{suffix}": _first_numeric(path_meta.get("p_reach_ucb")),
-            f"edge_path_sample_n{suffix}": path_meta.get("path_sample_n"),
-            f"edge_path_bucket_key{suffix}": path_meta.get("path_bucket_key"),
-            f"edge_path_bucket_key_used{suffix}": path_meta.get("path_bucket_key_used"),
-            f"edge_path_fallback_rank{suffix}": path_meta.get("path_fallback_rank"),
-            f"edge_path_source{suffix}": path_meta.get("path_source"),
-            f"edge_path_calibration_path{suffix}": path_meta.get("path_calibration_path"),
-            f"edge_path_calibration_generated_at{suffix}": path_meta.get("path_calibration_generated_at"),
-            f"edge_tradeability_input_semantics{suffix}": edge_semantics,
-            f"edge_tradeability_edge_expected{suffix}": _first_numeric(edge_floor_meta.get("edge_expected_tradeable")),
-            f"edge_tradeability_profit_value{suffix}": _first_numeric(edge_floor_meta.get("edge_lcb_tradeable")),
-            f"edge_tradeability_edge_lcb{suffix}": _first_numeric(edge_floor_meta.get("edge_lcb_tradeable")),
-            f"edge_tradeability_edge_ucb{suffix}": _first_numeric(edge_floor_meta.get("edge_ucb_tradeable")),
-            f"edge_tradeability_miss_cost{suffix}": _first_numeric(edge_floor_meta.get("edge_miss_cost")),
-            f"edge_tradeability_slippage_buffer{suffix}": _first_numeric(edge_floor_meta.get("edge_slippage_buffer")),
-            f"edge_tradeability_edge_floor_mode{suffix}": edge_floor_meta.get("edge_floor_mode"),
-            f"edge_tradeability_mode{suffix}": policy_meta.get("mode"),
-            f"edge_tradeability_policy_enforce{suffix}": policy_meta.get("enforce"),
-            f"edge_tradeability_canary_sampled{suffix}": policy_meta.get("canary_sampled"),
-            f"edge_tradeability_pass{suffix}": policy_meta.get("pass"),
-            f"edge_tradeability_blocked{suffix}": policy_meta.get("blocked"),
-            f"edge_tradeability_shadow_block{suffix}": policy_meta.get("shadow_block"),
-            f"edge_tradeability_reasons{suffix}": policy_meta.get("reasons_csv"),
-            f"edge_tradeability_signal_lcb_min{suffix}": _first_numeric(policy_meta.get("signal_lcb_min")),
-            f"edge_tradeability_path_lcb_min{suffix}": _first_numeric(policy_meta.get("path_lcb_min")),
-            f"edge_tradeability_profit_min{suffix}": _first_numeric(policy_meta.get("edge_lcb_min")),
-            f"edge_tradeability_edge_lcb_min{suffix}": _first_numeric(policy_meta.get("edge_lcb_min")),
-            f"edge_tradeability_path_gate_enforced{suffix}": policy_meta.get("path_gate_enforced"),
-        }
-        for key_name, value in side_values.items():
-            if value is None:
-                continue
-            row[key_name] = value
-
-    _compute_runtime_for_side("YES", ask_yes, spread_yes, q_entry, q_round, q_raw_canonical, time_yes, pen_yes)
-    _compute_runtime_for_side("NO", ask_no, spread_no, q_entry_no, q_round_no, q_raw_no, time_no, pen_no)
-    apply_target_realization_aliases(row)
 
 
 def _temperature_trajectory_features_for_composer(
@@ -58316,377 +61164,6 @@ def _temperature_trajectory_features_for_composer(
             rebuilt_peak["source"] = str(out.get("peak_estimator_source") or "composer_flat_peak_estimator")
             out["peak_estimator"] = rebuilt_peak
     return out
-
-
-def _overlay_temperature_trajectory_posterior_for_composed_rows(
-    rows: List[Dict[str, Any]],
-    features: Mapping[str, Any],
-    *,
-    rounding_rule: str = "",
-    event_tz: str = "",
-) -> Dict[str, Any]:
-    labels = [
-        str(row.get("outcome") or row.get("label") or "").strip()
-        for row in rows
-        if isinstance(row, Mapping)
-    ]
-    if not rows or not labels:
-        return {"applied": False, "status": "missing_rows_or_labels"}
-    features_for_bayes = _temperature_trajectory_features_for_composer(
-        features,
-        event_tz=event_tz,
-    )
-    try:
-        probs, _atomic_probs, meta = bayes_temperature_trajectory_channel_probs(
-            labels,
-            features_for_bayes,
-            rounding_rule=rounding_rule or "rounded_degrees",
-        )
-    except Exception as exc:
-        return {"applied": False, "status": "trajectory_overlay_error", "error": str(exc)}
-    meta = dict(meta or {})
-    evidence = max(0.0, float(to_float(meta.get("evidence")) or 0.0))
-    evidence_base = max(0.0, float(to_float(meta.get("evidence_base")) or 0.0))
-    evidence_scale = max(0.0, float(to_float(meta.get("evidence_scale")) or 0.0))
-    enabled = bool(evidence > 0.0 and any((p or 0.0) > 0.0 for p in probs))
-    status = str(meta.get("status") or ("enabled" if enabled else "zero_scaled"))
-    source = str(meta.get("source") or "")
-    role = str(meta.get("role") or "intraday_temperature_trajectory_likelihood")
-    source_class = str(meta.get("source_class") or "airport_temperature_path")
-    dedupe_policy = str(
-        meta.get("dedupe_policy")
-        or "primary_intraday_temperature_signal; derived intraday channels must be incremental and pp-capped"
-    )
-    weaker_than_hard_source = bool(meta.get("weaker_than_hard_source", True))
-
-    def first_numeric(*values: Any) -> Optional[float]:
-        for value in values:
-            numeric = to_float(value)
-            if numeric is not None and math.isfinite(float(numeric)):
-                return float(numeric)
-        return None
-
-    trajectory_path_mu_c = first_numeric(meta.get("path_mu_c"), meta.get("mean_c"), meta.get("mu_c"))
-    trajectory_path_sigma_c = first_numeric(meta.get("path_sigma_c"), meta.get("sigma_c"))
-    trajectory_rate_hat_c_per_hour = first_numeric(meta.get("rate_hat_c_per_hour"), meta.get("rate_c_per_hour"))
-    trajectory_accel_hat_c_per_hour2 = first_numeric(meta.get("accel_hat_c_per_hour2"))
-    trajectory_component_detail = {
-        "source": source,
-        "status": status,
-        "path_mu_c": trajectory_path_mu_c,
-        "path_sigma_c": trajectory_path_sigma_c,
-        "evidence": evidence,
-        "evidence_base": evidence_base,
-        "evidence_scale": evidence_scale,
-        "rate_hat_c_per_hour": trajectory_rate_hat_c_per_hour,
-        "rate_c_per_hour": trajectory_rate_hat_c_per_hour,
-        "accel_hat_c_per_hour2": trajectory_accel_hat_c_per_hour2,
-        "realization_state": meta.get("realization_state"),
-        "hours_to_peak_window": meta.get("hours_to_peak_window"),
-        "regime_model_status": meta.get("regime_model_status"),
-    }
-
-    total_hint = None
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        total_hint = to_float(row.get("q_temperature_bucket_alpha_total"))
-        if total_hint is None:
-            total_hint = to_float(row.get("q_bayes_alpha_total"))
-        if total_hint is not None and math.isfinite(float(total_hint)) and float(total_hint) > 0:
-            break
-
-    alphas: List[float] = []
-    for idx, row in enumerate(rows):
-        prob = float(probs[idx]) if idx < len(probs) and probs[idx] is not None else 0.0
-        contribution = evidence * prob if enabled else 0.0
-        hard_zero = bool(row.get("q_posterior_observed_constraints_hard_zero")) or bool(
-            row.get("impossible_by_observed_max")
-        )
-        components_raw = row.get("q_temperature_bucket_score_components")
-        components = dict(components_raw) if isinstance(components_raw, Mapping) else {}
-        old_trajectory = to_float(components.get("temperature_trajectory"))
-        if old_trajectory is None:
-            old_trajectory = to_float(row.get("q_bayes_temperature_trajectory_component"))
-        if old_trajectory is None:
-            old_trajectory = 0.0
-        components["temperature_trajectory"] = contribution
-        details_raw = row.get("q_temperature_bucket_score_component_details")
-        details = dict(details_raw) if isinstance(details_raw, Mapping) else {}
-        details["temperature_trajectory"] = {
-            **trajectory_component_detail,
-            "prob": prob if enabled else None,
-            "component": contribution,
-        }
-        component_alpha = 0.0
-        component_count = 0
-        if hard_zero:
-            component_count = 1
-            component_alpha = 0.0
-        else:
-            for value in components.values():
-                val = to_float(value)
-                if val is None or not math.isfinite(float(val)):
-                    continue
-                component_alpha += max(0.0, float(val))
-                component_count += 1
-        fallback_alpha = first_numeric(row.get("q_temperature_bucket_alpha"), row.get("q_bayes_alpha"))
-        if fallback_alpha is None:
-            posterior = first_numeric(
-                row.get("q_bayes_posterior_pre_hard_source_override"),
-                row.get("q_bayes_posterior"),
-                row.get("q_temperature_bucket_posterior"),
-                row.get("q_round"),
-            )
-            if posterior is not None and total_hint is not None:
-                fallback_alpha = max(0.0, float(posterior)) * max(0.0, float(total_hint))
-        if component_count:
-            alpha = component_alpha
-        elif fallback_alpha is not None and math.isfinite(float(fallback_alpha)):
-            alpha = max(0.0, float(fallback_alpha) - float(old_trajectory) + float(contribution))
-        else:
-            alpha = max(0.0, float(contribution))
-        row["q_temperature_bucket_score_components"] = components
-        row["q_temperature_bucket_score_component_details"] = details
-        row["q_bayes_temperature_trajectory_evidence"] = evidence
-        row["q_bayes_temperature_trajectory_evidence_base"] = evidence_base
-        row["q_bayes_temperature_trajectory_evidence_scale"] = evidence_scale
-        row["q_bayes_temperature_trajectory_enabled"] = enabled
-        row["q_bayes_temperature_trajectory_prob"] = prob if enabled else None
-        row["q_bayes_temperature_trajectory_source"] = source
-        row["q_bayes_temperature_trajectory_status"] = status
-        row["q_bayes_temperature_trajectory_mu_c"] = trajectory_path_mu_c
-        row["q_bayes_temperature_trajectory_sigma_c"] = trajectory_path_sigma_c
-        row["q_bayes_temperature_trajectory_path_mu_c"] = trajectory_path_mu_c
-        row["q_bayes_temperature_trajectory_path_sigma_c"] = trajectory_path_sigma_c
-        row["q_bayes_temperature_trajectory_extrapolation_c"] = meta.get("extrapolation_c")
-        row["q_bayes_temperature_trajectory_blended_mu_c"] = meta.get("blended_mu_c")
-        row["q_bayes_temperature_trajectory_rate_c_per_hour"] = trajectory_rate_hat_c_per_hour
-        row["q_bayes_temperature_trajectory_rate_hat_c_per_hour"] = trajectory_rate_hat_c_per_hour
-        row["q_bayes_temperature_trajectory_accel_hat_c_per_hour2"] = trajectory_accel_hat_c_per_hour2
-        row["q_bayes_temperature_trajectory_realization_state"] = meta.get("realization_state")
-        row["q_bayes_temperature_trajectory_hours_to_peak_window"] = meta.get("hours_to_peak_window")
-        row["q_bayes_temperature_trajectory_role"] = role
-        row["q_bayes_temperature_trajectory_source_class"] = source_class
-        row["q_bayes_temperature_trajectory_dedupe_policy"] = dedupe_policy
-        row["q_bayes_temperature_trajectory_weaker_than_hard_source"] = weaker_than_hard_source
-        if enabled:
-            row["q_temperature_trajectory"] = prob
-        q_bayes_meta = dict(row.get("q_bayes_meta") or {}) if isinstance(row.get("q_bayes_meta"), Mapping) else {}
-        q_bayes_meta.update(
-            {
-                "temperature_trajectory_evidence": evidence,
-                "temperature_trajectory_evidence_base": evidence_base,
-                "temperature_trajectory_evidence_scale": evidence_scale,
-                "temperature_trajectory_posterior_enabled": enabled,
-                "temperature_trajectory_posterior_status": status,
-                "temperature_trajectory_posterior_source": source,
-                "temperature_trajectory_prob": prob if enabled else None,
-                "temperature_trajectory_mu_c": trajectory_path_mu_c,
-                "temperature_trajectory_sigma_c": trajectory_path_sigma_c,
-                "temperature_trajectory_path_mu_c": trajectory_path_mu_c,
-                "temperature_trajectory_path_sigma_c": trajectory_path_sigma_c,
-                "temperature_trajectory_extrapolation_c": meta.get("extrapolation_c"),
-                "temperature_trajectory_blended_mu_c": meta.get("blended_mu_c"),
-                "temperature_trajectory_rate_c_per_hour": trajectory_rate_hat_c_per_hour,
-                "temperature_trajectory_rate_hat_c_per_hour": trajectory_rate_hat_c_per_hour,
-                "temperature_trajectory_accel_hat_c_per_hour2": trajectory_accel_hat_c_per_hour2,
-                "temperature_trajectory_realization_state": meta.get("realization_state"),
-                "temperature_trajectory_hours_to_peak_window": meta.get("hours_to_peak_window"),
-                "temperature_trajectory_role": role,
-                "temperature_trajectory_source_class": source_class,
-                "temperature_trajectory_dedupe_policy": dedupe_policy,
-                "temperature_trajectory_weaker_than_hard_source": weaker_than_hard_source,
-                "temperature_trajectory_component_detail": dict(trajectory_component_detail),
-            }
-        )
-        row["q_bayes_meta"] = q_bayes_meta
-        alphas.append(float(alpha))
-
-    alpha_total = sum(alpha for alpha in alphas if math.isfinite(float(alpha)) and alpha >= 0.0)
-    if enabled and alpha_total > 0.0:
-        for row, alpha in zip(rows, alphas):
-            posterior = max(0.0, float(alpha)) / float(alpha_total)
-            no_posterior = max(0.0, min(1.0, 1.0 - posterior))
-            observed_constraints_present = bool(row.get("q_posterior_observed_constraints_applied")) or any(
-                key in row
-                for key in (
-                    "q_temperature_bucket_posterior_pre_observed_constraints",
-                    "q_bayes_posterior_pre_observed_constraints",
-                    "q_contract_payout_posterior_pre_observed_constraints",
-                )
-            )
-            row["q_temperature_bucket_alpha"] = max(0.0, float(alpha))
-            row["q_temperature_bucket_alpha_total"] = float(alpha_total)
-            row["q_bayes_alpha"] = max(0.0, float(alpha))
-            row["q_bayes_alpha_total"] = float(alpha_total)
-            row.setdefault("q_bayes_posterior_pre_temperature_trajectory_overlay", row.get("q_bayes_posterior"))
-            row["q_bayes_posterior"] = posterior
-            row["q_bayes_posterior_no"] = no_posterior
-            row["q_temperature_bucket_posterior"] = posterior
-            if "q_contract_payout_posterior" in row:
-                row["q_contract_payout_posterior"] = posterior
-            if observed_constraints_present:
-                row["q_temperature_bucket_posterior_pre_observed_constraints"] = posterior
-                row["q_bayes_posterior_pre_observed_constraints"] = posterior
-                if "q_contract_payout_posterior" in row or "q_contract_payout_posterior_pre_observed_constraints" in row:
-                    row["q_contract_payout_posterior_pre_observed_constraints"] = posterior
-                row["q_bayes_posterior_no_pre_observed_constraints"] = no_posterior
-                row["q_posterior_observed_constraints_rebased_by_temperature_trajectory"] = True
-            q_bayes_meta = dict(row.get("q_bayes_meta") or {})
-            q_bayes_meta["posterior_overlay_source"] = "ui_server_event_runs_temperature_trajectory"
-            row["q_bayes_meta"] = q_bayes_meta
-
-    return {
-        "applied": bool(enabled and alpha_total > 0.0),
-        "status": status,
-        "enabled": enabled,
-        "evidence": evidence,
-        "evidence_base": evidence_base,
-        "evidence_scale": evidence_scale,
-        "source": source,
-        "role": role,
-        "source_class": source_class,
-        "dedupe_policy": dedupe_policy,
-        "weaker_than_hard_source": weaker_than_hard_source,
-        "mu_c": trajectory_path_mu_c,
-        "sigma_c": trajectory_path_sigma_c,
-        "path_mu_c": trajectory_path_mu_c,
-        "path_sigma_c": trajectory_path_sigma_c,
-        "rate_c_per_hour": trajectory_rate_hat_c_per_hour,
-        "rate_hat_c_per_hour": trajectory_rate_hat_c_per_hour,
-        "accel_hat_c_per_hour2": trajectory_accel_hat_c_per_hour2,
-        "realization_state": meta.get("realization_state"),
-        "hours_to_peak_window": meta.get("hours_to_peak_window"),
-        "component_detail": trajectory_component_detail,
-    }
-
-
-def _current_distribution_probabilities(rows_obj: Any) -> List[float]:
-    out: List[float] = []
-    if not isinstance(rows_obj, list):
-        return out
-    for row in rows_obj:
-        if not isinstance(row, Mapping):
-            out.append(0.0)
-            continue
-        prob = _posterior_probability_from_row(row)
-        out.append(float(prob) if prob is not None and math.isfinite(float(prob)) else 0.0)
-    return out
-
-
-def _features_need_final_context_trajectory_overlay(features: Mapping[str, Any]) -> bool:
-    if not isinstance(features, Mapping) or not features:
-        return False
-    if _truthy(features.get("temperature_momentum_context_warming_watch")):
-        return True
-    state = str(features.get("temperature_momentum_realization_state") or "").strip().lower()
-    if state == "context_warming_watch":
-        return True
-    peak_meta = features.get("peak_estimator")
-    if isinstance(peak_meta, Mapping):
-        peak_state = str(peak_meta.get("temperature_momentum_realization_state") or "").strip().lower()
-        if peak_state == "context_warming_watch":
-            return True
-        if _truthy(peak_meta.get("temperature_momentum_context_warming_watch")):
-            return True
-    return False
-
-
-def _materialize_final_temperature_trajectory_overlay_for_fact_write(
-    item: Dict[str, Any],
-    rows_obj: Any,
-    features: Mapping[str, Any],
-    *,
-    slug: str,
-    event_date: str,
-    fact_as_of: str,
-    market_var: str,
-    rounding_rule: str,
-    event_tz: str,
-    source: str,
-) -> bool:
-    if not isinstance(item, dict) or not isinstance(rows_obj, list) or not _is_chengdu_zuuu_fact_payload(slug, item):
-        return False
-    if not isinstance(features, Mapping) or not features:
-        return False
-    if not _features_need_final_context_trajectory_overlay(features):
-        return False
-
-    row_fields = _distribution_weather_feature_fields(
-        features,
-        refreshed_at=str(
-            features.get("weather_likelihood_refreshed_at")
-            or item.get("weather_likelihood_refreshed_at")
-            or fact_as_of
-            or ""
-        ),
-    )
-    if row_fields:
-        _apply_weather_feature_fields_to_rows(rows_obj, row_fields)
-
-    overlay_meta = _overlay_temperature_trajectory_posterior_for_composed_rows(
-        rows_obj,
-        features,
-        rounding_rule=rounding_rule or "rounded_degrees",
-        event_tz=event_tz or "Asia/Shanghai",
-    )
-
-    apply_posterior_observed_constraints_to_distribution(rows_obj)
-    hard_source_meta = apply_hard_source_posterior_override_to_distribution(
-        rows_obj,
-        features,
-        base_probs=_current_distribution_probabilities(rows_obj),
-        market_var=market_var or "temperature_2m_max",
-        rounding_rule=rounding_rule,
-        event_tz=event_tz or "Asia/Shanghai",
-        event_date=event_date,
-        ignore_window=True,
-    )
-    if bool(hard_source_meta.get("applied")):
-        item["hard_source_posterior_override"] = dict(hard_source_meta)
-        item["hard_source_posterior_override_applied"] = True
-        item["hard_source_posterior_override_constraint_mode"] = str(
-            hard_source_meta.get("constraint_mode") or ""
-        )
-        target_bucket = _top_label_from_distribution_rows(item.get("distribution")) or _top_label_from_distribution_rows(
-            item.get("rows")
-        )
-        if target_bucket:
-            item["model_top_label"] = target_bucket
-            item["single_temperature_top_label"] = target_bucket
-            item["atomic_temperature_top_label"] = target_bucket
-            item["contract_payout_top_label"] = target_bucket
-            item["hard_source_posterior_override_target_bucket"] = target_bucket
-
-    _materialize_d0_observed_feasibility_guard(
-        item,
-        rows_obj,
-        features,
-        event_date=event_date,
-        fact_as_of=fact_as_of,
-        event_tz=event_tz or "Asia/Shanghai",
-    )
-    _normalize_fact_distribution_posterior_ssot_fields(
-        item,
-        rows_obj,
-        source=source,
-    )
-
-    overlays = item.get("temperature_trajectory_posterior_overlay_final")
-    overlays = dict(overlays) if isinstance(overlays, Mapping) else {}
-    overlays[source] = dict(overlay_meta or {})
-    item["temperature_trajectory_posterior_overlay_final"] = overlays
-    provenance = dict(item.get("fact_provenance") or {})
-    provenance["final_temperature_trajectory_overlay"] = {
-        "applied": bool(overlay_meta.get("applied")) if isinstance(overlay_meta, Mapping) else False,
-        "status": overlay_meta.get("status") if isinstance(overlay_meta, Mapping) else "",
-        "source": source,
-        "rows": len(rows_obj),
-        "hard_source_reapplied": bool(hard_source_meta.get("applied")),
-    }
-    item["fact_provenance"] = provenance
-    return True
 
 
 def _compose_fact_from_snapshots(
@@ -59006,25 +61483,11 @@ def _compose_fact_from_snapshots(
             merged["run_date"] = _normalize_date_key(run_date)
         _apply_market_quote_fallback_for_side_in_place(merged, "YES")
         _apply_market_quote_fallback_for_side_in_place(merged, "NO")
-        _compute_edge_fields_in_place(merged, time_structure_min)
         merged_rows.append(merged)
     if not merged_rows:
         return None
-    temperature_trajectory_overlay_meta = _overlay_temperature_trajectory_posterior_for_composed_rows(
-        merged_rows,
-        payload_weather_features,
-        rounding_rule=str(
-            meta_model.get("rounding_rule")
-            or payload_model.get("rounding_rule")
-            or (merged_rows[0].get("rounding_rule") if merged_rows else "")
-            or ""
-        ),
-        event_tz=str(meta_model.get("tz") or payload_model.get("tz") or "Asia/Shanghai"),
-    )
     merged_payload = dict(payload_model)
     merged_payload["rows"] = merged_rows
-    if temperature_trajectory_overlay_meta:
-        merged_payload["temperature_trajectory_posterior_overlay"] = dict(temperature_trajectory_overlay_meta)
     market_updated_candidates = [created_market, tick_created_overlay, merged_payload.get("market_updated_at")]
     market_updated_at = ""
     for ts in market_updated_candidates:
@@ -59187,18 +61650,6 @@ def _compose_fact_from_snapshots(
     _merge_fill_regime_fields_from_model_payload(item, merged_payload)
     if isinstance(merged_payload.get("weather_likelihood_features"), Mapping):
         item["weather_likelihood_features"] = dict(merged_payload.get("weather_likelihood_features") or {})
-    if settlement_actual is not None:
-        override_meta = _apply_hard_source_final_lock_to_item(
-            item,
-            item.get("weather_likelihood_features") if isinstance(item.get("weather_likelihood_features"), Mapping) else {},
-            event_date=_normalize_date_key(event_date),
-            market_var=str(event_row.get("market_var") or "temperature_2m_max"),
-            rounding_rule=str(event_row.get("rounding_rule") or ""),
-            event_tz=str(event_row.get("tz") or "Asia/Shanghai"),
-        )
-        if override_meta:
-            merged_payload["hard_source_posterior_override"] = dict(override_meta)
-            merged_payload["hard_source_posterior_override_meta"] = dict(override_meta)
     run_payload = {
         "score_composer": {
             "model_snapshot_id": model_id,
@@ -59426,128 +61877,6 @@ def _event_run_settlement_status_candidate(
     return best_closed
 
 
-def _posterior_base_probs_from_distribution(rows_obj: Any) -> List[float]:
-    out: List[float] = []
-    if not isinstance(rows_obj, list):
-        return out
-    for row in rows_obj:
-        if not isinstance(row, Mapping):
-            out.append(0.0)
-            continue
-        value = to_float(row.get("q_bayes_posterior_pre_hard_source_override"))
-        if value is None:
-            value = to_float(row.get("q_bayes_posterior"))
-        if value is None:
-            value = to_float(row.get("q_raw"))
-        if value is None:
-            value = to_float(row.get("q_round"))
-        out.append(float(value if value is not None else 0.0))
-    return out
-
-
-def _top_label_from_distribution_rows(rows_obj: Any) -> str:
-    best_label = ""
-    best_q = -1.0
-    if not isinstance(rows_obj, list):
-        return ""
-    for row in rows_obj:
-        if not isinstance(row, Mapping):
-            continue
-        q = to_float(row.get("q_temperature_bucket_posterior"))
-        if q is None:
-            q = to_float(row.get("q_bayes_posterior"))
-        if q is None:
-            q = to_float(row.get("q_raw"))
-        if q is None:
-            q = to_float(row.get("q_round"))
-        label = str(row.get("outcome") or row.get("label") or "").strip()
-        if label and q is not None and float(q) > best_q:
-            best_label = label
-            best_q = float(q)
-    return best_label
-
-
-def _apply_hard_source_final_lock_to_item(
-    item: Dict[str, Any],
-    features: Mapping[str, Any],
-    *,
-    event_date: str,
-    market_var: str,
-    rounding_rule: str,
-    event_tz: str,
-) -> Dict[str, Any]:
-    hard_source_override_meta: Dict[str, Any] = {}
-    hard_source_override_applied = False
-    distribution = item.get("distribution")
-    if isinstance(distribution, list):
-        apply_posterior_observed_constraints_to_distribution(distribution)
-        hard_source_override_meta = apply_hard_source_posterior_override_to_distribution(
-            distribution,
-            features,
-            base_probs=_posterior_base_probs_from_distribution(distribution),
-            market_var=market_var,
-            rounding_rule=rounding_rule,
-            event_tz=event_tz,
-            event_date=event_date,
-            ignore_window=True,
-        )
-        hard_source_override_applied = bool(hard_source_override_meta.get("applied"))
-    rows_payload = item.get("rows")
-    if isinstance(rows_payload, list):
-        apply_posterior_observed_constraints_to_distribution(rows_payload)
-        rows_override_meta = apply_hard_source_posterior_override_to_distribution(
-            rows_payload,
-            features,
-            base_probs=_posterior_base_probs_from_distribution(rows_payload),
-            market_var=market_var,
-            rounding_rule=rounding_rule,
-            event_tz=event_tz,
-            event_date=event_date,
-            ignore_window=True,
-        )
-        if bool(rows_override_meta.get("applied")) and not hard_source_override_applied:
-            hard_source_override_meta = rows_override_meta
-            hard_source_override_applied = True
-    if not hard_source_override_applied:
-        return {}
-    item["hard_source_posterior_override"] = dict(hard_source_override_meta)
-    item["hard_source_posterior_override_applied"] = True
-    item["hard_source_posterior_override_constraint_mode"] = str(
-        hard_source_override_meta.get("constraint_mode") or ""
-    )
-    target_bucket = (
-        _top_label_from_distribution_rows(item.get("distribution"))
-        or _top_label_from_distribution_rows(item.get("rows"))
-        or str(hard_source_override_meta.get("target_bucket") or "").strip()
-    )
-    if target_bucket:
-        for key in (
-            "model_top_label",
-            "single_temperature_top_label",
-            "atomic_temperature_top_label",
-            "contract_payout_top_label",
-        ):
-            item[key] = target_bucket
-        item["hard_source_posterior_override_target_bucket"] = target_bucket
-    _promote_hard_source_final_lock_fields(
-        item,
-        hard_source_override_meta,
-        target_bucket=target_bucket,
-        features=features,
-    )
-    provenance = dict(item.get("fact_provenance") or {})
-    provenance["hard_source_posterior_override"] = {
-        "source": hard_source_override_meta.get("source"),
-        "value_c": hard_source_override_meta.get("value_c"),
-        "target_bucket": hard_source_override_meta.get("target_bucket"),
-        "window": hard_source_override_meta.get("window"),
-        "decision_basis": hard_source_override_meta.get("decision_basis"),
-        "final_bucket_lock": bool(hard_source_override_meta.get("final_bucket_lock")),
-    }
-    item["fact_provenance"] = provenance
-    return hard_source_override_meta
-
-
 def _compose_live_snapshot_items_for_ui(
     conn: sqlite3.Connection,
     run_date: str,
@@ -59626,6 +61955,540 @@ def _compose_live_snapshot_items_for_ui(
     return out
 
 
+def _market_discovery_pending_model_payload(item: Optional[Mapping[str, Any]]) -> bool:
+    payload = item if isinstance(item, Mapping) else {}
+    if str(payload.get("data_status") or "").strip() == "market_discovery_pending_model":
+        return True
+    if str(payload.get("weather_strategy_mode") or "").strip() == "market_discovery_pending_model":
+        return True
+    if _truthy(payload.get("market_discovery_placeholder")):
+        return True
+    provenance = payload.get("fact_provenance")
+    if isinstance(provenance, Mapping) and _truthy(provenance.get("market_discovery_placeholder")):
+        return True
+    discovery = payload.get("market_discovery")
+    return isinstance(discovery, Mapping) and str(discovery.get("source") or "").strip() == "weather_market_discovery"
+
+
+def _discovery_pending_fact_forward_allowed(event_date: str) -> bool:
+    event_key = _normalize_date_key(str(event_date or ""))
+    today_key = _normalize_date_key(_today_et_key())
+    return bool(event_key and today_key and event_key >= today_key)
+
+
+def _discovery_placeholder_row_for_key(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+) -> Optional[sqlite3.Row]:
+    slug_key = str(slug or "").strip()
+    event_key = _normalize_date_key(str(event_date or ""))
+    if not slug_key or not event_key:
+        return None
+    rows = _discovery_placeholder_candidate_rows(
+        conn,
+        event_key,
+        upcoming_days=0,
+        exclude_keys=set(),
+        limit=64,
+    )
+    for row in rows:
+        row_slug = str((row["slug"] if isinstance(row, sqlite3.Row) else row[0]) or "").strip()
+        row_event_date = _normalize_date_key(
+            str((row["event_date"] if isinstance(row, sqlite3.Row) else row[1]) or "")
+        )
+        if row_slug == slug_key and row_event_date == event_key:
+            return row
+    return None
+
+
+def _pending_discovery_posterior_run_id(*, slug: str, event_date: str, run_date: str) -> str:
+    material = json.dumps(
+        {
+            "source": "weather_market_discovery",
+            "state": "pending_model_snapshot",
+            "slug": str(slug or ""),
+            "event_date": str(event_date or ""),
+            "run_date": str(run_date or ""),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
+    return f"post_pending_discovery_{digest}"
+
+
+def _feature_first_float(features: Mapping[str, Any], *keys: str) -> Optional[float]:
+    for key in keys:
+        value = to_float(features.get(key))
+        if value is not None:
+            return float(value)
+    return None
+
+
+def _feature_first_text(features: Mapping[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = str(features.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _posterior_bucket_labels_from_item(item: Mapping[str, Any]) -> List[str]:
+    rows = item.get("distribution") if isinstance(item.get("distribution"), list) else item.get("rows")
+    labels: List[str] = []
+    if not isinstance(rows, list):
+        return labels
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        label = str(row.get("outcome") or row.get("label") or row.get("bucket") or "").strip()
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _pending_model_observation_inputs_from_features(features: Mapping[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+
+    def put_float(target: str, *keys: str) -> None:
+        value = _feature_first_float(features, *keys)
+        if value is not None:
+            out[target] = value
+
+    def put_text(target: str, *keys: str) -> None:
+        value = _feature_first_text(features, *keys)
+        if value:
+            out[target] = value
+
+    def put_bool(target: str, *keys: str) -> None:
+        for key in keys:
+            if key not in features:
+                continue
+            value = features.get(key)
+            if isinstance(value, bool):
+                out[target] = value
+                return
+            text = str(value).strip().lower()
+            if text in {"1", "true", "yes", "on"}:
+                out[target] = True
+                return
+            if text in {"0", "false", "no", "off"}:
+                out[target] = False
+                return
+
+    put_float(
+        "current_temp_c",
+        "current_temp_c",
+        "observed_current_temp_c",
+        "observed_temp_c",
+        "observed_temp",
+        "metar_temperature_c",
+        "temperature_c",
+        "zuuu_metar_raw_amsc_latest_temp_c",
+        "zuuu_metar_raw_awc_latest_temp_c",
+    )
+    put_float(
+        "observed_today_max_c",
+        "observed_today_max_c",
+        "today_max_c",
+        "daily_max_observed_c",
+        "zuuu_metar_raw_amsc_today_max_c",
+        "zuuu_metar_raw_awc_today_max_c",
+    )
+    put_float("dewpoint_c", "dewpoint_c", "metar_dewpoint_c", "dew_point_c", "zuuu_metar_raw_amsc_latest_dewpoint_c", "zuuu_metar_raw_awc_latest_dewpoint_c")
+    put_float("visibility_m", "visibility_m", "metar_visibility_m", "visibility", "zuuu_metar_raw_amsc_latest_visibility_m")
+    put_float("cloud_cover_pct", "cloud_cover_pct", "cloud_pct", "metar_cloud_cover_pct", "zuuu_metar_raw_amsc_latest_cloud_cover_pct")
+    put_float("low_cloud_cover_pct", "low_cloud_cover_pct", "low_cloud_pct", "zuuu_metar_raw_amsc_latest_low_cloud_cover_pct")
+    put_float("wind_speed_mps", "wind_speed_mps", "metar_wind_speed_mps", "zuuu_metar_raw_amsc_latest_wind_speed_mps", "awc_wind_speed_mps", "zuuu_metar_raw_awc_latest_wind_speed_mps")
+    put_float("pressure_hpa", "pressure_hpa", "altimeter_hpa", "metar_pressure_hpa", "zuuu_metar_raw_amsc_latest_pressure_hpa", "awc_pressure_hpa", "zuuu_metar_raw_awc_latest_pressure_hpa")
+    put_float("dewpoint_trend_c", "dewpoint_trend_c", "dewpoint_trend_c_per_hour", "zuuu_metar_raw_amsc_dewpoint_trend_c", "zuuu_metar_raw_awc_dewpoint_trend_c")
+    put_float(
+        "momentum_rate_c_per_hour",
+        "momentum_rate_c_per_hour",
+        "temperature_rate_c_per_hour",
+        "temperature_rise_rate_c_per_hour",
+        "observed_temp_rise_rate_c_per_hour",
+        "metar_temp_rise_rate_c_per_hour",
+        "temperature_momentum_posterior_effective_c_per_hour",
+        "temperature_momentum_effective_c_per_hour",
+        "temperature_momentum_1h_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
+        "zuuu_metar_raw_awc_temperature_momentum_1h_c_per_hour",
+    )
+    for window in ("30m", "45m", "1h", "2h", "3h", "6h", "12h"):
+        put_float(
+            f"temperature_momentum_{window}_c_per_hour",
+            f"temperature_momentum_{window}_c_per_hour",
+            f"temperature_rise_rate_{window}_c_per_hour",
+            f"zuuu_metar_raw_amsc_temperature_momentum_{window}_c_per_hour",
+            f"zuuu_metar_raw_awc_temperature_momentum_{window}_c_per_hour",
+        )
+    put_float(
+        "temperature_trajectory_stable_rate_c_per_hour",
+        "temperature_trajectory_stable_rate_c_per_hour",
+        "temperature_momentum_stable_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_trajectory_stable_rate_c_per_hour",
+        "zuuu_metar_raw_awc_temperature_trajectory_stable_rate_c_per_hour",
+    )
+    put_text(
+        "temperature_trajectory_realization_state",
+        "temperature_trajectory_realization_state",
+        "temperature_momentum_realization_state",
+        "zuuu_metar_raw_amsc_temperature_momentum_realization_state",
+        "zuuu_metar_raw_amsc_temperature_trajectory_realization_state",
+        "zuuu_metar_raw_awc_temperature_momentum_realization_state",
+    )
+    put_text("weather_text", "weather_text", "metar_weather", "weather", "wx", "zuuu_metar_raw_amsc_latest_weather_text", "zuuu_metar_raw_amsc_latest_raw", "zuuu_metar_raw_awc_latest_raw")
+    put_text("cloud_text", "cloud_text", "clouds", "metar_cloud_text", "zuuu_metar_raw_amsc_latest_cloud_text", "zuuu_metar_raw_amsc_latest_raw", "zuuu_metar_raw_awc_latest_raw")
+    put_bool(
+        "hard_source_final_daily_max",
+        "hard_source_final_daily_max",
+        "hard_source_settlement_final",
+        "observed_today_max_final",
+        "observed_today_max_is_final",
+        "observed_today_max_is_official",
+        "observed_today_max_trusted_final",
+        "temperature_observation_final_daily_max",
+        "no_more_warming_possible",
+    )
+    return out
+
+
+def _pending_model_source_observations_from_features(
+    *,
+    features: Mapping[str, Any],
+    event_date: str,
+    station_id: str,
+) -> List[Dict[str, Any]]:
+    observations: List[Dict[str, Any]] = []
+    station = str(
+        station_id
+        or features.get("station_id")
+        or features.get("zuuu_metar_raw_amsc_station_id")
+        or features.get("zuuu_metar_raw_awc_station_id")
+        or "ZUUU"
+    )
+    hard_inputs = _pending_model_observation_inputs_from_features(features)
+    if hard_inputs:
+        source_id = (
+            "zuuu_metar_raw_amsc"
+            if any(
+                features.get(key) not in (None, "", [], {})
+                for key in (
+                    "zuuu_metar_raw_amsc_latest_at",
+                    "zuuu_metar_raw_amsc_latest_temp_c",
+                    "zuuu_metar_raw_amsc_today_max_c",
+                    "zuuu_metar_raw_amsc_latest_raw",
+                )
+            )
+            else "zuuu_metar_raw_awc"
+        )
+        valid_time = _feature_first_text(
+            features,
+            f"{source_id}_latest_at",
+            "zuuu_metar_raw_amsc_latest_at",
+            "zuuu_metar_raw_awc_latest_at",
+            "valid_time",
+            "valid_time_local",
+            "observation_time",
+        )
+        fetched_at = _feature_first_text(
+            features,
+            f"{source_id}_fetched_at",
+            "zuuu_metar_raw_amsc_fetched_at",
+            "zuuu_metar_raw_awc_fetched_at",
+            "fetched_at",
+            "response_completed_at",
+        )
+        raw_text = _feature_first_text(
+            features,
+            f"{source_id}_latest_raw",
+            "zuuu_metar_raw_amsc_latest_raw",
+            "zuuu_metar_raw_awc_latest_raw",
+            "metar_raw",
+            "raw_text",
+        )
+        observations.append(
+            build_source_observation(
+                source_id=source_id,
+                station_id=station,
+                event_date=event_date,
+                valid_time=valid_time,
+                fetched_at=fetched_at,
+                response_duration_ms=_feature_first_float(
+                    features,
+                    f"{source_id}_fetch_duration_ms",
+                    "zuuu_metar_raw_amsc_fetch_duration_ms",
+                    "zuuu_metar_raw_awc_fetch_duration_ms",
+                ),
+                temperature_c=_feature_first_float(hard_inputs, "current_temp_c"),
+                dewpoint_c=_feature_first_float(hard_inputs, "dewpoint_c"),
+                observed_today_max_c=_feature_first_float(hard_inputs, "observed_today_max_c"),
+                raw_ref=_feature_first_text(
+                    features,
+                    "zuuu_metar_raw_amsc_source_url",
+                    "zuuu_metar_raw_amsc_url",
+                    "zuuu_metar_raw_awc_url",
+                ),
+                raw_payload={"raw_text": raw_text, "features": dict(features)},
+                parser_version="ui_pending_model_hierarchical_posterior_v1",
+                payload={
+                    **hard_inputs,
+                    "raw_text": raw_text,
+                    "adapter": "ui_pending_model_hierarchical_posterior_v1",
+                },
+            ).as_dict(include_payload=True)
+        )
+    forecast_specs = (
+        ("current_model_ensemble", "model", ("forecast_peak_temp_c", "forecast_peak_temp", "forecast_peak_c", "model_peak_c", "expected_peak_temp_c")),
+        ("zuuu_taf_forecast_amsc", "taf", ("taf_forecast_peak_c", "taf_peak_c", "taf_tx_c")),
+        ("wu_forecast_high", "wu_forecast", ("wu_forecast_peak_c", "wunderground_forecast_peak_c")),
+        ("weather_com_forecast_peak", "twc_forecast", ("weather_com_forecast_peak_c", "twc_forecast_peak_c")),
+        ("ecmwf_model_peak", "model", ("ecmwf_model_peak_c", "ecmwf_forecast_peak_c")),
+        ("gfs_model_peak", "model", ("gfs_model_peak_c", "gfs_forecast_peak_c")),
+        ("icon_model_peak", "model", ("icon_model_peak_c",)),
+        ("meteoblue_model_peak", "model", ("meteoblue_model_peak_c",)),
+    )
+    valid_time = _feature_first_text(features, "forecast_valid_time", "model_valid_time", "valid_time")
+    for source_id, group, keys in forecast_specs:
+        peak_c = _feature_first_float(features, *keys)
+        if peak_c is None:
+            continue
+        observations.append(
+            build_source_observation(
+                source_id=source_id,
+                station_id=station,
+                event_date=event_date,
+                valid_time=valid_time,
+                forecast_peak_c=float(peak_c),
+                parser_version="ui_pending_model_hierarchical_posterior_v1",
+                payload={
+                    "forecast_group": group,
+                    "adapter": "ui_pending_model_hierarchical_posterior_v1",
+                },
+            ).as_dict(include_payload=True)
+        )
+    return observations
+
+
+def _source_latency_trace_from_observations(observations: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for obs in observations:
+        if not isinstance(obs, Mapping):
+            continue
+        rows.append(
+            {
+                "source_event_id": str(obs.get("source_event_id") or ""),
+                "source_id": str(obs.get("source_id") or ""),
+                "source_class": str(obs.get("source_class") or ""),
+                "role": str(obs.get("role") or ""),
+                "station_id": str(obs.get("station_id") or ""),
+                "event_date": str(obs.get("event_date") or ""),
+                "valid_time": str(obs.get("valid_time") or ""),
+                "valid_time_local": str(obs.get("valid_time_local") or ""),
+                "fetched_at": str(obs.get("fetched_at") or ""),
+                "response_completed_at": str(obs.get("response_completed_at") or ""),
+                "response_duration_ms": obs.get("response_duration_ms"),
+                "temperature_c": obs.get("temperature_c"),
+                "observed_today_max_c": obs.get("observed_today_max_c"),
+                "forecast_peak_c": obs.get("forecast_peak_c"),
+                "raw_ref": str(obs.get("raw_ref") or ""),
+                "hard_eligible": bool(obs.get("hard_eligible")),
+                "demotion_reason": str(obs.get("demotion_reason") or ""),
+            }
+        )
+    return rows
+
+
+def _compose_event_run_fact_for_materialization(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    trade_map: Dict[Tuple[str, str], List[sqlite3.Row]],
+    fills_map: Dict[Tuple[str, str, str, str], List[sqlite3.Row]],
+    auto_orders_map: Dict[str, sqlite3.Row],
+    market_tick_latest_map: Optional[Dict[Tuple[str, str], str]],
+    platt: Optional[Dict[str, Any]],
+) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], str]]:
+    event_run_row = query_latest_event_run_for_run_date(conn, slug, event_date, run_date)
+    if event_run_row is None:
+        return None
+    item = build_run_item(
+        conn,
+        event_run_row,
+        trade_map,
+        fills_map,
+        auto_orders_map,
+        market_tick_latest_map,
+        platt=platt,
+    )
+    run_payload = safe_json_loads(event_run_row["payload_json"])
+    _attach_fact_provenance_from_run_payload(item, run_payload)
+    provenance = dict(item.get("fact_provenance") or {})
+    provenance["fact_materialization_source_resolver"] = {
+        "source": "event_runs",
+        "state": "resolved",
+        "formal_fact_chain": True,
+    }
+    item["fact_provenance"] = provenance
+    return item, run_payload, str(event_run_row["created_at"] or "")
+
+
+def _compose_discovery_pending_fact_for_materialization(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], str]]:
+    slug_key = str(slug or "").strip()
+    event_key = _normalize_date_key(str(event_date or ""))
+    run_key = _normalize_date_key(str(run_date or "")) or event_key
+    if not slug_key or not event_key or not run_key:
+        return None
+    if not _discovery_pending_fact_forward_allowed(event_key):
+        return None
+    latest_head = _latest_fact_head(conn, slug_key, event_key)
+    latest_as_of, latest_payload = _latest_fact_payload_for_merge_fill(conn, slug_key, event_key)
+    if latest_head and not _market_discovery_pending_model_payload(latest_payload):
+        return None
+    discovery_row = _discovery_placeholder_row_for_key(conn, slug=slug_key, event_date=event_key)
+    if discovery_row is None:
+        return None
+    item = _build_discovery_placeholder_payload(conn, discovery_row, display_run_date=run_key)
+    latest_dt = parse_iso_ts(str(latest_as_of or ""))
+    item_dt = parse_iso_ts(str(item.get("fact_as_of") or item.get("created_at") or ""))
+    if latest_dt is not None and (item_dt is None or latest_dt > item_dt):
+        item["fact_as_of"] = str(latest_as_of or "")
+        item["created_at"] = str(latest_as_of or "")
+        item["market_updated_at"] = str(item.get("market_updated_at") or latest_as_of or "")
+    source_event_id = f"srcevt_market_discovery:{slug_key}:{event_key}"
+    pending_posterior_run_id = _pending_discovery_posterior_run_id(
+        slug=slug_key,
+        event_date=event_key,
+        run_date=run_key,
+    )
+    item["source_event_id"] = source_event_id
+    item["source_event_ids"] = [source_event_id]
+    item["posterior_run_id"] = pending_posterior_run_id
+    item["posterior_as_of"] = str(item.get("fact_as_of") or item.get("created_at") or now_text())
+    provenance = dict(item.get("fact_provenance") or {})
+    provenance["fact_materialization"] = {
+        "source": "weather_market_discovery",
+        "state": "pending_model_snapshot",
+        "reason": "market_tokenized_before_model_fact_materialized",
+        "forward_only": True,
+        "historical_backfill": False,
+        "latest_fact_as_of_before_write": latest_as_of,
+    }
+    provenance["fact_materialization_source_resolver"] = {
+        "source": "weather_market_discovery",
+        "state": "pending_model_snapshot",
+        "formal_fact_chain": True,
+    }
+    item["fact_provenance"] = provenance
+    item["posterior_materialization_state"] = {
+        "schema": "posterior_materialization_state_v1",
+        "state": "pending_model_snapshot",
+        "state_reason": "market_discovery_tokenized_before_model_snapshot",
+        "source": "weather_market_discovery",
+        "posterior_run_id": pending_posterior_run_id,
+        "available_posterior": False,
+        "frontend_recompute_allowed": False,
+        "decision_recompute_allowed": False,
+        "historical_backfill": False,
+    }
+    item["source_acquisition_trace"] = {
+        "schema": "market_discovery_pending_model_source_trace_v1",
+        "read_only": True,
+        "source_event_ids": [source_event_id],
+        "source_observations": [
+            {
+                "source_event_id": source_event_id,
+                "source": "weather_market_discovery",
+                "source_class": "market_discovery_pending_model",
+                "hard_eligible": False,
+                "slug": slug_key,
+                "event_date": event_key,
+                "observed_at": str(item.get("fact_as_of") or ""),
+            }
+        ],
+        "source_latency_trace": [],
+        "hard_observation_candidate_ids": [],
+        "forecast_weak_ids": [],
+        "diagnostic_current_ids": [source_event_id],
+        "next_boundary": "model_snapshot_materializes_available_posterior_ssot_fact",
+    }
+    run_payload = {
+        "source": "weather_market_discovery",
+        "score_composer": {
+            "model_snapshot_id": None,
+            "market_snapshot_id": None,
+        },
+    }
+    return item, run_payload, str(item.get("fact_as_of") or item.get("created_at") or now_text())
+
+
+def _compose_fact_materialization_candidate(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    trade_map: Dict[Tuple[str, str], List[sqlite3.Row]],
+    fills_map: Dict[Tuple[str, str, str, str], List[sqlite3.Row]],
+    auto_orders_map: Dict[str, sqlite3.Row],
+    market_tick_latest_map: Optional[Dict[Tuple[str, str], str]],
+    platt: Optional[Dict[str, Any]],
+) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], str]]:
+    composed = _compose_fact_from_snapshots(
+        conn,
+        run_date,
+        slug,
+        event_date,
+        trade_map,
+        fills_map,
+        auto_orders_map,
+        market_tick_latest_map,
+        platt=platt,
+    )
+    if composed:
+        item, run_payload, as_of = composed
+        if isinstance(item, dict):
+            provenance = dict(item.get("fact_provenance") or {})
+            provenance["fact_materialization_source_resolver"] = {
+                "source": "snapshots",
+                "state": "resolved",
+                "formal_fact_chain": True,
+            }
+            item["fact_provenance"] = provenance
+        return item, run_payload, as_of
+    event_run_composed = _compose_event_run_fact_for_materialization(
+        conn,
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+        trade_map=trade_map,
+        fills_map=fills_map,
+        auto_orders_map=auto_orders_map,
+        market_tick_latest_map=market_tick_latest_map,
+        platt=platt,
+    )
+    if event_run_composed:
+        return event_run_composed
+    return _compose_discovery_pending_fact_for_materialization(
+        conn,
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+    )
+
+
 def _materialize_facts_from_snapshots_for_run_date(conn: sqlite3.Connection, run_date: str) -> int:
     rows = _snapshot_key_rows_for_run_date(conn, run_date)
     if not rows:
@@ -59644,35 +62507,20 @@ def _materialize_facts_from_snapshots_for_run_date(conn: sqlite3.Connection, run
     platt = _load_platt_calibration(platt_days or 0)
     created = 0
     for slug, event_date, run_date_val in sorted(rows):
-        composed = _compose_fact_from_snapshots(
+        composed = _compose_fact_materialization_candidate(
             conn,
-            run_date_val,
-            slug,
-            event_date,
-            trade_map,
-            fills_map,
-            auto_orders_map,
-            market_tick_latest_map,
+            run_date=run_date_val,
+            slug=slug,
+            event_date=event_date,
+            trade_map=trade_map,
+            fills_map=fills_map,
+            auto_orders_map=auto_orders_map,
+            market_tick_latest_map=market_tick_latest_map,
             platt=platt,
         )
         if not composed:
-            fallback_row = query_latest_event_run_for_run_date(conn, slug, event_date, run_date_val)
-            if fallback_row is None:
-                continue
-            item = build_run_item(
-                conn,
-                fallback_row,
-                trade_map,
-                fills_map,
-                auto_orders_map,
-                market_tick_latest_map,
-                platt=platt,
-            )
-            run_payload = safe_json_loads(fallback_row["payload_json"])
-            _attach_fact_provenance_from_run_payload(item, run_payload)
-            as_of = str(fallback_row["created_at"] or "")
-        else:
-            item, run_payload, as_of = composed
+            continue
+        item, run_payload, as_of = composed
         fact_id = upsert_event_fact_from_run_item(
             conn,
             run_date=run_date_val,
@@ -59710,35 +62558,20 @@ def _materialize_facts_from_snapshots_for_range(conn: sqlite3.Connection, start_
     platt = _load_platt_calibration(platt_days or 0)
     created = 0
     for slug, event_date, run_date_val in sorted(rows):
-        composed = _compose_fact_from_snapshots(
+        composed = _compose_fact_materialization_candidate(
             conn,
-            run_date_val,
-            slug,
-            event_date,
-            trade_map,
-            fills_map,
-            auto_orders_map,
-            market_tick_latest_map,
+            run_date=run_date_val,
+            slug=slug,
+            event_date=event_date,
+            trade_map=trade_map,
+            fills_map=fills_map,
+            auto_orders_map=auto_orders_map,
+            market_tick_latest_map=market_tick_latest_map,
             platt=platt,
         )
         if not composed:
-            fallback_row = query_latest_event_run_for_run_date(conn, slug, event_date, run_date_val)
-            if fallback_row is None:
-                continue
-            item = build_run_item(
-                conn,
-                fallback_row,
-                trade_map,
-                fills_map,
-                auto_orders_map,
-                market_tick_latest_map,
-                platt=platt,
-            )
-            run_payload = safe_json_loads(fallback_row["payload_json"])
-            _attach_fact_provenance_from_run_payload(item, run_payload)
-            as_of = str(fallback_row["created_at"] or "")
-        else:
-            item, run_payload, as_of = composed
+            continue
+        item, run_payload, as_of = composed
         fact_id = upsert_event_fact_from_run_item(
             conn,
             run_date=run_date_val,
@@ -60280,6 +63113,7 @@ def materialize_first_prediction_lead_day_facts(
                     market_snapshot_id=_to_int(score_meta.get("market_snapshot_id")) if isinstance(score_meta, Mapping) else None,
                     composer_version=FACTS_COMPOSER_VERSION,
                     item=item,
+                    write_latest=False,
                 )
                 stats["inserted"] = int(stats.get("inserted") or 0) + 1
                 lead_stats["inserted"] = int(lead_stats.get("inserted") or 0) + 1
@@ -60582,9 +63416,9 @@ def _filter_future_fact_rows_to_chengdu(rows: Iterable[sqlite3.Row], date_key: s
 
 
 def _ui_upcoming_days(default: int = 2) -> int:
-    raw = _env_value_with_path_follow_alias("PM_UI_UPCOMING_DAYS")
+    raw = os.environ.get("PM_UI_UPCOMING_DAYS")
     if raw is None:
-        raw = _env_value_with_path_follow_alias("PM_UI_SNAPSHOT_UPCOMING_DAYS")
+        raw = os.environ.get("PM_UI_SNAPSHOT_UPCOMING_DAYS")
     try:
         value = int(float(str(raw if raw is not None else default).strip()))
     except (TypeError, ValueError):
@@ -61567,6 +64401,10 @@ def _merge_fill_fact_row_meta(payload: Dict[str, Any], row: Any) -> None:
         _fill("run_date", row["run_date"], normalize_date=True)
     if "fact_as_of" in keys:
         _fill("fact_as_of", str(row["fact_as_of"] or ""))
+    if "id" in keys:
+        _fill("fact_id", row["id"])
+    if "fact_id" in keys:
+        _fill("fact_id", row["fact_id"])
     if "model_snapshot_id" in keys:
         _fill("model_snapshot_id", row["model_snapshot_id"])
     if "market_snapshot_id" in keys:
@@ -61804,7 +64642,7 @@ def build_market_flow_context(
     if wide_spread:
         notes.append(f"{'、'.join(wide_spread[:3])} 盘口价差较宽，尾部热桶价格可信度需打折。")
     if market_label and model_label and market_label != model_label:
-        notes.append(f"盘口最高桶为 {market_label}，模型/后验最高桶为 {model_label}，两者不一致。")
+        notes.append(f"盘口最高目标为 {market_label}，模型最终概率最高目标为 {model_label}，两者不一致。")
     return {
         "version": "market_flow_context_v1",
         "status": "ok",
@@ -62432,6 +65270,8 @@ def query_facts_paged(
                 "total": 0,
             }
         first_prediction_stats = _safe_first_prediction_hit_rates(conn)
+        forecast_source_accuracy = _safe_forecast_source_accuracy_snapshot_only(conn)
+        joint_weak_bias_research = _safe_joint_weak_bias_research_snapshot_only(conn)
         items: List[Dict[str, Any]] = []
         for row in page_rows:
             try:
@@ -62466,6 +65306,8 @@ def query_facts_paged(
                 except Exception:
                     pass
                 _attach_first_prediction_hit_rates(payload, first_prediction_stats)
+                _attach_forecast_source_accuracy_for_ui_snapshot(payload, forecast_source_accuracy)
+                _attach_joint_weak_bias_research_for_ui_snapshot(payload, joint_weak_bias_research)
                 _align_snapshot_posterior_derived_fields(payload)
                 _attach_target_switch_context(payload)
                 payload["auto_trade_ssot"] = _safe_build_auto_trade_ssot(payload)
@@ -62572,6 +65414,8 @@ def query_facts_range(days: int, end_date: str, *, full: bool = False) -> List[D
             _finish_facts_range_inflight()
             return []
         first_prediction_stats = _safe_first_prediction_hit_rates(conn)
+        forecast_source_accuracy = _safe_forecast_source_accuracy_snapshot_only(conn)
+        joint_weak_bias_research = _safe_joint_weak_bias_research_snapshot_only(conn)
         platt: Any = {}
         if full_mode:
             try:
@@ -63006,27 +65850,6 @@ def query_most_likely_history(
                 "q_bayes_source": row_str(attribution_row, "q_bayes_source"),
                 "q_calibration_source": row_str(attribution_row, "q_calibration_source"),
                 "q_calibration_version": row_str(attribution_row, "q_calibration_version"),
-                "q_bayes_model_evidence": row_float(attribution_row, "q_bayes_model_evidence"),
-                "q_bayes_wu_forecast_evidence": row_float(attribution_row, "q_bayes_wu_forecast_evidence"),
-                "q_bayes_taf_peak_evidence": row_float(attribution_row, "q_bayes_taf_peak_evidence"),
-                "q_bayes_observed_nowcast_evidence": row_float(attribution_row, "q_bayes_observed_nowcast_evidence"),
-                "q_bayes_temperature_trajectory_evidence": row_float(
-                    attribution_row,
-                    "q_bayes_temperature_trajectory_evidence",
-                ),
-                "q_bayes_independent_physics_residual_evidence": row_float(
-                    attribution_row,
-                    "q_bayes_independent_physics_residual_evidence",
-                ),
-                "q_bayes_climo_regime_evidence": row_float(attribution_row, "q_bayes_climo_regime_evidence"),
-                "q_bayes_post_cool_rebound_regime_prior_evidence": row_float(
-                    attribution_row,
-                    "q_bayes_post_cool_rebound_regime_prior_evidence",
-                ),
-                "q_bayes_post_cool_rebound_intraday_likelihood_evidence": row_float(
-                    attribution_row,
-                    "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-                ),
                 "q_temperature_bucket_score_components": row_dict(
                     attribution_row,
                     "q_temperature_bucket_score_components",
@@ -63129,7 +65952,8 @@ def _summary_bucket_series_history_from_event_fact_history(
         fact = safe_json_loads(str(row["fact_json"] or ""))
         if not isinstance(fact, Mapping):
             continue
-        distribution = normalize_distribution_rows(fact.get("distribution") or fact.get("rows") or [])
+        raw_distribution = fact.get("distribution") or fact.get("rows") or []
+        distribution = [dict(entry) for entry in raw_distribution if isinstance(entry, Mapping)] if isinstance(raw_distribution, list) else []
         if not distribution:
             continue
         ts = str(row["fact_as_of"] or "")
@@ -63244,7 +66068,8 @@ def _summary_bucket_series_history_from_summary_cache(
         fact = safe_json_loads(str(row["summary_json"] or ""))
         if not isinstance(fact, Mapping):
             continue
-        distribution = normalize_distribution_rows(fact.get("distribution") or fact.get("rows") or [])
+        raw_distribution = fact.get("distribution") or fact.get("rows") or []
+        distribution = [dict(entry) for entry in raw_distribution if isinstance(entry, Mapping)] if isinstance(raw_distribution, list) else []
         if not distribution:
             continue
         ts = str(row["fact_as_of"] or "")
@@ -63380,6 +66205,26 @@ def _ui_timeline_local_label(ts: Any, event_tz: Any = "Asia/Shanghai") -> str:
         return ""
 
 
+def _ui_event_day_start_utc_iso(event_date_key: str, event_tz: Any = "Asia/Shanghai") -> str:
+    date_text = _normalize_date_key(str(event_date_key or ""))
+    if not date_text:
+        return ""
+    try:
+        zone = ZoneInfo(str(event_tz or "Asia/Shanghai").strip() or "Asia/Shanghai")
+    except Exception:
+        zone = ZoneInfo("Asia/Shanghai")
+    try:
+        local_start = datetime.fromisoformat(date_text).replace(tzinfo=zone)
+        return (
+            local_start.astimezone(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    except Exception:
+        return f"{date_text}T00:00:00"
+
+
 def _ui_temperature_timeline_pct_from_keys(row: Mapping[str, Any], keys: Sequence[str]) -> Optional[float]:
     for key in keys:
         pct = _prob_pct_from_ssot_value(row.get(key))
@@ -63427,10 +66272,17 @@ def _ui_temperature_timeline_signature(point: Mapping[str, Any]) -> Tuple[Any, .
             return None
         return round(float(num), digits)
 
+    def first_value(*keys: str) -> Any:
+        for key in keys:
+            value = point.get(key)
+            if value not in (None, "", [], {}):
+                return value
+        return None
+
     return (
-        str(point.get("awc_latest_at") or ""),
-        rounded(point.get("awc_temp_c"), 1),
-        rounded(point.get("awc_today_max_c"), 1),
+        str(first_value("primary_metar_latest_at", "amsc_latest_at", "awc_latest_at") or ""),
+        rounded(first_value("primary_metar_temp_c", "amsc_temp_c", "awc_temp_c"), 1),
+        rounded(first_value("primary_metar_today_max_c", "amsc_today_max_c", "awc_today_max_c"), 1),
         rounded(point.get("temperature_rise_rate_c_per_hour"), 2),
         rounded(point.get("temperature_momentum_1h_c_per_hour"), 2),
         rounded(point.get("temperature_momentum_2h_c_per_hour"), 2),
@@ -63439,7 +66291,6 @@ def _ui_temperature_timeline_signature(point: Mapping[str, Any]) -> Tuple[Any, .
         point.get("temperature_momentum_posterior_gate_allowed"),
         rounded(point.get("target_probability_pct"), 1),
         rounded(point.get("target_probability_pre_hard_source_pct"), 1),
-        rounded(point.get("temperature_trajectory_evidence"), 1),
         rounded(point.get("temperature_trajectory_probability_pct"), 1),
         rounded(point.get("temperature_trajectory_mu_c"), 2),
         rounded(point.get("peak_estimator_mu_c"), 2),
@@ -63457,7 +66308,9 @@ def _ui_temperature_timeline_sample(points: List[Dict[str, Any]], limit: int) ->
             prev = point
             continue
         score = 0.0
-        if str(point.get("awc_latest_at") or "") != str(prev.get("awc_latest_at") or ""):
+        point_latest = str(point.get("primary_metar_latest_at") or point.get("amsc_latest_at") or point.get("awc_latest_at") or "")
+        prev_latest = str(prev.get("primary_metar_latest_at") or prev.get("amsc_latest_at") or prev.get("awc_latest_at") or "")
+        if point_latest != prev_latest:
             must.add(idx)
             score += 10.0
         if point.get("temperature_momentum_posterior_gate_allowed") != prev.get("temperature_momentum_posterior_gate_allowed"):
@@ -63465,28 +66318,26 @@ def _ui_temperature_timeline_sample(points: List[Dict[str, Any]], limit: int) ->
         if str(point.get("temperature_momentum_realization_state") or "") != str(prev.get("temperature_momentum_realization_state") or ""):
             score += 6.0
         for key, threshold in (
-            ("awc_today_max_c", 0.05),
+            ("primary_metar_today_max_c", 0.05),
             ("target_probability_pct", 3.0),
             ("target_probability_pre_hard_source_pct", 3.0),
-            ("temperature_trajectory_evidence", 0.1),
             ("temperature_trajectory_mu_c", 0.25),
             ("peak_estimator_mu_c", 0.25),
         ):
             a = to_float(point.get(key))
             b = to_float(prev.get(key))
             if a is not None and b is None and key in {
-                "temperature_trajectory_evidence",
                 "temperature_trajectory_mu_c",
                 "peak_estimator_mu_c",
             }:
-                if key in {"temperature_trajectory_evidence", "temperature_trajectory_mu_c"}:
+                if key == "temperature_trajectory_mu_c":
                     must.add(idx)
                 score += 8.0
             elif a is not None and b is not None and abs(float(a) - float(b)) >= threshold:
-                if key == "awc_today_max_c":
+                if key == "primary_metar_today_max_c":
                     must.add(idx)
                     score += 10.0
-                elif key in {"temperature_trajectory_evidence", "temperature_trajectory_mu_c", "peak_estimator_mu_c"}:
+                elif key in {"temperature_trajectory_mu_c", "peak_estimator_mu_c"}:
                     if key == "temperature_trajectory_mu_c" and float(a) >= 35.0:
                         must.add(idx)
                     score += 8.0 + min(6.0, abs(float(a) - float(b)))
@@ -63540,10 +66391,10 @@ def _ui_temperature_timeline_finalize(
         UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_POINTS,
     )
     peak_point = max(
-        (point for point in points if to_float(point.get("awc_today_max_c")) is not None),
+        (point for point in points if to_float(point.get("primary_metar_today_max_c") if point.get("primary_metar_today_max_c") is not None else point.get("awc_today_max_c")) is not None),
         key=lambda point: (
-            float(to_float(point.get("awc_today_max_c")) or -999.0),
-            str(point.get("awc_today_max_at") or point.get("awc_latest_at") or ""),
+            float(to_float(point.get("primary_metar_today_max_c") if point.get("primary_metar_today_max_c") is not None else point.get("awc_today_max_c")) or -999.0),
+            str(point.get("primary_metar_today_max_at") or point.get("awc_today_max_at") or point.get("primary_metar_latest_at") or point.get("awc_latest_at") or ""),
         ),
         default=None,
     )
@@ -63561,6 +66412,20 @@ def _ui_temperature_timeline_finalize(
         "sampled_count": len(sampled),
         "truncated": len(points) > len(sampled),
         "scan_limit": UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_SCAN_LIMIT,
+        "primary_source_id": "zuuu_metar_raw_amsc",
+        "source_priority": ["zuuu_metar_raw_amsc", "zuuu_metar_raw_awc"],
+        "peak_metar_today_max_c": (
+            peak_point.get("primary_metar_today_max_c")
+            if peak_point and peak_point.get("primary_metar_today_max_c") is not None
+            else (peak_point.get("awc_today_max_c") if peak_point else None)
+        ),
+        "peak_metar_latest_local_hhmm": (
+            peak_point.get("primary_metar_latest_local_hhmm")
+            or peak_point.get("awc_latest_local_hhmm")
+            if peak_point
+            else ""
+        ),
+        "peak_amsc_today_max_c": peak_point.get("amsc_today_max_c") if peak_point else None,
         "peak_awc_today_max_c": peak_point.get("awc_today_max_c") if peak_point else None,
         "peak_awc_latest_local_hhmm": peak_point.get("awc_latest_local_hhmm") if peak_point else "",
         "latest_probability_pct": sampled[-1].get("target_probability_pct") if sampled else None,
@@ -63591,6 +66456,7 @@ def _ui_temperature_timeline_points_from_sql(
 ) -> List[Dict[str, Any]]:
     if not target_label:
         return []
+    start_after = _ui_event_day_start_utc_iso(event_date_key, event_tz) or f"{event_date_key}T00:00:00"
     cur = conn.cursor()
     try:
         cur.execute(
@@ -63622,7 +66488,12 @@ def _ui_temperature_timeline_points_from_sql(
               h.id AS fact_id,
               h.fact_as_of AS fact_as_of,
               h.created_at AS created_at,
-              json_extract(d.value, '$.outcome') AS target_bucket,
+              COALESCE(
+                json_extract(d.value, '$.outcome'),
+                json_extract(d.value, '$.bucket'),
+                json_extract(d.value, '$.label'),
+                json_extract(d.value, '$.target_bucket')
+              ) AS target_bucket,
               json_extract(d.value, '$.q_temperature_bucket_posterior') AS q_temperature_bucket_posterior,
               json_extract(d.value, '$.q_bayes_posterior') AS q_bayes_posterior,
               json_extract(d.value, '$.target_bucket_probability') AS target_bucket_probability,
@@ -63632,7 +66503,6 @@ def _ui_temperature_timeline_points_from_sql(
               json_extract(d.value, '$.q_bayes_posterior_pre_hard_source_override') AS q_bayes_posterior_pre_hard_source_override,
               json_extract(d.value, '$.q_bayes_posterior_pre_observed_constraints') AS q_bayes_posterior_pre_observed_constraints,
               json_extract(d.value, '$.q_contract_payout_posterior_pre_observed_constraints') AS q_contract_payout_posterior_pre_observed_constraints,
-              json_extract(d.value, '$.q_bayes_temperature_trajectory_evidence') AS q_bayes_temperature_trajectory_evidence,
               json_extract(d.value, '$.q_bayes_temperature_trajectory_status') AS q_bayes_temperature_trajectory_status,
               json_extract(d.value, '$.q_bayes_temperature_trajectory_mu_c') AS q_bayes_temperature_trajectory_mu_c,
               json_extract(d.value, '$.q_bayes_temperature_trajectory_sigma_c') AS q_bayes_temperature_trajectory_sigma_c,
@@ -63640,7 +66510,6 @@ def _ui_temperature_timeline_points_from_sql(
               json_extract(d.value, '$.q_bayes_temperature_trajectory_path_sigma_c') AS q_bayes_temperature_trajectory_path_sigma_c,
               json_extract(d.value, '$.q_bayes_temperature_trajectory_rate_hat_c_per_hour') AS q_bayes_temperature_trajectory_rate_hat_c_per_hour,
               json_extract(d.value, '$.q_bayes_temperature_trajectory_accel_hat_c_per_hour2') AS q_bayes_temperature_trajectory_accel_hat_c_per_hour2,
-              json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_evidence') AS meta_temperature_trajectory_evidence,
               json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_prob') AS meta_temperature_trajectory_prob,
               json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_mu_c') AS meta_temperature_trajectory_mu_c,
               json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_sigma_c') AS meta_temperature_trajectory_sigma_c,
@@ -63651,13 +66520,36 @@ def _ui_temperature_timeline_points_from_sql(
               json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_accel_hat_c_per_hour2') AS meta_temperature_trajectory_accel_hat_c_per_hour2,
               json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_hours_to_peak_window') AS meta_temperature_trajectory_hours_to_peak_window,
               json_extract(d.value, '$.q_bayes_meta.temperature_trajectory_posterior_status') AS meta_temperature_trajectory_posterior_status,
-              json_extract(d.value, '$.q_bayes_physical_likelihood_evidence') AS q_bayes_physical_likelihood_evidence,
               json_extract(d.value, '$.q_bayes_physical_likelihood_component') AS q_bayes_physical_likelihood_component,
               COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_latest_at'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_latest_at')
+              ) AS amsc_latest_at,
+              COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_latest_temp_c'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_latest_temp_c')
+              ) AS amsc_temp_c,
+              COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_today_max_c'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_today_max_c')
+              ) AS amsc_today_max_c,
+              COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_today_max_at'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_today_max_at')
+              ) AS amsc_today_max_at,
+              COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_latest_raw'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_latest_raw')
+              ) AS amsc_raw,
+              COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_latest_at'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_latest_at'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_awc_latest_at'),
                 json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_awc_latest_at')
               ) AS awc_latest_at,
               COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_latest_temp_c'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_latest_temp_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_awc_latest_temp_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_awc_latest_temp_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.observed_current_temp_c'),
@@ -63666,16 +66558,22 @@ def _ui_temperature_timeline_points_from_sql(
                 json_extract(h.fact_json, '$.weather_likelihood_features.observed_temp_c')
               ) AS awc_temp_c,
               COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_today_max_c'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_today_max_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_awc_today_max_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_awc_today_max_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.observed_today_max_c'),
                 json_extract(h.fact_json, '$.weather_likelihood_features.observed_today_max_c')
               ) AS awc_today_max_c,
               COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_today_max_at'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_today_max_at'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_awc_today_max_at'),
                 json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_awc_today_max_at')
               ) AS awc_today_max_at,
               COALESCE(
+                json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_amsc_latest_raw'),
+                json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_amsc_latest_raw'),
                 json_extract(h.fact_json, '$.weather_likelihood_features_compact.zuuu_metar_raw_awc_latest_raw'),
                 json_extract(h.fact_json, '$.weather_likelihood_features.zuuu_metar_raw_awc_latest_raw')
               ) AS awc_raw,
@@ -63740,13 +66638,18 @@ def _ui_temperature_timeline_points_from_sql(
             FROM event_fact_history h
             JOIN selected s ON s.id = h.id
             JOIN json_each(h.fact_json, '$.distribution') AS d
-            WHERE json_extract(d.value, '$.outcome') = ?
+            WHERE COALESCE(
+                json_extract(d.value, '$.outcome'),
+                json_extract(d.value, '$.bucket'),
+                json_extract(d.value, '$.label'),
+                json_extract(d.value, '$.target_bucket')
+              ) = ?
             ORDER BY h.fact_as_of DESC, h.id DESC
             """,
             (
                 slug_key,
                 event_date_key,
-                f"{event_date_key}T03:00:00",
+                start_after,
                 UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_SCAN_LIMIT,
                 target_label,
             ),
@@ -63796,6 +66699,21 @@ def _ui_temperature_timeline_points_from_sql(
         else:
             gate_text = str(gate_raw or "").strip().lower()
             gate_allowed = True if gate_text in {"1", "true", "yes", "on"} else (False if gate_text in {"0", "false", "no", "off"} else None)
+        amsc_latest_at = str(row_get(row, "amsc_latest_at") or "")
+        amsc_today_max_at = str(row_get(row, "amsc_today_max_at") or "")
+        amsc_temp_c = to_float(row_get(row, "amsc_temp_c"))
+        amsc_today_max_c = to_float(row_get(row, "amsc_today_max_c"))
+        amsc_raw = str(row_get(row, "amsc_raw") or "")[:240]
+        primary_source_id = (
+            "zuuu_metar_raw_amsc"
+            if any(value not in (None, "", [], {}) for value in (amsc_latest_at, amsc_temp_c, amsc_today_max_c, amsc_raw))
+            else "zuuu_metar_raw_awc"
+        )
+        primary_latest_at = amsc_latest_at or str(row_get(row, "awc_latest_at") or "")
+        primary_today_max_at = amsc_today_max_at or str(row_get(row, "awc_today_max_at") or "")
+        primary_temp_c = amsc_temp_c if amsc_temp_c is not None else to_float(row_get(row, "awc_temp_c"))
+        primary_today_max_c = amsc_today_max_c if amsc_today_max_c is not None else to_float(row_get(row, "awc_today_max_c"))
+        primary_raw = amsc_raw or str(row_get(row, "awc_raw") or "")[:240]
         point = {
             "fact_id": int(row_get(row, "fact_id") or 0),
             "fact_as_of": str(row_get(row, "fact_as_of") or ""),
@@ -63812,13 +66730,28 @@ def _ui_temperature_timeline_points_from_sql(
                     "q_contract_payout_posterior_pre_observed_constraints",
                 ),
             ),
-            "awc_latest_at": str(row_get(row, "awc_latest_at") or ""),
-            "awc_latest_local_hhmm": _ui_timeline_local_label(row_get(row, "awc_latest_at"), event_tz),
-            "awc_temp_c": to_float(row_get(row, "awc_temp_c")),
-            "awc_today_max_c": to_float(row_get(row, "awc_today_max_c")),
-            "awc_today_max_at": str(row_get(row, "awc_today_max_at") or ""),
-            "awc_today_max_local_hhmm": _ui_timeline_local_label(row_get(row, "awc_today_max_at"), event_tz),
-            "awc_raw": str(row_get(row, "awc_raw") or "")[:240],
+            "primary_source_id": primary_source_id,
+            "primary_metar_latest_at": primary_latest_at,
+            "primary_metar_latest_local_hhmm": _ui_timeline_local_label(primary_latest_at, event_tz),
+            "primary_metar_temp_c": primary_temp_c,
+            "primary_metar_today_max_c": primary_today_max_c,
+            "primary_metar_today_max_at": primary_today_max_at,
+            "primary_metar_today_max_local_hhmm": _ui_timeline_local_label(primary_today_max_at, event_tz),
+            "primary_metar_raw": primary_raw,
+            "amsc_latest_at": amsc_latest_at,
+            "amsc_latest_local_hhmm": _ui_timeline_local_label(amsc_latest_at, event_tz),
+            "amsc_temp_c": amsc_temp_c,
+            "amsc_today_max_c": amsc_today_max_c,
+            "amsc_today_max_at": amsc_today_max_at,
+            "amsc_today_max_local_hhmm": _ui_timeline_local_label(amsc_today_max_at, event_tz),
+            "amsc_raw": amsc_raw,
+            "awc_latest_at": primary_latest_at,
+            "awc_latest_local_hhmm": _ui_timeline_local_label(primary_latest_at, event_tz),
+            "awc_temp_c": primary_temp_c,
+            "awc_today_max_c": primary_today_max_c,
+            "awc_today_max_at": primary_today_max_at,
+            "awc_today_max_local_hhmm": _ui_timeline_local_label(primary_today_max_at, event_tz),
+            "awc_raw": primary_raw,
             "temperature_rise_rate_c_per_hour": to_float(row_get(row, "temperature_rise_rate_c_per_hour")),
             "temperature_rise_rate_window": str(row_get(row, "temperature_rise_rate_window") or ""),
             "temperature_momentum_effective_c_per_hour": to_float(row_get(row, "temperature_momentum_effective_c_per_hour")),
@@ -63834,10 +66767,6 @@ def _ui_temperature_timeline_points_from_sql(
                 or row_get(row, "meta_temperature_trajectory_posterior_status")
                 or ""
             ).strip(),
-            "temperature_trajectory_evidence": _coalesce_numeric(
-                row_get(row, "q_bayes_temperature_trajectory_evidence"),
-                row_get(row, "meta_temperature_trajectory_evidence"),
-            ),
             "temperature_trajectory_probability_pct": pct_from_fraction_keys(
                 row,
                 ("meta_temperature_trajectory_prob",),
@@ -63879,7 +66808,6 @@ def _ui_temperature_timeline_points_from_sql(
             "peak_estimator_mu_c": to_float(row_get(row, "peak_estimator_mu_c")),
             "peak_estimator_sigma_c": to_float(row_get(row, "peak_estimator_sigma_c")),
             "peak_estimator_source": str(row_get(row, "peak_estimator_source") or ""),
-            "physical_likelihood_evidence": to_float(row_get(row, "q_bayes_physical_likelihood_evidence")),
             "physical_likelihood_component_pct": pct_from_fraction_keys(
                 row,
                 ("q_bayes_physical_likelihood_component",),
@@ -63890,7 +66818,6 @@ def _ui_temperature_timeline_points_from_sql(
             for key in (
                 "awc_latest_at",
                 "target_probability_pct",
-                "temperature_trajectory_evidence",
                 "peak_estimator_mu_c",
                 "temperature_momentum_effective_c_per_hour",
             )
@@ -63927,6 +66854,7 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
             event_date_key,
             run_date_key,
             target_label,
+            str(event_tz or "Asia/Shanghai"),
             str(UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_POINTS),
             str(UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_SCAN_LIMIT),
         ]
@@ -63957,6 +66885,7 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
         )
     cur = conn.cursor()
     rows: List[sqlite3.Row] = []
+    start_after = _ui_event_day_start_utc_iso(event_date_key, event_tz) or f"{event_date_key}T00:00:00"
     try:
         cur.execute(
             """
@@ -63970,7 +66899,7 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
             (
                 slug_key,
                 event_date_key,
-                f"{event_date_key}T00:00:00",
+                start_after,
                 UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_SCAN_LIMIT,
             ),
         )
@@ -64023,14 +66952,31 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
         features = _normalize_ui_temperature_rise_rate_fields(features)
         q_meta = bucket_row.get("q_bayes_meta") if isinstance(bucket_row.get("q_bayes_meta"), Mapping) else {}
         observed_temp = _coalesce_numeric(
+            features.get("zuuu_metar_raw_amsc_latest_temp_c"),
             features.get("zuuu_metar_raw_awc_latest_temp_c"),
             features.get("observed_current_temp_c"),
             features.get("observed_temp_c"),
         )
         observed_max = _coalesce_numeric(
+            features.get("zuuu_metar_raw_amsc_today_max_c"),
             features.get("zuuu_metar_raw_awc_today_max_c"),
             features.get("observed_today_max_c"),
         )
+        amsc_latest_at = str(features.get("zuuu_metar_raw_amsc_latest_at") or "")
+        amsc_today_max_at = str(features.get("zuuu_metar_raw_amsc_today_max_at") or "")
+        amsc_temp_c = to_float(features.get("zuuu_metar_raw_amsc_latest_temp_c"))
+        amsc_today_max_c = to_float(features.get("zuuu_metar_raw_amsc_today_max_c"))
+        amsc_raw = str(features.get("zuuu_metar_raw_amsc_latest_raw") or "")[:240]
+        primary_source_id = (
+            "zuuu_metar_raw_amsc"
+            if any(value not in (None, "", [], {}) for value in (amsc_latest_at, amsc_temp_c, amsc_today_max_c, amsc_raw))
+            else "zuuu_metar_raw_awc"
+        )
+        primary_latest_at = amsc_latest_at or str(features.get("zuuu_metar_raw_awc_latest_at") or "")
+        primary_today_max_at = amsc_today_max_at or str(features.get("zuuu_metar_raw_awc_today_max_at") or "")
+        primary_temp_c = amsc_temp_c if amsc_temp_c is not None else observed_temp
+        primary_today_max_c = amsc_today_max_c if amsc_today_max_c is not None else observed_max
+        primary_raw = amsc_raw or str(features.get("zuuu_metar_raw_awc_latest_raw") or "")[:240]
         target_pct = _posterior_pct_from_ssot_row(bucket_row)
         target_pre_hard_pct = _ui_temperature_timeline_pct_from_keys(
             bucket_row,
@@ -64053,19 +66999,28 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
             "probability_source": probability_source,
             "target_probability_pct": target_pct,
             "target_probability_pre_hard_source_pct": target_pre_hard_pct,
-            "awc_latest_at": str(features.get("zuuu_metar_raw_awc_latest_at") or ""),
-            "awc_latest_local_hhmm": _ui_timeline_local_label(
-                features.get("zuuu_metar_raw_awc_latest_at"),
-                event_tz,
-            ),
-            "awc_temp_c": observed_temp,
-            "awc_today_max_c": observed_max,
-            "awc_today_max_at": str(features.get("zuuu_metar_raw_awc_today_max_at") or ""),
-            "awc_today_max_local_hhmm": _ui_timeline_local_label(
-                features.get("zuuu_metar_raw_awc_today_max_at"),
-                event_tz,
-            ),
-            "awc_raw": str(features.get("zuuu_metar_raw_awc_latest_raw") or "")[:240],
+            "primary_source_id": primary_source_id,
+            "primary_metar_latest_at": primary_latest_at,
+            "primary_metar_latest_local_hhmm": _ui_timeline_local_label(primary_latest_at, event_tz),
+            "primary_metar_temp_c": primary_temp_c,
+            "primary_metar_today_max_c": primary_today_max_c,
+            "primary_metar_today_max_at": primary_today_max_at,
+            "primary_metar_today_max_local_hhmm": _ui_timeline_local_label(primary_today_max_at, event_tz),
+            "primary_metar_raw": primary_raw,
+            "amsc_latest_at": amsc_latest_at,
+            "amsc_latest_local_hhmm": _ui_timeline_local_label(amsc_latest_at, event_tz),
+            "amsc_temp_c": amsc_temp_c,
+            "amsc_today_max_c": amsc_today_max_c,
+            "amsc_today_max_at": amsc_today_max_at,
+            "amsc_today_max_local_hhmm": _ui_timeline_local_label(amsc_today_max_at, event_tz),
+            "amsc_raw": amsc_raw,
+            "awc_latest_at": primary_latest_at,
+            "awc_latest_local_hhmm": _ui_timeline_local_label(primary_latest_at, event_tz),
+            "awc_temp_c": primary_temp_c,
+            "awc_today_max_c": primary_today_max_c,
+            "awc_today_max_at": primary_today_max_at,
+            "awc_today_max_local_hhmm": _ui_timeline_local_label(primary_today_max_at, event_tz),
+            "awc_raw": primary_raw,
             "temperature_rise_rate_c_per_hour": _coalesce_numeric(
                 features.get("temperature_rise_rate_c_per_hour"),
                 features.get("temperature_trajectory_stable_rate_c_per_hour"),
@@ -64102,10 +67057,6 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
                 or q_meta.get("temperature_trajectory_posterior_status")
                 or ""
             ).strip(),
-            "temperature_trajectory_evidence": _coalesce_numeric(
-                bucket_row.get("q_bayes_temperature_trajectory_evidence"),
-                q_meta.get("temperature_trajectory_evidence"),
-            ),
             "temperature_trajectory_probability_pct": trajectory_prob_pct,
             "temperature_trajectory_mu_c": _coalesce_numeric(
                 bucket_row.get("q_bayes_temperature_trajectory_path_mu_c"),
@@ -64148,7 +67099,6 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
             "peak_estimator_mu_c": _coalesce_numeric(features.get("peak_estimator_mu_c")),
             "peak_estimator_sigma_c": _coalesce_numeric(features.get("peak_estimator_sigma_c")),
             "peak_estimator_source": str(features.get("peak_estimator_source") or ""),
-            "physical_likelihood_evidence": _coalesce_numeric(bucket_row.get("q_bayes_physical_likelihood_evidence")),
             "physical_likelihood_component_pct": _ui_temperature_timeline_pct_from_keys(
                 bucket_row,
                 ("q_bayes_physical_likelihood_component",),
@@ -64159,7 +67109,6 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
             for key in (
                 "awc_latest_at",
                 "target_probability_pct",
-                "temperature_trajectory_evidence",
                 "peak_estimator_mu_c",
                 "temperature_momentum_effective_c_per_hour",
             )
@@ -64177,10 +67126,32 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
         UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_POINTS,
     )
     peak_point = max(
-        (point for point in points if to_float(point.get("awc_today_max_c")) is not None),
+        (
+            point
+            for point in points
+            if to_float(
+                point.get("primary_metar_today_max_c")
+                if point.get("primary_metar_today_max_c") is not None
+                else point.get("awc_today_max_c")
+            )
+            is not None
+        ),
         key=lambda point: (
-            float(to_float(point.get("awc_today_max_c")) or -999.0),
-            str(point.get("awc_today_max_at") or point.get("awc_latest_at") or ""),
+            float(
+                to_float(
+                    point.get("primary_metar_today_max_c")
+                    if point.get("primary_metar_today_max_c") is not None
+                    else point.get("awc_today_max_c")
+                )
+                or -999.0
+            ),
+            str(
+                point.get("primary_metar_today_max_at")
+                or point.get("awc_today_max_at")
+                or point.get("primary_metar_latest_at")
+                or point.get("awc_latest_at")
+                or ""
+            ),
         ),
         default=None,
     )
@@ -64198,6 +67169,20 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
         "sampled_count": len(sampled),
         "truncated": len(points) > len(sampled),
         "scan_limit": UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_SCAN_LIMIT,
+        "primary_source_id": "zuuu_metar_raw_amsc",
+        "source_priority": ["zuuu_metar_raw_amsc", "zuuu_metar_raw_awc"],
+        "peak_metar_today_max_c": (
+            peak_point.get("primary_metar_today_max_c")
+            if peak_point and peak_point.get("primary_metar_today_max_c") is not None
+            else (peak_point.get("awc_today_max_c") if peak_point else None)
+        ),
+        "peak_metar_latest_local_hhmm": (
+            peak_point.get("primary_metar_latest_local_hhmm")
+            or peak_point.get("awc_latest_local_hhmm")
+            if peak_point
+            else ""
+        ),
+        "peak_amsc_today_max_c": peak_point.get("amsc_today_max_c") if peak_point else None,
         "peak_awc_today_max_c": peak_point.get("awc_today_max_c") if peak_point else None,
         "peak_awc_latest_local_hhmm": peak_point.get("awc_latest_local_hhmm") if peak_point else "",
         "latest_probability_pct": sampled[-1].get("target_probability_pct") if sampled else None,
@@ -64216,6 +67201,576 @@ def _build_temperature_trajectory_timeline_for_ui_snapshot(
                 copy.deepcopy(timeline),
             )
     return timeline
+
+
+def _build_sequential_physical_timeline_for_ui_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    posterior_ssot: Mapping[str, Any],
+    slug: str,
+    event_date: str,
+    run_date: str,
+    event_tz: str,
+) -> Dict[str, Any]:
+    """Read one successor checkpoint chain as a report-defined-X timeline.
+
+    The legacy timeline is keyed by a market outcome and reads retired v3.1
+    distributions.  Sequential Bayes v2 is instead keyed by a physical
+    reported-X distribution until X->S->B is available, so its timeline must
+    come from the same checkpoint/canonical-event lineage as the current SSOT.
+    """
+
+    checkpoint_id = str(posterior_ssot.get("posterior_checkpoint_id") or "").strip()
+    posterior_run_id = str(posterior_ssot.get("posterior_run_id") or "").strip()
+    fact_snapshot_id = str(posterior_ssot.get("fact_snapshot_id") or "").strip()
+    if not checkpoint_id or not posterior_run_id:
+        return {}
+
+    def reported_x_ssot_freshness() -> Dict[str, Any]:
+        """Compare the displayed checkpoint with same-day canonical facts.
+
+        This is a read-only projection from ``archive.db``.  It never computes
+        a replacement posterior; it only prevents an older checkpoint from
+        being presented as current while accepted canonical observations are
+        waiting for the unique production composer.
+        """
+
+        base = {
+            "schema": "reported_x_ui_ssot_freshness_v1",
+            "state": "na",
+            "probability_display_state": "unavailable",
+            "posterior_checkpoint_id": checkpoint_id,
+            "pending_canonical_event_count": 0,
+            "pending_canonical_event_ids": [],
+            "pending_canonical_events": [],
+            "checkpoint_reported_x_lower_bound_c": to_float(
+                posterior_ssot.get("reported_x_lower_bound_c")
+            ),
+            "frontend_recompute_allowed": False,
+            "source": "archive.db:posterior_checkpoints+canonical_observation_events",
+        }
+        try:
+            checkpoint_row = conn.execute(
+                """
+                SELECT target_identity, consumed_event_ids_json, reported_x_lower_bound_c
+                FROM posterior_checkpoints
+                WHERE posterior_checkpoint_id=?
+                """,
+                (checkpoint_id,),
+            ).fetchone()
+            if checkpoint_row is None:
+                return {**base, "na_reason": "posterior_checkpoint_not_found"}
+            consumed_raw = safe_json_loads_any(str(checkpoint_row[1] or "[]"))
+            consumed_ids = {
+                str(value).strip()
+                for value in (consumed_raw if isinstance(consumed_raw, list) else [])
+                if str(value or "").strip()
+            }
+            checkpoint_lower = to_float(checkpoint_row[2])
+            base["checkpoint_reported_x_lower_bound_c"] = checkpoint_lower
+            local_tz = ZoneInfo(str(event_tz or "Asia/Shanghai"))
+            local_start = datetime.fromisoformat(str(event_date)).replace(tzinfo=local_tz)
+            utc_start = local_start.astimezone(timezone.utc).isoformat(timespec="seconds")
+            utc_end = (local_start + timedelta(days=1)).astimezone(timezone.utc).isoformat(
+                timespec="seconds"
+            )
+            canonical_rows = conn.execute(
+                """
+                SELECT canonical_observation_event_id, report_type, valid_time,
+                       first_actionable_seen_at, selected_source_id,
+                       parsed_observation_json
+                FROM canonical_observation_events
+                WHERE target_identity=?
+                  AND valid_time>=? AND valid_time<?
+                  AND state IN ('accepted_primary','accepted_substitute','confirmed')
+                ORDER BY valid_time ASC, revision_no ASC, accepted_at ASC
+                """,
+                (str(checkpoint_row[0] or ""), utc_start, utc_end),
+            ).fetchall()
+        except (sqlite3.Error, ValueError, TypeError):
+            return {**base, "na_reason": "reported_x_freshness_query_unavailable"}
+
+        pending: List[Dict[str, Any]] = []
+        pending_regular_temperatures: List[float] = []
+        for event_row in canonical_rows:
+            event_id = str(event_row[0] or "").strip()
+            if not event_id or event_id in consumed_ids:
+                continue
+            observation = safe_json_loads(str(event_row[5] or ""))
+            if not isinstance(observation, Mapping):
+                observation = {}
+            temperature_c = to_float(observation.get("temperature_c"))
+            report_type = str(event_row[1] or observation.get("report_type") or "").upper()
+            if report_type == "METAR" and temperature_c is not None:
+                pending_regular_temperatures.append(float(temperature_c))
+            pending.append(
+                {
+                    "canonical_observation_event_id": event_id,
+                    "report_type": report_type,
+                    "valid_time": str(event_row[2] or ""),
+                    "valid_time_local_hhmm": _ui_timeline_local_label(event_row[2], event_tz),
+                    "first_actionable_seen_at": str(event_row[3] or ""),
+                    "selected_source_id": str(event_row[4] or ""),
+                    "temperature_c": temperature_c,
+                    "x_hard_bound_role": report_type == "METAR",
+                }
+            )
+        base["pending_canonical_event_count"] = len(pending)
+        base["pending_canonical_event_ids"] = [
+            str(row["canonical_observation_event_id"]) for row in pending
+        ]
+        base["pending_canonical_events"] = pending[-8:]
+        base["latest_pending_valid_time"] = str(pending[-1].get("valid_time") or "") if pending else ""
+        base["latest_pending_valid_time_local_hhmm"] = (
+            str(pending[-1].get("valid_time_local_hhmm") or "") if pending else ""
+        )
+        base["latest_pending_temperature_c"] = (
+            pending[-1].get("temperature_c") if pending else None
+        )
+        base["pending_regular_metar_max_temperature_c"] = (
+            max(pending_regular_temperatures) if pending_regular_temperatures else None
+        )
+        hard_bound_ahead = bool(
+            pending_regular_temperatures
+            and (
+                checkpoint_lower is None
+                or max(pending_regular_temperatures) > float(checkpoint_lower)
+            )
+        )
+        base["pending_regular_metar_hard_bound_ahead_of_checkpoint"] = hard_bound_ahead
+        if pending:
+            base.update(
+                {
+                    "state": "blocked_unconsumed_canonical_events",
+                    "probability_display_state": "frozen_stale_checkpoint",
+                    "probability_current": False,
+                    "block_reason": "accepted_canonical_observations_not_consumed_by_displayed_checkpoint",
+                }
+            )
+        else:
+            base.update(
+                {
+                    "state": "current",
+                    "probability_display_state": "current_checkpoint",
+                    "probability_current": True,
+                    "block_reason": "",
+                }
+            )
+        return base
+
+    ssot_freshness = reported_x_ssot_freshness()
+    try:
+        rows = list(
+            conn.execute(
+                """
+                WITH RECURSIVE checkpoint_chain AS (
+                    SELECT
+                        p.posterior_checkpoint_id,
+                        p.previous_checkpoint_id,
+                        p.last_canonical_event_id,
+                        p.last_strong_update_id,
+                        p.reported_physical_x_distribution_json,
+                        p.latent_post_state_json,
+                        p.reported_x_lower_bound_c,
+                        p.committed_at,
+                        0 AS depth
+                    FROM posterior_checkpoints p
+                    WHERE p.posterior_checkpoint_id = ?
+                    UNION ALL
+                    SELECT
+                        previous.posterior_checkpoint_id,
+                        previous.previous_checkpoint_id,
+                        previous.last_canonical_event_id,
+                        previous.last_strong_update_id,
+                        previous.reported_physical_x_distribution_json,
+                        previous.latent_post_state_json,
+                        previous.reported_x_lower_bound_c,
+                        previous.committed_at,
+                        chain.depth + 1
+                    FROM posterior_checkpoints previous
+                    JOIN checkpoint_chain chain
+                      ON previous.posterior_checkpoint_id = chain.previous_checkpoint_id
+                    WHERE chain.depth < 256
+                )
+                SELECT
+                    chain.posterior_checkpoint_id,
+                    chain.reported_physical_x_distribution_json,
+                    chain.reported_x_lower_bound_c,
+                    chain.committed_at,
+                    event.canonical_observation_event_id,
+                    event.report_type,
+                    event.valid_time,
+                    event.first_actionable_seen_at,
+                    event.accepted_at,
+                    event.selected_source_id,
+                    event.parsed_observation_json,
+                    update_row.strong_observation_update_id,
+                    update_row.raw_log_score_json,
+                    update_row.path_auxiliary_json,
+                    chain.latent_post_state_json
+                FROM checkpoint_chain chain
+                JOIN canonical_observation_events event
+                  ON event.canonical_observation_event_id = chain.last_canonical_event_id
+                LEFT JOIN strong_observation_updates update_row
+                  ON update_row.strong_observation_update_id = chain.last_strong_update_id
+                ORDER BY event.valid_time ASC, chain.committed_at ASC
+                """,
+                (checkpoint_id,),
+            ).fetchall()
+        )
+    except sqlite3.Error:
+        return {}
+    points: List[Dict[str, Any]] = []
+    for raw_row in rows:
+        distribution = safe_json_loads(str(raw_row[1] or ""))
+        if not isinstance(distribution, Mapping) or not distribution:
+            continue
+        physical_rows: List[Tuple[float, float]] = []
+        for raw_temperature, raw_probability in distribution.items():
+            temperature_c = to_float(raw_temperature)
+            probability = to_float(raw_probability)
+            if (
+                temperature_c is None
+                or probability is None
+                or not math.isfinite(float(temperature_c))
+                or not math.isfinite(float(probability))
+                or float(probability) < 0.0
+            ):
+                continue
+            physical_rows.append((float(temperature_c), float(probability)))
+        if not physical_rows:
+            continue
+        top_temperature_c, top_probability = max(
+            physical_rows,
+            key=lambda item: (item[1], -item[0]),
+        )
+        observation = safe_json_loads(str(raw_row[10] or ""))
+        if not isinstance(observation, Mapping):
+            observation = {}
+        raw_scores = safe_json_loads_any(str(raw_row[12] or ""))
+        score_row = next(
+            (item for item in raw_scores if isinstance(item, Mapping)),
+            {},
+        ) if isinstance(raw_scores, Sequence) and not isinstance(raw_scores, (str, bytes, bytearray)) else {}
+        feature_values = (
+            score_row.get("feature_values")
+            if isinstance(score_row, Mapping)
+            and isinstance(score_row.get("feature_values"), Mapping)
+            else {}
+        )
+        feature_audit = (
+            score_row.get("feature_audit")
+            if isinstance(score_row, Mapping)
+            and isinstance(score_row.get("feature_audit"), Mapping)
+            else {}
+        )
+        path_auxiliary = safe_json_loads(str(raw_row[13] or ""))
+        if not isinstance(path_auxiliary, Mapping):
+            path_auxiliary = {}
+        termination_risk = (
+            dict(path_auxiliary.get("termination_risk") or {})
+            if isinstance(path_auxiliary.get("termination_risk"), Mapping)
+            else {}
+        )
+        latent_state_map = safe_json_loads(str(raw_row[14] or ""))
+        if not isinstance(latent_state_map, Mapping):
+            latent_state_map = {}
+        latent_state_probabilities = [
+            {"state": str(state), "probability": float(probability)}
+            for state, probability in latent_state_map.items()
+            if to_float(probability) is not None and float(probability) >= 0.0
+        ]
+        latent_state_probabilities.sort(
+            key=lambda item: (-item["probability"], item["state"])
+        )
+        top_state = latent_state_probabilities[0] if latent_state_probabilities else {}
+        # Strong LR scores live on continuous Z cells.  A reported X bucket
+        # combines several such cells, so binding one arbitrary Z score to the
+        # top integer X would create a false second probability explanation.
+        top_temperature_state_scores: List[Dict[str, Any]] = []
+        state_score_values: List[float] = []
+        scoring_kind = str(score_row.get("scoring_kind") or "")
+        valid_time = str(raw_row[7] or observation.get("valid_time") or "")
+        observed_peak_c = _coalesce_numeric(
+            feature_values.get("trajectory.observed_peak_including_current_c"),
+            raw_row[2],
+            observation.get("temperature_c"),
+        )
+        first_cb_valid_time = str(feature_audit.get("physical.first_cb_valid_time") or "")
+        first_cb_local_hhmm = _ui_timeline_local_label(first_cb_valid_time, event_tz)
+        first_cb_temperature_c = to_float(feature_audit.get("physical.first_cb_temperature_c"))
+        first_cb_event_state = str(feature_values.get("physical.first_cb_event_state") or "no_cb_yet")
+        first_cb_timing_phase = str(feature_values.get("physical.first_cb_timing_phase") or "no_cb_yet")
+        first_cb_peak_relation = str(feature_values.get("physical.first_cb_peak_relation") or "no_cb_yet")
+        if first_cb_timing_phase == "early_before_peak_window":
+            first_cb_effect = "峰值前首次 CB：显著提高升温提前终止风险"
+        elif first_cb_timing_phase == "peak_window":
+            first_cb_effect = "峰值窗口首次 CB：提高升温终止风险"
+        elif first_cb_timing_phase == "late_after_peak_window" and first_cb_peak_relation == "at_observed_peak":
+            first_cb_effect = "CB 晚到：不逆转已形成日高，仅轻微约束剩余升温"
+        elif first_cb_timing_phase == "late_after_peak_window":
+            first_cb_effect = "CB 晚到且温度已回落：支持升温终止，但不逆转已形成日高"
+        else:
+            first_cb_effect = "尚未报告 CB；不把无 CB 当作继续升温保证"
+        first_cb_display = (
+            f"首次 CB {first_cb_local_hhmm} · {first_cb_temperature_c:g}°C · {first_cb_effect}"
+            if first_cb_valid_time and first_cb_temperature_c is not None
+            else first_cb_effect
+        )
+        points.append(
+            {
+                "posterior_checkpoint_id": str(raw_row[0] or ""),
+                "canonical_observation_event_id": str(raw_row[4] or ""),
+                "strong_observation_update_id": str(raw_row[11] or ""),
+                "fact_as_of": str(raw_row[3] or ""),
+                "fact_as_of_local_hhmm": _ui_timeline_local_label(raw_row[3], event_tz),
+                "report_type": str(raw_row[5] or observation.get("report_type") or ""),
+                "primary_source_id": str(raw_row[9] or ""),
+                "primary_metar_latest_at": valid_time,
+                "primary_metar_latest_local_hhmm": _ui_timeline_local_label(valid_time, event_tz),
+                "primary_metar_temp_c": to_float(observation.get("temperature_c")),
+                "primary_metar_today_max_c": observed_peak_c,
+                "amsc_latest_at": valid_time,
+                "amsc_latest_local_hhmm": _ui_timeline_local_label(valid_time, event_tz),
+                "amsc_temp_c": to_float(observation.get("temperature_c")),
+                "amsc_today_max_c": observed_peak_c,
+                # The sequential checkpoint contains the selected AMSC
+                # observation only.  Never relabel it as an AWC observation.
+                "awc_latest_at": "",
+                "awc_latest_local_hhmm": "",
+                "awc_temp_c": None,
+                "awc_today_max_c": None,
+                "awc_na_reason": "awc_not_in_sequential_checkpoint_chain",
+                "reported_x_lower_bound_c": to_float(raw_row[2]),
+                "temperature_momentum_effective_c_per_hour": _coalesce_numeric(
+                    feature_values.get("trajectory.current_step_rate_c_per_hour"),
+                    feature_values.get("trajectory.slope_60m_c_per_hour"),
+                ),
+                "temperature_momentum_1h_c_per_hour": to_float(
+                    feature_values.get("trajectory.slope_60m_c_per_hour")
+                ),
+                "temperature_momentum_2h_c_per_hour": to_float(
+                    feature_values.get("trajectory.slope_120m_c_per_hour")
+                ),
+                "temperature_momentum_realization_state": str(
+                    feature_values.get("trajectory.pre_event_path_state") or ""
+                ),
+                "cloud_text": str(observation.get("cloud_text") or ""),
+                "weather_text": str(observation.get("weather_text") or ""),
+                "dewpoint_c": to_float(observation.get("dewpoint_c")),
+                "first_cb_valid_time": first_cb_valid_time,
+                "first_cb_local_hhmm": first_cb_local_hhmm,
+                "first_cb_temperature_c": first_cb_temperature_c,
+                "first_cb_event_state": first_cb_event_state,
+                "first_cb_timing_phase": first_cb_timing_phase,
+                "first_cb_peak_relation": first_cb_peak_relation,
+                "first_cb_present_in_current_event": feature_audit.get("physical.cb_present_in_current_event") is True,
+                "first_cb_effect": first_cb_effect,
+                "first_cb_display": first_cb_display,
+                "reported_x_top_temperature_c": top_temperature_c,
+                "reported_x_top_probability": top_probability,
+                "reported_x_top_probability_pct": top_probability * 100.0,
+                "latent_state_probabilities": latent_state_probabilities,
+                "latent_top_state": str(top_state.get("state") or ""),
+                "latent_top_state_probability": to_float(top_state.get("probability")),
+                "strong_lr_scoring_kind": scoring_kind,
+                "strong_lr_state_discriminating": None,
+                "strong_lr_state_discriminating_na_reason": "reported_x_bucket_combines_multiple_latent_z_cells",
+                "strong_lr_top_temperature_state_scores": sorted(
+                    top_temperature_state_scores,
+                    key=lambda item: str(item.get("state") or ""),
+                ),
+                "target_bucket": f"{top_temperature_c:.0f}°C",
+                "target_probability_pct": top_probability * 100.0,
+                "probability_semantics": "amsc_scheduled_regular_metar_reported_daily_max_integer_x",
+                "termination_risk": termination_risk,
+                "probability_no_material_new_daily_high": to_float(
+                    termination_risk.get("probability_no_material_new_daily_high")
+                ),
+                "market_projection_state": "na",
+                "market_projection_na_reason": str(
+                    posterior_ssot.get("market_bucket_probabilities_na_reason")
+                    or "x_to_s_to_b_bridge_unavailable"
+                ),
+            }
+        )
+    if not points:
+        return {}
+    sampled = _ui_temperature_timeline_sample(
+        points,
+        UI_SNAPSHOT_TEMPERATURE_TRAJECTORY_TIMELINE_POINTS,
+    )
+    latest = sampled[-1]
+    peak_observed = max(
+        (
+            float(point["amsc_today_max_c"])
+            for point in points
+            if to_float(point.get("amsc_today_max_c")) is not None
+        ),
+        default=None,
+    )
+    peak_timing = posterior_ssot.get("peak_timing_state")
+    peak_timing = dict(peak_timing) if isinstance(peak_timing, Mapping) else {}
+    peak_timing_state = {
+        "schema": str(peak_timing.get("schema") or "peak_timing_state_l3_v1"),
+        "state": str(peak_timing.get("state") or "na"),
+        "peak_timing_state_id": str(peak_timing.get("peak_timing_state_id") or ""),
+        "mode_time_state": str(peak_timing.get("mode_time_state") or ""),
+        "mode_probability": to_float(peak_timing.get("mode_probability")),
+        "peak_already_probability": to_float(peak_timing.get("peak_already_probability")),
+        "future_peak_probability": to_float(peak_timing.get("future_peak_probability")),
+        "entry_peak_at": str(peak_timing.get("entry_peak_at") or ""),
+        "entry_peak_local_hhmm": _ui_timeline_local_label(
+            peak_timing.get("entry_peak_at"), event_tz
+        ),
+        "observed_peak_at": str(peak_timing.get("observed_peak_at") or ""),
+        "observed_peak_local_hhmm": _ui_timeline_local_label(
+            peak_timing.get("observed_peak_at"), event_tz
+        ),
+        "na_reason": str(
+            peak_timing.get("entry_peak_at_na_reason")
+            or peak_timing.get("na_reason")
+            or ""
+        ),
+        "does_not_update_physical_x": peak_timing.get("does_not_update_physical_x") is True,
+        "source": "posterior_ssot_fact.peak_timing_state",
+    }
+    second_yes_window: Dict[str, Any] = {
+        "state": "na",
+        "entry_allowed": False,
+        "na_reason": "current_posterior_second_yes_auto_trade_decision_missing",
+        "source": "auto_trade_decisions",
+        "frontend_recompute_allowed": False,
+    }
+    try:
+        decision_rows = conn.execute(
+            """
+            SELECT outcome,side,decided_state,will_order,reason_codes_json,details_json,created_at
+            FROM auto_trade_decisions
+            WHERE slug=? AND event_date=? AND posterior_run_id=?
+            ORDER BY id DESC
+            LIMIT 64
+            """,
+            (str(slug or ""), str(event_date or ""), posterior_run_id),
+        ).fetchall()
+    except sqlite3.Error:
+        decision_rows = []
+    for decision_row in decision_rows:
+        details = safe_json_loads(str(decision_row[5] or ""))
+        if not isinstance(details, Mapping):
+            continue
+        window = details.get("second_yes_entry_window_state")
+        if not isinstance(window, Mapping):
+            continue
+        strategy_leg = str(
+            details.get("strategy_leg")
+            or details.get("target_realization_v3_role")
+            or ""
+        )
+        if strategy_leg != "second_yes":
+            continue
+        reason_codes = safe_json_loads_any(str(decision_row[4] or ""))
+        reason_code = str(
+            details.get("entry_block_reason")
+            or window.get("entry_block_reason")
+            or (
+                reason_codes[0]
+                if isinstance(reason_codes, Sequence)
+                and not isinstance(reason_codes, (str, bytes, bytearray))
+                and reason_codes
+                else ""
+            )
+        )
+        second_yes_window = {
+            "state": "available",
+            "second_yes_entry_window_state_id": str(
+                window.get("second_yes_entry_window_state_id") or ""
+            ),
+            "decision_state": str(decision_row[2] or ""),
+            "decision_created_at": str(decision_row[6] or ""),
+            "decision_created_local_hhmm": _ui_timeline_local_label(
+                decision_row[6], event_tz
+            ),
+            "bucket": str(decision_row[0] or ""),
+            "side": str(decision_row[1] or ""),
+            "will_order": int(decision_row[3] or 0) == 1,
+            "entry_allowed": window.get("entry_allowed") is True,
+            "entry_block_reason": reason_code,
+            "predicted_peak_at": str(window.get("predicted_peak_at") or ""),
+            "predicted_peak_local_hhmm": _ui_timeline_local_label(
+                window.get("predicted_peak_at"), event_tz
+            ),
+            "entry_window_start_at": str(window.get("entry_window_start_at") or ""),
+            "entry_window_start_local_hhmm": _ui_timeline_local_label(
+                window.get("entry_window_start_at"), event_tz
+            ),
+            "entry_window_end_at": str(window.get("entry_window_end_at") or ""),
+            "entry_window_end_local_hhmm": _ui_timeline_local_label(
+                window.get("entry_window_end_at"), event_tz
+            ),
+            "entry_window_minutes": int(window.get("entry_window_minutes") or 30),
+            "max_notional_usdc": 4.99,
+            "strictly_below_5_usdc": True,
+            "same_bucket_existing_position_may_be_retained": (
+                details.get("same_bucket_existing_position_may_be_retained") is True
+                or window.get("existing_same_bucket_position_may_be_retained") is True
+            ),
+            "source": "auto_trade_decisions.details_json",
+            "frontend_recompute_allowed": False,
+        }
+        break
+    return {
+        "available": True,
+        "version": "sequential_reported_x_temperature_timeline_v3",
+        "source": "posterior_checkpoints+canonical_observation_events+strong_observation_updates",
+        "probability_semantics": "amsc_scheduled_regular_metar_reported_daily_max_integer_x",
+        "boundary": "reported_X_only_not_latent_Z_not_market_B_not_cumulative_edge_bucket",
+        "slug": str(slug or ""),
+        "event_date": str(event_date or ""),
+        "run_date": str(run_date or ""),
+        "event_tz": str(event_tz or "Asia/Shanghai"),
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "posterior_checkpoint_id": checkpoint_id,
+        "target_bucket": str(latest.get("target_bucket") or ""),
+        "rows": sampled,
+        "row_count": len(points),
+        "sampled_count": len(sampled),
+        "truncated": len(points) > len(sampled),
+        "primary_source_id": "zuuu_metar_raw_amsc",
+        "source_priority": ["zuuu_metar_raw_amsc"],
+        "peak_metar_today_max_c": peak_observed,
+        "peak_amsc_today_max_c": peak_observed,
+        "peak_awc_today_max_c": peak_observed,
+        "latest_probability_pct": latest.get("reported_x_top_probability_pct"),
+        "latest_reported_x_top_temperature_c": latest.get("reported_x_top_temperature_c"),
+        "latest_latent_top_state": latest.get("latent_top_state"),
+        "latest_latent_top_state_probability": latest.get("latent_top_state_probability"),
+        "latest_first_cb_valid_time": latest.get("first_cb_valid_time"),
+        "latest_first_cb_local_hhmm": latest.get("first_cb_local_hhmm"),
+        "latest_first_cb_temperature_c": latest.get("first_cb_temperature_c"),
+        "latest_first_cb_event_state": latest.get("first_cb_event_state"),
+        "latest_first_cb_timing_phase": latest.get("first_cb_timing_phase"),
+        "latest_first_cb_peak_relation": latest.get("first_cb_peak_relation"),
+        "latest_first_cb_effect": latest.get("first_cb_effect"),
+        "latest_first_cb_display": latest.get("first_cb_display"),
+        "latest_strong_lr_scoring_kind": latest.get("strong_lr_scoring_kind"),
+        "latest_strong_lr_state_discriminating": latest.get("strong_lr_state_discriminating"),
+        "peak_timing_state": peak_timing_state,
+        "second_yes_entry_window": second_yes_window,
+        "reported_x_ssot_freshness": ssot_freshness,
+        "probability_display_state": str(
+            ssot_freshness.get("probability_display_state") or "unavailable"
+        ),
+        "probability_current": ssot_freshness.get("probability_current") is True,
+        "latest_fact_as_of": latest.get("fact_as_of"),
+        "market_projection_state": "na",
+        "market_projection_na_reason": str(
+            posterior_ssot.get("market_bucket_probabilities_na_reason")
+            or "x_to_s_to_b_bridge_unavailable"
+        ),
+        "frontend_recompute_allowed": False,
+    }
 
 
 def _attach_temperature_trajectory_timeline_for_ui_snapshot(
@@ -64237,6 +67792,41 @@ def _attach_temperature_trajectory_timeline_for_ui_snapshot(
     if not _is_chengdu_zuuu_fact_payload(slug, payload):
         return
     if not event_date:
+        return
+    posterior_ssot = payload.get("posterior_ssot_fact")
+    if (
+        isinstance(posterior_ssot, Mapping)
+        and _is_reported_physical_x_ssot_schema(posterior_ssot.get("schema"))
+    ):
+        timeline = _build_sequential_physical_timeline_for_ui_snapshot(
+            conn,
+            posterior_ssot=posterior_ssot,
+            slug=slug,
+            event_date=event_date,
+            run_date=_normalize_date_key(
+                str(payload.get("run_date") or row_get("run_date") or "")
+            ),
+            event_tz=str(payload.get("event_tz") or payload.get("tz") or "Asia/Shanghai"),
+        )
+        if timeline:
+            payload["temperature_trajectory_timeline"] = timeline
+            summary = payload.get("chengdu_intraday_summary")
+            if isinstance(summary, MutableMapping):
+                summary["temperature_trajectory_timeline"] = timeline
+        else:
+            # A production reported-X posterior must never inherit the retired
+            # v3.1 market-bucket timeline.  Missing checkpoint lineage is
+            # explicit NA, not permission to fall back to a stale edge bucket.
+            payload.pop("temperature_trajectory_timeline", None)
+            payload["temperature_trajectory_timeline_na_reason"] = (
+                "sequential_checkpoint_timeline_unavailable"
+            )
+            summary = payload.get("chengdu_intraday_summary")
+            if isinstance(summary, MutableMapping):
+                summary.pop("temperature_trajectory_timeline", None)
+                summary["temperature_trajectory_timeline_na_reason"] = (
+                    "sequential_checkpoint_timeline_unavailable"
+                )
         return
     timeline = _build_temperature_trajectory_timeline_for_ui_snapshot(
         conn,
@@ -65254,7 +68844,7 @@ def _ui_snapshot_rebuild_start(cache_key: str) -> bool:
         return True
 
 
-def _ui_snapshot_rebuild_done(cache_key: str) -> None:
+def _ui_snapshot_rebuild_done(cache_key: str, *, error: str = "") -> None:
     with _UI_SNAPSHOT_REBUILD_LOCK:
         state = _UI_SNAPSHOT_REBUILDING.pop(cache_key, None)
         ended_monotonic = time.monotonic()
@@ -65271,6 +68861,8 @@ def _ui_snapshot_rebuild_done(cache_key: str) -> None:
                 "started_at": state.get("started_at") or "",
                 "ended_at": now_text(),
                 "duration_ms": duration_ms,
+                "ok": not bool(str(error or "").strip()),
+                "error": str(error or "").strip(),
             }
             if len(_UI_SNAPSHOT_REBUILD_LAST) > 128:
                 for old_key, _old_state in sorted(
@@ -65350,6 +68942,8 @@ def _ui_snapshot_rebuild_status(cache_key: str) -> Dict[str, Any]:
                 "last_started_at": str(last_copy.get("started_at") or ""),
                 "last_ended_at": str(last_copy.get("ended_at") or ""),
                 "last_duration_ms": last_copy.get("duration_ms"),
+                "last_ok": last_copy.get("ok"),
+                "last_error": str(last_copy.get("error") or ""),
             }
         )
     return out
@@ -65371,6 +68965,1374 @@ def _attach_ui_snapshot_rebuild_status(payload: Dict[str, Any], cache_key: str) 
             payload["cache_rebuild_last_duration_ms"] = status.get("last_duration_ms")
             payload["cache_rebuild_last_ended_at"] = status.get("last_ended_at")
     _attach_ui_runtime_health(payload, include_endpoint_metrics=False)
+    return payload
+
+
+def _ui_snapshot_append_unique_text(out: List[str], raw: Any) -> None:
+    text = str(raw or "").strip()
+    if text and text not in out:
+        out.append(text)
+
+
+def _ui_snapshot_first_text(*values: Any) -> str:
+    for raw in values:
+        text = str(raw or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _ui_snapshot_item_source_event_ids(raw_item: Mapping[str, Any]) -> List[str]:
+    source_event_ids: List[str] = []
+    lineage = raw_item.get("lineage_state")
+    if isinstance(lineage, Mapping):
+        for source_event_id in lineage.get("source_event_ids") or []:
+            _ui_snapshot_append_unique_text(source_event_ids, source_event_id)
+        _ui_snapshot_append_unique_text(source_event_ids, lineage.get("source_event_id"))
+    for source_event_id in raw_item.get("source_event_ids") or []:
+        _ui_snapshot_append_unique_text(source_event_ids, source_event_id)
+    for row in raw_item.get("source_observations") or []:
+        if isinstance(row, Mapping):
+            _ui_snapshot_append_unique_text(source_event_ids, row.get("source_event_id"))
+    trace = raw_item.get("source_acquisition_trace")
+    if isinstance(trace, Mapping):
+        for source_event_id in trace.get("source_event_ids") or []:
+            _ui_snapshot_append_unique_text(source_event_ids, source_event_id)
+        for row in trace.get("source_observations") or []:
+            if isinstance(row, Mapping):
+                _ui_snapshot_append_unique_text(source_event_ids, row.get("source_event_id"))
+    for key in ("signal_to_order_timing", "hard_source_acceptance_state"):
+        nested = raw_item.get(key)
+        if isinstance(nested, Mapping):
+            _ui_snapshot_append_unique_text(source_event_ids, nested.get("source_event_id"))
+    _ui_snapshot_append_unique_text(source_event_ids, raw_item.get("source_event_id"))
+    posterior_ssot = raw_item.get("posterior_ssot_fact")
+    if isinstance(posterior_ssot, Mapping):
+        _ui_snapshot_append_unique_text(
+            source_event_ids,
+            posterior_ssot.get("last_canonical_event_id"),
+        )
+    return source_event_ids
+
+
+def _ui_snapshot_item_source_observation_ids(raw_item: Mapping[str, Any]) -> List[str]:
+    source_observation_ids: List[str] = []
+    lineage = raw_item.get("lineage_state")
+    if isinstance(lineage, Mapping):
+        for source_observation_id in lineage.get("source_observation_ids") or []:
+            _ui_snapshot_append_unique_text(source_observation_ids, source_observation_id)
+        _ui_snapshot_append_unique_text(source_observation_ids, lineage.get("source_observation_id"))
+    posterior_ssot = raw_item.get("posterior_ssot_fact")
+    posterior_lineage = posterior_ssot.get("lineage") if isinstance(posterior_ssot, Mapping) else {}
+    if isinstance(posterior_lineage, Mapping):
+        for source_observation_id in posterior_lineage.get("source_observation_ids") or []:
+            _ui_snapshot_append_unique_text(source_observation_ids, source_observation_id)
+    for source_observation_id in raw_item.get("source_observation_ids") or []:
+        _ui_snapshot_append_unique_text(source_observation_ids, source_observation_id)
+    for row in raw_item.get("source_observations") or []:
+        if isinstance(row, Mapping):
+            _ui_snapshot_append_unique_text(source_observation_ids, row.get("source_observation_id"))
+    trace = raw_item.get("source_acquisition_trace")
+    if isinstance(trace, Mapping):
+        for source_observation_id in trace.get("source_observation_ids") or []:
+            _ui_snapshot_append_unique_text(source_observation_ids, source_observation_id)
+        for row in trace.get("source_observations") or []:
+            if isinstance(row, Mapping):
+                _ui_snapshot_append_unique_text(source_observation_ids, row.get("source_observation_id"))
+    for key in ("signal_to_order_timing", "hard_source_acceptance_state"):
+        nested = raw_item.get(key)
+        if isinstance(nested, Mapping):
+            _ui_snapshot_append_unique_text(source_observation_ids, nested.get("source_observation_id"))
+    _ui_snapshot_append_unique_text(source_observation_ids, raw_item.get("source_observation_id"))
+    return source_observation_ids
+
+
+def _ui_snapshot_lineage_item(raw_item: Mapping[str, Any]) -> Dict[str, Any]:
+    lineage = raw_item.get("lineage_state")
+    lineage_map = lineage if isinstance(lineage, Mapping) else {}
+    timing = raw_item.get("signal_to_order_timing")
+    timing_map = timing if isinstance(timing, Mapping) else {}
+    acceptance = raw_item.get("hard_source_acceptance_state")
+    acceptance_map = acceptance if isinstance(acceptance, Mapping) else {}
+    posterior_runtime = raw_item.get("posterior_runtime")
+    posterior_runtime_map = posterior_runtime if isinstance(posterior_runtime, Mapping) else {}
+    posterior_ssot = raw_item.get("posterior_ssot_fact")
+    posterior_ssot_map = posterior_ssot if isinstance(posterior_ssot, Mapping) else {}
+    decision = raw_item.get("auto_trade_ssot")
+    decision_map = decision if isinstance(decision, Mapping) else {}
+    source_event_ids = _ui_snapshot_item_source_event_ids(raw_item)
+    source_observation_ids = _ui_snapshot_item_source_observation_ids(raw_item)
+    signal_id = _ui_snapshot_first_text(
+        raw_item.get("signal_id"),
+        timing_map.get("signal_id"),
+        acceptance_map.get("signal_id"),
+        raw_item.get("hard_source_signal_id"),
+    )
+    decision_id = _ui_snapshot_first_text(
+        raw_item.get("decision_id"),
+        timing_map.get("decision_id"),
+        decision_map.get("decision_id"),
+    )
+    order_intent_id = _ui_snapshot_first_text(
+        raw_item.get("order_intent_id"),
+        raw_item.get("order_id"),
+        timing_map.get("order_intent_id"),
+        timing_map.get("order_id"),
+        decision_map.get("order_intent_id"),
+        decision_map.get("order_id"),
+    )
+    review_id = _ui_snapshot_first_text(raw_item.get("review_id"), lineage_map.get("review_id"))
+    fact_id = _to_int(raw_item.get("fact_id"))
+    fact_snapshot_id = _ui_snapshot_first_text(
+        raw_item.get("fact_snapshot_id"),
+        lineage_map.get("fact_snapshot_id"),
+        posterior_ssot_map.get("fact_snapshot_id"),
+    )
+    posterior_run_id = _ui_snapshot_first_text(
+        raw_item.get("posterior_run_id"),
+        lineage_map.get("posterior_run_id"),
+        posterior_runtime_map.get("posterior_run_id"),
+        posterior_ssot_map.get("posterior_run_id"),
+    )
+    correlation_id = _ui_snapshot_first_text(raw_item.get("correlation_id"), lineage_map.get("correlation_id"))
+    hard_source_expected = bool(
+        timing_map
+        or acceptance_map
+        or raw_item.get("hard_source_direct")
+        or raw_item.get("hard_source_posterior_override")
+        or raw_item.get("awc_hard_source_signal_candidate")
+    )
+    missing_keys: List[str] = []
+    sequential_ssot = _is_sequential_temperature_ssot_schema(
+        posterior_ssot_map.get("schema")
+    )
+    if not correlation_id and not sequential_ssot:
+        missing_keys.append("correlation_id")
+    if not source_event_ids and not sequential_ssot:
+        missing_keys.append("source_event_id")
+    if not fact_snapshot_id:
+        missing_keys.append("fact_snapshot_id")
+    if not posterior_run_id:
+        missing_keys.append("posterior_run_id")
+    if hard_source_expected and not signal_id:
+        missing_keys.append("signal_id")
+    na_reasons: Dict[str, str] = {}
+    if not correlation_id and sequential_ssot:
+        na_reasons["correlation_id"] = "not_defined_by_sequential_probability_ssot"
+    if not source_event_ids and sequential_ssot:
+        na_reasons["source_event_id"] = "initial_checkpoint_has_no_canonical_observation_event"
+    if not decision_id:
+        na_reasons["decision_id"] = "not_present_in_ui_fact_item"
+    if not order_intent_id:
+        na_reasons["order_intent_id"] = "not_present_in_ui_fact_item"
+    if not review_id:
+        na_reasons["review_id"] = "daily_review_not_materialized_or_not_linked"
+    return {
+        "slug": str(raw_item.get("slug") or ""),
+        "event_date": _normalize_date_key(str(raw_item.get("event_date") or "")),
+        "fact_id": fact_id,
+        "fact_as_of": str(raw_item.get("fact_as_of") or ""),
+        "correlation_id": correlation_id,
+        "fact_snapshot_id": fact_snapshot_id,
+        "posterior_run_id": posterior_run_id,
+        "source_event_ids": source_event_ids,
+        "source_observation_ids": source_observation_ids,
+        "signal_id": signal_id,
+        "decision_id": decision_id,
+        "order_intent_id": order_intent_id,
+        "review_id": review_id,
+        "hard_source_signal_expected": hard_source_expected,
+        "missing_keys": missing_keys,
+        "na_reasons": na_reasons,
+    }
+
+
+def _ui_snapshot_latest_timestamp_text(*values: Any) -> str:
+    latest_text = ""
+    latest_key: Optional[Tuple[int, float, str]] = None
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        dt = parse_any_ts(text)
+        if dt is not None:
+            try:
+                key = (1, float(dt.timestamp()), text)
+            except Exception:
+                key = (0, 0.0, text)
+        else:
+            key = (0, 0.0, text)
+        if latest_key is None or key > latest_key:
+            latest_key = key
+            latest_text = text
+    return latest_text
+
+
+def _ui_snapshot_timing_ms(raw: Any) -> Optional[int]:
+    value = to_float(raw)
+    if value is None:
+        return None
+    try:
+        if not math.isfinite(float(value)):
+            return None
+    except Exception:
+        return None
+    return int(round(float(value)))
+
+
+def _ui_snapshot_timestamp_sort_value(*values: Any) -> Tuple[int, float, str]:
+    text = _ui_snapshot_latest_timestamp_text(*values)
+    if not text:
+        return (0, 0.0, "")
+    dt = parse_any_ts(text)
+    if dt is None:
+        return (0, 0.0, text)
+    try:
+        return (1, float(dt.timestamp()), text)
+    except Exception:
+        return (0, 0.0, text)
+
+
+def _ui_snapshot_ms_between(start: Any, end: Any) -> Optional[int]:
+    start_dt = parse_any_ts(str(start or ""))
+    end_dt = parse_any_ts(str(end or ""))
+    if start_dt is None or end_dt is None:
+        return None
+    return _ui_snapshot_timing_ms((end_dt - start_dt).total_seconds() * 1000.0)
+
+
+def _ui_snapshot_amsc_latency_slo_audit_from_timing(timing_map: Mapping[str, Any]) -> Dict[str, Any]:
+    raw_audit = timing_map.get("amsc_latency_slo_audit")
+    audit: Dict[str, Any] = copy.deepcopy(dict(raw_audit)) if isinstance(raw_audit, Mapping) else {}
+    valid_time = _ui_snapshot_first_text(audit.get("valid_time"), timing_map.get("latest_source_valid_time"))
+    fetched_at = _ui_snapshot_first_text(
+        audit.get("fetched_at"),
+        timing_map.get("latest_source_response_completed_at"),
+    )
+    fact_as_of = _ui_snapshot_first_text(audit.get("fact_as_of"), timing_map.get("latest_source_fact_as_of"))
+    posterior_as_of = _ui_snapshot_first_text(
+        audit.get("posterior_as_of"),
+        timing_map.get("posterior_apply_completed_at"),
+        timing_map.get("posterior_apply_started_at"),
+    )
+    decision_at = _ui_snapshot_first_text(audit.get("decision_at"))
+    stage_latencies = (
+        copy.deepcopy(dict(audit.get("stage_latencies_ms")))
+        if isinstance(audit.get("stage_latencies_ms"), Mapping)
+        else {}
+    )
+    if stage_latencies.get("valid_to_fetched") is None:
+        stage_latencies["valid_to_fetched"] = _ui_snapshot_ms_between(valid_time, fetched_at)
+    if stage_latencies.get("fetched_to_fact") is None:
+        stage_latencies["fetched_to_fact"] = _ui_snapshot_ms_between(fetched_at, fact_as_of)
+    if stage_latencies.get("fact_to_posterior") is None:
+        stage_latencies["fact_to_posterior"] = _ui_snapshot_ms_between(fact_as_of, posterior_as_of)
+    if stage_latencies.get("posterior_to_decision") is None:
+        stage_latencies["posterior_to_decision"] = _ui_snapshot_ms_between(posterior_as_of, decision_at)
+
+    stage_slo = copy.deepcopy(dict(audit.get("stage_slo_ms"))) if isinstance(audit.get("stage_slo_ms"), Mapping) else {}
+    stage_slo.setdefault("valid_to_fetched", 90_000)
+    stage_slo.setdefault("fetched_to_fact", 5_000)
+    stage_slo.setdefault("fact_to_posterior", 10_000)
+    stage_slo.setdefault("posterior_to_decision", 3_000)
+
+    stage_status: Dict[str, str] = {}
+    for key, slo in stage_slo.items():
+        value = stage_latencies.get(key)
+        if value is None:
+            stage_status[key] = "missing"
+        elif isinstance(value, (int, float)) and float(value) < 0:
+            stage_status[key] = "clock_order_anomaly"
+        elif isinstance(value, (int, float)) and float(value) <= float(slo):
+            stage_status[key] = "met"
+        else:
+            stage_status[key] = "breached"
+
+    missing_fields = [
+        key
+        for key, value in (
+            ("valid_time", valid_time),
+            ("fetched_at", fetched_at),
+            ("fact_as_of", fact_as_of),
+            ("posterior_as_of", posterior_as_of),
+            ("decision_at", decision_at),
+        )
+        if not value
+    ]
+    available_stage_values = {
+        key: int(value)
+        for key, value in stage_latencies.items()
+        if isinstance(value, (int, float)) and float(value) >= 0
+    }
+    slow_stage = max(available_stage_values, key=available_stage_values.get) if available_stage_values else ""
+    breached_stages = [key for key, status in stage_status.items() if status == "breached"]
+    audit.update(
+        {
+            "schema": str(audit.get("schema") or "amsc_latency_slo_audit_v1"),
+            "state": "partial" if missing_fields else "available",
+            "state_reason": (
+                "missing_fields:" + ",".join(missing_fields)
+                if missing_fields
+                else "all_chain_timestamps_available"
+            ),
+            "source": str(audit.get("source") or "facts.items[].source_to_posterior_timing"),
+            "source_provider": str(audit.get("source_provider") or timing_map.get("source_provider") or "AMSC"),
+            "source_id": str(audit.get("source_id") or timing_map.get("latest_source_id") or ""),
+            "source_event_id": str(audit.get("source_event_id") or timing_map.get("latest_source_event_id") or ""),
+            "source_observation_id": str(
+                audit.get("source_observation_id") or timing_map.get("latest_source_observation_id") or ""
+            ),
+            "valid_time": valid_time,
+            "fetched_at": fetched_at,
+            "fact_as_of": fact_as_of,
+            "posterior_as_of": posterior_as_of,
+            "decision_at": decision_at,
+            "stage_order": ["valid_time", "fetched_at", "fact_as_of", "posterior_as_of", "decision_at"],
+            "stage_latencies_ms": stage_latencies,
+            "stage_slo_ms": stage_slo,
+            "stage_status": stage_status,
+            "slow_stage": slow_stage,
+            "breached_stages": breached_stages,
+            "valid_to_fetched_ms": stage_latencies.get("valid_to_fetched"),
+            "fetched_to_fact_ms": stage_latencies.get("fetched_to_fact"),
+            "fact_to_posterior_ms": stage_latencies.get("fact_to_posterior"),
+            "posterior_to_decision_ms": stage_latencies.get("posterior_to_decision"),
+            "valid_to_posterior_ms": _ui_snapshot_ms_between(valid_time, posterior_as_of),
+            "fetched_to_posterior_ms": _ui_snapshot_ms_between(fetched_at, posterior_as_of),
+            "valid_to_decision_ms": _ui_snapshot_ms_between(valid_time, decision_at),
+            "fetched_to_decision_ms": _ui_snapshot_ms_between(fetched_at, decision_at),
+            "fact_to_decision_ms": _ui_snapshot_ms_between(fact_as_of, decision_at),
+            "missing_fields": missing_fields,
+            "slo_met": False if breached_stages else (None if missing_fields else True),
+            "hard_source_latency_slo_met": False if breached_stages else (None if missing_fields else True),
+            "read_only": True,
+            "frontend_recompute_allowed": False,
+            "decision_recompute_allowed": False,
+        }
+    )
+    if not decision_at:
+        audit.setdefault("decision_at_na_reason", "decision_not_available_in_ui_snapshot_decision_feed")
+    else:
+        audit.pop("decision_at_na_reason", None)
+    return audit
+
+
+def _ui_snapshot_source_to_posterior_timing_from_item(raw_item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(raw_item, Mapping):
+        return {}
+    timing = raw_item.get("source_to_posterior_timing")
+    timing_map = timing if isinstance(timing, Mapping) else {}
+    if not timing_map:
+        signal_timing = raw_item.get("signal_to_order_timing")
+        signal_timing_map = signal_timing if isinstance(signal_timing, Mapping) else {}
+        nested = signal_timing_map.get("source_to_posterior_timing")
+        timing_map = nested if isinstance(nested, Mapping) else {}
+    if not timing_map:
+        return {}
+
+    def text(key: str, *fallbacks: Any) -> str:
+        return _ui_snapshot_first_text(timing_map.get(key), *fallbacks)
+
+    source_event_ids = [
+        str(value or "").strip()
+        for value in timing_map.get("source_event_ids") or []
+        if str(value or "").strip()
+    ]
+    source_observation_ids = [
+        str(value or "").strip()
+        for value in timing_map.get("source_observation_ids") or []
+        if str(value or "").strip()
+    ]
+    latest_source_event_id = text("latest_source_event_id")
+    latest_source_observation_id = text("latest_source_observation_id")
+    if latest_source_event_id and latest_source_event_id not in source_event_ids:
+        source_event_ids.insert(0, latest_source_event_id)
+    if latest_source_observation_id and latest_source_observation_id not in source_observation_ids:
+        source_observation_ids.insert(0, latest_source_observation_id)
+
+    row: Dict[str, Any] = {
+        "schema": "ui_snapshot_source_to_posterior_timing_row_v1",
+        "state": text("state") or "available",
+        "state_reason": text("state_reason"),
+        "surface": text("surface"),
+        "source": text("source"),
+        "source_provider": text("source_provider"),
+        "source_kind": text("source_kind"),
+        "source_id": text("latest_source_id"),
+        "latest_source_id": text("latest_source_id"),
+        "slug": text("slug", raw_item.get("slug")),
+        "event_date": _normalize_date_key(text("event_date", raw_item.get("event_date"))),
+        "fact_id": _to_int(raw_item.get("fact_id")),
+        "fact_as_of": str(raw_item.get("fact_as_of") or ""),
+        "task_queue_id": _to_int(timing_map.get("task_queue_id")),
+        "task_queue_status": text("task_queue_status"),
+        "task_created_at": text("task_created_at"),
+        "task_started_at": text("task_started_at"),
+        "task_completed_at": text("task_completed_at"),
+        "latest_source_fact_as_of": text("latest_source_fact_as_of"),
+        "latest_source_response_completed_at": text("latest_source_response_completed_at"),
+        "latest_source_valid_time": text("latest_source_valid_time"),
+        "posterior_apply_started_at": text(
+            "posterior_apply_started_at",
+            raw_item.get("posterior_as_of"),
+            raw_item.get("fact_as_of"),
+        ),
+        "posterior_apply_completed_at": text("posterior_apply_completed_at"),
+        "source_response_to_posterior_apply_start_ms": _ui_snapshot_timing_ms(
+            timing_map.get("source_response_to_posterior_apply_start_ms")
+        ),
+        "source_fact_to_posterior_apply_start_ms": _ui_snapshot_timing_ms(
+            timing_map.get("source_fact_to_posterior_apply_start_ms")
+        ),
+        "source_valid_to_posterior_apply_start_ms": _ui_snapshot_timing_ms(
+            timing_map.get("source_valid_to_posterior_apply_start_ms")
+        ),
+        "task_queue_wait_ms": _ui_snapshot_timing_ms(timing_map.get("task_queue_wait_ms")),
+        "task_created_to_posterior_apply_start_ms": _ui_snapshot_timing_ms(
+            timing_map.get("task_created_to_posterior_apply_start_ms")
+        ),
+        "posterior_apply_runtime_ms": _ui_snapshot_timing_ms(timing_map.get("posterior_apply_runtime_ms")),
+        "latest_temperature_c": timing_map.get("latest_temperature_c"),
+        "latest_observed_today_max_c": timing_map.get("latest_observed_today_max_c"),
+        "source_history_fact_ids": [
+            _to_int(value)
+            for value in timing_map.get("source_history_fact_ids") or []
+            if _to_int(value) is not None
+        ],
+        "source_history_fact_count": _to_int(timing_map.get("source_history_fact_count")),
+        "source_history_merged_observation_count": _to_int(
+            timing_map.get("source_history_merged_observation_count")
+        ),
+        "source_event_ids": source_event_ids[:20],
+        "source_observation_ids": source_observation_ids[:20],
+        "latest_source_event_id": latest_source_event_id,
+        "latest_source_observation_id": latest_source_observation_id,
+        "order_signal_applicability": text("order_signal_applicability"),
+        "amsc_latency_slo_audit": _ui_snapshot_amsc_latency_slo_audit_from_timing(timing_map),
+        "guards": copy.deepcopy(timing_map.get("guards")) if isinstance(timing_map.get("guards"), Mapping) else {},
+        "read_only": True,
+        "frontend_recompute_allowed": False,
+        "decision_recompute_allowed": False,
+    }
+    return {key: value for key, value in row.items() if value not in (None, "", [], {})}
+
+
+def _ui_snapshot_source_to_posterior_section(
+    items: Sequence[Mapping[str, Any]],
+    *,
+    freshness_state: str,
+    freshness_reason: str,
+    latest_decision_at: str = "",
+) -> Dict[str, Any]:
+    timing_rows = [
+        row
+        for raw_item in items[:200]
+        if isinstance(raw_item, Mapping)
+        for row in (_ui_snapshot_source_to_posterior_timing_from_item(raw_item),)
+        if row
+    ]
+    timing_rows.sort(
+        key=lambda row: _ui_snapshot_timestamp_sort_value(
+            row.get("posterior_apply_completed_at"),
+            row.get("posterior_apply_started_at"),
+            row.get("latest_source_response_completed_at"),
+            row.get("latest_source_fact_as_of"),
+        ),
+        reverse=True,
+    )
+    if not timing_rows:
+        return {
+            "schema": "ui_snapshot_source_to_posterior_section_v1",
+            "state": "empty" if not items else "missing",
+            "source": "facts.items[].source_to_posterior_timing",
+            "read_only": True,
+            "timing_count": 0,
+            "items": [],
+            "latest": {},
+            "na_reason": "source_to_posterior_timing_missing" if items else "no_fact_items",
+            "frontend_recompute_allowed": False,
+            "decision_recompute_allowed": False,
+        }
+    latest = dict(timing_rows[0])
+    posterior_apply_at = str(
+        latest.get("posterior_apply_completed_at") or latest.get("posterior_apply_started_at") or ""
+    )
+    order_signal_applicability = str(latest.get("order_signal_applicability") or "")
+    decision_state = "not_applicable_no_order_signal"
+    posterior_to_decision_ms: Optional[int] = None
+    if order_signal_applicability == "not_applicable_no_order_signal":
+        decision_state = "not_applicable_no_order_signal"
+    elif latest_decision_at:
+        decision_dt = parse_any_ts(latest_decision_at)
+        posterior_dt = parse_any_ts(posterior_apply_at)
+        if decision_dt is not None and posterior_dt is not None and decision_dt >= posterior_dt:
+            posterior_to_decision_ms = _ui_snapshot_timing_ms(
+                (decision_dt - posterior_dt).total_seconds() * 1000.0
+            )
+            decision_state = "decision_after_latest_posterior"
+        else:
+            decision_state = "latest_decision_before_latest_posterior"
+    else:
+        decision_state = "decision_missing_after_posterior"
+    latest_audit_raw = copy.deepcopy(latest.get("amsc_latency_slo_audit")) if isinstance(
+        latest.get("amsc_latency_slo_audit"), Mapping
+    ) else {}
+    if order_signal_applicability != "not_applicable_no_order_signal" and latest_decision_at:
+        latest_audit_raw["decision_at"] = latest_decision_at
+    latest_audit = _ui_snapshot_amsc_latency_slo_audit_from_timing(
+        {
+            "source_provider": latest.get("source_provider"),
+            "latest_source_id": latest.get("latest_source_id") or latest.get("source_id"),
+            "latest_source_event_id": latest.get("latest_source_event_id"),
+            "latest_source_observation_id": latest.get("latest_source_observation_id"),
+            "latest_source_valid_time": latest.get("latest_source_valid_time"),
+            "latest_source_response_completed_at": latest.get("latest_source_response_completed_at"),
+            "latest_source_fact_as_of": latest.get("latest_source_fact_as_of"),
+            "posterior_apply_completed_at": latest.get("posterior_apply_completed_at"),
+            "posterior_apply_started_at": latest.get("posterior_apply_started_at"),
+            "amsc_latency_slo_audit": latest_audit_raw,
+        }
+    )
+    if posterior_to_decision_ms is not None:
+        latest_audit["posterior_to_decision_ms"] = posterior_to_decision_ms
+        latest_audit.setdefault("stage_latencies_ms", {})["posterior_to_decision"] = posterior_to_decision_ms
+    latest["amsc_latency_slo_audit"] = latest_audit
+    latest_ms = latest.get("source_fact_to_posterior_apply_start_ms")
+    if latest_ms is None:
+        latest_ms = latest.get("source_response_to_posterior_apply_start_ms")
+    return {
+        "schema": "ui_snapshot_source_to_posterior_section_v1",
+        "state": freshness_state,
+        "source": "facts.items[].source_to_posterior_timing",
+        "read_only": True,
+        "timing_count": len(timing_rows),
+        "latest": latest,
+        "items": timing_rows[:20],
+        "latest_source_response_completed_at": str(latest.get("latest_source_response_completed_at") or ""),
+        "latest_source_fact_as_of": str(latest.get("latest_source_fact_as_of") or ""),
+        "latest_source_valid_time": str(latest.get("latest_source_valid_time") or ""),
+        "latest_posterior_apply_started_at": str(latest.get("posterior_apply_started_at") or ""),
+        "latest_posterior_apply_completed_at": str(latest.get("posterior_apply_completed_at") or ""),
+        "latest_source_to_posterior_ms": latest_ms,
+        "latest_source_response_to_posterior_ms": latest.get("source_response_to_posterior_apply_start_ms"),
+        "task_queue_wait_ms": latest.get("task_queue_wait_ms"),
+        "source_provider": str(latest.get("source_provider") or ""),
+        "latest_source_id": str(latest.get("latest_source_id") or latest.get("source_id") or ""),
+        "order_signal_applicability": order_signal_applicability,
+        "decision_candidate_state": decision_state,
+        "latest_decision_at": latest_decision_at,
+        "posterior_to_decision_ms": posterior_to_decision_ms,
+        "amsc_latency_slo_audit": latest_audit,
+        "stale_reason": freshness_reason if freshness_state != "fresh" else "",
+        "na_reason": "",
+        "next_boundary": "auto_trade_decisions",
+        "frontend_recompute_allowed": False,
+        "decision_recompute_allowed": False,
+    }
+
+
+def _ui_snapshot_signal_to_order_timing_from_item(raw_item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(raw_item, Mapping):
+        return {}
+    timing = raw_item.get("signal_to_order_timing")
+    timing_map = timing if isinstance(timing, Mapping) else {}
+    if not timing_map:
+        return {}
+    signal_at = _ui_snapshot_first_text(
+        timing_map.get("awc_hard_source_signal_at"),
+        raw_item.get("awc_hard_source_signal_at"),
+    )
+    if not signal_at:
+        return {}
+    schema = str(timing_map.get("schema") or "").strip()
+    if schema == "signal_to_order_timing_placeholder_v1":
+        return {}
+
+    def text(key: str, *fallbacks: Any) -> str:
+        return _ui_snapshot_first_text(timing_map.get(key), *fallbacks)
+
+    terminal_state = text("terminal_state") or "pending"
+    terminal_at = text(
+        "terminal_at",
+        "order_submitted_at",
+        "exchange_ack_at",
+        "order_ack_at",
+        "job_enqueued_at",
+        "decision_written_at",
+        "posterior_written_at",
+        "fact_written_at",
+    )
+    if terminal_at in {
+        "order_submitted_at",
+        "exchange_ack_at",
+        "order_ack_at",
+        "job_enqueued_at",
+        "decision_written_at",
+        "posterior_written_at",
+        "fact_written_at",
+    }:
+        terminal_at = text(terminal_at)
+    row: Dict[str, Any] = {
+        "schema": "ui_snapshot_awc_signal_to_order_timing_row_v1",
+        "state": "available",
+        "source": "facts.items[].signal_to_order_timing",
+        "signal_id": text("signal_id", raw_item.get("signal_id")),
+        "source_event_id": text("source_event_id", raw_item.get("source_event_id")),
+        "source_observation_id": text("source_observation_id", raw_item.get("source_observation_id")),
+        "source_id": text("source_id"),
+        "slug": text("slug", raw_item.get("slug")),
+        "event_date": _normalize_date_key(text("event_date", raw_item.get("event_date"))),
+        "fact_id": _to_int(raw_item.get("fact_id")),
+        "fact_snapshot_id": text("fact_snapshot_id", raw_item.get("fact_snapshot_id")),
+        "posterior_run_id": text("posterior_run_id", raw_item.get("posterior_run_id")),
+        "awc_valid_time": text("awc_valid_time"),
+        "awc_hard_source_signal_at": signal_at,
+        "source_fetched_at": text("source_fetched_at"),
+        "source_parsed_at": text("source_parsed_at"),
+        "fact_written_at": text("fact_written_at", timing_map.get("fact_snapshot_written_at")),
+        "posterior_written_at": text("posterior_written_at"),
+        "decision_started_at": text("decision_started_at"),
+        "decision_written_at": text("decision_written_at", timing_map.get("auto_trade_decision_written_at")),
+        "job_enqueued_at": text("job_enqueued_at", timing_map.get("order_job_enqueued_at")),
+        "execution_consumer_seen_decision_at": text("execution_consumer_seen_decision_at"),
+        "orderbook_checked_at": text("orderbook_checked_at"),
+        "risk_checked_at": text("risk_checked_at"),
+        "idempotency_checked_at": text("idempotency_checked_at"),
+        "submit_requested_at": text("submit_requested_at"),
+        "exchange_ack_at": text("exchange_ack_at", timing_map.get("order_ack_at")),
+        "order_submitted_at": text("order_submitted_at"),
+        "terminal_at": terminal_at,
+        "terminal_state": terminal_state,
+        "terminal_reason": text("terminal_reason", timing_map.get("signal_to_order_slo_violation_reason")),
+        "acceptance_state": text("acceptance_state"),
+        "acceptance_reason": text("acceptance_reason"),
+        "pre_signal_prepare_state": text("pre_signal_prepare_state"),
+        "pre_signal_prepare_reason": text("pre_signal_prepare_reason"),
+        "pre_signal_prepare_complete": timing_map.get("pre_signal_prepare_complete"),
+        "pre_signal_prepared_before_deadline": timing_map.get("pre_signal_prepared_before_deadline"),
+        "pre_signal_prepare_missing_components": [
+            str(value or "").strip()
+            for value in timing_map.get("pre_signal_prepare_missing_components") or []
+            if str(value or "").strip()
+        ],
+        "signal_to_fact_ms": _ui_snapshot_timing_ms(timing_map.get("signal_to_fact_ms")),
+        "signal_to_decision_ms": _ui_snapshot_timing_ms(timing_map.get("signal_to_decision_ms")),
+        "signal_to_job_enqueue_ms": _ui_snapshot_timing_ms(timing_map.get("signal_to_job_enqueue_ms")),
+        "signal_to_order_submit_ms": _ui_snapshot_timing_ms(
+            timing_map.get("awc_signal_to_order_submit_ms") or timing_map.get("signal_to_order_submit_ms")
+        ),
+        "signal_to_terminal_ms": _ui_snapshot_timing_ms(timing_map.get("signal_to_terminal_ms")),
+        "signal_to_order_slo_ms": _ui_snapshot_timing_ms(timing_map.get("signal_to_order_slo_ms")),
+        "signal_to_order_slo_met": timing_map.get("signal_to_order_slo_met"),
+        "signal_to_order_slo_violation_reason": text("signal_to_order_slo_violation_reason"),
+        "guards": copy.deepcopy(timing_map.get("guards")) if isinstance(timing_map.get("guards"), Mapping) else {},
+        "read_only": True,
+        "frontend_recompute_allowed": False,
+        "decision_recompute_allowed": False,
+    }
+    return {key: value for key, value in row.items() if value not in (None, "", [], {})}
+
+
+def _ui_snapshot_awc_signal_to_order_section(
+    items: Sequence[Mapping[str, Any]],
+    *,
+    freshness_state: str,
+    freshness_reason: str,
+) -> Dict[str, Any]:
+    timing_rows = [
+        row
+        for raw_item in items[:200]
+        if isinstance(raw_item, Mapping)
+        for row in (_ui_snapshot_signal_to_order_timing_from_item(raw_item),)
+        if row
+    ]
+    timing_rows.sort(
+        key=lambda row: _ui_snapshot_timestamp_sort_value(
+            row.get("order_submitted_at"),
+            row.get("terminal_at"),
+            row.get("decision_written_at"),
+            row.get("awc_hard_source_signal_at"),
+        ),
+        reverse=True,
+    )
+    if not timing_rows:
+        return {
+            "schema": "ui_snapshot_awc_signal_to_order_section_v1",
+            "state": "empty",
+            "source": "facts.items[].signal_to_order_timing",
+            "read_only": True,
+            "timing_count": 0,
+            "items": [],
+            "latest": {},
+            "accepted_signal_count": 0,
+            "submitted_signal_count": 0,
+            "slo_met_count": 0,
+            "slo_miss_count": 0,
+            "na_reason": "awc_signal_to_order_timing_not_applicable_or_no_sample" if items else "no_fact_items",
+            "frontend_recompute_allowed": False,
+            "decision_recompute_allowed": False,
+        }
+    accepted_count = sum(
+        1
+        for row in timing_rows
+        if str(row.get("acceptance_state") or "").strip() in {"accepted", "eligible", ""}
+    )
+    submitted_count = sum(1 for row in timing_rows if str(row.get("terminal_state") or "") == "submitted")
+    slo_met_count = sum(1 for row in timing_rows if row.get("signal_to_order_slo_met") is True)
+    slo_miss_count = sum(1 for row in timing_rows if row.get("signal_to_order_slo_met") is False)
+    latest = dict(timing_rows[0])
+    terminal_state = str(latest.get("terminal_state") or "pending")
+    latest_ms = latest.get("signal_to_order_submit_ms")
+    if latest_ms is None:
+        latest_ms = latest.get("signal_to_terminal_ms")
+    if terminal_state in {"error"}:
+        state = "error"
+    elif terminal_state in {"blocked", "stale", "skipped", "no_action"} or latest.get("signal_to_order_slo_met") is False:
+        state = "stale"
+    else:
+        state = freshness_state
+    return {
+        "schema": "ui_snapshot_awc_signal_to_order_section_v1",
+        "state": state,
+        "source": "facts.items[].signal_to_order_timing",
+        "read_only": True,
+        "timing_count": len(timing_rows),
+        "accepted_signal_count": accepted_count,
+        "submitted_signal_count": submitted_count,
+        "slo_met_count": slo_met_count,
+        "slo_miss_count": slo_miss_count,
+        "latest": latest,
+        "items": timing_rows[:20],
+        "latest_signal_id": str(latest.get("signal_id") or ""),
+        "latest_signal_at": str(latest.get("awc_hard_source_signal_at") or ""),
+        "latest_terminal_at": str(latest.get("terminal_at") or ""),
+        "latest_terminal_state": terminal_state,
+        "latest_terminal_reason": str(latest.get("terminal_reason") or ""),
+        "latest_signal_to_order_ms": latest_ms,
+        "latest_signal_to_fact_ms": latest.get("signal_to_fact_ms"),
+        "latest_signal_to_decision_ms": latest.get("signal_to_decision_ms"),
+        "latest_signal_to_job_enqueue_ms": latest.get("signal_to_job_enqueue_ms"),
+        "signal_to_order_slo_ms": latest.get("signal_to_order_slo_ms"),
+        "signal_to_order_slo_met": latest.get("signal_to_order_slo_met"),
+        "signal_to_order_slo_violation_reason": str(latest.get("signal_to_order_slo_violation_reason") or ""),
+        "pre_signal_prepare_state": str(latest.get("pre_signal_prepare_state") or ""),
+        "pre_signal_prepare_complete": latest.get("pre_signal_prepare_complete"),
+        "pre_signal_prepared_before_deadline": latest.get("pre_signal_prepared_before_deadline"),
+        "safety_checks": {
+            "orderbook_checked_at": str(latest.get("orderbook_checked_at") or ""),
+            "risk_checked_at": str(latest.get("risk_checked_at") or ""),
+            "idempotency_checked_at": str(latest.get("idempotency_checked_at") or ""),
+            "submit_requested_at": str(latest.get("submit_requested_at") or ""),
+            "exchange_ack_at": str(latest.get("exchange_ack_at") or ""),
+        },
+        "stale_reason": (
+            str(latest.get("signal_to_order_slo_violation_reason") or latest.get("terminal_reason") or "")
+            if state in {"stale", "error"}
+            else freshness_reason
+            if freshness_state != "fresh"
+            else ""
+        ),
+        "na_reason": "",
+        "frontend_recompute_allowed": False,
+        "decision_recompute_allowed": False,
+    }
+
+
+def _ui_snapshot_compact_decision_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    reason_codes = row.get("reason_codes")
+    reasons = row.get("reasons")
+    return {
+        "slug": str(row.get("slug") or ""),
+        "event_date": _normalize_date_key(str(row.get("event_date") or "")),
+        "title": str(row.get("title") or ""),
+        "outcome": str(row.get("outcome") or ""),
+        "side": str(row.get("side") or ""),
+        "decided_state": str(row.get("decided_state") or ""),
+        "will_order": int(_to_int(row.get("will_order")) or 0),
+        "reason_codes": list(reason_codes) if isinstance(reason_codes, list) else [],
+        "reasons": list(reasons) if isinstance(reasons, list) else [],
+        "created_at": str(row.get("created_at") or ""),
+    }
+
+
+def _ui_snapshot_orderbook_blocker_codes(
+    blocked_reasons: Sequence[Mapping[str, Any]],
+    decision_rows: Sequence[Mapping[str, Any]],
+) -> List[str]:
+    codes: List[str] = []
+    for row in blocked_reasons:
+        code = str(row.get("code") or "").strip()
+        if code and "orderbook" in code.lower():
+            _ui_snapshot_append_unique_text(codes, code)
+    for row in decision_rows:
+        for code_value in row.get("reason_codes") or []:
+            code = str(code_value or "").strip()
+            if code and "orderbook" in code.lower():
+                _ui_snapshot_append_unique_text(codes, code)
+    return codes
+
+
+def _ui_snapshot_operator_apply_gate_summary(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    source = ""
+    summary: Any = payload.get("operator_apply_gate_summary")
+    if isinstance(summary, Mapping):
+        source = "operator_apply_gate_summary"
+    else:
+        attachments = payload.get("audit_attachments")
+        attachments_map = attachments if isinstance(attachments, Mapping) else {}
+        summary = attachments_map.get("operator_apply_gate_summary")
+        if isinstance(summary, Mapping):
+            source = "audit_attachments.operator_apply_gate_summary"
+    if not isinstance(summary, Mapping):
+        return {
+            "schema": "ui_snapshot_apply_gate_summary_v1",
+            "available": False,
+            "read_only": True,
+            "state": "missing",
+            "source": "operator_apply_gate_summary",
+            "source_schema": "",
+            "na_reason": "operator_apply_gate_summary_not_attached",
+            "gates": [],
+        }
+    gates: List[Dict[str, Any]] = []
+    for raw_gate in summary.get("gates") or []:
+        if not isinstance(raw_gate, Mapping):
+            continue
+        blockers_now = [
+            str(blocker or "").strip()
+            for blocker in raw_gate.get("blockers_now") or []
+            if str(blocker or "").strip()
+        ]
+        applicable = bool(raw_gate.get("applicable"))
+        ready_now = bool(raw_gate.get("ready_now"))
+        ready_after_operator_preflight = bool(raw_gate.get("ready_after_operator_preflight"))
+        blocked = bool(raw_gate.get("blocked"))
+        if blocked:
+            gate_state = "blocked"
+        elif ready_now:
+            gate_state = "ready_now"
+        elif ready_after_operator_preflight:
+            gate_state = "operator_preflight_ready"
+        elif not applicable:
+            gate_state = "not_applicable"
+        else:
+            gate_state = "pending"
+        gates.append(
+            {
+                "gate": str(raw_gate.get("gate") or ""),
+                "state": gate_state,
+                "applicable": applicable,
+                "ready_now": ready_now,
+                "ready_after_operator_preflight": ready_after_operator_preflight,
+                "blocked": blocked,
+                "blockers_now": blockers_now[:10],
+                "reason": str(raw_gate.get("reason") or ""),
+                "source": str(raw_gate.get("source") or ""),
+            }
+        )
+    ok = summary.get("ok") is not False
+    ready_now = bool(summary.get("ready_now"))
+    ready_after_operator_preflight = bool(summary.get("ready_after_operator_preflight"))
+    first_blocked_gate = str(summary.get("first_blocked_gate") or "")
+    if not ok:
+        state = "error"
+    elif ready_now:
+        state = "ready_now"
+    elif ready_after_operator_preflight:
+        state = "operator_preflight_ready"
+    elif first_blocked_gate or any(gate.get("blocked") for gate in gates):
+        state = "blocked"
+    else:
+        state = "available"
+    return {
+        "schema": "ui_snapshot_apply_gate_summary_v1",
+        "available": True,
+        "read_only": summary.get("read_only") is not False,
+        "state": state,
+        "source": source,
+        "source_schema": str(summary.get("schema") or ""),
+        "execution_mode": str(summary.get("execution_mode") or ""),
+        "ready_now": ready_now,
+        "ready_after_operator_preflight": ready_after_operator_preflight,
+        "first_blocked_gate": first_blocked_gate,
+        "actionable_blocked_gates": [
+            str(gate or "").strip()
+            for gate in summary.get("actionable_blocked_gates") or []
+            if str(gate or "").strip()
+        ][:10],
+        "gate_count": len(gates),
+        "gates": gates[:5],
+        "na_reason": "",
+    }
+
+
+def _build_ui_snapshot_dashboard_sections(
+    payload: Mapping[str, Any],
+    *,
+    facts_map: Mapping[str, Any],
+    items: Sequence[Mapping[str, Any]],
+    freshness_state: str,
+    freshness_reason: str,
+    latest_fact_as_of: str,
+    posterior_available_count: int,
+    posterior_not_materialized_count: int,
+    posterior_missing_count: int,
+    latest_posterior_as_of: str,
+) -> Dict[str, Any]:
+    follow = payload.get("path_probability_follow")
+    follow_map = follow if isinstance(follow, Mapping) else {}
+    entry = follow_map.get("entry")
+    entry_map = entry if isinstance(entry, Mapping) else {}
+    jobs = follow_map.get("jobs")
+    jobs_map = jobs if isinstance(jobs, Mapping) else {}
+    entry_counts_raw = entry_map.get("counts")
+    entry_counts = dict(entry_counts_raw) if isinstance(entry_counts_raw, Mapping) else {}
+    blocked_reasons_raw = entry_map.get("blocked_reasons")
+    blocked_reasons = [
+        dict(row) for row in blocked_reasons_raw or [] if isinstance(row, Mapping)
+    ]
+    latest_rows_raw = entry_map.get("latest")
+    decision_rows = [
+        _ui_snapshot_compact_decision_row(row)
+        for row in latest_rows_raw or []
+        if isinstance(row, Mapping)
+    ]
+    latest_decision_at = _ui_snapshot_latest_timestamp_text(
+        *[row.get("created_at") for row in decision_rows]
+    )
+    source_to_posterior_section = _ui_snapshot_source_to_posterior_section(
+        items,
+        freshness_state=freshness_state,
+        freshness_reason=freshness_reason,
+        latest_decision_at=latest_decision_at,
+    )
+    awc_signal_to_order_section = _ui_snapshot_awc_signal_to_order_section(
+        items,
+        freshness_state=freshness_state,
+        freshness_reason=freshness_reason,
+    )
+    decision_total = _to_int(entry_counts.get("total")) or len(decision_rows)
+    decision_present = bool(decision_total or decision_rows or blocked_reasons)
+    decision_state = freshness_state if decision_present else ("empty" if not items else "missing")
+    orderbook_blockers = _ui_snapshot_orderbook_blocker_codes(blocked_reasons, decision_rows)
+    orderbook_state = (
+        "stale"
+        if orderbook_blockers
+        else (freshness_state if decision_present else ("empty" if not items else "missing"))
+    )
+    orderbook_na_reason = "" if decision_present else "auto_trade_decisions_missing_or_no_rows"
+    orderbook_stale_reason = ",".join(orderbook_blockers[:6])
+
+    jobs_counts_raw = jobs_map.get("counts")
+    jobs_counts = dict(jobs_counts_raw) if isinstance(jobs_counts_raw, Mapping) else {}
+    jobs_updated_at = str(jobs_map.get("updated_at") or "")
+    positions = payload.get("positions")
+    positions_map = positions if isinstance(positions, Mapping) else {}
+    fills = payload.get("fills")
+    fills_map = fills if isinstance(fills, Mapping) else {}
+    position_sync_at = str(positions_map.get("sync_at") or "")
+    latest_execution_at = _ui_snapshot_latest_timestamp_text(jobs_updated_at, position_sync_at)
+    execution_present = bool(jobs_counts or jobs_updated_at or positions_map or fills_map)
+    execution_state = freshness_state if execution_present else ("empty" if not items else "missing")
+
+    review_items: List[Dict[str, Any]] = []
+    for item in items:
+        review_state = item.get("daily_review_state")
+        review_map = review_state if isinstance(review_state, Mapping) else {}
+        review_id = _ui_snapshot_first_text(
+            item.get("review_id"),
+            review_map.get("review_id"),
+            review_map.get("id"),
+        )
+        if not review_id and not review_map:
+            continue
+        generated_at = _ui_snapshot_latest_timestamp_text(
+            review_map.get("generated_at"),
+            review_map.get("created_at"),
+            review_map.get("reviewed_at"),
+            item.get("review_generated_at"),
+        )
+        review_items.append(
+            {
+                "slug": str(item.get("slug") or ""),
+                "event_date": _normalize_date_key(str(item.get("event_date") or "")),
+                "review_id": review_id,
+                "generated_at": generated_at,
+                "state": str(review_map.get("state") or ("ready" if review_id else "present")),
+                "first_bad_link": str(review_map.get("first_bad_link") or ""),
+            }
+        )
+    latest_review_at = _ui_snapshot_latest_timestamp_text(
+        *[row.get("generated_at") for row in review_items]
+    )
+    review_state = freshness_state if review_items else ("empty" if not items else "missing")
+    latest_review_id = next(
+        (str(row.get("review_id") or "") for row in review_items if row.get("review_id")),
+        "",
+    )
+    apply_gate_summary = _ui_snapshot_operator_apply_gate_summary(payload)
+
+    facts_total = facts_map.get("total")
+    posterior_state = (
+        freshness_state
+        if posterior_available_count > 0
+        else "pending"
+        if posterior_not_materialized_count > 0
+        else "missing"
+        if posterior_missing_count > 0 or items
+        else "empty"
+    )
+    posterior_na_reason = (
+        ""
+        if posterior_available_count > 0
+        else "posterior_ssot_fact_not_materialized"
+        if posterior_not_materialized_count > 0
+        else ("posterior_ssot_fact_missing" if items else "no_fact_items")
+    )
+    return {
+        "schema": "ui_snapshot_dashboard_sections_v1",
+        "read_only": True,
+        "source": "/api/ui_snapshot",
+        "order": ["facts", "source_to_posterior", "posterior", "awc_signal_to_order", "decisions", "execution", "review"],
+        "facts": {
+            "schema": "ui_snapshot_facts_section_v1",
+            "state": freshness_state,
+            "source": str(facts_map.get("source") or ""),
+            "item_count": len(items),
+            "total": facts_total,
+            "latest_fact_as_of": latest_fact_as_of,
+            "stale_reason": freshness_reason if freshness_state != "fresh" else "",
+            "na_reason": "" if items else "no_fact_items",
+        },
+        "posterior": {
+            "schema": "ui_snapshot_posterior_section_v1",
+            "state": posterior_state,
+            "source": "facts.items[].ui_sections.bayes_posterior_ssot",
+            "available_count": posterior_available_count,
+            "not_materialized_count": posterior_not_materialized_count,
+            "missing_count": posterior_missing_count,
+            "latest_posterior_as_of": latest_posterior_as_of,
+            "stale_reason": freshness_reason if posterior_state != "fresh" and freshness_state != "fresh" else "",
+            "na_reason": posterior_na_reason,
+        },
+        "source_to_posterior": source_to_posterior_section,
+        "awc_signal_to_order": awc_signal_to_order_section,
+        "decisions": {
+            "schema": "ui_snapshot_decisions_section_v1",
+            "state": decision_state,
+            "source": "auto_trade_decisions.path_probability_follow",
+            "counts": entry_counts,
+            "latest_decision_at": latest_decision_at,
+            "blocked_reasons": blocked_reasons[:20],
+            "latest": decision_rows[:20],
+            "stale_reason": freshness_reason if decision_state != "fresh" and freshness_state != "fresh" else "",
+            "na_reason": "" if decision_present else "auto_trade_decisions_missing_or_no_rows",
+        },
+        "execution": {
+            "schema": "ui_snapshot_execution_section_v1",
+            "state": execution_state,
+            "source": "path_probability_follow.jobs+positions+fills",
+            "jobs": {
+                "counts": jobs_counts,
+                "updated_at": jobs_updated_at,
+            },
+            "positions": dict(positions_map),
+            "fills": dict(fills_map),
+            "latest_execution_at": latest_execution_at,
+            "orderbook": {
+                "state": orderbook_state,
+                "source": "auto_trade_decisions.reason_codes",
+                "stale_reason": orderbook_stale_reason,
+                "na_reason": orderbook_na_reason,
+            },
+            "stale_reason": freshness_reason if execution_state != "fresh" and freshness_state != "fresh" else "",
+            "na_reason": "" if execution_present else "execution_facts_missing",
+        },
+        "review": {
+            "schema": "ui_snapshot_review_section_v1",
+            "state": review_state,
+            "source": "facts.items[].daily_review_state",
+            "review_count": len(review_items),
+            "latest_review_id": latest_review_id,
+            "latest_review_at": latest_review_at,
+            "items": review_items[:20],
+            "apply_gate_summary": apply_gate_summary,
+            "apply_gate_na_reason": "" if apply_gate_summary.get("available") else str(apply_gate_summary.get("na_reason") or ""),
+            "stale_reason": freshness_reason if review_state != "fresh" and freshness_state != "fresh" else "",
+            "na_reason": "" if review_items else "daily_review_not_materialized_or_not_linked",
+        },
+    }
+
+
+def _ui_snapshot_section_panel_freshness(section: Mapping[str, Any]) -> Dict[str, Any]:
+    panel = {
+        "state": str(section.get("state") or ""),
+        "source": str(section.get("source") or ""),
+        "stale_reason": str(section.get("stale_reason") or ""),
+        "na_reason": str(section.get("na_reason") or ""),
+    }
+    for key in (
+        "latest_fact_as_of",
+        "latest_posterior_as_of",
+        "latest_decision_at",
+        "latest_execution_at",
+        "latest_review_at",
+        "latest_source_response_completed_at",
+        "latest_source_fact_as_of",
+        "latest_source_valid_time",
+        "latest_posterior_apply_started_at",
+        "latest_posterior_apply_completed_at",
+        "latest_source_to_posterior_ms",
+        "latest_source_response_to_posterior_ms",
+        "task_queue_wait_ms",
+        "posterior_to_decision_ms",
+        "latest_source_id",
+        "source_provider",
+        "order_signal_applicability",
+        "decision_candidate_state",
+        "latest_signal_id",
+        "latest_signal_at",
+        "latest_terminal_at",
+        "latest_terminal_state",
+        "latest_terminal_reason",
+        "latest_signal_to_order_ms",
+        "latest_signal_to_fact_ms",
+        "latest_signal_to_decision_ms",
+        "latest_signal_to_job_enqueue_ms",
+        "signal_to_order_slo_ms",
+        "signal_to_order_slo_met",
+        "signal_to_order_slo_violation_reason",
+        "accepted_signal_count",
+        "submitted_signal_count",
+        "slo_met_count",
+        "slo_miss_count",
+        "pre_signal_prepare_state",
+        "pre_signal_prepare_complete",
+        "pre_signal_prepared_before_deadline",
+        "available_count",
+        "not_materialized_count",
+        "missing_count",
+        "item_count",
+        "review_count",
+    ):
+        if key in section:
+            panel[key] = section.get(key)
+    return panel
+
+
+def _attach_ui_snapshot_phase0_contract(
+    payload: Dict[str, Any],
+    *,
+    cache_key: str = "",
+) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return payload
+    facts = payload.get("facts")
+    facts_map = facts if isinstance(facts, Mapping) else {}
+    items = facts_map.get("items") if isinstance(facts_map, Mapping) else []
+    if not isinstance(items, list):
+        items = []
+    fact_id_values: List[int] = []
+    fact_snapshot_ids: List[str] = []
+    posterior_run_ids: List[str] = []
+    source_event_ids: List[str] = []
+    source_observation_ids: List[str] = []
+    signal_ids: List[str] = []
+    lineage_items: List[Dict[str, Any]] = []
+    identity_items: List[Dict[str, Any]] = []
+    latest_fact_as_of = ""
+    latest_posterior_as_of = ""
+    posterior_available_count = 0
+    posterior_not_materialized_count = 0
+    posterior_missing_count = 0
+    for raw_item in items[:200]:
+        if not isinstance(raw_item, Mapping):
+            continue
+        fact_id = _to_int(raw_item.get("fact_id"))
+        if fact_id is not None:
+            fact_id_values.append(int(fact_id))
+        fact_as_of = str(raw_item.get("fact_as_of") or "")
+        if fact_as_of and fact_as_of > latest_fact_as_of:
+            latest_fact_as_of = fact_as_of
+        posterior_section = _build_ui_snapshot_bayes_posterior_ssot_section(raw_item)
+        posterior_state = str(posterior_section.get("state") or "").strip()
+        physical_section = _build_ui_snapshot_physical_high_posterior_section(raw_item)
+        physical_available = str(physical_section.get("state") or "") == "available"
+        if posterior_state == "available" or (
+            posterior_state == "market_projection_na" and physical_available
+        ):
+            posterior_available_count += 1
+            posterior_as_of = str(posterior_section.get("posterior_as_of") or "")
+            if posterior_as_of and posterior_as_of > latest_posterior_as_of:
+                latest_posterior_as_of = posterior_as_of
+        elif posterior_state in {"not_materialized", "pending"}:
+            posterior_not_materialized_count += 1
+        elif fact_id is not None or raw_item.get("fact_snapshot_id"):
+            posterior_missing_count += 1
+        lineage_item = _ui_snapshot_lineage_item(raw_item)
+        if lineage_item.get("fact_id") is not None or lineage_item.get("fact_snapshot_id"):
+            lineage_items.append(lineage_item)
+            _ui_snapshot_append_unique_text(fact_snapshot_ids, lineage_item.get("fact_snapshot_id"))
+            _ui_snapshot_append_unique_text(posterior_run_ids, lineage_item.get("posterior_run_id"))
+            _ui_snapshot_append_unique_text(signal_ids, lineage_item.get("signal_id"))
+            for source_event_id in lineage_item.get("source_event_ids") or []:
+                _ui_snapshot_append_unique_text(source_event_ids, source_event_id)
+            for source_observation_id in lineage_item.get("source_observation_ids") or []:
+                _ui_snapshot_append_unique_text(source_observation_ids, source_observation_id)
+        identity_items.append(
+            {
+                "slug": str(raw_item.get("slug") or ""),
+                "event_date": _normalize_date_key(str(raw_item.get("event_date") or "")),
+                "fact_id": fact_id,
+                "fact_as_of": fact_as_of,
+                "fact_snapshot_id": lineage_item.get("fact_snapshot_id"),
+                "posterior_run_id": lineage_item.get("posterior_run_id"),
+                "model_snapshot_id": _to_int(raw_item.get("model_snapshot_id")),
+                "market_snapshot_id": _to_int(raw_item.get("market_snapshot_id")),
+            }
+        )
+    generated_at = str(payload.get("as_of") or now_text())
+    identity = {
+        "schema": "ui_snapshot_phase0_contract_v1",
+        "run_date": _normalize_date_key(str(payload.get("run_date") or "")),
+        "generated_at": generated_at,
+        "facts_source": str(facts_map.get("source") or "") if isinstance(facts_map, Mapping) else "",
+        "items": identity_items,
+    }
+    digest = hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:24]
+    snapshot_id = f"uisnap_{digest}"
+    cache_stale = bool(payload.get("cache_stale"))
+    busy = bool(payload.get("busy"))
+    freshness_state = "blocked" if busy else ("stale" if cache_stale else "fresh")
+    freshness_reason = (
+        str(payload.get("cache_stale_reason") or "")
+        if cache_stale
+        else ("snapshot_rebuild_in_flight" if busy else "snapshot_ready")
+    )
+    payload["ui_snapshot_schema_version"] = "ui_snapshot_phase0_v1"
+    payload["snapshot_id"] = snapshot_id
+    payload["snapshot_etag"] = f'W/"{snapshot_id}"'
+    payload["snapshot_generated_at"] = generated_at
+    payload["server_time"] = now_text()
+    payload["snapshot_freshness_state"] = freshness_state
+    payload["snapshot_freshness_reason"] = freshness_reason
+    payload["source_fact_ids"] = fact_id_values[:200]
+    payload["fact_snapshot_ids"] = fact_snapshot_ids[:200]
+    payload["posterior_run_ids"] = posterior_run_ids[:200]
+    payload["source_event_ids"] = source_event_ids[:200]
+    payload["source_observation_ids"] = source_observation_ids[:200]
+    payload["signal_ids"] = signal_ids[:200]
+    if fact_id_values:
+        payload.setdefault("primary_fact_id", fact_id_values[0])
+    if fact_snapshot_ids:
+        payload.setdefault("primary_fact_snapshot_id", fact_snapshot_ids[0])
+        if len(fact_snapshot_ids) == 1:
+            payload.setdefault("fact_snapshot_id", fact_snapshot_ids[0])
+    if posterior_run_ids:
+        payload.setdefault("primary_posterior_run_id", posterior_run_ids[0])
+        if len(posterior_run_ids) == 1:
+            payload.setdefault("posterior_run_id", posterior_run_ids[0])
+    if lineage_items:
+        missing_keys: List[str] = []
+        chain_na_reasons: Dict[str, str] = {}
+        for item in lineage_items:
+            for missing_key in item.get("missing_keys") or []:
+                _ui_snapshot_append_unique_text(missing_keys, missing_key)
+            na_reasons = item.get("na_reasons")
+            if isinstance(na_reasons, Mapping):
+                for key, reason in na_reasons.items():
+                    if str(reason or "").strip() and key not in chain_na_reasons:
+                        chain_na_reasons[str(key)] = str(reason or "")
+        fact_lineage_complete = all(
+            item.get("fact_id") is not None and bool(item.get("fact_snapshot_id"))
+            for item in lineage_items
+        )
+        execution_lineage_complete = all(
+            (not item.get("hard_source_signal_expected"))
+            or (bool(item.get("signal_id")) and bool(item.get("decision_id")) and bool(item.get("order_intent_id")))
+            for item in lineage_items
+        )
+        payload["lineage_state"] = {
+            "schema": "ui_snapshot_lineage_state_v1",
+            "placeholder": False,
+            "complete": bool(lineage_items) and not missing_keys and not chain_na_reasons,
+            "fact_lineage_complete": fact_lineage_complete,
+            "execution_lineage_complete": execution_lineage_complete,
+            "ui_snapshot_id": snapshot_id,
+            "snapshot_id": snapshot_id,
+            "snapshot_cache_key": cache_key,
+            "source_fact_ids": fact_id_values[:200],
+            "fact_snapshot_ids": fact_snapshot_ids[:200],
+            "posterior_run_ids": posterior_run_ids[:200],
+            "source_event_ids": source_event_ids[:200],
+            "source_observation_ids": source_observation_ids[:200],
+            "signal_ids": signal_ids[:200],
+            "items": lineage_items[:200],
+            "missing_keys": missing_keys,
+            "chain_na_reasons": chain_na_reasons,
+            "source": "ui_snapshot_phase0_contract",
+            "read_only": True,
+        }
+    else:
+        payload.setdefault(
+            "lineage_state",
+            {
+                "schema": "lineage_state_phase0_placeholder_v1",
+                "placeholder": True,
+                "complete": False,
+                "missing_keys": [
+                    "correlation_id",
+                    "source_event_id",
+                    "fact_snapshot_id",
+                    "posterior_run_id",
+                    "decision_id",
+                    "signal_id",
+                    "order_intent_id",
+                    "review_id",
+                ],
+                "source": "ui_snapshot_read_model_placeholder",
+            },
+        )
+    dashboard_sections = _build_ui_snapshot_dashboard_sections(
+        payload,
+        facts_map=facts_map if isinstance(facts_map, Mapping) else {},
+        items=items,
+        freshness_state=freshness_state,
+        freshness_reason=freshness_reason,
+        latest_fact_as_of=latest_fact_as_of,
+        posterior_available_count=posterior_available_count,
+        posterior_not_materialized_count=posterior_not_materialized_count,
+        posterior_missing_count=posterior_missing_count,
+        latest_posterior_as_of=latest_posterior_as_of,
+    )
+    payload["ui_sections"] = dashboard_sections
+    if not isinstance(payload.get("panel_freshness"), MutableMapping):
+        payload["panel_freshness"] = {}
+    panel_freshness = payload.get("panel_freshness")
+    if isinstance(panel_freshness, MutableMapping):
+        for section_key in dashboard_sections.get("order") or []:
+            section = dashboard_sections.get(section_key)
+            if isinstance(section, Mapping):
+                panel_freshness[str(section_key)] = _ui_snapshot_section_panel_freshness(section)
+        execution_section = dashboard_sections.get("execution")
+        execution_map = execution_section if isinstance(execution_section, Mapping) else {}
+        orderbook_section = execution_map.get("orderbook")
+        if isinstance(orderbook_section, Mapping):
+            panel_freshness["orderbook"] = _ui_snapshot_section_panel_freshness(orderbook_section)
+    if "next_recommended_poll_ms" not in payload:
+        try:
+            cache_ms = int(max(1000.0, min(15000.0, float(UI_SNAPSHOT_CACHE_SEC) * 1000.0)))
+        except Exception:
+            cache_ms = 3000
+        payload["next_recommended_poll_ms"] = 1000 if freshness_state != "fresh" else cache_ms
+    payload.setdefault(
+        "ui_refresh_reason",
+        "snapshot_rebuild_in_flight" if busy else ("cache_stale" if cache_stale else "snapshot_ready"),
+    )
+    if cache_key:
+        payload.setdefault("snapshot_cache_key", cache_key)
     return payload
 
 
@@ -65403,6 +70365,7 @@ def _ui_snapshot_cached_payload(
 ) -> Dict[str, Any]:
     ts, payload = entry
     out = dict(payload)
+    out["ui_html_mtime"] = html_mtime()
     out["cache_hit"] = True
     out["cache_age_sec"] = max(0.0, time.time() - float(ts or 0.0))
     if stale:
@@ -65415,7 +70378,127 @@ def _ui_snapshot_cached_payload(
         out["cache_rebuild_in_flight"] = bool(rebuild_in_flight)
     if cache_key:
         _attach_ui_snapshot_rebuild_status(out, cache_key)
+    _attach_ui_snapshot_phase0_contract(out, cache_key=cache_key)
     return out
+
+
+def _refresh_ui_snapshot_summary_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if isinstance(payload, dict):
+        payload["ui_html_mtime"] = html_mtime()
+    return payload
+
+
+def _ui_snapshot_summary_payload_items(payload: Any) -> List[Dict[str, Any]]:
+    if not isinstance(payload, Mapping):
+        return []
+    facts = payload.get("facts")
+    if not isinstance(facts, Mapping):
+        return []
+    items = facts.get("items")
+    if not isinstance(items, list):
+        return []
+    return [dict(item) for item in items if isinstance(item, Mapping)]
+
+
+def _ui_snapshot_summary_item_has_display_ssot_contract(item: Mapping[str, Any]) -> bool:
+    if not isinstance(item, Mapping):
+        return False
+    fact_id = _to_int(item.get("fact_id"))
+    if fact_id is None or fact_id <= 0:
+        return True
+    if bool(item.get("summary_metadata_only")):
+        return False
+    if _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id") in ("", "None"):
+        return False
+    posterior_ssot = item.get("posterior_ssot_fact")
+    if not isinstance(posterior_ssot, Mapping):
+        return False
+    posterior_schema = str(posterior_ssot.get("schema") or "")
+    sections = item.get("ui_sections")
+    sections_map = sections if isinstance(sections, Mapping) else {}
+    if _is_reported_physical_x_ssot_schema(posterior_schema):
+        if not str(posterior_ssot.get("posterior_run_id") or "").strip():
+            return False
+        physical_rows = posterior_ssot.get("reported_physical_x_distribution")
+        if not isinstance(physical_rows, list) or not physical_rows:
+            return False
+        physical_section = sections_map.get("physical_high_posterior")
+        if not isinstance(physical_section, Mapping):
+            return False
+        if str(physical_section.get("state") or "") != "available":
+            return False
+        if physical_section.get("top_temperature_c") is None:
+            return False
+        if physical_section.get("top_probability") is None:
+            return False
+        market_section = sections_map.get("bayes_posterior_ssot")
+        if not isinstance(market_section, Mapping):
+            return False
+        market_state = str(market_section.get("state") or "")
+        if market_state == "market_projection_na" and not str(
+            market_section.get("na_reason") or ""
+        ).strip():
+            return False
+        return market_state in {"available", "market_projection_na"}
+    if posterior_schema == "sequential_temperature_posterior_ssot_v2":
+        # The active legacy epoch remains a valid durable fact, but its
+        # continuous grid is deliberately not rendered as report-defined X.
+        physical_section = sections_map.get("physical_high_posterior")
+        return bool(
+            str(posterior_ssot.get("posterior_run_id") or "").strip()
+            and isinstance(physical_section, Mapping)
+            and str(physical_section.get("state") or "") == "missing"
+            and str(physical_section.get("na_reason") or "")
+            == "legacy_continuous_latent_distribution_is_not_reported_x"
+        )
+    if not _ui_snapshot_item_source_event_ids(item):
+        return False
+    if posterior_schema not in {
+        "bayes_posterior_ssot_fact_v1",
+        "bayes_posterior_ssot_fact_placeholder_v1",
+    }:
+        return False
+    if str(posterior_ssot.get("state") or "") == "available":
+        for key in ("posterior_target_bucket_selection", "target_bucket_selection"):
+            if not isinstance(item.get(key), Mapping):
+                return False
+    if not isinstance(item.get("prior_distribution"), Mapping) and not isinstance(
+        sections_map.get("prior"), Mapping
+    ):
+        return False
+    if not (
+        isinstance(item.get("metar_strong_likelihood"), Mapping)
+        or bool(item.get("source_observations"))
+        or isinstance(sections_map.get("observation_strong"), Mapping)
+    ):
+        return False
+    return True
+
+
+def _ui_snapshot_summary_payload_has_display_items(
+    payload: Any,
+    *,
+    city_filter: str = "",
+) -> bool:
+    city_key = _normalize_ui_snapshot_city_filter(city_filter)
+    matched = False
+    for item in _ui_snapshot_summary_payload_items(payload):
+        if not _ui_snapshot_summary_item_matches_city_filter(item, city_key):
+            continue
+        matched = True
+        if not _ui_snapshot_summary_item_has_display_ssot_contract(item):
+            return False
+    return matched
+
+
+def _ui_snapshot_summary_cache_entry_has_display_items(
+    entry: Optional[Tuple[float, Dict[str, Any]]],
+    *,
+    city_filter: str = "",
+) -> bool:
+    if not entry or not isinstance(entry[1], Mapping):
+        return False
+    return _ui_snapshot_summary_payload_has_display_items(entry[1], city_filter=city_filter)
 
 
 def _ui_snapshot_summary_cache_limit(limit_val: int) -> int:
@@ -65482,7 +70565,10 @@ def _compact_ui_snapshot_summary_item_for_first_screen(item: Any) -> Any:
     if not isinstance(item, Mapping):
         return item
     if item.get("summary_first_screen_compact") is True:
-        return dict(item)
+        out = dict(item)
+        _attach_ui_temperature_trajectory_status_from_payload(out)
+        _attach_ui_snapshot_sections_to_item(out)
+        return out
     compact = _slim_fact_payload_for_ui_snapshot_summary(
         item,
         include_physical_detail=False,
@@ -66357,9 +71443,17 @@ def _build_d1_physical_evidence_overview(
         peak_window_start = _summary_physical_num(d1_features.get("expected_peak_window_start_hour_local"))
     if peak_window_end is None:
         peak_window_end = _summary_physical_num(d1_features.get("expected_peak_window_end_hour_local"))
+    def _summary_hour_label(value: Any) -> str:
+        hour_value = _summary_physical_num(value)
+        if hour_value is None:
+            return ""
+        total_minutes = int(round(max(0.0, min(23.99, float(hour_value))) * 60.0))
+        total_minutes = max(0, min((23 * 60) + 59, total_minutes))
+        return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+
     peak_window = ""
     if peak_window_start is not None and peak_window_end is not None:
-        peak_window = f"{int(round(peak_window_start)):02d}:00-{int(round(peak_window_end)):02d}:00"
+        peak_window = f"{_summary_hour_label(peak_window_start)}-{_summary_hour_label(peak_window_end)}"
     elif hour_distribution:
         hours = [
             _summary_physical_num(row.get("hour_local"))
@@ -66368,7 +71462,7 @@ def _build_d1_physical_evidence_overview(
         ]
         hours = [hour for hour in hours if hour is not None]
         if hours:
-            peak_window = f"{int(round(min(hours))):02d}:00-{int(round(max(hours))):02d}:00"
+            peak_window = f"{_summary_hour_label(min(hours))}-{_summary_hour_label(max(hours))}"
 
     signal_metrics = physical_signal.get("metrics") if isinstance(physical_signal.get("metrics"), Mapping) else {}
     max_radiation = _summary_physical_num(signal_metrics.get("max_radiation_w_m2"))
@@ -66631,6 +71725,7 @@ def _trim_ui_snapshot_summary_payload(
         return payload
     city_key = _normalize_ui_snapshot_city_filter(city_filter)
     out = dict(payload)
+    _refresh_ui_snapshot_summary_envelope(out)
     facts = out.get("facts")
     if isinstance(facts, dict):
         facts_out = dict(facts)
@@ -66717,6 +71812,7 @@ def _ui_snapshot_busy_payload(
         payload["summary_fast_mode"] = bool(UI_SNAPSHOT_SUMMARY_FAST)
     if cache_key:
         _attach_ui_snapshot_rebuild_status(payload, cache_key)
+    _attach_ui_snapshot_phase0_contract(payload, cache_key=cache_key)
     return payload
 
 
@@ -66906,6 +72002,7 @@ def _event_fact_summary_cache_rebuild_fallback_items(
             _hydrate_fact_market_top_fields_from_distribution(payload, distribution)
             if _is_chengdu_zuuu_fact_payload(str(payload.get("slug") or row["slug"] or ""), payload):
                 _attach_model_raw_top_history_for_ui_snapshot(conn, payload, row)
+            _attach_model_member_cache_snapshot_for_ui_snapshot(conn, payload, row)
             _attach_model_bucket_rule_comparison_for_ui_snapshot(conn, payload, row)
         else:
             _hydrate_fact_market_top_label(payload)
@@ -66984,12 +72081,19 @@ def _event_fact_summary_cache_fast_fallback_items(
     for row in rows:
         if city_key and not _ui_snapshot_summary_row_matches_city_filter(row, city_key):
             continue
-        payload = safe_json_loads(str(row["summary_json"] or ""))
+        raw_summary_json = str(row["summary_json"] or "")
+        summary_cache_current = _event_fact_summary_cache_json_current(raw_summary_json)
+        payload = safe_json_loads(raw_summary_json)
         if not isinstance(payload, dict) or not payload:
             continue
         _merge_fill_fact_row_meta(payload, row)
         if city_key and not _ui_snapshot_summary_item_matches_city_filter(payload, city_key):
             continue
+        payload_is_chengdu = _is_chengdu_zuuu_fact_payload(
+            str(payload.get("slug") or row["slug"] or ""),
+            payload,
+        )
+        dynamic_overlay_for_payload = bool(include_dynamic_overlays or payload_is_chengdu)
         compact_intraday = _compact_chengdu_intraday_summary_for_ui_snapshot(
             payload.get("chengdu_intraday_summary")
         )
@@ -66999,9 +72103,9 @@ def _event_fact_summary_cache_fast_fallback_items(
                 payload,
                 compact_intraday,
                 force_target_fields=True,
-                align_latest_fact=include_dynamic_overlays,
+                align_latest_fact=dynamic_overlay_for_payload,
             )
-        if include_dynamic_overlays:
+        if dynamic_overlay_for_payload or not summary_cache_current:
             try:
                 _merge_fill_fast_observation_fields_from_latest_fact(
                     conn,
@@ -67011,17 +72115,26 @@ def _event_fact_summary_cache_fast_fallback_items(
                 )
             except Exception:
                 pass
+        if not summary_cache_current:
+            payload["summary_cache_stale_version_guard_applied"] = True
+        _attach_model_member_cache_snapshot_for_ui_snapshot(conn, payload, row)
+        if isinstance(payload.get("distribution"), list):
+            _attach_model_bucket_rule_comparison_for_ui_snapshot(conn, payload, row)
+        _suppress_ui_target_fields_when_posterior_ssot_unavailable(payload)
         _align_snapshot_posterior_derived_fields(payload)
-        if include_dynamic_overlays:
+        if dynamic_overlay_for_payload:
             _attach_temperature_trajectory_timeline_for_ui_snapshot(conn, payload, row)
         _align_item_target_fields_to_canonical_posterior_top(payload)
         _attach_target_switch_context(payload)
         _align_item_target_fields_to_canonical_posterior_top(payload)
         _sync_ui_probability_copy_fields_to_canonical(payload)
         _compact_ui_snapshot_target_fields_in_place(payload)
+        _suppress_ui_target_fields_when_posterior_ssot_unavailable(payload)
+        _attach_ui_temperature_trajectory_status_from_payload(payload)
+        _attach_ui_snapshot_sections_to_item(payload)
         _attach_chengdu_model_weight_shadow_for_ui_snapshot(payload)
         payload["summary_cache_fallback_fast"] = True
-        if not include_dynamic_overlays:
+        if not dynamic_overlay_for_payload:
             payload["summary_cache_dynamic_overlays_skipped"] = True
         payload.setdefault("summary_cache_source", "event_fact_summary_cache")
         if compact_for_summary:
@@ -67093,7 +72206,7 @@ def _merge_fill_fast_observation_fields_from_latest_fact(
     try:
         cur.execute(
             """
-            SELECT h.fact_json
+            SELECT h.id, h.run_date, h.slug, h.event_date, h.fact_as_of, h.composer_version, h.fact_json
             FROM event_fact_latest l
             JOIN event_fact_history h ON h.id = l.fact_id
             WHERE l.slug = ? AND l.event_date = ?
@@ -67109,7 +72222,22 @@ def _merge_fill_fast_observation_fields_from_latest_fact(
     latest_payload = safe_json_loads(str(row["fact_json"] or ""))
     if not isinstance(latest_payload, Mapping):
         return
-    _overlay_latest_fact_observation_fields(payload, latest_payload)
+    overlay_payload, projection_meta = _ui_snapshot_project_latest_fact_payload_no_apply(
+        conn,
+        fact_id=row["id"],
+        slug=str(row["slug"] or slug_key),
+        event_date=str(row["event_date"] or event_key),
+        run_date=str(row["run_date"] or event_key),
+        fact_as_of=str(row["fact_as_of"] or ""),
+        composer_version=str(row["composer_version"] or ""),
+        payload=latest_payload,
+    )
+    _overlay_latest_fact_observation_fields(payload, overlay_payload)
+    _overlay_latest_fact_bayes_fields(payload, overlay_payload)
+    if projection_meta:
+        provenance = dict(payload.get("fact_provenance") or {})
+        provenance["ui_snapshot_latest_fact_projection"] = projection_meta
+        payload["fact_provenance"] = provenance
     payload["fast_observation_overlay_source"] = "event_fact_latest"
 
 
@@ -67121,6 +72249,7 @@ def _ui_snapshot_summary_metadata_fallback_payload(
     cache_key: str = "",
     city_filter: str = "",
 ) -> Optional[Dict[str, Any]]:
+    metadata_overlay_available = False
     try:
         upcoming_days_val = _ui_upcoming_days()
         city_key = _normalize_ui_snapshot_city_filter(city_filter)
@@ -67220,6 +72349,46 @@ def _ui_snapshot_summary_metadata_fallback_payload(
                     for item in items
                     if _ui_snapshot_summary_item_matches_city_filter(item, city_key)
                 ]
+            overlay_items: List[Dict[str, Any]] = []
+            for raw_item in items:
+                item = dict(raw_item) if isinstance(raw_item, Mapping) else {}
+                if not item:
+                    continue
+                try:
+                    _merge_fill_fast_observation_fields_from_latest_fact(
+                        conn,
+                        item,
+                        str(item.get("slug") or ""),
+                        _normalize_date_key(str(item.get("event_date") or "")),
+                    )
+                    _align_snapshot_posterior_derived_fields(item)
+                    _attach_temperature_trajectory_timeline_for_ui_snapshot(
+                        conn,
+                        item,
+                        raw_item,
+                    )
+                    _attach_target_switch_context(item)
+                    _attach_ui_snapshot_sections_to_item(item)
+                    slim_item = _slim_fact_payload_for_ui_snapshot_summary(
+                        item,
+                        include_physical_detail=UI_SNAPSHOT_SUMMARY_PHYSICAL_DETAIL,
+                    )
+                    if (
+                        isinstance(slim_item, dict)
+                        and _ui_snapshot_summary_item_has_display_ssot_contract(slim_item)
+                    ):
+                        overlay_items.append(slim_item)
+                    else:
+                        overlay_items.append(item)
+                except Exception:
+                    overlay_items.append(item)
+            if overlay_items and any(
+                _ui_snapshot_summary_item_has_display_ssot_contract(item)
+                for item in overlay_items
+                if isinstance(item, Mapping)
+            ):
+                items = overlay_items
+                metadata_overlay_available = True
     except Exception:
         return None
     if not items:
@@ -67259,8 +72428,14 @@ def _ui_snapshot_summary_metadata_fallback_payload(
         summary_mode=True,
         cache_key=cache_key,
     )
-    payload["summary_metadata_only"] = True
-    payload["summary_metadata_only_reason"] = "ui_snapshot_rebuild_in_flight"
+    payload["summary_metadata_only"] = not metadata_overlay_available
+    payload["summary_metadata_only_reason"] = (
+        "ui_snapshot_rebuild_in_flight"
+        if not metadata_overlay_available
+        else "latest_fact_overlay_available_during_ui_snapshot_rebuild"
+    )
+    if metadata_overlay_available:
+        payload["summary_latest_fact_overlay_fallback"] = True
     if discovery_items:
         payload["summary_discovery_placeholder_supplement"] = True
     payload["facts"] = {
@@ -67269,7 +72444,11 @@ def _ui_snapshot_summary_metadata_fallback_payload(
         "page": 1,
         "page_size": int(requested_limit_val),
         "source": (
-            "event_fact_latest_summary_metadata_only_with_discovery"
+            "event_fact_latest_summary_overlay_with_discovery"
+            if metadata_overlay_available and discovery_items
+            else "event_fact_latest_summary_overlay"
+            if metadata_overlay_available
+            else "event_fact_latest_summary_metadata_only_with_discovery"
             if discovery_items
             else "event_fact_latest_summary_metadata_only"
         ),
@@ -67277,242 +72456,9 @@ def _ui_snapshot_summary_metadata_fallback_payload(
     return payload
 
 
-def _ui_snapshot_summary_heavy_lane_fallback_payload(request_target: str) -> Optional[Dict[str, Any]]:
-    """Serve cached first-screen facts when the heavy request lane is saturated."""
-    try:
-        parsed = urlparse(str(request_target or ""))
-        params = parse_qs(parsed.query)
-        path = parsed.path or str(request_target or "").split("?", 1)[0]
-    except Exception:
-        return None
-    if path not in {"/api/ui_snapshot", "/api/ui_snapshot_summary"}:
-        return None
-    try:
-        limit = int(params.get("limit", ["24" if path == "/api/ui_snapshot_summary" else "120"])[0])
-    except (TypeError, ValueError):
-        limit = 24 if path == "/api/ui_snapshot_summary" else 120
-    if "limit" not in params and params.get("page_size", [""])[0]:
-        try:
-            limit = int(params.get("page_size", [""])[0])
-        except (TypeError, ValueError):
-            pass
-    limit = max(1, min(limit, 80))
-    run_date_key = _normalize_date_key(
-        str(
-            (params.get("run_date", [""])[0] if params.get("run_date") else "")
-            or (params.get("date", [""])[0] if params.get("date") else "")
-            or ""
-        )
-    )
-    if not run_date_key:
-        run_date_key = _ui_snapshot_summary_latest_run_date_cached()
-    if not run_date_key:
-        return None
-    city_filter = str(
-        (params.get("city", [""])[0] if params.get("city") else "")
-        or (params.get("scope", [""])[0] if params.get("scope") else "")
-        or ""
-    )
-    requested_limit_val = max(1, min(limit, 80))
-    cache_limit_val = _ui_snapshot_summary_cache_limit(requested_limit_val)
-    city_key = _normalize_ui_snapshot_city_filter(city_filter)
-    cache_key = (
-        f"summary:{run_date_key}:{cache_limit_val}:{city_key}"
-        if city_key
-        else f"summary:{run_date_key}:{cache_limit_val}"
-    )
-    cached = _ui_snapshot_cache_entry(cache_key)
-    if cached and not _ui_snapshot_cache_is_dirty(cached):
-        cached_payload = _ui_snapshot_cached_payload(
-            cached,
-            stale=False,
-            cache_key=cache_key,
-        )
-        cached_payload["source"] = "ui_snapshot_summary_prefer_cache_memory"
-        cached_payload["path"] = path
-        cached_payload["prefer_cache_memory"] = True
-        return _trim_ui_snapshot_summary_payload(
-            cached_payload,
-            requested_limit_val,
-            city_filter=city_key,
-        )
-    payload = _ui_snapshot_summary_metadata_fallback_payload(
-        run_date_key=run_date_key,
-        requested_limit_val=requested_limit_val,
-        limit_val=cache_limit_val,
-        cache_key=cache_key,
-        city_filter=city_key,
-    )
-    if not payload:
-        return None
-    payload["source"] = "ui_heavy_request_lane_busy_summary_cache_fallback"
-    payload["path"] = path
-    payload["heavy_lane_busy"] = True
-    payload["throttled"] = True
-    payload["retry_after_sec"] = int(UI_BUSY_RETRY_AFTER_SEC)
-    payload["summary_cache_fallback_reason"] = "ui_heavy_request_lane_busy"
-    _ui_snapshot_cache_store(cache_key, payload)
-    return _trim_ui_snapshot_summary_payload(
-        payload,
-        requested_limit_val,
-        city_filter=city_key,
-    )
-
-
-def _ui_snapshot_summary_prefer_cache_request_target(request_target: str) -> bool:
-    try:
-        parsed = urlparse(str(request_target or ""))
-        if parsed.path not in {"/api/ui_snapshot", "/api/ui_snapshot_summary"}:
-            return False
-        raw = str((parse_qs(parsed.query).get("prefer_cache") or [""])[0] or "").strip().lower()
-        return raw in {"1", "true", "yes", "on"}
-    except Exception:
-        return False
-
-
-def _ui_snapshot_summary_prefer_cache_raw_key(request_target: str) -> str:
-    try:
-        parsed = urlparse(str(request_target or ""))
-        if parsed.path not in {"/api/ui_snapshot", "/api/ui_snapshot_summary"}:
-            return ""
-        params = parse_qs(parsed.query)
-        try:
-            limit = int(params.get("limit", ["24" if parsed.path == "/api/ui_snapshot_summary" else "120"])[0])
-        except (TypeError, ValueError):
-            limit = 24 if parsed.path == "/api/ui_snapshot_summary" else 120
-        if "limit" not in params and params.get("page_size", [""])[0]:
-            try:
-                limit = int(params.get("page_size", [""])[0])
-            except (TypeError, ValueError):
-                pass
-        limit = max(1, min(limit, 80))
-        run_date_key = _normalize_date_key(
-            str(
-                (params.get("run_date", [""])[0] if params.get("run_date") else "")
-                or (params.get("date", [""])[0] if params.get("date") else "")
-                or ""
-            )
-        )
-        if not run_date_key:
-            run_date_key = _ui_snapshot_summary_latest_run_date_cached()
-        city_key = _normalize_ui_snapshot_city_filter(
-            str(
-                (params.get("city", [""])[0] if params.get("city") else "")
-                or (params.get("scope", [""])[0] if params.get("scope") else "")
-                or ""
-            )
-        )
-        summary_flag = str((params.get("summary") or [""])[0] or "").strip().lower()
-        return f"{parsed.path}|{run_date_key}|{limit}|{city_key}|summary={summary_flag}"
-    except Exception:
-        return ""
-
-
-def _ui_snapshot_summary_build_prefer_cache_raw_body(request_target: str) -> Optional[bytes]:
-    payload = _ui_snapshot_summary_heavy_lane_fallback_payload(str(request_target or ""))
-    if not isinstance(payload, dict):
-        return None
-    payload["prefer_cache_requested"] = True
-    return json.dumps(
-        _sanitize_errno24_payload(payload),
-        ensure_ascii=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-
-def _ui_snapshot_summary_store_prefer_cache_raw(key: str, body: bytes) -> None:
-    if not key or UI_SNAPSHOT_PREFER_CACHE_RAW_SEC <= 0:
-        return
-    with _UI_SNAPSHOT_PREFER_CACHE_RAW_LOCK:
-        _UI_SNAPSHOT_PREFER_CACHE_RAW[key] = (time.time(), bytes(body or b""))
-        overflow = len(_UI_SNAPSHOT_PREFER_CACHE_RAW) - 32
-        if overflow > 0:
-            for old_key, _ in sorted(
-                _UI_SNAPSHOT_PREFER_CACHE_RAW.items(),
-                key=lambda item: float((item[1] or (0, b""))[0] or 0.0),
-            )[:overflow]:
-                _UI_SNAPSHOT_PREFER_CACHE_RAW.pop(old_key, None)
-
-
-def _ui_snapshot_summary_refresh_prefer_cache_raw(key: str, request_target: str) -> None:
-    try:
-        body = _ui_snapshot_summary_build_prefer_cache_raw_body(request_target)
-        if body is not None:
-            _ui_snapshot_summary_store_prefer_cache_raw(key, body)
-    finally:
-        with _UI_SNAPSHOT_PREFER_CACHE_RAW_LOCK:
-            _UI_SNAPSHOT_PREFER_CACHE_RAW_REFRESHING.discard(key)
-
-
-def _ui_snapshot_summary_start_prefer_cache_raw_refresh(key: str, request_target: str) -> None:
-    if not key or UI_SNAPSHOT_PREFER_CACHE_RAW_SEC <= 0:
-        return
-    with _UI_SNAPSHOT_PREFER_CACHE_RAW_LOCK:
-        if key in _UI_SNAPSHOT_PREFER_CACHE_RAW_REFRESHING:
-            return
-        _UI_SNAPSHOT_PREFER_CACHE_RAW_REFRESHING.add(key)
-    threading.Thread(
-        target=_ui_snapshot_summary_refresh_prefer_cache_raw,
-        args=(key, request_target),
-        name=f"ui_snapshot_prefer_cache_raw_refresh:{key[:48]}",
-        daemon=True,
-    ).start()
-
-
-def _ui_snapshot_summary_prefer_cache_raw_response(request_target: str) -> Optional[bytes]:
-    key = _ui_snapshot_summary_prefer_cache_raw_key(request_target)
-    now_ts = time.time()
-    if key and UI_SNAPSHOT_PREFER_CACHE_RAW_SEC > 0:
-        with _UI_SNAPSHOT_PREFER_CACHE_RAW_LOCK:
-            cached = _UI_SNAPSHOT_PREFER_CACHE_RAW.get(key)
-        if cached:
-            age = now_ts - float(cached[0] or 0.0)
-            if age > UI_SNAPSHOT_PREFER_CACHE_RAW_SEC:
-                _ui_snapshot_summary_start_prefer_cache_raw_refresh(key, request_target)
-            return bytes(cached[1])
-    body = _ui_snapshot_summary_build_prefer_cache_raw_body(request_target)
-    if body is None:
-        return None
-    _ui_snapshot_summary_store_prefer_cache_raw(key, body)
-    return body
-
-
-def _ui_snapshot_summary_prewarm_request_targets(run_date_key: str = "") -> List[str]:
-    dates: List[str] = []
-
-    def add_date(value: str) -> None:
-        key = _normalize_date_key(value)
-        if key and key not in dates:
-            dates.append(key)
-
-    add_date(run_date_key)
-    add_date(_chengdu_today_date_key())
-    if dates:
-        add_date(_date_key_offset(dates[0], -1) or "")
-        add_date(_date_key_offset(dates[0], 1) or "")
-    if not dates:
-        add_date(_ui_snapshot_summary_latest_run_date_cached())
-    return [
-        f"/api/ui_snapshot_summary?run_date={date_key}&limit=24&city=chengdu&prefer_cache=1"
-        for date_key in dates[:4]
-    ]
-
-
-def _prewarm_ui_snapshot_summary_cache() -> None:
-    targets = _ui_snapshot_summary_prewarm_request_targets(
-        _ui_snapshot_summary_latest_run_date_cached()
-    )
-    results: List[str] = []
-    for target in targets:
-        started = time.perf_counter()
-        body = _ui_snapshot_summary_prefer_cache_raw_response(target)
-        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
-        results.append(f"{target} ok={bool(body)} bytes={len(body or b'')} ms={elapsed_ms:.1f}")
-    if results:
-        print("[ui_server] prewarm_ui_snapshot_summary_cache " + " | ".join(results), file=sys.stderr, flush=True)
-
-
 def _ui_snapshot_summary_latest_run_date_cached() -> str:
+    """Resolve the dashboard date without making every summary request rescan SQLite."""
+
     global _UI_SNAPSHOT_SUMMARY_RUN_DATE_CACHE
     now_ts = time.time()
     if UI_SNAPSHOT_SUMMARY_RUN_DATE_CACHE_SEC > 0:
@@ -67897,6 +72843,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
             platt_days = 60
         platt = _load_platt_calibration(platt_days or 0)
         first_prediction_stats = _safe_first_prediction_hit_rates(conn)
+        forecast_source_accuracy = _safe_forecast_source_accuracy_snapshot_only(conn)
         try:
             trade_map_for_plan = query_edge_trades(conn)
             fills_map_for_plan = query_trade_fills(conn)
@@ -67942,6 +72889,8 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
             except Exception:
                 pass
             _attach_first_prediction_hit_rates(payload, first_prediction_stats)
+            _attach_forecast_source_accuracy_for_ui_snapshot(payload, forecast_source_accuracy)
+            _attach_joint_weak_bias_research_for_ui_snapshot(payload, joint_weak_bias_research)
             _attach_chengdu_intraday_summary_fields_for_ui_snapshot(
                 payload,
                 row,
@@ -67974,6 +72923,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
                 auto_orders_map=auto_orders_map_for_plan,
             )
             _attach_target_switch_context(payload)
+            _attach_ui_snapshot_sections_to_item(payload)
             payload["auto_trade_ssot"] = _safe_build_auto_trade_ssot(payload)
             fact_key = (
                 str(payload.get("slug") or row["slug"] or "").strip(),
@@ -68098,20 +73048,17 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
         }
 
     def _build_payload() -> Dict[str, Any]:
-        try:
-            with open_db_ro_fast(timeout_sec=0.6, busy_timeout_ms=600) as conn:
-                return _compute(conn)
-        except Exception:
-            with open_db(timeout_sec=1.2, busy_timeout_ms=1200) as conn:
-                return _compute(conn)
+        with open_db_ro_snapshot(timeout_sec=0.6, busy_timeout_ms=600) as conn:
+            return _compute(conn)
 
     def _background_rebuild() -> None:
+        rebuild_error = ""
         try:
             _ui_snapshot_cache_store(cache_key, _build_payload())
-        except Exception:
-            pass
+        except Exception as exc:
+            rebuild_error = f"{type(exc).__name__}:{exc}"
         finally:
-            _ui_snapshot_rebuild_done(cache_key)
+            _ui_snapshot_rebuild_done(cache_key, error=rebuild_error)
 
     if force_rebuild:
         forced_started_at = now_text()
@@ -68132,6 +73079,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
         if isinstance(status, dict):
             status["stage"] = "forced_rebuild_completed"
             status["duration_ms"] = forced_duration_ms
+        _attach_ui_snapshot_phase0_contract(payload, cache_key=cache_key)
         return payload
 
     cache_dirty_sync_rebuild = (
@@ -68139,7 +73087,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
         and UI_SNAPSHOT_DIRTY_SYNC_REBUILD
         and not _ui_snapshot_dirty_stamp_in_grace()
     )
-    if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and cached and not cache_dirty and not cache_dirty_sync_rebuild:
+    if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and cached and not cache_dirty_sync_rebuild:
         if _ui_snapshot_rebuild_start(cache_key):
             threading.Thread(
                 target=_background_rebuild,
@@ -68148,6 +73096,26 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
             ).start()
             return _ui_snapshot_cached_payload(cached, stale=True, rebuild_started=True, cache_key=cache_key)
         return _ui_snapshot_cached_payload(cached, stale=True, rebuild_in_flight=True, cache_key=cache_key)
+
+    if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and not cached:
+        rebuild_started = False
+        if _ui_snapshot_rebuild_start(cache_key):
+            rebuild_started = True
+            threading.Thread(
+                target=_background_rebuild,
+                name=f"ui_snapshot_cold_rebuild:{cache_key}",
+                daemon=True,
+            ).start()
+        payload = _ui_snapshot_busy_payload(
+            run_date_key=run_date_key,
+            limit_val=limit_val,
+            summary_mode=False,
+            cache_key=cache_key,
+        )
+        payload["cache_rebuild_started"] = rebuild_started
+        payload["cache_rebuild_in_flight"] = True
+        payload["synchronous_rebuild_allowed"] = False
+        return payload
 
     if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and _ui_snapshot_rebuild_active(cache_key):
         return _ui_snapshot_busy_payload(
@@ -68175,6 +73143,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
 
     _ui_snapshot_cache_store(cache_key, payload)
     _attach_ui_snapshot_rebuild_status(payload, cache_key)
+    _attach_ui_snapshot_phase0_contract(payload, cache_key=cache_key)
     return payload
 
 
@@ -68211,18 +73180,25 @@ def ui_snapshot_summary(
     )
 
     def _trim_summary_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-        return _trim_ui_snapshot_summary_payload(
+        trimmed = _trim_ui_snapshot_summary_payload(
             payload,
             requested_limit_val,
             city_filter=city_filter_key,
         )
+        _attach_ui_snapshot_phase0_contract(trimmed, cache_key=cache_key)
+        return trimmed
 
     now_ts = time.time()
     cached = _ui_snapshot_cache_entry(cache_key)
     cache_dirty = _ui_snapshot_cache_is_dirty(cached)
+    cached_has_display_items = _ui_snapshot_summary_cache_entry_has_display_items(
+        cached,
+        city_filter=city_filter_key,
+    )
     if (
         not force_rebuild
         and cached
+        and cached_has_display_items
         and not cache_dirty
         and (now_ts - float(cached[0])) <= float(UI_SNAPSHOT_CACHE_SEC)
     ):
@@ -68232,7 +73208,7 @@ def ui_snapshot_summary(
 
     materialize_state = _facts_materialize_lock_state()
     if not force_rebuild and bool(materialize_state.get("active")):
-        if cached:
+        if cached and cached_has_display_items:
             payload = _trim_summary_payload(
                 _ui_snapshot_cached_payload(
                     cached,
@@ -68444,6 +73420,16 @@ def ui_snapshot_summary(
                 continue
             _slim_fact_payload_for_ui(payload)
             _merge_fill_fact_row_meta(payload, row)
+            if use_summary_cache_rows:
+                try:
+                    _merge_fill_fast_observation_fields_from_latest_fact(
+                        conn,
+                        payload,
+                        str(payload.get("slug") or row["slug"] or ""),
+                        _normalize_date_key(str(payload.get("event_date") or row["event_date"] or "")),
+                    )
+                except Exception:
+                    pass
             event_date_key = _normalize_date_key(str(payload.get("event_date") or row["event_date"] or ""))
             distribution = normalize_distribution_rows(payload.get("distribution") or payload.get("rows") or [])
             if distribution:
@@ -68457,6 +73443,7 @@ def ui_snapshot_summary(
                     or _is_chengdu_zuuu_fact_payload(str(payload.get("slug") or row["slug"] or ""), payload)
                 ):
                     _attach_model_raw_top_history_for_ui_snapshot(conn, payload, row)
+                _attach_model_member_cache_snapshot_for_ui_snapshot(conn, payload, row)
                 _attach_model_bucket_rule_comparison_for_ui_snapshot(conn, payload, row)
                 run_date_key_for_payload = _normalize_date_key(str(payload.get("run_date") or ""))
                 if UI_SNAPSHOT_SUMMARY_FAST and not UI_SNAPSHOT_SUMMARY_LIVE_MARKET_HYDRATE:
@@ -68642,12 +73629,13 @@ def ui_snapshot_summary(
             return _compute(conn)
 
     def _background_rebuild() -> None:
+        rebuild_error = ""
         try:
             _ui_snapshot_cache_store(cache_key, _build_payload())
-        except Exception:
-            pass
+        except Exception as exc:
+            rebuild_error = f"{type(exc).__name__}:{exc}"
         finally:
-            _ui_snapshot_rebuild_done(cache_key)
+            _ui_snapshot_rebuild_done(cache_key, error=rebuild_error)
 
     if force_rebuild:
         forced_started_at = now_text()
@@ -68683,7 +73671,7 @@ def ui_snapshot_summary(
         and not cache_dirty
     )
     if _ui_snapshot_rebuild_active(cache_key) and not cold_explicit_sync_rebuild:
-        if cached and not cache_dirty:
+        if cached and cached_has_display_items and not cache_dirty:
             return _trim_summary_payload(
                 _ui_snapshot_cached_payload(cached, stale=True, rebuild_in_flight=True, cache_key=cache_key),
             )
@@ -68702,7 +73690,13 @@ def ui_snapshot_summary(
             summary_mode=True,
             cache_key=cache_key,
         ))
-    if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and cached and not cache_dirty and not cache_dirty_sync_rebuild:
+    if (
+        UI_SNAPSHOT_STALE_WHILE_REVALIDATE
+        and cached
+        and cached_has_display_items
+        and not cache_dirty
+        and not cache_dirty_sync_rebuild
+    ):
         revalidate_allowed = _ui_snapshot_revalidate_allowed(
             cache_key,
             UI_SNAPSHOT_SUMMARY_REVALIDATE_MIN_INTERVAL_SEC,
@@ -68758,7 +73752,7 @@ def ui_snapshot_summary(
 
     rebuild_owner = _ui_snapshot_rebuild_start(cache_key)
     if UI_SNAPSHOT_STALE_WHILE_REVALIDATE and not rebuild_owner:
-        if cached:
+        if cached and cached_has_display_items:
             return _trim_summary_payload(
                 _ui_snapshot_cached_payload(cached, stale=True, rebuild_in_flight=True, cache_key=cache_key),
             )
@@ -70724,28 +75718,17 @@ class Handler(BaseHTTPRequestHandler):
                 "yes",
                 "on",
             }
-            prefer_cache = str(params.get("prefer_cache", [""])[0] or "").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
-            if prefer_cache and not force:
-                payload = _ui_snapshot_summary_heavy_lane_fallback_payload(self.path)
-                if isinstance(payload, dict):
-                    payload["prefer_cache_requested"] = True
-                    if refresh:
-                        payload["refresh_requested"] = True
-                    self._send_json(payload)
-                    return
             payload = ui_snapshot_summary(
                 run_date=run_date,
                 limit=limit,
-                force_rebuild=force,
+                force_rebuild=False,
                 city_filter=city_filter,
             )
-            if isinstance(payload, dict) and refresh:
-                payload["refresh_requested"] = True
+            if isinstance(payload, dict) and (refresh or force):
+                payload["refresh_requested"] = bool(refresh)
+                payload["force_requested"] = bool(force)
+                payload["refresh_mode"] = "stale_while_revalidate"
+                payload["synchronous_rebuild_allowed"] = False
             self._send_json(payload)
             return
 
@@ -70795,27 +75778,13 @@ class Handler(BaseHTTPRequestHandler):
                 "yes",
                 "on",
             }
-            prefer_cache = str(params.get("prefer_cache", [""])[0] or "").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
-            if prefer_cache and not force:
-                payload = _ui_snapshot_summary_heavy_lane_fallback_payload(self.path)
-                if isinstance(payload, dict):
-                    payload["prefer_cache_requested"] = True
-                    if refresh:
-                        payload["refresh_requested"] = True
-                    self._send_json(payload)
-                    return
             if full and not summary and UI_SNAPSHOT_FULL_ENABLED:
-                payload = ui_snapshot(run_date=run_date, limit=limit, force_rebuild=force)
+                payload = ui_snapshot(run_date=run_date, limit=limit, force_rebuild=False)
             else:
                 payload = ui_snapshot_summary(
                     run_date=run_date,
                     limit=limit,
-                    force_rebuild=force,
+                    force_rebuild=False,
                     city_filter=city_filter,
                 )
                 if full and not summary and not UI_SNAPSHOT_FULL_ENABLED and isinstance(payload, dict):
@@ -70824,8 +75793,11 @@ class Handler(BaseHTTPRequestHandler):
                         "full_snapshot_disabled": True,
                         "full_snapshot_disabled_reason": "PM_UI_SNAPSHOT_FULL_ENABLED=0",
                     }
-            if isinstance(payload, dict) and refresh:
-                payload["refresh_requested"] = True
+            if isinstance(payload, dict) and (refresh or force):
+                payload["refresh_requested"] = bool(refresh)
+                payload["force_requested"] = bool(force)
+                payload["refresh_mode"] = "stale_while_revalidate"
+                payload["synchronous_rebuild_allowed"] = False
             self._send_json(payload)
             return
 
@@ -71682,22 +76654,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/optimizer-apply":
             kind = str(params.get("kind", ["edge_bias_gate"])[0] or "").strip().lower()
-            restart = params.get("restart", ["1"])[0] != "0"
-            scan = params.get("scan", ["0"])[0] == "1"
             end_date = str(params.get("end_date", [""])[0] or "").strip()
             if kind in {"edge_bias_gate", "edge_bias"}:
-                try:
-                    days = int(params.get("days", ["30"])[0])
-                except ValueError:
-                    days = 30
-                self._send_json(
-                    apply_edge_bias_gate_suggestion(
-                        days=days,
-                        end_date=end_date,
-                        restart=bool(restart),
-                        scan=bool(scan),
-                    )
+                payload = _legacy_optimizer_apply_retired_payload(
+                    source="api_optimizer_apply",
+                    end_date=end_date,
                 )
+                payload["kind"] = kind
+                payload["query_params_ignored"] = ["restart", "scan", "days"]
+                self._send_json(payload)
                 return
             self._send_json({"ok": False, "error": "unknown_kind"})
             return
@@ -72516,6 +77481,110 @@ def _clear_ui_server_pidfile(pid_path: Path, pid: int) -> None:
         pass
 
 
+def _ui_heavy_busy_cached_payload(request_target: str) -> Optional[Dict[str, Any]]:
+    """Return the last committed read-model snapshot without acquiring SQLite.
+
+    This function runs on the accept thread when the single heavy read lane is
+    occupied.  It may inspect in-memory caches only; it must never rebuild a
+    snapshot, open the archive, refresh a market, or trigger execution work.
+    """
+
+    parsed = urlparse(str(request_target or ""))
+    path = str(parsed.path or "")
+    params = parse_qs(parsed.query)
+    selected: Optional[Tuple[float, Dict[str, Any]]] = None
+    cache_key = ""
+
+    if path in {"/api/ui_snapshot", "/api/ui_snapshot_summary"}:
+        run_date = _normalize_date_key(
+            str(params.get("run_date", [""])[0] or params.get("date", [""])[0] or "")
+        )
+        if path == "/api/ui_snapshot_summary":
+            try:
+                requested_limit = max(1, min(int(params.get("limit", ["24"])[0] or 24), 80))
+            except (TypeError, ValueError):
+                requested_limit = 24
+            cache_limit = _ui_snapshot_summary_cache_limit(requested_limit)
+            city = _normalize_ui_snapshot_city_filter(
+                str(params.get("city", [""])[0] or params.get("scope", [""])[0] or "")
+            )
+            if run_date:
+                cache_key = (
+                    f"summary:{run_date}:{cache_limit}:{city}"
+                    if city
+                    else f"summary:{run_date}:{cache_limit}"
+                )
+            prefix = f"summary:{run_date}:" if run_date else "summary:"
+        else:
+            try:
+                requested_limit = int(params.get("limit", ["120"])[0] or 120)
+            except (TypeError, ValueError):
+                requested_limit = 120
+            requested_limit = max(10, min(requested_limit, 2000))
+            if run_date:
+                cache_key = f"{run_date}:{requested_limit}"
+            prefix = f"{run_date}:" if run_date else ""
+
+        with _UI_SNAPSHOT_CACHE_LOCK:
+            if cache_key:
+                selected = _UI_SNAPSHOT_CACHE.get(cache_key)
+            if selected is None:
+                candidates = [
+                    (key, value)
+                    for key, value in _UI_SNAPSHOT_CACHE.items()
+                    if isinstance(value, tuple)
+                    and len(value) == 2
+                    and str(key).startswith(prefix)
+                    and ((path == "/api/ui_snapshot_summary") == str(key).startswith("summary:"))
+                ]
+                if candidates:
+                    cache_key, selected = max(candidates, key=lambda item: float(item[1][0] or 0.0))
+        if selected is None or not isinstance(selected[1], dict):
+            return None
+        payload = _ui_snapshot_cached_payload(
+            selected,
+            stale=True,
+            rebuild_in_flight=True,
+            stale_reason="ui_heavy_request_lane_busy",
+            cache_key=cache_key,
+        )
+        if path == "/api/ui_snapshot_summary":
+            payload = _trim_ui_snapshot_summary_payload(
+                payload,
+                requested_limit,
+                city_filter=city,
+            )
+            _attach_ui_snapshot_phase0_contract(payload, cache_key=cache_key)
+    elif path == "/api/auto-trade-trace":
+        run_date = _normalize_date_key(
+            str(params.get("date", [""])[0] or params.get("run_date", [""])[0] or "")
+        )
+        if run_date:
+            selected = _AUTO_TRADE_TRACE_CACHE.get(run_date)
+            cache_key = run_date
+        if selected is None and _AUTO_TRADE_TRACE_CACHE:
+            cache_key, selected = max(
+                _AUTO_TRADE_TRACE_CACHE.items(),
+                key=lambda item: float(item[1][0] or 0.0),
+            )
+        if selected is None or not isinstance(selected[1], dict):
+            return None
+        payload = dict(selected[1])
+        payload["cache_age_sec"] = round(max(0.0, time.time() - float(selected[0] or 0.0)), 3)
+    else:
+        return None
+
+    payload["ok"] = bool(payload.get("ok", True))
+    payload["busy"] = True
+    payload["throttled"] = True
+    payload["stale"] = True
+    payload["refreshing"] = True
+    payload["source"] = "ui_heavy_request_lane_stale_cache"
+    payload["retry_after_sec"] = int(UI_BUSY_RETRY_AFTER_SEC)
+    payload["read_only"] = True
+    return payload
+
+
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
     """Threading HTTP server with a hard cap on concurrent request processing."""
 
@@ -72638,17 +77707,11 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
     def _send_api_busy_and_close(self, request: Any, request_target: str = "") -> None:
         request_target_text = str(request_target or "")
         request_path = request_target_text.split("?", 1)[0] if request_target_text else ""
-        if request_path in {"/api/ui_snapshot", "/api/ui_snapshot_summary"}:
-            fallback = _ui_snapshot_summary_heavy_lane_fallback_payload(request_target_text)
-            if isinstance(fallback, dict):
-                fallback.setdefault("busy", True)
-                fallback.setdefault("throttled", True)
-                fallback.setdefault("heavy_lane_busy", True)
-                fallback.setdefault("retry_after_sec", int(UI_BUSY_RETRY_AFTER_SEC))
-                fallback.setdefault("path", request_path)
-                self._send_raw_json_and_close(request, fallback, "200 OK")
-                return
         retry_after = int(UI_BUSY_RETRY_AFTER_SEC)
+        cached_payload = _ui_heavy_busy_cached_payload(request_target_text)
+        if isinstance(cached_payload, dict):
+            self._send_raw_json_and_close(request, cached_payload, "200 OK")
+            return
         payload: Dict[str, Any] = {
             "ok": True,
             "busy": True,
@@ -72730,26 +77793,8 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
             self._send_raw_json_and_close(request, auto_trade_status_quick())
             return
         static_request = request_path in UI_STATIC_REQUEST_PATHS
-        prefer_cache_request = _ui_snapshot_summary_prefer_cache_request_target(request_target)
-        if prefer_cache_request:
-            started = time.perf_counter()
-            body = _ui_snapshot_summary_prefer_cache_raw_response(request_target)
-            if body is not None:
-                elapsed_sec = max(0.0, time.perf_counter() - started)
-                _record_ui_endpoint_observation(request_target, method="GET", elapsed_sec=elapsed_sec)
-                self._send_raw_json_bytes_and_close(request, body, "200 OK")
-                return
-            with self._bypass_slot_lock:
-                self._bypass_slot_requests[id(request)] = "prefer_cache"
-            try:
-                super().process_request(request, client_address)
-            except Exception:
-                with self._bypass_slot_lock:
-                    self._bypass_slot_requests.pop(id(request), None)
-                raise
-            return
-        priority_request = request_path in UI_PRIORITY_REQUEST_PATHS or prefer_cache_request
-        heavy_request = request_path in UI_HEAVY_REQUEST_PATHS and not prefer_cache_request
+        priority_request = request_path in UI_PRIORITY_REQUEST_PATHS
+        heavy_request = request_path in UI_HEAVY_REQUEST_PATHS
         if static_request:
             acquired_static = self._static_request_slots.acquire(blocking=False)
             if not acquired_static:
@@ -72846,9 +77891,6 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
                     self._heavy_request_slots.release()
                 except Exception:
                     pass
-            elif bypass_slot == "prefer_cache":
-                with self._bypass_slot_lock:
-                    self._bypass_slot_requests.pop(request_id, None)
             else:
                 try:
                     self._request_slots.release()
@@ -73071,10 +78113,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             name="london_follow_tuning_auto",
             daemon=True,
         ).start()
-    try:
-        _prewarm_ui_snapshot_summary_cache()
-    except Exception as exc:
-        print(f"[ui_server] prewarm_ui_snapshot_summary_cache_failed error={exc}", file=sys.stderr, flush=True)
     print(
         f"Serving on http://{args.host}:{args.port} "
         f"(max_concurrent_requests={UI_MAX_CONCURRENT_REQUESTS}, "

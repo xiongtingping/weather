@@ -280,6 +280,72 @@ print(count)
 PY
 }
 
+weather_refresh_event_final_daily_max_locked() {
+  local event_date="${1:-}"
+  local db_path="${ROOT:-}/data/archive.db"
+  if [ -z "${event_date:-}" ] || [ ! -f "$db_path" ]; then
+    echo "0"
+    return 0
+  fi
+  "${PY:-python3}" - "$db_path" "$event_date" <<'PY' 2>/dev/null || echo "0"
+import json
+import sqlite3
+import sys
+
+db_path, event_date = sys.argv[1:3]
+keys = (
+    "final_bucket_lock",
+    "hard_source_final_bucket_lock",
+    "observed_today_max_final",
+    "hard_source_final_daily_max",
+    "hard_source_settlement_final",
+    "temperature_observation_final_daily_max",
+    "official_final_result",
+    "final_daily_max_bucket_lock",
+)
+
+try:
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.2)
+    row = conn.execute(
+        """
+        SELECT h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.event_date = ?
+        LIMIT 1
+        """,
+        (event_date,),
+    ).fetchone()
+except Exception:
+    print(0)
+    raise SystemExit(0)
+finally:
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+try:
+    payload = json.loads(str(row[0] or "{}")) if row else {}
+except Exception:
+    payload = {}
+features = payload.get("weather_likelihood_features")
+if not isinstance(features, dict):
+    features = payload.get("weather_likelihood_features_compact")
+if not isinstance(features, dict):
+    features = {}
+posterior = payload.get("posterior_ssot_fact")
+if not isinstance(posterior, dict):
+    posterior = {}
+
+for container in (payload, features, posterior):
+    if any(bool(container.get(key)) for key in keys):
+        print(1)
+        raise SystemExit(0)
+print(0)
+PY
+}
+
 weather_refresh_live_ssot_critical_reason() {
   local owner="${1:-unknown}"
   if [ "${PM_REFRESH_COORDINATOR_ENABLED:-1}" != "1" ]; then
@@ -295,12 +361,27 @@ weather_refresh_live_ssot_critical_reason() {
   local reason=""
   local lock_dir="${ROOT:-}/data/live_ssot_writer.lock"
   local lock_pid=""
+  local live_writer_event_date=""
   if [ -n "${ROOT:-}" ] && [ -d "$lock_dir" ]; then
     if [ -f "$lock_dir/pid" ]; then
       lock_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
     fi
     if [ -z "${lock_pid:-}" ] || kill -0 "$lock_pid" 2>/dev/null; then
-      reason="$(weather_refresh_append_reason "$reason" "live_ssot_writer")"
+      if [ -f "$lock_dir/meta.json" ]; then
+        live_writer_event_date="$("${PY:-python3}" - "$lock_dir/meta.json" <<'PY' 2>/dev/null || true
+import json
+import sys
+try:
+    payload = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+except Exception:
+    payload = {}
+print(str(payload.get("event_date") or "").strip())
+PY
+)"
+      fi
+      if [ "$(weather_refresh_event_final_daily_max_locked "$live_writer_event_date" | tail -n 1)" != "1" ]; then
+        reason="$(weather_refresh_append_reason "$reason" "live_ssot_writer")"
+      fi
     else
       rm -rf "$lock_dir" 2>/dev/null || true
     fi
@@ -331,31 +412,42 @@ weather_refresh_live_ssot_critical_reason() {
 
   local watch_enabled="${PM_HARD_SOURCE_AWC_RELEASE_WATCH_ENABLED:-1}"
   local window_min="${PM_REFRESH_COORDINATOR_AWC_RELEASE_WATCH_WINDOW_MIN:-${PM_HARD_SOURCE_AWC_RELEASE_WATCH_WINDOW_MIN:-12}}"
+  local acquire_start_min="${PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_START_MIN:-5}"
+  local acquire_duration_sec="${PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_DURATION_SEC:-120}"
   local minute second
   minute="$(date -u '+%M')"
   second="$(date -u '+%S')"
   if [ "$watch_enabled" = "1" ] \
     && [[ "$window_min" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+    && [[ "$acquire_start_min" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+    && [[ "$acquire_duration_sec" =~ ^[0-9]+([.][0-9]+)?$ ]] \
     && [[ "$minute" =~ ^[0-9]+$ ]] \
     && [[ "$second" =~ ^[0-9]+$ ]] \
     && [ -n "${ROOT:-}" ] \
     && pgrep -f "$ROOT/scripts/hard_source_direct_poller.py --loop" >/dev/null 2>&1; then
     local in_release_watch
-    in_release_watch="$("${PY:-python3}" - "$window_min" "$minute" "$second" <<'PY' 2>/dev/null || true
+    in_release_watch="$("${PY:-python3}" - "$window_min" "$acquire_start_min" "$acquire_duration_sec" "$minute" "$second" <<'PY' 2>/dev/null || true
 import sys
 
 try:
     window = float(sys.argv[1])
-    minute = int(sys.argv[2])
-    second = int(sys.argv[3])
+    start = float(sys.argv[2])
+    duration = float(sys.argv[3])
+    minute = int(sys.argv[4])
+    second = int(sys.argv[5])
 except Exception:
     raise SystemExit(0)
 
 offset = float(minute) + float(second) / 60.0
-if offset <= max(0.0, window) or offset >= 59.0:
+start = max(0.0, min(59.999, start))
+duration = max(0.0, duration)
+if duration <= 0.0:
+    duration = max(0.0, window) * 60.0
+end = min(60.0, start + duration / 60.0)
+if start <= offset < end:
     print("1")
 PY
-)"
+    )"
     if [ "$in_release_watch" = "1" ]; then
       reason="$(weather_refresh_append_reason "$reason" "awc_release_watch_${minute}m")"
     fi

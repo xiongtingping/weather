@@ -1,0 +1,58 @@
+{
+  "schema": "resolution_authority_contract_v1",
+  "contract_id": "zuuu_amsc_wunderground_daily_high_v2",
+  "authority_state": "accepted_shadow_only",
+  "target": {
+    "station_id": "ZUUU",
+    "temperature_unit": "C",
+    "target_day_basis": "market_resolution_local_date"
+  },
+  "physical_x": {
+    "role": "physical_daily_high_final_truth",
+    "source_id": "amsc_zuuu_scheduled_metar_daily_max_v2",
+    "source_family": "amsc",
+    "raw_endpoint_id": "amsc_packet_retrieval_message_retrieval_sort",
+    "report_types": ["METAR"],
+    "reporting_schedule_schema": "zuuu_primary_metar_reporting_schedule_v1",
+    "reporting_schedule_id": "zuuu_primary_metar_local_44_slot_2026_07_v1",
+    "reporting_schedule_timezone": "Asia/Shanghai",
+    "expected_regular_metar_slot_count": 44,
+    "aggregation": "maximum_reported_temperature_c",
+    "requires_immutable_raw_manifest_t1": true,
+    "requires_target_day_closed": true,
+    "requires_complete_scheduled_coverage": true,
+    "finality_policy": "target_day_closed_complete_scheduled_coverage",
+    "definition": "AMSC primary ZUUU routine METAR reports in the target market-resolution local date, using the frozen 44-slot ZUUU local reporting schedule (00:00-03:00 hourly; 04:00-23:30 every 30 minutes); X is the maximum reported Celsius temperature in that closed day."
+  },
+  "settlement_s": {
+    "role": "resolution_settlement_final",
+    "source_id": "wunderground_zuuu_daily_history_final_v1",
+    "source_family": "wunderground",
+    "source_url_base": "https://www.wunderground.com/history/daily/cn/chengdu/ZUUU",
+    "capture_url_prefix": "https://www.wunderground.com/history/daily/cn/chengdu/date/",
+    "station_id": "ZUUU",
+    "metric": "daily_high_temperature_c",
+    "parser_id": "wunderground_daily_history_settlement_parser_v1",
+    "requires_immutable_raw_capture": true,
+    "requires_market_resolution_finality_attestation": true,
+    "finality_policy": "market_resolution_attested_immutable_capture",
+    "revision_policy": "append_only_superseding_contract_revision",
+    "definition": "The final daily-high scalar rendered by the Wunderground ZUUU daily-history page for the same market-resolution local date."
+  },
+  "market_bucket_b": {
+    "derivation": "frozen_market_bucket_contract_from_s",
+    "definition": "B is derived only from S through the immutable bucket boundaries, unit, rounding, and market-rule snapshot for that target."
+  },
+  "x_to_s_to_b_bridge": {
+    "state": "data_accumulation",
+    "closed": false,
+    "definition": "The source authority is fixed, but the calibrated X-to-S kernel and market bucket bridge still require strict raw-object-backed final labels and OOS approval."
+  },
+  "boundary": {
+    "current_v31_production_unchanged": true,
+    "shadow_only": true,
+    "no_posterior_or_order_authority": true,
+    "x_is_observation_defined_not_latent_continuous_station_maximum": true,
+    "retired_contract": "zuuu_amsc_wunderground_daily_high_v1_false_48_slot_grid"
+  }
+}

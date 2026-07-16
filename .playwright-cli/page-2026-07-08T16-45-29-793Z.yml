@@ -1,0 +1,47 @@
+- generic [active] [ref=f3e1]:
+  - generic:
+    - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=f3e2]:
+    - generic [ref=f3e5]:
+      - navigation "页面导航" [ref=f3e6]:
+        - generic [ref=f3e7]:
+          - link "事件视图" [ref=f3e8] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "更新/健康" [ref=f3e9] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+        - link "顶部" [ref=f3e11] [cursor=pointer]:
+          - /url: "#top"
+      - generic [ref=f3e12]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=f3e14] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=f3e15]: 总开关
+          - generic [ref=f3e16]: 开启
+        - generic [ref=f3e19]:
+          - button "同步" [ref=f3e20] [cursor=pointer]
+          - button "模型" [ref=f3e21] [cursor=pointer]
+          - button "盘口" [ref=f3e22] [cursor=pointer]
+          - button "刷新" [ref=f3e23] [cursor=pointer]
+          - button "声音开" [pressed] [ref=f3e24] [cursor=pointer]
+          - button "日志" [ref=f3e26] [cursor=pointer]
+          - group [ref=f3e27]:
+            - generic "控制中心" [ref=f3e28] [cursor=pointer]: 控
+  - main [ref=f3e29]:
+    - generic [ref=f3e30]:
+      - generic [ref=f3e31]:
+        - generic [ref=f3e32]:
+          - generic [ref=f3e34]: 自动交易执行
+          - generic [ref=f3e35]: —
+        - generic [ref=f3e36]:
+          - generic [ref=f3e37]: 同步—
+          - generic [ref=f3e39]:
+            - strong [ref=f3e40]: 成交
+            - text: 暂无
+      - generic [ref=f3e42]:
+        - button "触发一次" [ref=f3e43] [cursor=pointer]
+        - generic [ref=f3e44] [cursor=pointer]:
+          - checkbox "关闭"
+          - generic [ref=f3e46]: 关闭
+    - generic [ref=f3e48]:
+      - text: 当前/未来事件视图（事实层）
+      - generic [ref=f3e49]: 加载中…

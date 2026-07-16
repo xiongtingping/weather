@@ -15,6 +15,9 @@ import os
 import sys
 
 
+LEGACY_OPTIMIZER_APPLY_RETIRED_REASON = "legacy_optimizer_apply_retired_use_parameter_change_governance"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--edge-bias-days", type=int, default=int(os.environ.get("PM_EDGE_BIAS_DAYS", "30") or 30))
@@ -24,7 +27,7 @@ def main() -> int:
     ap.add_argument("--strategy-days", type=int, default=int(os.environ.get("PM_STRATEGY_STATS_DAYS", "30") or 30))
     ap.add_argument("--orphan-fill-days", type=int, default=int(os.environ.get("PM_ORPHAN_FILL_STATS_DAYS", "60") or 60))
     ap.add_argument("--end-date", type=str, default=os.environ.get("PM_FEEDBACK_END_DATE", "") or "")
-    ap.add_argument("--apply", action="store_true", help="Apply optimizer suggestions (guarded by policy/env)")
+    ap.add_argument("--apply", action="store_true", help="Retired; kept for compatibility and never applies config")
     args = ap.parse_args()
 
     # Import from repo root (script may be launched from launchd with different cwd).
@@ -32,7 +35,7 @@ def main() -> int:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from ui.server import apply_optimizer_suggestions, run_feedback_loop_once
+    from ui.server import run_feedback_loop_once
 
     payload = run_feedback_loop_once(
         edge_bias_days=int(args.edge_bias_days),
@@ -43,9 +46,22 @@ def main() -> int:
         orphan_fill_days=int(args.orphan_fill_days),
         end_date=str(args.end_date or ""),
     )
-    auto_apply = args.apply or (str(os.environ.get("PM_OPTIMIZER_AUTO_APPLY", "") or "").strip().lower() in {"1", "true", "yes", "on"})
-    if auto_apply:
-        payload["auto_apply"] = apply_optimizer_suggestions(end_date=str(args.end_date or ""))
+    if args.apply:
+        payload["auto_apply"] = {
+            "ok": True,
+            "enabled": False,
+            "applied_any": False,
+            "status": "retired_no_write",
+            "reason_code": LEGACY_OPTIMIZER_APPLY_RETIRED_REASON,
+            "next_boundary": "create_parameter_change_request_from_approved_calibration_candidate",
+            "guards": {
+                "writes_archive_db": False,
+                "writes_config_files": False,
+                "changes_parameters": False,
+                "restarts_launchd": False,
+                "places_orders": False,
+            },
+        }
     print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
     return 0 if payload.get("ok") else 1
 

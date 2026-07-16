@@ -6,7 +6,6 @@ from typing import Any, Dict, Mapping, Optional
 
 from posterior_settlement_runtime import (
     ACTION_SWITCH_BUY,
-    LANE_NO_REMOTE,
     LANE_OBSERVE,
     LANE_YES_TARGET,
     STRATEGY_FAMILY as POSTERIOR_SETTLEMENT_FAMILY,
@@ -29,9 +28,6 @@ WEATHER_STRATEGY_FIELD_NAMES = (
     "target_realization_reliability_source",
     "second_target_bucket",
     "second_target_posterior",
-    "remote_no_bucket",
-    "remote_no_reason",
-    "remote_bucket_realization_prob",
     "bucket_switch_reason",
     "posterior_settlement_candidate_bucket",
     "posterior_settlement_candidate_bucket_prob",
@@ -775,8 +771,6 @@ def classify_weather_strategy_candidate(
     posterior_entry_style = (
         "settlement_yes_target"
         if posterior_lane == LANE_YES_TARGET
-        else "settlement_no_remote"
-        if posterior_lane == LANE_NO_REMOTE
         else "observe"
     )
 

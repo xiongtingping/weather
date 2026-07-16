@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -13,15 +14,38 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import scan_weather_market as swm  # noqa: E402
+from auto_trade_decision_writer import insert_auto_trade_decision  # noqa: E402
+from auto_trade_job_writer import insert_auto_trade_job  # noqa: E402
+from awc_hard_source_signal_ledger_writer import (  # noqa: E402
+    awc_hard_source_signals_schema_status,
+    upsert_awc_hard_source_signal,
+)
+from awc_hard_source_signal_state_machine import build_awc_hard_source_signal_candidate  # noqa: E402
 from bayesian_likelihood_runtime import estimate_peak_temperature_from_features  # noqa: E402
-from bayesian_probability_runtime import apply_hard_source_posterior_override_to_distribution  # noqa: E402
+from posterior_ssot_projection_runtime import build_fact_projection_no_apply  # noqa: E402
+from signal_to_order_ledger_writer import (  # noqa: E402
+    signal_to_order_timing_schema_status,
+    upsert_signal_to_order_timing,
+)
+from sequential_bayes_execution_contract import (  # noqa: E402
+    DEFAULT_HARD_DEADLINE_MS as SEQUENTIAL_BAYES_HARD_DEADLINE_MS,
+    DEFAULT_SLO_MS as SEQUENTIAL_BAYES_SLO_MS,
+    build_sequential_bayes_execution_contract,
+    build_target_realization_transition_execution_contract,
+)
+from source_observation_runtime import (  # noqa: E402
+    PRIMARY_METAR_SOURCE_ID,
+    REFERENCE_METAR_SOURCE_IDS,
+)
+from target_realization_v3_runtime import build_target_realization_v3_decision_plan  # noqa: E402
+from archive_db_write_queue import connect_archive_db_rw  # noqa: E402
 
 try:
     from zoneinfo import ZoneInfo
@@ -38,14 +62,81 @@ CHENGDU_SLUG_PREFIX = "highest-temperature-in-chengdu-"
 DIRECT_SOURCE = "hard_source_direct"
 POSTERIOR_TARGET_SOURCE = "posterior_target_direct"
 TARGET_REALIZATION_STRATEGY = "target_realization_binary_settlement"
+HARD_SOURCE_FACT_WRITER_COMPOSER_VERSION = "hard_source_direct_poller_writer_v1"
+HARD_SOURCE_RUNTIME_CONTRACT_SCHEMA = "hard_source_runtime_contract_v1"
+HARD_SOURCE_RUNTIME_CONTRACT_VERSION = "hard_source_direct_amsc_primary_awc_reference_v4"
+PRE_SIGNAL_REQUIRED_COMPONENTS = (
+    "market_prefetch",
+    "market_mapping",
+    "orderbook",
+    "open_orders",
+    "positions",
+    "capital_caps",
+)
+PRIMARY_HARD_METAR_SOURCE_ID = PRIMARY_METAR_SOURCE_ID
+REFERENCE_HARD_METAR_SOURCE_IDS = tuple(REFERENCE_METAR_SOURCE_IDS)
+HARD_METAR_SOURCE_IDS_IN_PRIORITY_ORDER = (
+    PRIMARY_HARD_METAR_SOURCE_ID,
+    *REFERENCE_HARD_METAR_SOURCE_IDS,
+)
+MODULE_LOADED_AT = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 CHENGDU_TWC_LAT = 30.5728
 CHENGDU_TWC_LON = 104.0668
 CODE_RELOAD_WATCH_PATHS = (
     Path(__file__).resolve(),
     ROOT / ".env",
     ROOT / "scan_weather_market.py",
+    ROOT / "forecast_weak_likelihood_runtime.py",
+    ROOT / "scripts" / "forecast_source_forward_snapshot.py",
+    ROOT / "hierarchical_posterior_pipeline_runtime.py",
+    ROOT / "sequential_remaining_warming_bayes_runtime.py",
+    ROOT / "sequential_bayes_execution_contract.py",
+    ROOT / "target_realization_v3_runtime.py",
+    ROOT / "target_realization_execution_lock_writer.py",
+    ROOT / "metar_strong_likelihood_runtime.py",
+    ROOT / "phase_weighting_runtime.py",
+    ROOT / "posterior_ssot_projection_runtime.py",
+    ROOT / "temperature_prior_runtime.py",
+    ROOT / "weather_fact_snapshot_writer.py",
+    ROOT / "zuuu_daily_high_candidate_runtime.py",
     ROOT / "ui" / "server.py",
 )
+
+
+def _code_reload_watch_fingerprint() -> Dict[str, Any]:
+    entries: List[Dict[str, Any]] = []
+    for path in CODE_RELOAD_WATCH_PATHS:
+        try:
+            resolved = Path(path).resolve()
+            stat = resolved.stat()
+        except OSError:
+            continue
+        entries.append(
+            {
+                "name": resolved.name,
+                "mtime_ns": int(stat.st_mtime_ns),
+                "size": int(stat.st_size),
+            }
+        )
+    raw = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "hash": hashlib.sha256(raw).hexdigest()[:16],
+        "file_count": len(entries),
+    }
+
+
+def _hard_source_runtime_contract() -> Dict[str, Any]:
+    fingerprint = _code_reload_watch_fingerprint()
+    return {
+        "schema": HARD_SOURCE_RUNTIME_CONTRACT_SCHEMA,
+        "contract_version": HARD_SOURCE_RUNTIME_CONTRACT_VERSION,
+        "process_pid": os.getpid(),
+        "module_loaded_at": MODULE_LOADED_AT,
+        "code_reload_watch_hash": fingerprint.get("hash"),
+        "code_reload_watch_file_count": fingerprint.get("file_count"),
+        "reload_on_code_change_default": True,
+        "restarts_launchd": False,
+    }
 
 
 def _truthy(value: Any, default: bool = False) -> bool:
@@ -124,6 +215,103 @@ def _normalize_date(value: Any) -> str:
     except Exception:
         text = str(value or "").strip()
         return text.split("T", 1)[0].split(" ", 1)[0]
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _posterior_lineage_from_payload(payload: Mapping[str, Any]) -> Dict[str, str]:
+    if not isinstance(payload, Mapping):
+        return {}
+    lineage = payload.get("lineage_state")
+    lineage = lineage if isinstance(lineage, Mapping) else {}
+    posterior_runtime = payload.get("posterior_runtime")
+    posterior_runtime = posterior_runtime if isinstance(posterior_runtime, Mapping) else {}
+    posterior_ssot_fact = payload.get("posterior_ssot_fact")
+    posterior_ssot_fact = posterior_ssot_fact if isinstance(posterior_ssot_fact, Mapping) else {}
+    fact_snapshot_id = _first_text(
+        posterior_ssot_fact.get("fact_snapshot_id"),
+        payload.get("fact_snapshot_id"),
+        lineage.get("fact_snapshot_id"),
+    )
+    posterior_run_id = _first_text(
+        posterior_ssot_fact.get("posterior_run_id"),
+        payload.get("posterior_run_id"),
+        lineage.get("posterior_run_id"),
+        posterior_runtime.get("posterior_run_id"),
+    )
+    out: Dict[str, str] = {}
+    if fact_snapshot_id:
+        out["fact_snapshot_id"] = fact_snapshot_id
+        out["posterior_target_fact_snapshot_id"] = fact_snapshot_id
+    if posterior_run_id:
+        out["posterior_run_id"] = posterior_run_id
+        out["posterior_target_posterior_run_id"] = posterior_run_id
+    if out:
+        source = "posterior_lineage_state"
+        if posterior_ssot_fact:
+            source = "posterior_ssot_fact"
+        elif lineage:
+            source = "lineage_state"
+        out["posterior_target_lineage_source"] = source
+    return out
+
+
+def _merge_posterior_lineage(target: MutableMapping[str, Any], lineage: Mapping[str, Any]) -> None:
+    for key, value in (lineage or {}).items():
+        if value in (None, ""):
+            continue
+        if target.get(key) in (None, ""):
+            target[key] = value
+
+
+def _attach_refresh_source_acquisition_trace(
+    result: Mapping[str, Any],
+    *,
+    source_family: str,
+    station_id: str = "ZUUU",
+    event_date: str = "",
+    source_features: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    out = dict(result or {})
+    if isinstance(out.get("source_acquisition_trace"), Mapping):
+        return out
+    trace_input = dict(out)
+    if source_features is not None:
+        trace_input["source_features"] = dict(source_features)
+    try:
+        from weather_source_acquisition_manager import build_trace_from_refresh_result
+
+        out["source_acquisition_trace"] = build_trace_from_refresh_result(
+            trace_input,
+            source_family=source_family,
+            station_id=str(out.get("station_id") or station_id or ""),
+            event_date=str(out.get("event_date") or event_date or ""),
+            fetched_at=str(out.get("fact_as_of") or out.get("fetched_at") or _utc_now_iso()),
+            include_payload=False,
+        )
+    except Exception as exc:
+        out["source_acquisition_trace"] = {
+            "schema": "weather_source_acquisition_trace_v1",
+            "read_only": True,
+            "source_observations": [],
+            "source_latency_trace": [],
+            "source_class_counts": {},
+            "hard_observation_candidate_ids": [],
+            "diagnostic_current_ids": [],
+            "forecast_weak_ids": [],
+            "refresh_source_family": str(source_family or ""),
+            "refresh_status": str(out.get("status") or ""),
+            "refresh_ok": out.get("ok"),
+            "refresh_trace_error": f"{exc.__class__.__name__}: {exc}",
+            "next_boundary": "refresh_result_trace_failed_read_only",
+        }
+    return out
 
 
 def _chengdu_today() -> str:
@@ -545,13 +733,16 @@ def _to_float(value: Any) -> Optional[float]:
 
 @contextmanager
 def _connect(db_path: Path | str) -> Iterable[sqlite3.Connection]:
-    conn = sqlite3.connect(str(db_path), timeout=float(_env_float("PM_HARD_SOURCE_DB_TIMEOUT_SEC", 2.0)))
-    conn.row_factory = sqlite3.Row
-    try:
-        conn.execute(f"PRAGMA busy_timeout={max(250, _env_int('PM_HARD_SOURCE_DB_BUSY_TIMEOUT_MS', 1500))}")
+    timeout_sec = float(_env_float("PM_HARD_SOURCE_DB_TIMEOUT_SEC", 2.0))
+    busy_timeout_ms = max(250, _env_int("PM_HARD_SOURCE_DB_BUSY_TIMEOUT_MS", 1500))
+    with connect_archive_db_rw(
+        db_path,
+        owner="hard_source_direct_poller",
+        timeout_sec=timeout_sec,
+        busy_timeout_ms=busy_timeout_ms,
+        row_factory=True,
+    ) as conn:
         yield conn
-    finally:
-        conn.close()
 
 
 @contextmanager
@@ -687,6 +878,18 @@ def _append_refresh_preempt_log(payload: Mapping[str, Any]) -> None:
 def _preempt_noncritical_refreshes_for_live(*, event_date: str = "", stage: str = "") -> Dict[str, Any]:
     if not _truthy(os.environ.get("PM_HARD_SOURCE_PREEMPT_NONCRITICAL_REFRESH_ENABLED"), True):
         return {"enabled": False}
+    event_key = _normalize_date(event_date) or _chengdu_today()
+    payload = _load_latest_fact_payload(DEFAULT_DB, event_date=event_key)
+    if _payload_final_daily_max_locked(payload):
+        # Once today's hard settlement lock exists, continued one-second source
+        # polling is observational only.  It must not repeatedly terminate the
+        # discovery/model work needed to prepare the next market day.
+        return {
+            "enabled": False,
+            "reason": "current_event_final_daily_max_locked",
+            "event_date": event_key,
+            "stage": str(stage or ""),
+        }
     lane_name = str(os.environ.get("PM_REFRESH_COORDINATOR_LANE_NAME") or "weather_refresh_lane").strip()
     lane_name = "".join(ch for ch in lane_name if ch.isalnum() or ch in {"_", ".", "-"})
     if not lane_name:
@@ -857,13 +1060,6 @@ def _live_ssot_writer_lock(*, event_date: str = "", stage: str = "poll_once") ->
             }
             pid_path.write_text(str(os.getpid()), encoding="utf-8")
             meta_path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
-            preempt_result = _preempt_noncritical_refreshes_for_live(
-                event_date=event_date,
-                stage=stage,
-            )
-            if preempt_result.get("actions"):
-                payload["preempt_noncritical_refresh"] = preempt_result
-                meta_path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
         yield
     finally:
         if acquired:
@@ -909,10 +1105,25 @@ def _load_latest_fact(
         slug_sql = "AND h.slug = ?"
         params = [event_key, slug]
     cur = conn.cursor()
+    # Historical read-only fixtures and pre-lineage databases do not always
+    # carry the later composer_version column.  Keep the fact identity query
+    # schema-aware; an absent column is explicitly NA, never a model fallback.
+    try:
+        history_columns = {
+            str(row[1] or "").strip()
+            for row in cur.execute("PRAGMA table_info(event_fact_history)").fetchall()
+        }
+    except sqlite3.Error:
+        history_columns = set()
+    composer_version_sql = (
+        "h.composer_version AS composer_version"
+        if "composer_version" in history_columns
+        else "'' AS composer_version"
+    )
     cur.execute(
         f"""
         SELECT h.id, h.run_date, h.slug, h.event_date, h.fact_as_of,
-               h.model_snapshot_id, h.market_snapshot_id, h.fact_json
+               h.model_snapshot_id, h.market_snapshot_id, {composer_version_sql}, h.fact_json
         FROM event_fact_latest l
         JOIN event_fact_history h ON h.id = l.fact_id
         WHERE h.event_date = ?
@@ -983,15 +1194,8 @@ def _load_latest_fact_summary_payload(
 def _posterior_target_summary_payload_usable(payload: Mapping[str, Any]) -> bool:
     if not isinstance(payload, Mapping) or not payload:
         return False
-    for key in (
-        "posterior_target_bucket_selection",
-        "target_bucket_selection",
-        "target_realization_capital_plan",
-    ):
-        if isinstance(payload.get(key), Mapping):
-            bucket, _prob, _source = _canonical_target_from_payload(payload)
-            return bool(bucket)
-    return False
+    bucket, _prob, _source = _canonical_target_from_payload(payload)
+    return bool(bucket)
 
 
 def _load_latest_fact_snapshot_for_posterior_target(
@@ -1359,9 +1563,25 @@ def _features(payload: Mapping[str, Any]) -> Dict[str, Any]:
 
 def _rows(payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
     raw = payload.get("distribution") or payload.get("rows") or []
+    if not isinstance(raw, list) or not raw:
+        ssot = payload.get("posterior_ssot_fact")
+        ssot = ssot if isinstance(ssot, Mapping) else {}
+        raw = ssot.get("bucket_probabilities") or ssot.get("ranked_bucket_probabilities") or []
     if not isinstance(raw, list):
         return []
-    return [dict(item) for item in raw if isinstance(item, Mapping)]
+    rows: List[Dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        row = dict(item)
+        if not str(row.get("outcome") or "").strip():
+            row["outcome"] = str(row.get("bucket") or row.get("label") or "").strip()
+        if row.get("q_temperature_bucket_posterior") is None:
+            row["q_temperature_bucket_posterior"] = row.get("probability") or row.get("posterior")
+        if row.get("q_bayes_posterior") is None:
+            row["q_bayes_posterior"] = row.get("probability") or row.get("posterior")
+        rows.append(row)
+    return rows
 
 
 def _append_csv_token(raw: Any, token: str) -> str:
@@ -1381,7 +1601,9 @@ def _compact_weather_features(features: Mapping[str, Any]) -> Dict[str, Any]:
         return {
             key: value
             for key, value in dict(features).items()
-            if key.startswith("zuuu_metar_raw_awc_") or key.startswith("wu_twc_observed_intraday_")
+            if key.startswith(f"{PRIMARY_HARD_METAR_SOURCE_ID}_")
+            or key.startswith("zuuu_metar_raw_awc_")
+            or key.startswith("wu_twc_observed_intraday_")
         }
 
 
@@ -1538,37 +1760,36 @@ def _wu_twc_intraday_hard_source_demotion_reason(features: Mapping[str, Any]) ->
     return ""
 
 
-def _awc_today_max_anchor(features: Mapping[str, Any]) -> Tuple[Optional[float], str]:
-    awc_max = _to_float(features.get("zuuu_metar_raw_awc_today_max_c"))
-    if awc_max is None:
-        return None, ""
-    if any(
+def _hard_metar_source_date_mismatch(features: Mapping[str, Any], source_id: str) -> bool:
+    return any(
         _truthy(features.get(key), default=False)
         for key in (
-            "zuuu_metar_raw_awc_date_mismatch",
+            f"{source_id}_date_mismatch",
             "metar_observation_date_mismatch",
         )
-    ):
-        return None, ""
-    return float(awc_max), "zuuu_metar_raw_awc"
+    )
+
+
+def _awc_today_max_anchor(features: Mapping[str, Any]) -> Tuple[Optional[float], str]:
+    for source_id in HARD_METAR_SOURCE_IDS_IN_PRIORITY_ORDER:
+        hard_max = _to_float(features.get(f"{source_id}_today_max_c"))
+        if hard_max is None or _hard_metar_source_date_mismatch(features, source_id):
+            continue
+        return float(hard_max), source_id
+    return None, ""
 
 
 def _awc_current_temp_anchor(features: Mapping[str, Any]) -> Tuple[Optional[float], str]:
-    if any(
-        _truthy(features.get(key), default=False)
-        for key in (
-            "zuuu_metar_raw_awc_date_mismatch",
-            "metar_observation_date_mismatch",
-        )
-    ):
-        return None, ""
-    awc_current = _to_float(
-        features.get("zuuu_metar_raw_awc_latest_temp_c")
-        or features.get("metar_temperature_c")
-    )
-    if awc_current is None:
-        return None, ""
-    return float(awc_current), "zuuu_metar_raw_awc_latest"
+    for source_id in HARD_METAR_SOURCE_IDS_IN_PRIORITY_ORDER:
+        if _hard_metar_source_date_mismatch(features, source_id):
+            continue
+        current = _to_float(features.get(f"{source_id}_latest_temp_c"))
+        if current is None and source_id == PRIMARY_HARD_METAR_SOURCE_ID:
+            current = _to_float(features.get("metar_temperature_c"))
+        if current is None:
+            continue
+        return float(current), source_id
+    return None, ""
 
 
 def _canonicalize_wu_twc_observed_today_max(features: Dict[str, Any]) -> Dict[str, Any]:
@@ -1599,7 +1820,7 @@ def _canonicalize_wu_twc_observed_today_max(features: Dict[str, Any]) -> Dict[st
         features["observed_today_max_source"] = awc_source
         features["observed_today_max_trusted"] = True
         features["observed_today_max_hard_source_eligible"] = True
-        max_at = features.get("zuuu_metar_raw_awc_today_max_at")
+        max_at = features.get(f"{awc_source}_today_max_at")
         if max_at not in (None, ""):
             features["observed_today_max_at"] = max_at
         return features
@@ -1720,35 +1941,6 @@ def _clear_stale_hard_source_constraints(rows: List[Dict[str, Any]]) -> None:
         row.pop("target_adjustment_exit_reason", None)
 
 
-def _recompute_hard_source_constraints_for_payload(
-    payload: Dict[str, Any],
-    *,
-    event_date: str = "",
-) -> None:
-    rows = _rows(payload)
-    if not rows:
-        return
-    with _temporary_env({"PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED": "0"}):
-        meta = apply_hard_source_posterior_override_to_distribution(
-            rows,
-            _features(payload),
-            base_probs=_posterior_base_probs(rows),
-            market_var=str(payload.get("market_var") or "temperature_2m_max"),
-            rounding_rule=str(payload.get("rounding_rule") or ""),
-            event_tz=str(payload.get("event_tz") or payload.get("tz") or "Asia/Shanghai"),
-            event_date=event_date or str(payload.get("event_date") or ""),
-        )
-    if bool(meta.get("applied")):
-        payload["hard_source_posterior_override"] = True
-        payload["hard_source_posterior_override_meta"] = dict(meta)
-    else:
-        _clear_stale_hard_source_constraints(rows)
-        payload["hard_source_posterior_override"] = False
-        payload["hard_source_posterior_override_meta"] = dict(meta)
-    payload["distribution"] = rows
-    payload["rows"] = rows
-
-
 def _refresh_peak_estimator_features(features: Dict[str, Any]) -> None:
     try:
         peak = estimate_peak_temperature_from_features(features)
@@ -1828,7 +2020,13 @@ def _merge_source_features_into_payload(
     lineage[source_id] = {
         "source_id": source_id,
         "provider": source_features.get(f"{source_id}_provider")
-        or ("NOAA AviationWeather Raw METAR" if source_id == "zuuu_metar_raw_awc" else "Weather.com/TWC"),
+        or (
+            "AMSC PacketRetrieval Raw METAR"
+            if source_id == PRIMARY_HARD_METAR_SOURCE_ID
+            else "NOAA AviationWeather Raw METAR"
+            if source_id == "zuuu_metar_raw_awc"
+            else "Weather.com/TWC"
+        ),
         "role": source_features.get(f"{source_id}_role") or "hard_observation",
         "url": source_features.get(f"{source_id}_source_url")
         or source_features.get(f"{source_id}_url")
@@ -1844,7 +2042,8 @@ def _merge_source_features_into_payload(
     row_fields = {
         key: value
         for key, value in source_features.items()
-        if key.startswith("zuuu_metar_raw_awc_")
+        if key.startswith(f"{PRIMARY_HARD_METAR_SOURCE_ID}_")
+        or key.startswith("zuuu_metar_raw_awc_")
         or key.startswith("zuuu_metar_iem_noaaport_")
         or key.startswith("zuuu_metar_avwx_")
         or key.startswith("zuuu_metar_checkwx_")
@@ -1914,10 +2113,6 @@ def _merge_source_features_into_payload(
             else:
                 next_rows.append(row)
         merged[rows_key] = next_rows
-    _recompute_hard_source_constraints_for_payload(
-        merged,
-        event_date=str(features.get("event_date") or merged.get("event_date") or ""),
-    )
     provenance = dict(merged.get("fact_provenance") or {})
     provenance[f"{source_id}_hard_observation_refresh"] = {
         "source": source_id,
@@ -1952,6 +2147,63 @@ def _decision_ssot_context_from_payload(payload: Mapping[str, Any]) -> Dict[str,
     if not isinstance(payload, Mapping):
         return {}
     out: Dict[str, Any] = {}
+    _merge_posterior_lineage(out, _posterior_lineage_from_payload(payload))
+    posterior_ssot_fact = payload.get("posterior_ssot_fact")
+    if isinstance(posterior_ssot_fact, Mapping):
+        ssot_copy = dict(posterior_ssot_fact)
+        bucket_rows = ssot_copy.get("bucket_probabilities")
+        if isinstance(bucket_rows, list):
+            ssot_copy["bucket_probabilities"] = [
+                dict(row) if isinstance(row, Mapping) else row
+                for row in bucket_rows[:12]
+            ]
+        ranked_rows = ssot_copy.get("ranked_bucket_probabilities")
+        if isinstance(ranked_rows, list):
+            ssot_copy["ranked_bucket_probabilities"] = [
+                dict(row) if isinstance(row, Mapping) else row
+                for row in ranked_rows[:12]
+            ]
+        out["posterior_ssot_fact"] = ssot_copy
+        out["decision_ssot"] = "posterior_ssot_fact"
+        out["posterior_ssot_fact_used"] = True
+        out["posterior_ssot_target_bucket"] = ssot_copy.get("target_bucket")
+        out["posterior_ssot_target_probability"] = ssot_copy.get("target_probability")
+        out["posterior_ssot_target_probability_field"] = ssot_copy.get("target_probability_field")
+        out["posterior_ssot_phase"] = ssot_copy.get("phase")
+        out["posterior_ssot_beta_weak"] = ssot_copy.get("beta_weak")
+        out["posterior_ssot_beta_strong"] = ssot_copy.get("beta_strong")
+        out["posterior_ssot_hard_mask_reason"] = ssot_copy.get("hard_mask_reason")
+        out["posterior_composer_schema"] = (
+            payload.get("posterior_composer_schema")
+            or ssot_copy.get("posterior_composer_schema")
+        )
+        out["posterior_activation_mode"] = (
+            payload.get("posterior_activation_mode")
+            or ssot_copy.get("posterior_activation_mode")
+        )
+    execution_contract = payload.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        out["sequential_bayes_execution_contract"] = dict(execution_contract)
+        out["sequential_bayes_execution_contract_id"] = execution_contract.get("contract_id")
+        out["signal_to_order_slo_ms"] = execution_contract.get("signal_to_order_slo_ms")
+        out["signal_to_order_hard_deadline_ms"] = execution_contract.get(
+            "signal_to_order_hard_deadline_ms"
+        )
+        out["signal_to_order_slo_deadline_at"] = execution_contract.get(
+            "signal_to_order_slo_deadline_at"
+        )
+        out["signal_to_order_hard_deadline_at"] = execution_contract.get(
+            "signal_to_order_hard_deadline_at"
+        )
+        for key in (
+            "observation_trigger_at",
+            "observation_trigger_time_source",
+            "observation_to_order_slo_ms",
+            "observation_to_order_hard_deadline_ms",
+            "observation_to_order_slo_deadline_at",
+            "observation_to_order_hard_deadline_at",
+        ):
+            out[key] = execution_contract.get(key)
     plan = payload.get("target_realization_capital_plan")
     if isinstance(plan, Mapping):
         plan_copy = dict(plan)
@@ -2009,9 +2261,6 @@ def _decision_ssot_context_from_payload(payload: Mapping[str, Any]) -> Dict[str,
                 out["temperature_path_trade_follow_allowed"] = trade_follow.get("allowed")
             if "temperature_path_trade_follow_reason" not in out and trade_follow.get("reason") not in (None, ""):
                 out["temperature_path_trade_follow_reason"] = trade_follow.get("reason")
-    selection = payload.get("target_bucket_selection")
-    if isinstance(selection, Mapping):
-        out["target_bucket_selection"] = dict(selection)
     return {key: value for key, value in out.items() if value not in (None, "", [], {})}
 
 
@@ -2070,6 +2319,320 @@ def _merge_temperature_path_derived_fields(
     return merged
 
 
+def _hard_source_fact_writer_apply_enabled(value: Any = None) -> bool:
+    if value is None:
+        value = os.environ.get("PM_HARD_SOURCE_FACT_WRITER_APPLY_ENABLED")
+    return _truthy(value, True)
+
+
+def _source_payloads_from_fact_payload(
+    payload: Mapping[str, Any],
+    *,
+    station_id: str,
+    event_date: str,
+    fact_as_of: str,
+) -> List[Dict[str, Any]]:
+    from weather_source_acquisition_manager import source_payloads_from_fact_payload
+
+    return source_payloads_from_fact_payload(
+        payload,
+        station_id=station_id,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        hard_observation=_hard_observation_from_payload(payload, allow_wu_twc_fallback=False),
+    )
+
+
+def _build_hard_source_fact_source_acquisition_trace(
+    payload: Mapping[str, Any],
+    *,
+    latest_row: sqlite3.Row,
+    fact_as_of: str,
+) -> Dict[str, Any]:
+    existing = payload.get("source_acquisition_trace")
+    if isinstance(existing, Mapping) and existing.get("source_observations"):
+        return dict(existing)
+    try:
+        from weather_source_acquisition_manager import build_source_acquisition_trace
+
+        event_date = _normalize_date(payload.get("event_date") or latest_row["event_date"])
+        station_id = _first_text(payload.get("station_id"), _features(payload).get("station_id"), "ZUUU")
+        sources = _source_payloads_from_fact_payload(
+            payload,
+            station_id=station_id,
+            event_date=event_date,
+            fact_as_of=fact_as_of,
+        )
+        return build_source_acquisition_trace(
+            sources=sources,
+            station_id=station_id,
+            event_date=event_date,
+            fetched_at=fact_as_of,
+            include_payload=False,
+        )
+    except Exception as exc:
+        from source_observation_runtime import build_source_observation
+
+        event_date = _normalize_date(payload.get("event_date") or latest_row["event_date"])
+        station_id = _first_text(payload.get("station_id"), _features(payload).get("station_id"), "ZUUU")
+        hard_observation = _hard_observation_from_payload(payload, allow_wu_twc_fallback=False)
+        features = _features(payload)
+        value_c = _to_float(
+            hard_observation.get("value_c")
+            or features.get(f"{PRIMARY_HARD_METAR_SOURCE_ID}_today_max_c")
+            or features.get(f"{PRIMARY_HARD_METAR_SOURCE_ID}_latest_temp_c")
+            or features.get("zuuu_metar_raw_awc_today_max_c")
+            or features.get("observed_today_max_c")
+            or payload.get("observed_today_max_c")
+        )
+        valid_time = _first_text(
+            hard_observation.get("observed_at"),
+            features.get(f"{PRIMARY_HARD_METAR_SOURCE_ID}_today_max_at"),
+            features.get(f"{PRIMARY_HARD_METAR_SOURCE_ID}_latest_at"),
+            features.get("zuuu_metar_raw_awc_today_max_at"),
+            features.get("zuuu_metar_raw_awc_latest_at"),
+            payload.get("valid_time"),
+            fact_as_of,
+        )
+        source_id = _first_text(
+            hard_observation.get("source_id"),
+            payload.get("observed_today_max_source"),
+            PRIMARY_HARD_METAR_SOURCE_ID,
+        )
+        observation_obj = build_source_observation(
+            source_id=source_id,
+            station_id=station_id,
+            event_date=event_date,
+            valid_time=valid_time,
+            fetched_at=fact_as_of,
+            response_completed_at=fact_as_of,
+            temperature_c=value_c,
+            observed_today_max_c=value_c,
+            raw_ref=_first_text(hard_observation.get("raw"), f"event_fact_history:{latest_row['id']}"),
+            raw_payload=hard_observation or payload,
+            parser_version="hard_source_fact_writer_fallback_source_trace_v1",
+            overrides={
+                "source_class": "hard_observation_candidate" if hard_observation else "unknown_source",
+                "role": "metar_hard_observation" if hard_observation else "hard_source_fact_writer_fallback_lineage",
+                "hard_eligible": bool(hard_observation),
+                "demotion_reason": "" if hard_observation else "source_manager_trace_build_failed",
+            },
+            payload={
+                "source_payload_schema": "hard_source_fact_writer_fallback_source_payload_v1",
+                "trace_error": f"{exc.__class__.__name__}: {exc}",
+                "parent_fact_id": latest_row["id"],
+            },
+        )
+        observation = observation_obj.as_dict(include_payload=True)
+        return {
+            "schema": "weather_source_acquisition_trace_v1",
+            "read_only": True,
+            "trace_built_at": _utc_now_iso(),
+            "station_id": station_id,
+            "event_date": event_date,
+            "source_observations": [observation],
+            "source_latency_trace": [
+                {
+                    "source_event_id": observation_obj.source_event_id,
+                    "source_observation_id": observation_obj.source_observation_id,
+                    "source_id": observation_obj.source_id,
+                    "source_class": observation_obj.source_class,
+                    "role": observation_obj.role,
+                    "station_id": station_id,
+                    "event_date": event_date,
+                    "valid_time": observation_obj.valid_time,
+                    "fetched_at": observation_obj.fetched_at,
+                    "response_completed_at": observation_obj.response_completed_at,
+                    "temperature_c": observation_obj.temperature_c,
+                    "observed_today_max_c": observation_obj.observed_today_max_c,
+                    "raw_ref": observation_obj.raw_ref,
+                    "raw_sha256": observation_obj.raw_sha256,
+                    "hard_eligible": observation_obj.hard_eligible,
+                    "demotion_reason": observation_obj.demotion_reason,
+                }
+            ],
+            "source_event_ids": [observation_obj.source_event_id],
+            "source_observation_ids": [observation_obj.source_observation_id],
+            "hard_observation_candidate_ids": [observation_obj.source_event_id] if observation_obj.hard_eligible else [],
+            "diagnostic_current_ids": [],
+            "forecast_weak_ids": [],
+            "trace_error": f"{exc.__class__.__name__}: {exc}",
+            "next_boundary": "fact_snapshot_writer_dry_run_or_no_apply",
+        }
+
+
+def _append_unique_text(target: List[str], value: Any) -> None:
+    text = str(value or "").strip()
+    if text and text not in target:
+        target.append(text)
+
+
+def _extend_hard_source_writer_trace_lineage(
+    source_trace: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Keep writer expected lineage aligned with signal metadata carried by the fact."""
+
+    trace = dict(source_trace or {})
+    source_event_ids: List[str] = []
+    source_observation_ids: List[str] = []
+
+    for value in trace.get("source_event_ids") or []:
+        _append_unique_text(source_event_ids, value)
+    for value in trace.get("hard_observation_candidate_ids") or []:
+        _append_unique_text(source_event_ids, value)
+    for value in trace.get("diagnostic_current_ids") or []:
+        _append_unique_text(source_event_ids, value)
+    for value in trace.get("forecast_weak_ids") or []:
+        _append_unique_text(source_event_ids, value)
+    for row in trace.get("source_observations") or []:
+        if isinstance(row, Mapping):
+            _append_unique_text(source_event_ids, row.get("source_event_id"))
+            _append_unique_text(source_observation_ids, row.get("source_observation_id"))
+    for row in trace.get("source_latency_trace") or []:
+        if isinstance(row, Mapping):
+            _append_unique_text(source_event_ids, row.get("source_event_id"))
+            _append_unique_text(source_observation_ids, row.get("source_observation_id"))
+    for value in trace.get("source_observation_ids") or []:
+        _append_unique_text(source_observation_ids, value)
+
+    for key in ("hard_source_acceptance_state", "signal_to_order_timing"):
+        nested = payload.get(key)
+        if not isinstance(nested, Mapping):
+            continue
+        _append_unique_text(source_event_ids, nested.get("source_event_id"))
+        _append_unique_text(source_observation_ids, nested.get("source_observation_id"))
+        for value in nested.get("source_event_ids") or []:
+            _append_unique_text(source_event_ids, value)
+        for value in nested.get("source_observation_ids") or []:
+            _append_unique_text(source_observation_ids, value)
+        lineage = nested.get("lineage")
+        if isinstance(lineage, Mapping):
+            for value in lineage.get("source_event_ids") or []:
+                _append_unique_text(source_event_ids, value)
+            for value in lineage.get("source_observation_ids") or []:
+                _append_unique_text(source_observation_ids, value)
+
+    trace["source_event_ids"] = source_event_ids
+    trace["source_observation_ids"] = source_observation_ids
+    return trace
+
+
+def _compact_hard_source_fact_payload_for_writer(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not _truthy(payload.get("awc_hard_observation_fast_trade_write"), False) and not _truthy(
+        payload.get("posterior_target_direct_fast_trade_write"),
+        False,
+    ):
+        return payload
+    try:
+        from ui.server import _compact_fact_payload_for_fast_trade_write
+
+        _compact_fact_payload_for_fast_trade_write(payload)
+    except Exception as exc:
+        provenance = dict(payload.get("fact_provenance") or {})
+        provenance["fast_trade_payload_compaction_error"] = f"{exc.__class__.__name__}: {exc}"
+        payload["fact_provenance"] = provenance
+        for key in (
+            "chengdu_intraday_summary",
+            "target_bucket_outlook",
+            "temperature_path_distribution",
+            "temperature_realization_reliability",
+            "temperature_trajectory_status",
+            "target_switch_context",
+            "evidence_conclusions",
+            "decision",
+            "key_metrics",
+        ):
+            payload.pop(key, None)
+        for rows_key in ("distribution", "rows"):
+            rows = payload.get(rows_key)
+            if not isinstance(rows, list):
+                continue
+            next_rows: List[Any] = []
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    next_rows.append(row)
+                    continue
+                compact_row = dict(row)
+                for key in (
+                    "bayes_chain",
+                    "peak_estimator",
+                    "per_model_q",
+                    "q_ensemble_qm_meta",
+                    "q_bayes_physical_d0_explanation",
+                    "q_bayes_climo_regime_explanation",
+                    "q_bayes_physical_likelihood_component_groups",
+                    "q_bayes_physical_likelihood_components",
+                    "q_bayes_physical_likelihood_evidence_scale_details",
+                    "q_model_member_bucket_rule_meta",
+                ):
+                    compact_row.pop(key, None)
+                next_rows.append(compact_row)
+            payload[rows_key] = next_rows
+    return payload
+
+
+def build_hard_source_fact_snapshot_writer_apply_plan(
+    conn: sqlite3.Connection,
+    *,
+    latest_row: sqlite3.Row,
+    item: Mapping[str, Any],
+    fact_as_of: str,
+    write_reason: str = "",
+) -> Dict[str, Any]:
+    from weather_fact_snapshot_writer import build_fact_snapshot_write_plan
+
+    event_date = _normalize_date(item.get("event_date") or latest_row["event_date"])
+    run_date = _normalize_date(item.get("run_date") or latest_row["run_date"] or event_date)
+    slug = str(item.get("slug") or latest_row["slug"] or "").strip()
+    payload = dict(item or {})
+    payload.setdefault("slug", slug)
+    payload.setdefault("event_date", event_date)
+    payload.setdefault("run_date", run_date)
+    payload.setdefault("fact_as_of", fact_as_of)
+    payload.setdefault("model_snapshot_id", _to_int(latest_row["model_snapshot_id"]))
+    payload.setdefault("market_snapshot_id", _to_int(latest_row["market_snapshot_id"]))
+    payload.setdefault("composer_version", HARD_SOURCE_FACT_WRITER_COMPOSER_VERSION)
+    payload = _compact_hard_source_fact_payload_for_writer(payload)
+    current_payload = _json_loads(latest_row["fact_json"])
+    source_trace = _build_hard_source_fact_source_acquisition_trace(
+        payload,
+        latest_row=latest_row,
+        fact_as_of=fact_as_of,
+    )
+    source_trace = _extend_hard_source_writer_trace_lineage(source_trace, payload)
+    plan = build_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=payload,
+        current_fact_id=_to_int(latest_row["id"]),
+        current_fact_as_of=str(latest_row["fact_as_of"] or ""),
+        current_payload=current_payload,
+        source_acquisition_trace=source_trace,
+        composer_version=HARD_SOURCE_FACT_WRITER_COMPOSER_VERSION,
+        write_reason=write_reason or str(payload.get("hard_source_fact_write_reason") or "hard_source_realtime_fact_snapshot"),
+        include_payload=True,
+        enable_apply_contract=True,
+        write_latest=True,
+        prior_history_conn=conn,
+    )
+    plan["caller"] = {
+        "module": "scripts/hard_source_direct_poller.py",
+        "function": "build_hard_source_fact_snapshot_writer_apply_plan",
+        "lane": "hard_source_realtime",
+        "kill_switch_env": "PM_HARD_SOURCE_FACT_WRITER_APPLY_ENABLED=0",
+    }
+    plan["guards"] = {
+        "writes_archive_db": False,
+        "places_orders": False,
+        "historical_backfill": False,
+        "restarts_launchd": False,
+        "executes_sql": False,
+    }
+    return plan
+
 def _insert_fact_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -2078,34 +2641,36 @@ def _insert_fact_snapshot(
     fact_as_of: str,
 ) -> Optional[int]:
     try:
-        from ui.server import (
-            FACTS_COMPOSER_VERSION,
-            _insert_event_fact_history,
-            _upsert_event_fact_latest,
-            ensure_fact_tables,
+        if not _hard_source_fact_writer_apply_enabled():
+            return None
+        from weather_fact_snapshot_writer import (
+            apply_fact_snapshot_write_plan,
+            compact_fact_snapshot_writer_apply_result_for_lineage,
         )
 
-        ensure_fact_tables(conn)
-        fact_id = _insert_event_fact_history(
+        plan = build_hard_source_fact_snapshot_writer_apply_plan(
             conn,
-            run_date=_normalize_date(item.get("run_date") or latest_row["run_date"]),
-            slug=str(item.get("slug") or latest_row["slug"] or ""),
-            event_date=_normalize_date(item.get("event_date") or latest_row["event_date"]),
+            latest_row=latest_row,
+            item=item,
             fact_as_of=fact_as_of,
-            model_snapshot_id=_to_int(latest_row["model_snapshot_id"]),
-            market_snapshot_id=_to_int(latest_row["market_snapshot_id"]),
-            composer_version=FACTS_COMPOSER_VERSION,
-            item=dict(item),
+            write_reason=str(item.get("hard_source_fact_write_reason") or ""),
         )
-        if fact_id:
-            _upsert_event_fact_latest(
-                conn,
-                str(item.get("slug") or latest_row["slug"] or ""),
-                _normalize_date(item.get("event_date") or latest_row["event_date"]),
-                int(fact_id),
+        result = apply_fact_snapshot_write_plan(
+            conn,
+            plan,
+            allow_apply=True,
+            commit=True,
+            created_at=fact_as_of,
+        )
+        result_summary = compact_fact_snapshot_writer_apply_result_for_lineage(result)
+        if isinstance(item, MutableMapping):
+            item["writer_apply_result_summary"] = result_summary
+            item["post_apply_persisted_verification_ok"] = bool(
+                result_summary.get("post_apply_persisted_verification_ok")
             )
-            conn.commit()
-        return int(fact_id) if fact_id else None
+        if not bool(result.get("ok")) or not bool(result.get("applied")):
+            return None
+        return int(result.get("fact_id") or 0) or None
     except Exception:
         return None
 
@@ -2123,197 +2688,71 @@ def _event_fact_summary_cache_exists(conn: sqlite3.Connection, fact_id: int) -> 
     return row is not None
 
 
-def _materialize_ctp_payload(payload: Mapping[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    try:
-        from scripts.materialize_ctp_latest_facts import _materialize_payload
-    except Exception as exc:
-        return dict(payload or {}), {
-            "ok": False,
-            "reason": "ctp_materializer_import_failed",
-            "error": f"{exc.__class__.__name__}: {exc}",
-        }
-    return _materialize_payload(payload)
-
-
-def _payload_ctp_bucket_probabilities(payload: Mapping[str, Any]) -> Dict[str, float]:
-    posterior = payload.get("posterior_temperature_distribution") if isinstance(payload, Mapping) else None
-    bucket_probs = posterior.get("bucket_probabilities") if isinstance(posterior, Mapping) else None
-    out: Dict[str, float] = {}
-    if isinstance(bucket_probs, Mapping):
-        for key, value in bucket_probs.items():
-            prob = _to_float(value)
-            if prob is not None:
-                out[str(key)] = max(0.0, min(1.0, float(prob)))
-        return out
-    if isinstance(bucket_probs, list):
-        for item in bucket_probs:
-            if not isinstance(item, Mapping):
-                continue
-            label = str(item.get("outcome") or item.get("label") or item.get("bucket") or "").strip()
-            prob = _to_float(item.get("probability") or item.get("prob") or item.get("p"))
-            if label and prob is not None:
-                out[label] = max(0.0, min(1.0, float(prob)))
-    return out
-
-
-def _ctp_probability_changed(before: Mapping[str, float], after: Mapping[str, float]) -> bool:
-    keys = set(before.keys()) | set(after.keys())
-    if not keys:
-        return False
-    return any(abs(float(before.get(key, 0.0)) - float(after.get(key, 0.0))) > 1e-9 for key in keys)
-
-
-def _recompute_ctp_latest_fact(
-    db_path: Path | str,
+def _project_posterior_payload(
+    payload: Mapping[str, Any],
     *,
+    conn: sqlite3.Connection,
+    db_path: Path,
+    slug: str,
     event_date: str,
-    slug: str = "",
-    reason: str,
+    run_date: str,
+    fact_as_of: str,
+    current_fact_id: int,
+    composer_version: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    projection = build_fact_projection_no_apply(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=fact_as_of,
+        payload=payload,
+        current_fact_id=current_fact_id,
+        current_fact_as_of=fact_as_of,
+        composer_version=composer_version,
+        db_path=db_path,
+        conn=conn,
+        write_reason="hard_source_direct_posterior_projection",
+        enable_apply_contract=True,
+        write_latest=True,
+    )
+    projected = projection.get("projected_payload")
+    if not isinstance(projected, Mapping):
+        projected = payload
+    return dict(projected), {
+        "ok": bool(projection.get("ok")),
+        "reason": str(projection.get("projection_mode") or "posterior_projection"),
+        "issues": list(projection.get("issues") or []),
+    }
+
+
+def _archive_forecast_source_forward_metrics(
+    *,
+    source_id: str,
+    event_date: str,
+    station_id: str,
+    metrics: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    if not _truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_RECOMPUTE_CTP_INLINE"), True):
-        return {"ok": True, "status": "disabled", "reason": "env_disabled"}
-    started_mono = time.monotonic()
-    recompute_started_at = _utc_now_iso()
-    event_key = _normalize_date(event_date) or _chengdu_today()
-    db = Path(db_path)
+    if not _truthy(os.environ.get("FORECAST_SOURCE_FORWARD_ARCHIVE_ENABLED"), False):
+        return {"ok": True, "state": "disabled", "writes_research_files": False}
     try:
-        conn_ctx = _connect(db)
-    except sqlite3.Error as exc:
+        from scripts.forecast_source_forward_snapshot import write_forward_metrics_snapshot
+
+        return dict(
+            write_forward_metrics_snapshot(
+                source_id=source_id,
+                target_event_date_local=event_date,
+                station_id=station_id,
+                metrics=dict(metrics),
+                observed_at=datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
+                allow_research_write=True,
+            )
+        )
+    except Exception as exc:
         return {
             "ok": False,
-            "status": "latest_fact_missing",
-            "event_date": event_key,
-            "error": f"{exc.__class__.__name__}: {exc}",
-            "retryable": True,
-        }
-    with conn_ctx as conn:
-        try:
-            latest = _load_latest_fact(conn, event_date=event_key, slug=slug)
-        except sqlite3.Error as exc:
-            return {
-                "ok": False,
-                "status": "latest_fact_missing",
-                "event_date": event_key,
-                "error": f"{exc.__class__.__name__}: {exc}",
-                "retryable": True,
-            }
-        if latest is None:
-            return {"ok": False, "status": "latest_fact_missing", "event_date": event_key}
-        payload = _json_loads(latest["fact_json"])
-        if not payload:
-            return {"ok": False, "status": "latest_fact_json_invalid", "event_date": event_key}
-        before_probs = _payload_ctp_bucket_probabilities(payload)
-        materialized, meta = _materialize_ctp_payload(payload)
-        if not bool(meta.get("ok")):
-            return {
-                "ok": False,
-                "status": "ctp_materialize_failed",
-                "event_date": event_key,
-                "slug": str(latest["slug"] or slug or payload.get("slug") or ""),
-                "meta": dict(meta),
-            }
-        after_probs = _payload_ctp_bucket_probabilities(materialized)
-        changed = _ctp_probability_changed(before_probs, after_probs)
-        if before_probs and after_probs and not changed and _truthy(
-            os.environ.get("PM_POSTERIOR_TARGET_DIRECT_SKIP_UNCHANGED_CTP_FACT"),
-            True,
-        ):
-            return {
-                "ok": True,
-                "status": "unchanged",
-                "event_date": event_key,
-                "slug": str(latest["slug"] or slug or payload.get("slug") or ""),
-                "fact_id": int(latest["id"] or 0),
-                "reason": reason,
-                "bucket_count": len(after_probs),
-            }
-        recomputed_at = _utc_now_iso()
-        item = dict(materialized)
-        item["slug"] = str(latest["slug"] or item.get("slug") or slug or "")
-        item["event_date"] = _normalize_date(item.get("event_date") or latest["event_date"] or event_key)
-        item["run_date"] = _normalize_date(item.get("run_date") or latest["run_date"] or event_key)
-        item["posterior_target_direct_inline_ctp_recomputed_at"] = recomputed_at
-        item["posterior_target_direct_inline_ctp_recompute_reason"] = str(reason or "source_fact_updated")
-        item["posterior_target_direct_source_fact_id"] = int(latest["id"] or 0)
-        item["posterior_target_direct_source_fact_as_of"] = str(latest["fact_as_of"] or "")
-        item["posterior_target_direct_source_fact_to_ctp_recompute_ms"] = _latency_ms_between(
-            str(latest["fact_as_of"] or ""),
-            recomputed_at,
-        )
-        item["posterior_target_direct_ctp_recompute_ms"] = round(
-            max(0.0, time.monotonic() - started_mono) * 1000.0,
-            3,
-        )
-        provenance = dict(item.get("fact_provenance") or {})
-        provenance["posterior_target_direct_inline_ctp_recompute"] = {
-            "source": "hard_source_direct_poller",
-            "reason": str(reason or "source_fact_updated"),
-            "source_fact_id": int(latest["id"] or 0),
-            "source_fact_as_of": str(latest["fact_as_of"] or ""),
-            "recomputed_at": recomputed_at,
-        }
-        fast_trade_write = _truthy(
-            os.environ.get("PM_POSTERIOR_TARGET_DIRECT_RECOMPUTE_FAST_TRADE_WRITE"),
-            True,
-        )
-        if fast_trade_write:
-            item["posterior_target_direct_fast_trade_write"] = True
-            provenance["posterior_target_direct_fast_trade_write_requested"] = {
-                "source": "hard_source_direct_poller",
-                "reason": str(reason or "source_fact_updated"),
-                "ui_rich_fields_deferred": True,
-            }
-        item["fact_provenance"] = provenance
-        fact_id = _insert_fact_snapshot(conn, latest_row=latest, item=item, fact_as_of=recomputed_at)
-        summary_cache_ok = False
-        summary_cache_checked = False
-        summary_cache_write_error = ""
-        if fact_id:
-            if fast_trade_write:
-                summary_cache_checked = True
-                summary_cache_ok = _event_fact_summary_cache_exists(conn, int(fact_id))
-            else:
-                try:
-                    from scripts.materialize_ctp_latest_facts import _upsert_summary_cache
-
-                    row = conn.execute("SELECT * FROM event_fact_history WHERE id = ?", (int(fact_id),)).fetchone()
-                    if row is not None:
-                        summary_cache_ok = bool(
-                            _upsert_summary_cache(
-                                conn,
-                                fact_id=int(fact_id),
-                                row=row,
-                                payload=item,
-                                created_at=recomputed_at,
-                            )
-                        )
-                        conn.commit()
-                except Exception as exc:
-                    summary_cache_write_error = f"{exc.__class__.__name__}: {exc}"
-                    summary_cache_ok = False
-                summary_cache_checked = True
-                if not summary_cache_ok:
-                    summary_cache_ok = _event_fact_summary_cache_exists(conn, int(fact_id))
-        return {
-            "ok": bool(fact_id),
-            "status": "recomputed" if fact_id else "insert_failed",
-            "event_date": event_key,
-            "slug": item.get("slug"),
-            "source_fact_id": int(latest["id"] or 0),
-            "fact_id": int(fact_id or 0) if fact_id else None,
-            "reason": reason,
-            "probability_changed": bool(changed),
-            "bucket_count": len(after_probs),
-            "source_fact_to_ctp_recompute_ms": item.get(
-                "posterior_target_direct_source_fact_to_ctp_recompute_ms"
-            ),
-            "ctp_recompute_ms": item.get("posterior_target_direct_ctp_recompute_ms"),
-            "summary_cache_ok": bool(summary_cache_ok),
-            "summary_cache_checked": bool(summary_cache_checked),
-            "summary_cache_write_error": summary_cache_write_error,
-            "meta": dict(meta),
-            "started_at": recompute_started_at,
-            "recomputed_at": recomputed_at,
+            "state": "unavailable",
+            "state_reason": f"forward_research_archive_failed:{exc.__class__.__name__}",
+            "writes_research_files": False,
         }
 
 
@@ -2329,17 +2768,165 @@ def _refresh_result_updated(result: Mapping[str, Any]) -> bool:
 def _awc_release_watch_interval(now_utc: Optional[datetime] = None) -> Optional[float]:
     if not _truthy(os.environ.get("PM_HARD_SOURCE_AWC_RELEASE_WATCH_ENABLED"), True):
         return None
-    window_min = max(0.0, _env_float("PM_HARD_SOURCE_AWC_RELEASE_WATCH_WINDOW_MIN", 8.0))
-    if window_min <= 0:
+    start_min = max(0.0, min(59.999, _env_float("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_START_MIN", 5.0)))
+    duration_sec = max(0.0, _env_float("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_DURATION_SEC", 120.0))
+    end_min = min(60.0, start_min + duration_sec / 60.0)
+    if end_min <= start_min:
         return None
     current = now_utc or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     current = current.astimezone(timezone.utc)
     minute_offset = float(current.minute) + float(current.second) / 60.0 + float(current.microsecond) / 60_000_000.0
-    if minute_offset <= window_min:
+    if start_min <= minute_offset < end_min:
         return max(0.2, _env_float("PM_HARD_SOURCE_AWC_RELEASE_WATCH_POLL_SEC", 1.0))
     return None
+
+
+def _awc_release_watch_target_at(now_utc: Optional[datetime] = None) -> Optional[datetime]:
+    if _awc_release_watch_interval(now_utc) is None:
+        return None
+    current = now_utc or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    return current.replace(minute=0, second=0, microsecond=0)
+
+
+def _payload_final_daily_max_locked(payload: Mapping[str, Any]) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    if payload.get("settlement_actual") not in (None, ""):
+        return True
+    features = _features(payload)
+    for container in (payload, features):
+        if any(
+            _truthy(container.get(key), default=False)
+            for key in (
+                "final_bucket_lock",
+                "hard_source_final_bucket_lock",
+                "observed_today_max_final",
+                "hard_source_final_daily_max",
+                "hard_source_settlement_final",
+                "temperature_observation_final_daily_max",
+                "official_final_result",
+                "final_daily_max_bucket_lock",
+            )
+        ):
+            return True
+    return False
+
+
+def _payload_event_end_utc(payload: Mapping[str, Any]) -> str:
+    if not isinstance(payload, Mapping):
+        return ""
+    market_meta = payload.get("market_meta")
+    if not isinstance(market_meta, Mapping):
+        market_meta = {}
+    return str(
+        payload.get("event_end_utc")
+        or market_meta.get("event_end_utc")
+        or ""
+    ).strip()
+
+
+def _awc_event_end_final_watch_context(
+    payload: Mapping[str, Any],
+    *,
+    now_utc: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    if not _truthy(os.environ.get("PM_HARD_SOURCE_AWC_FINAL_WATCH_ENABLED"), True):
+        return {"active": False, "reason": "awc_final_watch_disabled"}
+    if not isinstance(payload, Mapping) or not payload:
+        return {"active": False, "reason": "fact_payload_missing"}
+    if _payload_final_daily_max_locked(payload):
+        return {"active": False, "reason": "final_daily_max_already_locked"}
+    event_end_text = _payload_event_end_utc(payload)
+    event_end_dt = _parse_iso_dt(event_end_text)
+    if event_end_dt is None:
+        return {"active": False, "reason": "event_end_utc_missing"}
+    current = now_utc or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    event_end_utc = event_end_dt.astimezone(timezone.utc)
+    start_delay_sec = max(0.0, _env_float("PM_HARD_SOURCE_AWC_FINAL_WATCH_START_DELAY_SEC", 0.0))
+    duration_sec = max(0.0, _env_float("PM_HARD_SOURCE_AWC_FINAL_WATCH_DURATION_SEC", 900.0))
+    watch_start = event_end_utc + timedelta(seconds=float(start_delay_sec))
+    watch_end = event_end_utc + timedelta(seconds=float(start_delay_sec + duration_sec))
+    if current < watch_start:
+        return {
+            "active": False,
+            "reason": "before_awc_final_watch_window",
+            "event_end_utc": event_end_utc.isoformat(),
+            "watch_start_utc": watch_start.isoformat(),
+            "watch_end_utc": watch_end.isoformat(),
+        }
+    if duration_sec <= 0.0 or current > watch_end:
+        return {
+            "active": False,
+            "reason": "after_awc_final_watch_window",
+            "event_end_utc": event_end_utc.isoformat(),
+            "watch_start_utc": watch_start.isoformat(),
+            "watch_end_utc": watch_end.isoformat(),
+        }
+    poll_sec = max(
+        0.2,
+        _env_float(
+            "PM_HARD_SOURCE_AWC_FINAL_WATCH_POLL_SEC",
+            _env_float("PM_HARD_SOURCE_AWC_RELEASE_WATCH_POLL_SEC", 1.0),
+        ),
+    )
+    return {
+        "active": True,
+        "reason": "awc_final_daily_max_event_end_watch",
+        "target_at": event_end_utc,
+        "target_at_utc": event_end_utc.isoformat(),
+        "event_end_utc": event_end_utc.isoformat(),
+        "watch_start_utc": watch_start.isoformat(),
+        "watch_end_utc": watch_end.isoformat(),
+        "poll_sec": float(poll_sec),
+    }
+
+
+def _awc_event_end_final_watch_target_at(
+    payload: Mapping[str, Any],
+    *,
+    now_utc: Optional[datetime] = None,
+) -> Optional[datetime]:
+    context = _awc_event_end_final_watch_context(payload, now_utc=now_utc)
+    target = context.get("target_at")
+    return target if bool(context.get("active")) and isinstance(target, datetime) else None
+
+
+def _awc_release_result_reached_target(
+    result: Mapping[str, Any],
+    target_at: Optional[datetime],
+) -> bool:
+    if target_at is None:
+        return True
+    if not isinstance(result, Mapping):
+        return False
+    final_state = str(result.get("awc_final_daily_max_state") or "").strip()
+    if final_state in {
+        "awc_latest_after_today_max_and_cooling_post_peak",
+        "awc_post_peak_cooling_is_probabilistic_not_final",
+    }:
+        return False
+    if any(
+        _truthy(result.get(key), default=False)
+        for key in (
+            "awc_final_daily_max",
+            "hard_source_final_daily_max",
+            "observed_today_max_final",
+            "temperature_observation_final_daily_max",
+        )
+    ):
+        return True
+    latest = _parse_iso_dt(result.get("awc_latest_at") or result.get("latest_at"))
+    if latest is None:
+        return False
+    return latest.astimezone(timezone.utc) >= target_at.astimezone(timezone.utc)
 
 
 def _awc_refresh_hours(event_date: str = "", now_utc: Optional[datetime] = None) -> int:
@@ -2386,58 +2973,84 @@ def _refresh_awc_fact(
     hours: int,
     heartbeat_sec: int,
 ) -> Dict[str, Any]:
-    previous = os.environ.get("PM_AWC_FACT_REFRESH_HEARTBEAT_SEC")
-    write_heartbeat = _env_int("PM_HARD_SOURCE_AWC_FACT_WRITE_HEARTBEAT_SEC", 0)
-    if write_heartbeat is None:
-        write_heartbeat = 0
-    os.environ["PM_AWC_FACT_REFRESH_HEARTBEAT_SEC"] = str(max(0, int(write_heartbeat)))
-    try:
-        from ui.server import refresh_awc_fact_for_chengdu_event
+    """Fetch AWC as reference evidence without changing the posterior SSOT.
 
-        try:
-            with _temporary_env(
-                {
-                    "PM_FACT_REFRESH_WRITE_RETRY_ATTEMPTS": str(
-                        max(1, _env_int("PM_HARD_SOURCE_AWC_WRITE_RETRY_ATTEMPTS", 1))
-                    ),
-                    "PM_FACT_REFRESH_WRITE_RETRY_SLEEP_SEC": str(
-                        max(0.05, _env_float("PM_HARD_SOURCE_AWC_WRITE_RETRY_SLEEP_SEC", 0.05))
-                    ),
-                }
-            ):
-                return dict(
-                    refresh_awc_fact_for_chengdu_event(
-                        db_path,
-                        event_date=event_date,
-                        hours=hours,
-                        connect_timeout_sec=max(
-                            0.05,
-                            _env_float("PM_HARD_SOURCE_AWC_DB_CONNECT_TIMEOUT_SEC", 0.6),
-                        ),
-                        busy_timeout_ms=max(
-                            0,
-                            _env_int("PM_HARD_SOURCE_AWC_DB_BUSY_TIMEOUT_MS", 750),
-                        ),
-                        include_cross_checks=_truthy(
-                            os.environ.get("PM_HARD_SOURCE_AWC_INLINE_CROSS_CHECKS"),
-                            False,
-                        ),
-                    )
-                    or {}
-                )
-        except Exception as exc:
-            return {
+    AWC is a secondary METAR candidate.  It is not permitted to write an
+    ``event_facts`` row, repoint ``event_fact_latest``, or trigger a posterior
+    recomputation.  The canonical AMSC materializer is the sole producer of
+    D0 observation facts and posterior updates.
+    """
+    del heartbeat_sec  # This read-only path has no write heartbeat.
+    event_key = _normalize_date(event_date) or _chengdu_today()
+    try:
+        payload = _load_latest_fact_payload(db_path, event_date=event_key)
+        if not isinstance(payload, Mapping):
+            raise ValueError("latest_fact_missing")
+        features = payload.get("weather_likelihood_features")
+        if not isinstance(features, Mapping):
+            features = payload.get("weather_likelihood_features_compact")
+        features = features if isinstance(features, Mapping) else {}
+        station_id = str(payload.get("station_id") or "ZUUU").strip() or "ZUUU"
+        event_tz = str(payload.get("event_tz") or payload.get("tz") or "Asia/Shanghai").strip() or "Asia/Shanghai"
+        market_unit = str(payload.get("market_unit") or "C").strip() or "C"
+        observed_nowcast_value = _to_float(
+            features.get("wu_twc_observed_intraday_current_temp_c") or features.get("observed_temp_c")
+        )
+        observed_nowcast_source = str(
+            features.get("wu_twc_observed_intraday_current_source") or features.get("observed_temp_source") or ""
+        )
+        awc_features = swm.fetch_zuuu_metar_raw_awc_features(
+            station_id,
+            hours=max(1, int(hours or 48)),
+            tz=event_tz,
+            target_event_date=event_key,
+            market_unit=market_unit,
+            observed_nowcast_value=observed_nowcast_value,
+            observed_nowcast_source=observed_nowcast_source,
+            provenance={},
+            include_cross_checks=_truthy(os.environ.get("PM_HARD_SOURCE_AWC_INLINE_CROSS_CHECKS"), False),
+        )
+        if not isinstance(awc_features, Mapping) or not awc_features:
+            raise ValueError("awc_features_missing")
+        result: Dict[str, Any] = {
+            "ok": True,
+            "status": "reference_observed",
+            "event_date": event_key,
+            "station_id": station_id,
+            "writes_facts": False,
+            "writes_posterior": False,
+            "awc_latest_at": awc_features.get("zuuu_metar_raw_awc_latest_at") or "",
+            "awc_today_max_at": awc_features.get("zuuu_metar_raw_awc_today_max_at") or "",
+            "awc_today_max_c": awc_features.get("zuuu_metar_raw_awc_today_max_c"),
+            "awc_latest_temp_c": awc_features.get("zuuu_metar_raw_awc_latest_temp_c"),
+            "awc_latest_dewpoint_c": awc_features.get("zuuu_metar_raw_awc_latest_dewpoint_c"),
+            "awc_fetched_at": awc_features.get("zuuu_metar_raw_awc_fetched_at") or "",
+            "awc_source_url": awc_features.get("zuuu_metar_raw_awc_url") or awc_features.get("zuuu_metar_raw_awc_source_url") or "",
+            "awc_latest_raw": awc_features.get("zuuu_metar_raw_awc_latest_raw") or "",
+            "awc_reference_features": dict(awc_features),
+        }
+        return _attach_refresh_source_acquisition_trace(
+            result,
+            source_family="awc",
+            station_id=station_id,
+            event_date=event_key,
+        )
+    except Exception as exc:
+        return _attach_refresh_source_acquisition_trace(
+            {
                 "ok": False,
-                "status": "awc_refresh_failed",
-                "event_date": _normalize_date(event_date),
+                "status": "awc_reference_fetch_failed",
+                "event_date": event_key,
+                "station_id": "ZUUU",
+                "writes_facts": False,
+                "writes_posterior": False,
                 "error": f"{exc.__class__.__name__}: {exc}",
-                "retryable": isinstance(exc, sqlite3.OperationalError),
-            }
-    finally:
-        if previous is None:
-            os.environ.pop("PM_AWC_FACT_REFRESH_HEARTBEAT_SEC", None)
-        else:
-            os.environ["PM_AWC_FACT_REFRESH_HEARTBEAT_SEC"] = previous
+                "retryable": False,
+            },
+            source_family="awc",
+            station_id="ZUUU",
+            event_date=event_key,
+        )
 
 
 def _refresh_wu_twc_fact(
@@ -2448,19 +3061,35 @@ def _refresh_wu_twc_fact(
     heartbeat_sec: int,
 ) -> Dict[str, Any]:
     event_key = _normalize_date(event_date) or _chengdu_today()
+
+    def traced(
+        result: Mapping[str, Any],
+        *,
+        source_features: Optional[Mapping[str, Any]] = None,
+        station_id: str = "ZUUU",
+    ) -> Dict[str, Any]:
+        return _attach_refresh_source_acquisition_trace(
+            result,
+            source_family="wu_twc",
+            station_id=station_id,
+            event_date=event_key,
+            source_features=source_features,
+        )
+
     with _connect(db_path) as conn:
         latest = _load_latest_fact(conn, event_date=event_key, slug=slug)
         if latest is None:
-            return {"ok": False, "status": "latest_fact_missing", "event_date": event_key}
+            return traced({"ok": False, "status": "latest_fact_missing", "event_date": event_key})
         payload = _json_loads(latest["fact_json"])
         if not payload:
-            return {"ok": False, "status": "latest_fact_json_invalid", "event_date": event_key}
+            return traced({"ok": False, "status": "latest_fact_json_invalid", "event_date": event_key})
         payload = _merge_latest_awc_hard_observation_into_payload(
             conn,
             payload,
             slug=str(latest["slug"] or slug or payload.get("slug") or ""),
             event_date=event_key,
         )
+        station_id = str(payload.get("station_id") or "ZUUU").strip() or "ZUUU"
         existing = _features(payload)
         errors: List[str] = []
         source_features: Dict[str, Any] = {}
@@ -2522,6 +3151,12 @@ def _refresh_wu_twc_fact(
                             source_features,
                             reason=str(wu_forecast.get("expected_peak_hour_distribution_na_reason") or "wu_hourly_peak_plateau_unavailable"),
                         )
+                    source_features["wu_forecast_forward_archive"] = _archive_forecast_source_forward_metrics(
+                        source_id="wu_forecast_peak",
+                        event_date=event_key,
+                        station_id=station_id,
+                        metrics=wu_forecast,
+                    )
                 elif isinstance(wu_forecast, Mapping) and wu_forecast.get("error"):
                     errors.append(f"wu_forecast:{wu_forecast.get('error')}")
             except Exception as exc:
@@ -2598,17 +3233,32 @@ def _refresh_wu_twc_fact(
                             source_features["weather_com_forecast_peak_time_source"] = twc_hourly_for_plateau.get("source")
                             source_features["twc_forecast_peak_at"] = twc_hourly_for_plateau.get("peak_at")
                             source_features["twc_forecast_peak_time_source"] = twc_hourly_for_plateau.get("source")
+                    twc_archive_metrics = dict(twc_forecast)
+                    twc_archive_metrics["forecast_peak_c"] = float(twc_peak_c)
+                    if isinstance(twc_hourly, Mapping) and isinstance(twc_hourly.get("hourly_curve"), list):
+                        twc_archive_metrics["hourly_curve"] = list(twc_hourly["hourly_curve"])
+                    source_features["twc_forecast_forward_archive"] = _archive_forecast_source_forward_metrics(
+                        source_id="weather_com_forecast_peak",
+                        event_date=event_key,
+                        station_id=station_id,
+                        metrics=twc_archive_metrics,
+                    )
                 elif isinstance(twc_forecast, Mapping) and twc_forecast.get("error"):
                     errors.append(f"twc_forecast:{twc_forecast.get('error')}")
             except Exception as exc:
                 errors.append(f"twc_forecast:{exc.__class__.__name__}: {exc}")
         if not source_features:
-            return {
-                "ok": False,
-                "status": "wu_twc_features_missing",
-                "event_date": event_key,
-                "errors": errors,
-            }
+            return traced(
+                {
+                    "ok": False,
+                    "status": "wu_twc_features_missing",
+                    "event_date": event_key,
+                    "station_id": station_id,
+                    "errors": errors,
+                },
+                source_features=source_features,
+                station_id=station_id,
+            )
         existing_at = str(existing.get("wu_twc_observed_intraday_today_max_at") or "")
         incoming_at = str(source_features.get("wu_twc_observed_intraday_today_max_at") or "")
         existing_max = _to_float(existing.get("wu_twc_observed_intraday_today_max_c"))
@@ -2673,13 +3323,20 @@ def _refresh_wu_twc_fact(
             except Exception:
                 reason = ""
         if not reason:
-            return {
-                "ok": True,
-                "status": "skipped",
-                "reason": "wu_twc_observation_unchanged",
-                "event_date": event_key,
-                "wu_twc_today_max_c": incoming_max,
-            }
+            return traced(
+                {
+                    "ok": True,
+                    "status": "skipped",
+                    "reason": "wu_twc_observation_unchanged",
+                    "event_date": event_key,
+                    "station_id": station_id,
+                    "wu_twc_today_max_c": incoming_max,
+                    "fact_as_of": incoming_fetch,
+                    "fetch_duration_ms": source_features.get("wu_twc_observed_intraday_fetch_duration_ms"),
+                },
+                source_features=source_features,
+                station_id=station_id,
+            )
         refreshed_at = incoming_fetch or _utc_now_iso()
         item = _merge_source_features_into_payload(
             payload,
@@ -2699,17 +3356,27 @@ def _refresh_wu_twc_fact(
         item["event_date"] = event_key
         item["run_date"] = _normalize_date(latest["run_date"] or item.get("run_date") or event_key)
         fact_id = _insert_fact_snapshot(conn, latest_row=latest, item=item, fact_as_of=refreshed_at)
-        return {
-            "ok": bool(fact_id),
-            "status": "updated" if fact_id else "insert_failed",
-            "reason": reason,
-            "event_date": event_key,
-            "slug": item["slug"],
-            "fact_id": fact_id,
-            "fact_as_of": refreshed_at,
-            "wu_twc_today_max_c": incoming_max,
-            "fetch_duration_ms": source_features.get("wu_twc_observed_intraday_fetch_duration_ms"),
-        }
+        return traced(
+            {
+                "ok": bool(fact_id),
+                "status": "updated" if fact_id else "insert_failed",
+                "reason": reason,
+                "event_date": event_key,
+                "station_id": station_id,
+                "slug": item["slug"],
+                "fact_id": fact_id,
+                "fact_as_of": refreshed_at,
+                "wu_twc_today_max_c": incoming_max,
+                "wu_twc_today_max_at": source_features.get("wu_twc_observed_intraday_today_max_at"),
+                "wu_twc_current_temp_c": source_features.get("wu_twc_observed_intraday_current_temp_c"),
+                "wu_twc_current_at": source_features.get("wu_twc_observed_intraday_current_at"),
+                "fetch_duration_ms": source_features.get("wu_twc_observed_intraday_fetch_duration_ms"),
+                "writer_apply_result_summary": item.get("writer_apply_result_summary"),
+                "post_apply_persisted_verification_ok": item.get("post_apply_persisted_verification_ok"),
+            },
+            source_features=source_features,
+            station_id=station_id,
+        )
 
 
 def _metar_pws_source_interval(
@@ -2985,6 +3652,10 @@ def _refresh_metar_pws_multi_source_fact(
         "slug": item.get("slug") if "item" in locals() else "",
         "fact_id": fact_id,
         "fact_as_of": refreshed_at,
+        "writer_apply_result_summary": item.get("writer_apply_result_summary") if "item" in locals() else None,
+        "post_apply_persisted_verification_ok": (
+            item.get("post_apply_persisted_verification_ok") if "item" in locals() else None
+        ),
         "sources": next_statuses,
         "errors": errors,
     }
@@ -3012,6 +3683,7 @@ def _hard_observation_from_payload(
     features = _features(payload)
     candidates: List[Dict[str, Any]] = []
     wu_twc_aux_seen = False
+    hard_source_date_mismatches: Dict[str, bool] = {}
     actual = _to_float(features.get("settlement_actual") or payload.get("settlement_actual"))
     if actual is not None:
         source_id = str(
@@ -3041,32 +3713,984 @@ def _hard_observation_from_payload(
                 "final_bucket_lock": True,
             }
         )
-    awc_max = _to_float(features.get("zuuu_metar_raw_awc_today_max_c"))
-    awc_mismatch = bool(features.get("zuuu_metar_raw_awc_date_mismatch"))
-    if awc_max is not None and not awc_mismatch:
+    for priority, source_id in (
+        (500, PRIMARY_HARD_METAR_SOURCE_ID),
+        *(
+            (400 - index, source_id)
+            for index, source_id in enumerate(REFERENCE_HARD_METAR_SOURCE_IDS)
+        ),
+    ):
+        mismatch = _hard_metar_source_date_mismatch(features, source_id)
+        hard_source_date_mismatches[source_id] = mismatch
+        if mismatch:
+            continue
+        today_max = _to_float(features.get(f"{source_id}_today_max_c"))
+        latest_temp = _to_float(features.get(f"{source_id}_latest_temp_c"))
+        value_c = today_max if today_max is not None else latest_temp
+        if value_c is None:
+            continue
+        observed_at = str(
+            features.get(f"{source_id}_today_max_at")
+            or features.get(f"{source_id}_latest_at")
+            or ""
+        )
         candidates.append(
             {
                 "ok": True,
-                "source_id": "zuuu_metar_raw_awc",
-                "value_c": awc_max,
-                "observed_at": str(features.get("zuuu_metar_raw_awc_today_max_at") or features.get("zuuu_metar_raw_awc_latest_at") or ""),
-                "fetched_at": str(features.get("zuuu_metar_raw_awc_fetched_at") or ""),
-                "fetch_duration_ms": _to_float(features.get("zuuu_metar_raw_awc_fetch_duration_ms")),
-                "raw": str(features.get("zuuu_metar_raw_awc_today_max_raw") or features.get("zuuu_metar_raw_awc_latest_raw") or ""),
-                "priority": 20,
+                "source_id": source_id,
+                "value_c": value_c,
+                "observed_at": observed_at,
+                "fetched_at": str(features.get(f"{source_id}_fetched_at") or observed_at),
+                "fetch_duration_ms": _to_float(features.get(f"{source_id}_fetch_duration_ms")),
+                "raw": str(features.get(f"{source_id}_today_max_raw") or features.get(f"{source_id}_latest_raw") or ""),
+                "priority": priority,
+                "hard_source_role": "primary" if source_id == PRIMARY_HARD_METAR_SOURCE_ID else "reference",
+                "value_basis": "today_max" if today_max is not None else "latest_temp",
             }
         )
     wu_max = _to_float(features.get("wu_twc_observed_intraday_today_max_c"))
     if allow_wu_twc_fallback and wu_max is not None and not bool(features.get("wu_twc_observed_intraday_stale")):
         wu_twc_aux_seen = True
     if candidates:
-        candidates.sort(key=lambda item: (float(item.get("value_c") or float("-inf")), int(item.get("priority") or 0)), reverse=True)
+        candidates.sort(key=lambda item: (int(item.get("priority") or 0), float(item.get("value_c") or float("-inf"))), reverse=True)
         return candidates[0]
     return {
         "ok": False,
         "source_id": "",
         "reason": "wu_twc_intraday_auxiliary_not_hard_source" if wu_twc_aux_seen else "hard_observation_missing",
-        "awc_date_mismatch": awc_mismatch,
+        "hard_source_date_mismatches": hard_source_date_mismatches,
+        "awc_date_mismatch": bool(hard_source_date_mismatches.get("zuuu_metar_raw_awc")),
+        "amsc_date_mismatch": bool(hard_source_date_mismatches.get(PRIMARY_HARD_METAR_SOURCE_ID)),
+    }
+
+
+def build_awc_hard_source_signal_candidate_from_payload(
+    payload: Mapping[str, Any],
+    *,
+    slug: str = "",
+    event_date: str = "",
+    candidate_seen_at: str = "",
+    allow_wu_twc_fallback: bool = False,
+    read_only: bool = True,
+) -> Dict[str, Any]:
+    slug_key = str(slug or payload.get("slug") or "").strip()
+    event_key = _normalize_date(event_date or payload.get("event_date") or "")
+    observation = _hard_observation_from_payload(
+        payload,
+        allow_wu_twc_fallback=allow_wu_twc_fallback,
+    )
+    if not observation.get("ok"):
+        observation = dict(observation)
+        observation.setdefault("ok", False)
+    return build_awc_hard_source_signal_candidate(
+        slug=slug_key,
+        event_date=event_key,
+        observation=observation,
+        candidate_seen_at=candidate_seen_at or _utc_now_iso(),
+        read_only=read_only,
+        acquire_window_start_min=_env_float("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_START_MIN", 5.0),
+        acquire_window_duration_sec=_env_float("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_DURATION_SEC", 120.0),
+        stale_after_sec=_env_float("PM_HARD_SOURCE_AWC_SIGNAL_STALE_AFTER_SEC", 900.0),
+    )
+
+
+def _build_awc_signal_candidate_from_observation(
+    *,
+    payload: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    slug: str,
+    event_date: str,
+    candidate_seen_at: str,
+    read_only: bool = True,
+) -> Dict[str, Any]:
+    station_id = _first_text(
+        payload.get("station_id"),
+        _features(payload).get("station_id"),
+        "ZUUU",
+    )
+    return build_awc_hard_source_signal_candidate(
+        slug=slug,
+        event_date=event_date,
+        observation=observation,
+        candidate_seen_at=candidate_seen_at,
+        station_id=station_id,
+        read_only=read_only,
+        acquire_window_start_min=_env_float("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_START_MIN", 5.0),
+        acquire_window_duration_sec=_env_float("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_DURATION_SEC", 120.0),
+        stale_after_sec=_env_float("PM_HARD_SOURCE_AWC_SIGNAL_STALE_AFTER_SEC", 900.0),
+    )
+
+
+def _hard_source_acceptance_state_from_candidate(candidate: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "schema": "hard_source_acceptance_state_v1",
+        "source": "awc_hard_source_signal_state_machine",
+        "signal_id": str(candidate.get("signal_id") or ""),
+        "source_event_id": str(candidate.get("source_event_id") or ""),
+        "source_id": str(candidate.get("source_id") or ""),
+        "source_class": str(candidate.get("source_class") or ""),
+        "source_role": str(candidate.get("source_role") or ""),
+        "source_hard_eligible": bool(candidate.get("source_hard_eligible")),
+        "primary_hard_source": bool(candidate.get("primary_hard_source")),
+        "reference_hard_source": bool(candidate.get("reference_hard_source")),
+        "accepted_signal_source": bool(candidate.get("accepted_signal_source")),
+        "awc_source": bool(candidate.get("awc_source")),
+        "acceptance_state": str(candidate.get("acceptance_state") or ""),
+        "acceptance_reason": str(candidate.get("acceptance_reason") or ""),
+        "signal_eligible": bool(candidate.get("signal_eligible")),
+        "emits_signal": bool(candidate.get("emits_signal")),
+        "terminal_state": str(candidate.get("terminal_state") or ""),
+        "terminal_reason": str(candidate.get("terminal_reason") or ""),
+        "awc_valid_time": str(candidate.get("awc_valid_time") or ""),
+        "awc_hard_source_signal_at": str(candidate.get("awc_hard_source_signal_at") or ""),
+        "signal_seen_at": str(candidate.get("signal_seen_at") or ""),
+        "source_fetched_at": str(candidate.get("source_fetched_at") or ""),
+        "source_parsed_at": str(candidate.get("source_parsed_at") or ""),
+        "window": dict(candidate.get("window") or {}) if isinstance(candidate.get("window"), Mapping) else {},
+        "read_only": bool(candidate.get("read_only", True)),
+    }
+
+
+def _awc_hourly_signal_gate_applies(candidate: Mapping[str, Any]) -> bool:
+    if not bool(
+        candidate.get("accepted_signal_source")
+        or candidate.get("primary_hard_source")
+        or candidate.get("awc_source")
+    ):
+        return False
+    valid_dt = _parse_iso_dt(candidate.get("awc_valid_time"))
+    if valid_dt is None:
+        return True
+    return valid_dt.minute == 0 and valid_dt.second == 0 and valid_dt.microsecond == 0
+
+
+def _blocked_awc_signal_terminal_state(candidate: Mapping[str, Any]) -> str:
+    window = candidate.get("window") if isinstance(candidate.get("window"), Mapping) else {}
+    window_state = str((window or {}).get("state") or "").strip()
+    acceptance_state = str(candidate.get("acceptance_state") or "").strip()
+    reason = str(candidate.get("acceptance_reason") or "").strip()
+    if window_state == "stale" or "stale" in reason:
+        return "stale"
+    if acceptance_state == "conflict":
+        return "blocked"
+    return "skipped"
+
+
+def _signal_to_order_slo_ms() -> int:
+    return max(1, _env_int("PM_AWC_SIGNAL_TO_ORDER_SLO_MS", 3000))
+
+
+def _iso_lte(left: Any, right: Any) -> Optional[bool]:
+    left_dt = _parse_iso_dt(left)
+    right_dt = _parse_iso_dt(right)
+    if left_dt is None or right_dt is None:
+        return None
+    return bool(left_dt <= right_dt)
+
+
+def _csv_tokens(value: Any) -> List[str]:
+    out: List[str] = []
+    for raw in str(value or "").replace(";", ",").split(","):
+        token = raw.strip()
+        if token:
+            out.append(token)
+    return out
+
+
+def _pre_signal_required_components() -> List[str]:
+    tokens = _csv_tokens(
+        os.environ.get(
+            "PM_HARD_SOURCE_DIRECT_PRE_SIGNAL_REQUIRED_COMPONENTS",
+            ",".join(PRE_SIGNAL_REQUIRED_COMPONENTS),
+        )
+    )
+    return tokens or list(PRE_SIGNAL_REQUIRED_COMPONENTS)
+
+
+def _pre_signal_component_state(
+    *,
+    state: str,
+    ok: bool,
+    reason: str = "",
+    **extra: Any,
+) -> Dict[str, Any]:
+    return {
+        "state": str(state or ""),
+        "ok": bool(ok),
+        "reason": str(reason or ""),
+        **extra,
+    }
+
+
+def _latest_market_preparation_components(
+    db_path: Path | str,
+    *,
+    event_date: str,
+    slug: str,
+) -> Dict[str, Dict[str, Any]]:
+    event_key = _normalize_date(event_date) or ""
+    slug_key = str(slug or "").strip()
+    components: Dict[str, Dict[str, Any]] = {
+        "market_mapping": _pre_signal_component_state(
+            state="not_recorded",
+            ok=False,
+            reason="market_tokens_not_checked",
+        ),
+        "orderbook": _pre_signal_component_state(
+            state="not_recorded",
+            ok=False,
+            reason="event_market_ticks_not_checked",
+        ),
+    }
+    if not event_key or not slug_key:
+        reason = "slug_or_event_date_missing"
+        components["market_mapping"] = _pre_signal_component_state(state="missing", ok=False, reason=reason)
+        components["orderbook"] = _pre_signal_component_state(state="missing", ok=False, reason=reason)
+        return components
+    try:
+        with _connect(Path(db_path)) as conn:
+            try:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) AS token_count,
+                           MAX(updated_at) AS latest_token_at
+                    FROM market_tokens
+                    WHERE slug = ? AND event_date = ?
+                    """,
+                    (slug_key, event_key),
+                ).fetchone()
+                token_count = int((row["token_count"] if row else 0) or 0)
+                latest_token_at = str((row["latest_token_at"] if row else "") or "")
+                components["market_mapping"] = _pre_signal_component_state(
+                    state="prepared" if token_count > 0 else "missing",
+                    ok=bool(token_count > 0),
+                    reason="market_tokens_available" if token_count > 0 else "market_tokens_missing",
+                    token_count=token_count,
+                    latest_token_at=latest_token_at,
+                    source="archive_db.market_tokens",
+                )
+            except sqlite3.Error as exc:
+                components["market_mapping"] = _pre_signal_component_state(
+                    state="schema_missing_or_query_failed",
+                    ok=False,
+                    reason=f"{exc.__class__.__name__}: {exc}",
+                    source="archive_db.market_tokens",
+                )
+            try:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) AS tick_count,
+                           MAX(created_at) AS latest_tick_at
+                    FROM event_market_ticks
+                    WHERE slug = ? AND event_date = ?
+                    """,
+                    (slug_key, event_key),
+                ).fetchone()
+                tick_count = int((row["tick_count"] if row else 0) or 0)
+                latest_tick_at = str((row["latest_tick_at"] if row else "") or "")
+                components["orderbook"] = _pre_signal_component_state(
+                    state="prepared" if tick_count > 0 else "missing",
+                    ok=bool(tick_count > 0),
+                    reason="event_market_ticks_available" if tick_count > 0 else "event_market_ticks_missing",
+                    tick_count=tick_count,
+                    latest_tick_at=latest_tick_at,
+                    source="archive_db.event_market_ticks",
+                )
+            except sqlite3.Error as exc:
+                components["orderbook"] = _pre_signal_component_state(
+                    state="schema_missing_or_query_failed",
+                    ok=False,
+                    reason=f"{exc.__class__.__name__}: {exc}",
+                    source="archive_db.event_market_ticks",
+                )
+    except Exception as exc:
+        reason = f"{exc.__class__.__name__}: {exc}"
+        components["market_mapping"] = _pre_signal_component_state(
+            state="query_failed",
+            ok=False,
+            reason=reason,
+            source="archive_db.market_tokens",
+        )
+        components["orderbook"] = _pre_signal_component_state(
+            state="query_failed",
+            ok=False,
+            reason=reason,
+            source="archive_db.event_market_ticks",
+        )
+    return components
+
+
+def _open_orders_preparation_component() -> Dict[str, Any]:
+    if not _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_PREPARE_OPEN_ORDERS_ENABLED"), True):
+        return _pre_signal_component_state(
+            state="disabled",
+            ok=False,
+            reason="pre_signal_open_orders_prepare_disabled",
+            source="scan_weather_market.open_orders_cache",
+        )
+    allow_fetch = _truthy(
+        os.environ.get("PM_HARD_SOURCE_DIRECT_PREPARE_OPEN_ORDERS_FETCH"),
+        True,
+    )
+    force_refresh = _truthy(
+        os.environ.get("PM_HARD_SOURCE_DIRECT_PREPARE_OPEN_ORDERS_FORCE_REFRESH"),
+        False,
+    )
+    started = time.monotonic()
+    try:
+        if allow_fetch and hasattr(swm, "_auto_trade_cached_open_orders_by_token"):
+            by_token = swm._auto_trade_cached_open_orders_by_token(  # type: ignore[attr-defined]
+                allow_fetch=True,
+                force_refresh=force_refresh,
+            )
+        else:
+            cache = getattr(swm, "_AUTO_TRADE_OPEN_ORDERS_CACHE", {})
+            by_token = dict(cache.get("by_token") or {}) if isinstance(cache, Mapping) else {}
+        cache = getattr(swm, "_AUTO_TRADE_OPEN_ORDERS_CACHE", {})
+        cache_ref = cache if isinstance(cache, Mapping) else {}
+        cache_ts = _to_float(cache_ref.get("ts"))
+        cache_ready = bool(cache_ts is not None and math.isfinite(float(cache_ts)) and float(cache_ts) > 0)
+        source = str(cache_ref.get("last_source") or ("network_or_cache" if allow_fetch else "cache_only"))
+        token_count = len(by_token) if isinstance(by_token, Mapping) else 0
+        order_count = 0
+        if isinstance(by_token, Mapping):
+            for orders in by_token.values():
+                if isinstance(orders, list):
+                    order_count += len(orders)
+        state = "prepared" if cache_ready else "not_recorded"
+        ok = bool(cache_ready)
+        return _pre_signal_component_state(
+            state=state,
+            ok=ok,
+            reason="open_orders_cache_available" if ok else "open_orders_cache_missing_or_fetch_not_recorded",
+            source=f"scan_weather_market.open_orders_{source}",
+            token_count=token_count,
+            order_count=order_count,
+            cache_age_sec=cache_ref.get("last_age_sec"),
+            duration_ms=round(max(0.0, time.monotonic() - started) * 1000.0, 3),
+            fetch_attempted=bool(allow_fetch),
+        )
+    except Exception as exc:
+        return _pre_signal_component_state(
+            state="failed",
+            ok=False,
+            reason=f"{exc.__class__.__name__}: {exc}",
+            source="scan_weather_market.open_orders_cache",
+            duration_ms=round(max(0.0, time.monotonic() - started) * 1000.0, 3),
+            fetch_attempted=bool(allow_fetch),
+        )
+
+
+def _positions_preparation_component() -> Dict[str, Any]:
+    if not _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_PREPARE_POSITIONS_ENABLED"), True):
+        return _pre_signal_component_state(
+            state="disabled",
+            ok=False,
+            reason="pre_signal_positions_prepare_disabled",
+            source="scan_weather_market.positions_cache",
+        )
+    allow_fetch = _truthy(
+        os.environ.get("PM_HARD_SOURCE_DIRECT_PREPARE_POSITIONS_FETCH"),
+        True,
+    )
+    started = time.monotonic()
+    try:
+        if allow_fetch and hasattr(swm, "fetch_positions_by_token"):
+            positions, err = swm.fetch_positions_by_token(force=True)
+        else:
+            cache = getattr(swm, "POSITIONS_CACHE", {})
+            cache_ref = cache if isinstance(cache, Mapping) else {}
+            positions = dict(cache_ref.get("data") or {})
+            err = str(cache_ref.get("error") or "")
+        cache = getattr(swm, "POSITIONS_CACHE", {})
+        cache_ref = cache if isinstance(cache, Mapping) else {}
+        cache_ts = _to_float(cache_ref.get("ts"))
+        cache_ready = bool(cache_ts is not None and math.isfinite(float(cache_ts)) and float(cache_ts) > 0)
+        source = str(cache_ref.get("last_source") or ("network_or_cache" if allow_fetch else "cache_only"))
+        position_count = len(positions) if isinstance(positions, Mapping) else 0
+        state = "prepared" if cache_ready and not err else "not_recorded"
+        ok = bool(cache_ready and not err)
+        return _pre_signal_component_state(
+            state=state,
+            ok=ok,
+            reason="positions_cache_available" if ok else (err or "positions_cache_missing_or_fetch_not_recorded"),
+            source=f"scan_weather_market.positions_{source}",
+            position_count=position_count,
+            cache_age_sec=cache_ref.get("last_age_sec"),
+            duration_ms=round(max(0.0, time.monotonic() - started) * 1000.0, 3),
+            fetch_attempted=bool(allow_fetch),
+        )
+    except Exception as exc:
+        return _pre_signal_component_state(
+            state="failed",
+            ok=False,
+            reason=f"{exc.__class__.__name__}: {exc}",
+            source="scan_weather_market.positions_cache",
+            duration_ms=round(max(0.0, time.monotonic() - started) * 1000.0, 3),
+            fetch_attempted=bool(allow_fetch),
+        )
+
+
+def _capital_caps_preparation_component(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    plan = payload.get("target_realization_capital_plan") if isinstance(payload, Mapping) else None
+    plan_ref = plan if isinstance(plan, Mapping) else {}
+    env_keys = (
+        "PM_MAX_ORDER_USDC",
+        "PM_TARGET_REALIZATION_YES_MAX_NOTIONAL_USDC",
+    )
+    env_caps = {
+        key: os.environ.get(key)
+        for key in env_keys
+        if str(os.environ.get(key) or "").strip()
+    }
+    has_plan = bool(plan_ref)
+    state = "prepared" if (has_plan or env_caps) else "prepared_with_runtime_defaults"
+    return _pre_signal_component_state(
+        state=state,
+        ok=True,
+        reason="capital_plan_available" if has_plan else "runtime_default_caps_available",
+        source="target_realization_capital_plan_or_env",
+        plan_version=plan_ref.get("version"),
+        target_bucket=plan_ref.get("target_bucket"),
+        env_cap_keys=sorted(env_caps.keys()),
+    )
+
+
+def _pre_signal_preparation_component_snapshot(
+    db_path: Path | str,
+    *,
+    event_date: str,
+    slug: str,
+    payload: Mapping[str, Any],
+    market_prefetch_result: Mapping[str, Any],
+) -> Dict[str, Any]:
+    market_status = str(market_prefetch_result.get("status") or "").strip()
+    market_ok = bool(market_prefetch_result.get("ok"))
+    components: Dict[str, Dict[str, Any]] = {
+        "market_prefetch": _pre_signal_component_state(
+            state="prepared" if market_ok and market_status == "market_prefetch_refreshed" else "not_prepared",
+            ok=bool(market_ok and market_status == "market_prefetch_refreshed"),
+            reason=market_status or "market_prefetch_not_run",
+            source="hard_source_direct_market_prefetch",
+            count=market_prefetch_result.get("count"),
+            created_at=market_prefetch_result.get("created_at"),
+        ),
+        "open_orders": _open_orders_preparation_component(),
+        "positions": _positions_preparation_component(),
+        "capital_caps": _capital_caps_preparation_component(payload),
+    }
+    components.update(
+        _latest_market_preparation_components(
+            db_path,
+            event_date=event_date,
+            slug=slug,
+        )
+    )
+    required = _pre_signal_required_components()
+    missing = [
+        name
+        for name in required
+        if not bool((components.get(name) or {}).get("ok"))
+    ]
+    return {
+        "schema": "pre_signal_preparation_components_v1",
+        "components": components,
+        "required_components": required,
+        "missing_required_components": missing,
+        "complete": not missing,
+    }
+
+
+def _pre_signal_preparation_context_from_market_prefetch(
+    market_prefetch_result: Mapping[str, Any],
+    *,
+    due: bool,
+    inline: bool,
+    started_at: str = "",
+    completed_at: str = "",
+    component_snapshot: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    status = str(market_prefetch_result.get("status") or "").strip()
+    ok = bool(market_prefetch_result.get("ok"))
+    prepared_at = ""
+    state = ""
+    reason = ""
+    if ok and status == "market_prefetch_refreshed":
+        prepared_at = str(
+            market_prefetch_result.get("created_at")
+            or completed_at
+            or started_at
+            or ""
+        ).strip()
+        state = "prepared"
+        reason = "market_prefetch_refreshed"
+    elif ok and status == "market_prefetch_background_already_running":
+        state = "preparation_in_progress_unconfirmed"
+        reason = status
+    elif ok and status == "market_prefetch_background_started":
+        state = "preparation_started_unconfirmed"
+        reason = status
+    elif status:
+        state = "preparation_failed" if not ok else "preparation_status_unconfirmed"
+        reason = status
+    elif not due:
+        state = "preparation_not_due_or_disabled"
+        reason = "market_prefetch_not_due_or_disabled"
+    else:
+        state = "preparation_not_recorded"
+        reason = "market_prefetch_result_missing"
+    component_ref = component_snapshot if isinstance(component_snapshot, Mapping) else {}
+    missing_components = list(component_ref.get("missing_required_components") or [])
+    if missing_components and state == "prepared":
+        state = "preparation_partial"
+        reason = "missing_required_components:" + ",".join(str(item) for item in missing_components)
+    return {
+        "schema": "pre_signal_preparation_context_v1",
+        "source": "hard_source_direct_market_prefetch",
+        "pre_signal_prepare_due": bool(due),
+        "pre_signal_prepare_inline": bool(inline),
+        "pre_signal_prepare_state": state,
+        "pre_signal_prepare_reason": reason,
+        "pre_signal_prepare_started_at": str(started_at or "").strip(),
+        "pre_signal_prepared_at": prepared_at,
+        "pre_signal_prepare_completed_at": str(completed_at or "").strip(),
+        "market_prefetch_status": status,
+        "market_prefetch_ok": ok,
+        "market_prefetch_count": market_prefetch_result.get("count"),
+        "pre_signal_prepare_components": dict(component_ref.get("components") or {}),
+        "pre_signal_prepare_required_components": list(component_ref.get("required_components") or []),
+        "pre_signal_prepare_missing_components": missing_components,
+        "pre_signal_prepare_complete": bool(component_ref.get("complete")) if component_ref else None,
+        "guards": {
+            "places_orders": False,
+            "uses_old_fact_for_order": False,
+            "bypasses_awc_acceptance": False,
+        },
+    }
+
+
+def _apply_pre_signal_preparation_timing(
+    timing: Dict[str, Any],
+    preparation_context: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    if not isinstance(timing, dict):
+        return timing
+    context = dict(preparation_context or {})
+    prepared_at = str(context.get("pre_signal_prepared_at") or "").strip()
+    deadline_at = str(timing.get("awc_pre_signal_deadline_at") or "").strip()
+    preparation_started_at = str(
+        timing.get("preparation_started_at")
+        or timing.get("hour_boundary_at")
+        or ""
+    ).strip()
+    state = str(context.get("pre_signal_prepare_state") or "").strip()
+    reason = str(context.get("pre_signal_prepare_reason") or "").strip()
+    before_deadline: Optional[bool] = None
+    if prepared_at:
+        before_deadline = _iso_lte(prepared_at, deadline_at)
+        state_allows_deadline_upgrade = state in {"", "prepared"}
+        if before_deadline is True and state_allows_deadline_upgrade:
+            state = "prepared_before_deadline"
+            reason = reason or "pre_signal_prepared_before_deadline"
+        elif before_deadline is False and state_allows_deadline_upgrade:
+            state = "prepared_after_deadline"
+            reason = reason or "pre_signal_prepared_after_deadline"
+        else:
+            state = state or "prepared_deadline_unknown"
+            reason = reason or "pre_signal_deadline_unknown"
+    else:
+        state = state or "preparation_not_recorded"
+        reason = reason or "pre_signal_prepared_at_missing"
+    timing["pre_signal_prepare_state"] = state
+    timing["pre_signal_prepare_reason"] = reason
+    timing["pre_signal_prepare_source"] = str(
+        context.get("source") or "hard_source_direct_market_prefetch"
+    )
+    timing["pre_signal_prepare_due"] = bool(context.get("pre_signal_prepare_due", False))
+    timing["pre_signal_prepare_inline"] = bool(context.get("pre_signal_prepare_inline", False))
+    timing["pre_signal_prepare_started_at"] = str(
+        context.get("pre_signal_prepare_started_at") or ""
+    )
+    timing["pre_signal_prepared_at"] = prepared_at
+    timing["pre_signal_prepare_completed_at"] = str(
+        context.get("pre_signal_prepare_completed_at") or ""
+    )
+    timing["pre_signal_prepared_before_deadline"] = before_deadline
+    timing["pre_signal_prepare_components"] = dict(
+        context.get("pre_signal_prepare_components") or {}
+    )
+    timing["pre_signal_prepare_required_components"] = list(
+        context.get("pre_signal_prepare_required_components") or []
+    )
+    timing["pre_signal_prepare_missing_components"] = list(
+        context.get("pre_signal_prepare_missing_components") or []
+    )
+    timing["pre_signal_prepare_complete"] = context.get("pre_signal_prepare_complete")
+    timing["hour_to_pre_signal_prepared_ms"] = (
+        _latency_ms_between(preparation_started_at, prepared_at)
+        if preparation_started_at and prepared_at
+        else None
+    )
+    timing["pre_signal_preparation_context"] = context
+    timing.setdefault("guards", {})
+    if isinstance(timing["guards"], dict):
+        timing["guards"]["pre_signal_places_orders"] = False
+        timing["guards"]["pre_signal_bypasses_awc_acceptance"] = False
+    return timing
+
+
+def _signal_to_order_timing_from_candidate(
+    candidate: Mapping[str, Any],
+    *,
+    preparation_context: Optional[Mapping[str, Any]] = None,
+    fact_written_at: str = "",
+    posterior_written_at: str = "",
+    decision_started_at: str = "",
+    decision_written_at: str = "",
+    job_enqueued_at: str = "",
+    order_submitted_at: str = "",
+    terminal_state: str = "",
+    terminal_reason: str = "",
+    terminal_at: str = "",
+) -> Dict[str, Any]:
+    signal_at = str(candidate.get("awc_hard_source_signal_at") or "")
+    signal_eligible = bool(candidate.get("signal_eligible"))
+    slo_ms = _signal_to_order_slo_ms()
+    submit_ms = _latency_ms_between(signal_at, order_submitted_at) if signal_at and order_submitted_at else None
+    non_submit_terminal = str(terminal_state or "").strip() in {
+        "blocked",
+        "stale",
+        "skipped",
+        "no_action",
+        "error",
+    }
+    terminal_at = str(
+        terminal_at
+        or order_submitted_at
+        or job_enqueued_at
+        or decision_written_at
+        or posterior_written_at
+        or fact_written_at
+        or ""
+    )
+    signal_to_terminal_ms = (
+        _latency_ms_between(signal_at, terminal_at)
+        if signal_at and terminal_at
+        else None
+    )
+    if not terminal_state:
+        if order_submitted_at:
+            terminal_state = "submitted"
+        elif job_enqueued_at:
+            terminal_state = "job_enqueued"
+        elif decision_written_at:
+            terminal_state = "decision_written"
+        elif not signal_eligible:
+            terminal_state = "not_applicable"
+        else:
+            terminal_state = "pending"
+    if not terminal_reason:
+        if not signal_eligible:
+            terminal_reason = str(candidate.get("acceptance_reason") or "awc_signal_not_eligible")
+        elif order_submitted_at and submit_ms is not None and float(submit_ms) > float(slo_ms):
+            terminal_reason = "order_submitted_after_slo"
+        elif order_submitted_at:
+            terminal_reason = "order_submitted"
+        elif job_enqueued_at:
+            terminal_reason = "awaiting_order_submit"
+        elif decision_written_at:
+            terminal_reason = "awaiting_job_enqueue_or_execution"
+    non_submit_terminal = str(terminal_state or "").strip() in {
+        "blocked",
+        "stale",
+        "skipped",
+        "no_action",
+        "error",
+    }
+    violation_reason = (
+        "order_submitted_after_slo"
+        if order_submitted_at and submit_ms is not None and float(submit_ms) > float(slo_ms)
+        else str(terminal_reason or terminal_state or "signal_terminal_without_order")
+        if non_submit_terminal
+        else ""
+    )
+    window = candidate.get("window")
+    timing = {
+        "schema": "signal_to_order_timing_v1",
+        "read_only": True,
+        "signal_id": str(candidate.get("signal_id") or ""),
+        "source_event_id": str(candidate.get("source_event_id") or ""),
+        "source_id": str(candidate.get("source_id") or ""),
+        "acceptance_state": str(candidate.get("acceptance_state") or ""),
+        "acceptance_reason": str(candidate.get("acceptance_reason") or ""),
+        "signal_eligible": signal_eligible,
+        "awc_valid_time": str(candidate.get("awc_valid_time") or ""),
+        "hour_boundary_at": str((window or {}).get("hour_boundary_at") or "") if isinstance(window, Mapping) else "",
+        "preparation_started_at": str((window or {}).get("preparation_started_at") or "") if isinstance(window, Mapping) else "",
+        "awc_pre_signal_deadline_at": str((window or {}).get("awc_pre_signal_deadline_at") or "") if isinstance(window, Mapping) else "",
+        "awc_poll_window_started_at": str((window or {}).get("awc_poll_window_started_at") or "") if isinstance(window, Mapping) else "",
+        "awc_poll_window_ended_at": str((window or {}).get("awc_poll_window_ended_at") or "") if isinstance(window, Mapping) else "",
+        "awc_release_to_signal_seen_ms": (window or {}).get("detection_lag_ms") if isinstance(window, Mapping) else None,
+        "awc_hard_source_signal_at": signal_at,
+        "source_fetched_at": str(candidate.get("source_fetched_at") or ""),
+        "source_parsed_at": str(candidate.get("source_parsed_at") or ""),
+        "fact_written_at": str(fact_written_at or ""),
+        "posterior_written_at": str(posterior_written_at or ""),
+        "decision_started_at": str(decision_started_at or ""),
+        "decision_written_at": str(decision_written_at or ""),
+        "job_enqueued_at": str(job_enqueued_at or ""),
+        "order_submitted_at": str(order_submitted_at or ""),
+        "terminal_at": terminal_at,
+        "signal_to_fact_ms": _latency_ms_between(signal_at, fact_written_at) if signal_at and fact_written_at else None,
+        "signal_to_decision_ms": _latency_ms_between(signal_at, decision_written_at) if signal_at and decision_written_at else None,
+        "signal_to_job_enqueue_ms": _latency_ms_between(signal_at, job_enqueued_at) if signal_at and job_enqueued_at else None,
+        "signal_to_terminal_ms": signal_to_terminal_ms,
+        "awc_signal_to_order_submit_ms": submit_ms,
+        "signal_to_order_slo_ms": slo_ms,
+        "signal_to_order_slo_met": (
+            bool(submit_ms is not None and float(submit_ms) <= float(slo_ms))
+            if order_submitted_at
+            else False
+            if non_submit_terminal
+            else None
+        ),
+        "signal_to_order_slo_violation_reason": violation_reason,
+        "terminal_state": terminal_state,
+        "terminal_reason": terminal_reason,
+        "guards": {
+            "recomputes_weather_probability": False,
+            "bypasses_auto_trade_decisions": False,
+            "bypasses_orderbook_or_risk": False,
+        },
+    }
+    return _apply_pre_signal_preparation_timing(timing, preparation_context)
+
+
+def _attach_signal_timing_fields(
+    target: Dict[str, Any],
+    *,
+    signal_candidate: Mapping[str, Any],
+    signal_timing: Mapping[str, Any],
+) -> Dict[str, Any]:
+    if not isinstance(target, dict):
+        return target
+    acceptance_state = _hard_source_acceptance_state_from_candidate(signal_candidate)
+    target["hard_source_acceptance_state"] = dict(acceptance_state)
+    target["signal_to_order_timing"] = dict(signal_timing)
+    for key in (
+        "signal_id",
+        "source_event_id",
+        "awc_valid_time",
+        "awc_hard_source_signal_at",
+        "signal_eligible",
+        "acceptance_state",
+        "acceptance_reason",
+    ):
+        if key in acceptance_state:
+            target[key] = acceptance_state.get(key)
+    target["signal_to_order_slo_ms"] = signal_timing.get("signal_to_order_slo_ms")
+    target["signal_to_order_terminal_state"] = signal_timing.get("terminal_state")
+    target["signal_to_order_terminal_reason"] = signal_timing.get("terminal_reason")
+    target["signal_to_order_terminal_at"] = signal_timing.get("terminal_at")
+    target["signal_to_fact_ms"] = signal_timing.get("signal_to_fact_ms")
+    target["signal_to_decision_ms"] = signal_timing.get("signal_to_decision_ms")
+    target["signal_to_job_enqueue_ms"] = signal_timing.get("signal_to_job_enqueue_ms")
+    target["signal_to_terminal_ms"] = signal_timing.get("signal_to_terminal_ms")
+    target["signal_to_order_slo_met"] = signal_timing.get("signal_to_order_slo_met")
+    target["signal_to_order_slo_violation_reason"] = signal_timing.get(
+        "signal_to_order_slo_violation_reason"
+    )
+    for key in (
+        "pre_signal_prepare_state",
+        "pre_signal_prepare_reason",
+        "pre_signal_prepare_source",
+        "pre_signal_prepare_due",
+        "pre_signal_prepare_inline",
+        "pre_signal_prepare_started_at",
+        "pre_signal_prepared_at",
+        "pre_signal_prepare_completed_at",
+        "pre_signal_prepared_before_deadline",
+        "pre_signal_prepare_complete",
+        "pre_signal_prepare_required_components",
+        "pre_signal_prepare_missing_components",
+        "pre_signal_prepare_components",
+        "hour_to_pre_signal_prepared_ms",
+    ):
+        if key in signal_timing:
+            target[key] = signal_timing.get(key)
+    return target
+
+
+def _mark_signal_timing_job_enqueued(target: Dict[str, Any], job_enqueued_at: str) -> None:
+    if not isinstance(target, dict):
+        return
+    timing = dict(target.get("signal_to_order_timing") or {}) if isinstance(target.get("signal_to_order_timing"), Mapping) else {}
+    if not timing:
+        return
+    signal_at = str(timing.get("awc_hard_source_signal_at") or "")
+    timing["job_enqueued_at"] = str(job_enqueued_at or "")
+    timing["signal_to_job_enqueue_ms"] = (
+        _latency_ms_between(signal_at, job_enqueued_at) if signal_at and job_enqueued_at else None
+    )
+    timing["terminal_at"] = str(job_enqueued_at or "")
+    timing["signal_to_terminal_ms"] = (
+        _latency_ms_between(signal_at, job_enqueued_at) if signal_at and job_enqueued_at else None
+    )
+    timing["terminal_state"] = "job_enqueued"
+    timing["terminal_reason"] = "awaiting_order_submit"
+    target["signal_to_order_timing"] = timing
+    target["signal_to_job_enqueue_ms"] = timing.get("signal_to_job_enqueue_ms")
+    target["signal_to_order_terminal_state"] = timing.get("terminal_state")
+    target["signal_to_order_terminal_reason"] = timing.get("terminal_reason")
+    target["signal_to_order_terminal_at"] = timing.get("terminal_at")
+
+
+def _signal_to_order_ledger_prewrite_status(
+    conn: sqlite3.Connection,
+    *,
+    signal_timing: Mapping[str, Any],
+) -> Dict[str, Any]:
+    if not str(signal_timing.get("awc_hard_source_signal_at") or "").strip():
+        return {
+            "ok": True,
+            "status": "not_applicable_no_awc_hard_source_signal",
+            "writes_archive_db": False,
+        }
+    schema_status = signal_to_order_timing_schema_status(conn)
+    if not schema_status.get("ok"):
+        return {
+            "ok": True,
+            "status": "schema_missing_noop",
+            "writes_archive_db": False,
+            "schema_status": schema_status,
+        }
+    return {
+        "ok": True,
+        "status": "pending_upsert",
+        "writes_archive_db": True,
+        "schema_status": schema_status,
+    }
+
+
+def _upsert_signal_to_order_ledger_from_timing(
+    conn: sqlite3.Connection,
+    *,
+    signal_timing: Mapping[str, Any],
+    decision_id: Any = "",
+    created_at: str = "",
+) -> Dict[str, Any]:
+    if not str(signal_timing.get("awc_hard_source_signal_at") or "").strip():
+        return {
+            "ok": True,
+            "status": "not_applicable_no_awc_hard_source_signal",
+            "writes_archive_db": False,
+        }
+    payload = {
+        "signal_id": signal_timing.get("signal_id"),
+        "decision_id": str(decision_id or signal_timing.get("decision_id") or ""),
+        "order_intent_id": signal_timing.get("order_intent_id"),
+        "awc_hard_source_signal_at": signal_timing.get("awc_hard_source_signal_at"),
+        "signal_to_order_slo_violation_reason": signal_timing.get("signal_to_order_slo_violation_reason"),
+        "signal_to_order_timing": dict(signal_timing),
+    }
+    return upsert_signal_to_order_timing(conn, payload, created_at=created_at)
+
+
+def _upsert_awc_hard_source_signal_ledger(
+    conn: sqlite3.Connection,
+    *,
+    signal_candidate: Mapping[str, Any],
+    signal_timing: Optional[Mapping[str, Any]] = None,
+    slug: str = "",
+    event_date: str = "",
+    created_at: str = "",
+) -> Dict[str, Any]:
+    if not isinstance(signal_candidate, Mapping):
+        return {
+            "ok": False,
+            "status": "signal_candidate_missing",
+            "writes_archive_db": False,
+        }
+    payload: Dict[str, Any] = {
+        "slug": slug or signal_candidate.get("slug"),
+        "event_date": event_date or signal_candidate.get("event_date"),
+        "signal_id": signal_candidate.get("signal_id"),
+        "source_event_id": signal_candidate.get("source_event_id"),
+        "awc_valid_time": signal_candidate.get("awc_valid_time"),
+        "awc_hard_source_signal_at": signal_candidate.get("awc_hard_source_signal_at"),
+        "acceptance_state": signal_candidate.get("acceptance_state"),
+        "state_reason": signal_candidate.get("acceptance_reason"),
+        "awc_hard_source_signal_candidate": dict(signal_candidate),
+        "hard_source_acceptance_state": _hard_source_acceptance_state_from_candidate(signal_candidate),
+    }
+    if isinstance(signal_timing, Mapping):
+        payload["signal_to_order_timing"] = dict(signal_timing)
+        payload["terminal_state"] = signal_timing.get("terminal_state")
+        payload["terminal_reason"] = signal_timing.get("terminal_reason")
+        payload["state_reason"] = (
+            signal_timing.get("terminal_reason")
+            or signal_timing.get("signal_to_order_slo_violation_reason")
+            or payload.get("state_reason")
+        )
+        payload["awc_hard_source_signal_at"] = (
+            signal_timing.get("awc_hard_source_signal_at")
+            or payload.get("awc_hard_source_signal_at")
+        )
+    else:
+        payload["terminal_state"] = signal_candidate.get("terminal_state")
+        payload["terminal_reason"] = signal_candidate.get("terminal_reason")
+    return upsert_awc_hard_source_signal(conn, payload, created_at=created_at)
+
+
+def _record_awc_signal_terminal_ledgers(
+    conn: sqlite3.Connection,
+    *,
+    signal_candidate: Mapping[str, Any],
+    preparation_timing: Optional[Mapping[str, Any]] = None,
+    slug: str = "",
+    event_date: str = "",
+    created_at: str = "",
+    terminal_state: str,
+    terminal_reason: str,
+    terminal_at: str = "",
+    fact_written_at: str = "",
+    posterior_written_at: str = "",
+    decision_started_at: str = "",
+    decision_written_at: str = "",
+    job_enqueued_at: str = "",
+) -> Dict[str, Any]:
+    terminal_at_value = str(terminal_at or created_at or _utc_now_iso())
+    signal_timing = _signal_to_order_timing_from_candidate(
+        signal_candidate,
+        preparation_context=preparation_timing,
+        fact_written_at=fact_written_at,
+        posterior_written_at=posterior_written_at,
+        decision_started_at=decision_started_at,
+        decision_written_at=decision_written_at,
+        job_enqueued_at=job_enqueued_at,
+        terminal_state=terminal_state,
+        terminal_reason=terminal_reason,
+        terminal_at=terminal_at_value,
+    )
+    awc_signal_ledger_result = _upsert_awc_hard_source_signal_ledger(
+        conn,
+        signal_candidate=signal_candidate,
+        signal_timing=signal_timing,
+        slug=slug,
+        event_date=event_date,
+        created_at=str(created_at or terminal_at_value),
+    )
+    signal_to_order_ledger_result = _upsert_signal_to_order_ledger_from_timing(
+        conn,
+        signal_timing=signal_timing,
+        created_at=str(created_at or terminal_at_value),
+    )
+    return {
+        "signal_to_order_timing": signal_timing,
+        "awc_hard_source_signal_ledger_result": awc_signal_ledger_result,
+        "signal_to_order_ledger_result": signal_to_order_ledger_result,
+        "signal_to_order_terminal_state": signal_timing.get("terminal_state"),
+        "signal_to_order_terminal_reason": signal_timing.get("terminal_reason"),
     }
 
 
@@ -3315,7 +4939,7 @@ def _posterior_target_job_exists_for_fact(
             FROM auto_trade_jobs
             WHERE source = ?
               AND (
-                    LOWER(COALESCE(state, '')) IN ('queued', 'retrying')
+                    LOWER(COALESCE(state, '')) IN ('queued', 'retrying', 'success')
                  OR (
                     LOWER(COALESCE(state, '')) = 'running'
                     AND (
@@ -3349,6 +4973,92 @@ def _posterior_target_job_exists_for_fact(
         if previous is not None and abs(float(previous) - float(target_posterior)) <= float(epsilon):
             return True
     return False
+
+
+def _posterior_target_job_exists_for_target(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    target_bucket: str,
+    target_posterior: Optional[float],
+    epsilon: float,
+) -> bool:
+    """Return whether an equivalent immutable target signal was already dispatched.
+
+    A newer fact with the same target bucket and posterior is not a new order intent.
+    Failed/expired jobs are intentionally excluded so the explicit retry path remains
+    responsible for recovery.
+    """
+    bucket = str(target_bucket or "").strip()
+    if not bucket:
+        return False
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(timespec="seconds")
+    now_iso = _utc_now_iso()
+    try:
+        rows = conn.execute(
+            """
+            SELECT payload_json
+            FROM auto_trade_jobs
+            WHERE source = ?
+              AND json_extract(payload_json, '$.posterior_target_direct.slug') = ?
+              AND substr(json_extract(payload_json, '$.posterior_target_direct.event_date'), 1, 10) = ?
+              AND json_extract(payload_json, '$.posterior_target_direct.target_bucket') = ?
+              AND (
+                    LOWER(COALESCE(state, '')) IN ('queued', 'retrying', 'success')
+                 OR (
+                    LOWER(COALESCE(state, '')) = 'running'
+                    AND (
+                        COALESCE(lease_until, '') = ''
+                     OR julianday(lease_until) > julianday(?)
+                    )
+                 )
+              )
+              AND created_at >= ?
+            ORDER BY id DESC
+            LIMIT 5
+            """,
+            (POSTERIOR_TARGET_SOURCE, slug, event_date[:10], bucket, now_iso, cutoff),
+        ).fetchall()
+    except sqlite3.Error:
+        return False
+    if target_posterior is None:
+        return bool(rows)
+    for row in rows:
+        payload = _json_loads(row["payload_json"])
+        direct = payload.get("posterior_target_direct") if isinstance(payload, Mapping) else None
+        previous = _prob01(direct.get("target_posterior")) if isinstance(direct, Mapping) else None
+        if previous is not None and abs(float(previous) - float(target_posterior)) <= float(epsilon):
+            return True
+    return False
+
+
+def _sequential_bayes_contract_block_decision_exists(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    contract_id: str,
+) -> bool:
+    if not str(contract_id or "").strip():
+        return False
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM auto_trade_decisions
+            WHERE slug = ?
+              AND substr(event_date, 1, 10) = ?
+              AND json_extract(details_json, '$.sequential_bayes_execution_contract.contract_id') = ?
+              AND reason_codes_json LIKE '%sequential_bayes_%'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(slug or ""), str(event_date or "")[:10], str(contract_id or "")),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is not None
 
 
 def _recent_posterior_target_old_exit_cleanup_job_exists(
@@ -3466,16 +5176,10 @@ def _active_old_yes_trades(
     event_date: str,
     target_outcome: str,
     target_side: str = "YES",
-    allowed_remote_no_outcomes: Optional[Iterable[str]] = None,
 ) -> List[Dict[str, Any]]:
     target_side_key = str(target_side or "YES").strip().upper()
     if target_side_key not in {"YES", "NO"}:
         target_side_key = "YES"
-    allowed_remote_no = {
-        str(item or "").strip()
-        for item in (allowed_remote_no_outcomes or [])
-        if str(item or "").strip()
-    }
     try:
         rows = conn.execute(
             """
@@ -3503,10 +5207,6 @@ def _active_old_yes_trades(
         if not outcome or side not in {"YES", "NO"}:
             continue
         if outcome == target_outcome and side == target_side_key:
-            continue
-        if target_side_key == "YES" and side == "NO" and outcome in allowed_remote_no:
-            continue
-        if target_side_key == "NO" and side == "YES" and outcome in allowed_remote_no:
             continue
         out.append(item)
     return out
@@ -3585,6 +5285,73 @@ def _posterior_target_has_active_entry(
     return row is not None
 
 
+def _posterior_target_has_pending_entry_order(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    outcome: str,
+    side: str = "YES",
+) -> bool:
+    side_key = str(side or "YES").strip().upper()
+    if side_key not in {"YES", "NO"}:
+        side_key = "YES"
+    outcome_key = str(outcome or "").strip()
+    if not outcome_key:
+        return False
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM edge_trades
+            WHERE slug = ?
+              AND event_date = ?
+              AND outcome = ?
+              AND UPPER(COALESCE(side, '')) = ?
+              AND COALESCE(position_size, 0) <= 0.000001
+              AND LOWER(COALESCE(state, '')) = 'entry_pending'
+              AND (
+                    COALESCE(last_order_id, '') <> ''
+                    OR LOWER(COALESCE(last_status, '')) IN (
+                        'clob_order_service_timeout_pending',
+                        'clob_order_service_submit_pending',
+                        'order_submit_pending_confirmation'
+                    )
+                  )
+              AND LOWER(COALESCE(last_status, '')) NOT LIKE '%not_found%'
+              AND LOWER(COALESCE(last_status, '')) NOT LIKE '%order_missing%'
+              AND LOWER(COALESCE(last_status, '')) NOT LIKE '%exec_failed%'
+            LIMIT 1
+            """,
+            (slug, event_date, outcome_key, side_key),
+        ).fetchone()
+        if row is not None:
+            return True
+    except sqlite3.Error:
+        pass
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(timespec="seconds")
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM auto_orders
+            WHERE slug = ?
+              AND event_date = ?
+              AND outcome = ?
+              AND UPPER(COALESCE(side, '')) = ?
+              AND UPPER(COALESCE(action, 'BUY')) = 'BUY'
+              AND COALESCE(order_id, '') <> ''
+              AND COALESCE(created_at, '') >= ?
+              AND LOWER(COALESCE(order_status, '')) IN ('live', 'open', 'pending', 'unknown')
+            LIMIT 1
+            """,
+            (slug, event_date, outcome_key, side_key, cutoff),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is not None
+
+
 def _posterior_target_previous_place_order_retry_block(
     conn: sqlite3.Connection,
     *,
@@ -3637,8 +5404,28 @@ def _posterior_target_previous_place_order_retry_block(
         "timed out",
         "timeout",
     )
-    place_order_failed = state == "entry_failed" and any(
-        marker in marker_text for marker in order_failure_markers
+    remote_submit_failure_markers = (
+        "clob_order_gateway_error",
+        "clob_order_rate_limited",
+        "clob_order_timeout",
+        "clob_order_rejected",
+        "clob_order_geoblocked",
+        "request failed with status code",
+        "bad gateway",
+        "gateway timeout",
+        "too many requests",
+        "status code 429",
+        "status code 500",
+        "status code 502",
+        "status code 503",
+        "status code 504",
+    )
+    place_order_failed = state == "entry_failed" and (
+        any(marker in marker_text for marker in order_failure_markers)
+        or (
+            last_action == "entry"
+            and any(marker in marker_text for marker in remote_submit_failure_markers)
+        )
     )
     if not place_order_failed:
         return {"blocked": False}
@@ -3656,10 +5443,62 @@ def _posterior_target_previous_place_order_retry_block(
             age_sec = max(0.0, (datetime.now(timezone.utc) - last_dt).total_seconds())
         except Exception:
             age_sec = None
+    if "clob_order_geoblocked" in marker_text or "trading restricted" in marker_text or "geoblock" in marker_text:
+        return {
+            "blocked": True,
+            "reason": "posterior_target_previous_place_order_failure_geoblocked",
+            "state": state,
+            "last_action": str(row["last_action"] or ""),
+            "last_status": str(row["last_status"] or ""),
+            "last_error": last_error,
+            "entry_retry_count": retry_count,
+            "entry_retry_max": max_retry,
+            "entry_retry_cooldown_sec": cooldown_sec,
+            "last_action_at": str(row["last_action_at"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+            "age_sec": round(age_sec, 3) if age_sec is not None else None,
+            "blocked_by_geoblock": True,
+            "blocked_by_max_retry": False,
+            "blocked_by_cooldown": False,
+        }
     blocked_by_max = max_retry <= 0 or retry_count >= max_retry
     blocked_by_cooldown = bool(
         cooldown_sec > 0 and age_sec is not None and age_sec < float(cooldown_sec)
     )
+    local_retryable_reason = _posterior_target_local_place_order_retryable_reason(
+        marker_text
+    )
+    if local_retryable_reason:
+        base = {
+            "state": state,
+            "last_action": str(row["last_action"] or ""),
+            "last_status": str(row["last_status"] or ""),
+            "last_error": last_error,
+            "entry_retry_count": retry_count,
+            "entry_retry_max": max_retry,
+            "entry_retry_cooldown_sec": cooldown_sec,
+            "last_action_at": str(row["last_action_at"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+            "age_sec": round(age_sec, 3) if age_sec is not None else None,
+            "retryable_local_failure": True,
+            "retryable_local_failure_reason": local_retryable_reason,
+        }
+        if blocked_by_cooldown:
+            return {
+                **base,
+                "blocked": True,
+                "reason": "posterior_target_previous_place_order_failure_retry_cooldown",
+                "blocked_by_max_retry": False,
+                "blocked_by_cooldown": True,
+            }
+        return {
+            **base,
+            "blocked": False,
+            "reason": "posterior_target_previous_place_order_local_failure_retry_allowed",
+            "retry_allowed_after_local_failure": True,
+            "blocked_by_max_retry": False,
+            "blocked_by_cooldown": False,
+        }
     if not (blocked_by_max or blocked_by_cooldown):
         return {"blocked": False}
     reason = (
@@ -3683,6 +5522,26 @@ def _posterior_target_previous_place_order_retry_block(
         "blocked_by_max_retry": bool(blocked_by_max),
         "blocked_by_cooldown": bool(blocked_by_cooldown),
     }
+
+
+def _posterior_target_local_place_order_retryable_reason(marker_text: str) -> str:
+    text = str(marker_text or "").lower()
+    if "cannot read properties of undefined (reading 'tostring')" in text:
+        return "local_sdk_order_build_metadata_error"
+    local_service_failure = any(
+        marker in text
+        for marker in (
+            "clob_order_service_unavailable",
+            "failed to establish a new connection",
+            "newconnectionerror",
+            "connection refused",
+        )
+    )
+    if local_service_failure and any(
+        marker in text for marker in ("127.0.0.1", "localhost", "/place-order")
+    ):
+        return "local_clob_order_service_connection_failure"
+    return ""
 
 
 def _opposite_trade_side(side: Any) -> str:
@@ -3767,64 +5626,202 @@ def _top_level_ctp_target_from_payload(payload: Mapping[str, Any]) -> Tuple[str,
     return bucket, None, "top_level_ctp_ssot"
 
 
-def _canonical_target_from_payload(payload: Mapping[str, Any]) -> Tuple[str, Optional[float], str]:
-    top_bucket, top_probability, top_source = _top_level_ctp_target_from_payload(payload)
-    if top_bucket:
-        return top_bucket, top_probability, top_source
-    for key, bucket_keys, prob_keys in (
-        (
-            "posterior_target_bucket_selection",
-            ("target_bucket", "bucket", "outcome"),
-            (
-                "target_probability",
-                "target_probability_pct",
-                "target_bucket_probability",
-                "target_bucket_probability_pct",
-                "target_posterior",
-            ),
-        ),
-        (
-            "target_bucket_selection",
-            ("target_bucket", "bucket", "outcome"),
-            (
-                "target_probability",
-                "target_probability_pct",
-                "target_bucket_probability",
-                "target_bucket_probability_pct",
-                "target_posterior",
-            ),
-        ),
-        (
-            "target_realization_capital_plan",
-            ("target_bucket", "bucket", "outcome"),
-            ("target_posterior", "posterior", "target_probability", "target_probability_pct"),
-        ),
-    ):
-        container = payload.get(key)
-        if not isinstance(container, Mapping):
-            continue
-        bucket = ""
-        for bucket_key in bucket_keys:
-            bucket = str(container.get(bucket_key) or "").strip()
-            if bucket:
-                break
-        if not bucket:
-            continue
-        prob = None
-        for prob_key in prob_keys:
-            prob = _prob01(container.get(prob_key))
-            if prob is not None:
-                break
-        return bucket, prob, key
-    row = _top_posterior_row(_rows(payload))
-    bucket = str(row.get("outcome") or row.get("label") or "").strip()
+def _posterior_ssot_fact_target_from_payload(payload: Mapping[str, Any]) -> Tuple[str, Optional[float], str]:
+    if not isinstance(payload, Mapping):
+        return "", None, ""
+    ssot_fact = payload.get("posterior_ssot_fact")
+    if not isinstance(ssot_fact, Mapping):
+        return "", None, ""
+    state = str(ssot_fact.get("state") or "").strip().lower()
+    if state and state not in {"available", "ready", "ok"}:
+        return "", None, ""
+    bucket = str(
+        ssot_fact.get("target_bucket")
+        or ssot_fact.get("ssot_target_bucket")
+        or ssot_fact.get("posterior_target_bucket")
+        or ""
+    ).strip()
     if not bucket:
         return "", None, ""
-    for prob_key in ("q_temperature_bucket_posterior", "q_bayes_posterior", "q_entry", "q_raw"):
-        prob = _prob01(row.get(prob_key))
+    for prob_key in (
+        "target_probability",
+        "target_probability_pct",
+        "target_bucket_probability",
+        "target_bucket_probability_pct",
+        "posterior",
+    ):
+        prob = _prob01(ssot_fact.get(prob_key))
         if prob is not None:
-            return bucket, prob, f"distribution.{prob_key}"
-    return bucket, None, "distribution"
+            return bucket, prob, f"posterior_ssot_fact.{prob_key}"
+    return bucket, None, "posterior_ssot_fact"
+
+
+def _canonical_target_from_payload(payload: Mapping[str, Any]) -> Tuple[str, Optional[float], str]:
+    ssot_bucket, ssot_probability, ssot_source = _posterior_ssot_fact_target_from_payload(payload)
+    if ssot_bucket:
+        return ssot_bucket, ssot_probability, ssot_source
+    return "", None, "posterior_ssot_fact_missing"
+
+
+def _posterior_target_decision_ssot_fields(target_source: Any) -> Tuple[str, str]:
+    source = str(target_source or "").strip()
+    if not source or source == "posterior_ssot_fact":
+        return "posterior_ssot_fact", "posterior_ssot_fact.target_probability"
+    if "posterior_ssot_fact" in source:
+        return "posterior_ssot_fact", source
+    return "posterior_ssot_fact_missing", "posterior_ssot_fact.target_probability"
+
+
+def _posterior_probability_rows_from_distribution(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
+        if not label:
+            continue
+        prob = _prob01(row.get("q_bayes_posterior"))
+        if prob is None:
+            prob = _prob01(row.get("q_temperature_bucket_posterior"))
+        if prob is None:
+            prob = _prob01(row.get("q_entry"))
+        if prob is None:
+            prob = _prob01(row.get("q_round"))
+        if prob is None:
+            continue
+        out.append(
+            {
+                "bucket": label,
+                "outcome": label,
+                "probability": float(prob),
+                "posterior": float(prob),
+                "hard_zero": bool(row.get("q_posterior_observed_constraints_hard_zero")),
+                "hard_source_final_bucket_lock": bool(
+                    row.get("hard_source_posterior_override_final_bucket_lock")
+                ),
+            }
+        )
+    return out
+
+
+def _sync_hard_source_posterior_ssot_from_constrained_rows(
+    payload: MutableMapping[str, Any],
+    *,
+    target_bucket: str,
+    constraint_meta: Mapping[str, Any],
+) -> Tuple[str, Optional[float], str]:
+    rows = _rows(payload)
+    posterior_rows = _posterior_probability_rows_from_distribution(rows)
+    target_probability: Optional[float] = None
+    for row in posterior_rows:
+        if str(row.get("bucket") or row.get("outcome") or "").strip() == str(target_bucket or "").strip():
+            target_probability = _prob01(row.get("probability"))
+            break
+    if target_probability is None and posterior_rows:
+        top = max(posterior_rows, key=lambda row: float(row.get("probability") or 0.0))
+        target_bucket = str(top.get("bucket") or top.get("outcome") or target_bucket or "").strip()
+        target_probability = _prob01(top.get("probability"))
+    ranked_rows = sorted(
+        posterior_rows,
+        key=lambda row: float(row.get("probability") or 0.0),
+        reverse=True,
+    )
+    final_lock = bool(constraint_meta.get("final_bucket_lock"))
+    posterior_status = "hard_source_locked" if final_lock else "hard_source_constrained"
+    posterior_distribution = {
+        "version": "hard_source_direct_posterior_distribution_v1",
+        "target_variable": "settlement_daily_max_c",
+        "status": posterior_status,
+        "source": "hard_source_posterior_override",
+        "bucket_probabilities": posterior_rows,
+        "ranked_bucket_probabilities": ranked_rows,
+        "hard_source_posterior_override_meta": dict(constraint_meta),
+        "observation_constraints": {
+            "hard_source_locked": final_lock,
+            "constraint_mode": constraint_meta.get("constraint_mode"),
+            "final_lock_reason": constraint_meta.get("final_lock_reason"),
+        },
+    }
+    payload["posterior_temperature_distribution"] = posterior_distribution
+    payload["posterior_temperature_distribution_source"] = "hard_source_posterior_override"
+    if target_probability is not None:
+        target_probability = float(target_probability)
+    ssot_fact = dict(payload.get("posterior_ssot_fact") or {}) if isinstance(payload.get("posterior_ssot_fact"), Mapping) else {}
+    ssot_fact.update(
+        {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available" if target_bucket and target_probability is not None else "missing",
+            "state_reason": "" if target_bucket and target_probability is not None else "hard_source_target_missing",
+            "read_only": True,
+            "ssot_kind": "posterior_temperature_distribution",
+            "source": "hard_source_posterior_override",
+            "event_date": str(payload.get("event_date") or ""),
+            "target_bucket": target_bucket,
+            "target_probability": target_probability,
+            "target_probability_pct": (
+                float(target_probability) * 100.0 if target_probability is not None else None
+            ),
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "bucket_probabilities": posterior_rows,
+            "ranked_bucket_probabilities": ranked_rows[:12],
+            "bucket_count": len(posterior_rows),
+            "hard_source_posterior_override_meta": dict(constraint_meta),
+            "hard_constraints_present": True,
+            "hard_mask_reason": (
+                "hard_source_final_bucket_lock" if final_lock else "hard_source_lower_bound_constraint"
+            ),
+            "hard_constraints": {
+                "source": "hard_source_posterior_override",
+                "constraint_mode": constraint_meta.get("constraint_mode"),
+                "final_bucket_lock": final_lock,
+                "final_lock_reason": constraint_meta.get("final_lock_reason"),
+            },
+            "frontend_recompute_boundary": "frontend_must_render_posterior_ssot_fact_without_recomputing",
+            "decision_recompute_boundary": "decision_must_consume_posterior_ssot_fact_without_recomputing",
+        }
+    )
+    payload["posterior_ssot_fact"] = ssot_fact
+    selection = {
+        "schema": "posterior_target_bucket_selection_v1",
+        "target_bucket": target_bucket,
+        "selected_bucket": target_bucket,
+        "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+        "selection_priority": "posterior_ssot_fact_top_bucket",
+        "target_bucket_probability_field": "posterior_ssot_fact.target_probability",
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "posterior_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "selection_runtime_recomputed": False,
+        "read_only": True,
+    }
+    if target_probability is not None:
+        selection.update(
+            {
+                "target_probability": float(target_probability),
+                "target_posterior": float(target_probability),
+                "target_bucket_probability": float(target_probability),
+                "target_probability_pct": float(target_probability) * 100.0,
+                "target_bucket_probability_pct": float(target_probability) * 100.0,
+                "posterior_highest_probability_pct": float(target_probability) * 100.0,
+            }
+        )
+    payload["posterior_target_bucket_selection"] = dict(selection)
+    payload["target_bucket_selection"] = dict(selection)
+    plan = payload.get("target_realization_capital_plan")
+    if isinstance(plan, MutableMapping):
+        plan["target_bucket"] = target_bucket
+        plan["target_posterior"] = target_probability
+        plan["target_probability"] = target_probability
+        plan["target_probability_field"] = "posterior_ssot_fact.target_probability"
+        plan["target_bucket_selection_source"] = "posterior_ssot_fact.top_bucket"
+    payload["ssot_target_bucket"] = target_bucket
+    payload["target_bucket"] = target_bucket
+    payload["target_bucket_source"] = "posterior_ssot_fact.top_bucket"
+    payload["target_bucket_source_semantics"] = "bayes_posterior_ssot_fact_v1"
+    payload["target_bucket_probability_field"] = "posterior_ssot_fact.target_probability"
+    if target_probability is not None:
+        payload["target_bucket_probability"] = float(target_probability)
+        payload["target_bucket_probability_pct"] = float(target_probability) * 100.0
+        payload["posterior_highest_probability_pct"] = float(target_probability) * 100.0
+    return target_bucket, target_probability, "posterior_ssot_fact.target_probability"
 
 
 def _insert_decision(
@@ -3844,33 +5841,24 @@ def _insert_decision(
     details: Mapping[str, Any],
     created_at: str,
 ) -> int:
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO auto_trade_decisions(
-            run_id, run_date, slug, event_date, title,
-            outcome, side, action, decided_state, will_order,
-            reason_codes_json, reasons_json, details_json, created_at
-        )
-        VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            run_date,
-            slug,
-            event_date,
-            title,
-            outcome,
-            side,
-            action,
-            decided_state,
-            1 if will_order else 0,
-            json.dumps(reason_codes, ensure_ascii=True, separators=(",", ":")),
-            json.dumps(reasons, ensure_ascii=True, separators=(",", ":")),
-            json.dumps(dict(details), ensure_ascii=True, separators=(",", ":")),
-            created_at,
-        ),
+    return insert_auto_trade_decision(
+        conn,
+        run_id=None,
+        run_date=run_date,
+        slug=slug,
+        event_date=event_date,
+        title=title,
+        outcome=outcome,
+        side=side,
+        action=action,
+        decided_state=decided_state,
+        will_order=will_order,
+        reason_codes=reason_codes,
+        reasons=reasons,
+        details=dict(details),
+        created_at=created_at,
+        ensure_ascii=True,
     )
-    return int(cur.lastrowid or 0)
 
 
 def _build_expected_target(
@@ -4276,18 +6264,23 @@ def _build_posterior_target_expected_target(
         q_entry = max(0.0, min(1.0, 1.0 - float(candidate_prob)))
     else:
         q_entry = posterior if str(outcome or "").strip() == str(target_bucket or "").strip() else float(candidate_prob)
+    lineage = _posterior_lineage_from_payload(payload)
+    role_key = str(leg_role or "").strip()
+    strong_posterior_leg = (
+        (role_key in {"top_yes_wave", "second_yes"} and side_upper == "YES")
+        or (role_key == "strongly_excluded_no" and side_upper == "NO")
+    )
     direct_buy_new = bool(
         side_upper == "YES"
-        and str(leg_role or "").strip() == "posterior_target_direct_target"
+        and role_key == "posterior_target_direct_target"
         and str(outcome or "").strip() == str(target_bucket or "").strip()
     )
-    remote_no_leg = bool(side_upper == "NO" and str(leg_role or "").strip() == "remote_no")
-    posterior_target_path_follow_overridden = bool(direct_buy_new and not follow_allowed)
-    posterior_target_path_diagnostic_only = False
-    allowed = bool(follow_allowed or remote_no_leg or direct_buy_new)
+    posterior_target_path_follow_overridden = bool((strong_posterior_leg or direct_buy_new) and not follow_allowed)
+    posterior_target_path_diagnostic_only = bool(strong_posterior_leg or direct_buy_new)
+    allowed = bool(strong_posterior_leg or direct_buy_new)
     target_realization_follow_reason = (
-        "remote_no_distance_window_above_target"
-        if remote_no_leg
+        "strong_posterior_physical_evidence_plan"
+        if strong_posterior_leg
         else (
             "posterior_target_direct_target_snapshot"
             if posterior_target_path_follow_overridden
@@ -4305,13 +6298,22 @@ def _build_posterior_target_expected_target(
         position_effect = "open_or_add_old_bucket_opposite_side"
         sell_old_buy_new_semantics = "buy_old_bucket_opposite_side"
         strategy_lane = "old_bucket_reverse"
-    elif remote_no_leg:
-        position_effect = "open_or_add_remote_no_bucket_side"
-        sell_old_buy_new_semantics = "buy_remote_no_bucket_side"
-        strategy_lane = "remote_no_bucket"
+    elif role_key == "top_yes_wave":
+        position_effect = "open_or_add_top_yes_wave"
+        sell_old_buy_new_semantics = "buy_top_yes_wave"
+        strategy_lane = "top_yes_wave"
+    elif role_key == "second_yes":
+        position_effect = "open_or_add_second_yes"
+        sell_old_buy_new_semantics = "buy_second_yes"
+        strategy_lane = "second_yes"
+    elif role_key == "strongly_excluded_no":
+        position_effect = "open_or_add_strongly_excluded_no"
+        sell_old_buy_new_semantics = "buy_strongly_excluded_no"
+        strategy_lane = "strongly_excluded_no"
     else:
         strategy_lane = "yes_realized_target" if direct_buy_new else "posterior_target_direct"
     size_scale = min(1.0, max(0.20, reliability)) if allowed else 0.0
+    decision_ssot, target_probability_field = _posterior_target_decision_ssot_fields(target_source)
     target.update(
         {
             "strategy": TARGET_REALIZATION_STRATEGY,
@@ -4338,9 +6340,6 @@ def _build_posterior_target_expected_target(
             "posterior_target_direct_path_follow_diagnostic_only": bool(
                 posterior_target_path_diagnostic_only
             ),
-            "posterior_target_remote_no_path_follow_diagnostic_only": bool(
-                remote_no_leg and not follow_allowed
-            ),
             "temperature_path_trade_follow_allowed_before_posterior_target_direct": (
                 follow_allowed if posterior_target_path_follow_overridden else None
             ),
@@ -4359,7 +6358,9 @@ def _build_posterior_target_expected_target(
             "temperature_path_trade_follow_reason": temperature_path_follow_reason,
             "target_realization_trade_follow_allowed": allowed,
             "target_realization_trade_follow_reason": target_realization_follow_reason,
-            "decision_ssot": "posterior_temperature_distribution",
+            "decision_ssot": decision_ssot,
+            "posterior_ssot_fact_used": decision_ssot == "posterior_ssot_fact",
+            "target_probability_field": target_probability_field,
             "target_adjustment_decision_version": "posterior_target_direct_v1",
             "target_adjustment_action": "POSTERIOR_TARGET_UPDATE",
             "strategy_lane": strategy_lane,
@@ -4373,6 +6374,36 @@ def _build_posterior_target_expected_target(
             "sell_old_buy_new_semantics": sell_old_buy_new_semantics,
         }
     )
+    execution_contract = payload.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        target["sequential_bayes_execution_contract"] = dict(execution_contract)
+        target["sequential_bayes_execution_contract_id"] = execution_contract.get(
+            "contract_id"
+        )
+        target["posterior_composer_schema"] = execution_contract.get("composer_schema")
+        target["posterior_activation_mode"] = execution_contract.get("activation_mode")
+        target["signal_to_order_slo_ms"] = execution_contract.get(
+            "signal_to_order_slo_ms"
+        )
+        target["signal_to_order_hard_deadline_ms"] = execution_contract.get(
+            "signal_to_order_hard_deadline_ms"
+        )
+        target["signal_to_order_slo_deadline_at"] = execution_contract.get(
+            "signal_to_order_slo_deadline_at"
+        )
+        target["signal_to_order_hard_deadline_at"] = execution_contract.get(
+            "signal_to_order_hard_deadline_at"
+        )
+        for key in (
+            "observation_trigger_at",
+            "observation_trigger_time_source",
+            "observation_to_order_slo_ms",
+            "observation_to_order_hard_deadline_ms",
+            "observation_to_order_slo_deadline_at",
+            "observation_to_order_hard_deadline_at",
+        ):
+            target[key] = execution_contract.get(key)
+    _merge_posterior_lineage(target, lineage)
     target["q_entry"] = float(q_entry)
     target["q_min_bound"] = float(q_entry)
     target["q_bayes_posterior"] = float(q_entry)
@@ -4389,366 +6420,16 @@ def _build_posterior_target_expected_target(
         target["edge_realizable_v2"] = edge
         target["edge_realizable_score"] = edge * 100.0
         target["edge_tradeability_profit_value"] = edge
-    if side_upper == "NO":
-        target["remote_no_bucket"] = outcome
-        target["remote_bucket_realization_prob"] = float(candidate_prob)
     return _apply_expected_entry_audit(
         target,
         reason_codes=["posterior_target_direct", "target_realization_order_intent"],
     )
 
 
-def _posterior_target_remote_no_plan_legs(
-    payload: Mapping[str, Any],
-    *,
-    target_bucket: str,
-) -> List[Dict[str, Any]]:
-    plan = payload.get("target_realization_capital_plan")
-    if not isinstance(plan, Mapping):
-        return []
-    legs = plan.get("legs")
-    if not isinstance(legs, list):
-        return []
-    target_bucket_key = str(target_bucket or plan.get("target_bucket") or "").strip()
-    out: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    for raw_leg in legs:
-        if not isinstance(raw_leg, Mapping):
-            continue
-        role = str(raw_leg.get("role") or raw_leg.get("target_realization_leg_role") or "").strip()
-        side = str(raw_leg.get("side") or "").strip().upper()
-        bucket = str(raw_leg.get("bucket") or raw_leg.get("outcome") or "").strip()
-        if role != "remote_no" or side != "NO" or not bucket or bucket in seen:
-            continue
-        try:
-            allowed, reason, distance, min_distance, max_distance = (
-                _posterior_target_remote_no_plan_leg_allowed(raw_leg, target_bucket_key, plan)
-            )
-        except Exception:
-            allowed, reason, distance, min_distance, max_distance = (
-                False,
-                "remote_no_distance_check_failed",
-                None,
-                2,
-                3,
-            )
-        if not allowed:
-            continue
-        price_cap = _posterior_target_remote_no_price_cap(raw_leg, plan)
-        raw_price = _to_float(
-            raw_leg.get("price")
-            or raw_leg.get("ask")
-            or raw_leg.get("best_ask")
-            or raw_leg.get("best_ask_no")
-        )
-        if (
-            raw_price is not None
-            and math.isfinite(float(raw_price))
-            and float(raw_price) > float(price_cap) + 1e-9
-        ):
-            continue
-        signed_distance = None
-        try:
-            signed_distance = swm.posterior_bucket_directional_distance(bucket, target_bucket_key)
-        except Exception:
-            signed_distance = None
-        action = str(raw_leg.get("action") or raw_leg.get("target_realization_plan_action") or "").strip()
-        block_reason = str(raw_leg.get("block_reason") or "").strip()
-        if block_reason:
-            continue
-        if action and action != "add":
-            continue
-        target_notional = _to_float(raw_leg.get("target_notional"))
-        delta_notional = _to_float(raw_leg.get("delta_notional"))
-        if target_notional is not None and math.isfinite(float(target_notional)) and float(target_notional) <= 0.50:
-            continue
-        if delta_notional is not None and math.isfinite(float(delta_notional)) and float(delta_notional) <= 0.50:
-            continue
-        notional_cap = _posterior_target_remote_no_notional_cap(raw_leg, plan)
-        notional_cap_applied = False
-        if (
-            target_notional is not None
-            and math.isfinite(float(target_notional))
-            and notional_cap is not None
-            and float(target_notional) > float(notional_cap) + 1e-9
-        ):
-            target_notional = float(notional_cap)
-            current_notional = _to_float(raw_leg.get("current_notional"))
-            delta_notional = float(target_notional) - float(current_notional or 0.0)
-            notional_cap_applied = True
-        leg = dict(raw_leg)
-        leg["bucket"] = bucket
-        leg["outcome"] = bucket
-        leg["side"] = "NO"
-        leg["role"] = "remote_no"
-        leg["target_realization_leg_role"] = "remote_no"
-        leg["remote_no_bucket_direction"] = (
-            "above_target"
-            if signed_distance is not None and signed_distance > 0
-            else "below_target"
-        )
-        leg["remote_no_bucket_distance"] = distance
-        leg["remote_no_min_bucket_distance"] = min_distance
-        leg["remote_no_max_bucket_distance"] = max_distance
-        leg["remote_no_max_price"] = float(price_cap)
-        leg["target_realization_order_price_cap"] = float(price_cap)
-        if notional_cap is not None:
-            leg["target_notional_cap_usdc"] = float(notional_cap)
-        if target_notional is not None and math.isfinite(float(target_notional)):
-            leg["target_notional"] = float(target_notional)
-        if delta_notional is not None and math.isfinite(float(delta_notional)):
-            leg["delta_notional"] = float(delta_notional)
-        if notional_cap_applied:
-            leg["target_notional_cap_applied"] = True
-        if reason:
-            leg["remote_no_reason"] = reason
-        seen.add(bucket)
-        out.append(leg)
-    return out
-
-
-def _posterior_target_allowed_remote_no_outcomes(
-    payload: Mapping[str, Any],
-    *,
-    target_bucket: str,
-) -> List[str]:
-    plan = payload.get("target_realization_capital_plan")
-    if not isinstance(plan, Mapping):
-        return []
-    legs = plan.get("legs")
-    if not isinstance(legs, list):
-        return []
-    target_bucket_key = str(target_bucket or plan.get("target_bucket") or "").strip()
-    out: List[str] = []
-    seen: set[str] = set()
-    for raw_leg in legs:
-        if not isinstance(raw_leg, Mapping):
-            continue
-        role = str(raw_leg.get("role") or raw_leg.get("target_realization_leg_role") or "").strip()
-        side = str(raw_leg.get("side") or "").strip().upper()
-        bucket = str(raw_leg.get("bucket") or raw_leg.get("outcome") or "").strip()
-        if role != "remote_no" or side != "NO" or not bucket or bucket in seen:
-            continue
-        try:
-            allowed, _reason, _distance, _min_distance, _max_distance = (
-                _posterior_target_remote_no_plan_leg_allowed(raw_leg, target_bucket_key, plan)
-            )
-        except Exception:
-            allowed = False
-        if not allowed:
-            continue
-        seen.add(bucket)
-        out.append(bucket)
-    return out
-
-
-def _posterior_target_remote_no_price_cap(
-    leg: Optional[Mapping[str, Any]] = None,
-    plan: Optional[Mapping[str, Any]] = None,
-) -> float:
-    leg_ref = leg if isinstance(leg, Mapping) else {}
-    plan_ref = plan if isinstance(plan, Mapping) else {}
-    env_cap = _to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MAX_PRICE"))
-    if env_cap is not None and math.isfinite(float(env_cap)):
-        return float(min(1.0, max(0.0, float(env_cap))))
-    global_cap = _to_float(os.environ.get("PM_TARGET_REALIZATION_MAX_ENTRY_PRICE"))
-    if global_cap is None or not math.isfinite(float(global_cap)):
-        global_cap = 0.98
-    cap = _to_float(leg_ref.get("target_realization_order_price_cap"))
-    if cap is None:
-        cap = _to_float(leg_ref.get("remote_no_max_price"))
-    if cap is None:
-        cap = _to_float(plan_ref.get("remote_no_max_price"))
-    if cap is not None and math.isfinite(float(cap)):
-        cap = max(float(cap), float(global_cap))
-    if cap is None or not math.isfinite(float(cap)):
-        cap = global_cap
-    return float(min(1.0, max(0.0, float(cap))))
-
-
-def _posterior_target_remote_no_notional_cap(
-    leg: Optional[Mapping[str, Any]] = None,
-    plan: Optional[Mapping[str, Any]] = None,
-) -> Optional[float]:
-    leg_ref = leg if isinstance(leg, Mapping) else {}
-    plan_ref = plan if isinstance(plan, Mapping) else {}
-    env_cap = _to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MAX_NOTIONAL_USDC"))
-    if env_cap is not None and math.isfinite(float(env_cap)) and float(env_cap) > 0:
-        return float(env_cap)
-    cap = _to_float(leg_ref.get("target_notional_cap_usdc"))
-    if cap is None:
-        cap = _to_float(plan_ref.get("remote_no_single_leg_max_notional_usdc"))
-    if cap is None:
-        cap = 100.0
-    cap = max(float(cap), 100.0)
-    if not math.isfinite(float(cap)) or float(cap) <= 0:
-        return None
-    return float(cap)
-
-
-def _posterior_target_remote_no_plan_leg_allowed(
-    leg: Mapping[str, Any],
-    target_bucket: str,
-    plan: Optional[Mapping[str, Any]] = None,
-) -> Tuple[bool, str, Optional[int], int, int]:
-    leg_ref = leg if isinstance(leg, Mapping) else {}
-    bucket = str(leg_ref.get("bucket") or leg_ref.get("outcome") or "").strip()
-    try:
-        directional_distance = swm.posterior_bucket_directional_distance(bucket, target_bucket)
-    except Exception:
-        directional_distance = None
-    if directional_distance is None:
-        try:
-            min_distance, max_distance = swm._target_realization_remote_no_distance_bounds()
-        except Exception:
-            min_distance, max_distance = 2, 4
-        return False, "remote_no_direction_unavailable", None, min_distance, max_distance
-    signed_distance = int(directional_distance)
-    if signed_distance == 0:
-        try:
-            min_distance, max_distance = swm._target_realization_remote_no_distance_bounds()
-        except Exception:
-            min_distance, max_distance = 2, 4
-        return False, "remote_no_must_not_be_target_bucket", 0, min_distance, max_distance
-    direction = "above_target" if signed_distance > 0 else "below_target"
-    try:
-        fallback_min, fallback_max = swm._target_realization_remote_no_distance_bounds(direction)
-    except Exception:
-        fallback_min, fallback_max = (3, 4) if direction == "above_target" else (2, 3)
-    plan_ref = plan if isinstance(plan, Mapping) else {}
-    min_raw = _to_float(leg_ref.get("remote_no_min_bucket_distance"))
-    max_raw = _to_float(leg_ref.get("remote_no_max_bucket_distance"))
-    if min_raw is None:
-        min_raw = _to_float(
-            plan_ref.get(
-                "remote_no_upper_min_bucket_distance"
-                if direction == "above_target"
-                else "remote_no_lower_min_bucket_distance"
-            )
-        )
-    if max_raw is None:
-        max_raw = _to_float(
-            plan_ref.get(
-                "remote_no_upper_max_bucket_distance"
-                if direction == "above_target"
-                else "remote_no_lower_max_bucket_distance"
-            )
-        )
-    if min_raw is None or not math.isfinite(float(min_raw)):
-        min_distance = int(fallback_min)
-    else:
-        min_distance = int(max(1, min(20, round(float(min_raw)))))
-    if max_raw is None or not math.isfinite(float(max_raw)):
-        max_distance = int(fallback_max)
-    else:
-        max_distance = int(max(min_distance, min(20, round(float(max_raw)))))
-    distance = abs(signed_distance)
-    if distance < min_distance:
-        return False, "remote_no_bucket_not_far_enough", distance, min_distance, max_distance
-    if distance > max_distance:
-        return False, "remote_no_bucket_too_far", distance, min_distance, max_distance
-    return True, "", distance, min_distance, max_distance
-
-
-def _posterior_target_remote_no_expected_targets(
-    conn: sqlite3.Connection,
-    *,
-    slug: str,
-    event_date: str,
-    snapshot_payload: Mapping[str, Any],
-    target_bucket: str,
-    target_posterior: Optional[float],
-    target_source: str,
-) -> List[Dict[str, Any]]:
-    targets: List[Dict[str, Any]] = []
-    for leg in _posterior_target_remote_no_plan_legs(
-        snapshot_payload,
-        target_bucket=target_bucket,
-    ):
-        outcome = str(leg.get("bucket") or leg.get("outcome") or "").strip()
-        if not outcome:
-            continue
-        row = _row_for_outcome(snapshot_payload, outcome)
-        if not row:
-            continue
-        row_for_target = dict(row)
-        leg_posterior = _prob01(leg.get("posterior"))
-        if leg_posterior is not None:
-            row_for_target["q_temperature_bucket_posterior"] = float(leg_posterior)
-            row_for_target["q_bayes_posterior"] = float(leg_posterior)
-        token = _market_token(
-            conn,
-            slug=slug,
-            event_date=event_date,
-            outcome=outcome,
-        )
-        tick = _latest_market_tick(
-            conn,
-            slug=slug,
-            event_date=event_date,
-            outcome=outcome,
-            side="NO",
-        )
-        target = _build_posterior_target_expected_target(
-            slug=slug,
-            event_date=event_date,
-            outcome=outcome,
-            row=row_for_target,
-            tick=tick,
-            token=token,
-            payload=snapshot_payload,
-            target_bucket=target_bucket,
-            target_posterior=target_posterior,
-            target_source=target_source or "posterior_temperature_distribution",
-            side="NO",
-            leg_role="remote_no",
-            entry_reasons=[
-                "posterior_target_direct",
-                "target_realization_order_intent",
-                "target_realization_remote_no",
-            ],
-        )
-        plan_notional = _to_float(leg.get("target_notional"))
-        delta_notional = _to_float(leg.get("delta_notional"))
-        target.update(
-            {
-                "target_realization_plan_action": str(leg.get("action") or "add"),
-                "target_realization_plan_notional": float(plan_notional)
-                if plan_notional is not None and math.isfinite(float(plan_notional))
-                else None,
-                "target_realization_plan_notional_source": "target_realization_capital_plan",
-                "kelly_target_notional": float(plan_notional)
-                if plan_notional is not None and math.isfinite(float(plan_notional))
-                else None,
-                "kelly_sizing_source": "target_realization_capital_plan",
-                "order_size_source": "target_realization_capital_plan",
-                "target_realization_delta_notional": float(delta_notional)
-                if delta_notional is not None and math.isfinite(float(delta_notional))
-                else None,
-                "remote_no_bucket_direction": leg.get("remote_no_bucket_direction"),
-                "remote_no_bucket_distance": leg.get("remote_no_bucket_distance"),
-                "remote_no_min_bucket_distance": leg.get("remote_no_min_bucket_distance"),
-                "remote_no_max_bucket_distance": leg.get("remote_no_max_bucket_distance"),
-                "remote_no_max_price": leg.get("remote_no_max_price"),
-                "target_realization_reliability": leg.get(
-                    "target_realization_reliability",
-                    target.get("target_realization_reliability"),
-                ),
-                "target_realization_reliability_source": leg.get(
-                    "target_realization_reliability_source",
-                    target.get("target_realization_reliability_source"),
-                ),
-            }
-        )
-        targets.append(target)
-    return targets
-
-
 def _posterior_target_plan_has_actionable_secondary(payload: Mapping[str, Any]) -> bool:
     plan = payload.get("target_realization_capital_plan")
     if not isinstance(plan, Mapping):
         return False
-    min_delta = max(0.0, _env_float("PM_POSTERIOR_TARGET_DIRECT_SECONDARY_MIN_DELTA_USDC", 0.50))
     for key in ("sell_old_legs", "buy_old_reverse_legs"):
         legs = plan.get(key)
         if not isinstance(legs, list):
@@ -4759,17 +6440,42 @@ def _posterior_target_plan_has_actionable_secondary(payload: Mapping[str, Any]) 
             if leg.get("leg_enabled") is False:
                 continue
             return True
-    for leg in plan.get("legs") or []:
-        if not isinstance(leg, Mapping):
-            continue
-        role = str(leg.get("role") or "").strip()
-        action = str(leg.get("action") or "").strip()
-        if role != "remote_no" or action != "add":
-            continue
-        delta = _to_float(leg.get("delta_notional"))
-        if delta is not None and float(delta) >= min_delta:
-            return True
     return False
+
+
+def _target_bucket_first_rows(payload: Dict[str, Any], target_bucket: str) -> None:
+    target_key = str(target_bucket or "").strip()
+    if not target_key:
+        return
+    for rows_key in ("distribution", "rows"):
+        rows = payload.get(rows_key)
+        if not isinstance(rows, list) or len(rows) < 2:
+            continue
+        indexed_rows = [
+            (idx, row)
+            for idx, row in enumerate(rows)
+            if isinstance(row, Mapping)
+        ]
+        if not indexed_rows:
+            continue
+        ordered = sorted(
+            indexed_rows,
+            key=lambda pair: (
+                0
+                if str(
+                    pair[1].get("outcome")
+                    or pair[1].get("bucket")
+                    or pair[1].get("label")
+                    or ""
+                ).strip()
+                == target_key
+                else 1,
+                pair[0],
+            ),
+        )
+        if [idx for idx, _row in ordered] == [idx for idx, _row in indexed_rows]:
+            continue
+        payload[rows_key] = [row for _idx, row in ordered]
 
 
 def _enqueue_direct_job(
@@ -4787,6 +6493,13 @@ def _enqueue_direct_job(
 ) -> Optional[int]:
     now_iso = _utc_now_iso()
     expected_with_timing = dict(expected_target)
+    runtime_contract = (
+        dict(expected_with_timing.get("hard_source_runtime_contract"))
+        if isinstance(expected_with_timing.get("hard_source_runtime_contract"), Mapping)
+        else _hard_source_runtime_contract()
+    )
+    expected_with_timing["hard_source_runtime_contract"] = dict(runtime_contract)
+    expected_with_timing["hard_source_runtime_contract_version"] = runtime_contract.get("contract_version")
     expected_with_timing["hard_source_job_enqueued_at"] = now_iso
     expected_with_timing["hard_source_ssot_to_job_enqueue_ms"] = _latency_ms_between(
         expected_with_timing.get("hard_source_ssot_written_at"),
@@ -4797,6 +6510,7 @@ def _enqueue_direct_job(
             expected_with_timing.get("hard_source_fetched_at"),
             now_iso,
         )
+    _mark_signal_timing_job_enqueued(expected_with_timing, now_iso)
     targets_with_timing: List[Dict[str, Any]] = [expected_with_timing]
     primary_key = (
         str(expected_with_timing.get("outcome") or "").strip(),
@@ -4823,7 +6537,38 @@ def _enqueue_direct_job(
                 target.get("hard_source_fetched_at"),
                 now_iso,
             )
+        _mark_signal_timing_job_enqueued(target, now_iso)
+        target["hard_source_runtime_contract"] = dict(runtime_contract)
+        target["hard_source_runtime_contract_version"] = runtime_contract.get("contract_version")
         targets_with_timing.append(target)
+    signal_to_order_ledger_result: Dict[str, Any] = {}
+    awc_signal_ledger_result: Dict[str, Any] = {}
+    if isinstance(expected_with_timing.get("signal_to_order_timing"), Mapping):
+        signal_to_order_ledger_result = _upsert_signal_to_order_ledger_from_timing(
+            conn,
+            signal_timing=expected_with_timing["signal_to_order_timing"],
+            created_at=now_iso,
+        )
+        candidate = expected_with_timing.get("awc_hard_source_signal_candidate")
+        if not isinstance(candidate, Mapping):
+            candidate = expected_with_timing.get("hard_source_acceptance_state")
+        if isinstance(candidate, Mapping):
+            awc_signal_ledger_result = _upsert_awc_hard_source_signal_ledger(
+                conn,
+                signal_candidate=candidate,
+                signal_timing=expected_with_timing["signal_to_order_timing"],
+                slug=slug,
+                event_date=event_date,
+                created_at=now_iso,
+            )
+        expected_with_timing["signal_to_order_ledger_result"] = dict(signal_to_order_ledger_result)
+        expected_with_timing["signal_to_order_ledger_status"] = str(
+            signal_to_order_ledger_result.get("status") or ""
+        )
+        expected_with_timing["awc_hard_source_signal_ledger_result"] = dict(awc_signal_ledger_result)
+        expected_with_timing["awc_hard_source_signal_ledger_status"] = str(
+            awc_signal_ledger_result.get("status") or ""
+        )
     if primary_only_fast_path_allowed is None:
         primary_only_fast_path_allowed = not bool(len(targets_with_timing) > 1)
     payload = {
@@ -4831,6 +6576,8 @@ def _enqueue_direct_job(
         "entry_expected_targets": targets_with_timing,
         "hard_source_direct": {
             "source": observation.get("source_id"),
+            "hard_source_runtime_contract": dict(runtime_contract),
+            "hard_source_runtime_contract_version": runtime_contract.get("contract_version"),
             "value_c": observation.get("value_c"),
             "target_bucket": expected_with_timing.get("outcome"),
             "observed_bucket": expected_with_timing.get("hard_source_observed_bucket"),
@@ -4843,6 +6590,19 @@ def _enqueue_direct_job(
             "ssot_written_at": expected_with_timing.get("hard_source_ssot_written_at"),
             "ssot_write_ms": expected_with_timing.get("hard_source_ssot_write_ms"),
             "job_enqueued_at": now_iso,
+            "signal_id": expected_with_timing.get("signal_id"),
+            "source_event_id": expected_with_timing.get("source_event_id"),
+            "awc_valid_time": expected_with_timing.get("awc_valid_time"),
+            "awc_hard_source_signal_at": expected_with_timing.get("awc_hard_source_signal_at"),
+            "signal_eligible": expected_with_timing.get("signal_eligible"),
+            "acceptance_state": expected_with_timing.get("acceptance_state"),
+            "acceptance_reason": expected_with_timing.get("acceptance_reason"),
+            "hard_source_acceptance_state": expected_with_timing.get("hard_source_acceptance_state"),
+            "signal_to_order_timing": expected_with_timing.get("signal_to_order_timing"),
+            "signal_to_order_ledger_result": dict(signal_to_order_ledger_result),
+            "signal_to_order_ledger_status": signal_to_order_ledger_result.get("status"),
+            "awc_hard_source_signal_ledger_result": dict(awc_signal_ledger_result),
+            "awc_hard_source_signal_ledger_status": awc_signal_ledger_result.get("status"),
             "fetch_to_ssot_ms": expected_with_timing.get("hard_source_fetch_to_ssot_ms"),
             "ssot_to_job_enqueue_ms": expected_with_timing.get("hard_source_ssot_to_job_enqueue_ms"),
             "primary_only_fast_path_allowed": bool(primary_only_fast_path_allowed),
@@ -4856,6 +6616,7 @@ def _enqueue_direct_job(
         event_payload["hard_source_direct_snapshot_source"] = observation.get("source_id")
         event_payload["entry_expected_targets"] = [dict(target) for target in targets_with_timing]
         event_payload["hard_source_direct"] = dict(payload["hard_source_direct"])
+        _target_bucket_first_rows(event_payload, str(expected_with_timing.get("outcome") or ""))
         payload["event_payloads"] = [
             {
                 "slug": slug,
@@ -4865,28 +6626,17 @@ def _enqueue_direct_job(
                 "snapshot_semantics": "ssot_posterior_constraint",
             }
         ]
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO auto_trade_jobs(
-            run_date, source, state, priority, payload_json,
-            lease_until, retry_count, max_retry, next_retry_at, last_error,
-            started_at, ended_at, run_id, created_at, updated_at
-        )
-        VALUES(?, ?, 'queued', ?, ?, '', 0, ?, ?, '', '', '', NULL, ?, ?)
-        """,
-        (
-            run_date,
-            DIRECT_SOURCE,
-            int(priority),
-            json.dumps(payload, ensure_ascii=True, separators=(",", ":")),
-            max(0, _env_int("PM_HARD_SOURCE_DIRECT_JOB_MAX_RETRY", 1)),
-            now_iso,
-            now_iso,
-            now_iso,
-        ),
+    return insert_auto_trade_job(
+        conn,
+        run_date=run_date,
+        source=DIRECT_SOURCE,
+        priority=int(priority),
+        payload=payload,
+        max_retry=max(0, _env_int("PM_HARD_SOURCE_DIRECT_JOB_MAX_RETRY", 1)),
+        next_retry_at=now_iso,
+        created_at=now_iso,
+        updated_at=now_iso,
     )
-    return int(cur.lastrowid or 0)
 
 
 _POSTERIOR_TARGET_DIRECT_EVENT_KEYS = (
@@ -4910,16 +6660,22 @@ _POSTERIOR_TARGET_DIRECT_EVENT_KEYS = (
     "market_closed",
     "rules_contract_ok",
     "rules_missing_reasons",
+    "fact_snapshot_id",
+    "posterior_run_id",
+    "posterior_target_fact_snapshot_id",
+    "posterior_target_posterior_run_id",
+    "posterior_target_lineage_source",
+    "posterior_composer_schema",
+    "posterior_activation_mode",
+    "sequential_bayes_execution_contract",
+    "sequential_bayes_origin_execution_contract",
+    "target_realization_v3_transition_contract",
+    "target_realization_capital_plan",
     *_POSTERIOR_TARGET_RULE_SOURCE_FIELDS,
     "posterior_target_bucket_selection",
+    "posterior_ssot_fact",
     "posterior_temperature_distribution_source",
     "ctp_latest_materialized_at",
-    "posterior_target_direct_inline_ctp_recomputed_at",
-    "posterior_target_direct_inline_ctp_recompute_reason",
-    "posterior_target_direct_source_fact_id",
-    "posterior_target_direct_source_fact_as_of",
-    "posterior_target_direct_source_fact_to_ctp_recompute_ms",
-    "posterior_target_direct_ctp_recompute_ms",
     "fact_id",
     "fact_as_of",
 )
@@ -4937,6 +6693,11 @@ _POSTERIOR_TARGET_DIRECT_ROW_KEYS = (
     "best_bid",
     "best_ask",
     "best_bid_no",
+    "price",
+    "limit_price",
+    "order_type",
+    "post_only",
+    "maker_only",
     "best_ask_no",
     "bid",
     "ask",
@@ -4981,6 +6742,11 @@ _POSTERIOR_TARGET_DIRECT_TARGET_KEYS = (
     "best_bid",
     "best_ask_no",
     "best_bid_no",
+    "price",
+    "limit_price",
+    "order_type",
+    "post_only",
+    "maker_only",
     "spread",
     "q_entry",
     "q_min_bound",
@@ -5029,7 +6795,6 @@ _POSTERIOR_TARGET_DIRECT_TARGET_KEYS = (
     "posterior_settlement_size_scale",
     "posterior_settlement_sort_score",
     "posterior_target_direct_path_follow_diagnostic_only",
-    "posterior_target_remote_no_path_follow_diagnostic_only",
     "temperature_path_trade_follow_allowed",
     "temperature_path_trade_follow_reason",
     "temperature_path_trade_follow_allowed_before_posterior_target_direct",
@@ -5039,6 +6804,19 @@ _POSTERIOR_TARGET_DIRECT_TARGET_KEYS = (
     "target_realization_trade_follow_allowed",
     "target_realization_trade_follow_reason",
     "decision_ssot",
+    "posterior_ssot_fact_used",
+    "fact_snapshot_id",
+    "posterior_run_id",
+    "posterior_target_fact_snapshot_id",
+    "posterior_target_posterior_run_id",
+    "posterior_target_lineage_source",
+    "posterior_composer_schema",
+    "posterior_activation_mode",
+    "sequential_bayes_execution_contract_id",
+    "signal_to_order_slo_ms",
+    "signal_to_order_hard_deadline_ms",
+    "signal_to_order_slo_deadline_at",
+    "signal_to_order_hard_deadline_at",
     "target_adjustment_decision_version",
     "target_adjustment_action",
     "strategy_lane",
@@ -5047,13 +6825,6 @@ _POSTERIOR_TARGET_DIRECT_TARGET_KEYS = (
     "target_realization_position_effect",
     "target_realization_plan_action",
     "sell_old_buy_new_semantics",
-    "remote_no_bucket",
-    "remote_no_bucket_direction",
-    "remote_no_bucket_distance",
-    "remote_no_min_bucket_distance",
-    "remote_no_max_bucket_distance",
-    "remote_no_max_price",
-    "remote_bucket_realization_prob",
     "held_target_bucket",
     "held_target_side",
     "old_bucket_reverse_side",
@@ -5081,6 +6852,17 @@ _POSTERIOR_TARGET_DIRECT_TARGET_KEYS = (
     "target_realization_sizing_active",
     "target_realization_plan_notional",
     "target_realization_plan_notional_source",
+    "target_realization_delta_notional",
+    "target_realization_v3_plan_id",
+    "target_realization_v3_role",
+    "target_realization_v3_execution_phase",
+    "target_realization_maker_only",
+    "target_realization_price_source",
+    "target_realization_reason_code",
+    "held_token_id",
+    "exit_bid",
+    "exit_ask",
+    "position_size",
     "target_realization_bankroll_defaulted",
     "target_realization_bankroll_default_source",
     "market_active",
@@ -5115,6 +6897,30 @@ _POSTERIOR_TARGET_DIRECT_SELECTION_KEYS = (
     "ssot_source",
     "target_bucket_selection_source",
     "target_selection_priority_version",
+)
+
+_POSTERIOR_TARGET_DIRECT_POSTERIOR_SSOT_KEYS = (
+    "schema",
+    "state",
+    "state_reason",
+    "ssot_kind",
+    "source",
+    "fact_snapshot_id",
+    "posterior_run_id",
+    "event_date",
+    "posterior_as_of",
+    "target_bucket",
+    "target_probability",
+    "target_probability_pct",
+    "target_probability_field",
+    "phase",
+    "beta_weak",
+    "beta_strong",
+    "phase_reason",
+    "hard_mask_reason",
+    "posterior_composer_schema",
+    "posterior_activation_mode",
+    "bucket_count",
 )
 
 
@@ -5157,6 +6963,9 @@ def _compact_posterior_target_expected_target(target: Mapping[str, Any]) -> Dict
                 for item in value[:30]
                 if _compact_json_scalar(item)
             ]
+    execution_contract = target.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        compact["sequential_bayes_execution_contract"] = dict(execution_contract)
     return compact
 
 
@@ -5203,6 +7012,31 @@ def _compact_posterior_target_event_payload(
         compact_selection = _compact_mapping_scalars(selection, _POSTERIOR_TARGET_DIRECT_SELECTION_KEYS)
         if compact_selection:
             compact["posterior_target_bucket_selection"] = compact_selection
+    posterior_ssot_fact = snapshot_payload.get("posterior_ssot_fact")
+    if isinstance(posterior_ssot_fact, Mapping):
+        compact_ssot = _compact_mapping_scalars(
+            posterior_ssot_fact,
+            _POSTERIOR_TARGET_DIRECT_POSTERIOR_SSOT_KEYS,
+        )
+        ranked = posterior_ssot_fact.get("ranked_bucket_probabilities")
+        if isinstance(ranked, list):
+            compact_ranked: List[Dict[str, Any]] = []
+            for raw_row in ranked[:8]:
+                if not isinstance(raw_row, Mapping):
+                    continue
+                row = _compact_mapping_scalars(
+                    raw_row,
+                    ("bucket", "outcome", "label", "probability", "posterior"),
+                )
+                if row:
+                    compact_ranked.append(row)
+            if compact_ranked:
+                compact_ssot["ranked_bucket_probabilities"] = compact_ranked
+        if compact_ssot:
+            compact["posterior_ssot_fact"] = compact_ssot
+    execution_contract = snapshot_payload.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        compact["sequential_bayes_execution_contract"] = dict(execution_contract)
     compact["slug"] = slug
     compact["event_date"] = event_date
     target_outcomes = {
@@ -5266,11 +7100,14 @@ def _enqueue_posterior_target_job(
     fact_as_of: str = "",
     priority: int,
     old_exit_cleanup_triggered: bool = False,
+    old_exit_cleanup_deferred_for_primary_entry: bool = False,
     exit_only: bool = False,
     primary_only_fast_path_allowed: Optional[bool] = None,
 ) -> Optional[int]:
     now_iso = _utc_now_iso()
+    lineage = _posterior_lineage_from_payload(snapshot_payload or {})
     expected_with_timing = dict(expected_target)
+    _merge_posterior_lineage(expected_with_timing, lineage)
     expected_with_timing["posterior_target_job_enqueued_at"] = now_iso
     expected_with_timing["posterior_target_fact_id"] = int(fact_id or 0) if fact_id else None
     expected_with_timing["posterior_target_fact_as_of"] = fact_as_of
@@ -5286,6 +7123,7 @@ def _enqueue_posterior_target_job(
     seen_keys = {primary_key}
     for raw_target in expected_targets or []:
         target = dict(raw_target)
+        _merge_posterior_lineage(target, lineage)
         key = (
             str(target.get("outcome") or "").strip(),
             str(target.get("side") or "").strip().upper(),
@@ -5308,13 +7146,21 @@ def _enqueue_posterior_target_job(
             or exit_only
             or len(targets_with_timing_compact) > 1
         )
+    decision_ssot = str(expected_with_timing.get("decision_ssot") or "").strip()
+    if not decision_ssot:
+        decision_ssot, _target_probability_field = _posterior_target_decision_ssot_fields(
+            expected_with_timing.get("posterior_target_source")
+        )
     payload = {
         "include_event_keys": [{"slug": slug, "event_date": event_date}],
         "entry_expected_targets": targets_with_timing_compact,
         "posterior_target_direct": {
             "source": POSTERIOR_TARGET_SOURCE,
+            "slug": slug,
+            "event_date": event_date,
             "decision_semantics": "ssot_posterior_target_probability_change",
-            "decision_ssot": "posterior_temperature_distribution",
+            "decision_ssot": decision_ssot,
+            "posterior_ssot_fact_used": decision_ssot == "posterior_ssot_fact",
             "target_bucket": expected_with_timing.get("target_bucket")
             or expected_with_timing.get("outcome"),
             "target_posterior": expected_with_timing.get("target_posterior"),
@@ -5326,8 +7172,75 @@ def _enqueue_posterior_target_job(
                 "posterior_target_fact_to_job_enqueue_ms"
             ),
             "primary_only_fast_path_allowed": bool(primary_only_fast_path_allowed),
+            "old_exit_cleanup_deferred_for_primary_entry": bool(
+                old_exit_cleanup_deferred_for_primary_entry
+            ),
         },
     }
+    v3_plan = (
+        snapshot_payload.get("target_realization_capital_plan")
+        if isinstance(snapshot_payload, Mapping)
+        else None
+    )
+    if isinstance(v3_plan, Mapping) and str(v3_plan.get("version") or "") == "strong_posterior_three_leg_strategy_v2":
+        v3_phase = str(
+            expected_with_timing.get("target_realization_v3_execution_phase")
+            or ("SELL_OLD" if exit_only else "BUY_NEW")
+        ).strip().upper()
+        payload["target_realization_v3"] = {
+            "schema": "target_realization_v3_execution_v1",
+            "plan_version": "strong_posterior_three_leg_strategy_v2",
+            "plan_id": str(v3_plan.get("plan_id") or ""),
+            "execution_phase": v3_phase,
+            "slug": slug,
+            "event_date": event_date,
+            "sell_old_before_buy_new": True,
+            "buy_after_sell_requires_latest_ssot_refresh": True,
+            "fact_id": int(fact_id or 0) if fact_id else None,
+            "fact_as_of": fact_as_of,
+            "target_bucket": v3_plan.get("target_bucket"),
+            "target_posterior": v3_plan.get("target_posterior"),
+            "deferred_buy_legs": [
+                dict(leg)
+                for leg in v3_plan.get("legs") or []
+                if isinstance(leg, Mapping) and str(leg.get("action") or "") == "add"
+            ],
+            "sell_old_legs": [
+                dict(leg)
+                for leg in v3_plan.get("sell_old_legs") or []
+                if isinstance(leg, Mapping)
+            ],
+        }
+        payload["posterior_target_direct"]["target_realization_v3"] = dict(
+            payload["target_realization_v3"]
+        )
+        payload["posterior_target_direct"]["decision_semantics"] = (
+            "target_realization_v3_sell_old_wait_fill_refresh"
+            if v3_phase == "SELL_OLD"
+            else "target_realization_v3_buy_latest_ssot_delta"
+        )
+    execution_contract = expected_with_timing.get("sequential_bayes_execution_contract")
+    if not isinstance(execution_contract, Mapping) and isinstance(snapshot_payload, Mapping):
+        execution_contract = snapshot_payload.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        payload["sequential_bayes_execution_contract"] = dict(execution_contract)
+        payload["posterior_target_direct"]["sequential_bayes_execution_contract"] = dict(
+            execution_contract
+        )
+        payload["posterior_target_direct"]["posterior_composer_schema"] = execution_contract.get(
+            "composer_schema"
+        )
+        payload["posterior_target_direct"]["posterior_activation_mode"] = execution_contract.get(
+            "activation_mode"
+        )
+        payload["posterior_target_direct"]["signal_to_order_slo_deadline_at"] = execution_contract.get(
+            "signal_to_order_slo_deadline_at"
+        )
+        payload["posterior_target_direct"]["signal_to_order_hard_deadline_at"] = execution_contract.get(
+            "signal_to_order_hard_deadline_at"
+        )
+    _merge_posterior_lineage(payload["posterior_target_direct"], lineage)
+    _merge_posterior_lineage(payload, lineage)
     if exit_only:
         payload["exit_only"] = True
     if old_exit_cleanup_triggered or exit_only:
@@ -5356,6 +7269,7 @@ def _enqueue_posterior_target_job(
             targets=targets_with_timing_compact,
             direct_block=payload["posterior_target_direct"],
         )
+        _merge_posterior_lineage(event_payload, lineage)
         payload["event_payloads"] = [
             {
                 "slug": slug,
@@ -5365,28 +7279,597 @@ def _enqueue_posterior_target_job(
                 "snapshot_semantics": "ssot_posterior_target_probability_change",
             }
         ]
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO auto_trade_jobs(
-            run_date, source, state, priority, payload_json,
-            lease_until, retry_count, max_retry, next_retry_at, last_error,
-            started_at, ended_at, run_id, created_at, updated_at
-        )
-        VALUES(?, ?, 'queued', ?, ?, '', 0, ?, ?, '', '', '', NULL, ?, ?)
-        """,
-        (
-            run_date,
-            POSTERIOR_TARGET_SOURCE,
-            int(priority),
-            json.dumps(payload, ensure_ascii=True, separators=(",", ":")),
-            max(0, _env_int("PM_POSTERIOR_TARGET_DIRECT_JOB_MAX_RETRY", 1)),
-            now_iso,
-            now_iso,
-            now_iso,
+    v3_job = isinstance(payload.get("target_realization_v3"), Mapping)
+    return insert_auto_trade_job(
+        conn,
+        run_date=run_date,
+        source=POSTERIOR_TARGET_SOURCE,
+        priority=int(priority),
+        payload=payload,
+        max_retry=max(
+            0,
+            _env_int(
+                "PM_TARGET_REALIZATION_V3_JOB_MAX_RETRY"
+                if v3_job
+                else "PM_POSTERIOR_TARGET_DIRECT_JOB_MAX_RETRY",
+                5 if v3_job else 1,
+            ),
         ),
+        next_retry_at=now_iso,
+        created_at=now_iso,
+        updated_at=now_iso,
     )
-    return int(cur.lastrowid or 0)
+
+
+def _target_realization_v3_job_exists(
+    conn: sqlite3.Connection,
+    *,
+    plan_id: str,
+    execution_phase: str,
+) -> bool:
+    if not plan_id:
+        return False
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM auto_trade_jobs
+            WHERE json_extract(payload_json, '$.target_realization_v3.plan_id') = ?
+              AND UPPER(COALESCE(json_extract(
+                    payload_json,
+                    '$.target_realization_v3.execution_phase'
+                  ), '')) = ?
+              AND state IN ('queued', 'retrying', 'running', 'success')
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (plan_id, str(execution_phase or "").upper()),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is not None
+
+
+def _write_target_realization_exit_skip_for_unexited_positions(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    plan: Optional[Mapping[str, Any]],
+    reason_code: str,
+    now_iso: str,
+) -> int:
+    sell_keys = {
+        (
+            str(leg.get("bucket") or leg.get("outcome") or "").strip(),
+            str(leg.get("side") or "").strip().upper(),
+        )
+        for leg in ((plan or {}).get("sell_old_legs") or [])
+        if isinstance(leg, Mapping)
+    }
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT outcome, UPPER(COALESCE(side, '')) AS side
+            FROM edge_trades
+            WHERE slug = ? AND substr(event_date, 1, 10) = ?
+              AND (
+                  COALESCE(position_size, 0) > 0.000001
+                  OR LOWER(COALESCE(state, '')) IN ('entry', 'entry_pending', 'exit_pending')
+              )
+            """,
+            (slug, event_date),
+        ).fetchall()
+    except sqlite3.Error:
+        return 0
+    updated = 0
+    for row in rows:
+        outcome = str(row["outcome"] or "")
+        side = str(row["side"] or "").upper()
+        if (outcome, side) in sell_keys:
+            continue
+        details = {
+            "schema": "target_realization_exit_skip_v1",
+            "source": "posterior_target_direct",
+            "decision_ssot": "posterior_ssot_fact",
+            "reason_code": reason_code,
+            "target_realization_v3_plan_id": str((plan or {}).get("plan_id") or ""),
+            "target_bucket": str((plan or {}).get("target_bucket") or ""),
+            "position_outcome": outcome,
+            "position_side": side,
+            "no_position_or_order_mutation": True,
+        }
+        cur = conn.execute(
+            """
+            UPDATE edge_trades
+            SET exit_skip_reason = ?, exit_skip_detail = ?, exit_skip_at = ?, updated_at = ?
+            WHERE slug = ? AND substr(event_date, 1, 10) = ?
+              AND outcome = ? AND UPPER(COALESCE(side, '')) = ?
+              AND (
+                  COALESCE(position_size, 0) > 0.000001
+                  OR LOWER(COALESCE(state, '')) IN ('entry', 'entry_pending', 'exit_pending')
+              )
+            """,
+            (
+                reason_code,
+                json.dumps(details, ensure_ascii=False, sort_keys=True),
+                now_iso,
+                now_iso,
+                slug,
+                event_date,
+                outcome,
+                side,
+            ),
+        )
+        updated += int(cur.rowcount or 0)
+    return updated
+
+
+def _target_realization_v3_buy_target(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    snapshot_payload: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    leg: Mapping[str, Any],
+    target_source: str,
+) -> Dict[str, Any]:
+    outcome = str(leg.get("bucket") or leg.get("outcome") or "").strip()
+    side = str(leg.get("side") or "").strip().upper()
+    row = _row_for_outcome(snapshot_payload, outcome)
+    if not row:
+        row = {
+            "outcome": outcome,
+            "q_temperature_bucket_posterior": leg.get("posterior"),
+            "q_bayes_posterior": leg.get("posterior"),
+        }
+    else:
+        row = dict(row)
+        row["q_temperature_bucket_posterior"] = leg.get("posterior")
+        row["q_bayes_posterior"] = leg.get("posterior")
+    token = _market_token(conn, slug=slug, event_date=event_date, outcome=outcome)
+    tick = _latest_market_tick(
+        conn,
+        slug=slug,
+        event_date=event_date,
+        outcome=outcome,
+        side=side,
+    )
+    source_role = str(leg.get("source_role") or leg.get("role") or "").strip()
+    target = _build_posterior_target_expected_target(
+        slug=slug,
+        event_date=event_date,
+        outcome=outcome,
+        row=row,
+        tick=tick,
+        token=token,
+        payload=snapshot_payload,
+        target_bucket=str(plan.get("target_bucket") or ""),
+        target_posterior=_prob01(plan.get("target_posterior")),
+        target_source=target_source,
+        side=side,
+        leg_role=source_role,
+        entry_reasons=[
+            "posterior_target_direct",
+            "target_realization_order_intent",
+            "target_realization_v3_buy_delta",
+        ],
+    )
+    delta_notional = _to_float(leg.get("delta_notional"))
+    target_notional = _to_float(leg.get("target_notional"))
+    order_notional = delta_notional if delta_notional is not None else target_notional
+    # Execution prices are always refreshed from the latest persisted book.
+    # The plan quote is diagnostic only and must not become a stale live limit.
+    passive_buy_price = _to_float(tick.get("best_bid"))
+    target.update(
+        {
+            "target_realization_capital_plan_version": str(plan.get("version") or ""),
+            "target_realization_v3_plan_id": str(plan.get("plan_id") or ""),
+            "target_realization_v3_role": source_role,
+            "target_realization_v3_execution_phase": "BUY_NEW",
+            "target_realization_plan_action": "add",
+            "target_realization_execution_action": "BUY",
+            "target_realization_plan_notional": float(order_notional or 0.0),
+            "target_realization_plan_notional_source": "strong_posterior_three_leg_strategy_v2",
+            "target_realization_delta_notional": float(delta_notional or 0.0),
+            "target_realization_target_notional": float(target_notional or 0.0),
+            "kelly_target_notional": float(order_notional or 0.0),
+            "kelly_sizing_source": "strong_posterior_three_leg_strategy_v2",
+            "order_size_source": "strong_posterior_three_leg_strategy_v2",
+            "price": passive_buy_price,
+            "order_price": passive_buy_price,
+            "limit_price": passive_buy_price,
+            "bid": passive_buy_price,
+            "best_bid": _to_float(tick.get("best_bid")),
+            "best_ask": _to_float(tick.get("best_ask")),
+            "target_realization_price_source": "best_bid",
+            "target_realization_maker_only": True,
+            "post_only": True,
+            "order_type": "GTC",
+        }
+    )
+    if source_role == "top_yes_wave":
+        target["target_realization_dynamic_wave_exit_target_price"] = leg.get(
+            "dynamic_wave_exit_target_price"
+        )
+        target["target_realization_wave_exit_policy"] = leg.get("wave_exit_policy")
+    if passive_buy_price is None:
+        target["entry_ok"] = False
+        target["target_realization_entry_block_reason"] = (
+            "target_realization_v3_entry_best_bid_missing"
+        )
+    return target
+
+
+def _target_realization_v3_sell_target(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    snapshot_payload: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    leg: Mapping[str, Any],
+) -> Dict[str, Any]:
+    outcome = str(leg.get("bucket") or leg.get("outcome") or "").strip()
+    side = str(leg.get("side") or "").strip().upper()
+    token = _market_token(conn, slug=slug, event_date=event_date, outcome=outcome)
+    tick = _latest_market_tick(
+        conn,
+        slug=slug,
+        event_date=event_date,
+        outcome=outcome,
+        side=side,
+    )
+    token_id = str(token.get("yes_token" if side == "YES" else "no_token") or "").strip()
+    reason_code = str(leg.get("reason_code") or "target_realization_position_invalidated")
+    passive_sell_price = _to_float(tick.get("best_ask"))
+    target = {
+        "slug": slug,
+        "event_date": event_date,
+        "outcome": outcome,
+        "side": side,
+        "strategy": TARGET_REALIZATION_STRATEGY,
+        "strategy_source": POSTERIOR_TARGET_SOURCE,
+        "strategy_family": "posterior_settlement",
+        "decision_ssot": "posterior_ssot_fact",
+        "posterior_ssot_fact_used": True,
+        "posterior_target_direct": True,
+        "posterior_target_update": True,
+        "posterior_target_source": "posterior_ssot_fact.target_probability",
+        "target_bucket": str(plan.get("target_bucket") or ""),
+        "ssot_target_bucket": str(plan.get("target_bucket") or ""),
+        "target_posterior": _prob01(plan.get("target_posterior")),
+        "token_id": token_id,
+        "held_token_id": token_id,
+        "bid": tick.get("best_bid"),
+        "best_bid": tick.get("best_bid"),
+        "exit_bid": tick.get("best_bid"),
+        "ask": passive_sell_price,
+        "best_ask": tick.get("best_ask"),
+        "exit_ask": passive_sell_price,
+        "price": passive_sell_price,
+        "limit_price": passive_sell_price,
+        "target_realization_price_source": "best_ask",
+        "target_realization_maker_only": True,
+        "post_only": True,
+        "order_type": "GTC",
+        "position_size": _to_float(leg.get("position_size")),
+        "size": _to_float(leg.get("position_size")),
+        "held_target_bucket": outcome,
+        "held_target_side": side,
+        "target_realization_capital_plan_version": str(plan.get("version") or ""),
+        "target_realization_v3_plan_id": str(plan.get("plan_id") or ""),
+        "target_realization_v3_role": str(leg.get("role") or "old_bucket_exit"),
+        "target_realization_v3_execution_phase": "SELL_OLD",
+        "target_realization_leg_role": "old_bucket_exit",
+        "target_realization_execution_action": "SELL",
+        "target_realization_position_effect": "close_old_bucket_side",
+        "target_realization_plan_action": "sell_old",
+        "target_realization_reason_code": reason_code,
+        "sell_old_buy_new_semantics": "sell_old_position_side_wait_fill_refresh",
+        "entry_ok": False,
+    }
+    execution_contract = snapshot_payload.get("sequential_bayes_execution_contract")
+    if isinstance(execution_contract, Mapping):
+        target["sequential_bayes_execution_contract"] = dict(execution_contract)
+        target["sequential_bayes_execution_contract_id"] = execution_contract.get("contract_id")
+        target["posterior_composer_schema"] = execution_contract.get("composer_schema")
+        target["posterior_activation_mode"] = execution_contract.get("activation_mode")
+        target["signal_to_order_slo_ms"] = execution_contract.get("signal_to_order_slo_ms")
+        target["signal_to_order_hard_deadline_ms"] = execution_contract.get(
+            "signal_to_order_hard_deadline_ms"
+        )
+        target["signal_to_order_slo_deadline_at"] = execution_contract.get(
+            "signal_to_order_slo_deadline_at"
+        )
+        target["signal_to_order_hard_deadline_at"] = execution_contract.get(
+            "signal_to_order_hard_deadline_at"
+        )
+        for key in (
+            "observation_trigger_at",
+            "observation_trigger_time_source",
+            "observation_to_order_slo_ms",
+            "observation_to_order_hard_deadline_ms",
+            "observation_to_order_slo_deadline_at",
+            "observation_to_order_hard_deadline_at",
+        ):
+            target[key] = execution_contract.get(key)
+    _merge_posterior_lineage(target, _posterior_lineage_from_payload(snapshot_payload))
+    if passive_sell_price is None:
+        target["target_realization_exit_block_reason"] = (
+            "target_realization_v3_exit_best_ask_missing"
+        )
+    return target
+
+
+
+
+def _record_target_realization_v3_plan_decisions(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    snapshot_payload: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    fact_id: int,
+    fact_as_of: str,
+    enqueue_job: bool,
+) -> Dict[str, Any]:
+    title = str(snapshot_payload.get("title") or snapshot_payload.get("question") or slug)
+    target_source = "posterior_ssot_fact.target_probability"
+    sell_targets = [
+        _target_realization_v3_sell_target(
+            conn,
+            slug=slug,
+            event_date=event_date,
+            snapshot_payload=snapshot_payload,
+            plan=plan,
+            leg=leg,
+        )
+        for leg in plan.get("sell_old_legs") or []
+        if isinstance(leg, Mapping)
+    ]
+    buy_targets = [
+        _target_realization_v3_buy_target(
+            conn,
+            slug=slug,
+            event_date=event_date,
+            snapshot_payload=snapshot_payload,
+            plan=plan,
+            leg=leg,
+            target_source=target_source,
+        )
+        for leg in plan.get("legs") or []
+        if isinstance(leg, Mapping)
+        and str(leg.get("action") or "") == "add"
+        and not str(leg.get("block_reason") or "").strip()
+        and float(_to_float(leg.get("target_notional")) or 0.0)
+        >= _env_float("PM_TARGET_REALIZATION_MIN_ORDER_NOTIONAL_USDC", 1.0)
+    ]
+    execution_phase = (
+        "SELL_OLD"
+        if sell_targets
+        else "BUY_NEW"
+        if buy_targets else "BUY_NEW"
+    )
+    actionable_targets = (
+        sell_targets
+        if sell_targets
+        else buy_targets
+    )
+    plan_id = str(plan.get("plan_id") or "")
+    duplicate_job = _target_realization_v3_job_exists(
+        conn,
+        plan_id=plan_id,
+        execution_phase=execution_phase,
+    )
+    will_enqueue = bool(enqueue_job and actionable_targets and not duplicate_job)
+    common = {
+        "source": POSTERIOR_TARGET_SOURCE,
+        "strategy": TARGET_REALIZATION_STRATEGY,
+        "strategy_family": "posterior_settlement",
+        "decision_ssot": "posterior_ssot_fact",
+        "posterior_ssot_fact_used": True,
+        "target_realization_capital_plan_version": str(plan.get("version") or ""),
+        "target_realization_v3_plan_id": plan_id,
+        "target_realization_v3_execution_phase": execution_phase,
+        "target_realization_capital_plan": dict(plan),
+        "sell_old_before_buy_new": True,
+        "buy_after_sell_requires_latest_ssot_refresh": True,
+        "fact_id": int(fact_id),
+        "fact_as_of": fact_as_of,
+        "target_bucket": plan.get("target_bucket"),
+        "target_posterior": plan.get("target_posterior"),
+        "duplicate_job_for_plan_phase": duplicate_job,
+        "entry_expected_targets": [dict(target) for target in actionable_targets],
+        "deferred_buy_targets": [dict(target) for target in buy_targets] if sell_targets else [],
+    }
+    common.update(_decision_ssot_context_from_payload(snapshot_payload))
+    decision_ids: List[int] = []
+    now_iso = _utc_now_iso()
+    for target in actionable_targets:
+        is_sell = str(target.get("target_realization_execution_action") or "").upper() == "SELL"
+        reason_code = str(
+            target.get("target_realization_reason_code")
+            or ("target_realization_v3_buy_delta" if not is_sell else "target_realization_position_invalidated")
+        )
+        details = dict(common)
+        details["expected_target"] = dict(target)
+        details["target_realization_execution_action"] = "SELL" if is_sell else "BUY"
+        if (
+            not is_sell
+            and str(target.get("target_realization_v3_role") or "") == "second_yes"
+        ):
+            window = plan.get("second_yes_entry_window_state")
+            details["strategy_leg"] = "second_yes"
+            details["entry_allowed"] = True
+            details["second_yes_entry_window_state"] = (
+                dict(window) if isinstance(window, Mapping) else {}
+            )
+        try:
+            if is_sell:
+                details = swm._finalize_exit_decision_details(
+                    details,
+                    decision_reason_codes=[reason_code],
+                )
+        except Exception:
+            pass
+        decision_ids.append(
+            _insert_decision(
+                conn,
+                run_date=run_date,
+                slug=slug,
+                event_date=event_date,
+                title=title,
+                outcome=str(target.get("outcome") or ""),
+                side=str(target.get("side") or "YES"),
+                action="exit" if is_sell else "entry",
+                decided_state="exit" if is_sell else "entry_dry_run"
+                if _truthy(os.environ.get("PM_AUTO_TRADE_DRY_RUN"), True)
+                else "entry",
+                will_order=will_enqueue,
+                reason_codes=[reason_code],
+                reasons=[
+                    "v3 卖旧优先：旧仓成交后刷新最新 SSOT，再生成买新任务。"
+                    if is_sell
+                    else "按当前 posterior SSOT 的动态三腿选择买入；下一次后验更新将重新排序主 YES、次 YES 与强排除 NO。"
+                ],
+                details=details,
+                created_at=now_iso,
+            )
+        )
+    second_window = plan.get("second_yes_entry_window_state")
+    second_window = second_window if isinstance(second_window, Mapping) else {}
+    second_leg = next(
+        (
+            leg
+            for leg in plan.get("legs") or []
+            if isinstance(leg, Mapping)
+            and str(leg.get("strategy_leg") or leg.get("role") or "") == "second_yes"
+        ),
+        None,
+    )
+    if isinstance(second_leg, Mapping) and second_window.get("entry_allowed") is not True:
+        reason_code = str(
+            second_leg.get("block_reason")
+            or second_window.get("entry_block_reason")
+            or "second_yes_entry_window_closed"
+        )
+        details = dict(common)
+        details.update(
+            {
+                "schema": "target_realization_v3_second_yes_no_order_v1",
+                "target_realization_v3_role": "second_yes",
+                "target_realization_execution_action": "HOLD",
+                "entry_allowed": False,
+                "entry_block_reason": reason_code,
+                "second_yes_entry_window_state": dict(second_window),
+                "same_bucket_existing_position_may_be_retained": True,
+                "uses_ev_edge_lcb": False,
+                "job_enqueued": False,
+            }
+        )
+        decision_ids.append(
+            _insert_decision(
+                conn,
+                run_date=run_date,
+                slug=slug,
+                event_date=event_date,
+                title=title,
+                outcome=str(second_leg.get("bucket") or ""),
+                side="YES",
+                action="hold",
+                decided_state="hold",
+                will_order=False,
+                reason_codes=[reason_code],
+                reasons=["次 YES 仅允许在预计最高温前最后 30 分钟新增或补仓；当前只保留已有同桶持仓。"],
+                details=details,
+                created_at=now_iso,
+            )
+        )
+    job_id: Optional[int] = None
+    job_error = ""
+    if will_enqueue:
+        try:
+            job_id = _enqueue_posterior_target_job(
+                conn,
+                run_date=run_date,
+                slug=slug,
+                event_date=event_date,
+                expected_target=actionable_targets[0],
+                expected_targets=[dict(target) for target in actionable_targets[1:]],
+                snapshot_payload=snapshot_payload,
+                fact_id=fact_id,
+                fact_as_of=fact_as_of,
+                priority=_env_int("PM_POSTERIOR_TARGET_DIRECT_JOB_PRIORITY", 15000),
+                old_exit_cleanup_triggered=bool(sell_targets),
+                old_exit_cleanup_deferred_for_primary_entry=False,
+                exit_only=bool(sell_targets),
+                primary_only_fast_path_allowed=False,
+            )
+        except Exception as exc:
+            job_error = f"{exc.__class__.__name__}: {exc}"
+    if not actionable_targets:
+        hold_reason = "strong_posterior_three_leg_no_actionable_leg"
+        decision_ids.append(
+            _insert_decision(
+                conn,
+                run_date=run_date,
+                slug=slug,
+                event_date=event_date,
+                title=title,
+                outcome=str(plan.get("target_bucket") or ""),
+                side="YES",
+                action="hold",
+                decided_state="hold",
+                will_order=False,
+                reason_codes=[hold_reason],
+                reasons=["当前强后验三腿计划没有可执行腿。"],
+                details=common,
+                created_at=now_iso,
+            )
+        )
+    exit_skip_rows_updated = _write_target_realization_exit_skip_for_unexited_positions(
+        conn,
+        slug=slug,
+        event_date=event_date,
+        plan=plan,
+        reason_code="target_realization_position_hold_no_exit_intent",
+        now_iso=now_iso,
+    )
+    conn.commit()
+    return {
+        "ok": not bool(job_error),
+        "status": "recorded" if actionable_targets else "no_actionable_delta",
+        "slug": slug,
+        "event_date": event_date,
+        "target_bucket": plan.get("target_bucket"),
+        "target_posterior": plan.get("target_posterior"),
+        "target_realization_capital_plan_version": str(plan.get("version") or ""),
+        "target_realization_v3_plan_id": plan_id,
+        "target_realization_v3_execution_phase": execution_phase,
+        "sell_target_count": len(sell_targets),
+        "buy_target_count": len(buy_targets),
+        "exit_skip_rows_updated": exit_skip_rows_updated,
+        "decision_ids": decision_ids,
+        "job_id": int(job_id) if job_id else None,
+        "job_enqueued": bool(job_id),
+        "job_skipped_reason": (
+            "target_realization_v3_duplicate_plan_phase"
+            if duplicate_job
+            else "target_realization_v3_no_actionable_delta"
+            if not actionable_targets
+            else "target_realization_v3_enqueue_error"
+            if job_error
+            else ""
+        ),
+        "job_enqueue_error": job_error,
+        "fact_id": fact_id,
+        "fact_as_of": fact_as_of,
+        "target_realization_capital_plan": dict(plan),
+    }
 
 
 def record_posterior_target_direct_decisions(
@@ -5396,6 +7879,7 @@ def record_posterior_target_direct_decisions(
     slug: str = "",
     emit_unchanged_sec: int = 10,
     enqueue_job: bool = True,
+    transition_signal_at: str = "",
 ) -> Dict[str, Any]:
     db = Path(db_path)
     event_key = _normalize_date(event_date) or _chengdu_today()
@@ -5442,6 +7926,223 @@ def record_posterior_target_direct_decisions(
                     "slug": slug_key,
                     "decision_window": window,
                 }
+        sequential_slo_ms = min(
+            SEQUENTIAL_BAYES_SLO_MS,
+            max(
+                1,
+                _env_int(
+                    "PM_SEQUENTIAL_BAYES_SIGNAL_TO_ORDER_SLO_MS",
+                    SEQUENTIAL_BAYES_SLO_MS,
+                ),
+            ),
+        )
+        sequential_hard_deadline_ms = min(
+            sequential_slo_ms,
+            max(
+                1,
+                _env_int(
+                    "PM_SEQUENTIAL_BAYES_SIGNAL_TO_ORDER_HARD_DEADLINE_MS",
+                    SEQUENTIAL_BAYES_HARD_DEADLINE_MS,
+                ),
+            ),
+        )
+        execution_contract = build_sequential_bayes_execution_contract(
+            snapshot_payload,
+            now=decision_started_at,
+            slo_ms=sequential_slo_ms,
+            hard_deadline_ms=sequential_hard_deadline_ms,
+        )
+        transition_at = str(
+            transition_signal_at
+            or os.environ.get("PM_TARGET_REALIZATION_V3_TRANSITION_SIGNAL_AT")
+            or ""
+        ).strip()
+        if transition_at:
+            origin_blockers = {
+                str(value)
+                for value in execution_contract.get("blockers") or []
+                if str(value)
+            }
+            non_deadline_blockers = origin_blockers - {
+                "sequential_bayes_signal_to_order_hard_deadline_exceeded"
+            }
+            if not non_deadline_blockers:
+                origin_contract = dict(execution_contract)
+                execution_contract = build_target_realization_transition_execution_contract(
+                    origin_contract,
+                    transition_signal_at=transition_at,
+                    now=decision_started_at,
+                    transition_kind="sell_fill_to_buy_refresh",
+                    slo_ms=sequential_slo_ms,
+                    hard_deadline_ms=sequential_hard_deadline_ms,
+                )
+                snapshot_payload["sequential_bayes_origin_execution_contract"] = origin_contract
+                snapshot_payload["target_realization_v3_transition_contract"] = dict(
+                    execution_contract
+                )
+        snapshot_payload["sequential_bayes_execution_contract"] = dict(execution_contract)
+        if execution_contract.get("trade_eligible") is not True:
+            blockers = [
+                str(value)
+                for value in execution_contract.get("blockers") or []
+                if str(value)
+            ] or ["sequential_bayes_execution_contract_blocked"]
+            deadline_only = set(blockers) == {
+                "sequential_bayes_signal_to_order_hard_deadline_exceeded"
+            }
+            if deadline_only and _posterior_target_job_exists_for_fact(
+                conn,
+                slug=slug_key,
+                event_date=event_key,
+                fact_id=int(latest["id"] or 0),
+                target_bucket=str(execution_contract.get("target_bucket") or ""),
+                target_posterior=_prob01(execution_contract.get("target_probability")),
+                epsilon=max(float(min_delta), 1e-9),
+            ):
+                return {
+                    "ok": True,
+                    "status": "sequential_bayes_fact_already_handled",
+                    "event_date": event_key,
+                    "slug": slug_key,
+                    "fact_id": int(latest["id"] or 0),
+                    "target_bucket": execution_contract.get("target_bucket"),
+                    "target_posterior": execution_contract.get("target_probability"),
+                    "job_enqueued": False,
+                    "job_skipped_reason": "posterior_target_job_already_completed_for_fact",
+                    "sequential_bayes_execution_contract": dict(execution_contract),
+                }
+            contract_id = str(execution_contract.get("contract_id") or "")
+            decision_written = False
+            if not _sequential_bayes_contract_block_decision_exists(
+                conn,
+                slug=slug_key,
+                event_date=event_key,
+                contract_id=contract_id,
+            ):
+                details = {
+                    "source": POSTERIOR_TARGET_SOURCE,
+                    "decision_ssot": "posterior_ssot_fact",
+                    "posterior_ssot_fact_used": True,
+                    "target_execution_blocked": True,
+                    "target_execution_block_reason": blockers[0],
+                    "sequential_bayes_execution_contract": dict(execution_contract),
+                    "posterior_composer_schema": execution_contract.get("composer_schema"),
+                    "posterior_activation_mode": execution_contract.get("activation_mode"),
+                    "fact_id": int(latest["id"] or 0),
+                    "fact_as_of": str(latest["fact_as_of"] or ""),
+                    "latest_fact_payload_source": payload_source,
+                    "decision_started_at": decision_started_at,
+                }
+                _merge_posterior_lineage(details, _posterior_lineage_from_payload(snapshot_payload))
+                _insert_decision(
+                    conn,
+                    run_date=run_date,
+                    slug=slug_key,
+                    event_date=event_key,
+                    title=str(snapshot_payload.get("title") or snapshot_payload.get("question") or slug_key),
+                    outcome=str(execution_contract.get("target_bucket") or ""),
+                    side="YES",
+                    action="entry",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=blockers,
+                    reasons=[
+                        "连续剩余升温顺序状态 Bayes 的执行合同或 5 秒硬截止未满足。"
+                    ],
+                    details=details,
+                    created_at=_utc_now_iso(),
+                )
+                conn.commit()
+                decision_written = True
+            return {
+                "ok": True,
+                "status": "sequential_bayes_execution_contract_blocked",
+                "event_date": event_key,
+                "slug": slug_key,
+                "fact_id": int(latest["id"] or 0),
+                "target_bucket": execution_contract.get("target_bucket"),
+                "target_posterior": execution_contract.get("target_probability"),
+                "blockers": blockers,
+                "decision_written": decision_written,
+                "job_enqueued": False,
+                "sequential_bayes_execution_contract": dict(execution_contract),
+            }
+        # The dynamic three-leg posterior plan is the sole production entry
+        # path.  There is no environment rollback into the retired remote-NO
+        # strategy: missing current-plan evidence fails closed below.
+        if True:
+            v3_plan = build_target_realization_v3_decision_plan(
+                conn,
+                snapshot_payload=snapshot_payload,
+                slug=slug_key,
+                event_date=event_key,
+                computed_at=decision_started_at,
+            )
+            snapshot_payload["target_realization_capital_plan"] = dict(v3_plan)
+            if v3_plan.get("ok") is not True:
+                block_reason = str(
+                    v3_plan.get("reason")
+                    or (v3_plan.get("blockers") or ["target_realization_v3_plan_invalid"])[0]
+                )
+                details = {
+                    "source": POSTERIOR_TARGET_SOURCE,
+                    "strategy": TARGET_REALIZATION_STRATEGY,
+                    "strategy_family": "posterior_settlement",
+                    "decision_ssot": "posterior_ssot_fact",
+                    "posterior_ssot_fact_used": True,
+                    "target_realization_capital_plan_version": "strong_posterior_three_leg_strategy_v2",
+                    "target_realization_capital_plan": dict(v3_plan),
+                    "target_execution_blocked": True,
+                    "target_execution_block_reason": block_reason,
+                    "fact_id": int(latest["id"] or 0),
+                    "fact_as_of": str(latest["fact_as_of"] or ""),
+                    "decision_started_at": decision_started_at,
+                    "job_enqueued": False,
+                }
+                _merge_posterior_lineage(
+                    details,
+                    _posterior_lineage_from_payload(snapshot_payload),
+                )
+                ssot = snapshot_payload.get("posterior_ssot_fact")
+                ssot = ssot if isinstance(ssot, Mapping) else {}
+                _insert_decision(
+                    conn,
+                    run_date=run_date,
+                    slug=slug_key,
+                    event_date=event_key,
+                    title=str(snapshot_payload.get("title") or snapshot_payload.get("question") or slug_key),
+                    outcome=str(ssot.get("target_bucket") or ""),
+                    side="YES",
+                    action="hold",
+                    decided_state="blocked",
+                    will_order=False,
+                    reason_codes=[block_reason],
+                    reasons=["v3 资金或结算合同未通过，不生成自动交易任务。"],
+                    details=details,
+                    created_at=_utc_now_iso(),
+                )
+                conn.commit()
+                return {
+                    "ok": True,
+                    "status": "target_realization_v3_plan_blocked",
+                    "event_date": event_key,
+                    "slug": slug_key,
+                    "fact_id": int(latest["id"] or 0),
+                    "block_reason": block_reason,
+                    "job_enqueued": False,
+                    "target_realization_capital_plan": dict(v3_plan),
+                }
+            return _record_target_realization_v3_plan_decisions(
+                conn,
+                run_date=run_date,
+                slug=slug_key,
+                event_date=event_key,
+                snapshot_payload=snapshot_payload,
+                plan=v3_plan,
+                fact_id=int(latest["id"] or 0),
+                fact_as_of=str(latest["fact_as_of"] or ""),
+                enqueue_job=enqueue_job,
+            )
         if _truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_UI_ALIGNMENT_ENABLED"), False):
             try:
                 from ui.server import (
@@ -5500,12 +8201,33 @@ def record_posterior_target_direct_decisions(
             outcome=target_bucket,
             side="YES",
         )
-        primary_target_entry_needed = not target_entry_already_active
+        target_entry_pending_order_active = _posterior_target_has_pending_entry_order(
+            conn,
+            slug=slug_key,
+            event_date=event_key,
+            outcome=target_bucket,
+            side="YES",
+        )
+        primary_target_entry_needed = not target_entry_pending_order_active
+        equivalent_target_job_exists = _posterior_target_job_exists_for_target(
+            conn,
+            slug=slug_key,
+            event_date=event_key,
+            target_bucket=target_bucket,
+            target_posterior=target_posterior,
+            epsilon=max(float(min_delta), 1e-9),
+        )
+        if (
+            equivalent_target_job_exists
+            and previous_bucket == target_bucket
+            and not probability_changed
+        ):
+            primary_target_entry_needed = False
         if _truthy(
             os.environ.get("PM_POSTERIOR_TARGET_DIRECT_FAST_RETRY_BLOCKED_DECISION"),
             True,
         ):
-            if not target_entry_already_active:
+            if not target_entry_pending_order_active:
                 previous_place_order_retry_block = (
                     _posterior_target_previous_place_order_retry_block(
                         conn,
@@ -5537,12 +8259,16 @@ def record_posterior_target_direct_decisions(
                         or snapshot_payload.get("question")
                         or slug_key
                     )
+                    decision_ssot, _target_probability_field = _posterior_target_decision_ssot_fields(
+                        target_source
+                    )
                     details = {
                         "source": POSTERIOR_TARGET_SOURCE,
                         "posterior_target_direct": True,
                         "posterior_target_update": True,
                         "decision_basis": "posterior_target_probability_change",
-                        "decision_ssot": "posterior_temperature_distribution",
+                        "decision_ssot": decision_ssot,
+                        "posterior_ssot_fact_used": decision_ssot == "posterior_ssot_fact",
                         "target_adjustment_decision_version": "posterior_target_direct_v1",
                         "target_adjustment_action": "POSTERIOR_TARGET_UPDATE",
                         "target_adjustment_reason_codes": list(reason_codes),
@@ -5593,10 +8319,9 @@ def record_posterior_target_direct_decisions(
                             "target_execution_block_reason": block_reason,
                         },
                         "entry_expected_targets": [],
-                        "remote_no_entry_targets": [],
                         "posterior_target_direct_precheck_suppressed_old_exit_count": 0,
-                        "posterior_target_direct_precheck_suppressed_remote_no_count": 0,
                     }
+                    details.update(_decision_ssot_context_from_payload(snapshot_payload))
                     decision_id = _insert_decision(
                         conn,
                         run_date=run_date,
@@ -5613,8 +8338,9 @@ def record_posterior_target_direct_decisions(
                             "SSOT posterior target still requires entry, but the latest real place-order attempt is retry-blocked."
                         ],
                         details=details,
-                        created_at=now_iso,
-                    )
+        created_at=now_iso,
+    )
+
                     conn.commit()
                     return {
                         "ok": True,
@@ -5635,7 +8361,6 @@ def record_posterior_target_direct_decisions(
                         "old_exit_cleanup_deferred_for_primary_entry": False,
                         "decision_ids": [decision_id],
                         "old_exit_count": 0,
-                        "remote_no_entry_count": 0,
                         "job_id": None,
                         "job_enqueued": False,
                         "job_enqueue_eligible": False,
@@ -5653,17 +8378,12 @@ def record_posterior_target_direct_decisions(
             os.environ.get("PM_POSTERIOR_TARGET_DIRECT_OLD_EXIT_CLEANUP_ON_UNCHANGED"),
             True,
         )
-        allowed_remote_no_outcomes = _posterior_target_allowed_remote_no_outcomes(
-            snapshot_payload,
-            target_bucket=target_bucket,
-        )
         old_trades = _active_old_yes_trades(
             conn,
             slug=slug_key,
             event_date=event_key,
             target_outcome=target_bucket,
             target_side="YES",
-            allowed_remote_no_outcomes=allowed_remote_no_outcomes,
         )
         secondary_plan_actionable = _posterior_target_plan_has_actionable_secondary(
             snapshot_payload
@@ -5797,7 +8517,7 @@ def record_posterior_target_direct_decisions(
             payload=snapshot_payload,
             target_bucket=target_bucket,
             target_posterior=target_posterior,
-            target_source=target_source or "posterior_temperature_distribution",
+            target_source=target_source or "posterior_ssot_fact.target_probability",
         )
         target_execution_block_reason = ""
         target_execution_blocked = False
@@ -5815,7 +8535,7 @@ def record_posterior_target_direct_decisions(
                 expected.get("posterior_settlement_entry_block_reason")
                 or "posterior_settlement_entry_not_allowed"
             )
-        if not target_entry_already_active:
+        if not target_entry_pending_order_active:
             previous_place_order_retry_block = _posterior_target_previous_place_order_retry_block(
                 conn,
                 slug=slug_key,
@@ -5916,7 +8636,7 @@ def record_posterior_target_direct_decisions(
                     payload=snapshot_payload,
                     target_bucket=target_bucket,
                     target_posterior=target_posterior,
-                    target_source=target_source or "posterior_temperature_distribution",
+                    target_source=target_source or "posterior_ssot_fact.target_probability",
                     side=reverse_side,
                     leg_role="old_bucket_reverse",
                     entry_reasons=[
@@ -5928,19 +8648,6 @@ def record_posterior_target_direct_decisions(
                     held_target_side=old_side,
                 )
                 reverse_targets.append(reverse_target)
-        remote_no_targets = (
-            _posterior_target_remote_no_expected_targets(
-                conn,
-                slug=slug_key,
-                event_date=event_key,
-                snapshot_payload=snapshot_payload,
-                target_bucket=target_bucket,
-                target_posterior=target_posterior,
-                target_source=target_source or "posterior_temperature_distribution",
-            )
-            if build_secondary_targets
-            else []
-        )
         entry_blocked_exit_old_only = bool(
             target_execution_blocked
             and old_trades
@@ -5970,20 +8677,19 @@ def record_posterior_target_direct_decisions(
         entry_targets = [
             dict(expected),
             *[dict(target) for target in reverse_targets],
-            *[dict(target) for target in remote_no_targets],
         ]
         visible_entry_targets = [dict(expected)] if primary_only_precheck else entry_targets
-        visible_remote_no_targets = [] if primary_only_precheck else [
-            dict(target) for target in remote_no_targets
-        ]
         now_iso = _utc_now_iso()
         title = str(snapshot_payload.get("title") or snapshot_payload.get("question") or slug_key)
+        decision_ssot, target_probability_field = _posterior_target_decision_ssot_fields(target_source)
         common_details = {
             "source": POSTERIOR_TARGET_SOURCE,
             "posterior_target_direct": True,
             "posterior_target_update": True,
             "decision_basis": "posterior_target_probability_change",
-            "decision_ssot": "posterior_temperature_distribution",
+            "decision_ssot": decision_ssot,
+            "posterior_ssot_fact_used": decision_ssot == "posterior_ssot_fact",
+            "target_probability_field": target_probability_field,
             "target_adjustment_decision_version": "posterior_target_direct_v1",
             "target_adjustment_action": "POSTERIOR_TARGET_UPDATE",
             "target_adjustment_reason_codes": list(reason_codes),
@@ -6005,6 +8711,10 @@ def record_posterior_target_direct_decisions(
             "secondary_entry_update_triggered": bool(secondary_entry_update_triggered),
             "secondary_plan_actionable": bool(secondary_plan_actionable),
             "target_entry_already_active": bool(target_entry_already_active),
+            "target_entry_pending_order_active": bool(target_entry_pending_order_active),
+            "target_entry_active_position_does_not_block_additional_buy": bool(
+                target_entry_already_active and not target_entry_pending_order_active
+            ),
             "primary_target_entry_needed": bool(primary_target_entry_needed),
             "target_execution_blocked": bool(target_execution_blocked),
             "target_execution_block_reason": target_execution_block_reason,
@@ -6021,13 +8731,11 @@ def record_posterior_target_direct_decisions(
                 else ""
             ),
             "old_exit_cleanup_cooldown_sec": int(old_exit_cleanup_cooldown_sec or 0),
-            "allowed_remote_no_outcomes": list(allowed_remote_no_outcomes),
             "fact_id": int(latest["id"] or 0),
             "fact_as_of": str(latest["fact_as_of"] or ""),
             "decision_started_at": decision_started_at,
             "expected_target": dict(expected),
             "entry_expected_targets": visible_entry_targets,
-            "remote_no_entry_targets": visible_remote_no_targets,
             "posterior_target_direct_primary_only_precheck": bool(primary_only_precheck),
             "posterior_target_direct_primary_only_job_payload": bool(primary_only_job_payload),
             "posterior_target_direct_cleanup_only_job": bool(cleanup_only_job),
@@ -6035,14 +8743,8 @@ def record_posterior_target_direct_decisions(
             "posterior_target_direct_precheck_suppressed_old_exit_count": (
                 len(old_trades) if suppress_old_exit_decision_rows else 0
             ),
-            "posterior_target_direct_precheck_suppressed_remote_no_count": (
-                len(remote_no_targets) if primary_only_precheck else 0
-            ),
             "posterior_target_direct_job_payload_deferred_old_exit_count": (
                 len(old_trades) if primary_only_job_payload else 0
-            ),
-            "posterior_target_direct_job_payload_deferred_remote_no_count": (
-                0 if build_secondary_targets else None
             ),
             "sell_old_buy_new_semantics": "sell_old_position_side_then_buy_new_and_optional_old_opposite_side",
             "sell_old_buy_new_entry_legs": visible_entry_targets,
@@ -6060,7 +8762,6 @@ def record_posterior_target_direct_decisions(
                     "target_realization_reliability_source",
                     "strategy_lane",
                     "posterior_target_direct_path_follow_diagnostic_only",
-                    "posterior_target_remote_no_path_follow_diagnostic_only",
                     "temperature_path_trade_follow_allowed",
                     "temperature_path_trade_follow_reason",
                     "temperature_path_trade_follow_allowed_before_posterior_target_direct",
@@ -6128,13 +8829,16 @@ def record_posterior_target_direct_decisions(
                     expected_targets=(
                         []
                         if primary_only_job_payload
-                        else [*reverse_targets, *remote_no_targets]
+                        else [*reverse_targets]
                     ),
                     snapshot_payload=snapshot_payload,
                     fact_id=int(latest["id"] or 0),
                     fact_as_of=str(latest["fact_as_of"] or ""),
                     priority=_env_int("PM_POSTERIOR_TARGET_DIRECT_JOB_PRIORITY", 15000),
                     old_exit_cleanup_triggered=bool(old_exit_cleanup_triggered),
+                    old_exit_cleanup_deferred_for_primary_entry=bool(
+                        old_exit_cleanup_deferred_for_primary_entry
+                    ),
                     exit_only=bool(cleanup_only_job),
                     primary_only_fast_path_allowed=bool(primary_only_job_payload or not old_trades),
                 )
@@ -6290,7 +8994,8 @@ def record_posterior_target_direct_decisions(
                 ),
             }
             exit_details["exit_original_context_reason_codes"] = list(reason_codes)
-            exit_reason_codes = ["target_realization_switch_buy_exit_old"]
+            exit_reason_codes = [swm._target_realization_invalidation_code_for_side(old_side)]
+            exit_details["exit_reason_family"] = swm.TARGET_REALIZATION_FAMILY
             if target_execution_blocked:
                 exit_details["entry_execution_blocked"] = True
                 exit_details["entry_execution_block_reason"] = (
@@ -6307,8 +9012,8 @@ def record_posterior_target_direct_decisions(
                 exit_details["exit_policy_version"] = swm.EXIT_POLICY_VERSION
                 exit_details["exit_policy_primary_source"] = swm.EXIT_POLICY_PRIMARY_SOURCE
                 exit_details["exit_policy_trigger_reason_codes"] = list(exit_reason_codes)
-                exit_details["exit_policy_family_codes"] = ["target_realization_exit"]
-                exit_details["exit_reason_family_codes"] = ["target_realization_exit"]
+                exit_details["exit_policy_family_codes"] = [swm.TARGET_REALIZATION_FAMILY]
+                exit_details["exit_reason_family_codes"] = [swm.TARGET_REALIZATION_FAMILY]
             decision_ids.append(
                 _insert_decision(
                     conn,
@@ -6357,7 +9062,6 @@ def record_posterior_target_direct_decisions(
         ),
         "decision_ids": decision_ids,
         "old_exit_count": len(old_trades),
-        "remote_no_entry_count": len(remote_no_targets),
         "job_id": job_id,
         "job_enqueued": bool(job_id),
         "job_enqueue_eligible": bool(job_enqueue_eligible),
@@ -6380,6 +9084,7 @@ def record_hard_source_direct_decisions(
     slug: str = "",
     emit_unchanged_sec: int = 60,
     enqueue_job: bool = True,
+    preparation_timing: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     db = Path(db_path)
     event_key = _normalize_date(event_date) or _chengdu_today()
@@ -6415,27 +9120,147 @@ def record_hard_source_direct_decisions(
         observation = _hard_observation_from_payload(payload, allow_wu_twc_fallback=allow_wu_fallback)
         if not observation.get("ok"):
             return {"ok": False, "status": "hard_observation_missing", "event_date": event_key, **observation}
+        signal_candidate = _build_awc_signal_candidate_from_observation(
+            payload=payload,
+            observation=observation,
+            slug=slug_key,
+            event_date=event_key,
+            candidate_seen_at=hard_source_decision_started_at,
+            read_only=True,
+        )
+        hard_source_acceptance_state = _hard_source_acceptance_state_from_candidate(signal_candidate)
+        if _awc_hourly_signal_gate_applies(signal_candidate) and not bool(
+            signal_candidate.get("signal_eligible")
+        ):
+            runtime_contract = _hard_source_runtime_contract()
+            terminal_state = _blocked_awc_signal_terminal_state(signal_candidate)
+            terminal_reason = str(
+                signal_candidate.get("acceptance_reason")
+                or "awc_hard_source_signal_not_accepted"
+            )
+            signal_timing = _signal_to_order_timing_from_candidate(
+                signal_candidate,
+                preparation_context=preparation_timing,
+                decision_started_at=hard_source_decision_started_at,
+                terminal_state=terminal_state,
+                terminal_reason=terminal_reason,
+                terminal_at=hard_source_decision_started_at,
+            )
+            awc_signal_ledger_result = _upsert_awc_hard_source_signal_ledger(
+                conn,
+                signal_candidate=signal_candidate,
+                signal_timing=signal_timing,
+                slug=slug_key,
+                event_date=event_key,
+                created_at=hard_source_decision_started_at,
+            )
+            signal_to_order_ledger_result = _upsert_signal_to_order_ledger_from_timing(
+                conn,
+                signal_timing=signal_timing,
+                created_at=hard_source_decision_started_at,
+            )
+            conn.commit()
+            return {
+                "ok": True,
+                "status": "hard_source_awc_signal_not_accepted",
+                "event_date": event_key,
+                "slug": slug_key,
+                "source_id": observation.get("source_id"),
+                "value_c": _to_float(observation.get("value_c")),
+                "hard_source_runtime_contract": dict(runtime_contract),
+                "hard_source_runtime_contract_version": runtime_contract.get("contract_version"),
+                "hard_source_acceptance_state": dict(hard_source_acceptance_state),
+                "signal_to_order_timing": dict(signal_timing),
+                "awc_hard_source_signal_ledger_result": awc_signal_ledger_result,
+                "signal_to_order_ledger_result": signal_to_order_ledger_result,
+                "signal_to_order_terminal_state": signal_timing.get("terminal_state"),
+                "signal_to_order_terminal_reason": signal_timing.get("terminal_reason"),
+                "decision_ids": [],
+                "job_id": None,
+            }
         value_c = _to_float(observation.get("value_c"))
         if value_c is None:
-            return {"ok": False, "status": "hard_observation_value_missing", "event_date": event_key}
+            terminal = _record_awc_signal_terminal_ledgers(
+                conn,
+                signal_candidate=signal_candidate,
+                preparation_timing=preparation_timing,
+                slug=slug_key,
+                event_date=event_key,
+                created_at=hard_source_decision_started_at,
+                terminal_state="error",
+                terminal_reason="hard_observation_value_missing",
+                terminal_at=hard_source_decision_started_at,
+                decision_started_at=hard_source_decision_started_at,
+            )
+            conn.commit()
+            return {
+                "ok": False,
+                "status": "hard_observation_value_missing",
+                "event_date": event_key,
+                **terminal,
+            }
         observed_bucket = _bucket_label_for_value(payload, value_c)
         if not observed_bucket:
-            return {"ok": False, "status": "observed_bucket_missing", "event_date": event_key, "value_c": value_c}
-        constrained_rows = _rows(payload)
-        with _temporary_env({"PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED": "0"}):
-            constraint_meta = apply_hard_source_posterior_override_to_distribution(
-                constrained_rows,
-                _features(payload),
-                base_probs=_posterior_base_probs(constrained_rows),
-                market_var=str(payload.get("market_var") or "temperature_2m_max"),
-                rounding_rule=str(payload.get("rounding_rule") or ""),
-                event_tz=str(payload.get("event_tz") or payload.get("tz") or "Asia/Shanghai"),
+            terminal = _record_awc_signal_terminal_ledgers(
+                conn,
+                signal_candidate=signal_candidate,
+                preparation_timing=preparation_timing,
+                slug=slug_key,
                 event_date=event_key,
+                created_at=hard_source_decision_started_at,
+                terminal_state="error",
+                terminal_reason="observed_bucket_missing",
+                terminal_at=hard_source_decision_started_at,
+                decision_started_at=hard_source_decision_started_at,
             )
-        if isinstance(constraint_meta, dict):
-            constraint_meta["window_source"] = "hard_source_direct_poller_decision_window"
-            constraint_meta["direct_decision_window"] = dict(window)
-        if not bool(constraint_meta.get("applied")):
+            conn.commit()
+            return {
+                "ok": False,
+                "status": "observed_bucket_missing",
+                "event_date": event_key,
+                "value_c": value_c,
+                **terminal,
+            }
+        projected_payload, projection_meta = _project_posterior_payload(
+            payload,
+            conn=conn,
+            db_path=db,
+            slug=slug_key,
+            event_date=event_key,
+            run_date=_normalize_date(latest["run_date"] or payload.get("run_date") or run_date),
+            fact_as_of=str(latest["fact_as_of"] or payload.get("fact_as_of") or ""),
+            current_fact_id=int(latest["id"] or 0),
+            composer_version=str(latest["composer_version"] or ""),
+        )
+        posterior_ssot = projected_payload.get("posterior_ssot_fact")
+        posterior_ssot = posterior_ssot if isinstance(posterior_ssot, Mapping) else {}
+        constraint_meta = {
+            **dict(projection_meta),
+            "applied": bool(
+                projection_meta.get("ok")
+                and str(posterior_ssot.get("state") or "") == "available"
+            ),
+            "status": str(posterior_ssot.get("state") or projection_meta.get("reason") or "blocked"),
+            "window_source": "hard_source_direct_poller_decision_window",
+            "direct_decision_window": dict(window),
+        }
+        if not bool(constraint_meta["applied"]):
+            terminal = _record_awc_signal_terminal_ledgers(
+                conn,
+                signal_candidate=signal_candidate,
+                preparation_timing=preparation_timing,
+                slug=slug_key,
+                event_date=event_key,
+                created_at=hard_source_decision_started_at,
+                terminal_state="blocked",
+                terminal_reason=str(
+                    constraint_meta.get("status")
+                    or "hard_source_posterior_constraint_not_applied"
+                ),
+                terminal_at=hard_source_decision_started_at,
+                decision_started_at=hard_source_decision_started_at,
+            )
+            conn.commit()
             return {
                 "ok": False,
                 "status": "hard_source_posterior_constraint_not_applied",
@@ -6444,12 +9269,39 @@ def record_hard_source_direct_decisions(
                 "observed_bucket": observed_bucket,
                 "constraint_status": constraint_meta.get("status"),
                 "constraint_meta": constraint_meta,
+                **terminal,
             }
+        constrained_rows = _rows(projected_payload)
         top_row = _top_posterior_row(constrained_rows)
-        target_bucket = str(top_row.get("outcome") or top_row.get("label") or "").strip()
+        target_bucket = str(
+            posterior_ssot.get("target_bucket")
+            or top_row.get("outcome")
+            or top_row.get("label")
+            or ""
+        ).strip()
         if not target_bucket:
-            return {"ok": False, "status": "target_bucket_missing", "event_date": event_key, "value_c": value_c}
+            terminal = _record_awc_signal_terminal_ledgers(
+                conn,
+                signal_candidate=signal_candidate,
+                preparation_timing=preparation_timing,
+                slug=slug_key,
+                event_date=event_key,
+                created_at=hard_source_decision_started_at,
+                terminal_state="error",
+                terminal_reason="target_bucket_missing",
+                terminal_at=hard_source_decision_started_at,
+                decision_started_at=hard_source_decision_started_at,
+            )
+            conn.commit()
+            return {
+                "ok": False,
+                "status": "target_bucket_missing",
+                "event_date": event_key,
+                "value_c": value_c,
+                **terminal,
+            }
         constrained_payload = _drop_temperature_path_derived_fields(payload)
+        runtime_contract = _hard_source_runtime_contract()
         hard_source_ssot_written_at = _iso_not_before(
             _utc_now_iso(),
             latest["fact_as_of"],
@@ -6462,10 +9314,24 @@ def record_hard_source_direct_decisions(
             observation.get("observed_at"),
             hard_source_ssot_written_at,
         )
+        signal_timing = _signal_to_order_timing_from_candidate(
+            signal_candidate,
+            preparation_context=preparation_timing,
+            fact_written_at=hard_source_ssot_written_at,
+            posterior_written_at=hard_source_ssot_written_at,
+            decision_started_at=hard_source_decision_started_at,
+            terminal_state="fact_written",
+            terminal_reason="awaiting_decision_write",
+        )
         constrained_payload["distribution"] = constrained_rows
         constrained_payload["rows"] = constrained_rows
         constrained_payload["hard_source_posterior_override"] = True
         constrained_payload["hard_source_posterior_override_meta"] = dict(constraint_meta)
+        constrained_payload["hard_source_runtime_contract"] = dict(runtime_contract)
+        constrained_payload["hard_source_runtime_contract_version"] = runtime_contract.get("contract_version")
+        constrained_payload["hard_source_acceptance_state"] = dict(hard_source_acceptance_state)
+        constrained_payload["awc_hard_source_signal_candidate"] = dict(signal_candidate)
+        constrained_payload["signal_to_order_timing"] = dict(signal_timing)
         constrained_payload["hard_source_observed_bucket"] = observed_bucket
         constrained_payload["hard_source_observed_value_c"] = value_c
         constrained_payload["ssot_target_bucket"] = target_bucket
@@ -6490,6 +9356,20 @@ def record_hard_source_direct_decisions(
             constrained_row["hard_source_ssot_written_at"] = hard_source_ssot_written_at
             constrained_row["hard_source_seen_to_ssot_ms"] = hard_source_seen_to_ssot_ms
             constrained_row["hard_source_fetch_to_ssot_ms"] = hard_source_fetch_to_ssot_ms
+            constrained_row["hard_source_runtime_contract"] = dict(runtime_contract)
+            constrained_row["hard_source_runtime_contract_version"] = runtime_contract.get("contract_version")
+            _attach_signal_timing_fields(
+                constrained_row,
+                signal_candidate=signal_candidate,
+                signal_timing=signal_timing,
+            )
+        target_bucket, _synced_posterior, _synced_source = (
+            _sync_hard_source_posterior_ssot_from_constrained_rows(
+                constrained_payload,
+                target_bucket=target_bucket,
+                constraint_meta=constraint_meta,
+            )
+        )
         constrained_payload = _merge_temperature_path_derived_fields(
             constrained_payload,
             slug=slug_key,
@@ -6505,6 +9385,13 @@ def record_hard_source_direct_decisions(
             _align_snapshot_posterior_derived_fields(constrained_payload)
             _attach_target_realization_capital_plan(constrained_payload)
             _align_snapshot_posterior_derived_fields(constrained_payload)
+            target_bucket, _synced_posterior, _synced_source = (
+                _sync_hard_source_posterior_ssot_from_constrained_rows(
+                    constrained_payload,
+                    target_bucket=target_bucket,
+                    constraint_meta=constraint_meta,
+                )
+            )
         except Exception as exc:
             constrained_payload["hard_source_direct_ssot_alignment_error"] = (
                 f"{exc.__class__.__name__}: {exc}"
@@ -6546,6 +9433,31 @@ def record_hard_source_direct_decisions(
                 within_sec=emit_unchanged_sec,
             )
         ):
+            unchanged_at = _utc_now_iso()
+            unchanged_timing = _signal_to_order_timing_from_candidate(
+                signal_candidate,
+                preparation_context=preparation_timing,
+                fact_written_at=hard_source_ssot_written_at,
+                posterior_written_at=hard_source_ssot_written_at,
+                decision_started_at=hard_source_decision_started_at,
+                terminal_state="no_action",
+                terminal_reason="hard_source_direct_recent_unchanged_decision",
+                terminal_at=unchanged_at,
+            )
+            signal_to_order_ledger_result = _upsert_signal_to_order_ledger_from_timing(
+                conn,
+                signal_timing=unchanged_timing,
+                created_at=unchanged_at,
+            )
+            awc_signal_ledger_result = _upsert_awc_hard_source_signal_ledger(
+                conn,
+                signal_candidate=signal_candidate,
+                signal_timing=unchanged_timing,
+                slug=slug_key,
+                event_date=event_key,
+                created_at=unchanged_at,
+            )
+            conn.commit()
             return {
                 "ok": True,
                 "status": "unchanged",
@@ -6554,6 +9466,10 @@ def record_hard_source_direct_decisions(
                 "target_bucket": target_bucket,
                 "previous_bucket": previous_bucket,
                 "source_id": observation.get("source_id"),
+                "awc_hard_source_signal_ledger_result": awc_signal_ledger_result,
+                "signal_to_order_ledger_result": signal_to_order_ledger_result,
+                "signal_to_order_terminal_state": unchanged_timing.get("terminal_state"),
+                "signal_to_order_terminal_reason": unchanged_timing.get("terminal_reason"),
             }
         row = top_row or _row_for_outcome(payload, target_bucket)
         token = _market_token(conn, slug=slug_key, event_date=event_key, outcome=target_bucket)
@@ -6597,24 +9513,29 @@ def record_hard_source_direct_decisions(
         expected["hard_source_seen_to_ssot_ms"] = hard_source_seen_to_ssot_ms
         expected["hard_source_fetch_to_ssot_ms"] = hard_source_fetch_to_ssot_ms
         expected["hard_source_decision_to_ssot_ms"] = hard_source_decision_to_ssot_ms
+        expected["hard_source_runtime_contract"] = dict(runtime_contract)
+        expected["hard_source_runtime_contract_version"] = runtime_contract.get("contract_version")
+        _attach_signal_timing_fields(
+            expected,
+            signal_candidate=signal_candidate,
+            signal_timing=signal_timing,
+        )
         reason_codes = ["hard_source_posterior_constraint"]
-        if observation.get("source_id") == "zuuu_metar_raw_awc":
-            reason_codes.append("hard_source_awc")
+        source_id = str(observation.get("source_id") or "")
+        if source_id == PRIMARY_HARD_METAR_SOURCE_ID:
+            reason_codes.append("hard_source_amsc_primary")
+        elif source_id in REFERENCE_HARD_METAR_SOURCE_IDS:
+            reason_codes.append("hard_source_awc_reference")
         else:
             reason_codes.append("hard_source_wu_twc")
         if bucket_changed:
             reason_codes.append("ssot_target_bucket_changed")
         expected = _apply_expected_entry_audit(expected, reason_codes=reason_codes)
-        allowed_remote_no_outcomes = _posterior_target_allowed_remote_no_outcomes(
-            constrained_payload,
-            target_bucket=target_bucket,
-        )
         old_trades = _active_old_yes_trades(
             conn,
             slug=slug_key,
             event_date=event_key,
             target_outcome=target_bucket,
-            allowed_remote_no_outcomes=allowed_remote_no_outcomes,
         )
         reverse_targets: List[Dict[str, Any]] = []
         for trade in old_trades:
@@ -6670,6 +9591,13 @@ def record_hard_source_direct_decisions(
             reverse_target["hard_source_seen_to_ssot_ms"] = hard_source_seen_to_ssot_ms
             reverse_target["hard_source_fetch_to_ssot_ms"] = hard_source_fetch_to_ssot_ms
             reverse_target["hard_source_decision_to_ssot_ms"] = hard_source_decision_to_ssot_ms
+            reverse_target["hard_source_runtime_contract"] = dict(runtime_contract)
+            reverse_target["hard_source_runtime_contract_version"] = runtime_contract.get("contract_version")
+            _attach_signal_timing_fields(
+                reverse_target,
+                signal_candidate=signal_candidate,
+                signal_timing=signal_timing,
+            )
             reverse_target = _apply_expected_entry_audit(
                 reverse_target,
                 reason_codes=[
@@ -6679,10 +9607,59 @@ def record_hard_source_direct_decisions(
             )
             reverse_targets.append(reverse_target)
         now_iso = _utc_now_iso()
+        hard_source_will_order = _truthy(
+            os.environ.get("PM_HARD_SOURCE_DIRECT_WILL_ORDER"),
+            True,
+        )
+        signal_terminal_state = "decision_written"
+        signal_terminal_reason = "awaiting_job_enqueue_or_execution"
+        if not hard_source_will_order:
+            signal_terminal_state = "no_action"
+            signal_terminal_reason = "hard_source_direct_will_order_disabled"
+        elif not enqueue_job:
+            signal_terminal_state = "skipped"
+            signal_terminal_reason = "hard_source_direct_enqueue_disabled"
+        signal_timing = _signal_to_order_timing_from_candidate(
+            signal_candidate,
+            preparation_context=preparation_timing,
+            fact_written_at=hard_source_ssot_written_at,
+            posterior_written_at=hard_source_ssot_written_at,
+            decision_started_at=hard_source_decision_started_at,
+            decision_written_at=now_iso,
+            terminal_state=signal_terminal_state,
+            terminal_reason=signal_terminal_reason,
+            terminal_at=now_iso,
+        )
+        constrained_payload["signal_to_order_timing"] = dict(signal_timing)
+        _attach_signal_timing_fields(
+            expected,
+            signal_candidate=signal_candidate,
+            signal_timing=signal_timing,
+        )
+        for reverse_target in reverse_targets:
+            _attach_signal_timing_fields(
+                reverse_target,
+                signal_candidate=signal_candidate,
+                signal_timing=signal_timing,
+            )
+        signal_to_order_ledger_prewrite = _signal_to_order_ledger_prewrite_status(
+            conn,
+            signal_timing=signal_timing,
+        )
+        awc_signal_schema_status = awc_hard_source_signals_schema_status(conn)
+        awc_signal_ledger_prewrite = {
+            "status": "pending_upsert"
+            if bool(awc_signal_schema_status.get("ok"))
+            else "schema_missing_noop",
+            "writes_archive_db": bool(awc_signal_schema_status.get("ok")),
+            "schema_status": awc_signal_schema_status,
+        }
         title = str(payload.get("title") or payload.get("question") or slug_key)
         common_details = {
             "source": DIRECT_SOURCE,
             "hard_source_direct": True,
+            "hard_source_runtime_contract": dict(runtime_contract),
+            "hard_source_runtime_contract_version": runtime_contract.get("contract_version"),
             "hard_source_posterior_override": True,
             "posterior_override": True,
             "posterior_override_q": expected.get("q_bayes_posterior"),
@@ -6717,16 +9694,45 @@ def record_hard_source_direct_decisions(
             "hard_source_seen_to_ssot_ms": hard_source_seen_to_ssot_ms,
             "hard_source_fetch_to_ssot_ms": hard_source_fetch_to_ssot_ms,
             "hard_source_decision_to_ssot_ms": hard_source_decision_to_ssot_ms,
+            "hard_source_acceptance_state": dict(hard_source_acceptance_state),
+            "awc_hard_source_signal_candidate": dict(signal_candidate),
+            "signal_to_order_timing": dict(signal_timing),
+            "signal_to_order_slo_ms": signal_timing.get("signal_to_order_slo_ms"),
+            "signal_to_fact_ms": signal_timing.get("signal_to_fact_ms"),
+            "signal_to_decision_ms": signal_timing.get("signal_to_decision_ms"),
+            "signal_to_job_enqueue_ms": signal_timing.get("signal_to_job_enqueue_ms"),
+            "signal_to_terminal_ms": signal_timing.get("signal_to_terminal_ms"),
+            "signal_to_order_slo_met": signal_timing.get("signal_to_order_slo_met"),
+            "signal_to_order_slo_violation_reason": signal_timing.get(
+                "signal_to_order_slo_violation_reason"
+            ),
+            "signal_to_order_terminal_state": signal_timing.get("terminal_state"),
+            "signal_to_order_terminal_reason": signal_timing.get("terminal_reason"),
+            "signal_to_order_terminal_at": signal_timing.get("terminal_at"),
+            "signal_to_order_ledger_status": signal_to_order_ledger_prewrite.get("status"),
+            "signal_to_order_ledger_prewrite": dict(signal_to_order_ledger_prewrite),
+            "awc_hard_source_signal_ledger_status": awc_signal_ledger_prewrite.get("status"),
+            "awc_hard_source_signal_ledger_prewrite": dict(awc_signal_ledger_prewrite),
+            "signal_id": hard_source_acceptance_state.get("signal_id"),
+            "source_event_id": hard_source_acceptance_state.get("source_event_id"),
+            "awc_valid_time": hard_source_acceptance_state.get("awc_valid_time"),
+            "awc_hard_source_signal_at": hard_source_acceptance_state.get("awc_hard_source_signal_at"),
+            "signal_eligible": hard_source_acceptance_state.get("signal_eligible"),
+            "acceptance_state": hard_source_acceptance_state.get("acceptance_state"),
+            "acceptance_reason": hard_source_acceptance_state.get("acceptance_reason"),
             "target_bucket": target_bucket,
             "previous_bucket": previous_bucket,
             "bucket_changed": bucket_changed,
             "fact_id": int(latest["id"] or 0),
             "ssot_fact_id": ssot_fact_id,
             "ssot_write_ms": ssot_write_ms,
+            "writer_apply_result_summary": constrained_payload.get("writer_apply_result_summary"),
+            "post_apply_persisted_verification_ok": constrained_payload.get(
+                "post_apply_persisted_verification_ok"
+            ),
             "fact_as_of": str(latest["fact_as_of"] or ""),
             "expected_target": dict(expected),
             "entry_expected_targets": [dict(expected), *[dict(target) for target in reverse_targets]],
-            "allowed_remote_no_outcomes": list(allowed_remote_no_outcomes),
             "sell_old_buy_new_semantics": "sell_old_position_side_then_buy_new_and_optional_old_opposite_side",
             "sell_old_buy_new_entry_legs": [dict(expected), *[dict(target) for target in reverse_targets]],
         }
@@ -6753,26 +9759,41 @@ def record_hard_source_direct_decisions(
             }
         )
         decision_ids: List[int] = []
-        decision_ids.append(
-            _insert_decision(
-                conn,
-                run_date=run_date,
-                slug=slug_key,
-                event_date=event_key,
-                title=title,
-                outcome=target_bucket,
-                side="YES",
-                action="entry",
-                decided_state="entry_dry_run"
-                if _truthy(os.environ.get("PM_AUTO_TRADE_DRY_RUN"), True)
-                else "entry",
-                will_order=_truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_WILL_ORDER"), True),
-                reason_codes=reason_codes,
-                reasons=["Hard source constrains posterior; trade target follows SSOT top bucket."],
-                details=common_details,
-                created_at=now_iso,
-            )
+        entry_decision_id = _insert_decision(
+            conn,
+            run_date=run_date,
+            slug=slug_key,
+            event_date=event_key,
+            title=title,
+            outcome=target_bucket,
+            side="YES",
+            action="entry",
+            decided_state="entry_dry_run"
+            if _truthy(os.environ.get("PM_AUTO_TRADE_DRY_RUN"), True)
+            else "entry",
+            will_order=hard_source_will_order,
+            reason_codes=reason_codes,
+            reasons=["Hard source constrains posterior; trade target follows SSOT top bucket."],
+            details=common_details,
+            created_at=now_iso,
         )
+        decision_ids.append(entry_decision_id)
+        signal_to_order_ledger_result = _upsert_signal_to_order_ledger_from_timing(
+            conn,
+            signal_timing=signal_timing,
+            decision_id=entry_decision_id,
+            created_at=now_iso,
+        )
+        awc_signal_ledger_result = _upsert_awc_hard_source_signal_ledger(
+            conn,
+            signal_candidate=signal_candidate,
+            signal_timing=signal_timing,
+            slug=slug_key,
+            event_date=event_key,
+            created_at=now_iso,
+        )
+        common_details["signal_to_order_ledger_result"] = dict(signal_to_order_ledger_result)
+        common_details["awc_hard_source_signal_ledger_result"] = dict(awc_signal_ledger_result)
         for trade in old_trades:
             exit_details = dict(common_details)
             exit_details["old_trade"] = dict(trade)
@@ -6822,7 +9843,8 @@ def record_hard_source_direct_decisions(
                 "hard_source_posterior_constraint",
                 "ssot_target_bucket_changed_old_bucket_invalidated",
             ]
-            exit_reason_codes = ["target_realization_switch_buy_exit_old"]
+            exit_reason_codes = [swm._target_realization_invalidation_code_for_side(old_side)]
+            exit_details["exit_reason_family"] = swm.TARGET_REALIZATION_FAMILY
             try:
                 exit_details = swm._finalize_exit_decision_details(
                     exit_details,
@@ -6832,8 +9854,8 @@ def record_hard_source_direct_decisions(
                 exit_details["exit_policy_version"] = swm.EXIT_POLICY_VERSION
                 exit_details["exit_policy_primary_source"] = swm.EXIT_POLICY_PRIMARY_SOURCE
                 exit_details["exit_policy_trigger_reason_codes"] = list(exit_reason_codes)
-                exit_details["exit_policy_family_codes"] = ["target_realization_exit"]
-                exit_details["exit_reason_family_codes"] = ["target_realization_exit"]
+                exit_details["exit_policy_family_codes"] = [swm.TARGET_REALIZATION_FAMILY]
+                exit_details["exit_reason_family_codes"] = [swm.TARGET_REALIZATION_FAMILY]
             decision_ids.append(
                 _insert_decision(
                     conn,
@@ -6855,7 +9877,7 @@ def record_hard_source_direct_decisions(
                 )
             )
         job_id = None
-        if enqueue_job:
+        if enqueue_job and hard_source_will_order:
             job_id = _enqueue_direct_job(
                 conn,
                 run_date=run_date,
@@ -6887,6 +9909,14 @@ def record_hard_source_direct_decisions(
         "job_id": job_id,
         "ssot_fact_id": ssot_fact_id,
         "ssot_write_ms": ssot_write_ms,
+        "writer_apply_result_summary": constrained_payload.get("writer_apply_result_summary"),
+        "post_apply_persisted_verification_ok": constrained_payload.get(
+            "post_apply_persisted_verification_ok"
+        ),
+        "awc_hard_source_signal_ledger_result": awc_signal_ledger_result,
+        "signal_to_order_ledger_result": signal_to_order_ledger_result,
+        "signal_to_order_terminal_state": signal_timing.get("terminal_state"),
+        "signal_to_order_terminal_reason": signal_timing.get("terminal_reason"),
     }
 
 
@@ -6957,6 +9987,129 @@ def _claimable_direct_target_job_id(
         return 0
 
 
+def _poll_once_source_acquisition_trace_summary(
+    *,
+    awc_result: Mapping[str, Any],
+    wu_result: Mapping[str, Any],
+    metar_pws_result: Mapping[str, Any],
+) -> Dict[str, Any]:
+    lanes = (
+        ("awc", awc_result),
+        ("wu_twc", wu_result),
+        ("metar_pws", metar_pws_result),
+    )
+    rows: List[Dict[str, Any]] = []
+    missing_trace_families: List[str] = []
+    refresh_statuses: Dict[str, Dict[str, Any]] = {}
+    source_class_counts: Dict[str, int] = {}
+    hard_ids: List[str] = []
+    diagnostic_ids: List[str] = []
+    forecast_ids: List[str] = []
+
+    for family, result in lanes:
+        if not isinstance(result, Mapping) or not result:
+            continue
+        refresh_statuses[family] = {
+            "ok": result.get("ok"),
+            "status": str(result.get("status") or ""),
+            "reason": str(result.get("reason") or ""),
+            "error": str(result.get("error") or ""),
+        }
+        trace = result.get("source_acquisition_trace")
+        if not isinstance(trace, Mapping):
+            missing_trace_families.append(family)
+            continue
+        for source_event_id in trace.get("hard_observation_candidate_ids") or []:
+            text = str(source_event_id or "").strip()
+            if text and text not in hard_ids:
+                hard_ids.append(text)
+        for source_event_id in trace.get("diagnostic_current_ids") or []:
+            text = str(source_event_id or "").strip()
+            if text and text not in diagnostic_ids:
+                diagnostic_ids.append(text)
+        for source_event_id in trace.get("forecast_weak_ids") or []:
+            text = str(source_event_id or "").strip()
+            if text and text not in forecast_ids:
+                forecast_ids.append(text)
+        for row in trace.get("source_latency_trace") or []:
+            if not isinstance(row, Mapping):
+                continue
+            source_class = str(row.get("source_class") or "")
+            if source_class:
+                source_class_counts[source_class] = int(source_class_counts.get(source_class, 0)) + 1
+            rows.append(
+                {
+                    "lane": family,
+                    "source_event_id": str(row.get("source_event_id") or ""),
+                    "source_id": str(row.get("source_id") or ""),
+                    "source_class": source_class,
+                    "role": str(row.get("role") or ""),
+                    "valid_time": str(row.get("valid_time") or ""),
+                    "valid_time_local": str(row.get("valid_time_local") or ""),
+                    "fetched_at": str(row.get("fetched_at") or ""),
+                    "response_completed_at": str(row.get("response_completed_at") or ""),
+                    "response_duration_ms": row.get("response_duration_ms"),
+                    "temperature_c": row.get("temperature_c"),
+                    "observed_today_max_c": row.get("observed_today_max_c"),
+                    "forecast_peak_c": row.get("forecast_peak_c"),
+                    "hard_eligible": bool(row.get("hard_eligible")),
+                    "demotion_reason": str(row.get("demotion_reason") or ""),
+                    "quality_flags": list(row.get("quality_flags") or []),
+                }
+            )
+    return {
+        "schema": "poll_once_source_acquisition_trace_summary_v1",
+        "read_only": True,
+        "source_count": len(rows),
+        "source_class_counts": source_class_counts,
+        "hard_observation_candidate_count": len(hard_ids),
+        "diagnostic_current_count": len(diagnostic_ids),
+        "forecast_weak_count": len(forecast_ids),
+        "hard_observation_candidate_ids": hard_ids,
+        "diagnostic_current_ids": diagnostic_ids,
+        "forecast_weak_ids": forecast_ids,
+        "missing_trace_families": missing_trace_families,
+        "refresh_statuses": refresh_statuses,
+        "source_latency_trace": rows,
+        "guards": {
+            "writes_archive_db": False,
+            "writes_auto_trade_decisions": False,
+            "places_orders": False,
+            "recomputes_posterior": False,
+        },
+        "next_boundary": "ui_or_audit_read_only_external_source_latency_panel",
+    }
+
+
+def _final_daily_max_yield_owner_for_noncritical_refresh(
+    db_path: Path | str,
+    *,
+    event_date: str = "",
+) -> str:
+    event_key = _normalize_date(event_date) or _chengdu_today()
+    payload = _load_latest_fact_payload(db_path, event_date=event_key)
+    if not _payload_final_daily_max_locked(payload):
+        return ""
+    lock_path = ROOT / "data" / "db_writer.lock" / "owner.json"
+    try:
+        lock_owner = str(json.loads(lock_path.read_text(encoding="utf-8")).get("owner") or "").strip()
+    except Exception:
+        return ""
+    allowed = {
+        value.strip()
+        for value in str(
+            os.environ.get(
+                "PM_HARD_SOURCE_PREEMPT_NONCRITICAL_OWNERS",
+                "model_scan,model_scan_hourly,market_refresh,market_refresh_frequent,"
+                "market_refresh_urgent,weather_discovery,model_release_watcher,daily_scan,weatherctl_facts",
+            )
+        ).split(",")
+        if value.strip()
+    }
+    allowed.update({"market_refresh_discovery", "model_scan_facts_materialize"})
+    return lock_owner if lock_owner in allowed else ""
+
+
 def poll_once(
     db_path: Path | str = DEFAULT_DB,
     *,
@@ -6965,6 +10118,17 @@ def poll_once(
     background_wu_twc: bool = False,
 ) -> Dict[str, Any]:
     if not _truthy(os.environ.get("_PM_HARD_SOURCE_LIVE_SSOT_LOCK_HELD"), False):
+        yield_owner = _final_daily_max_yield_owner_for_noncritical_refresh(
+            db_path,
+            event_date=event_date,
+        )
+        if yield_owner:
+            return {
+                "ok": True,
+                "status": "final_daily_max_yield_to_noncritical_refresh",
+                "event_date": _normalize_date(event_date) or _chengdu_today(),
+                "yield_owner": yield_owner,
+            }
         with _temporary_env({"_PM_HARD_SOURCE_LIVE_SSOT_LOCK_HELD": "1"}):
             with _live_ssot_writer_lock(event_date=event_date, stage="poll_once"):
                 return poll_once(
@@ -6980,12 +10144,31 @@ def poll_once(
     wu_result: Dict[str, Any] = {}
     metar_pws_result: Dict[str, Any] = {}
     market_prefetch_result: Dict[str, Any] = {}
-    awc_ctp_recompute_result: Dict[str, Any] = {}
-    ctp_recompute_result: Dict[str, Any] = {}
-    posterior_fast_precheck: Dict[str, Any] = {}
+    pre_signal_preparation_context: Dict[str, Any] = {}
+    # Direct source-driven posterior rewrites are retired.  Only the AMSC
+    # materializer may create a new posterior fact / latest pointer.
+    awc_ctp_recompute_result: Dict[str, Any] = {
+        "ok": True,
+        "status": "retired",
+        "reason": "awc_reference_cannot_recompute_posterior",
+    }
+    ctp_recompute_result: Dict[str, Any] = {
+        "ok": True,
+        "status": "retired",
+        "reason": "non_amsc_source_cannot_recompute_posterior",
+    }
+    posterior_fast_precheck: Dict[str, Any] = {
+        "ok": True,
+        "status": "retired",
+        "reason": "sequential_bayes_posterior_outbox_is_the_only_runtime_consumer",
+    }
     posterior_after_awc_ctp: Dict[str, Any] = {}
     posterior_after_ctp: Dict[str, Any] = {}
-    posterior_decision: Dict[str, Any] = {}
+    posterior_decision: Dict[str, Any] = {
+        "ok": True,
+        "status": "retired",
+        "reason": "posterior_target_direct_runtime_removed",
+    }
     worker_result: Dict[str, Any] = {}
     posterior_fast_worker_result: Dict[str, Any] = {}
     posterior_after_ctp_worker_result: Dict[str, Any] = {}
@@ -6994,25 +10177,6 @@ def poll_once(
 
     def _finish_timing(key: str, started: float) -> None:
         timings_ms[key] = round(max(0.0, time.monotonic() - started) * 1000.0, 3)
-
-    def _posterior_target_enabled() -> bool:
-        return _truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_ENABLED"), True)
-
-    def _record_posterior_target(stage: str, *, slug_value: str = "") -> Dict[str, Any]:
-        if not _posterior_target_enabled():
-            return {"ok": True, "status": "disabled", "stage": stage}
-        started = time.monotonic()
-        result = record_posterior_target_direct_decisions(
-            db,
-            event_date=event_key,
-            slug=slug_value or slug,
-            emit_unchanged_sec=_env_int("PM_POSTERIOR_TARGET_DIRECT_DECISION_HEARTBEAT_SEC", 10),
-            enqueue_job=_truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_ENQUEUE_JOB"), True),
-        )
-        _finish_timing(f"posterior_{stage}_ms", started)
-        if isinstance(result, dict):
-            result.setdefault("stage", stage)
-        return result
 
     def _run_worker_for_job(job_id: Any, *, env_key: str) -> Dict[str, Any]:
         try:
@@ -7033,70 +10197,41 @@ def poll_once(
             result.setdefault("requested_job_id", normalized_job_id)
         return result
 
-    def _drain_claimable_direct_job(stage: str) -> Dict[str, Any]:
-        nonlocal worker_result
-        if worker_result or not _truthy(
-            os.environ.get("PM_HARD_SOURCE_DIRECT_DRAIN_CLAIMABLE_JOB"),
-            True,
-        ):
-            return {}
-        drain_job_id = _claimable_direct_target_job_id(
-            db,
-            slug=slug_key or slug,
-            event_date=event_key,
-        )
-        if not drain_job_id:
-            return {}
-        worker_result = _run_worker_for_job(
-            drain_job_id,
-            env_key="PM_HARD_SOURCE_DIRECT_DRAIN_WORKER_ONCE",
-        )
-        if isinstance(worker_result, dict):
-            worker_result.setdefault("drain_claimable_direct_job", True)
-            worker_result.setdefault("drain_claimable_direct_job_id", drain_job_id)
-            worker_result.setdefault("drain_claimable_direct_stage", stage)
-        return worker_result
+    awc_release_watch_target_at = _awc_release_watch_target_at()
+    awc_watch_context: Dict[str, Any] = {
+        "active": bool(awc_release_watch_target_at is not None),
+        "reason": "awc_hourly_release_watch" if awc_release_watch_target_at is not None else "",
+        "target_at_utc": awc_release_watch_target_at.isoformat() if awc_release_watch_target_at else "",
+    }
+    pre_awc_window_payload: Dict[str, Any] = {}
+    if awc_release_watch_target_at is None:
+        started = time.monotonic()
+        pre_awc_window_payload = _load_latest_fact_payload(db, event_date=event_key, slug=slug_key or slug)
+        _finish_timing("pre_awc_fact_payload_ms", started)
+        if not slug_key and isinstance(pre_awc_window_payload, Mapping):
+            slug_key = str(pre_awc_window_payload.get("slug") or "").strip()
+        # Do not preempt a noncritical writer until the current event's fact
+        # snapshot has been read.  A transient read failure must fail closed:
+        # it cannot be used to infer that an already-final event is still live.
+        if pre_awc_window_payload and not _payload_final_daily_max_locked(pre_awc_window_payload):
+            _preempt_noncritical_refreshes_for_live(
+                event_date=event_key,
+                stage="post_fact_snapshot_pre_awc",
+            )
+        final_watch_context = _awc_event_end_final_watch_context(pre_awc_window_payload)
+        if bool(final_watch_context.get("active")):
+            target = final_watch_context.get("target_at")
+            if isinstance(target, datetime):
+                awc_release_watch_target_at = target
+                awc_watch_context = dict(final_watch_context)
+    awc_release_watch_active = awc_release_watch_target_at is not None
+    # AMSC canonical ingress and the sequential posterior outbox own posterior
+    # consumption. This AWC/hard-source poller must never run the retired
+    # posterior-target precheck: that path held the global archive writer
+    # queue across decision computation and could make a fresh METAR miss T3.
 
-    if _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_AWC"), True):
-        _drain_claimable_direct_job("before_awc")
-        if worker_result and _truthy(
-            os.environ.get("PM_HARD_SOURCE_DIRECT_RETURN_AFTER_PRE_AWC_DRAIN"),
-            True,
-        ):
-            decision = {
-                "ok": True,
-                "status": "skipped",
-                "reason": "claimable_direct_job_drained_before_awc",
-                "event_date": event_key,
-                "slug": slug_key or slug,
-            }
-            awc_result = {
-                "ok": True,
-                "status": "skipped",
-                "reason": "claimable_direct_job_drained_before_awc",
-                "event_date": event_key,
-            }
-            return {
-                "ok": True,
-                "event_date": event_key,
-                "timings_ms": timings_ms,
-                "awc": awc_result,
-                "metar_pws": metar_pws_result,
-                "wu_twc": wu_result,
-                "market_prefetch": market_prefetch_result,
-                "awc_ctp_recompute": awc_ctp_recompute_result,
-                "ctp_recompute": ctp_recompute_result,
-                "decision": decision,
-                "posterior_target_fast_precheck": posterior_fast_precheck,
-                "posterior_target_after_awc_ctp": posterior_after_awc_ctp,
-                "posterior_target_after_ctp": posterior_after_ctp,
-                "posterior_target": posterior_decision,
-                "posterior_target_fast_worker": posterior_fast_worker_result,
-                "posterior_target_after_ctp_worker": posterior_after_ctp_worker_result,
-                "worker": worker_result,
-            }
-
-    if _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_REFRESH_AWC"), True):
+    awc_refresh_enabled = _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_REFRESH_AWC"), True)
+    if awc_refresh_enabled:
         started = time.monotonic()
         awc_result = _refresh_awc_fact(
             db,
@@ -7105,69 +10240,75 @@ def poll_once(
             heartbeat_sec=_env_int("PM_HARD_SOURCE_FACT_HEARTBEAT_SEC", 15),
         )
         _finish_timing("awc_refresh_ms", started)
+    if (
+        awc_release_watch_active
+        and awc_refresh_enabled
+        and _truthy(
+            os.environ.get(
+                "PM_HARD_SOURCE_AWC_ACQUIRE_HOLD_NON_AWC_UNTIL_TARGET",
+                os.environ.get("PM_HARD_SOURCE_AWC_RELEASE_WATCH_HOLD_NON_AWC_UNTIL_TARGET"),
+            ),
+            True,
+        )
+        and not _awc_release_result_reached_target(awc_result, awc_release_watch_target_at)
+    ):
+        target_text = (
+            awc_release_watch_target_at.isoformat()
+            if awc_release_watch_target_at is not None
+            else ""
+        )
+        decision = {
+            "ok": True,
+            "status": "skipped",
+            "reason": (
+                "awc_final_daily_max_waiting_for_event_end_report"
+                if str(awc_watch_context.get("reason") or "") == "awc_final_daily_max_event_end_watch"
+                else "awc_acquire_window_waiting_for_target_hour"
+            ),
+            "event_date": event_key,
+            "slug": slug_key or slug,
+            "awc_release_watch_target_at": target_text,
+            "awc_watch_context": {
+                key: (value.isoformat() if isinstance(value, datetime) else value)
+                for key, value in awc_watch_context.items()
+                if key != "target_at"
+            },
+            "awc_latest_at": str(awc_result.get("awc_latest_at") or ""),
+        }
+        return {
+            "ok": True,
+            "event_date": event_key,
+            "timings_ms": timings_ms,
+            "awc": awc_result,
+            "metar_pws": metar_pws_result,
+            "wu_twc": wu_result,
+            "source_acquisition_trace_summary": _poll_once_source_acquisition_trace_summary(
+                awc_result=awc_result,
+                wu_result=wu_result,
+                metar_pws_result=metar_pws_result,
+            ),
+            "market_prefetch": market_prefetch_result,
+            "awc_ctp_recompute": awc_ctp_recompute_result,
+            "ctp_recompute": ctp_recompute_result,
+            "decision": decision,
+            "posterior_target_fast_precheck": posterior_fast_precheck,
+            "posterior_target_after_awc_ctp": posterior_after_awc_ctp,
+            "posterior_target_after_ctp": posterior_after_ctp,
+            "posterior_target": posterior_decision,
+            "posterior_target_fast_worker": posterior_fast_worker_result,
+            "posterior_target_after_ctp_worker": posterior_after_ctp_worker_result,
+            "worker": worker_result,
+        }
     awc_updated = _refresh_result_updated(awc_result)
     started = time.monotonic()
-    window_payload = _load_latest_fact_payload(db, event_date=event_key, slug=slug)
+    if awc_updated or not pre_awc_window_payload:
+        window_payload = _load_latest_fact_payload(db, event_date=event_key, slug=slug_key or slug)
+    else:
+        window_payload = dict(pre_awc_window_payload)
     _finish_timing("load_window_payload_ms", started)
     window_state = _decision_window_state(window_payload, event_date=event_key)
     if not slug_key and isinstance(window_payload, Mapping):
         slug_key = str(window_payload.get("slug") or "").strip()
-    if _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_DECISION"), False):
-        _drain_claimable_direct_job("before_decision")
-
-    def _record_posterior_after_ctp(stage: str) -> Dict[str, Any]:
-        nonlocal posterior_after_ctp
-        nonlocal posterior_decision
-        nonlocal posterior_after_ctp_worker_result
-        nonlocal worker_result
-        result = _record_posterior_target(
-            stage,
-            slug_value=slug_key or slug,
-        )
-        replaces_primary = not (
-            posterior_after_ctp.get("job_id") and not result.get("job_id")
-        )
-        if replaces_primary:
-            posterior_after_ctp = result
-            posterior_decision = result
-        elif isinstance(result, dict):
-            posterior_after_ctp.setdefault("later_ctp_stage", result.get("stage"))
-            posterior_after_ctp.setdefault("later_ctp_status", result.get("status"))
-        if result.get("job_id"):
-            posterior_after_ctp_worker_result = _run_worker_for_job(
-                result.get("job_id"),
-                env_key="PM_POSTERIOR_TARGET_DIRECT_RUN_WORKER_ONCE",
-            )
-            worker_result = posterior_after_ctp_worker_result
-        return result
-
-    if awc_updated:
-        started = time.monotonic()
-        awc_ctp_recompute_result = _recompute_ctp_latest_fact(
-            db,
-            event_date=event_key,
-            slug=slug_key or slug,
-            reason="awc",
-        )
-        _finish_timing("awc_ctp_recompute_ms", started)
-        ctp_recompute_result = awc_ctp_recompute_result
-        if awc_ctp_recompute_result.get("status") == "recomputed" or awc_ctp_recompute_result.get("fact_id"):
-            posterior_after_awc_ctp = _record_posterior_after_ctp("after_awc_ctp_recompute")
-    if (
-        not awc_updated
-        and _truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_FAST_PRECHECK_ENABLED"), True)
-    ):
-        started = time.monotonic()
-        posterior_fast_precheck = _record_posterior_target("fast_precheck")
-        _finish_timing("fast_precheck_total_ms", started)
-        posterior_decision = posterior_fast_precheck
-        if posterior_fast_precheck.get("job_id"):
-            posterior_fast_worker_result = _run_worker_for_job(
-                posterior_fast_precheck.get("job_id"),
-                env_key="PM_POSTERIOR_TARGET_DIRECT_RUN_WORKER_ONCE",
-            )
-            worker_result = posterior_fast_worker_result
-
     market_prefetch_due = (
         window_state.get("allowed")
         and not window_state.get("disabled")
@@ -7180,12 +10321,38 @@ def poll_once(
         )
     )
     market_prefetch_inline = _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_MARKET_PREFETCH_INLINE"), False)
+    pre_signal_preparation_context = _pre_signal_preparation_context_from_market_prefetch(
+        market_prefetch_result,
+        due=bool(market_prefetch_due),
+        inline=bool(market_prefetch_inline),
+    )
     if market_prefetch_due:
+        market_prefetch_started_at = _utc_now_iso()
         started = time.monotonic()
         if market_prefetch_inline:
             market_prefetch_result = _market_prefetch_once_with_lock(db, event_date=event_key, slug=slug_key)
         else:
             market_prefetch_result = _spawn_market_prefetch(db, event_date=event_key, slug=slug_key)
+        market_prefetch_completed_at = _utc_now_iso()
+        if not isinstance(market_prefetch_result, dict):
+            market_prefetch_result = {}
+        market_prefetch_result.setdefault("started_at", market_prefetch_started_at)
+        market_prefetch_result.setdefault("completed_at", market_prefetch_completed_at)
+        pre_signal_component_snapshot = _pre_signal_preparation_component_snapshot(
+            db,
+            event_date=event_key,
+            slug=slug_key,
+            payload=window_payload,
+            market_prefetch_result=market_prefetch_result,
+        )
+        pre_signal_preparation_context = _pre_signal_preparation_context_from_market_prefetch(
+            market_prefetch_result,
+            due=True,
+            inline=bool(market_prefetch_inline),
+            started_at=market_prefetch_started_at,
+            completed_at=market_prefetch_completed_at,
+            component_snapshot=pre_signal_component_snapshot,
+        )
         _finish_timing("market_prefetch_ms", started)
     if _truthy(os.environ.get("PM_HARD_SOURCE_METAR_PWS_ENABLED"), False):
         if _metar_pws_blocking_enabled():
@@ -7243,68 +10410,23 @@ def poll_once(
             heartbeat_sec=_env_int("PM_HARD_SOURCE_FACT_HEARTBEAT_SEC", 15),
         )
         _finish_timing("wu_twc_before_decision_ms", started)
-    ctp_recompute_reasons = [
-        name
-        for name, result in (
-            ("metar_pws", metar_pws_result),
-            ("wu_twc", wu_result if wu_before_decision else {}),
-        )
-        if _refresh_result_updated(result)
-    ]
-    if ctp_recompute_reasons:
-        started = time.monotonic()
-        ctp_recompute_result = _recompute_ctp_latest_fact(
-            db,
-            event_date=event_key,
-            slug=slug_key or slug,
-            reason=",".join(ctp_recompute_reasons),
-        )
-        _finish_timing("late_ctp_recompute_ms", started)
-        if ctp_recompute_result.get("status") == "recomputed" or ctp_recompute_result.get("fact_id"):
-            _record_posterior_after_ctp("after_ctp_recompute")
-    posterior_job_recorded = bool(
-        posterior_fast_precheck.get("job_id")
-        or posterior_after_ctp.get("job_id")
-    )
     hard_source_enqueue_job = _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_ENQUEUE_JOB"), True)
-    suppress_hard_job_after_posterior = bool(
-        posterior_job_recorded
-        and _truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_SUPPRESS_HARD_SOURCE_JOB"), True)
-    )
     hard_source_decision_started = time.monotonic()
     decision = record_hard_source_direct_decisions(
         db,
         event_date=event_key,
         slug=slug_key or slug,
         emit_unchanged_sec=_env_int("PM_HARD_SOURCE_DIRECT_DECISION_HEARTBEAT_SEC", 60),
-        enqueue_job=(hard_source_enqueue_job and not suppress_hard_job_after_posterior),
+        enqueue_job=hard_source_enqueue_job,
+        preparation_timing=pre_signal_preparation_context,
     )
     _finish_timing("hard_source_decision_ms", hard_source_decision_started)
-    if isinstance(decision, dict) and suppress_hard_job_after_posterior:
-        decision["job_suppressed_by_posterior_target_direct"] = True
-        decision["job_suppression_reason"] = "posterior_target_direct_job_already_queued"
-    hard_source_recorded_job = bool(decision.get("ok") and decision.get("job_id"))
-    if (
-        _posterior_target_enabled()
-        and not hard_source_recorded_job
-        and not posterior_fast_precheck
-        and not posterior_after_ctp
-    ):
-        posterior_decision = _record_posterior_target(
-            "after_hard_source_decision",
-            slug_value=slug_key or slug,
-        )
-    worker_job_id = decision.get("job_id") or posterior_decision.get("job_id")
+    worker_job_id = decision.get("job_id")
     if worker_job_id:
         worker_result = _run_worker_for_job(
             worker_job_id,
-            env_key=(
-                "PM_POSTERIOR_TARGET_DIRECT_RUN_WORKER_ONCE"
-                if posterior_decision.get("job_id") and not decision.get("job_id")
-                else "PM_HARD_SOURCE_DIRECT_RUN_WORKER_ONCE"
-            ),
+            env_key="PM_HARD_SOURCE_DIRECT_RUN_WORKER_ONCE",
         )
-    _drain_claimable_direct_job("after_decision")
     if not wu_before_decision and wu_refresh_enabled and wu_due:
         started = time.monotonic()
         if background_wu_twc:
@@ -7331,7 +10453,13 @@ def poll_once(
         "awc": awc_result,
         "metar_pws": metar_pws_result,
         "wu_twc": wu_result,
+        "source_acquisition_trace_summary": _poll_once_source_acquisition_trace_summary(
+            awc_result=awc_result,
+            wu_result=wu_result,
+            metar_pws_result=metar_pws_result,
+        ),
         "market_prefetch": market_prefetch_result,
+        "pre_signal_preparation": pre_signal_preparation_context,
         "awc_ctp_recompute": awc_ctp_recompute_result,
         "ctp_recompute": ctp_recompute_result,
         "decision": decision,
@@ -7694,47 +10822,17 @@ def _refresh_metar_pws_once_with_lock(db_path: Path, *, event_date: str, slug: s
             window_allowed=bool(window_state.get("allowed")),
         )
         _finish_timing("metar_pws_ms", started)
-        ctp: Dict[str, Any] = {}
-        posterior: Dict[str, Any] = {}
-        worker: Dict[str, Any] = {}
-        if _refresh_result_updated(metar_pws):
-            started = time.monotonic()
-            ctp = _recompute_ctp_latest_fact(
-                db_path,
-                event_date=event_key,
-                slug=slug,
-                reason="metar_pws_background",
-            )
-            _finish_timing("ctp_recompute_ms", started)
-            if ctp.get("status") == "recomputed" or ctp.get("fact_id"):
-                started = time.monotonic()
-                posterior = record_posterior_target_direct_decisions(
-                    db_path,
-                    event_date=event_key,
-                    slug=slug,
-                    emit_unchanged_sec=_env_int("PM_POSTERIOR_TARGET_DIRECT_DECISION_HEARTBEAT_SEC", 10),
-                    enqueue_job=_truthy(os.environ.get("PM_POSTERIOR_TARGET_DIRECT_ENQUEUE_JOB"), True),
-                )
-                _finish_timing("posterior_target_ms", started)
-                if posterior.get("job_id") and _truthy(
-                    os.environ.get("PM_POSTERIOR_TARGET_DIRECT_RUN_WORKER_ONCE"),
-                    True,
-                ):
-                    started = time.monotonic()
-                    worker = _run_worker_once_inline(
-                        db_path=db_path,
-                        requested_job_id=int(posterior.get("job_id") or 0),
-                    )
-                    _finish_timing(f"worker_job_{posterior.get('job_id')}_ms", started)
         return {
             "ok": bool(metar_pws.get("ok")),
             "status": "metar_pws_background_done",
             "event_date": event_key,
             "timings_ms": timings_ms,
             "metar_pws": metar_pws,
-            "ctp_recompute": ctp,
-            "posterior_target": posterior,
-            "worker": worker,
+            "ctp_recompute": {
+                "ok": True,
+                "status": "retired",
+                "reason": "non_amsc_source_cannot_recompute_posterior",
+            },
         }
     finally:
         try:
@@ -7859,10 +10957,25 @@ def _near_peak_interval(
     if awc_release is not None:
         normal = min(normal, float(awc_release))
         near = min(near, float(awc_release))
-    if not _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_NEAR_PEAK_ENABLED"), True):
-        return normal
     event_key = _normalize_date(event_date) or _chengdu_today()
     payload = _load_latest_fact_payload(db_path, event_date=event_key, slug=slug)
+    if _payload_final_daily_max_locked(payload):
+        # A hard final result cannot benefit from the one-second peak watch.
+        # Continue the monitor at a bounded cadence, while leaving a real DB
+        # writer window for discovery/model preparation of the next event day.
+        return max(
+            5.0,
+            _env_float("PM_HARD_SOURCE_DIRECT_FINAL_DAILY_MAX_POLL_SEC", 30.0),
+        )
+    if awc_release is None:
+        final_watch_context = _awc_event_end_final_watch_context(payload)
+        if bool(final_watch_context.get("active")):
+            final_poll = _to_float(final_watch_context.get("poll_sec"))
+            if final_poll is not None:
+                normal = min(normal, float(final_poll))
+                near = min(near, float(final_poll))
+    if not _truthy(os.environ.get("PM_HARD_SOURCE_DIRECT_NEAR_PEAK_ENABLED"), True):
+        return normal
     if _decision_window_state(payload, event_date=event_key).get("allowed"):
         return near
     return normal
@@ -7993,6 +11106,8 @@ def _posterior_latency_root_cause_hint(posterior: Mapping[str, Any]) -> str:
         return "posterior_target_duplicate_job_suppressed"
     if skipped.startswith("posterior_target_previous_place_order_failure_retry"):
         return "posterior_target_previous_place_order_failure_retry_block"
+    if skipped == "posterior_target_previous_place_order_failure_geoblocked":
+        return "posterior_target_previous_place_order_failure_geoblocked"
     if skipped and skipped != "posterior_target_unchanged_no_job":
         return skipped
     if posterior.get("job_id"):
@@ -8205,6 +11320,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--wu-twc-refresh-once", action="store_true")
     parser.add_argument("--metar-pws-refresh-once", action="store_true")
     parser.add_argument("--market-prefetch-once", action="store_true")
+    parser.add_argument("--posterior-target-decision-once", action="store_true")
+    parser.add_argument("--transition-signal-at", default="")
     args = parser.parse_args(argv)
     db = Path(args.db)
     if args.wu_twc_refresh_once:
@@ -8217,6 +11334,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0 if result.get("ok") else 1
     if args.market_prefetch_once:
         result = _market_prefetch_once_with_lock(db, event_date=args.event_date, slug=args.slug)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0 if result.get("ok") else 1
+    if args.posterior_target_decision_once:
+        result = record_posterior_target_direct_decisions(
+            db,
+            event_date=args.event_date,
+            slug=args.slug,
+            emit_unchanged_sec=0,
+            enqueue_job=True,
+            transition_signal_at=args.transition_signal_at,
+        )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0 if result.get("ok") else 1
     if args.once or not args.loop:

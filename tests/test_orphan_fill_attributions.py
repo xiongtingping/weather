@@ -124,7 +124,7 @@ def test_orphan_fill_infers_from_auto_trade_decisions_order_id_writeback():
             "YES",
             "entry",
             1,
-            json.dumps(["entry_market_fallback"]),
+            json.dumps(["order_submitted"]),
             json.dumps({"order_id": "ord_1", "strategy": "yes_top"}),
             ts,
         ),
@@ -147,4 +147,3 @@ def test_orphan_fill_infers_from_auto_trade_decisions_order_id_writeback():
     assert got is not None
     assert str(got[0] or "") == "auto_trade_decisions"
     assert str(got[1] or "") == "yes_top"
-

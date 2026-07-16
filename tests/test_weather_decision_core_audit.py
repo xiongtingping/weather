@@ -258,9 +258,9 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
         self.assertEqual(result["legacy_only_fit_rows"], 1)
         self.assertEqual(result["missing_top_fit_rows"], 1)
         self.assertEqual(result["missing_fit_na_reason_rows"], 1)
-        self.assertEqual(result["missing_entry_usable_edge_rows"], 1)
-        self.assertEqual(result["legacy_q_entry_observation_rows"], 1)
-        self.assertEqual(result["dry_run_entry_unusable_edge_order_rows"], 1)
+        self.assertEqual(result["missing_entry_usable_edge_rows"], 0)
+        self.assertEqual(result["legacy_q_entry_observation_rows"], 0)
+        self.assertEqual(result["dry_run_entry_unusable_edge_order_rows"], 0)
         self.assertEqual(result["source_station_mismatch_rows"], 0)
         self.assertEqual(
             result["soft_hard_block_counts"],
@@ -270,7 +270,7 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
         self.assertEqual(len(result["dry_run_entry_state_violations"]), 1)
         self.assertEqual(result["entry_unusable_edge_order_violations"], [])
 
-    def test_decision_audit_rejects_orders_with_unusable_entry_edge(self) -> None:
+    def test_decision_audit_treats_entry_edge_as_diagnostic_only(self) -> None:
         conn = sqlite3.connect(":memory:")
         self.addCleanup(conn.close)
         conn.execute(
@@ -318,10 +318,7 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
             dry_run=True,
         )
 
-        violations = result["entry_unusable_edge_order_violations"]
-        self.assertEqual(len(violations), 1)
-        self.assertAlmostEqual(violations[0]["entry_usable_edge"], -0.001)
-        self.assertAlmostEqual(violations[0]["entry_usable_edge_size_scale"], 0.0)
+        self.assertEqual(result["entry_unusable_edge_order_violations"], [])
 
     def test_decision_audit_allows_bayes_target_entry_without_edge_gate(self) -> None:
         conn = sqlite3.connect(":memory:")
@@ -365,6 +362,30 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
                 ),
             ),
         )
+        conn.execute(
+            """
+            INSERT INTO auto_trade_decisions (
+                id, created_at, action, decided_state, will_order,
+                reason_codes_json, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                2,
+                "2026-05-05T00:00:01+00:00",
+                "entry",
+                "entry",
+                1,
+                json.dumps([]),
+                json.dumps(
+                    {
+                        "decision_ssot": "posterior_ssot_fact",
+                        "posterior_ssot_fact_used": True,
+                        "entry_usable_edge": 0.0,
+                        "entry_usable_edge_size_scale": 0.0,
+                    }
+                ),
+            ),
+        )
         conn.commit()
 
         result = audit.audit_recent_decisions(
@@ -374,7 +395,12 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
             dry_run=False,
         )
 
-        self.assertEqual(result["bayes_target_entry_rows"], 1)
+        self.assertEqual(result["bayes_target_entry_rows"], 2)
+        self.assertEqual(result["posterior_target_direct_ssot_violation_count"], 1)
+        self.assertEqual(
+            result["posterior_target_direct_ssot_violations"][0]["issue"],
+            "decision_ssot_legacy_posterior_temperature_distribution",
+        )
         self.assertEqual(result["missing_fit_na_reason_rows"], 0)
         self.assertEqual(result["missing_entry_usable_edge_rows"], 0)
         self.assertEqual(result["entry_unusable_edge_order_violations"], [])
@@ -757,7 +783,7 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
                     "exit",
                     "blocked",
                     0,
-                    json.dumps(["target_realization_switch_buy_exit_old"]),
+                    json.dumps(["target_realization_yes_target_invalidated"]),
                     json.dumps(
                         {
                             "exit_policy_version": "exit_policy_v2_2026_06_24",
@@ -765,9 +791,9 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
                             "exit_policy_primary_edge_source": "",
                             "hold_edge_realizable": -0.02,
                             "exit_policy_legacy_edge_min": 0.0,
-                            "exit_policy_family_codes": ["target_realization_exit"],
-                            "exit_policy_primary_family": "target_realization_exit",
-                            "exit_policy_trigger_reason_codes": ["target_realization_switch_buy_exit_old"],
+                            "exit_policy_family_codes": ["target_realization"],
+                            "exit_policy_primary_family": "target_realization",
+                            "exit_policy_trigger_reason_codes": ["target_realization_yes_target_invalidated"],
                             "exit_policy_target_realization_triggered": True,
                         }
                     ),
@@ -778,7 +804,7 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
                     "exit",
                     "blocked",
                     0,
-                    json.dumps(["target_realization_rebalance_over_target"]),
+                    json.dumps(["target_realization_no_invalidated"]),
                     json.dumps(
                         {
                             "exit_policy_version": "exit_policy_v2_2026_06_24",
@@ -786,8 +812,8 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
                             "exit_policy_primary_edge_source": "",
                             "hold_edge_realizable": 0.03,
                             "exit_policy_legacy_edge_min": 0.0,
-                            "exit_policy_family_codes": ["target_realization_exit"],
-                            "exit_policy_primary_family": "target_realization_exit",
+                            "exit_policy_family_codes": ["target_realization"],
+                            "exit_policy_primary_family": "target_realization",
                             "exit_policy_target_realization_triggered": True,
                             "exit_policy_order_submitted": True,
                         }
@@ -833,7 +859,7 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
         self.assertAlmostEqual(payload["exit_policy_version_present_rate"], 1.0)
         self.assertAlmostEqual(payload["target_realization_primary_source_rate"], 1.0)
         self.assertAlmostEqual(payload["hold_edge_primary_source_rate"], 0.0)
-        self.assertEqual(payload["family_counts"], {"target_realization_exit": 2})
+        self.assertEqual(payload["family_counts"], {"target_realization": 2})
         self.assertEqual(payload["target_realization_triggered_count"], 2)
         self.assertEqual(payload["edge_triggered_count"], 0)
         self.assertEqual(payload["repricing_triggered_count"], 0)
@@ -925,8 +951,8 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
 
         self.assertTrue(payload["ok"])
         self.assertEqual(
-            len(payload["violations"]["entry_unusable_edge_order_violations"]),
-            1,
+            payload["violations"]["entry_unusable_edge_order_violations"],
+            [],
         )
         self.assertEqual(payload["violations"]["exit_policy_missing_rows"], 0)
         self.assertEqual(payload["violations"]["legacy_exit_policy_semantic_violations"], [])
@@ -1057,14 +1083,14 @@ class WeatherDecisionCoreAuditTests(unittest.TestCase):
                     "exit",
                     "blocked",
                     0,
-                    json.dumps(["target_realization_switch_buy_exit_old"]),
+                    json.dumps(["target_realization_yes_target_invalidated"]),
                     json.dumps(
                         {
                             "exit_policy_version": "exit_policy_v2_2026_06_24",
                             "exit_policy_primary_source": "target_realization_binary_settlement",
                             "exit_policy_primary_edge_source": "",
                             "hold_edge_realizable": -0.02,
-                            "exit_policy_family_codes": ["target_realization_exit"],
+                            "exit_policy_family_codes": ["target_realization"],
                         }
                     ),
                 ),

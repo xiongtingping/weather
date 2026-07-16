@@ -130,17 +130,12 @@ _run_weather_fast_discovery_once() {
     fi
     discovery_lane_acquired_here=1
   fi
-  local discovery_db_lock=0
-  if [ "${WEATHER_REFRESH_DB_WRITER_LOCK_ACQUIRED:-0}" != "1" ]; then
-    if ! weather_refresh_db_writer_acquire "market_refresh_discovery" "${PM_WEATHER_DISCOVERY_DB_LOCK_WAIT_SEC:-0}" "$ROOT/data/market_refresh.log" "market_refresh"; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] weather_discovery_fast skipped db_writer busy" >> "$ROOT/data/market_refresh.log"
-      if [ "$discovery_lane_acquired_here" = "1" ]; then
-        weather_scan_lane_release
-      fi
-      return 0
-    fi
-    discovery_db_lock=1
-  fi
+  # coordinator_child_writer_boundary:market_refresh_discovery
+  # Do not retain the archive writer lock in this parent shell.  The discovery
+  # child writes through scan_weather_market's queued DB connection; retaining
+  # the same lock here makes the child wait on its parent until its 12-second
+  # launcher timeout.  The scan lane above serializes discovery runs, and the
+  # actual writer owns the DB lock for precisely its write transaction.
   local discovery_days="${PM_WEATHER_DISCOVERY_DAYS_AHEAD:-${PM_SCAN_FAST_DAYS_AHEAD:-2}}"
   if ! [[ "${discovery_days}" =~ ^-?[0-9]+$ ]] || [ "${discovery_days}" -lt 0 ]; then
     discovery_days="2"
@@ -164,9 +159,6 @@ _run_weather_fast_discovery_once() {
   set -e
   if [ "$discovery_rc" -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] weather_discovery_fast exit=${discovery_rc}, continue market refresh" >> "$ROOT/data/market_refresh.log"
-  fi
-  if [ "$discovery_db_lock" = "1" ]; then
-    weather_refresh_db_writer_release
   fi
   if [ "$discovery_lane_acquired_here" = "1" ]; then
     weather_scan_lane_release

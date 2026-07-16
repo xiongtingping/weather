@@ -13,10 +13,9 @@ DEFAULT_DB = ROOT_DIR / "data" / "archive.db"
 
 
 def open_db(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(path), timeout=30)
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA query_only=ON")
         conn.execute("PRAGMA busy_timeout=30000")
     except sqlite3.Error:
         pass

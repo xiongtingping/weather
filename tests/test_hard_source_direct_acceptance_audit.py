@@ -305,3 +305,55 @@ def test_selected_runtime_config_reports_metar_pws_polling(tmp_path, monkeypatch
     assert polling["checkwx"]["normal_poll_sec"] == "62"
     assert polling["twc_pws_rapid"]["peak_poll_sec"] == "11"
     assert polling["twc_pws_rapid"]["normal_poll_sec"] == "63"
+
+
+def test_hard_source_lock_consistency_contract_declares_final_lock_boundary():
+    contract = audit.hard_source_lock_consistency_contract()
+
+    assert contract["schema"] == "hard_source_lock_consistency_contract_v1"
+    assert contract["read_only"] is True
+    assert contract["scope"] == "awc_hard_source_final_bucket_lock"
+    assert "target_probability_is_one_hot" in contract["final_lock_requirements"]
+    assert "non-final hard-source observations are lower-bound constraints" in contract["non_final_boundary"]
+    assert contract["guards"]["writes_archive_db"] is False
+    assert contract["guards"]["places_orders"] is False
+    assert contract["guards"]["upgrades_weak_sources_to_hard_lock"] is False
+
+
+def test_hard_source_lock_consistency_rejects_final_lock_that_is_not_one_hot():
+    payload = {
+        "hard_source_posterior_override_meta": {"final_bucket_lock": True},
+        "distribution": [
+            {"outcome": "30°C", "q_bayes_posterior": 0.0},
+            {
+                "outcome": "31°C",
+                "q_bayes_posterior": 0.8,
+                "hard_source_posterior_override_final_bucket_lock": True,
+            },
+            {"outcome": "32°C", "q_bayes_posterior": 0.2},
+        ],
+    }
+
+    status = audit._hard_source_lock_consistency_status(payload, "31°C")
+
+    assert status["ok"] is False
+    assert status["state"] == "final_locked"
+    assert status["reason"] == "final_bucket_lock_not_one_hot"
+    assert "target_probability_is_one_hot" in status["missing_requirements"]
+    assert "all_non_target_buckets_zero" in status["missing_requirements"]
+
+
+def test_hard_source_lock_consistency_does_not_one_hot_non_final_observation():
+    payload = {
+        "distribution": [
+            {"outcome": "30°C", "q_bayes_posterior": 0.0},
+            {"outcome": "31°C", "q_bayes_posterior": 0.4},
+            {"outcome": "32°C", "q_bayes_posterior": 0.6},
+        ],
+    }
+
+    status = audit._hard_source_lock_consistency_status(payload, "32°C")
+
+    assert status["ok"] is True
+    assert status["state"] == "not_final_locked"
+    assert status["reason"] == "non_final_hard_source_lower_bound_constraint_audited_separately"

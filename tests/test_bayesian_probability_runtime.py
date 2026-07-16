@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bayesian_probability_runtime import (
+from posterior_pipeline_entry_runtime import (
     _temperature_trajectory_channel_probs,
     _temperature_momentum_variable,
     apply_bayesian_probability_update,
@@ -34,13 +34,227 @@ from bayesian_data_role_contract import (
 )
 
 
-class BayesianProbabilityRuntimeTests(unittest.TestCase):
+class BayesianProbabilityProductionDefaultTests(unittest.TestCase):
     def setUp(self) -> None:
         self._old_env = os.environ.copy()
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ENABLED", None)
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ALLOW_UNSAFE_RUNTIME", None)
+        os.environ.pop("PM_BAYES_HIERARCHICAL_PRODUCTION_ENABLED", None)
 
     def tearDown(self) -> None:
         os.environ.clear()
         os.environ.update(self._old_env)
+
+    def test_default_probability_update_uses_hierarchical_pipeline(self) -> None:
+        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
+        os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
+        items = [
+            {
+                "label": "30°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.40, "q_raw": 0.40},
+                "per_model_q": {
+                    "gfs_seamless": {"q_round": 0.35},
+                    "ecmwf_ifs025": {"q_round": 0.45},
+                },
+                "active_models": ["gfs_seamless", "ecmwf_ifs025"],
+                "weather_likelihood_features": {
+                    "event_date": "2026-07-03",
+                    "zuuu_metar_raw_awc_latest_at": "2026-07-03T12:00:00+08:00",
+                    "observed_temp_c": 28.0,
+                    "dewpoint_c": 22.0,
+                    "visibility": "9999",
+                    "cloud_text": "FEW011 SCT020",
+                    "temperature_momentum_effective_c_per_hour": 3.0,
+                },
+            },
+            {
+                "label": "31°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.35, "q_raw": 0.35},
+                "per_model_q": {
+                    "gfs_seamless": {"q_round": 0.40},
+                    "ecmwf_ifs025": {"q_round": 0.35},
+                },
+                "active_models": ["gfs_seamless", "ecmwf_ifs025"],
+            },
+            {
+                "label": "32°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.25, "q_raw": 0.25},
+                "per_model_q": {
+                    "gfs_seamless": {"q_round": 0.25},
+                    "ecmwf_ifs025": {"q_round": 0.20},
+                },
+                "active_models": ["gfs_seamless", "ecmwf_ifs025"],
+            },
+        ]
+
+        meta = apply_bayesian_probability_update(
+            items,
+            weights={"gfs_seamless": 0.25, "ecmwf_ifs025": 0.75},
+            model_cache_freshness=1.0,
+            days_to_event=0.0,
+            lcb_stage_tz="Asia/Shanghai",
+        )
+
+        self.assertTrue(meta["enabled"])
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(meta["posterior_engine"], "sequential_remaining_warming_bayes_runtime_v31")
+        self.assertNotIn("old_additive_evidence_pool_used", meta)
+        self.assertNotIn("production_replacement_required", meta)
+        self.assertNotIn("legacy_additive_evidence_bridge", meta)
+        self.assertIn("layer_contributions", meta)
+        self.assertIn("forecast_weak_likelihood", meta["layer_contributions"])
+        self.assertIn("metar_strong_likelihood", meta["layer_contributions"])
+        self.assertAlmostEqual(sum(item["q"]["q_raw"] for item in items), 1.0, places=12)
+        self.assertEqual(items[0]["q_bayes_meta"]["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertNotIn("old_additive_evidence_pool_used", items[0]["q_bayes_meta"])
+
+    def test_weak_forecast_cannot_revive_bucket_below_observed_max(self) -> None:
+        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
+        os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
+        items = [
+            {
+                "label": "29°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.80, "q_raw": 0.80},
+                "per_model_q": {"gfs_seamless": {"q_round": 0.80}},
+                "active_models": ["gfs_seamless"],
+                "weather_likelihood_features": {
+                    "event_date": "2026-07-03",
+                    "zuuu_metar_raw_awc_latest_at": "2026-07-03T15:00:00+08:00",
+                    "zuuu_metar_raw_awc_fetched_at": "2026-07-03T15:05:30+08:00",
+                    "zuuu_metar_raw_awc_latest_temp_c": 31.0,
+                    "zuuu_metar_raw_awc_today_max_c": 31.0,
+                    "zuuu_metar_raw_awc_latest_dewpoint_c": 22.0,
+                    "wu_forecast_peak_c": 29.0,
+                    "wu_forecast_peak_at": "2026-07-03T08:00:00+08:00",
+                    "wu_forecast_peak_source": "wu_forecast:test",
+                },
+            },
+            {
+                "label": "31°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.20, "q_raw": 0.20},
+                "per_model_q": {"gfs_seamless": {"q_round": 0.20}},
+                "active_models": ["gfs_seamless"],
+            },
+        ]
+
+        meta = apply_bayesian_probability_update(
+            items,
+            weights={"gfs_seamless": 1.0},
+            model_cache_freshness=1.0,
+            days_to_event=0.0,
+            lcb_stage_tz="Asia/Shanghai",
+        )
+
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        pipeline = meta["hierarchical_posterior_pipeline"]
+        forecast_trace = {
+            row["source_id"]: row
+            for row in pipeline["runtime_outputs"]["forecast_weak_likelihood"]["source_trace"]
+        }
+        self.assertTrue(forecast_trace["wu_forecast_high"]["included"])
+        self.assertEqual(forecast_trace["wu_forecast_high"]["source_class"], "forecast_weak_source")
+        self.assertEqual(pipeline["posterior_temperature_distribution_map"]["29°C"], 0.0)
+        self.assertEqual(items[0]["q"]["q_bayes_posterior"], 0.0)
+        self.assertIn("observed_today_max_c", pipeline["hard_mask_reason"])
+
+    def test_legacy_flag_alone_does_not_disable_hierarchical_pipeline(self) -> None:
+        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
+        os.environ["PM_BAYES_LEGACY_ADDITIVE_COMPAT_ENABLED"] = "1"
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ALLOW_UNSAFE_RUNTIME", None)
+        items = [
+            {
+                "label": "30°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.45, "q_raw": 0.45},
+                "per_model_q": {"gfs_seamless": {"q_round": 0.45}},
+                "active_models": ["gfs_seamless"],
+            },
+            {
+                "label": "31°C",
+                "rounding_rule": "whole_degrees",
+                "q": {"q_round": 0.55, "q_raw": 0.55},
+                "per_model_q": {"gfs_seamless": {"q_round": 0.55}},
+                "active_models": ["gfs_seamless"],
+            },
+        ]
+
+        meta = apply_bayesian_probability_update(
+            items,
+            weights={"gfs_seamless": 1.0},
+            model_cache_freshness=1.0,
+            days_to_event=0.0,
+            lcb_stage_tz="Asia/Shanghai",
+        )
+
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertNotIn("old_additive_evidence_pool_used", meta)
+
+    def test_intraday_helpers_no_longer_import_legacy_additive_runtime(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        runtime = (root / "posterior_pipeline_entry_runtime.py").read_text(encoding="utf-8")
+
+        helper_block = runtime.split("def _parse_event_date", 1)[0]
+        helper_block += runtime.split("def _format_bucket_number", 1)[0].rsplit("def _temperature_trajectory_channel_probs", 1)[-1]
+        helper_block += runtime.split("def _taf_time_scale", 1)[0].rsplit("def _build_physical_d0_explanation", 1)[-1]
+
+        self.assertIn("from intraday_likelihood_runtime import physical_likelihood_quality_scale", helper_block)
+        self.assertIn("from intraday_likelihood_runtime import temperature_trajectory_realization_probs", helper_block)
+        self.assertIn("from intraday_likelihood_runtime import build_physical_d0_explanation", helper_block)
+        self.assertNotIn(
+            "from legacy_additive_bayesian_probability_runtime import _physical_likelihood" + "_evidence_scale",
+            helper_block,
+        )
+        self.assertNotIn("from legacy_additive_bayesian_probability_runtime import _temperature_trajectory_channel_probs", helper_block)
+        self.assertNotIn("from legacy_additive_bayesian_probability_runtime import _build_physical_d0_explanation", helper_block)
+
+
+class BayesianProbabilityRuntimeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._old_env = os.environ.copy()
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ENABLED", None)
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ALLOW_UNSAFE_RUNTIME", None)
+        os.environ.pop("PM_BAYES_HIERARCHICAL_PRODUCTION_ENABLED", None)
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._old_env)
+
+    def _force_hierarchical_production_runtime(self) -> None:
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ENABLED", None)
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ALLOW_UNSAFE_RUNTIME", None)
+        os.environ.pop("PM_BAYES_HIERARCHICAL_PRODUCTION_ENABLED", None)
+
+    def _pipeline_runtime_output(self, meta: dict, key: str) -> dict:
+        pipeline = meta["hierarchical_posterior_pipeline"]
+        outputs = pipeline["runtime_outputs"]
+        output = outputs[key]
+        self.assertFalse(output["production_entry_enabled"])
+        self.assertFalse(output["guards"]["writes_archive_db"])
+        self.assertFalse(output["guards"]["places_orders"])
+        return output
+
+    def _source_trace_by_id(self, output: dict, source_id: str) -> dict:
+        for row in output["source_trace"]:
+            if row.get("source_id") == source_id:
+                return row
+        self.fail(f"source_trace missing source_id={source_id}")
+
+    def _source_group_trace(self, output: dict, group: str) -> dict:
+        for row in output["source_group_trace"]:
+            if row.get("group") == group:
+                return row
+        self.fail(f"source_group_trace missing group={group}")
+
+    def _assert_hierarchical_probability_runtime(self, meta: dict) -> None:
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(meta["posterior_engine"], "sequential_remaining_warming_bayes_runtime_v31")
+        self.assertNotIn("old_additive_evidence_pool_used", meta)
+        self.assertNotIn("production_replacement_required", meta)
 
     def test_temperature_momentum_suppresses_untrusted_minute_spikes(self) -> None:
         variable = _temperature_momentum_variable(
@@ -69,6 +283,9 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
     def test_updates_probability_vector_and_preserves_static_q(self) -> None:
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ENABLED", None)
+        os.environ.pop("PM_BAYES_LEGACY_ADDITIVE_COMPAT_ALLOW_UNSAFE_RUNTIME", None)
+        os.environ.pop("PM_BAYES_HIERARCHICAL_PRODUCTION_ENABLED", None)
         items = [
             {
                 "q": {"q_round": 0.20, "q_raw": 0.20},
@@ -96,8 +313,12 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         )
 
         self.assertTrue(meta["enabled"])
-        self.assertEqual(meta["source"], "continuous_temperature_posterior_v1")
-        self.assertEqual(meta["posterior_engine"], "continuous_temperature_posterior_v1")
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(meta["posterior_engine"], "sequential_remaining_warming_bayes_runtime_v31")
+        self.assertNotIn("old_additive_evidence_pool_used", meta)
+        self.assertNotIn("production_replacement_required", meta)
+        self.assertNotIn("legacy_additive_evidence_bridge", meta)
+        self.assertNotIn("legacy_additive_evidence_bridge", items[0]["q_bayes_meta"])
         self.assertIn("posterior_temperature_distribution", meta)
         self.assertAlmostEqual(sum(item["q"]["q_raw"] for item in items), 1.0, places=12)
         self.assertEqual(items[0]["q"]["q_raw_static"], 0.20)
@@ -112,6 +333,7 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(items[0]["q"]["q_bayes_ucb"], items[0]["q"]["q_bayes_posterior"])
 
     def test_hard_source_observation_constrains_lower_buckets(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED"] = "1"
@@ -161,9 +383,12 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        self.assertTrue(meta["hard_source_posterior_override_applied"])
-        self.assertEqual(meta["hard_source_posterior_override_target_bucket"], "31°C")
-        self.assertEqual(meta["hard_source_posterior_override_constraint_mode"], "hard_source_lower_bound_constraint")
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(meta["posterior_engine"], "sequential_remaining_warming_bayes_runtime_v31")
+        self.assertNotIn("old_additive_evidence_pool_used", meta)
+        self.assertEqual(meta["hard_constraints"]["combined_hard_mask"], {"30°C": 0.0, "31°C": 1.0, "32°C": 1.0})
+        self.assertEqual(meta["hard_constraints"]["posterior"]["masked_zero_buckets"], ["30°C"])
+        self.assertIn("observed_today_max_c", meta["hard_mask_reason"])
         self.assertEqual(items[0]["q"]["q_bayes_posterior"], 0.0)
         self.assertGreater(items[1]["q"]["q_bayes_posterior"], 0.0)
         self.assertGreater(items[2]["q"]["q_bayes_posterior"], 0.0)
@@ -172,10 +397,11 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             1.0,
             places=12,
         )
-        self.assertEqual(items[1]["q_bayes_meta"]["posterior_temperature_distribution_d0_violation_count"], 0)
-        self.assertEqual(items[1]["q_bayes_meta"]["source"], "continuous_temperature_posterior_v1_hard_source_override")
+        self.assertEqual(items[1]["q_bayes_meta"]["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(items[1]["q_bayes_meta"]["temperature_bucket_probability_mode"], "hierarchical_joint_likelihood")
 
     def test_nonfinal_hard_source_keeps_atomic_distribution_not_single_point(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED"] = "1"
@@ -222,8 +448,14 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        self.assertTrue(meta["hard_source_posterior_override_applied"])
-        self.assertFalse(meta["hard_source_posterior_override_final_bucket_lock"])
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(meta["posterior_engine"], "sequential_remaining_warming_bayes_runtime_v31")
+        self.assertNotIn("old_additive_evidence_pool_used", meta)
+        self.assertEqual(
+            meta["hard_constraints"]["combined_hard_mask"],
+            {"30°C or below": 0.0, "31°C": 1.0, "32°C": 1.0},
+        )
+        self.assertFalse(meta["hard_constraints"]["metar_strong"]["hard_lock"])
         self.assertEqual(items[0]["q"]["q_bayes_posterior"], 0.0)
         self.assertEqual(items[0]["q_temperature_bucket_posterior"], 0.0)
         self.assertGreater(items[1]["q"]["q_bayes_posterior"], 0.0)
@@ -350,6 +582,7 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         self.assertTrue(rows[0]["q_posterior_observed_constraints_hard_zero"])
 
     def test_hard_source_final_lock_sets_single_bucket(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED"] = "1"
@@ -397,8 +630,14 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        self.assertTrue(meta["hard_source_posterior_override_final_bucket_lock"])
-        self.assertEqual(meta["hard_source_posterior_override_constraint_mode"], "final_bucket_lock")
+        self.assertEqual(meta["source"], "hierarchical_posterior_pipeline_runtime_v1")
+        self.assertEqual(meta["posterior_engine"], "sequential_remaining_warming_bayes_runtime_v31")
+        self.assertEqual(meta["phase"], "D0_hard")
+        self.assertEqual(meta["hard_constraints"]["combined_hard_mask"], {"30°C": 0.0, "31°C": 1.0, "32°C": 0.0})
+        self.assertTrue(meta["hard_constraints"]["metar_strong"]["hard_lock"])
+        self.assertEqual(meta["hard_constraints"]["metar_strong"]["official_final_result"], 31.0)
+        self.assertIn("official_final_result", meta["hard_mask_reason"])
+        self.assertIn("final_daily_max_bucket_lock", meta["hard_mask_reason"])
         self.assertEqual(items[0]["q"]["q_bayes_posterior"], 0.0)
         self.assertEqual(items[1]["q"]["q_bayes_posterior"], 1.0)
         self.assertEqual(items[2]["q"]["q_bayes_posterior"], 0.0)
@@ -754,6 +993,117 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         self.assertEqual(meta["constraint_mode"], "final_bucket_lock")
         self.assertEqual(meta["posterior_probs"], [0.0, 1.0, 0.0])
 
+    def test_awc_final_daily_max_flag_locks_bucket_without_settlement_actual(self) -> None:
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED"] = "1"
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED"] = "1"
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_MODE"] = "wu_forecast"
+        features = {
+            "market_var": "temperature_2m_max",
+            "event_date": "2026-07-05",
+            "source": "zuuu_metar_raw_awc",
+            "zuuu_metar_raw_awc_today_max_c": 37.0,
+            "zuuu_metar_raw_awc_today_max_at": "2026-07-05T08:00:00+00:00",
+            "zuuu_metar_raw_awc_target_event_date": "2026-07-05",
+            "observed_today_max_c": 37.0,
+            "observed_today_max_source": "zuuu_metar_raw_awc",
+            "observed_today_max_final": True,
+        }
+
+        meta = resolve_hard_source_posterior_override(
+            ["36°C", "37°C", "38°C"],
+            features,
+            base_probs=[0.50, 0.03, 0.47],
+            rounding_rule="whole_degrees",
+            market_var="temperature_2m_max",
+            event_tz="Asia/Shanghai",
+            event_date="2026-07-05",
+            now_dt=datetime(2026, 7, 5, 8, 6, tzinfo=timezone.utc),
+        )
+
+        self.assertTrue(meta["applied"])
+        self.assertTrue(meta["final_bucket_lock"])
+        self.assertEqual(meta["source"], "zuuu_metar_raw_awc")
+        self.assertEqual(meta["constraint_mode"], "final_bucket_lock")
+        self.assertEqual(meta["final_lock_reason"], "hard_source_final_flag")
+        self.assertEqual(meta["posterior_probs"], [0.0, 1.0, 0.0])
+
+    def test_amsc_post_peak_cooling_remains_lower_bound_until_final_evidence(self) -> None:
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED"] = "1"
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED"] = "1"
+        features = {
+            "market_var": "temperature_2m_max",
+            "event_date": "2026-07-08",
+            "tz": "Asia/Shanghai",
+            "source": "zuuu_metar_raw_amsc",
+            "observed_today_max_c": 39.0,
+            "observed_today_max_source": "zuuu_metar_raw_amsc",
+            "observed_today_max_trusted": True,
+            "zuuu_metar_raw_amsc_today_max_c": 39.0,
+            "zuuu_metar_raw_amsc_today_max_at": "2026-07-08T09:00:00+00:00",
+            "zuuu_metar_raw_amsc_target_event_date": "2026-07-08",
+            "zuuu_metar_raw_amsc_latest_temp_c": 35.0,
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-08T13:30:00+00:00",
+            "zuuu_metar_raw_amsc_fetched_at": "2026-07-08T13:31:00+00:00",
+            "expected_peak_window_end_hour_local": 21.5,
+        }
+
+        meta = resolve_hard_source_posterior_override(
+            ["38°C", "39°C", "40°C"],
+            features,
+            base_probs=[0.62, 0.33, 0.05],
+            rounding_rule="whole_degrees",
+            market_var="temperature_2m_max",
+            event_tz="Asia/Shanghai",
+            event_date="2026-07-08",
+            now_dt=datetime(2026, 7, 8, 13, 40, tzinfo=timezone.utc),
+        )
+
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["source"], "zuuu_metar_raw_amsc")
+        self.assertFalse(meta["final_bucket_lock"])
+        self.assertEqual(meta["final_lock_reason"], "hard_source_lower_bound_only")
+        self.assertEqual(meta["constraint_mode"], "hard_source_lower_bound_constraint")
+        self.assertEqual(meta["posterior_probs"][0], 0.0)
+        self.assertGreater(meta["posterior_probs"][1], 0.0)
+        self.assertGreater(meta["posterior_probs"][2], 0.0)
+
+    def test_amsc_small_post_peak_integer_drop_does_not_lock_daily_max_bucket(self) -> None:
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_ENABLED"] = "1"
+        os.environ["PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED"] = "1"
+        features = {
+            "market_var": "temperature_2m_max",
+            "event_date": "2026-07-08",
+            "tz": "Asia/Shanghai",
+            "source": "zuuu_metar_raw_amsc",
+            "observed_today_max_c": 39.0,
+            "observed_today_max_source": "zuuu_metar_raw_amsc",
+            "observed_today_max_trusted": True,
+            "zuuu_metar_raw_amsc_today_max_c": 39.0,
+            "zuuu_metar_raw_amsc_today_max_at": "2026-07-08T09:00:00+00:00",
+            "zuuu_metar_raw_amsc_target_event_date": "2026-07-08",
+            "zuuu_metar_raw_amsc_latest_temp_c": 38.0,
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-08T13:30:00+00:00",
+            "expected_peak_window_end_hour_local": 21.5,
+        }
+
+        meta = resolve_hard_source_posterior_override(
+            ["38°C", "39°C", "40°C"],
+            features,
+            base_probs=[0.62, 0.33, 0.05],
+            rounding_rule="whole_degrees",
+            market_var="temperature_2m_max",
+            event_tz="Asia/Shanghai",
+            event_date="2026-07-08",
+            now_dt=datetime(2026, 7, 8, 13, 40, tzinfo=timezone.utc),
+        )
+
+        self.assertTrue(meta["applied"])
+        self.assertFalse(meta["final_bucket_lock"])
+        self.assertEqual(meta["constraint_mode"], "hard_source_lower_bound_constraint")
+        self.assertEqual(meta["posterior_probs"][0], 0.0)
+        self.assertAlmostEqual(meta["posterior_probs"][1], 0.868421052631579)
+        self.assertAlmostEqual(meta["posterior_probs"][2], 0.13157894736842105)
+
     def test_bayesian_probability_lcb_z_follows_stage(self) -> None:
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_PROBABILITY_Z_BY_STAGE"] = "d2_plus=1.64,d1=1.28,d0=0.8"
@@ -784,6 +1134,7 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         self.assertEqual(items[0]["q"], {"q_round": 0.42, "q_raw": 0.42})
 
     def test_nowcast_enters_only_as_bayes_evidence_not_premixed_q(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_PROBABILITY_PRIOR_STRENGTH"] = "12"
         os.environ["PM_BAYES_PROBABILITY_MODEL_STRENGTH"] = "36"
@@ -816,17 +1167,29 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=2.0,
         )
 
-        self.assertEqual(meta["source"], "continuous_temperature_posterior_v1")
-        self.assertEqual(meta["posterior_engine"], "continuous_temperature_posterior_v1")
-        self.assertEqual(meta["nowcast_evidence"], 24.0)
-        self.assertEqual(meta["model_evidence"], 18.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        self.assertEqual(
+            forecast_output["boundary"]["role"],
+            "prediction_weak_likelihood",
+        )
+        self.assertTrue(forecast_output["boundary"]["diagnostic_current_sources_excluded"])
+        self.assertEqual(
+            [row["source_id"] for row in forecast_output["source_trace"] if row["included"]],
+            ["model_distribution:m"],
+        )
+        self.assertEqual(
+            forecast_output["forecast_weak_likelihood_map"],
+            {"30°C": 0.7, "31°C": 0.3},
+        )
         self.assertEqual(items[0]["q"]["q_raw_static"], 0.90)
         self.assertEqual(items[1]["q"]["q_raw_static"], 0.10)
         self.assertLess(items[1]["q"]["q_raw_static"], items[0]["q"]["q_raw_static"])
-        self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_raw_static"])
-        self.assertGreater(items[1]["q_bayes_meta"]["score_components"]["observed_nowcast"], 0.0)
+        self.assertGreater(items[0]["q"]["q_bayes_posterior"], items[1]["q"]["q_bayes_posterior"])
+        self.assertEqual(items[0]["q_bayes_meta"]["source"], "hierarchical_posterior_pipeline_runtime_v1")
 
     def test_seven_channel_score_components_match_documented_bma_formula(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_PROBABILITY_PRIOR_STRENGTH"] = "2"
         os.environ["PM_BAYES_PROBABILITY_MODEL_STRENGTH"] = "3"
@@ -878,29 +1241,40 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
+        self._assert_hierarchical_probability_runtime(meta)
         self.assertGreater(meta["prior_strength"], 0.0)
-        self.assertGreater(meta["model_evidence"], 0.0)
-        self.assertGreater(meta["observed_nowcast_evidence"], 0.0)
-        self.assertGreater(meta["wu_forecast_evidence"], 0.0)
-        self.assertGreater(meta["taf_peak_evidence"], 0.0)
-        self.assertGreater(meta["independent_physics_residual_evidence"], 0.0)
-        expected_keys = {
-            "history",
-            "model",
-            "wu_forecast",
-            "weather_com_forecast",
-            "taf_peak",
-            "climo_regime",
-            "post_cool_rebound_regime_prior",
-            "observed_nowcast",
-            "temperature_trajectory",
-            "post_cool_rebound_intraday_likelihood",
-            "independent_physics_residual",
+        self.assertIn(meta["phase"], {"D0_morning", "D0_breakout_window", "D0_midday", "D0_late"})
+        expected_layers = {
+            "prior",
+            "forecast_weak_likelihood",
+            "metar_strong_likelihood",
+            "sequential_state_bayes",
+            "phase_weight",
+            "hard_mask",
         }
+        self.assertEqual(set(meta["layer_contributions"]), expected_layers)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        included_source_ids = {
+            row["source_id"]
+            for row in forecast_output["source_trace"]
+            if row["included"]
+        }
+        self.assertEqual(
+            included_source_ids,
+            {"model_distribution:m", "current_model_ensemble", "wu_forecast_high", "zuuu_taf_forecast_peak"},
+        )
+        self.assertGreater(self._source_group_trace(forecast_output, "model")["capped_precision"], 0.0)
+        self.assertGreater(self._source_group_trace(forecast_output, "wu_forecast")["capped_precision"], 0.0)
+        self.assertGreater(self._source_group_trace(forecast_output, "taf")["capped_precision"], 0.0)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(
+            metar_output["boundary"]["role"],
+            "observation_strong_likelihood",
+        )
+        self.assertTrue(metar_output["boundary"]["metar_internal_fields_not_independent_likelihoods"])
         for item in items:
             components = item["q_bayes_meta"]["score_components"]
-            self.assertEqual(set(components), expected_keys)
-            self.assertAlmostEqual(sum(components.values()), item["q"]["q_bayes_alpha"], places=12)
+            self.assertEqual(set(components), {"prior", "forecast_weak_likelihood", "metar_strong_likelihood", "hard_mask"})
             self.assertAlmostEqual(
                 item["q"]["q_bayes_posterior"],
                 item["q"]["q_bayes_alpha"] / item["q"]["q_bayes_alpha_total"],
@@ -908,6 +1282,7 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             )
 
     def test_weather_com_forecast_enters_main_posterior_with_pp_cap(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
@@ -946,15 +1321,21 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertTrue(meta["weather_com_forecast_enabled"])
-        self.assertEqual(meta["weather_com_forecast_status"], "pp_capped")
-        self.assertEqual(meta["weather_com_forecast_source"], "weather_com_forecast_daily_peak")
-        self.assertAlmostEqual(meta["weather_com_forecast_pp_cap"], 0.05, places=12)
-        self.assertLess(meta["weather_com_forecast_evidence"], meta["weather_com_forecast_evidence_raw"])
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        trace = self._source_trace_by_id(forecast_output, "weather_com_forecast_peak")
+        self.assertTrue(trace["included"])
+        self.assertEqual(trace["source_class"], "forecast_weak_source")
+        self.assertEqual(trace["group"], "twc_forecast")
+        self.assertEqual(trace["forecast_peak_c"], 31.0)
+        group = self._source_group_trace(forecast_output, "twc_forecast")
+        self.assertGreater(group["capped_precision"], 0.0)
+        self.assertLessEqual(group["capped_precision"], group["precision_cap"])
         self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"])
-        self.assertLess(items[1]["q"]["q_bayes_posterior"], 0.60)
-        self.assertGreater(items[1]["q_bayes_meta"]["score_components"]["weather_com_forecast"], 0.0)
-        self.assertEqual(items[1]["q_bayes_meta"]["weather_com_forecast_status"], "pp_capped")
+        self.assertGreater(
+            items[1]["q_bayes_meta"]["score_components"]["forecast_weak_likelihood"],
+            items[0]["q_bayes_meta"]["score_components"]["forecast_weak_likelihood"],
+        )
 
     def test_scan_does_not_premix_observed_nowcast_into_base_q(self) -> None:
         source = Path("scan_weather_market.py").read_text()
@@ -1035,9 +1416,17 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             contracts["observed_temperature_trajectory"].priority_rank,
             contracts["independent_physics_observed"].priority_rank,
         )
-        self.assertIn("q_bayes_wu_forecast_evidence", contracts["twc_forecast_peak"].fields)
+        self.assertIn("q_bayes_weather_com_forecast_prob", contracts["twc_forecast_peak"].fields)
+        self.assertIn(
+            "forecast_weak_likelihood.source_distributions.weather_com_forecast",
+            contracts["twc_forecast_peak"].fields,
+        )
         self.assertIn("settlement_source_forecast_peak_c", contracts["wu_forecast_high"].fields)
-        self.assertIn("q_bayes_wu_forecast_evidence", contracts["wu_forecast_high"].fields)
+        self.assertIn("q_bayes_wu_forecast_prob", contracts["wu_forecast_high"].fields)
+        self.assertIn(
+            "forecast_weak_likelihood.source_distributions.wu_forecast",
+            contracts["wu_forecast_high"].fields,
+        )
         self.assertIn("not_observed_nowcast", contracts["wu_forecast_high"].safeguards)
         self.assertIn("not_independent_physics_residual", contracts["wu_forecast_high"].safeguards)
         self.assertIn("taf_forecast_peak_c", contracts["zuuu_taf_forecast_peak"].fields)
@@ -1355,12 +1744,18 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         self.assertGreater(history["prior_probs"][1], history["prior_probs"][0])
         self.assertGreater(history["model_weight_multipliers"]["good_model"], 1.0)
         self.assertLess(history["model_weight_multipliers"]["bad_model"], 1.0)
-        self.assertEqual(meta["prior_source"], "market_history")
-        self.assertTrue(meta["bias_correction_enabled"])
+        self._assert_hierarchical_probability_runtime(meta)
+        prior = meta["layer_contributions"]["prior"]
+        self.assertEqual(prior["role"], "root_prior")
+        self.assertGreater(prior["distribution"]["33°C"], prior["distribution"]["32°C"])
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        good_trace = self._source_trace_by_id(forecast_output, "model_distribution:good_model")
+        bad_trace = self._source_trace_by_id(forecast_output, "model_distribution:bad_model")
+        self.assertGreater(good_trace["precision_raw"], bad_trace["precision_raw"])
         self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[0]["q"]["q_bayes_posterior"])
-        self.assertEqual(items[1]["q_bayes_meta"]["historical_samples"], 1)
 
     def test_weak_proxy_physical_likelihood_is_quality_gated(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "12"
@@ -1397,20 +1792,26 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=1.0,
         )
 
-        self.assertTrue(meta["physical_likelihood_enabled"])
-        self.assertAlmostEqual(meta["physical_likelihood_evidence_base"], 12.0)
-        self.assertLess(meta["physical_likelihood_evidence_scale"], 1.0)
-        self.assertAlmostEqual(meta["physical_likelihood_evidence"], 4.2)
-        self.assertIn(
-            "proxy_model_members_without_strong_observed_anchor",
-            meta["physical_likelihood_evidence_scale_reason"],
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["cloud_cover_pct"], 95.0)
+        self.assertEqual(metar_output["observation_features"]["low_cloud_cover_pct"], 95.0)
+        self.assertGreater(
+            metar_output["state_probs"]["S0_wet_layer_closed"],
+            metar_output["state_probs"]["S2_open_boundary_layer"],
         )
-        self.assertEqual(
-            items[0]["q_bayes_meta"]["physical_likelihood_evidence_scale"],
-            meta["physical_likelihood_evidence_scale"],
+        self.assertTrue(metar_output["boundary"]["metar_internal_fields_not_independent_likelihoods"])
+        self.assertIn(
+            {
+                "legacy_channel": "physical_likelihood",
+                "new_location": "state_probs",
+                "policy": "cloud_visibility_dewpoint_precip_wind_state_inference_once",
+            },
+            metar_output["dedupe_trace"],
         )
 
     def test_wu_forecast_peak_enters_independent_soft_forecast_channel(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "12"
@@ -1449,24 +1850,24 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertTrue(meta["wu_forecast_enabled"])
-        self.assertEqual(meta["wu_forecast_source"], "wunderground_forecast_daily_peak")
-        self.assertEqual(meta["wu_forecast_peak_c"], 31.0)
-        self.assertEqual(meta["wu_forecast_evidence"], 12.0)
-        self.assertFalse(meta["physical_likelihood_enabled"])
-        self.assertEqual(meta["physical_likelihood_evidence"], 0.0)
-        self.assertGreater(items[1]["q_bayes_meta"]["wu_forecast_prob"], 0.95)
-        self.assertGreater(
-            items[1]["q_bayes_meta"]["score_components"]["wu_forecast"],
-            items[0]["q_bayes_meta"]["score_components"]["wu_forecast"],
-        )
-        self.assertIsNone(items[1]["q_bayes_meta"]["physical_likelihood_row"])
-        self.assertEqual(
-            items[1]["q_bayes_meta"]["independent_physics_residual_evidence"],
-            0.0,
-        )
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        trace = self._source_trace_by_id(forecast_output, "wu_forecast_high")
+        self.assertTrue(trace["included"])
+        self.assertEqual(trace["source_class"], "forecast_weak_source")
+        self.assertEqual(trace["group"], "wu_forecast")
+        self.assertEqual(trace["forecast_peak_c"], 31.0)
+        group = self._source_group_trace(forecast_output, "wu_forecast")
+        self.assertGreater(group["capped_precision"], 0.0)
+        self.assertGreater(group["distribution"]["31°C"], group["distribution"]["29°C"])
+        self.assertGreater(group["shrunk_distribution"]["31°C"], group["shrunk_distribution"]["29°C"])
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        metar_wu_trace = self._source_trace_by_id(metar_output, "wu_forecast_high")
+        self.assertFalse(metar_wu_trace["included"])
+        self.assertEqual(metar_wu_trace["exclusion_reason"], "source_class_not_hard_observation")
 
     def test_observed_warming_trajectory_reallocates_main_posterior_bucket_mass(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "0"
@@ -1529,62 +1930,32 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        self.assertTrue(meta["temperature_trajectory_posterior_enabled"])
-        self.assertEqual(meta["temperature_trajectory_realization_state"], "sustained_warming")
-        self.assertEqual(meta["temperature_trajectory_role"], "observed_realization")
-        self.assertEqual(meta["temperature_trajectory_source_class"], "airport_temperature_path")
-        self.assertTrue(meta["temperature_trajectory_weaker_than_hard_source"])
-        self.assertIn("replaces_legacy_linear_rate_projection", meta["temperature_trajectory_dedupe_policy"])
-        self.assertGreater(meta["temperature_trajectory_evidence"], 0.0)
-        self.assertGreater(meta["temperature_trajectory_mu_c"], 31.75)
-        self.assertLess(meta["temperature_trajectory_mu_c"], 32.5)
-        self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"] + 0.05)
+        self._assert_hierarchical_probability_runtime(meta)
+        self.assertEqual(meta["phase"], "D0_midday")
+        self.assertEqual(meta["beta_strong"], 0.85)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 31.1)
+        self.assertEqual(metar_output["observation_features"]["observed_today_max_c"], 31.1)
+        self.assertEqual(metar_output["observation_features"]["momentum_rate_c_per_hour"], 0.72)
+        self.assertEqual(metar_output["hard_constraints"]["hard_mask_reason"], "observed_today_max_c+current_temperature_c")
+        self.assertTrue(metar_output["remaining_warming_by_state"])
         self.assertGreater(
-            items[1]["q_bayes_meta"]["score_components"]["temperature_trajectory"],
-            items[1]["q_bayes_meta"]["score_components"]["model"],
+            metar_output["metar_strong_likelihood_map"]["34°C"],
+            metar_output["metar_strong_likelihood_map"]["31°C"],
         )
-        self.assertGreater(items[1]["q_bayes_meta"]["temperature_trajectory_prob"], 0.50)
-        self.assertEqual(
-            items[1]["q_bayes_meta"]["temperature_trajectory_role"],
-            "observed_realization",
+        self.assertIn(
+            {
+                "legacy_channel": "temperature_trajectory",
+                "new_location": "temperature_trajectory + remaining_warming_by_state",
+                "policy": "single_internal_metar_strong_likelihood_feature_not_independent_same_level_likelihood",
+            },
+            metar_output["dedupe_trace"],
         )
-        self.assertAlmostEqual(
-            items[1]["q_bayes_meta"]["temperature_trajectory_mu_c"],
-            items[1]["q_bayes_meta"]["temperature_trajectory_path_mu_c"],
-        )
-        self.assertAlmostEqual(
-            items[1]["q_bayes_meta"]["temperature_trajectory_sigma_c"],
-            items[1]["q_bayes_meta"]["temperature_trajectory_path_sigma_c"],
-        )
-        trajectory_detail = items[1]["q_bayes_meta"]["score_component_details"]["temperature_trajectory"]
-        self.assertAlmostEqual(
-            trajectory_detail["path_mu_c"],
-            items[1]["q_bayes_meta"]["temperature_trajectory_path_mu_c"],
-        )
-        self.assertAlmostEqual(
-            trajectory_detail["path_sigma_c"],
-            items[1]["q_bayes_meta"]["temperature_trajectory_path_sigma_c"],
-        )
-        self.assertGreater(trajectory_detail["evidence"], 0.0)
-        self.assertIsNotNone(trajectory_detail["rate_hat_c_per_hour"])
-        posterior_distribution = meta["posterior_temperature_distribution"]
-        likelihood_updates = posterior_distribution["likelihood_updates"]
-        self.assertFalse(likelihood_updates["applied"])
-        source_groups = {row["group"] for row in posterior_distribution["source_components"]["groups"]}
-        trajectory_groups = [
-            row
-            for row in posterior_distribution["source_components"]["groups"]
-            if row["group"] == "temperature_trajectory"
-        ]
-        self.assertTrue(trajectory_groups)
-        self.assertAlmostEqual(
-            trajectory_groups[0]["effective_precision"],
-            meta["temperature_trajectory_evidence"],
-        )
-        self.assertEqual(trajectory_groups[0]["members"][0]["raw"]["source"], "observed_temperature_trajectory_regime_v1")
-        self.assertNotIn("intraday_path", source_groups)
+        self.assertGreater(meta["hierarchical_posterior_pipeline"]["observation_information_gate"]["observation_weight"], 0.0)
+        self.assertNotAlmostEqual(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"], places=6)
 
-    def test_regime_v1_source_component_precision_respects_cap(self) -> None:
+    def test_momentum_rate_enters_metar_strong_once_without_source_component_cap(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "0"
@@ -1636,15 +2007,18 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        trajectory_group = next(
-            row
-            for row in meta["posterior_temperature_distribution"]["source_components"]["groups"]
-            if row["group"] == "temperature_trajectory"
-        )
-        self.assertAlmostEqual(meta["temperature_trajectory_evidence"], 0.75)
-        self.assertAlmostEqual(trajectory_group["effective_precision"], 0.75)
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 31.0)
+        self.assertEqual(metar_output["observation_features"]["observed_today_max_c"], 31.0)
+        self.assertEqual(metar_output["observation_features"]["momentum_rate_c_per_hour"], 0.7)
+        model_trace = self._source_trace_by_id(metar_output, "model_distribution:m")
+        self.assertFalse(model_trace["included"])
+        self.assertEqual(model_trace["exclusion_reason"], "source_class_not_hard_observation")
+        self.assertTrue(metar_output["remaining_warming_by_state"])
 
     def test_awc_context_warming_watch_enters_observed_trajectory_with_lower_evidence(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "0"
@@ -1704,14 +2078,22 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        self.assertTrue(meta["temperature_trajectory_posterior_enabled"])
-        self.assertEqual(meta["temperature_trajectory_realization_state"], "context_warming_watch")
-        self.assertEqual(meta["temperature_trajectory_role"], "observed_realization")
-        self.assertGreater(meta["temperature_trajectory_evidence"], 0.0)
-        self.assertLess(meta["temperature_trajectory_evidence"], 60.0)
-        self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"])
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 31.0)
+        self.assertEqual(metar_output["observation_features"]["observed_today_max_c"], 31.0)
+        self.assertEqual(metar_output["observation_features"]["momentum_rate_c_per_hour"], 0.0)
+        self.assertEqual(metar_output["hard_constraints"]["hard_mask_reason"], "observed_today_max_c+current_temperature_c")
+        self.assertGreater(
+            metar_output["metar_strong_likelihood_map"]["32°C"],
+            metar_output["metar_strong_likelihood_map"]["31°C"],
+        )
+        self.assertTrue(metar_output["remaining_warming_by_state"])
+        self.assertGreater(meta["hierarchical_posterior_pipeline"]["observation_information_gate"]["observation_weight"], 0.0)
+        self.assertNotAlmostEqual(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"], places=6)
 
     def test_regime_v1_strong_warming_scales_temperature_trajectory_precision(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "0"
@@ -1773,35 +2155,27 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             lcb_stage_tz="Asia/Shanghai",
         )
 
-        trajectory_group = next(
-            row
-            for row in meta["posterior_temperature_distribution"]["source_components"]["groups"]
-            if row["group"] == "temperature_trajectory"
-        )
-        raw = trajectory_group["members"][0]["raw"]
-
-        self.assertTrue(raw["strong_warming_confirmed"])
-        self.assertGreater(meta["temperature_trajectory_evidence_scale"], 1.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 30.0)
+        self.assertEqual(metar_output["observation_features"]["observed_today_max_c"], 30.0)
+        self.assertEqual(metar_output["observation_features"]["momentum_rate_c_per_hour"], 2.0)
+        warming_rows = {row["state"]: row for row in metar_output["remaining_warming_by_state"]}
         self.assertGreater(
-            meta["temperature_trajectory_evidence"],
-            meta["temperature_trajectory_evidence_base"],
+            warming_rows["S2_open_boundary_layer"]["delta_mu_c"],
+            warming_rows["S0_wet_layer_closed"]["delta_mu_c"],
         )
-        self.assertAlmostEqual(
-            trajectory_group["effective_precision"],
-            meta["temperature_trajectory_evidence"],
-        )
-        self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"])
+        self.assertGreater(meta["hierarchical_posterior_pipeline"]["observation_information_gate"]["observation_weight"], 0.0)
+        self.assertNotAlmostEqual(items[1]["q"]["q_bayes_posterior"], items[1]["q"]["q_round_static"], places=6)
 
-    def test_post_cool_rebound_regime_prior_enters_as_weak_pp_capped_prior(self) -> None:
+    def test_weather_type_prior_enters_root_prior_distribution(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
         os.environ["PM_BAYES_WU_FORECAST_ENABLED"] = "0"
         os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "0"
         os.environ["PM_BAYES_TEMPERATURE_TRAJECTORY_POSTERIOR_ENABLED"] = "0"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_REGIME_PRIOR_ENABLED"] = "1"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_REGIME_PRIOR_EVIDENCE"] = "20"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_REGIME_PRIOR_PP_CAP"] = "0.02"
         os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
         items = [
             {
@@ -1833,16 +2207,8 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             model_cache_freshness=1.0,
             days_to_event=1.0,
             historical_context={
-                "post_cool_rebound_regime_prior": {
-                    "enabled": True,
-                    "state": "prior",
-                    "status": "regime_prior",
-                    "source": "post_cool_rebound_regime_prior",
-                    "target_peak_c": 30.0,
-                    "sigma_c": 0.8,
-                    "evidence_scale": 1.0,
-                    "posterior_lift_pp_cap": 0.02,
-                },
+                "prior_probs": [0.62, 0.26, 0.12],
+                "prior_sample_scale": 1.0,
                 "weather_likelihood_features": {
                     "market_var": "temperature_2m_max",
                     "market_unit": "C",
@@ -1850,33 +2216,116 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             },
         )
 
-        self.assertTrue(meta["post_cool_rebound_regime_prior_enabled"])
-        self.assertFalse(meta["post_cool_rebound_intraday_likelihood_enabled"])
-        self.assertIn(meta["post_cool_rebound_regime_prior_status"], {"enabled", "pp_capped"})
+        self._assert_hierarchical_probability_runtime(meta)
+        prior = meta["layer_contributions"]["prior"]
+        self.assertEqual(prior["role"], "root_prior")
+        self.assertEqual(prior["boundary"], "historical_climate_date_site_terrain_weather_type_only")
+        self.assertEqual(prior["distribution"], {"28°C": 0.62, "29°C": 0.26, "30°C": 0.12})
         self.assertGreater(items[2]["q"]["q_bayes_posterior"], items[2]["q"]["q_round_static"])
-        self.assertLessEqual(
-            items[2]["q_bayes_meta"]["post_cool_rebound_regime_prior_pp_delta"],
-            0.0200001,
-        )
-        self.assertGreater(
-            items[2]["q_bayes_meta"]["score_components"]["post_cool_rebound_regime_prior"],
-            0.0,
-        )
-        self.assertEqual(
-            items[2]["q_bayes_meta"]["score_components"]["post_cool_rebound_intraday_likelihood"],
-            0.0,
-        )
 
-    def test_post_cool_rebound_intraday_likelihood_enters_main_posterior_with_pp_cap(self) -> None:
+    def test_root_prior_without_history_does_not_use_current_market_q(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
         os.environ["PM_BAYES_WU_FORECAST_ENABLED"] = "0"
         os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "0"
         os.environ["PM_BAYES_TEMPERATURE_TRAJECTORY_POSTERIOR_ENABLED"] = "0"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_INTRADAY_LIKELIHOOD_ENABLED"] = "1"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_INTRADAY_LIKELIHOOD_EVIDENCE"] = "30"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_INTRADAY_LIKELIHOOD_PP_CAP"] = "0.05"
+        os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
+        items = [
+            {
+                "label": "29°C",
+                "rounding_rule": "rounded_degrees",
+                "q": {"q_round": 0.80, "q_raw": 0.80},
+                "per_model_q": {"m": {"q_round": 0.80}},
+                "active_models": ["m"],
+            },
+            {
+                "label": "30°C",
+                "rounding_rule": "rounded_degrees",
+                "q": {"q_round": 0.20, "q_raw": 0.20},
+                "per_model_q": {"m": {"q_round": 0.20}},
+                "active_models": ["m"],
+            },
+        ]
+
+        meta = apply_bayesian_probability_update(
+            items,
+            weights={"m": 1.0},
+            model_cache_freshness=1.0,
+            days_to_event=1.0,
+            historical_context={
+                "source": "history_insufficient",
+                "prior_probs": None,
+                "prior_sample_scale": 0.0,
+                "weather_likelihood_features": {
+                    "market_var": "temperature_2m_max",
+                    "market_unit": "C",
+                },
+            },
+        )
+
+        self._assert_hierarchical_probability_runtime(meta)
+        prior = meta["layer_contributions"]["prior"]
+        self.assertEqual(prior["role"], "root_prior")
+        self.assertEqual(prior["distribution"], {"29°C": 0.5, "30°C": 0.5})
+        self.assertNotEqual(prior["distribution"], {"29°C": 0.8, "30°C": 0.2})
+
+    def test_low_sample_root_prior_shrinks_to_neutral_not_current_market_q(self) -> None:
+        self._force_hierarchical_production_runtime()
+        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
+        os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
+        os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
+        os.environ["PM_BAYES_WU_FORECAST_ENABLED"] = "0"
+        os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "0"
+        os.environ["PM_BAYES_TEMPERATURE_TRAJECTORY_POSTERIOR_ENABLED"] = "0"
+        os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
+        items = [
+            {
+                "label": "29°C",
+                "rounding_rule": "rounded_degrees",
+                "q": {"q_round": 0.90, "q_raw": 0.90},
+                "per_model_q": {"m": {"q_round": 0.90}},
+                "active_models": ["m"],
+            },
+            {
+                "label": "30°C",
+                "rounding_rule": "rounded_degrees",
+                "q": {"q_round": 0.10, "q_raw": 0.10},
+                "per_model_q": {"m": {"q_round": 0.10}},
+                "active_models": ["m"],
+            },
+        ]
+
+        meta = apply_bayesian_probability_update(
+            items,
+            weights={"m": 1.0},
+            model_cache_freshness=1.0,
+            days_to_event=1.0,
+            historical_context={
+                "source": "station_history_low_sample",
+                "prior_probs": [0.20, 0.80],
+                "prior_sample_scale": 0.25,
+                "weather_likelihood_features": {
+                    "market_var": "temperature_2m_max",
+                    "market_unit": "C",
+                },
+            },
+        )
+
+        self._assert_hierarchical_probability_runtime(meta)
+        prior = meta["layer_contributions"]["prior"]
+        self.assertEqual(prior["distribution"], {"29°C": 0.425, "30°C": 0.575})
+        self.assertNotEqual(prior["distribution"], {"29°C": 0.375, "30°C": 0.625})
+
+    def test_intraday_rebound_context_enters_metar_strong_remaining_warming(self) -> None:
+        self._force_hierarchical_production_runtime()
+        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
+        os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
+        os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
+        os.environ["PM_BAYES_WU_FORECAST_ENABLED"] = "0"
+        os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "0"
+        os.environ["PM_BAYES_TEMPERATURE_TRAJECTORY_POSTERIOR_ENABLED"] = "0"
         os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
         items = [
             {
@@ -1885,6 +2334,18 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
                 "q": {"q_round": 0.70, "q_raw": 0.70},
                 "per_model_q": {"m": {"q_round": 0.70}},
                 "active_models": ["m"],
+                "weather_likelihood_features": {
+                    "market_var": "temperature_2m_max",
+                    "market_unit": "C",
+                    "observed_temp_c": 28.8,
+                    "observed_today_max_c": 28.8,
+                    "observation_hour_local": 12.0,
+                    "visibility": "9999",
+                    "cloud_text": "FEW011 SCT020",
+                    "dewpoint_c": 22.0,
+                    "dewpoint_trend_c": -1.0,
+                    "temperature_momentum_1h_c_per_hour": 1.5,
+                },
             },
             {
                 "label": "29°C",
@@ -1907,50 +2368,29 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             weights={"m": 1.0},
             model_cache_freshness=1.0,
             days_to_event=0.0,
-            historical_context={
-                "post_cool_rebound_intraday_likelihood": {
-                    "state": "lift",
-                    "status": "lift",
-                    "source": "post_cool_rebound_intraday_likelihood",
-                    "target_peak_c": 30.0,
-                    "sigma_c": 0.35,
-                    "evidence_scale": 1.0,
-                    "after_peak_gate": False,
-                    "posterior_lift_pp_cap": 0.05,
-                },
-                "weather_likelihood_features": {
-                    "market_var": "temperature_2m_max",
-                    "market_unit": "C",
-                },
-            },
         )
 
-        self.assertTrue(meta["post_cool_rebound_intraday_likelihood_enabled"])
-        self.assertIn(meta["post_cool_rebound_intraday_likelihood_status"], {"enabled", "pp_capped"})
-        self.assertGreater(items[2]["q"]["q_bayes_posterior"], items[2]["q"]["q_round_static"])
-        self.assertLessEqual(
-            items[2]["q_bayes_meta"]["post_cool_rebound_intraday_likelihood_pp_delta"],
-            0.0500001,
-        )
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 28.8)
+        self.assertEqual(metar_output["observation_features"]["observed_today_max_c"], 28.8)
+        self.assertEqual(metar_output["observation_features"]["momentum_rate_c_per_hour"], 1.5)
+        self.assertTrue(metar_output["observation_features"]["visibility_good"])
         self.assertGreater(
-            items[2]["q_bayes_meta"]["score_components"]["post_cool_rebound_intraday_likelihood"],
-            0.0,
+            metar_output["state_probs"]["S2_open_boundary_layer"],
+            metar_output["state_probs"]["S0_wet_layer_closed"],
         )
-        self.assertGreater(items[2]["q_bayes_meta"]["post_cool_rebound_intraday_likelihood_prob"], 0.5)
+        self.assertEqual(metar_output["hard_constraints"]["masked_zero_buckets"], ["28°C"])
+        self.assertGreater(items[2]["q"]["q_bayes_posterior"], items[2]["q"]["q_round_static"])
 
-    def test_post_cool_rebound_split_pp_deltas_are_channel_local_under_hard_source(self) -> None:
+    def test_weather_type_prior_and_hard_source_use_single_mask(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
         os.environ["PM_BAYES_WU_FORECAST_ENABLED"] = "0"
         os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "0"
         os.environ["PM_BAYES_TEMPERATURE_TRAJECTORY_POSTERIOR_ENABLED"] = "0"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_REGIME_PRIOR_ENABLED"] = "1"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_REGIME_PRIOR_EVIDENCE"] = "20"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_REGIME_PRIOR_PP_CAP"] = "0.02"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_INTRADAY_LIKELIHOOD_ENABLED"] = "1"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_INTRADAY_LIKELIHOOD_EVIDENCE"] = "30"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_INTRADAY_LIKELIHOOD_PP_CAP"] = "0.05"
         os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
         items = [
             {
@@ -1989,26 +2429,8 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             model_cache_freshness=1.0,
             days_to_event=0.0,
             historical_context={
-                "post_cool_rebound_regime_prior": {
-                    "enabled": True,
-                    "state": "prior",
-                    "status": "regime_prior",
-                    "source": "post_cool_rebound_regime_prior",
-                    "target_peak_c": 31.0,
-                    "sigma_c": 0.8,
-                    "evidence_scale": 1.0,
-                    "posterior_lift_pp_cap": 0.02,
-                },
-                "post_cool_rebound_intraday_likelihood": {
-                    "enabled": True,
-                    "state": "lift",
-                    "status": "lift",
-                    "source": "post_cool_rebound_intraday_likelihood",
-                    "target_peak_c": 31.0,
-                    "sigma_c": 0.35,
-                    "evidence_scale": 1.0,
-                    "posterior_lift_pp_cap": 0.05,
-                },
+                "prior_probs": [0.50, 0.25, 0.20, 0.05],
+                "prior_sample_scale": 1.0,
                 "weather_likelihood_features": {
                     "market_var": "temperature_2m_max",
                     "market_unit": "C",
@@ -2020,36 +2442,25 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             },
         )
 
-        self.assertTrue(meta["post_cool_rebound_regime_prior_enabled"])
-        self.assertTrue(meta["post_cool_rebound_intraday_likelihood_enabled"])
-        self.assertEqual(meta["post_cool_rebound_regime_prior_role"], "conditional_climate_prior")
-        self.assertEqual(meta["post_cool_rebound_intraday_likelihood_role"], "intraday_likelihood")
-        self.assertIn("temperature trajectory", meta["post_cool_rebound_intraday_likelihood_dedupe_policy"])
-        self.assertTrue(meta["post_cool_rebound_intraday_likelihood_weaker_than_hard_source"])
-        self.assertTrue(meta["hard_source_posterior_override_applied"])
-        self.assertEqual(meta["hard_source_posterior_override_constraint_mode"], "hard_source_lower_bound_constraint")
+        self._assert_hierarchical_probability_runtime(meta)
+        self.assertEqual(meta["layer_contributions"]["prior"]["distribution"], {"29°C": 0.5, "30°C": 0.25, "31°C": 0.2, "32°C": 0.05})
+        self.assertEqual(
+            meta["hard_constraints"]["combined_hard_mask"],
+            {"29°C": 0.0, "30°C": 0.0, "31°C": 1.0, "32°C": 1.0},
+        )
+        self.assertEqual(
+            meta["hard_constraints"]["posterior"]["masked_zero_buckets"],
+            ["29°C", "30°C"],
+        )
         self.assertEqual(items[0]["q"]["q_bayes_posterior"], 0.0)
         self.assertEqual(items[1]["q"]["q_bayes_posterior"], 0.0)
-        self.assertLessEqual(
-            abs(items[2]["q_bayes_meta"]["post_cool_rebound_regime_prior_pp_delta"]),
-            0.0200001,
-        )
-        self.assertLessEqual(
-            abs(items[2]["q_bayes_meta"]["post_cool_rebound_intraday_likelihood_pp_delta"]),
-            0.0500001,
-        )
-        self.assertAlmostEqual(
-            items[2]["q_bayes_meta"]["post_cool_rebound_risk_pp_delta"],
-            items[2]["q_bayes_meta"]["post_cool_rebound_intraday_likelihood_pp_delta"],
-            places=12,
-        )
 
-    def test_post_cool_rebound_watch_is_diagnostic_only(self) -> None:
+    def test_rebound_watch_context_diagnostic_only_under_hierarchical_runtime(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_CLIMO_REGIME_ENABLED"] = "0"
         os.environ["PM_BAYES_TEMPERATURE_TRAJECTORY_POSTERIOR_ENABLED"] = "0"
-        os.environ["PM_BAYES_POST_COOL_REBOUND_RISK_ENABLED"] = "1"
         os.environ["PM_LCB_STAGE_Z_DEFAULTS_ENABLED"] = "0"
         items = [
             {
@@ -2074,15 +2485,6 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             model_cache_freshness=1.0,
             days_to_event=0.0,
             historical_context={
-                "post_cool_rebound_risk": {
-                    "state": "watch",
-                    "features": {
-                        "state": "watch",
-                        "status": "awaiting_intraday_rebound_confirmation",
-                        "target_peak_c": 30.0,
-                        "evidence_scale": 0.0,
-                    },
-                },
                 "weather_likelihood_features": {
                     "market_var": "temperature_2m_max",
                     "market_unit": "C",
@@ -2090,12 +2492,13 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             },
         )
 
-        self.assertFalse(meta["post_cool_rebound_risk_enabled"])
-        self.assertEqual(meta["post_cool_rebound_risk_evidence"], 0.0)
-        self.assertEqual(meta["posterior_engine"], "continuous_temperature_posterior_v1")
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["hard_constraints"]["hard_mask"], {"29°C": 1.0, "30°C": 1.0})
+        self.assertEqual(metar_output["hard_constraints"]["hard_mask_reason"], "none")
         self.assertEqual(
-            items[1]["q_bayes_meta"]["score_components"]["post_cool_rebound_intraday_likelihood"],
-            0.0,
+            set(items[1]["q_bayes_meta"]["score_components"]),
+            {"prior", "forecast_weak_likelihood", "metar_strong_likelihood", "hard_mask"},
         )
 
     def test_short_window_warming_does_not_enter_temperature_trajectory_posterior(self) -> None:
@@ -2124,7 +2527,8 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
         self.assertTrue(all(value == 0.0 for value in probs))
         self.assertTrue(all(value == 0.0 for value in atomic_probs))
 
-    def test_taf_peak_requires_created_at_walk_forward_calibration(self) -> None:
+    def test_taf_peak_enters_forecast_weak_layer_with_precision_cap(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_SOFT_FORECAST_MANUAL_OVERRIDE_ENABLED"] = "1"
@@ -2166,12 +2570,23 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertFalse(meta["taf_peak_enabled"])
-        self.assertEqual(meta["taf_peak_status"], "taf_pending_created_at_walk_forward_calibration")
-        self.assertEqual(meta["taf_peak_evidence"], 0.0)
-        self.assertEqual(items[1]["q_bayes_meta"]["score_components"]["taf_peak"], 0.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        trace = self._source_trace_by_id(forecast_output, "zuuu_taf_forecast_peak")
+        self.assertTrue(trace["included"])
+        self.assertEqual(trace["source_class"], "forecast_weak_source")
+        self.assertEqual(trace["group"], "taf")
+        self.assertEqual(trace["forecast_peak_c"], 30.0)
+        group = self._source_group_trace(forecast_output, "taf")
+        self.assertGreater(group["capped_precision"], 0.0)
+        self.assertLessEqual(group["capped_precision"], group["precision_cap"])
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        metar_taf_trace = self._source_trace_by_id(metar_output, "zuuu_taf_forecast_peak")
+        self.assertFalse(metar_taf_trace["included"])
+        self.assertEqual(metar_taf_trace["exclusion_reason"], "source_class_not_hard_observation")
 
-    def test_taf_peak_enters_as_independent_strong_soft_evidence(self) -> None:
+    def test_taf_peak_enters_forecast_weak_layer_not_observation_layer(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "1"
@@ -2211,12 +2626,17 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertFalse(meta["physical_likelihood_enabled"])
-        self.assertTrue(meta["taf_peak_enabled"])
-        self.assertEqual(meta["taf_peak_source"], "zuuu_taf_awc_tx_peak")
-        self.assertEqual(meta["taf_peak_c"], 30.0)
-        self.assertEqual(meta["taf_peak_evidence"], 24.0)
-        self.assertGreater(items[1]["q_bayes_meta"]["taf_peak_prob"], 0.90)
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        trace = self._source_trace_by_id(forecast_output, "zuuu_taf_forecast_peak")
+        self.assertTrue(trace["included"])
+        self.assertEqual(trace["source_class"], "forecast_weak_source")
+        self.assertEqual(trace["group"], "taf")
+        self.assertEqual(trace["forecast_peak_c"], 30.0)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        metar_taf_trace = self._source_trace_by_id(metar_output, "zuuu_taf_forecast_peak")
+        self.assertFalse(metar_taf_trace["included"])
+        self.assertEqual(metar_taf_trace["exclusion_reason"], "source_class_not_hard_observation")
         self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[0]["q"]["q_bayes_posterior"])
 
     def test_soft_forecast_manual_override_is_scoped_to_allowed_station(self) -> None:
@@ -2263,14 +2683,16 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertTrue(meta["soft_forecast_scope_allowed"])
-        self.assertTrue(meta["soft_forecast_manual_override_enabled"])
-        self.assertEqual(meta["wu_forecast_status"], "enabled_manual_override")
-        self.assertEqual(meta["taf_peak_status"], "taf_forecast_reference_only")
-        self.assertEqual(meta["wu_forecast_evidence"], 6.0)
-        self.assertEqual(meta["taf_peak_evidence"], 0.0)
-        self.assertGreater(items[1]["q_bayes_meta"]["score_components"]["wu_forecast"], 0.0)
-        self.assertEqual(items[1]["q_bayes_meta"]["score_components"]["taf_peak"], 0.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        wu_trace = self._source_trace_by_id(forecast_output, "wu_forecast_high")
+        taf_trace = self._source_trace_by_id(forecast_output, "zuuu_taf_forecast_peak")
+        self.assertTrue(wu_trace["included"])
+        self.assertEqual(wu_trace["group"], "wu_forecast")
+        self.assertTrue(taf_trace["included"])
+        self.assertEqual(taf_trace["group"], "taf")
+        self.assertGreater(self._source_group_trace(forecast_output, "wu_forecast")["capped_precision"], 0.0)
+        self.assertGreater(self._source_group_trace(forecast_output, "taf")["capped_precision"], 0.0)
 
     def test_soft_forecast_allowlist_blocks_other_stations(self) -> None:
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
@@ -2313,14 +2735,18 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertFalse(meta["soft_forecast_scope_allowed"])
-        self.assertEqual(meta["soft_forecast_scope_reason"], "scope_not_allowed")
-        self.assertEqual(meta["wu_forecast_status"], "scope_not_allowed")
-        self.assertEqual(meta["taf_peak_status"], "scope_not_allowed")
-        self.assertEqual(meta["wu_forecast_evidence"], 0.0)
-        self.assertEqual(meta["taf_peak_evidence"], 0.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        source_ids = {row["source_id"] for row in forecast_output["source_trace"]}
+        self.assertNotIn("wu_forecast_high", source_ids)
+        self.assertNotIn("zuuu_taf_forecast_peak", source_ids)
+        self.assertEqual(
+            [row["source_id"] for row in forecast_output["source_trace"] if row["included"]],
+            ["model_distribution:m"],
+        )
 
     def test_atomic_temperature_bucket_display_does_not_fold_low_tail_into_le_bucket(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_PROBABILITY_PRIOR_STRENGTH"] = "0"
         os.environ["PM_BAYES_PROBABILITY_MODEL_STRENGTH"] = "1"
@@ -2364,22 +2790,34 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertTrue(meta["atomic_temperature_bucket_display_enabled"])
-        self.assertEqual(meta["posterior_engine"], "continuous_temperature_posterior_v1")
-        self.assertGreater(items[0]["q"]["q_bayes_posterior"], items[1]["q"]["q_bayes_posterior"])
+        self._assert_hierarchical_probability_runtime(meta)
+        self.assertAlmostEqual(
+            meta["posterior_temperature_distribution_map"]["30°C or below"],
+            items[0]["q"]["q_bayes_posterior"],
+            places=12,
+        )
+        self.assertAlmostEqual(
+            meta["posterior_temperature_distribution_map"]["31°C"],
+            items[1]["q"]["q_bayes_posterior"],
+            places=12,
+        )
+        self.assertAlmostEqual(
+            meta["posterior_temperature_distribution_map"]["32°C"],
+            items[2]["q"]["q_bayes_posterior"],
+            places=12,
+        )
+        self.assertLess(items[0]["q"]["q_bayes_posterior"], items[0]["q"]["q_round_static"])
+        self.assertGreater(items[0]["q"]["q_bayes_posterior"], items[0]["q_atomic"]["q_round"])
         self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[2]["q"]["q_bayes_posterior"])
-        self.assertLess(items[0]["q_bayes_meta"]["temperature_bucket_posterior"], 0.50)
-        self.assertEqual(items[0]["q_bayes_meta"]["temperature_bucket_label"], "30°C")
+        self.assertEqual(items[0]["q_bayes_meta"]["temperature_bucket_label"], "30°C or below")
         self.assertEqual(
             items[0]["q_bayes_meta"]["temperature_bucket_probability_mode"],
-            "listed_atomic_temperature_conditional",
+            "hierarchical_joint_likelihood",
         )
-        self.assertLess(
-            items[0]["q_bayes_meta"]["temperature_bucket_posterior"],
-            items[0]["q"]["q_bayes_posterior"],
-        )
+        self.assertEqual(items[0]["q_bayes_meta"]["temperature_bucket_posterior"], items[0]["q"]["q_bayes_posterior"])
 
-    def test_taf_peak_rejects_settlement_or_observed_boundary_violation(self) -> None:
+    def test_taf_peak_settlement_flags_still_remain_forecast_weak_only(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "0"
         os.environ["PM_BAYES_TAF_PEAK_ENABLED"] = "1"
@@ -2414,11 +2852,20 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertFalse(meta["taf_peak_enabled"])
-        self.assertEqual(meta["taf_peak_status"], "taf_role_boundary_violation")
-        self.assertEqual(meta["taf_peak_evidence"], 0.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        forecast_output = self._pipeline_runtime_output(meta, "forecast_weak_likelihood")
+        trace = self._source_trace_by_id(forecast_output, "zuuu_taf_forecast_peak")
+        self.assertTrue(trace["included"])
+        self.assertEqual(trace["source_class"], "forecast_weak_source")
+        self.assertEqual(trace["role"], "taf_forecast_weak_likelihood_reference")
+        self.assertEqual(trace["group"], "taf")
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        metar_taf_trace = self._source_trace_by_id(metar_output, "zuuu_taf_forecast_peak")
+        self.assertFalse(metar_taf_trace["included"])
+        self.assertEqual(metar_taf_trace["exclusion_reason"], "source_class_not_hard_observation")
 
     def test_strong_observed_physical_anchor_keeps_full_likelihood_weight(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "12"
@@ -2451,11 +2898,20 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertAlmostEqual(meta["physical_likelihood_evidence"], 12.0)
-        self.assertAlmostEqual(meta["physical_likelihood_evidence_scale"], 1.0)
-        self.assertEqual(meta["physical_likelihood_evidence_scale_reason"], "full_weight")
+        self._assert_hierarchical_probability_runtime(meta)
+        self.assertEqual(meta["phase"], "D0_hard")
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertTrue(metar_output["hard_constraints"]["hard_lock"])
+        self.assertEqual(metar_output["hard_constraints"]["official_final_result"], 30.2)
+        self.assertEqual(
+            metar_output["hard_constraints"]["hard_mask"],
+            {"28°C or below": 0.0, "30°C or higher": 1.0},
+        )
+        self.assertEqual(items[0]["q"]["q_bayes_posterior"], 0.0)
+        self.assertEqual(items[1]["q"]["q_bayes_posterior"], 1.0)
 
-    def test_physical_d0_explanation_outputs_variables_without_forcing_posterior(self) -> None:
+    def test_metar_strong_outputs_d0_variables_without_forcing_old_channel(self) -> None:
+        self._force_hierarchical_production_runtime()
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
         os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "0"
@@ -2498,27 +2954,18 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             days_to_event=0.0,
         )
 
-        self.assertFalse(meta["physical_likelihood_enabled"])
-        explanation = items[0]["q_bayes_meta"]["physical_d0_explanation"]
-        self.assertEqual(explanation["version"], "physical_d0_explanation_v2")
-        self.assertEqual(explanation["time_window"], "13")
-        self.assertEqual(len(explanation["variables"]), 5)
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 29.5)
+        self.assertEqual(metar_output["observation_features"]["cloud_cover_pct"], 82.0)
+        self.assertEqual(metar_output["observation_features"]["dewpoint_c"], 24.0)
+        self.assertTrue(metar_output["observation_features"]["high_dewpoint"])
+        self.assertEqual(metar_output["observation_features"]["momentum_rate_c_per_hour"], 0.8)
+        self.assertTrue(metar_output["boundary"]["metar_internal_fields_not_independent_likelihoods"])
         self.assertEqual(
-            {item["key"] for item in explanation["variables"]},
-            {"cloud_cover", "cloud_growth", "radar_echo", "dew_point", "temperature_momentum"},
+            set(items[0]["q_bayes_meta"]["score_components"]),
+            {"prior", "forecast_weak_likelihood", "metar_strong_likelihood", "hard_mask"},
         )
-        self.assertIn("available", {item["evidence_state"] for item in explanation["variables"]})
-        momentum = next(item for item in explanation["variables"] if item["key"] == "temperature_momentum")
-        self.assertEqual(momentum["evidence_class"], "observed_realization")
-        self.assertEqual(momentum["metrics"]["realization_state"], "sustained_warming")
-        self.assertEqual(explanation["posterior_scale"], 0.0)
-        self.assertIsNone(items[0]["q_bayes_meta"]["physical_likelihood_row"])
-        self.assertIsInstance(items[0]["q_bayes_meta"]["physical_likelihood_observed_row"], dict)
-        self.assertIn("combination", explanation)
-        self.assertIn("total_posterior_change_pp", explanation["combination"])
-        self.assertEqual(explanation["charter"]["physical_evidence_role"], "potential")
-        self.assertEqual(explanation["charter"]["temperature_trajectory_role"], "observed_realization")
-        self.assertEqual(explanation["charter"]["temperature_momentum_role"], "observed_realization_gate")
 
     def test_physical_d0_explanation_does_not_count_open_meteo_proxy_as_radar_echo(self) -> None:
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
@@ -2555,20 +3002,21 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             },
         ]
 
-        apply_bayesian_probability_update(
+        meta = apply_bayesian_probability_update(
             items,
             weights={"m": 1.0},
             model_cache_freshness=1.0,
             days_to_event=0.0,
         )
 
-        explanation = items[0]["q_bayes_meta"]["physical_d0_explanation"]
-        radar = next(item for item in explanation["variables"] if item["key"] == "radar_echo")
-        self.assertEqual(radar["evidence_state"], "proxy")
-        self.assertEqual(radar["label"], "Precip Proxy 降水代理")
-        self.assertEqual(radar["observed_warming_pp"], 0.0)
-        self.assertEqual(radar["observed_cooling_pp"], 0.0)
-        self.assertIn("real_radar_qpe_metar_or_verified_precip_missing", radar["na_reason"])
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 29.5)
+        self.assertEqual(metar_output["observation_features"]["dewpoint_c"], 17.0)
+        self.assertFalse(metar_output["observation_features"]["precip_observed"])
+        self.assertFalse(metar_output["observation_features"]["showery_or_convective"])
+        self.assertTrue(metar_output["observation_features"]["no_precip_confirmed"])
+        self.assertTrue(metar_output["boundary"]["metar_internal_fields_not_independent_likelihoods"])
 
     def test_metar_no_precip_overrides_open_meteo_proxy_radar_echo_current(self) -> None:
         os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
@@ -2607,21 +3055,21 @@ class BayesianProbabilityRuntimeTests(unittest.TestCase):
             },
         ]
 
-        apply_bayesian_probability_update(
+        meta = apply_bayesian_probability_update(
             items,
             weights={"m": 1.0},
             model_cache_freshness=1.0,
             days_to_event=0.0,
         )
 
-        explanation = items[0]["q_bayes_meta"]["physical_d0_explanation"]
-        radar = next(item for item in explanation["variables"] if item["key"] == "radar_echo")
-        self.assertEqual(radar["evidence_state"], "strong_no_precip")
-        self.assertEqual(radar["label"], "No Precip 无降水确认")
-        self.assertEqual(radar["current"]["value"], 0.0)
-        self.assertEqual(radar["source_profile"]["rate_mm_per_h"], 0.0)
-        self.assertEqual(radar["observed_warming_pp"], 0.0)
-        self.assertEqual(radar["observed_cooling_pp"], 0.0)
+        self._assert_hierarchical_probability_runtime(meta)
+        metar_output = self._pipeline_runtime_output(meta, "metar_strong_likelihood")
+        self.assertEqual(metar_output["observation_features"]["current_temp_c"], 29.5)
+        self.assertEqual(metar_output["observation_features"]["dewpoint_c"], 17.0)
+        self.assertFalse(metar_output["observation_features"]["precip_observed"])
+        self.assertFalse(metar_output["observation_features"]["showery_or_convective"])
+        self.assertTrue(metar_output["observation_features"]["no_precip_confirmed"])
+        self.assertTrue(metar_output["boundary"]["metar_internal_fields_not_independent_likelihoods"])
 
 
 if __name__ == "__main__":

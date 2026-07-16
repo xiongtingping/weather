@@ -21,6 +21,38 @@ class TestExitSweep(unittest.TestCase):
         for key, value in self._auto_trade_globals_before.items():
             setattr(swm, key, value)
 
+    def test_direct_target_active_entry_evidence_only_pending_order_blocks_buy(self) -> None:
+        self.assertFalse(
+            swm._direct_target_active_entry_evidence_is_pending_order(
+                {
+                    "state": "entry",
+                    "position_size": 5.0,
+                    "last_order_id": "manual-position",
+                    "last_status": "position_synced",
+                }
+            )
+        )
+        self.assertTrue(
+            swm._direct_target_active_entry_evidence_is_pending_order(
+                {
+                    "state": "entry_pending",
+                    "position_size": 0.0,
+                    "last_order_id": "pending-buy-order",
+                    "last_status": "open_order_pending",
+                }
+            )
+        )
+        self.assertFalse(
+            swm._direct_target_active_entry_evidence_is_pending_order(
+                {
+                    "state": "exit_pending",
+                    "position_size": 0.0,
+                    "last_order_id": "pending-exit-order",
+                    "last_status": "open_order_pending",
+                }
+            )
+        )
+
     def test_exit_quote_refresh_has_time_budget_and_no_default_token_remap(self) -> None:
         text = Path("scan_weather_market.py").read_text(encoding="utf-8")
         self.assertIn("PM_AUTO_TRADE_EXIT_REFRESH_TIME_BUDGET_SEC", text)
@@ -473,20 +505,25 @@ class TestExitSweep(unittest.TestCase):
                             settled_reconcile_context={"done": True},
                         )
 
-    def test_run_node_order_market_sell_uses_fast_direct_env(self) -> None:
+    def test_run_node_order_market_sell_uses_durable_clob_service(self) -> None:
         captured = {}
 
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-            return mock.Mock(returncode=0, stdout='{"orderID":"oid-fast-exit","status":"submitted"}\n', stderr="")
+        def _fake_service(payload, *, timeout_sec):
+            captured["payload"] = dict(payload)
+            captured["timeout"] = timeout_sec
+            return True, {"orderID": "oid-fast-exit", "status": "submitted"}
 
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict(
+            "os.environ", {"PM_CLOB_ORDER_SERVICE_ENABLED": "1"}, clear=True
+        ):
             with mock.patch.object(swm, "ensure_system_proxy_settings", return_value=None):
                 with mock.patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
                     with mock.patch.object(swm, "_resolve_node_bin", return_value="node"):
-                        with mock.patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
+                        with mock.patch.object(
+                            swm,
+                            "_run_clob_order_service_place_order",
+                            side_effect=_fake_service,
+                        ):
                             ok, payload = swm._run_node_order(
                                 "place-order",
                                 "tok_exit",
@@ -498,35 +535,39 @@ class TestExitSweep(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(payload.get("orderID"), "oid-fast-exit")
-        self.assertEqual(captured["env"].get("PM_CLOB_FORCE_DIRECT"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_DIRECT_RETRIES"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_RETRY_MAX"), "1")
-        self.assertEqual(captured["env"].get("PM_CLOB_RETRY_BASE_MS"), "0")
-        self.assertEqual(captured["env"].get("PM_CLOB_RETRY_MAX_MS"), "0")
-        self.assertEqual(captured["env"].get("PM_ALLOW_MARKET_ORDERS"), "1")
-        self.assertTrue(int(captured["env"].get("PM_CLOB_TIMEOUT_MS", "0")) >= 3000)
+        self.assertEqual(captured["payload"]["token_id"], "tok_exit")
+        self.assertEqual(captured["payload"]["side"], "SELL")
+        self.assertEqual(captured["payload"]["order_type"], "FAK")
+        self.assertTrue(captured["payload"]["allow_market"])
+        self.assertTrue(captured["payload"]["order_intent_id"])
+        self.assertGreater(float(captured["timeout"]), 0.0)
+        self.assertLessEqual(float(captured["timeout"]), 15.0)
 
     def test_direct_target_market_sell_uses_exit_timeout_budget(self) -> None:
         captured = {}
 
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-            return mock.Mock(returncode=0, stdout='{"orderID":"oid-direct-exit","status":"submitted"}\n', stderr="")
+        def _fake_service(payload, *, timeout_sec):
+            captured["payload"] = dict(payload)
+            captured["timeout"] = timeout_sec
+            return True, {"orderID": "oid-direct-exit", "status": "submitted"}
 
         with mock.patch.dict(
             "os.environ",
             {
                 "PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1",
                 "PM_AUTO_TRADE_DIRECT_EXIT_ORDER_TIMEOUT_SEC": "7",
+                "PM_CLOB_ORDER_SERVICE_ENABLED": "1",
             },
             clear=True,
         ):
             with mock.patch.object(swm, "ensure_system_proxy_settings", return_value=None):
                 with mock.patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
                     with mock.patch.object(swm, "_resolve_node_bin", return_value="node"):
-                        with mock.patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
+                        with mock.patch.object(
+                            swm,
+                            "_run_clob_order_service_place_order",
+                            side_effect=_fake_service,
+                        ):
                             ok, payload = swm._run_node_order(
                                 "place-order",
                                 "tok_exit",
@@ -540,29 +581,33 @@ class TestExitSweep(unittest.TestCase):
         self.assertEqual(payload.get("orderID"), "oid-direct-exit")
         self.assertTrue(payload.get("direct_target_order_context"))
         self.assertGreaterEqual(float(captured["timeout"]), 7.0)
-        self.assertEqual(captured["env"].get("PM_AUTO_TRADE_DIRECT_EXIT_ORDER_CONTEXT"), "1")
-        clob_timeout_ms = int(captured["env"].get("PM_CLOB_TIMEOUT_MS", "0"))
-        self.assertGreater(clob_timeout_ms, 0)
-        self.assertLess(clob_timeout_ms, int(float(captured["timeout"]) * 1000))
-        self.assertGreater(
-            int(captured["env"].get("PM_CLOB_PLACE_ORDER_HARD_TIMEOUT_MS", "0")),
-            clob_timeout_ms,
-        )
+        self.assertTrue(captured["payload"]["direct_target_exit_order"])
+        self.assertTrue(captured["payload"]["order_intent_id"])
 
     def test_direct_target_market_sell_default_timeout_is_short(self) -> None:
         captured = {}
 
-        def _fake_subprocess(cmd, env=None, timeout=None, retries_on_errno24=0):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(env or {})
-            captured["timeout"] = timeout
-            return mock.Mock(returncode=0, stdout='{"orderID":"oid-direct-exit","status":"submitted"}\n', stderr="")
+        def _fake_service(payload, *, timeout_sec):
+            captured["payload"] = dict(payload)
+            captured["timeout"] = timeout_sec
+            return True, {"orderID": "oid-direct-exit", "status": "submitted"}
 
-        with mock.patch.dict("os.environ", {"PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1"}, clear=True):
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PM_AUTO_TRADE_DIRECT_JOB_CONTEXT": "1",
+                "PM_CLOB_ORDER_SERVICE_ENABLED": "1",
+            },
+            clear=True,
+        ):
             with mock.patch.object(swm, "ensure_system_proxy_settings", return_value=None):
                 with mock.patch.object(swm, "AUTO_TRADE_DRY_RUN", False):
                     with mock.patch.object(swm, "_resolve_node_bin", return_value="node"):
-                        with mock.patch.object(swm, "_run_node_subprocess", side_effect=_fake_subprocess):
+                        with mock.patch.object(
+                            swm,
+                            "_run_clob_order_service_place_order",
+                            side_effect=_fake_service,
+                        ):
                             ok, payload = swm._run_node_order(
                                 "place-order",
                                 "tok_exit",
@@ -575,7 +620,7 @@ class TestExitSweep(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(payload.get("orderID"), "oid-direct-exit")
         self.assertEqual(float(captured["timeout"]), 15.0)
-        self.assertEqual(captured["env"].get("PM_AUTO_TRADE_DIRECT_EXIT_ORDER_CONTEXT"), "1")
+        self.assertTrue(captured["payload"]["direct_target_exit_order"])
 
     def test_run_node_get_order_uses_proxy_fallback_env(self) -> None:
         captured = {}

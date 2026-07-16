@@ -1,7 +1,6 @@
 import unittest
 
 from posterior_settlement_runtime import (
-    LANE_NO_REMOTE,
     LANE_OBSERVE,
     LANE_YES_TARGET,
     apply_posterior_observed_constraints_to_distribution,
@@ -67,50 +66,12 @@ class PosteriorSettlementRuntimeTests(unittest.TestCase):
         self.assertTrue(profile["posterior_settlement_entry_allowed"])
         self.assertEqual(profile["posterior_settlement_entry_block_reason"], "")
 
-    def test_remote_no_allowed_only_when_far_and_low_realization_prob(self) -> None:
+    def test_legacy_posterior_settlement_no_lane_is_retired(self) -> None:
         profile = classify_posterior_settlement_candidate(
             {
                 "side": "NO",
                 "outcome": "35°C",
                 "target_bucket": "33°C",
-                "target_posterior": 0.44,
-                "candidate_bucket_realization_prob": 0.08,
-            }
-        )
-
-        self.assertEqual(profile["strategy_lane"], LANE_NO_REMOTE)
-        self.assertTrue(profile["posterior_settlement_entry_allowed"])
-        self.assertEqual(profile["remote_no_bucket"], "35°C")
-        self.assertEqual(
-            profile["remote_no_reason"],
-            "far_from_target_and_low_realization_prob",
-        )
-
-    def test_remote_no_rejects_bucket_below_target(self) -> None:
-        profile = classify_posterior_settlement_candidate(
-            {
-                "side": "NO",
-                "outcome": "31°C",
-                "target_bucket": "33°C",
-                "target_posterior": 0.44,
-                "candidate_bucket_realization_prob": 0.08,
-            }
-        )
-
-        self.assertEqual(profile["strategy_lane"], LANE_OBSERVE)
-        self.assertFalse(profile["posterior_settlement_entry_allowed"])
-        self.assertEqual(
-            profile["posterior_settlement_entry_block_reason"],
-            "remote_no_must_be_above_target_bucket",
-        )
-
-    def test_remote_no_rejects_bucket_above_plus_three(self) -> None:
-        profile = classify_posterior_settlement_candidate(
-            {
-                "side": "NO",
-                "outcome": "35°C",
-                "target_bucket": "31°C",
-                "target_posterior": 0.44,
                 "candidate_bucket_realization_prob": 0.01,
             }
         )
@@ -119,25 +80,7 @@ class PosteriorSettlementRuntimeTests(unittest.TestCase):
         self.assertFalse(profile["posterior_settlement_entry_allowed"])
         self.assertEqual(
             profile["posterior_settlement_entry_block_reason"],
-            "remote_no_bucket_too_far",
-        )
-
-    def test_remote_no_rejects_target_same_bucket(self) -> None:
-        profile = classify_posterior_settlement_candidate(
-            {
-                "side": "NO",
-                "outcome": "33°C",
-                "target_bucket": "33°C",
-                "target_posterior": 0.44,
-                "candidate_bucket_realization_prob": 0.08,
-            }
-        )
-
-        self.assertEqual(profile["strategy_lane"], LANE_OBSERVE)
-        self.assertFalse(profile["posterior_settlement_entry_allowed"])
-        self.assertEqual(
-            profile["posterior_settlement_entry_block_reason"],
-            "remote_no_cannot_target_same_bucket",
+            "retired_posterior_settlement_no_use_dynamic_three_leg",
         )
 
     def test_event_target_context_uses_bayes_only_not_q_calibrated_fallback(self) -> None:

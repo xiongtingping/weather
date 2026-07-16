@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LIVE_CONFIRMATION_PHRASE = "I_UNDERSTAND_THIS_PLACES_REAL_ORDERS"
 
 
 def _load_env_file(path: Path, *, override_credentials: bool = False) -> None:
@@ -57,6 +59,55 @@ def _hydrate_runtime_env() -> None:
         os.environ["PM_FUNDER_ADDRESS"] = str(os.environ.get("POLY_FUNDER_ADDRESS") or "")
 
 
+def _prepare_execution_mode(argv: Sequence[str]) -> list[str]:
+    """Resolve the interactive CLI execution mode before importing the engine.
+
+    The repository .env may intentionally keep the launchd worker in Live mode.
+    An operator invoking ``python -m bot.main`` must never inherit that setting
+    implicitly.  Live therefore requires both an explicit flag and an exact
+    confirmation phrase; every other invocation force-overrides dry-run.
+    """
+
+    args = list(argv)
+    live_requested = False
+    confirmation = ""
+    downstream: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = str(args[index])
+        if arg == "--live":
+            live_requested = True
+            index += 1
+            continue
+        if arg == "--confirm-live":
+            if index + 1 >= len(args):
+                raise SystemExit("--confirm-live requires the exact Live confirmation phrase")
+            confirmation = str(args[index + 1])
+            index += 2
+            continue
+        if arg.startswith("--confirm-live="):
+            confirmation = arg.split("=", 1)[1]
+            index += 1
+            continue
+        downstream.append(arg)
+        index += 1
+
+    if live_requested:
+        if confirmation != LIVE_CONFIRMATION_PHRASE:
+            raise SystemExit(
+                "Live mode blocked: use --live --confirm-live "
+                f"{LIVE_CONFIRMATION_PHRASE}"
+            )
+        os.environ["PM_AUTO_TRADE_DRY_RUN"] = "0"
+        os.environ["PM_BOT_CLI_LIVE_CONFIRMED"] = "1"
+    else:
+        if confirmation:
+            raise SystemExit("--confirm-live is only valid together with --live")
+        os.environ["PM_AUTO_TRADE_DRY_RUN"] = "1"
+        os.environ["PM_BOT_CLI_LIVE_CONFIRMED"] = "0"
+    return downstream
+
+
 def main() -> None:
     """Run the existing weather auto-trade worker through the bot CLI.
 
@@ -65,10 +116,9 @@ def main() -> None:
     """
 
     _hydrate_runtime_env()
+    argv = _prepare_execution_mode(sys.argv[1:])
     import scan_weather_market
 
-    os.environ.setdefault("PM_AUTO_TRADE_DRY_RUN", "1")
-    argv = sys.argv[1:]
     if "--once" in argv and "--auto-trade-job-worker" not in argv:
         argv = ["--auto-trade-job-worker", *argv]
     old_argv = sys.argv

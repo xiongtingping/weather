@@ -1,0 +1,25 @@
+{
+  "schema": "jma_authorized_delivery_contract_v1",
+  "provider_id": "jma",
+  "state": "not_configured",
+  "authorization_mode": "official_jma_or_separately_authorized_delivery",
+  "approved_delivery_host": "",
+  "endpoint_env": "WEATHER_JMA_AUTHORIZED_DELIVERY_URL",
+  "bearer_token_env": "WEATHER_JMA_AUTHORIZED_BEARER_TOKEN",
+  "required_transport": "GRIB2_or_authorized_api_grib2_payload",
+  "credential_persistence_forbidden": true,
+  "raw_url_query_credentials_forbidden": true,
+  "activation_requirements": [
+    "signed_or_approved_delivery_contract",
+    "approved_delivery_host_added_to_official_nwp_catalog",
+    "endpoint_env_configured_without_credential_in_url",
+    "direct_raw_transport_and_decoder_acceptance"
+  ],
+  "boundary": {
+    "fallback_to_open_meteo": false,
+    "fallback_to_other_model": false,
+    "writes_archive_db": false,
+    "writes_posterior": false,
+    "places_orders": false
+  }
+}

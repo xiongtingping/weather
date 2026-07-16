@@ -4,13 +4,6 @@
   <dict>
     <key>Label</key>
     <string>com.xiong.weather.ui</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-      <key>PM_EDGE_REALIZABLE_V2_ENABLED</key>
-      <string>1</string>
-      <key>PM_EDGE_REALIZABLE_V2_GATE_ENTRY</key>
-      <string>1</string>
-    </dict>
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>

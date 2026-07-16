@@ -1,0 +1,31 @@
+{
+  "activation_contract_sha256": "451fc108922bfbec6428687bdf3a8b2facc8fabea079217bcd506562554541f9",
+  "gates": {
+    "cas_conflict_fail_closed": true,
+    "fault_injection_raised": true,
+    "fault_injection_rolled_back_all_probability_rows": true,
+    "first_commit_succeeded": true,
+    "idempotent_retry_succeeded": true,
+    "no_order_or_outbox_rows_created": true,
+    "taf_amd_forward_only_weak_revision_committed": true
+  },
+  "observation_artifact_sha256": "dbddfd1bd2fe78b6ebd8dc715556591ff80f97ae2efae92794ba4a3c7a4dacb5",
+  "ok": true,
+  "order_counts_after": {
+    "auto_orders": 0,
+    "posterior_commit_outbox": 0,
+    "posterior_outbox_execution_contracts": 0
+  },
+  "order_counts_before": {
+    "auto_orders": 0,
+    "posterior_commit_outbox": 0,
+    "posterior_outbox_execution_contracts": 0
+  },
+  "places_orders": false,
+  "runtime_manifest_sha256": "fb75812b983bca3fa34128ae96b66ec7c18ffd6cd9061be3046cb75e37695a50",
+  "schema": "production_probability_v6_zero_order_drill_v1",
+  "state": "zero_order_transaction_drill_accepted",
+  "transition_artifact_sha256": "61b602354260735ce96d07b9ef1d37c0129b46a80ff9448b125be780438fba78",
+  "uses_in_memory_clone_of_production_schema": true,
+  "writes_archive_db": false
+}

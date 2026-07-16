@@ -12,13 +12,20 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from edge_trade_ledger_writer import (
+    copy_acceptance_clear_target,
+    copy_acceptance_seed_old,
+    insert_edge_trade_row,
+)
+
 DEFAULT_DB = ROOT / "data" / "archive.db"
+COPY_ACCEPTANCE_COMPOSER_VERSION = "hard_source_direct_copy_acceptance_fixture_v1"
 
 
 def _copy_sqlite_db(src: Path, dst: Path) -> None:
@@ -239,7 +246,15 @@ def _json_loads(raw: Any) -> Optional[Dict[str, Any]]:
 def _latest_fact_row(conn: sqlite3.Connection, *, slug: str, event_date: str) -> Optional[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT h.id, h.fact_json
+        SELECT h.id,
+               h.run_date,
+               h.slug,
+               h.event_date,
+               h.fact_as_of,
+               h.model_snapshot_id,
+               h.market_snapshot_id,
+               h.composer_version,
+               h.fact_json
         FROM event_fact_latest l
         JOIN event_fact_history h ON h.id = l.fact_id
         WHERE l.slug = ? AND l.event_date = ?
@@ -248,6 +263,196 @@ def _latest_fact_row(conn: sqlite3.Connection, *, slug: str, event_date: str) ->
         """,
         (slug, event_date),
     ).fetchone()
+
+
+def _features(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = payload.get("weather_likelihood_features")
+    return value if isinstance(value, Mapping) else {}
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _first_float(*values: Any) -> float | None:
+    for value in values:
+        if value in (None, ""):
+            continue
+        try:
+            out = float(value)
+        except (TypeError, ValueError):
+            continue
+        if out == out:
+            return float(out)
+    return None
+
+
+def _copy_acceptance_fact_source_trace(
+    payload: Mapping[str, Any],
+    *,
+    row: sqlite3.Row,
+    fact_as_of: str,
+    write_reason: str,
+) -> Dict[str, Any]:
+    from weather_source_acquisition_manager import build_source_acquisition_trace
+
+    features = _features(payload)
+    event_date = str(row["event_date"] or payload.get("event_date") or "")
+    station_id = _first_text(payload.get("station_id"), features.get("station_id"), "ZUUU")
+    temperature_c = _first_float(
+        features.get("zuuu_metar_raw_awc_temperature_c"),
+        features.get("metar_temperature_c"),
+        features.get("observed_today_max_c"),
+        payload.get("temperature_c"),
+    )
+    observed_today_max_c = _first_float(
+        features.get("zuuu_metar_raw_awc_today_max_c"),
+        features.get("observed_today_max_c"),
+        payload.get("observed_today_max_c"),
+    )
+    valid_time = _first_text(
+        features.get("zuuu_metar_raw_awc_today_max_at"),
+        features.get("zuuu_metar_raw_awc_latest_at"),
+        payload.get("valid_time"),
+        fact_as_of,
+    )
+    return build_source_acquisition_trace(
+        sources=[
+            {
+                "source_id": "zuuu_metar_raw_awc",
+                "station_id": station_id,
+                "event_date": event_date,
+                "valid_time": valid_time,
+                "fetched_at": fact_as_of,
+                "response_completed_at": fact_as_of,
+                "temperature_c": temperature_c,
+                "observed_today_max_c": observed_today_max_c,
+                "raw_ref": f"hard_source_direct_copy_acceptance:{write_reason}:event_fact_history:{row['id']}",
+                "raw_payload": {
+                    "source_payload_schema": "hard_source_direct_copy_acceptance_fixture_source_v1",
+                    "fixture_only": True,
+                    "temporary_db_copy": True,
+                    "write_reason": write_reason,
+                    "parent_fact_id": row["id"],
+                    "parent_fact_as_of": row["fact_as_of"],
+                },
+            }
+        ],
+        station_id=station_id,
+        event_date=event_date,
+        fetched_at=fact_as_of,
+        include_payload=False,
+    )
+
+
+def build_copy_acceptance_fact_snapshot_writer_apply_plan(
+    row: sqlite3.Row,
+    *,
+    payload: Mapping[str, Any],
+    fact_as_of: str,
+    write_reason: str,
+) -> Dict[str, Any]:
+    from weather_fact_snapshot_writer import build_fact_snapshot_write_plan
+
+    slug = str(row["slug"] or payload.get("slug") or "")
+    event_date = str(row["event_date"] or payload.get("event_date") or "")
+    run_date = str(row["run_date"] or payload.get("run_date") or event_date)
+    incoming = dict(payload)
+    incoming.setdefault("slug", slug)
+    incoming.setdefault("event_date", event_date)
+    incoming.setdefault("run_date", run_date)
+    incoming["fact_as_of"] = fact_as_of
+    incoming["composer_version"] = COPY_ACCEPTANCE_COMPOSER_VERSION
+    incoming["copy_acceptance_fixture_state"] = {
+        "schema": "copy_acceptance_fixture_state_v1",
+        "write_owner": "weather_fact_snapshot_writer",
+        "write_reason": write_reason,
+        "temporary_db_copy": True,
+        "source_script": "scripts/hard_source_direct_copy_acceptance.py",
+        "parent_fact_id": row["id"],
+        "parent_fact_as_of": row["fact_as_of"],
+        "created_at_represents_write_time_only": True,
+        "historical_backfill": False,
+    }
+    source_trace = _copy_acceptance_fact_source_trace(
+        incoming,
+        row=row,
+        fact_as_of=fact_as_of,
+        write_reason=write_reason,
+    )
+    plan = build_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=run_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=incoming,
+        current_fact_id=int(row["id"] or 0),
+        current_fact_as_of=str(row["fact_as_of"] or ""),
+        current_payload=_json_loads(row["fact_json"]),
+        source_acquisition_trace=source_trace,
+        composer_version=COPY_ACCEPTANCE_COMPOSER_VERSION,
+        write_reason=write_reason,
+        include_payload=True,
+        enable_apply_contract=True,
+        write_latest=True,
+    )
+    plan["caller"] = {
+        "module": "scripts/hard_source_direct_copy_acceptance.py",
+        "function": "build_copy_acceptance_fact_snapshot_writer_apply_plan",
+        "lane": "materializer_rebuild_backfill",
+        "temporary_db_copy": True,
+    }
+    plan["guards"] = {
+        "writes_archive_db": False,
+        "writes_temporary_archive_db_copy": True,
+        "places_orders": False,
+        "historical_backfill": False,
+        "restarts_launchd": False,
+        "executes_sql": False,
+    }
+    return plan
+
+
+def _apply_copy_acceptance_fact_payload(
+    conn: sqlite3.Connection,
+    *,
+    row: sqlite3.Row,
+    payload: Mapping[str, Any],
+    fact_as_of: str,
+    write_reason: str,
+) -> Dict[str, Any]:
+    from weather_fact_snapshot_writer import (
+        apply_fact_snapshot_write_plan,
+        compact_fact_snapshot_writer_apply_result_for_lineage,
+    )
+
+    plan = build_copy_acceptance_fact_snapshot_writer_apply_plan(
+        row,
+        payload=payload,
+        fact_as_of=fact_as_of,
+        write_reason=write_reason,
+    )
+    result = apply_fact_snapshot_write_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=True,
+        created_at=fact_as_of,
+    )
+    result_summary = compact_fact_snapshot_writer_apply_result_for_lineage(result)
+    return {
+        **dict(result),
+        "writer_plan_schema": plan.get("schema"),
+        "writer_apply_result_summary": result_summary,
+        "post_apply_persisted_verification_ok": bool(
+            result_summary.get("post_apply_persisted_verification_ok")
+        ),
+        "write_reason": write_reason,
+    }
 
 
 def _freshen_hard_source_timestamps(db_path: Path, *, slug: str, event_date: str) -> Dict[str, Any]:
@@ -277,24 +482,29 @@ def _freshen_hard_source_timestamps(db_path: Path, *, slug: str, event_date: str
             if key in features:
                 features[key] = 0.0
                 changed.append(key)
-        conn.execute(
-            """
-            UPDATE event_fact_history
-            SET fact_json = ?, fact_as_of = ?, created_at = ?
-            WHERE id = ?
-            """,
-            (json.dumps(payload, ensure_ascii=False), now_iso, now_iso, row["id"]),
+        apply_result = _apply_copy_acceptance_fact_payload(
+            conn,
+            row=row,
+            payload=payload,
+            fact_as_of=now_iso,
+            write_reason="copy_acceptance_freshen_hard_source_timestamps",
         )
-        conn.execute(
-            """
-            UPDATE event_fact_latest
-            SET updated_at = ?
-            WHERE slug = ? AND event_date = ?
-            """,
-            (now_iso, slug, event_date),
-        )
-        conn.commit()
-        return {"ok": True, "updated_at": now_iso, "changed_keys": sorted(set(changed))}
+        if not apply_result.get("ok"):
+            return {
+                "ok": False,
+                "reason": apply_result.get("block_reason") or apply_result.get("error") or "writer_apply_failed",
+                "writer_apply_result": apply_result,
+                "changed_keys": sorted(set(changed)),
+            }
+        return {
+            "ok": True,
+            "updated_at": now_iso,
+            "changed_keys": sorted(set(changed)),
+            "new_fact_id": apply_result.get("fact_id"),
+            "write_owner": apply_result.get("write_owner"),
+            "writer_apply_result_schema": apply_result.get("schema"),
+            "latest_repointed": bool(apply_result.get("latest_repointed")),
+        }
     finally:
         conn.close()
 
@@ -327,26 +537,27 @@ def _force_final_lock_scenario(db_path: Path, *, slug: str, event_date: str) -> 
         features["wu_twc_observed_intraday_current_at"] = now_iso
         features["wu_twc_observed_intraday_fetched_at"] = now_iso
         features["wu_twc_observed_intraday_stale"] = False
-        conn.execute(
-            """
-            UPDATE event_fact_history
-            SET fact_json = ?, fact_as_of = ?, created_at = ?
-            WHERE id = ?
-            """,
-            (json.dumps(payload, ensure_ascii=False), now_iso, now_iso, row["id"]),
+        apply_result = _apply_copy_acceptance_fact_payload(
+            conn,
+            row=row,
+            payload=payload,
+            fact_as_of=now_iso,
+            write_reason="copy_acceptance_force_final_lock_scenario",
         )
-        conn.execute(
-            """
-            UPDATE event_fact_latest
-            SET updated_at = ?
-            WHERE slug = ? AND event_date = ?
-            """,
-            (now_iso, slug, event_date),
-        )
-        conn.commit()
+        if not apply_result.get("ok"):
+            return {
+                "ok": False,
+                "reason": apply_result.get("block_reason") or apply_result.get("error") or "writer_apply_failed",
+                "writer_apply_result": apply_result,
+                "forced_value_c": forced_value_c,
+            }
         return {
             "ok": True,
             "updated_at": now_iso,
+            "new_fact_id": apply_result.get("fact_id"),
+            "write_owner": apply_result.get("write_owner"),
+            "writer_apply_result_schema": apply_result.get("schema"),
+            "latest_repointed": bool(apply_result.get("latest_repointed")),
             "forced_keys": [
                 "hard_source_final_daily_max",
                 "hard_source_final_daily_max_forced_acceptance",
@@ -393,14 +604,7 @@ def _nearest_lower_bucket_from_latest_fact(
 
 
 def _insert_edge_trade(conn: sqlite3.Connection, values: Dict[str, Any]) -> None:
-    cols = [col for col in _table_columns(conn, "edge_trades") if col in values]
-    if not cols:
-        return
-    placeholders = ", ".join(["?"] * len(cols))
-    conn.execute(
-        f"INSERT INTO edge_trades({', '.join(cols)}) VALUES({placeholders})",
-        tuple(values[col] for col in cols),
-    )
+    insert_edge_trade_row(conn, values, table_columns=_table_columns(conn, "edge_trades"))
 
 
 def _insert_market_tick(conn: sqlite3.Connection, values: Dict[str, Any]) -> bool:
@@ -492,38 +696,20 @@ def _prepare_forced_switch_scenario(
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        cleared_target = conn.execute(
-            """
-            UPDATE edge_trades
-            SET state = 'exit',
-                position_size = 0,
-                avg_price = COALESCE(avg_price, 0),
-                last_action = 'copy_acceptance_clear_target',
-                last_status = 'copy_acceptance_forced_switch',
-                updated_at = ?
-            WHERE slug = ?
-              AND substr(event_date, 1, 10) = ?
-              AND outcome = ?
-              AND side = 'YES'
-            """,
-            (now_iso, slug, event_date, target_bucket),
-        ).rowcount
-        updated_old = conn.execute(
-            """
-            UPDATE edge_trades
-            SET state = 'entry',
-                position_size = CASE WHEN COALESCE(position_size, 0) > 1 THEN position_size ELSE 8.0 END,
-                avg_price = CASE WHEN COALESCE(avg_price, 0) > 0 THEN avg_price ELSE 0.25 END,
-                last_action = 'copy_acceptance_seed_old',
-                last_status = 'copy_acceptance_forced_switch',
-                updated_at = ?
-            WHERE slug = ?
-              AND substr(event_date, 1, 10) = ?
-              AND outcome = ?
-              AND side = 'YES'
-            """,
-            (now_iso, slug, event_date, old_bucket),
-        ).rowcount
+        cleared_target = copy_acceptance_clear_target(
+            conn,
+            now_iso=now_iso,
+            slug=slug,
+            event_date=event_date,
+            target_bucket=target_bucket,
+        )
+        updated_old = copy_acceptance_seed_old(
+            conn,
+            now_iso=now_iso,
+            slug=slug,
+            event_date=event_date,
+            old_bucket=old_bucket,
+        )
         if not updated_old:
             _insert_edge_trade(
                 conn,
@@ -592,26 +778,27 @@ def _derive_hard_source_switch_target(
             "source_id": observation.get("source_id"),
             "value_c": value_c,
         }
-    rows = poller._rows(payload)
-    constraint_meta = poller.apply_hard_source_posterior_override_to_distribution(
-        rows,
-        poller._features(payload),
-        base_probs=poller._posterior_base_probs(rows),
-        market_var=str(payload.get("market_var") or "temperature_2m_max"),
-        rounding_rule=str(payload.get("rounding_rule") or ""),
-        event_tz=str(payload.get("event_tz") or payload.get("tz") or "Asia/Shanghai"),
+    projection_result = poller._recompute_ctp_latest_fact(
+        db_path,
         event_date=event_date,
+        slug=slug,
+        reason="hard_source_direct_copy_acceptance",
     )
-    if not bool(constraint_meta.get("applied")):
+    if not bool(projection_result.get("ok")):
         return {
             "ok": False,
-            "reason": "hard_source_posterior_constraint_not_applied",
-            "constraint_status": constraint_meta.get("status"),
-            "constraint_meta": constraint_meta,
+            "reason": "posterior_projection_failed",
+            "projection_result": projection_result,
             "observed_bucket": observed_bucket,
         }
-    top_row = poller._top_posterior_row(rows)
-    target_bucket = str(top_row.get("outcome") or top_row.get("label") or "").strip()
+    projected_payload = poller._load_latest_fact_payload(db_path, event_date=event_date, slug=slug)
+    posterior_ssot = (
+        projected_payload.get("posterior_ssot_fact")
+        if isinstance(projected_payload, Mapping)
+        and isinstance(projected_payload.get("posterior_ssot_fact"), Mapping)
+        else {}
+    )
+    target_bucket = str(posterior_ssot.get("target_bucket") or "").strip()
     if not target_bucket:
         return {
             "ok": False,
@@ -622,6 +809,7 @@ def _derive_hard_source_switch_target(
         "ok": True,
         "target_bucket": target_bucket,
         "observed_bucket": observed_bucket,
+        "projection_result": projection_result,
         "source_id": observation.get("source_id"),
         "value_c": value_c,
         "constraint_mode": constraint_meta.get("constraint_mode"),

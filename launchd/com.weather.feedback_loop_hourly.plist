@@ -17,7 +17,7 @@
     <key>EnvironmentVariables</key>
     <dict>
       <key>PM_OPTIMIZER_AUTO_APPLY</key>
-      <string>1</string>
+      <string>0</string>
     </dict>
     <key>SoftResourceLimits</key>
     <dict>

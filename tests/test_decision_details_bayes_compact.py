@@ -13,6 +13,9 @@ class DecisionDetailsBayesCompactTests(unittest.TestCase):
             "q_raw_static": 0.24,
             "q_bayes_enabled": True,
             "q_bayes_source": "dirichlet_bma",
+            "q_bayes_old_additive_evidence_pool_used": True,
+            "q_bayes_production_replacement_required": True,
+            "q_bayes_replacement_posterior_runtime": "hierarchical_posterior_pipeline_runtime.py",
             "q_bayes_posterior": 0.299,
             "q_bayes_lcb": 0.23,
             "q_bayes_ucb": 0.36,
@@ -22,6 +25,21 @@ class DecisionDetailsBayesCompactTests(unittest.TestCase):
             "q_bayes_z": 0.8,
             "q_bayes_z_stage": "d0_afternoon",
             "q_bayes_z_source": "stage_default",
+            "q_bayes_phase": "d0_awc_signal_window",
+            "q_bayes_beta_weak": 0.2,
+            "q_bayes_beta_strong": 1.4,
+            "q_bayes_phase_reason": "unit_test_phase",
+            "q_bayes_hard_mask_reason": "none",
+            "q_bayes_layer_contributions": {
+                "forecast_weak_likelihood": {"log_likelihood": 0.12},
+                "metar_strong_likelihood": {"log_likelihood": 0.71},
+            },
+            "state_evidence_trace": {
+                "schema": "metar_strong_state_evidence_trace_v1",
+                "role": "state_evidence_trace",
+                "replaces": "q_bayes_physical_likelihood_component_groups",
+                "groups": {"wet_bulb_constraint": {"log_likelihood": -36.8}},
+            },
             "q_bayes_prior_strength": 12.0,
             "q_bayes_prior_source": "market_history_low_sample",
             "q_bayes_historical_samples": 1,
@@ -79,19 +97,47 @@ class DecisionDetailsBayesCompactTests(unittest.TestCase):
         self.assertEqual(compact["q_bayes_prior_source"], "market_history_low_sample")
         self.assertEqual(compact["q_bayes_historical_samples"], 1)
         self.assertTrue(compact["q_bayes_bias_correction_enabled"])
-        self.assertTrue(compact["q_bayes_physical_likelihood_enabled"])
-        self.assertEqual(compact["q_bayes_physical_likelihood_source"], "weather_physical_likelihood")
-        self.assertEqual(compact["q_bayes_physical_likelihood_prob"], 0.71)
-        self.assertTrue(compact["q_bayes_physical_likelihood_hard_zero"])
-        self.assertEqual(compact["q_bayes_physical_likelihood_hard_reasons"], ["dewpoint_above_bucket"])
-        self.assertEqual(compact["q_bayes_physical_likelihood_components"], {"dewpoint": -36.8})
+        self.assertEqual(compact["q_bayes_phase"], "d0_awc_signal_window")
+        self.assertEqual(compact["q_bayes_beta_weak"], 0.2)
+        self.assertEqual(compact["q_bayes_beta_strong"], 1.4)
+        self.assertEqual(compact["q_bayes_hard_mask_reason"], "none")
         self.assertEqual(
-            compact["q_bayes_physical_likelihood_component_groups"],
-            {"wet_bulb_constraint": {"log_likelihood": -36.8}},
+            compact["q_bayes_layer_contributions"]["metar_strong_likelihood"]["log_likelihood"],
+            0.71,
         )
+        self.assertEqual(compact["state_evidence_trace"]["role"], "state_evidence_trace")
+        self.assertEqual(
+            compact["state_evidence_trace"]["replaces"],
+            "q_bayes_physical_likelihood_component_groups",
+        )
+        self.assertNotIn("q_bayes_model_evidence", compact)
+        self.assertNotIn("q_bayes_physical_likelihood_evidence", compact)
+        self.assertNotIn("q_bayes_physical_likelihood_components", compact)
         self.assertEqual(compact["weather_likelihood_feature_count"], 40)
         self.assertEqual(compact["peak_estimator_source"], "kalman_blend")
         self.assertEqual(compact["peak_estimator_mu_c"], 30.4)
+
+    def test_compact_entry_details_preserves_legacy_bridge_markers_when_budget_allows(self) -> None:
+        details = {
+            "ask": 0.16,
+            "bid": 0.15,
+            "q_entry": 0.299,
+            "q_bayes_enabled": True,
+            "q_bayes_source": "continuous_temperature_posterior_v1",
+            "q_bayes_old_additive_evidence_pool_used": True,
+            "q_bayes_production_replacement_required": True,
+            "q_bayes_replacement_posterior_runtime": "hierarchical_posterior_pipeline_runtime.py",
+            "q_bayes_posterior": 0.299,
+        }
+
+        compact = _compact_decision_details(details, action="entry", will_order=False)
+
+        self.assertTrue(compact["q_bayes_old_additive_evidence_pool_used"])
+        self.assertTrue(compact["q_bayes_production_replacement_required"])
+        self.assertEqual(
+            compact["q_bayes_replacement_posterior_runtime"],
+            "hierarchical_posterior_pipeline_runtime.py",
+        )
 
     def test_compact_entry_details_does_not_null_bayesian_likelihood_when_payload_is_large(self) -> None:
         details = {
@@ -111,6 +157,15 @@ class DecisionDetailsBayesCompactTests(unittest.TestCase):
             "q_bayes_z": 0.8,
             "q_bayes_z_stage": "d0_afternoon",
             "q_bayes_z_source": "stage_default",
+            "q_bayes_phase": "d0_awc_signal_window",
+            "q_bayes_beta_weak": 0.2,
+            "q_bayes_beta_strong": 1.4,
+            "q_bayes_phase_reason": "unit_test_phase",
+            "q_bayes_hard_mask_reason": "none",
+            "q_bayes_layer_contributions": {
+                "forecast_weak_likelihood": {"log_likelihood": 0.12},
+                "metar_strong_likelihood": {"log_likelihood": 0.71},
+            },
             "q_bayes_prior_strength": 12.0,
             "q_bayes_prior_source": "market_history_low_sample",
             "q_bayes_historical_samples": 3,
@@ -158,11 +213,16 @@ class DecisionDetailsBayesCompactTests(unittest.TestCase):
         self.assertEqual(compact["q_bayes_z_stage"], "d0_afternoon")
         self.assertEqual(compact["q_calibration_z"], 0.8)
         self.assertEqual(compact["q_bayes_prior_source"], "market_history_low_sample")
-        self.assertTrue(compact["q_bayes_physical_likelihood_enabled"])
-        self.assertEqual(compact["q_bayes_physical_likelihood_source"], "weather_physical_likelihood")
-        self.assertTrue(compact["q_bayes_physical_likelihood_hard_zero"])
-        self.assertEqual(compact["q_bayes_physical_likelihood_hard_reasons"], ["tail_support_below_bucket"])
-        self.assertEqual(compact["q_bayes_physical_likelihood_components"], {"tail_support": -36.8})
+        self.assertEqual(compact["q_bayes_phase"], "d0_awc_signal_window")
+        self.assertEqual(compact["q_bayes_beta_weak"], 0.2)
+        self.assertEqual(compact["q_bayes_beta_strong"], 1.4)
+        self.assertEqual(
+            compact["q_bayes_layer_contributions"]["metar_strong_likelihood"]["log_likelihood"],
+            0.71,
+        )
+        self.assertNotIn("q_bayes_nowcast_evidence", compact)
+        self.assertNotIn("q_bayes_physical_likelihood_evidence", compact)
+        self.assertNotIn("q_bayes_physical_likelihood_components", compact)
         self.assertEqual(compact["weather_likelihood_feature_count"], 40)
         self.assertEqual(compact["peak_estimator_mu_c"], 30.4)
 

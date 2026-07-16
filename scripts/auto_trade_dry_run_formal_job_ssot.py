@@ -25,6 +25,17 @@ import scan_weather_market as swm  # noqa: E402
 from scripts.check_auto_trade_ssot_capital_plan import compare_run_to_snapshot  # noqa: E402
 
 
+def _connect_ro() -> sqlite3.Connection:
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
 def _fetch_ui_snapshot(url: str) -> Dict[str, Any]:
     with urllib.request.urlopen(url, timeout=12) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
@@ -99,8 +110,7 @@ def _select_event_keys(
 def _load_job_by_id(job_id: int) -> Dict[str, Any]:
     if job_id <= 0 or not DB_PATH.exists():
         return {}
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with _connect_ro() as conn:
         row = conn.execute("SELECT * FROM auto_trade_jobs WHERE id = ?", (int(job_id),)).fetchone()
     return swm._serialize_job_row(row) if row else {}
 
@@ -108,8 +118,7 @@ def _load_job_by_id(job_id: int) -> Dict[str, Any]:
 def _load_run_decision_stats(run_id: int) -> Dict[str, Any]:
     if run_id <= 0 or not DB_PATH.exists():
         return {}
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with _connect_ro() as conn:
         summary_row = conn.execute(
             """
             SELECT
@@ -263,8 +272,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     reconcile_result: Dict[str, Any] = {}
     reconcile_ok = False
     if run_id > 0:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with _connect_ro() as conn:
             reconcile_result = compare_run_to_snapshot(
                 conn,
                 run_id=run_id,

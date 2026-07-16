@@ -1,0 +1,13 @@
+{
+  "schema": "realization_state_policy_v2",
+  "approval_state": "approved",
+  "credible_probability_floor": 0.05,
+  "strong_support_log_probability_ratio_floor": 0.0,
+  "strong_exclusion_probability_ceiling": 0.01,
+  "strong_exclusion_log_probability_ratio_ceiling": -1.0,
+  "scope": "production_v6_market_projection_only",
+  "ev_edge_or_market_price_consumed": false,
+  "places_orders": false,
+  "authorizes_clob": false,
+  "artifact_sha256": "dbe20ce5d60d2f9f67fa937bd3436b3ff966795dcf4736bb84408a7b4cf12adc"
+}

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -20,7 +21,70 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import weather_fact_snapshot_writer
+from lineage_identity_runtime import build_correlation_id
+from source_observation_runtime import SOURCE_CLASSES, build_source_observation
+
 DEFAULT_DB = ROOT / "data" / "archive.db"
+DRILL_FACT_COMPOSER_VERSION = "posterior_target_direct_latency_drill_fact_writer_v1"
+TEMPORARY_DRILL_DB_BOUNDARY_SCHEMA = "posterior_target_direct_latency_drill_boundary_v1"
+
+
+def build_posterior_target_direct_latency_drill_boundary(
+    *,
+    source_db: str = "",
+    tmp_db: str = "",
+) -> Dict[str, Any]:
+    return {
+        "schema": TEMPORARY_DRILL_DB_BOUNDARY_SCHEMA,
+        "read_only_for_source_db": True,
+        "dry_run_for_live_system": True,
+        "execution_mode": "temporary_db_copy_fake_live_drill_not_production_writer",
+        "measurement_scope": "synthetic_fact_signal_to_order_local_path_only",
+        "valid_p10_t1_to_t5_evidence": False,
+        "real_amsc_t1_or_p10_telemetry_consumed": False,
+        "source_db": str(source_db or ""),
+        "tmp_db": str(tmp_db or ""),
+        "fact_writer_integration": {
+            "status": "uses_weather_fact_snapshot_writer_apply_on_temporary_db_copy",
+            "write_owner": weather_fact_snapshot_writer.WRITE_OWNER,
+            "composer_version": DRILL_FACT_COMPOSER_VERSION,
+            "live_fact_apply": False,
+        },
+        "guards": {
+            "writes_archive_db": False,
+            "writes_temporary_archive_db_copy": True,
+            "writes_event_fact_history": False,
+            "writes_event_fact_latest": False,
+            "writes_event_fact_summary_cache": False,
+            "writes_auto_trade_decisions": False,
+            "writes_auto_trade_jobs": False,
+            "writes_edge_trades": False,
+            "writes_temporary_event_fact_history": True,
+            "writes_temporary_event_fact_latest": True,
+            "writes_temporary_event_fact_summary_cache": True,
+            "writes_temporary_auto_trade_decisions": True,
+            "writes_temporary_auto_trade_jobs": True,
+            "writes_temporary_edge_trades": True,
+            "places_orders": False,
+            "uses_fake_order_runner": True,
+            "restarts_launchd": False,
+            "historical_backfill": False,
+            "changes_parameters": False,
+            "executes_sql_against_source_db": False,
+        },
+        "blocked_live_operations": [
+            "append_live_event_fact_history",
+            "repoint_live_event_fact_latest",
+            "write_live_event_fact_summary_cache",
+            "write_live_auto_trade_decisions",
+            "write_live_auto_trade_jobs",
+            "write_live_edge_trades",
+            "place_real_order",
+            "restart_launchd",
+            "historical_backfill",
+        ],
+    }
 
 
 def _utc_now_iso_ms() -> str:
@@ -95,6 +159,16 @@ def _row_probability(row: Mapping[str, Any]) -> Optional[float]:
 
 
 def _target_from_payload(payload: Mapping[str, Any]) -> str:
+    posterior_ssot = payload.get("posterior_ssot_fact")
+    if isinstance(posterior_ssot, Mapping):
+        label = str(
+            posterior_ssot.get("target_bucket")
+            or posterior_ssot.get("top_bucket")
+            or posterior_ssot.get("selected_bucket")
+            or ""
+        ).strip()
+        if label:
+            return label
     for key in ("posterior_target_bucket_selection", "target_bucket_selection"):
         selection = payload.get(key)
         if isinstance(selection, Mapping):
@@ -276,13 +350,166 @@ def _insert_previous_posterior_decision(
                     "target_posterior": previous_probability,
                     "q_temperature_bucket_posterior": previous_probability,
                     "target_bucket": previous_bucket,
-                    "decision_ssot": "posterior_temperature_distribution",
+                    "decision_ssot": "posterior_ssot_fact",
+                    "posterior_ssot_fact_used": True,
+                    "target_probability_field": "posterior_ssot_fact.target_probability",
                     "drill_previous_state": True,
                 }
             ),
             "created_at": previous_at or created_at,
         },
     )
+
+
+def _drill_fact_source_trace(
+    *,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    current_fact_id: int,
+) -> Dict[str, Any]:
+    source_id = "posterior_target_direct_latency_drill"
+    raw_sha = weather_fact_snapshot_writer.sha256_json(
+        {
+            "source_id": source_id,
+            "slug": slug,
+            "event_date": event_date,
+            "fact_as_of": fact_as_of,
+            "current_fact_id": current_fact_id,
+        }
+    )
+    source_payload = {
+        "source_payload_schema": "posterior_target_direct_latency_drill_source_payload_v1",
+        "slug": slug,
+        "event_date": event_date,
+        "fact_as_of": fact_as_of,
+        "current_fact_id": current_fact_id,
+        "diagnostic_only": True,
+        "temporary_db_copy": True,
+    }
+    observation_obj = build_source_observation(
+        source_id=source_id,
+        station_id="ZUUU",
+        event_date=event_date,
+        valid_time=fact_as_of,
+        fetched_at=fact_as_of,
+        response_completed_at=fact_as_of,
+        raw_ref=f"posterior_target_direct_latency_drill:{current_fact_id}",
+        raw_payload=source_payload,
+        parser_version="posterior_target_direct_latency_drill_source_trace_v1",
+        overrides={
+            "source_class": SOURCE_CLASSES["diagnostic_current"],
+            "role": "posterior_target_direct_latency_drill_synthetic_fact",
+            "hard_eligible": False,
+            "demotion_reason": "temporary_drill_diagnostic_not_hard_source",
+        },
+        payload=source_payload,
+    )
+    observation = observation_obj.as_dict(include_payload=True)
+    observation["diagnostic_only"] = True
+    observation["temporary_db_copy"] = True
+    source_event_id = observation_obj.source_event_id
+    source_observation_id = observation_obj.source_observation_id
+    return {
+        "schema": "posterior_target_direct_latency_drill_source_trace_v1",
+        "read_only_for_source_db": True,
+        "temporary_db_copy": True,
+        "correlation_id": build_correlation_id(
+            "posterior_target_direct_latency_drill",
+            slug,
+            event_date,
+            fact_as_of,
+            current_fact_id,
+        ),
+        "source_observations": [observation],
+        "source_event_ids": [source_event_id],
+        "source_observation_ids": [source_observation_id],
+        "source_latency_trace": [
+            {
+                "source_event_id": source_event_id,
+                "source_observation_id": source_observation_id,
+                "source_id": source_id,
+                "source_class": SOURCE_CLASSES["diagnostic_current"],
+                "role": "posterior_target_direct_latency_drill_synthetic_fact",
+                "valid_time": fact_as_of,
+                "fetched_at": fact_as_of,
+                "response_duration_ms": 0,
+                "raw_sha256": raw_sha,
+                "diagnostic_only": True,
+            }
+        ],
+        "hard_observation_candidate_ids": [],
+        "diagnostic_current_ids": [source_event_id],
+        "forecast_weak_ids": [],
+        "next_boundary": "weather_fact_snapshot_writer_apply_on_temporary_drill_db_only",
+    }
+
+
+def build_posterior_target_drill_fact_snapshot_writer_apply_plan(
+    *,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    incoming_payload: Mapping[str, Any],
+    current_payload: Mapping[str, Any],
+    current_fact_id: int,
+    current_fact_as_of: str = "",
+) -> Dict[str, Any]:
+    source_trace = _drill_fact_source_trace(
+        slug=slug,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        current_fact_id=current_fact_id,
+    )
+    return weather_fact_snapshot_writer.build_fact_snapshot_write_plan(
+        slug=slug,
+        event_date=event_date,
+        run_date=event_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=incoming_payload,
+        current_fact_id=current_fact_id,
+        current_fact_as_of=current_fact_as_of,
+        current_payload=current_payload,
+        source_acquisition_trace=source_trace,
+        composer_version=DRILL_FACT_COMPOSER_VERSION,
+        write_reason="posterior_target_direct_latency_drill_temporary_db_fact_prepare",
+        include_payload=True,
+        enable_apply_contract=True,
+        write_latest=True,
+    )
+
+
+def _apply_posterior_target_drill_fact_payload(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    payload: Mapping[str, Any],
+    current_payload: Mapping[str, Any],
+    current_fact_id: int,
+    current_fact_as_of: str = "",
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    plan = build_posterior_target_drill_fact_snapshot_writer_apply_plan(
+        slug=slug,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        incoming_payload=payload,
+        current_payload=current_payload,
+        current_fact_id=current_fact_id,
+        current_fact_as_of=current_fact_as_of,
+    )
+    result = weather_fact_snapshot_writer.apply_fact_snapshot_write_plan(
+        conn,
+        plan,
+        allow_apply=True,
+        commit=False,
+        created_at=fact_as_of,
+    )
+    result["writer_apply_result_summary"] = (
+        weather_fact_snapshot_writer.compact_fact_snapshot_writer_apply_result_for_lineage(result)
+    )
+    return plan, result
 
 
 def _prepare_posterior_target_scenario(
@@ -303,7 +530,7 @@ def _prepare_posterior_target_scenario(
     try:
         latest = conn.execute(
             """
-            SELECT h.id, h.fact_json
+            SELECT h.id, h.fact_as_of, h.fact_json
             FROM event_fact_latest l
             JOIN event_fact_history h ON h.id = l.fact_id
             WHERE l.slug = ? AND l.event_date = ?
@@ -314,9 +541,12 @@ def _prepare_posterior_target_scenario(
         ).fetchone()
         if latest is None:
             return {"ok": False, "reason": "latest_fact_missing"}
-        payload = _json_loads(latest["fact_json"])
-        if not payload:
+        current_payload = _json_loads(latest["fact_json"])
+        if not current_payload:
             return {"ok": False, "reason": "latest_fact_json_invalid"}
+        payload = copy.deepcopy(current_payload)
+        previous_fact_id = int(latest["id"])
+        previous_fact_as_of = str(latest["fact_as_of"] or current_payload.get("fact_as_of") or "")
         target = target_bucket or _target_from_payload(payload)
         if not target:
             return {"ok": False, "reason": "target_bucket_missing"}
@@ -361,10 +591,16 @@ def _prepare_posterior_target_scenario(
             "target_posterior": target_prob,
             "target_bucket_probability": target_prob,
             "target_bucket_probability_pct": target_prob * 100.0,
-            "target_probability_field": "posterior_temperature_distribution.bucket_probabilities",
-            "target_bucket_source": "posterior_target_direct_latency_drill",
-            "target_bucket_source_semantics": "posterior_temperature_distribution",
-            "source": "posterior_target_direct_latency_drill",
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "target_bucket_probability_field": "posterior_ssot_fact.target_probability",
+            "target_bucket_source": "posterior_ssot_fact.top_bucket",
+            "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+            "target_bucket_source_semantics": "bayes_posterior_ssot_fact_v1",
+            "target_selection_priority_version": "bayes_posterior_ssot_fact_v1",
+            "selection_priority": "posterior_ssot_fact_top_bucket",
+            "ssot_source": "posterior_ssot_fact",
+            "source": "posterior_ssot_fact",
+            "selection_runtime_recomputed": False,
         }
         payload["target_bucket_selection"] = dict(payload["posterior_target_bucket_selection"])
         payload["target_realization_capital_plan"] = {
@@ -380,6 +616,18 @@ def _prepare_posterior_target_scenario(
                 "target_realization_execution_action": "BUY",
                 "leg_enabled": True,
             },
+        }
+        payload["posterior_target_direct_latency_drill_state"] = {
+            "schema": "posterior_target_direct_latency_drill_state_v1",
+            "temporary_db_copy": True,
+            "source_fact_id": previous_fact_id,
+            "source_fact_as_of": previous_fact_as_of,
+            "target_bucket": target,
+            "old_bucket": old,
+            "target_probability": target_prob,
+            "previous_probability": previous_probability,
+            "live_archive_write": False,
+            "order_runner": "fake",
         }
         target_row = _row_for_label(payload, target)
         old_row = _row_for_label(payload, old)
@@ -500,27 +748,40 @@ def _prepare_posterior_target_scenario(
             previous_probability=previous_probability,
             created_at=now_iso,
         )
-        conn.execute(
-            """
-            UPDATE event_fact_history
-            SET fact_json = ?, fact_as_of = ?, created_at = ?
-            WHERE id = ?
-            """,
-            (json.dumps(payload, ensure_ascii=False), now_iso, now_iso, latest["id"]),
+        writer_plan, writer_apply = _apply_posterior_target_drill_fact_payload(
+            conn,
+            slug=slug,
+            event_date=event_date,
+            fact_as_of=now_iso,
+            payload=payload,
+            current_payload=current_payload,
+            current_fact_id=previous_fact_id,
+            current_fact_as_of=previous_fact_as_of,
         )
-        conn.execute(
-            """
-            UPDATE event_fact_latest
-            SET updated_at = ?
-            WHERE slug = ? AND event_date = ?
-            """,
-            (now_iso, slug, event_date),
-        )
+        if not writer_apply.get("ok") or not writer_apply.get("latest_repointed"):
+            conn.rollback()
+            return {
+                "ok": False,
+                "reason": "fact_writer_apply_failed",
+                "previous_fact_id": previous_fact_id,
+                "writer_plan_schema": writer_plan.get("schema"),
+                "writer_plan_write_owner": writer_plan.get("write_owner"),
+                "writer_plan_apply_supported": writer_plan.get("apply_supported"),
+                "writer_plan_fact_snapshot_id": writer_plan.get("fact_snapshot_id"),
+                "writer_apply": writer_apply,
+            }
         conn.commit()
         return {
             "ok": True,
-            "fact_id": int(latest["id"]),
+            "fact_id": int(writer_apply.get("fact_id") or 0),
+            "previous_fact_id": previous_fact_id,
             "fact_as_of": now_iso,
+            "write_owner": writer_apply.get("write_owner"),
+            "fact_snapshot_id": writer_apply.get("fact_snapshot_id"),
+            "latest_repointed": bool(writer_apply.get("latest_repointed")),
+            "summary_cache_written": bool(writer_apply.get("summary_cache_written")),
+            "writer_plan_schema": writer_plan.get("schema"),
+            "writer_apply_result_schema": writer_apply.get("schema"),
             "target_bucket": target,
             "target_probability": target_prob,
             "old_bucket": old,
@@ -571,6 +832,7 @@ def _run_fake_live_worker(
         size: Any = None,
         order_type: Any = None,
         amount: Any = None,
+        order_context: Any = None,
     ):
         placed.append(
             {
@@ -672,6 +934,20 @@ def _env_guard(values: Mapping[str, str]):
 
 
 def run_drill(args: argparse.Namespace) -> Dict[str, Any]:
+    # A diagnostic command must be safe when invoked without an explicit
+    # execute switch.  The executable drill only ever mutates a temporary
+    # copy, but keeping the default audit-only prevents accidental expensive
+    # copy/worker runs from being mistaken for production remediation.
+    if not bool(getattr(args, "execute_temporary_drill", False)):
+        return {
+            "ok": True,
+            "state": "audit_only_no_temporary_apply",
+            "mode": "temporary_db_copy_fake_live_drill_not_production_writer",
+            "measurement_scope": "synthetic_fact_signal_to_order_local_path_only",
+            "valid_p10_t1_to_t5_evidence": False,
+            "boundary": build_posterior_target_direct_latency_drill_boundary(source_db=str(args.db)),
+            "next_action": "rerun_with_--execute-temporary-drill_to_run_the_isolated_fake_order_drill",
+        }
     db_path = Path(args.db)
     if not db_path.exists():
         return {"ok": False, "blockers": ["archive_db_missing"], "details": {"db": str(db_path)}}
@@ -805,7 +1081,9 @@ def run_drill(args: argparse.Namespace) -> Dict[str, Any]:
         return {
             "ok": not blockers,
             "blockers": blockers,
-            "mode": "posterior_target_direct_temporary_db_fake_live",
+            "mode": "posterior_target_direct_temporary_db_synthetic_signal_only",
+            "measurement_scope": "synthetic_fact_signal_to_order_local_path_only",
+            "valid_p10_t1_to_t5_evidence": False,
             "source_db": str(db_path),
             "tmp_db": str(tmp_db),
             "tmp_db_removed": not args.keep_tmp,
@@ -856,6 +1134,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-job-enqueue-to-order-ms", type=float, default=3000.0)
     parser.add_argument("--max-fact-to-order-ms", type=float, default=3000.0)
     parser.add_argument("--keep-tmp", action="store_true")
+    parser.add_argument(
+        "--execute-temporary-drill",
+        action="store_true",
+        help="Run the synthetic drill against a temporary archive.db copy; default is audit-only and performs no copy or writes.",
+    )
     return parser
 
 

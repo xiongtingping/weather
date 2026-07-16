@@ -3,15 +3,45 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sqlite3
 import subprocess
+import sys
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import scan_weather_market as s
-
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from archive_db_write_queue import connect_archive_db_rw  # noqa: E402
+from auto_order_ledger_writer import update_auto_order_status_by_order_id  # noqa: E402
+
+DEFAULT_DB = ROOT_DIR / "data" / "archive.db"
 POLYMARKET_ORDER_SCRIPT = ROOT_DIR / "scripts" / "polymarket_order.mjs"
+
+
+def _archive_db_path() -> Path:
+    raw = os.environ.get("PM_ARCHIVE_DB") or os.environ.get("PM_ARCHIVE_DB_PATH") or ""
+    return Path(raw).expanduser() if raw else DEFAULT_DB
+
+
+@contextmanager
+def _open_db() -> Iterator[sqlite3.Connection]:
+    with connect_archive_db_rw(
+        _archive_db_path(),
+        owner="update_order_status",
+        timeout_sec=30.0,
+        busy_timeout_ms=30000,
+        row_factory=False,
+    ) as conn:
+        yield conn
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _load_orders(conn, only_missing: bool, limit: Optional[int]) -> List[Tuple[Any, ...]]:
@@ -51,22 +81,22 @@ def _parse_payload(stdout: str, stderr: str, code: int) -> Dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Update auto_orders.order_status via get-order")
+    parser = argparse.ArgumentParser(description="Sync auto order status via get-order")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of orders")
     parser.add_argument("--include-all", action="store_true", help="Include all auto_orders (not only missing)")
     parser.add_argument("--no-write", action="store_true", help="Do not write to DB")
     args = parser.parse_args()
 
-    with s.open_db() as conn:
+    with _open_db() as conn:
         rows = _load_orders(conn, only_missing=not args.include_all, limit=args.limit or None)
 
     cmd_base = ["node", str(POLYMARKET_ORDER_SCRIPT), "get-order", "--order-id"]
 
     by_status: Dict[str, int] = {}
     updated = 0
-    now_iso = s.utc_now_iso()
+    now_iso = _utc_now_iso()
 
-    with s.open_db() as conn:
+    with _open_db() as conn:
         cur = conn.cursor()
         for r in rows:
             order_id = r[0]
@@ -82,9 +112,11 @@ def main() -> None:
             by_status[status] = by_status.get(status, 0) + 1
 
             if not args.no_write:
-                cur.execute(
-                    "UPDATE auto_orders SET order_status = ?, order_checked_at = ? WHERE order_id = ?",
-                    (status, now_iso, str(order_id)),
+                update_auto_order_status_by_order_id(
+                    cur,
+                    order_id=str(order_id),
+                    order_status=status,
+                    order_checked_at=now_iso,
                 )
                 updated += 1
 

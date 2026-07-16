@@ -11,6 +11,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 import scan_weather_market as s
+from auto_order_ledger_writer import update_auto_order_strategy_by_id
 
 DB_PATH = 'data/archive.db'
 CONFIG_PATH = 'data/auto_trade_config.json'
@@ -335,7 +336,7 @@ def backfill():
     for r in rows:
         action = (r['action'] or '').lower()
         if action == 'exit':
-            cur.execute("update auto_orders set strategy='exit' where id=?", (r['id'],))
+            update_auto_order_strategy_by_id(cur, row_id=r['id'], strategy='exit')
             updated += 1
             continue
         slug = r['slug']
@@ -355,7 +356,7 @@ def backfill():
         )
         ev = cur.fetchone()
         if not ev:
-            cur.execute("update auto_orders set strategy='unknown' where id=?", (r['id'],))
+            update_auto_order_strategy_by_id(cur, row_id=r['id'], strategy='unknown')
             unknown += 1
             continue
         payload = json.loads(ev['payload_json'])
@@ -363,7 +364,7 @@ def backfill():
         row_map = {str(x.get('outcome') or ''): x for x in rows_payload}
         row_payload = row_map.get(outcome)
         if not row_payload:
-            cur.execute("update auto_orders set strategy='unknown' where id=?", (r['id'],))
+            update_auto_order_strategy_by_id(cur, row_id=r['id'], strategy='unknown')
             unknown += 1
             continue
         run_date = ev['run_date']
@@ -379,7 +380,7 @@ def backfill():
         else:
             strategy = 'unknown'
             unknown += 1
-        cur.execute("update auto_orders set strategy=? where id=?", (strategy, r['id']))
+        update_auto_order_strategy_by_id(cur, row_id=r['id'], strategy=strategy)
         updated += 1
 
     conn.commit()

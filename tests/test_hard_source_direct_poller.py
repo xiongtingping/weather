@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 import json
 import os
 import plistlib
@@ -8,6 +9,10 @@ from pathlib import Path
 
 import pytest
 import scan_weather_market as swm
+from awc_hard_source_signal_ledger_writer import AWC_HARD_SOURCE_SIGNAL_COLUMNS
+from signal_to_order_ledger_writer import SIGNAL_TO_ORDER_TIMING_COLUMNS
+from source_observation_runtime import SOURCE_CLASSES
+from weather_source_acquisition_manager import build_trace_from_refresh_result
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,12 +46,19 @@ def restore_auto_trade_globals_after_test(monkeypatch):
         "AUTO_TRADE_DRY_RUN": swm.AUTO_TRADE_DRY_RUN,
         "AUTO_TRADE_SYNC_TRADES": swm.AUTO_TRADE_SYNC_TRADES,
     }
-    swm._TARGET_REALIZATION_UI_PLAN_CACHE.clear()
+    swm._TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
     monkeypatch.setenv("PM_TARGET_REALIZATION_SSOT_URL", "")
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ENABLED", "0")
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET", "2000-01-01")
+    monkeypatch.setenv("PM_AUTO_TRADE_JOB_CLAIM_ONLY_TARGET_REALIZATION_V3", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_ENQUEUE_JOB", "1")
+    monkeypatch.setenv("PM_AUTO_TRADE_DIRECT_SKIP_ENTRY_BALANCE_GUARD", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_RELEASE_WATCH_ENABLED", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_ENABLED", "0")
     try:
         yield
     finally:
-        swm._TARGET_REALIZATION_UI_PLAN_CACHE.clear()
+        swm._TARGET_REALIZATION_FACT_PLAN_CACHE.clear()
         for key, value in before.items():
             setattr(swm, key, value)
 
@@ -55,6 +67,157 @@ def _utc_fixture_iso(offset_sec: float = 0.0) -> str:
     return (
         datetime.now(timezone.utc) + timedelta(seconds=float(offset_sec))
     ).replace(microsecond=0).isoformat()
+
+
+def _set_primary_amsc_hard_source_features(
+    features: dict,
+    *,
+    valid_at: str,
+    fetched_at: str,
+    value_c: float | None = None,
+) -> None:
+    value = value_c
+    if value is None:
+        value = (
+            features.get("zuuu_metar_raw_amsc_today_max_c")
+            or features.get("zuuu_metar_raw_awc_today_max_c")
+            or features.get("zuuu_metar_raw_amsc_latest_temp_c")
+            or features.get("zuuu_metar_raw_awc_latest_temp_c")
+            or 31.0
+        )
+    features["zuuu_metar_raw_amsc_today_max_c"] = float(value)
+    features["zuuu_metar_raw_amsc_latest_temp_c"] = float(value)
+    features["zuuu_metar_raw_amsc_today_max_at"] = valid_at
+    features["zuuu_metar_raw_amsc_latest_at"] = valid_at
+    features["zuuu_metar_raw_amsc_fetched_at"] = fetched_at
+    features["zuuu_metar_raw_amsc_fetch_duration_ms"] = features.get("zuuu_metar_raw_amsc_fetch_duration_ms") or 210.0
+    features["zuuu_metar_raw_amsc_latest_raw"] = features.get("zuuu_metar_raw_amsc_latest_raw") or "ZUUU 190900Z ... 31/22"
+
+
+def _attach_unit_posterior_ssot_fact(
+    payload: dict,
+    *,
+    target_bucket: str,
+    target_probability: float,
+) -> dict:
+    rows = []
+    for raw_row in payload.get("distribution") or payload.get("rows") or []:
+        if not isinstance(raw_row, dict):
+            continue
+        label = str(raw_row.get("outcome") or raw_row.get("bucket") or raw_row.get("label") or "").strip()
+        if not label:
+            continue
+        prob = raw_row.get("q_temperature_bucket_posterior")
+        if prob is None:
+            prob = raw_row.get("q_bayes_posterior")
+        if prob is None:
+            prob = raw_row.get("q_entry")
+        if prob is None:
+            prob = raw_row.get("q_round")
+        if prob is None:
+            continue
+        rows.append({"outcome": label, "bucket": label, "probability": float(prob)})
+    if not rows:
+        rows.append({"outcome": target_bucket, "bucket": target_bucket, "probability": float(target_probability)})
+    non_target_rows = [row for row in rows if row["bucket"] != target_bucket]
+    remaining = max(0.0, 1.0 - float(target_probability))
+    non_target_sum = sum(float(row.get("probability") or 0.0) for row in non_target_rows)
+    for row in rows:
+        if row["bucket"] == target_bucket:
+            row["probability"] = float(target_probability)
+        elif non_target_sum > 0.0:
+            row["probability"] = remaining * float(row.get("probability") or 0.0) / non_target_sum
+        elif non_target_rows:
+            row["probability"] = remaining / len(non_target_rows)
+    rows.sort(key=lambda row: (-float(row.get("probability") or 0.0), str(row.get("outcome") or "")))
+    payload["posterior_composer_schema"] = "sequential_remaining_warming_bayes_runtime_v31"
+    payload["posterior_activation_mode"] = "live_no_shadow"
+    payload.setdefault("fact_snapshot_id", "fact_unit_sequential")
+    payload.setdefault("posterior_run_id", "post_unit_sequential")
+    source_features = payload.get("weather_likelihood_features")
+    source_features = source_features if isinstance(source_features, dict) else {}
+    payload.setdefault(
+        "source_to_posterior_timing",
+        {
+            "latest_source_first_actionable_seen_at": str(
+                source_features.get("zuuu_metar_raw_amsc_fetched_at")
+                or _utc_fixture_iso()
+            )
+        },
+    )
+    continuous_cdf = 0.0
+    continuous_grid = []
+    for index, row in enumerate(rows):
+        mass = float(row.get("probability") or 0.0)
+        continuous_cdf += mass
+        continuous_grid.append(
+            {
+                "temp_c": round(20.0 + index * 0.1, 1),
+                "mass": mass,
+                "cdf": continuous_cdf,
+            }
+        )
+    payload["posterior_continuous_distribution"] = {
+        "schema": "sequential_remaining_warming_continuous_distribution_v31",
+        "source": "sequential_remaining_warming_bayes_runtime_v31",
+        "target_variable": "settlement_daily_max_c",
+        "grid_step_c": 0.1,
+        "grid": continuous_grid,
+        "bucket_probabilities": rows,
+    }
+    payload["sequential_state_filter"] = {"schema": "sequential_metar_state_filter_v1"}
+    payload["remaining_warming_mixture"] = {
+        "schema": "zero_inflated_remaining_warming_mixture_v1"
+    }
+    payload["observation_information_gate"] = {
+        "schema": "continuous_observation_information_gate_v1"
+    }
+    payload["posterior_boundary"] = {
+        "legacy_bucket_product_posterior_not_used": True,
+        "live_no_shadow": True,
+        "shadow_posterior_emitted": False,
+    }
+    payload["hard_constraints"] = {
+        "posterior": {"hard_constraint_violation_count": 0}
+    }
+    payload["posterior_ssot_fact"] = {
+        "schema": "bayes_posterior_ssot_fact_v1",
+        "state": "available",
+        "target_bucket": target_bucket,
+        "target_probability": float(target_probability),
+        "target_probability_pct": float(target_probability) * 100.0,
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "fact_snapshot_id": payload["fact_snapshot_id"],
+        "posterior_run_id": payload["posterior_run_id"],
+        "posterior_composer_schema": payload["posterior_composer_schema"],
+        "posterior_activation_mode": payload["posterior_activation_mode"],
+        "layer_chain": {
+            "formula": "continuous_forecast_error_prior_then_sequential_state_zero_inflated_remaining_warming_mixture_then_bucket_integral"
+        },
+        "boundaries": {
+            "live_primary_composer": "sequential_remaining_warming_bayes_runtime_v31",
+            "posterior_activation_mode": "live_no_shadow",
+            "legacy_bucket_product_posterior_used": False,
+            "shadow_posterior_emitted": False,
+        },
+        "ranked_bucket_probabilities": rows,
+        "bucket_probabilities": rows,
+    }
+    payload["posterior_target_bucket_selection"] = {
+        "target_bucket": target_bucket,
+        "target_probability": float(target_probability),
+        "target_probability_pct": float(target_probability) * 100.0,
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+    }
+    plan = payload.get("target_realization_capital_plan")
+    if isinstance(plan, dict):
+        plan.setdefault("target_bucket", target_bucket)
+        plan.setdefault("target_posterior", float(target_probability))
+        plan.setdefault("target_bucket_selection_source", "posterior_ssot_fact.top_bucket")
+        plan.setdefault("target_probability_field", "posterior_ssot_fact.target_probability")
+    return payload
 
 
 def test_posterior_target_latency_snapshot_captures_enqueue_disabled():
@@ -109,6 +272,58 @@ def test_posterior_target_latency_snapshot_captures_enqueue_disabled():
     assert snapshot["latencies_ms"]["fact_to_decision_ms"] == pytest.approx(1420.0)
 
 
+def test_poll_once_source_acquisition_trace_summary_keeps_source_roles():
+    awc_trace = build_trace_from_refresh_result(
+        {
+            "ok": True,
+            "status": "updated",
+            "event_date": "2026-07-03",
+            "station_id": "ZUUU",
+            "fact_as_of": "2026-07-03T09:05:36Z",
+            "awc_latest_at": "2026-07-03T09:00:00Z",
+            "awc_today_max_c": 30.0,
+            "fetch_duration_ms": 431,
+        },
+        source_family="awc",
+    )
+    wu_trace = build_trace_from_refresh_result(
+        {
+            "ok": True,
+            "status": "updated",
+            "event_date": "2026-07-03",
+            "station_id": "ZUUU",
+            "fact_as_of": "2026-07-03T09:10:02Z",
+            "source_features": {
+                "wu_twc_observed_intraday_today_max_c": 30.0,
+                "wu_twc_observed_intraday_today_max_at": "2026-07-03T09:10:00Z",
+                "wu_twc_observed_intraday_fetched_at": "2026-07-03T09:10:02Z",
+                "wu_forecast_peak_c": 32.0,
+                "wu_forecast_peak_at": "2026-07-03T07:00:00Z",
+                "wu_forecast_peak_source": "wu_forecast:test",
+            },
+        },
+        source_family="wu_twc",
+    )
+
+    summary = poller._poll_once_source_acquisition_trace_summary(
+        awc_result={"ok": True, "status": "updated", "source_acquisition_trace": awc_trace},
+        wu_result={"ok": True, "status": "updated", "source_acquisition_trace": wu_trace},
+        metar_pws_result={"ok": True, "status": "skipped", "reason": "not_due"},
+    )
+
+    assert summary["read_only"] is True
+    assert summary["hard_observation_candidate_count"] == 1
+    assert summary["diagnostic_current_count"] == 1
+    assert summary["forecast_weak_count"] == 1
+    assert summary["source_class_counts"][SOURCE_CLASSES["hard_observation"]] == 1
+    assert summary["source_class_counts"][SOURCE_CLASSES["diagnostic_current"]] == 1
+    assert summary["source_class_counts"][SOURCE_CLASSES["forecast_weak"]] == 1
+    assert summary["missing_trace_families"] == ["metar_pws"]
+    assert summary["guards"]["places_orders"] is False
+    by_source = {row["source_id"]: row for row in summary["source_latency_trace"]}
+    assert by_source["wu_twc_observed_intraday"]["hard_eligible"] is False
+
+
 def test_write_posterior_target_latency_trace_dedupes_same_event(tmp_path):
     result = {
         "ok": True,
@@ -153,7 +368,7 @@ def test_write_posterior_target_latency_trace_dedupes_same_event(tmp_path):
     assert len(event_lines) == 1
 
 
-def test_canonical_target_prefers_top_level_ctp_over_stale_selection():
+def test_canonical_target_requires_posterior_ssot_fact_not_top_level_ctp():
     payload = {
         "target_bucket": "31°C",
         "target_bucket_probability_pct": 57.8228912939907,
@@ -178,13 +393,66 @@ def test_canonical_target_prefers_top_level_ctp_over_stale_selection():
 
     bucket, posterior, source = poller._canonical_target_from_payload(payload)
 
-    assert bucket == "31°C"
-    assert posterior == pytest.approx(0.578228912939907)
-    assert source == "top_level_ctp_ssot.target_bucket_probability_pct"
+    assert bucket == ""
+    assert posterior is None
+    assert source == "posterior_ssot_fact_missing"
+
+
+def test_canonical_target_source_has_no_legacy_target_fallbacks():
+    body = inspect.getsource(poller._canonical_target_from_payload)
+
+    assert "_posterior_ssot_fact_target_from_payload" in body
+    assert "_top_level_ctp_target_from_payload" not in body
+    assert "posterior_target_bucket_selection" not in body
+    assert "target_bucket_selection" not in body
+    assert "target_realization_capital_plan" not in body
+    assert "_top_posterior_row" not in body
+    assert "distribution." not in body
+
+
+def test_canonical_target_prefers_posterior_ssot_fact_over_legacy_copies():
+    payload = {
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "32°C",
+            "target_probability": 0.72,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+        },
+        "target_bucket": "31°C",
+        "target_bucket_probability_pct": 57.8,
+        "target_bucket_source": "posterior_temperature_distribution",
+        "target_bucket_probability_field": "posterior_temperature_distribution.bucket_probabilities",
+        "posterior_target_bucket_selection": {
+            "target_bucket": "30°C",
+            "target_probability": 0.51,
+        },
+    }
+
+    bucket, posterior, source = poller._canonical_target_from_payload(payload)
+
+    assert bucket == "32°C"
+    assert posterior == pytest.approx(0.72)
+    assert source == "posterior_ssot_fact.target_probability"
 
 
 def test_decision_ssot_context_from_payload_includes_plan_switch_and_momentum():
     payload = {
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "31°C",
+            "target_probability": 0.57,
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "phase": "D0_breakout",
+            "beta_weak": 0.4,
+            "beta_strong": 0.65,
+            "hard_mask_reason": "none",
+            "bucket_probabilities": [
+                {"bucket": "31°C", "probability": 0.57},
+                {"bucket": "32°C", "probability": 0.21},
+            ],
+        },
         "target_realization_capital_plan": {
             "ok": True,
             "version": "target_realization_capital_plan_v2",
@@ -230,6 +498,11 @@ def test_decision_ssot_context_from_payload_includes_plan_switch_and_momentum():
 
     out = poller._decision_ssot_context_from_payload(payload)
 
+    assert out["decision_ssot"] == "posterior_ssot_fact"
+    assert out["posterior_ssot_fact"]["target_bucket"] == "31°C"
+    assert out["posterior_ssot_target_probability"] == 0.57
+    assert out["posterior_ssot_phase"] == "D0_breakout"
+    assert out["posterior_ssot_beta_strong"] == 0.65
     assert out["target_realization_capital_plan"]["target_bucket"] == "31°C"
     assert out["target_realization_capital_plan_version"] == (
         "target_realization_capital_plan_v2"
@@ -241,6 +514,48 @@ def test_decision_ssot_context_from_payload_includes_plan_switch_and_momentum():
     assert out["trajectory_momentum_impact"]["label"] == "动量支持目标"
     assert out["temperature_path_trade_follow_allowed"] is True
     assert out["temperature_path_trade_follow_reason"] == "multi_window_momentum_confirmed"
+
+
+def test_posterior_target_expected_target_marks_posterior_ssot_decision_source():
+    target = poller._build_posterior_target_expected_target(
+        slug="highest-temperature-in-chengdu-on-july-3-2026",
+        event_date="2026-07-03",
+        outcome="32°C",
+        row={
+            "outcome": "32°C",
+            "q_temperature_bucket_posterior": 0.72,
+            "best_ask": 0.40,
+            "best_bid": 0.39,
+            "spread": 0.01,
+            "yes_token": "yes-token",
+        },
+        tick={"best_ask": 0.40, "best_bid": 0.39, "spread": 0.01},
+        token={"yes_token": "yes-token"},
+        payload={
+            "fact_as_of": "2026-07-03T12:05:40+08:00",
+            "posterior_ssot_fact": {
+                "schema": "bayes_posterior_ssot_fact_v1",
+                "state": "available",
+                "target_bucket": "32°C",
+                "target_probability": 0.72,
+                "target_probability_field": "posterior_ssot_fact.target_probability",
+            },
+            "posterior_target_bucket_selection": {
+                "target_bucket": "32°C",
+                "target_probability": 0.72,
+                "ssot_source": "posterior_ssot_fact",
+            },
+        },
+        target_bucket="32°C",
+        target_posterior=0.72,
+        target_source="posterior_ssot_fact.target_probability",
+    )
+
+    assert target["decision_ssot"] == "posterior_ssot_fact"
+    assert target["posterior_ssot_fact_used"] is True
+    assert target["posterior_target_source"] == "posterior_ssot_fact.target_probability"
+    assert target["target_bucket"] == "32°C"
+    assert target["q_temperature_bucket_posterior"] == pytest.approx(0.72)
 
 
 def test_ssot_audit_matching_exits_keeps_only_hard_source_yes_old_bucket_orders():
@@ -333,7 +648,6 @@ def test_wu_twc_observed_merge_replaces_stale_generic_wu_max():
             }
         ],
     }
-
     merged = poller._merge_source_features_into_payload(
         payload,
         {
@@ -766,6 +1080,843 @@ def test_wu_twc_intraday_not_used_as_hard_observation_fallback():
     assert observation["reason"] == "wu_twc_intraday_auxiliary_not_hard_source"
 
 
+def test_awc_hard_source_signal_candidate_from_payload_is_read_only():
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-3-2026",
+        "event_date": "2026-07-03",
+        "rounding_rule": "whole_degrees",
+        "market_unit": "C",
+        "weather_likelihood_features": {
+            "zuuu_metar_raw_amsc_today_max_c": 30.0,
+            "zuuu_metar_raw_amsc_today_max_at": "2026-07-03T09:30:00Z",
+            "zuuu_metar_raw_amsc_latest_temp_c": 30.0,
+            "zuuu_metar_raw_amsc_latest_at": "2026-07-03T09:30:00Z",
+            "zuuu_metar_raw_amsc_fetched_at": "2026-07-03T09:31:37Z",
+            "zuuu_metar_raw_amsc_fetch_duration_ms": 210.0,
+            "zuuu_metar_raw_amsc_latest_raw": "ZUUU 030930Z ... 30/22",
+        },
+    }
+
+    candidate = poller.build_awc_hard_source_signal_candidate_from_payload(
+        payload,
+        candidate_seen_at="2026-07-03T09:31:38Z",
+    )
+
+    assert candidate["acceptance_state"] == "accepted"
+    assert candidate["signal_eligible"] is True
+    assert candidate["read_only"] is True
+    assert candidate["emits_signal"] is False
+    assert candidate["terminal_reason"] == "read_only_candidate_not_emitted"
+    assert candidate["source_id"] == "zuuu_metar_raw_amsc"
+    assert candidate["primary_hard_source"] is True
+    assert candidate["accepted_signal_source"] is True
+
+
+def test_hard_source_direct_decision_writes_awc_signal_timing_to_decision_and_job(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    fixed_valid = "2026-06-19T09:00:00Z"
+    fixed_seen = "2026-06-19T09:05:38Z"
+    fixed_fetch = "2026-06-19T09:05:37Z"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.id, h.fact_as_of, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    payload = json.loads(row["fact_json"])
+    features = dict(payload["weather_likelihood_features"])
+    features["zuuu_metar_raw_awc_today_max_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_latest_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_fetched_at"] = fixed_fetch
+    _set_primary_amsc_hard_source_features(features, valid_at=fixed_valid, fetched_at=fixed_fetch)
+    _set_primary_amsc_hard_source_features(features, valid_at=fixed_valid, fetched_at=fixed_fetch)
+    payload["weather_likelihood_features"] = features
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of = ?, fact_json = ? WHERE id = ?",
+        (fixed_fetch, json.dumps(payload, ensure_ascii=True), row["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(poller, "_utc_now_iso", lambda: fixed_seen)
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_WILL_ORDER", "1")
+
+    result = poller.record_hard_source_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "recorded"
+    assert result["job_id"]
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    decision = conn.execute(
+        "SELECT details_json FROM auto_trade_decisions WHERE action = 'entry' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    details = json.loads(decision["details_json"])
+    assert details["hard_source_acceptance_state"]["acceptance_state"] == "accepted"
+    assert details["signal_id"].startswith("sig_")
+    assert details["awc_hard_source_signal_at"] == fixed_seen
+    assert details["signal_to_order_timing"]["terminal_state"] == "decision_written"
+    assert details["signal_to_order_timing"]["signal_to_decision_ms"] == 0.0
+    assert (
+        details["hard_source_runtime_contract_version"]
+        == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    )
+    assert (
+        details["hard_source_runtime_contract"]["contract_version"]
+        == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    )
+
+    job = conn.execute(
+        "SELECT payload_json FROM auto_trade_jobs WHERE id = ?",
+        (int(result["job_id"]),),
+    ).fetchone()
+    job_payload = json.loads(job["payload_json"])
+    target = job_payload["entry_expected_targets"][0]
+    assert target["hard_source_acceptance_state"]["acceptance_state"] == "accepted"
+    assert target["hard_source_runtime_contract_version"] == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    assert target["signal_to_order_timing"]["terminal_state"] == "job_enqueued"
+    assert target["signal_to_order_timing"]["signal_to_job_enqueue_ms"] == 0.0
+    assert job_payload["hard_source_direct"]["signal_id"] == details["signal_id"]
+    assert (
+        job_payload["hard_source_direct"]["hard_source_runtime_contract_version"]
+        == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    )
+    assert job_payload["hard_source_direct"]["signal_to_order_timing"]["terminal_state"] == "job_enqueued"
+    conn.close()
+
+
+def test_hard_source_direct_decision_upserts_signal_to_order_ledger_when_schema_exists(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    _create_awc_hard_source_signals_table(db_path)
+    slug, event_date = _insert_fact(db_path)
+    fixed_valid = "2026-06-19T09:00:00Z"
+    fixed_seen = "2026-06-19T09:05:38Z"
+    fixed_fetch = "2026-06-19T09:05:37Z"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    payload = json.loads(row["fact_json"])
+    features = dict(payload["weather_likelihood_features"])
+    features["zuuu_metar_raw_awc_today_max_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_latest_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_fetched_at"] = fixed_fetch
+    _set_primary_amsc_hard_source_features(features, valid_at=fixed_valid, fetched_at=fixed_fetch)
+    payload["weather_likelihood_features"] = features
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of = ?, fact_json = ? WHERE id = ?",
+        (fixed_fetch, json.dumps(payload, ensure_ascii=True), row["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(poller, "_utc_now_iso", lambda: fixed_seen)
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_WILL_ORDER", "1")
+
+    result = poller.record_hard_source_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["ok"] is True
+    assert result["signal_to_order_ledger_result"]["status"] == "upserted"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    ledger = conn.execute("SELECT * FROM signal_to_order_timing").fetchone()
+    assert ledger is not None
+    assert ledger["signal_id"] == result["signal_to_order_ledger_result"]["signal_id"]
+    assert ledger["decision_id"] == str(result["decision_ids"][0])
+    assert ledger["awc_hard_source_signal_at"] == fixed_seen
+    assert ledger["auto_trade_decision_written_at"] == fixed_seen
+    assert ledger["order_job_enqueued_at"] == fixed_seen
+    timing = json.loads(ledger["timing_json"])
+    assert timing["terminal_state"] == "job_enqueued"
+    assert timing["signal_to_job_enqueue_ms"] == 0.0
+    signal = conn.execute("SELECT * FROM awc_hard_source_signals").fetchone()
+    assert signal is not None
+    assert signal["signal_id"] == ledger["signal_id"]
+    assert signal["source_event_id"]
+    assert signal["slug"] == slug
+    assert signal["event_date"] == event_date
+    assert signal["awc_valid_time"] == fixed_valid
+    assert signal["awc_hard_source_signal_at"] == fixed_seen
+    assert signal["acceptance_state"] == "accepted"
+    assert signal["terminal_state"] == "job_enqueued"
+    assert signal["state_reason"] == "awaiting_order_submit"
+    assert result["awc_hard_source_signal_ledger_result"]["status"] == "upserted"
+    conn.close()
+
+
+def test_hard_source_direct_enqueue_disabled_marks_signal_ledger_skipped(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    slug, event_date = _insert_fact(db_path)
+    fixed_valid = "2026-06-19T09:00:00Z"
+    fixed_seen = "2026-06-19T09:05:38Z"
+    fixed_fetch = "2026-06-19T09:05:37Z"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    payload = json.loads(row["fact_json"])
+    features = dict(payload["weather_likelihood_features"])
+    features["zuuu_metar_raw_awc_today_max_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_latest_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_fetched_at"] = fixed_fetch
+    _set_primary_amsc_hard_source_features(features, valid_at=fixed_valid, fetched_at=fixed_fetch)
+    payload["weather_likelihood_features"] = features
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of = ?, fact_json = ? WHERE id = ?",
+        (fixed_fetch, json.dumps(payload, ensure_ascii=True), row["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(poller, "_utc_now_iso", lambda: fixed_seen)
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_WILL_ORDER", "1")
+
+    result = poller.record_hard_source_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=False,
+    )
+
+    assert result["ok"] is True
+    assert result["job_id"] is None
+    assert result["signal_to_order_terminal_state"] == "skipped"
+    assert result["signal_to_order_terminal_reason"] == "hard_source_direct_enqueue_disabled"
+    assert result["signal_to_order_ledger_result"]["status"] == "upserted"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    decision = conn.execute(
+        "SELECT details_json FROM auto_trade_decisions WHERE action = 'entry' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    details = json.loads(decision["details_json"])
+    assert details["signal_to_order_timing"]["terminal_state"] == "skipped"
+    assert details["signal_to_order_slo_met"] is False
+    assert details["signal_to_order_slo_violation_reason"] == "hard_source_direct_enqueue_disabled"
+    ledger = conn.execute("SELECT * FROM signal_to_order_timing").fetchone()
+    timing = json.loads(ledger["timing_json"])
+    assert timing["terminal_state"] == "skipped"
+    assert timing["terminal_reason"] == "hard_source_direct_enqueue_disabled"
+    assert ledger["signal_to_order_slo_violation_reason"] == "hard_source_direct_enqueue_disabled"
+    conn.close()
+
+
+def test_hard_source_direct_will_order_disabled_marks_signal_ledger_no_action(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    slug, event_date = _insert_fact(db_path)
+    fixed_valid = "2026-06-19T09:00:00Z"
+    fixed_seen = "2026-06-19T09:05:38Z"
+    fixed_fetch = "2026-06-19T09:05:37Z"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    payload = json.loads(row["fact_json"])
+    features = dict(payload["weather_likelihood_features"])
+    features["zuuu_metar_raw_awc_today_max_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_latest_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_fetched_at"] = fixed_fetch
+    _set_primary_amsc_hard_source_features(features, valid_at=fixed_valid, fetched_at=fixed_fetch)
+    payload["weather_likelihood_features"] = features
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of = ?, fact_json = ? WHERE id = ?",
+        (fixed_fetch, json.dumps(payload, ensure_ascii=True), row["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(poller, "_utc_now_iso", lambda: fixed_seen)
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_WILL_ORDER", "0")
+
+    result = poller.record_hard_source_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["ok"] is True
+    assert result["job_id"] is None
+    assert result["signal_to_order_terminal_state"] == "no_action"
+    assert result["signal_to_order_terminal_reason"] == "hard_source_direct_will_order_disabled"
+    assert result["signal_to_order_ledger_result"]["status"] == "upserted"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+    decision = conn.execute(
+        "SELECT will_order, details_json FROM auto_trade_decisions WHERE action = 'entry' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert int(decision["will_order"]) == 0
+    details = json.loads(decision["details_json"])
+    assert details["signal_to_order_timing"]["terminal_state"] == "no_action"
+    assert details["signal_to_order_slo_met"] is False
+    assert details["signal_to_order_slo_violation_reason"] == "hard_source_direct_will_order_disabled"
+    ledger = conn.execute("SELECT * FROM signal_to_order_timing").fetchone()
+    timing = json.loads(ledger["timing_json"])
+    assert timing["terminal_state"] == "no_action"
+    assert timing["terminal_reason"] == "hard_source_direct_will_order_disabled"
+    assert ledger["signal_to_order_slo_violation_reason"] == "hard_source_direct_will_order_disabled"
+    conn.close()
+
+
+def test_hard_source_direct_rejected_stale_awc_signal_does_not_enqueue_job(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    _create_awc_hard_source_signals_table(db_path)
+    slug, event_date = _insert_fact(db_path)
+    fixed_valid = "2026-06-19T09:00:00Z"
+    fixed_seen = "2026-06-19T09:35:38Z"
+    fixed_fetch = "2026-06-19T09:06:37Z"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    payload = json.loads(row["fact_json"])
+    features = dict(payload["weather_likelihood_features"])
+    features["zuuu_metar_raw_awc_today_max_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_latest_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_fetched_at"] = fixed_fetch
+    _set_primary_amsc_hard_source_features(features, valid_at=fixed_valid, fetched_at=fixed_fetch)
+    payload["weather_likelihood_features"] = features
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of = ?, fact_json = ? WHERE id = ?",
+        (fixed_fetch, json.dumps(payload, ensure_ascii=True), row["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(poller, "_utc_now_iso", lambda: fixed_seen)
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_WILL_ORDER", "1")
+
+    result = poller.record_hard_source_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "hard_source_awc_signal_not_accepted"
+    assert result["job_id"] is None
+    assert result["decision_ids"] == []
+    assert result["hard_source_acceptance_state"]["acceptance_state"] == "rejected"
+    assert result["hard_source_acceptance_state"]["acceptance_reason"] == "signal_seen_after_stale_deadline"
+    assert result["hard_source_runtime_contract_version"] == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    assert (
+        result["hard_source_runtime_contract"]["contract_version"]
+        == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    )
+    assert result["signal_to_order_terminal_state"] == "stale"
+    assert result["signal_to_order_terminal_reason"] == "signal_seen_after_stale_deadline"
+    assert result["signal_to_order_ledger_result"]["status"] == "not_applicable_no_awc_hard_source_signal"
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    assert conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM signal_to_order_timing").fetchone()[0] == 0
+    signal = conn.execute("SELECT * FROM awc_hard_source_signals").fetchone()
+    assert signal is not None
+    assert signal["slug"] == slug
+    assert signal["event_date"] == event_date
+    assert signal["awc_valid_time"] == fixed_valid
+    assert signal["awc_hard_source_signal_at"] == ""
+    assert signal["acceptance_state"] == "rejected"
+    assert signal["terminal_state"] == "stale"
+    assert signal["state_reason"] == "signal_seen_after_stale_deadline"
+    assert conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0] == 1
+    conn.close()
+
+
+def test_add_hard_source_order_sla_computes_awc_signal_to_order_submit():
+    details = {
+        "hard_source_direct": True,
+        "signal_id": "sig_submit_segments",
+        "awc_hard_source_signal_at": "2026-07-03T09:05:38Z",
+        "signal_to_order_slo_ms": 3000,
+        "order_submit_started_at": "2026-07-03T09:05:39.100Z",
+        "order_submit_completed_at": "2026-07-03T09:05:39.700Z",
+        "order_submit_ms": 600.0,
+        "idempotency_key": "clobsvc:test-submit-segments",
+        "status": "submitted",
+        "exchange_post_started": True,
+        "exchange_post_started_at": "2026-07-03T09:05:40Z",
+        "signal_to_order_timing": {
+            "schema": "signal_to_order_timing_v1",
+            "signal_id": "sig_submit_segments",
+            "awc_hard_source_signal_at": "2026-07-03T09:05:38Z",
+            "terminal_state": "worker_started",
+        },
+    }
+    swm._apply_signal_to_order_execution_segments(
+        details,
+        orderbook_checked_at="2026-07-03T09:05:38.300Z",
+        orderbook_check_source="unit_test_orderbook",
+        orderbook_check_result="pass",
+        risk_checked_at="2026-07-03T09:05:38.900Z",
+        risk_check_source="unit_test_risk",
+        risk_check_result="pass",
+    )
+
+    out = swm._add_hard_source_order_sla(details, "2026-07-03T09:05:40Z")
+
+    assert out["awc_signal_to_order_submit_ms"] == 2000.0
+    assert out["signal_to_order_slo_met"] is True
+    assert out["signal_to_order_slo_violation_reason"] == ""
+    assert out["signal_to_order_timing"]["terminal_state"] == "submitted"
+    assert out["signal_to_order_timing"]["order_submitted_at"] == "2026-07-03T09:05:40Z"
+    assert out["signal_to_order_timing"]["orderbook_checked_at"] == "2026-07-03T09:05:38.300Z"
+    assert out["signal_to_order_timing"]["risk_checked_at"] == "2026-07-03T09:05:38.900Z"
+    assert out["signal_to_order_timing"]["idempotency_checked_at"] == "2026-07-03T09:05:39.100Z"
+    assert out["signal_to_order_timing"]["submit_requested_at"] == "2026-07-03T09:05:39.100Z"
+    assert out["signal_to_order_timing"]["exchange_ack_at"] == "2026-07-03T09:05:39.700Z"
+    assert out["signal_to_order_timing"]["order_ack_at"] == "2026-07-03T09:05:39.700Z"
+    assert out["signal_to_order_timing"]["idempotency_key"] == "clobsvc:test-submit-segments"
+    assert out["signal_to_order_timing"]["order_ack_status"] == "submitted"
+    assert out["signal_to_order_timing"]["signal_to_orderbook_ms"] == 300.0
+    assert out["signal_to_order_timing"]["orderbook_to_risk_check_ms"] == 600.0
+    assert out["signal_to_order_timing"]["risk_check_to_submit_ms"] == 200.0
+    assert out["signal_to_order_timing"]["submit_request_to_exchange_ack_ms"] == 600.0
+
+
+def test_fallback_decision_marks_signal_terminal_blocked_and_upserts_ledger(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    monkeypatch.setattr(swm, "DB_PATH", db_path)
+    monkeypatch.setattr(swm, "DATA_DIR", tmp_path)
+    signal_id = "sig_orderbook_blocked"
+    signal_at = "2026-06-19T09:05:38Z"
+
+    written = swm._record_auto_trade_fallback_decisions(
+        run_id=None,
+        run_date="2026-06-19",
+        slug="highest-temperature-in-chengdu-on-june-19-2026",
+        event_date="2026-06-19",
+        title="Highest temperature in Chengdu on June 19, 2026",
+        targets=[
+            {
+                "strategy": "hard_source_direct",
+                "outcome": "31\u00b0C",
+                "side": "YES",
+                "hard_source_direct": True,
+                "signal_id": signal_id,
+                "awc_hard_source_signal_at": signal_at,
+                "signal_to_order_slo_ms": 3000,
+                "signal_to_order_timing": {
+                    "schema": "signal_to_order_timing_v1",
+                    "signal_id": signal_id,
+                    "awc_hard_source_signal_at": signal_at,
+                    "terminal_state": "worker_started",
+                    "worker_started_at": "2026-06-19T09:05:39Z",
+                },
+            }
+        ],
+        reason_code="orderbook_missing",
+        reason_text="CLOB orderbook unavailable",
+        details={"source": "unit_test", "hard_source_direct": True},
+        decided_state="blocked",
+        will_order=0,
+    )
+
+    assert written == 1
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    decision = conn.execute(
+        "SELECT will_order, reason_codes_json, details_json FROM auto_trade_decisions"
+    ).fetchone()
+    details = json.loads(decision["details_json"])
+    assert decision["will_order"] == 0
+    assert "orderbook_missing" in json.loads(decision["reason_codes_json"])
+    assert details["signal_to_order_terminal_state"] == "blocked"
+    assert details["signal_to_order_terminal_reason"] == "orderbook_missing"
+    assert details["signal_to_order_slo_met"] is False
+    assert details["signal_to_order_slo_violation_reason"] == "orderbook_missing"
+
+    ledger = conn.execute(
+        "SELECT * FROM signal_to_order_timing WHERE signal_id = ?",
+        (signal_id,),
+    ).fetchone()
+    assert ledger is not None
+    assert ledger["signal_to_order_slo_violation_reason"] == "orderbook_missing"
+    timing = json.loads(ledger["timing_json"])
+    assert timing["terminal_state"] == "blocked"
+    assert timing["terminal_reason"] == "orderbook_missing"
+    assert timing["signal_to_terminal_ms"] is not None
+
+
+def test_payload_terminal_upsert_marks_runtime_lock_blocked(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    monkeypatch.setattr(swm, "DB_PATH", db_path)
+    signal_id = "sig_runtime_lock_busy"
+    signal_at = "2026-06-19T09:05:38Z"
+    payload = {
+        "hard_source_direct": {
+            "hard_source_direct": True,
+            "signal_id": signal_id,
+            "awc_hard_source_signal_at": signal_at,
+            "signal_to_order_timing": {
+                "schema": "signal_to_order_timing_v1",
+                "signal_id": signal_id,
+                "awc_hard_source_signal_at": signal_at,
+                "terminal_state": "job_enqueued",
+            },
+        }
+    }
+
+    result = swm._upsert_signal_to_order_terminal_for_payload(
+        payload,
+        terminal_state="blocked",
+        terminal_reason="runtime_lock_busy",
+        terminal_at="2026-06-19T09:05:39Z",
+    )
+
+    assert result[0]["status"] == "upserted"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    ledger = conn.execute(
+        "SELECT * FROM signal_to_order_timing WHERE signal_id = ?",
+        (signal_id,),
+    ).fetchone()
+    assert ledger is not None
+    timing = json.loads(ledger["timing_json"])
+    assert timing["terminal_state"] == "blocked"
+    assert timing["terminal_reason"] == "runtime_lock_busy"
+    assert timing["signal_to_order_slo_met"] is False
+
+
+def test_signal_terminal_classifier_covers_stale_and_worker_error():
+    assert (
+        swm._classify_signal_to_order_terminal_state(
+            "decision_stale",
+            "posterior freshness expired",
+        )
+        == "stale"
+    )
+    assert (
+        swm._classify_signal_to_order_terminal_state(
+            "event_worker_failed",
+            "worker_no_result",
+            will_order=True,
+        )
+        == "error"
+    )
+
+    details = {
+        "hard_source_direct": True,
+        "signal_id": "sig_worker_error",
+        "awc_hard_source_signal_at": "2026-06-19T09:05:38Z",
+        "signal_to_order_timing": {
+            "schema": "signal_to_order_timing_v1",
+            "signal_id": "sig_worker_error",
+            "awc_hard_source_signal_at": "2026-06-19T09:05:38Z",
+            "terminal_state": "worker_started",
+        },
+    }
+    out = swm._apply_signal_to_order_terminal(
+        details,
+        terminal_state="error",
+        terminal_reason="event_worker_failed",
+        terminal_at="2026-06-19T09:05:41Z",
+    )
+
+    assert out["signal_to_order_terminal_state"] == "error"
+    assert out["signal_to_order_slo_met"] is False
+    assert out["signal_to_order_slo_violation_reason"] == "event_worker_failed"
+    assert out["signal_to_order_timing"]["terminal_state"] == "error"
+    assert out["signal_to_terminal_ms"] == 3000.0
+
+
+def test_signal_to_order_timing_records_pre_signal_preparation_before_deadline():
+    timing = poller._signal_to_order_timing_from_candidate(
+        {
+            "signal_id": "sig_pre_signal_ready",
+            "source_event_id": "src_awc_20260703_0900",
+            "source_id": "zuuu_metar_raw_awc",
+            "acceptance_state": "accepted",
+            "acceptance_reason": "awc_hourly_signal_accepted",
+            "signal_eligible": True,
+            "awc_valid_time": "2026-07-03T09:00:00Z",
+            "awc_hard_source_signal_at": "2026-07-03T09:05:38Z",
+            "window": {
+                "hour_boundary_at": "2026-07-03T09:00:00Z",
+                "preparation_started_at": "2026-07-03T09:00:00Z",
+                "awc_pre_signal_deadline_at": "2026-07-03T09:05:00Z",
+                "awc_poll_window_started_at": "2026-07-03T09:05:00Z",
+                "awc_poll_window_ended_at": "2026-07-03T09:06:00Z",
+                "detection_lag_ms": 38000.0,
+            },
+        },
+        preparation_context={
+            "schema": "pre_signal_preparation_context_v1",
+            "source": "hard_source_direct_market_prefetch",
+            "pre_signal_prepare_due": True,
+            "pre_signal_prepare_inline": True,
+            "pre_signal_prepare_state": "prepared",
+            "pre_signal_prepare_reason": "market_prefetch_refreshed",
+            "pre_signal_prepare_started_at": "2026-07-03T09:04:40Z",
+            "pre_signal_prepared_at": "2026-07-03T09:04:50Z",
+            "pre_signal_prepare_completed_at": "2026-07-03T09:04:50Z",
+        },
+        decision_started_at="2026-07-03T09:05:38Z",
+        decision_written_at="2026-07-03T09:05:38Z",
+        terminal_state="decision_written",
+        terminal_reason="awaiting_job_enqueue_or_execution",
+        terminal_at="2026-07-03T09:05:38Z",
+    )
+
+    assert timing["hour_boundary_at"] == "2026-07-03T09:00:00Z"
+    assert timing["pre_signal_prepare_state"] == "prepared_before_deadline"
+    assert timing["pre_signal_prepare_reason"] == "market_prefetch_refreshed"
+    assert timing["pre_signal_prepare_due"] is True
+    assert timing["pre_signal_prepare_inline"] is True
+    assert timing["pre_signal_prepared_before_deadline"] is True
+    assert timing["hour_to_pre_signal_prepared_ms"] == 290000.0
+    assert timing["guards"]["pre_signal_places_orders"] is False
+    assert timing["guards"]["pre_signal_bypasses_awc_acceptance"] is False
+
+
+def test_signal_to_order_timing_keeps_partial_preparation_state():
+    timing = poller._signal_to_order_timing_from_candidate(
+        {
+            "signal_id": "sig_pre_signal_partial",
+            "source_event_id": "src_awc_20260703_0900",
+            "source_id": "zuuu_metar_raw_awc",
+            "acceptance_state": "accepted",
+            "acceptance_reason": "awc_hourly_signal_accepted",
+            "signal_eligible": True,
+            "awc_valid_time": "2026-07-03T09:00:00Z",
+            "awc_hard_source_signal_at": "2026-07-03T09:05:38Z",
+            "window": {
+                "hour_boundary_at": "2026-07-03T09:00:00Z",
+                "preparation_started_at": "2026-07-03T09:00:00Z",
+                "awc_pre_signal_deadline_at": "2026-07-03T09:05:00Z",
+                "awc_poll_window_started_at": "2026-07-03T09:05:00Z",
+                "awc_poll_window_ended_at": "2026-07-03T09:06:00Z",
+            },
+        },
+        preparation_context={
+            "schema": "pre_signal_preparation_context_v1",
+            "source": "hard_source_direct_market_prefetch",
+            "pre_signal_prepare_due": True,
+            "pre_signal_prepare_inline": True,
+            "pre_signal_prepare_state": "preparation_partial",
+            "pre_signal_prepare_reason": "missing_required_components:orderbook",
+            "pre_signal_prepare_started_at": "2026-07-03T09:04:40Z",
+            "pre_signal_prepared_at": "2026-07-03T09:04:50Z",
+            "pre_signal_prepare_completed_at": "2026-07-03T09:04:50Z",
+            "pre_signal_prepare_required_components": ["market_prefetch", "orderbook"],
+            "pre_signal_prepare_missing_components": ["orderbook"],
+            "pre_signal_prepare_components": {
+                "market_prefetch": {"ok": True, "state": "prepared"},
+                "orderbook": {"ok": False, "state": "missing"},
+            },
+            "pre_signal_prepare_complete": False,
+        },
+        decision_started_at="2026-07-03T09:05:38Z",
+        decision_written_at="2026-07-03T09:05:38Z",
+        terminal_state="decision_written",
+        terminal_reason="awaiting_job_enqueue_or_execution",
+        terminal_at="2026-07-03T09:05:38Z",
+    )
+
+    assert timing["pre_signal_prepare_state"] == "preparation_partial"
+    assert timing["pre_signal_prepared_before_deadline"] is True
+    assert timing["pre_signal_prepare_complete"] is False
+    assert timing["pre_signal_prepare_missing_components"] == ["orderbook"]
+    assert timing["pre_signal_prepare_components"]["orderbook"]["state"] == "missing"
+
+
+def test_pre_signal_component_snapshot_marks_market_components_ready(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE market_tokens(
+            slug TEXT,
+            event_date TEXT,
+            outcome TEXT,
+            yes_token TEXT,
+            no_token TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE event_market_ticks(
+            slug TEXT,
+            event_date TEXT,
+            outcome TEXT,
+            side TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO market_tokens(slug, event_date, outcome, yes_token, no_token, updated_at)
+        VALUES('highest-temperature-in-chengdu-on-july-3-2026', '2026-07-03',
+               '32°C', 'yes32', 'no32', '2026-07-03T09:04:50Z')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO event_market_ticks(slug, event_date, outcome, side, created_at)
+        VALUES('highest-temperature-in-chengdu-on-july-3-2026', '2026-07-03',
+               '32°C', 'YES', '2026-07-03T09:04:50Z')
+        """
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv(
+        "PM_HARD_SOURCE_DIRECT_PRE_SIGNAL_REQUIRED_COMPONENTS",
+        "market_prefetch,market_mapping,orderbook,open_orders,positions,capital_caps",
+    )
+    monkeypatch.setattr(
+        poller.swm,
+        "_auto_trade_cached_open_orders_by_token",
+        lambda allow_fetch, force_refresh=False: poller.swm._AUTO_TRADE_OPEN_ORDERS_CACHE.update(
+            {
+                "ts": 1.0,
+                "by_token": {},
+                "last_source": "unit_test",
+                "last_age_sec": 0.0,
+            }
+        )
+        or {},
+    )
+    monkeypatch.setattr(
+        poller.swm,
+        "fetch_positions_by_token",
+        lambda force=False: poller.swm.POSITIONS_CACHE.update(
+            {
+                "ts": 1.0,
+                "data": {},
+                "error": "",
+                "last_source": "unit_test",
+                "last_age_sec": 0.0,
+            }
+        )
+        or ({}, ""),
+    )
+
+    snapshot = poller._pre_signal_preparation_component_snapshot(
+        db_path,
+        event_date="2026-07-03",
+        slug="highest-temperature-in-chengdu-on-july-3-2026",
+        payload={
+            "target_realization_capital_plan": {
+                "version": "test-plan-v1",
+                "target_bucket": "32°C",
+            }
+        },
+        market_prefetch_result={
+            "ok": True,
+            "status": "market_prefetch_refreshed",
+            "count": 1,
+            "created_at": "2026-07-03T09:04:50Z",
+        },
+    )
+    context = poller._pre_signal_preparation_context_from_market_prefetch(
+        {
+            "ok": True,
+            "status": "market_prefetch_refreshed",
+            "count": 1,
+            "created_at": "2026-07-03T09:04:50Z",
+        },
+        due=True,
+        inline=True,
+        started_at="2026-07-03T09:04:40Z",
+        completed_at="2026-07-03T09:04:50Z",
+        component_snapshot=snapshot,
+    )
+
+    assert snapshot["complete"] is True
+    assert snapshot["missing_required_components"] == []
+    assert snapshot["components"]["market_mapping"]["token_count"] == 1
+    assert snapshot["components"]["orderbook"]["tick_count"] == 1
+    assert snapshot["components"]["open_orders"]["ok"] is True
+    assert snapshot["components"]["positions"]["ok"] is True
+    assert context["pre_signal_prepare_state"] == "prepared"
+    assert context["pre_signal_prepare_complete"] is True
+
+
 def test_settlement_actual_used_as_final_hard_observation():
     payload = {
         "settlement_actual": 33.0,
@@ -923,7 +2074,7 @@ def test_same_bucket_opposite_side_is_active_old_position(tmp_path):
     assert ("31\u00b0C", "NO") in [(item["outcome"], item["side"]) for item in active]
 
 
-def test_only_remote_ring_no_positions_are_not_old_exits_for_yes_target(tmp_path):
+def test_all_non_target_positions_are_old_after_remote_no_retirement(tmp_path):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
     slug, event_date = _insert_fact(db_path)
@@ -951,7 +2102,6 @@ def test_only_remote_ring_no_positions_are_not_old_exits_for_yes_target(tmp_path
             event_date=event_date,
             target_outcome="31\u00b0C",
             target_side="YES",
-            allowed_remote_no_outcomes=["28\u00b0C", "29\u00b0C", "34\u00b0C", "35\u00b0C or higher"],
         )
     finally:
         conn.close()
@@ -962,7 +2112,7 @@ def test_only_remote_ring_no_positions_are_not_old_exits_for_yes_target(tmp_path
     assert ("31\u00b0C", "YES") not in active_pairs
     assert ("32\u00b0C", "NO") in active_pairs
     assert ("33\u00b0C", "NO") in active_pairs
-    assert ("34\u00b0C", "NO") not in active_pairs
+    assert ("34\u00b0C", "NO") in active_pairs
 
 
 def _create_schema(db_path: Path) -> None:
@@ -1153,6 +2303,32 @@ def _create_schema(db_path: Path) -> None:
     conn.close()
 
 
+def _create_signal_to_order_timing_table(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = []
+        for column in SIGNAL_TO_ORDER_TIMING_COLUMNS:
+            suffix = " PRIMARY KEY" if column == "signal_id" else ""
+            columns.append(f"{column} TEXT{suffix}")
+        conn.execute(f"CREATE TABLE signal_to_order_timing ({', '.join(columns)})")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _create_awc_hard_source_signals_table(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = []
+        for column in AWC_HARD_SOURCE_SIGNAL_COLUMNS:
+            suffix = " PRIMARY KEY" if column == "signal_id" else ""
+            columns.append(f"{column} TEXT{suffix}")
+        conn.execute(f"CREATE TABLE awc_hard_source_signals ({', '.join(columns)})")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _insert_fact(db_path: Path) -> tuple[str, str]:
     slug = "highest-temperature-in-chengdu-on-june-19-2026"
     event_date = "2026-06-19"
@@ -1171,6 +2347,13 @@ def _insert_fact(db_path: Path) -> tuple[str, str]:
         "rules_contract_ok": True,
         "rules_missing_reasons": [],
         "weather_likelihood_features": {
+            "zuuu_metar_raw_amsc_today_max_c": 31.0,
+            "zuuu_metar_raw_amsc_today_max_at": now_iso,
+            "zuuu_metar_raw_amsc_latest_temp_c": 31.0,
+            "zuuu_metar_raw_amsc_latest_at": now_iso,
+            "zuuu_metar_raw_amsc_fetched_at": now_iso,
+            "zuuu_metar_raw_amsc_fetch_duration_ms": 42,
+            "zuuu_metar_raw_amsc_latest_raw": "ZUUU 190900Z ... 31/22",
             "zuuu_metar_raw_awc_today_max_c": 31.0,
             "zuuu_metar_raw_awc_today_max_at": now_iso,
             "zuuu_metar_raw_awc_latest_at": now_iso,
@@ -1184,6 +2367,8 @@ def _insert_fact(db_path: Path) -> tuple[str, str]:
                 "outcome": "30\u00b0C",
                 "q_entry": 0.7,
                 "q_round": 0.7,
+                "q_bayes_posterior": 0.7,
+                "q_temperature_bucket_posterior": 0.7,
                 "best_bid": 0.4,
                 "best_ask": 0.43,
                 "spread": 0.03,
@@ -1199,6 +2384,8 @@ def _insert_fact(db_path: Path) -> tuple[str, str]:
                 "outcome": "31\u00b0C",
                 "q_entry": 0.2,
                 "q_round": 0.2,
+                "q_bayes_posterior": 0.2,
+                "q_temperature_bucket_posterior": 0.2,
                 "best_bid": 0.2,
                 "best_ask": 0.23,
                 "spread": 0.03,
@@ -1212,6 +2399,7 @@ def _insert_fact(db_path: Path) -> tuple[str, str]:
             },
         ],
     }
+    _attach_unit_posterior_ssot_fact(payload, target_bucket="30\u00b0C", target_probability=0.7)
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -1281,6 +2469,296 @@ def _insert_fact(db_path: Path) -> tuple[str, str]:
     return slug, event_date
 
 
+def test_posterior_target_direct_freezes_existing_positions_before_v3_activation(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET", "2099-01-01")
+
+    first = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        enqueue_job=True,
+    )
+    second = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        enqueue_job=True,
+    )
+
+    assert first["status"] == "d1_existing_positions_frozen"
+    assert first["existing_positions_adjusted"] is False
+    assert first["job_enqueued"] is False
+    assert second["decision_written"] is False
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+        row = conn.execute(
+            "SELECT action, decided_state, will_order, reason_codes_json, details_json FROM auto_trade_decisions"
+        ).fetchone()
+        assert row[0] == "hold"
+        assert row[1] == "frozen"
+        assert row[2] == 0
+        assert "target_realization_d1_existing_positions_frozen" in row[3]
+        assert json.loads(row[4])["existing_positions_adjusted"] is False
+        trade = conn.execute(
+            "SELECT exit_skip_reason, exit_skip_detail, exit_skip_at FROM edge_trades WHERE slug=? AND event_date=?",
+            (slug, event_date),
+        ).fetchone()
+        assert trade[0] == "target_realization_d1_existing_positions_frozen"
+        assert json.loads(trade[1])["no_position_or_order_mutation"] is True
+        assert trade[2]
+    finally:
+        conn.close()
+
+
+def test_dynamic_three_leg_reselection_enqueues_managed_old_position_exit_before_any_buy(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    _rewrite_posterior_target_probability(
+        db_path,
+        slug=slug,
+        event_date=event_date,
+        target_outcome="31°C",
+        target_probability=0.62,
+    )
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO edge_trades(
+            slug, event_date, outcome, side, state,
+            entry_price, entry_size, position_size, avg_price, last_order_id, updated_at
+        ) VALUES(?, ?, '31°C', 'NO', 'entry', 0.70, 5.0, 5.0, 0.70, 'managed-old-no', ?)
+        """,
+        (slug, event_date, _utc_fixture_iso()),
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auto_orders(
+            order_id TEXT, slug TEXT, event_date TEXT, outcome TEXT, side TEXT,
+            action TEXT, strategy TEXT, created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO auto_orders(order_id, slug, event_date, outcome, side, action, strategy, created_at)
+        VALUES('managed-old-no', ?, ?, '31°C', 'NO', 'entry', 'posterior_settlement', ?)
+        """,
+        (slug, event_date, _utc_fixture_iso()),
+    )
+    conn.execute(
+        """
+        INSERT INTO event_market_ticks(
+            run_date, event_date, slug, outcome, side,
+            best_bid, best_ask, bid_depth_topN, ask_depth_topN, source, created_at
+        ) VALUES('2026-06-18', ?, ?, '31°C', 'NO', 0.74, 0.76, 100, 100, 'test', ?)
+        """,
+        (event_date, slug, _utc_fixture_iso(2)),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ENABLED", "1")
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET", "2000-01-01")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_DECISION_WINDOW_ENABLED", "0")
+
+    result = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        enqueue_job=True,
+    )
+
+    assert result["target_realization_capital_plan_version"] == "strong_posterior_three_leg_strategy_v2"
+    assert result["target_realization_v3_execution_phase"] == "SELL_OLD"
+    assert result["sell_target_count"] >= 1
+    assert result["job_enqueued"] is True
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        job = conn.execute("SELECT payload_json FROM auto_trade_jobs WHERE id=?", (result["job_id"],)).fetchone()
+        payload = json.loads(job["payload_json"])
+        assert payload["target_realization_v3"]["execution_phase"] == "SELL_OLD"
+        assert payload["target_realization_v3"]["sell_old_before_buy_new"] is True
+        assert payload["entry_expected_targets"]
+        assert all(
+            target["target_realization_execution_action"] == "SELL"
+            for target in payload["entry_expected_targets"]
+        )
+        assert all(target["order_type"] == "GTC" for target in payload["entry_expected_targets"])
+        assert all(target["post_only"] is True for target in payload["entry_expected_targets"])
+        no_exit = next(
+            target
+            for target in payload["entry_expected_targets"]
+            if target["outcome"] == "31°C" and target["side"] == "NO"
+        )
+        assert no_exit["limit_price"] == 0.76
+        assert no_exit["target_realization_price_source"] == "best_ask"
+        decisions = conn.execute(
+            "SELECT action, reason_codes_json FROM auto_trade_decisions ORDER BY id"
+        ).fetchall()
+        assert any(
+            row["action"] == "exit"
+            and "target_realization_no_invalidated" in row["reason_codes_json"]
+            for row in decisions
+        )
+    finally:
+        conn.close()
+
+
+
+
+def test_removed_recycle_plan_fields_have_no_target_builder() -> None:
+    assert not hasattr(poller, "_target_realization_v3_recycle_target")
+
+
+def test_target_realization_v3_buy_job_preserves_all_ready_leg_deltas(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    now_iso = _utc_fixture_iso()
+    conn.execute(
+        """
+        INSERT INTO event_market_ticks(
+            run_date, event_date, slug, outcome, side,
+            best_bid, best_ask, bid_depth_topN, ask_depth_topN, source, created_at
+        ) VALUES('2026-06-18', ?, ?, '31°C', 'NO', 0.74, 0.76, 100, 100, 'test', ?)
+        """,
+        (event_date, slug, now_iso),
+    )
+    conn.commit()
+    plan = {
+        "ok": True,
+        "version": "strong_posterior_three_leg_strategy_v2",
+        "plan_id": "trv3-buy-two",
+        "target_bucket": "30°C",
+        "target_posterior": 0.70,
+        "legs": [
+            {
+                "role": "target_yes_trading_leg",
+                "bucket": "30°C",
+                "side": "YES",
+                "posterior": 0.70,
+                "target_notional": 12.0,
+                "delta_notional": 7.0,
+                "action": "add",
+                "execution_state": "ready",
+                "block_reason": "",
+            },
+            {
+                "role": "strongly_excluded_no",
+                "bucket": "31°C",
+                "side": "NO",
+                "posterior": 0.20,
+                "target_notional": 20.0,
+                "delta_notional": 11.0,
+                "action": "add",
+                "execution_state": "ready",
+                "block_reason": "",
+            },
+        ],
+        "sell_old_legs": [],
+    }
+    snapshot = {
+        "slug": slug,
+        "event_date": event_date,
+        "run_date": "2026-06-18",
+        "title": "Chengdu high",
+        "target_realization_capital_plan": plan,
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "target_bucket": "30°C",
+            "target_probability": 0.70,
+            "fact_snapshot_id": "fact-buy-two",
+            "posterior_run_id": "run-buy-two",
+        },
+        "rows": [
+            {"outcome": "30°C", "q_temperature_bucket_posterior": 0.70},
+            {"outcome": "31°C", "q_temperature_bucket_posterior": 0.20},
+        ],
+    }
+    result = poller._record_target_realization_v3_plan_decisions(
+        conn,
+        run_date="2026-06-18",
+        slug=slug,
+        event_date=event_date,
+        snapshot_payload=snapshot,
+        plan=plan,
+        fact_id=1,
+        fact_as_of=now_iso,
+        enqueue_job=True,
+    )
+
+    assert result["target_realization_v3_execution_phase"] == "BUY_NEW"
+    assert result["buy_target_count"] == 2
+    payload = json.loads(
+        conn.execute(
+            "SELECT payload_json FROM auto_trade_jobs WHERE id=?", (result["job_id"],)
+        ).fetchone()[0]
+    )
+    targets = {
+        (target["outcome"], target["side"]): target
+        for target in payload["entry_expected_targets"]
+    }
+    assert len(targets) == 2
+    assert targets[("30°C", "YES")]["target_realization_plan_notional"] == 7.0
+    assert targets[("31°C", "NO")]["target_realization_plan_notional"] == 11.0
+    assert targets[("30°C", "YES")]["q_entry"] == 0.70
+    assert targets[("31°C", "NO")]["q_entry"] == 0.80
+    assert targets[("30°C", "YES")]["limit_price"] == 0.39
+    assert targets[("31°C", "NO")]["limit_price"] == 0.74
+    assert all(target["post_only"] is True for target in targets.values())
+    assert all(target["order_type"] == "GTC" for target in targets.values())
+    assert payload["posterior_target_direct"]["primary_only_fast_path_allowed"] is False
+    conn.close()
+
+
+def test_posterior_target_direct_v3_fill_transition_cannot_reset_stale_observation_timer(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of='2000-01-01T00:00:00+00:00'"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ENABLED", "1")
+    monkeypatch.setenv("PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET", "2000-01-01")
+    transition_at = _utc_fixture_iso()
+
+    result = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        enqueue_job=True,
+        transition_signal_at=transition_at,
+    )
+
+    # A fill may get its own execution timer only after the originating
+    # observation passed T1-based freshness.  It cannot turn a 26-year-old
+    # physical report into a fresh BUY signal by resetting T3 alone.
+    assert result["status"] == "sequential_bayes_execution_contract_blocked"
+
+
 def _rewrite_posterior_target_probability(
     db_path: Path,
     *,
@@ -1293,7 +2771,7 @@ def _rewrite_posterior_target_probability(
     conn.row_factory = sqlite3.Row
     latest = conn.execute(
         """
-        SELECT h.id, h.fact_json
+        SELECT h.id, h.fact_as_of, h.fact_json
         FROM event_fact_latest l
         JOIN event_fact_history h ON h.id = l.fact_id
         WHERE l.slug = ? AND l.event_date = ?
@@ -1320,6 +2798,8 @@ def _rewrite_posterior_target_probability(
         "version": "target_realization_capital_plan_v2",
         "target_bucket": target_outcome,
         "target_posterior": target_probability,
+        "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+        "target_probability_field": "posterior_ssot_fact.target_probability",
         "temperature_path_trade_follow_allowed": True,
         "temperature_path_trade_follow_reason": (
             "posterior_path_reliability_and_freshness_pass"
@@ -1331,6 +2811,11 @@ def _rewrite_posterior_target_probability(
             "leg_enabled": True,
         },
     }
+    _attach_unit_posterior_ssot_fact(
+        payload,
+        target_bucket=target_outcome,
+        target_probability=target_probability,
+    )
     conn.execute(
         "UPDATE event_fact_history SET fact_json = ? WHERE id = ?",
         (json.dumps(payload), latest["id"]),
@@ -1353,7 +2838,7 @@ def _set_target_market_price(
     conn.row_factory = sqlite3.Row
     latest = conn.execute(
         """
-        SELECT h.id, h.fact_json
+        SELECT h.id, h.fact_as_of, h.fact_json
         FROM event_fact_latest l
         JOIN event_fact_history h ON h.id = l.fact_id
         WHERE l.slug = ? AND l.event_date = ?
@@ -1467,6 +2952,11 @@ def _insert_nonfinal_switch_fact(db_path: Path) -> tuple[str, str]:
             },
         ],
     }
+    _attach_unit_posterior_ssot_fact(
+        payload,
+        target_bucket="31\u00b0C",
+        target_probability=0.62,
+    )
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -1708,6 +3198,216 @@ def test_hard_source_direct_records_target_entry_exit_and_job(tmp_path, monkeypa
     assert by_outcome["31\u00b0C"]["q_bayes_posterior"] > 0.99
 
 
+def test_phase0_lineage_forward_schema_missing_does_not_block_trade_path(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
+
+    result = poller.record_hard_source_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["ok"] is True
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        decision_cols = {row["name"] for row in conn.execute("PRAGMA table_info(auto_trade_decisions)")}
+        job_cols = {row["name"] for row in conn.execute("PRAGMA table_info(auto_trade_jobs)")}
+        assert "signal_id" not in decision_cols
+        assert "fact_snapshot_id" not in decision_cols
+        assert "order_intent_id" not in job_cols
+        for planned_table in (
+            "source_observations",
+            "awc_hard_source_signals",
+            "signal_to_order_timing",
+        ):
+            assert conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (planned_table,),
+            ).fetchone() is None
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0] >= 1
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 1
+        job_payload = json.loads(
+            conn.execute("SELECT payload_json FROM auto_trade_jobs ORDER BY id DESC LIMIT 1").fetchone()[0]
+        )
+        assert job_payload["hard_source_direct"]["decision_semantics"] == "ssot_posterior_constraint"
+        assert job_payload["entry_expected_targets"][0]["hard_source_direct"] is True
+    finally:
+        conn.close()
+
+
+def test_hard_source_fact_snapshot_writer_plan_has_lineage_and_repoint_policy(tmp_path):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        latest = conn.execute(
+            """
+            SELECT h.*
+            FROM event_fact_latest l
+            JOIN event_fact_history h ON h.id = l.fact_id
+            WHERE l.slug = ? AND l.event_date = ?
+            """,
+            (slug, event_date),
+        ).fetchone()
+        payload = json.loads(latest["fact_json"])
+        payload["hard_source_fact_write_reason"] = "unit_test_hard_source_writer_plan"
+        next_fact_as_of = _utc_fixture_iso(2)
+
+        plan = poller.build_hard_source_fact_snapshot_writer_apply_plan(
+            conn,
+            latest_row=latest,
+            item=payload,
+            fact_as_of=next_fact_as_of,
+        )
+
+        actions = {row["action"]: row for row in plan["plan_actions"]}
+        assert plan["caller"]["lane"] == "hard_source_realtime"
+        assert plan["caller"]["kill_switch_env"] == "PM_HARD_SOURCE_FACT_WRITER_APPLY_ENABLED=0"
+        assert plan["apply_supported"] is True
+        assert actions["append_event_fact_history"]["would_write"] is True
+        assert actions["repoint_event_fact_latest"]["would_write"] is True
+        assert actions["upsert_event_fact_summary_cache"]["would_write"] is True
+        assert plan["source_event_ids"]
+        assert plan["source_observation_ids"]
+        assert plan["effective_payload"]["source_observation_ids"] == plan["source_observation_ids"]
+        assert plan["effective_payload"]["source_observations"][0]["source_observation_id"] == plan["source_observation_ids"][0]
+        assert plan["effective_payload"]["source_latency_trace"][0]["source_observation_id"] == plan["source_observation_ids"][0]
+        assert plan["source_acquisition_trace_summary"]["hard_observation_candidate_count"] >= 1
+        assert plan["effective_payload"]["fact_layer_state"]["write_owner"] == "weather_fact_snapshot_writer"
+        assert plan["effective_payload"]["phase0_fact_json_contract"]["historical_backfill"] is False
+    finally:
+        conn.close()
+
+
+def test_hard_source_fact_snapshot_writer_plan_fallback_trace_keeps_source_observation_id(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        latest = conn.execute(
+            """
+            SELECT h.*
+            FROM event_fact_latest l
+            JOIN event_fact_history h ON h.id = l.fact_id
+            WHERE l.slug = ? AND l.event_date = ?
+            """,
+            (slug, event_date),
+        ).fetchone()
+        payload = json.loads(latest["fact_json"])
+        monkeypatch.setattr(
+            poller,
+            "_source_payloads_from_fact_payload",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("unit trace failure")),
+        )
+
+        plan = poller.build_hard_source_fact_snapshot_writer_apply_plan(
+            conn,
+            latest_row=latest,
+            item=payload,
+            fact_as_of=_utc_fixture_iso(2),
+        )
+
+        assert plan["source_observation_ids"]
+        trace = plan["effective_payload"]["source_acquisition_trace"]
+        assert trace["trace_error"] == "RuntimeError: unit trace failure"
+        assert trace["source_observations"][0]["source_observation_id"] == plan["source_observation_ids"][0]
+        assert trace["source_latency_trace"][0]["source_observation_id"] == plan["source_observation_ids"][0]
+    finally:
+        conn.close()
+
+
+def test_insert_fact_snapshot_defaults_to_weather_fact_writer(tmp_path, monkeypatch):
+    monkeypatch.delenv("PM_HARD_SOURCE_FACT_WRITER_APPLY_ENABLED", raising=False)
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        latest = conn.execute(
+            """
+            SELECT h.*
+            FROM event_fact_latest l
+            JOIN event_fact_history h ON h.id = l.fact_id
+            WHERE l.slug = ? AND l.event_date = ?
+            """,
+            (slug, event_date),
+        ).fetchone()
+        payload = json.loads(latest["fact_json"])
+        payload["awc_hard_observation_fast_trade_write"] = True
+        payload["hard_source_fact_write_reason"] = "unit_test_default_writer_apply"
+        next_fact_as_of = _utc_fixture_iso(2)
+
+        fact_id = poller._insert_fact_snapshot(
+            conn,
+            latest_row=latest,
+            item=payload,
+            fact_as_of=next_fact_as_of,
+        )
+
+        assert fact_id
+        latest_fact_id = conn.execute(
+            "SELECT fact_id FROM event_fact_latest WHERE slug=? AND event_date=?",
+            (slug, event_date),
+        ).fetchone()["fact_id"]
+        assert latest_fact_id == fact_id
+        stored = json.loads(
+            conn.execute("SELECT fact_json FROM event_fact_history WHERE id=?", (fact_id,)).fetchone()[
+                "fact_json"
+            ]
+        )
+        assert stored["fact_layer_state"]["write_owner"] == "weather_fact_snapshot_writer"
+        assert stored["db_write_guard"]["historical_backfill"] is False
+        assert stored["source_acquisition_trace"]["hard_observation_candidate_ids"]
+        assert stored["source_observation_ids"]
+        assert stored["source_acquisition_trace"]["source_observation_ids"] == stored["source_observation_ids"]
+        assert stored["phase0_fact_json_contract"]["write_owner"] == "weather_fact_snapshot_writer"
+        summary = json.loads(
+            conn.execute(
+                "SELECT summary_json FROM event_fact_summary_cache WHERE fact_id=?",
+                (fact_id,),
+            ).fetchone()["summary_json"]
+        )
+        assert summary["summary_cache_source"] == "weather_fact_snapshot_writer"
+        assert summary["fast_trade_summary_cache"] is True
+    finally:
+        conn.close()
+
+
+def test_insert_fact_snapshot_kill_switch_fails_closed_without_ui_writer(tmp_path, monkeypatch):
+    monkeypatch.setenv("PM_HARD_SOURCE_FACT_WRITER_APPLY_ENABLED", "0")
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        latest = conn.execute(
+            """
+            SELECT h.* FROM event_fact_latest l
+            JOIN event_fact_history h ON h.id = l.fact_id
+            WHERE l.slug = ? AND l.event_date = ?
+            """,
+            (slug, event_date),
+        ).fetchone()
+        assert poller._insert_fact_snapshot(
+            conn, latest_row=latest, item=json.loads(latest["fact_json"]),
+            fact_as_of="2026-06-19T09:05:42Z",
+        ) is None
+    finally:
+        conn.close()
+
 def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path, monkeypatch):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
@@ -1753,6 +3453,8 @@ def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path
             "version": "target_realization_capital_plan_v2",
             "target_bucket": "31\u00b0C",
             "target_posterior": prob,
+            "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+            "target_probability_field": "posterior_ssot_fact.target_probability",
             "temperature_path_trade_follow_allowed": True,
             "temperature_path_trade_follow_reason": "posterior_path_reliability_and_freshness_pass",
             "buy_new_leg": {
@@ -1762,6 +3464,7 @@ def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path
                 "leg_enabled": True,
             },
         }
+        _attach_unit_posterior_ssot_fact(payload, target_bucket="31\u00b0C", target_probability=prob)
         conn.execute(
             "UPDATE event_fact_history SET fact_json = ? WHERE id = ?",
             (json.dumps(payload), latest["id"]),
@@ -1840,246 +3543,6 @@ def test_posterior_target_direct_records_probability_change_same_bucket(tmp_path
     )
     assert third["status"] == "recorded"
     assert third["entry_order_update_triggered"] is True
-
-
-def test_posterior_target_direct_enqueues_remote_no_targets_from_capital_plan(
-    tmp_path,
-    monkeypatch,
-):
-    db_path = tmp_path / "archive.db"
-    _create_schema(db_path)
-    slug, event_date = _insert_fact(db_path)
-    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
-    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_DECISION_WINDOW_ENABLED", "0")
-    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_MIN_PROB_DELTA", "0.001")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE", "2")
-    monkeypatch.setenv("PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE", "3")
-    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_PRIMARY_ONLY_PRECHECK", "0")
-    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_PRIMARY_ONLY_JOB_PAYLOAD", "0")
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    latest = conn.execute(
-        """
-        SELECT h.id, h.fact_json
-        FROM event_fact_latest l
-        JOIN event_fact_history h ON h.id = l.fact_id
-        WHERE l.slug = ? AND l.event_date = ?
-        """,
-        (slug, event_date),
-    ).fetchone()
-    payload = json.loads(latest["fact_json"])
-    rows = [
-        ("30\u00b0C", 0.08, 0.10, 0.88),
-        ("31\u00b0C", 0.62, 0.24, 0.36),
-        ("32\u00b0C", 0.12, 0.14, 0.84),
-        ("33\u00b0C", 0.08, 0.09, 0.90),
-        ("34\u00b0C", 0.06, 0.08, 0.91),
-        ("35\u00b0C or higher", 0.04, 0.06, 0.93),
-    ]
-    payload["distribution"] = [
-        {
-            "outcome": outcome,
-            "q_entry": prob,
-            "q_round": prob,
-            "q_bayes_posterior": prob,
-            "q_temperature_bucket_posterior": prob,
-            "best_bid": max(0.01, ask_yes - 0.03),
-            "best_ask": ask_yes,
-            "best_bid_no": max(0.01, ask_no - 0.03),
-            "best_ask_no": ask_no,
-            "spread": 0.03,
-            "yes_token": f"yes-{outcome}",
-            "no_token": f"no-{outcome}",
-            "market_active": True,
-            "market_closed": False,
-            "market_archived": False,
-            "market_accepting_orders": True,
-            "market_enable_orderbook": True,
-        }
-        for outcome, prob, ask_yes, ask_no in rows
-    ]
-    payload["posterior_target_bucket_selection"] = {
-        "target_bucket": "31\u00b0C",
-        "target_probability": 0.62,
-        "target_probability_pct": 62.0,
-    }
-    payload["target_realization_capital_plan"] = {
-        "ok": True,
-        "version": "target_realization_capital_plan_v2",
-        "target_bucket": "31\u00b0C",
-        "target_posterior": 0.62,
-        "temperature_path_trade_follow_allowed": True,
-        "temperature_path_trade_follow_reason": "posterior_path_reliability_and_freshness_pass",
-        "temperature_path_trade_follow_block_yes": False,
-        "legs": [
-            {"role": "target_yes", "bucket": "31\u00b0C", "side": "YES", "posterior": 0.62},
-            {"role": "second_target_yes", "bucket": "32\u00b0C", "side": "YES", "posterior": 0.12},
-            {
-                "role": "remote_no",
-                "bucket": "32\u00b0C",
-                "side": "NO",
-                "posterior": 0.12,
-                "action": "add",
-                "target_notional": 25.0,
-                "delta_notional": 25.0,
-            },
-            {
-                "role": "remote_no",
-                "bucket": "33\u00b0C",
-                "side": "NO",
-                "posterior": 0.08,
-                "action": "add",
-                "target_notional": 40.5,
-                "delta_notional": 40.5,
-            },
-            {
-                "role": "remote_no",
-                "bucket": "34\u00b0C",
-                "side": "NO",
-                "posterior": 0.06,
-                "action": "add",
-                "target_notional": 38.0,
-                "delta_notional": 38.0,
-            },
-            {
-                "role": "remote_no",
-                "bucket": "35\u00b0C or higher",
-                "side": "NO",
-                "posterior": 0.04,
-                "action": "add",
-                "target_notional": 30.0,
-                "delta_notional": 30.0,
-            },
-        ],
-    }
-    conn.execute(
-        "UPDATE event_fact_history SET fact_json = ? WHERE id = ?",
-        (json.dumps(payload), latest["id"]),
-    )
-    tick_iso = _utc_fixture_iso(2)
-    for outcome, _prob, ask_yes, ask_no in rows:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO market_tokens(slug, event_date, outcome, yes_token, no_token,
-                                                 market_active, market_closed, market_archived,
-                                                 market_accepting_orders, market_enable_orderbook, updated_at)
-            VALUES(?, ?, ?, ?, ?, 1, 0, 0, 1, 1, ?)
-            """,
-            (slug, event_date, outcome, f"yes-{outcome}", f"no-{outcome}", tick_iso),
-        )
-        conn.execute(
-            """
-            INSERT INTO event_market_ticks(run_date, event_date, slug, outcome, side,
-                                           best_bid, best_ask, mid, spread,
-                                           bid_depth_topN, ask_depth_topN, source, created_at)
-            VALUES(?, ?, ?, ?, 'NO', ?, ?, ?, 0.03, 100, 120, 'clob_rest_refresh', ?)
-            """,
-            (
-                "2026-06-18",
-                event_date,
-                slug,
-                outcome,
-                max(0.01, ask_no - 0.03),
-                ask_no,
-                (max(0.01, ask_no - 0.03) + ask_no) / 2.0,
-                tick_iso,
-            ),
-        )
-    conn.commit()
-    conn.close()
-
-    result = poller.record_posterior_target_direct_decisions(
-        db_path,
-        event_date=event_date,
-        slug=slug,
-        emit_unchanged_sec=3600,
-        enqueue_job=True,
-    )
-
-    assert result["status"] == "recorded"
-    assert result["remote_no_entry_count"] == 2
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        payload_raw = conn.execute(
-            "SELECT payload_json FROM auto_trade_jobs ORDER BY id DESC LIMIT 1"
-        ).fetchone()["payload_json"]
-    finally:
-        conn.close()
-    job_payload = json.loads(payload_raw)
-    targets = job_payload["entry_expected_targets"]
-    assert [(item["outcome"], item["side"]) for item in targets] == [
-        ("31\u00b0C", "YES"),
-        ("30\u00b0C", "NO"),
-        ("33\u00b0C", "NO"),
-        ("34\u00b0C", "NO"),
-    ]
-    remote_targets = [item for item in targets if item["target_realization_leg_role"] == "remote_no"]
-    assert [item["remote_no_bucket_distance"] for item in remote_targets] == [2, 3]
-    assert [item["target_realization_position_effect"] for item in remote_targets] == [
-        "open_or_add_remote_no_bucket_side",
-        "open_or_add_remote_no_bucket_side",
-    ]
-    assert all("target_realization_remote_no" in item["entry_reasons"] for item in remote_targets)
-    assert all(item["posterior_settlement_entry_allowed"] is True for item in remote_targets)
-    assert all(item["target_realization_plan_notional"] > 0 for item in remote_targets)
-    event_targets = job_payload["event_payloads"][0]["payload"]["entry_expected_targets"]
-    event_remote = [item for item in event_targets if item["target_realization_leg_role"] == "remote_no"]
-    assert [item["remote_no_bucket_distance"] for item in event_remote] == [2, 3]
-
-
-def test_posterior_target_remote_no_plan_uses_plan_distance_bounds_and_caps():
-    payload = {
-        "target_realization_capital_plan": {
-            "ok": True,
-            "target_bucket": "32\u00b0C",
-            "remote_no_max_price": 0.98,
-            "remote_no_single_leg_max_notional_usdc": 100.0,
-            "legs": [
-                {
-                    "role": "remote_no",
-                    "bucket": bucket,
-                    "side": "NO",
-                    "posterior": posterior,
-                    "action": "add",
-                    "target_notional": target_notional,
-                    "delta_notional": target_notional,
-                    "price": price,
-                    "remote_no_min_bucket_distance": min_distance,
-                    "remote_no_max_bucket_distance": max_distance,
-                }
-                for bucket, posterior, target_notional, price, min_distance, max_distance in [
-                    ("30\u00b0C", 0.10, 55.0, 0.96, 2, 5),
-                    ("29\u00b0C", 0.05, 75.0, 0.96, 2, 5),
-                    ("28\u00b0C", 0.04, 65.0, 0.96, 2, 5),
-                    ("27\u00b0C", 0.03, 70.0, 0.96, 2, 5),
-                    ("34\u00b0C", 0.09, 60.0, 0.96, 3, 4),
-                    ("35\u00b0C or higher", 0.02, 60.0, 0.99, 3, 4),
-                ]
-            ],
-        }
-    }
-
-    allowed = poller._posterior_target_allowed_remote_no_outcomes(
-        payload,
-        target_bucket="32\u00b0C",
-    )
-    legs = poller._posterior_target_remote_no_plan_legs(
-        payload,
-        target_bucket="32\u00b0C",
-    )
-
-    assert allowed == [
-        "30\u00b0C",
-        "29\u00b0C",
-        "28\u00b0C",
-        "27\u00b0C",
-        "35\u00b0C or higher",
-    ]
-    assert [leg["bucket"] for leg in legs] == ["30\u00b0C", "29\u00b0C", "28\u00b0C", "27\u00b0C"]
-    assert [leg["target_notional"] for leg in legs] == [55.0, 75.0, 65.0, 70.0]
-    assert all(leg["target_realization_order_price_cap"] == 0.98 for leg in legs)
 
 
 def test_posterior_target_direct_buys_new_target_when_path_follow_is_diagnostic(
@@ -2163,7 +3626,7 @@ def test_posterior_target_direct_buys_new_target_when_path_follow_is_diagnostic(
         job_payload["entry_expected_targets"][0][
             "posterior_target_direct_path_follow_diagnostic_only"
         ]
-        is False
+        is True
     )
     assert job_payload["entry_expected_targets"][0]["strategy_lane"] == "yes_realized_target"
     assert (
@@ -2187,7 +3650,7 @@ def test_posterior_target_direct_buys_new_target_when_path_follow_is_diagnostic(
     assert entry_details["job_skipped_reason"] == ""
     assert entry_details["target_execution_blocked"] is False
     assert entry_details["target_execution_block_reason"] == ""
-    assert entry_details["posterior_target_direct_path_follow_diagnostic_only"] is False
+    assert entry_details["posterior_target_direct_path_follow_diagnostic_only"] is True
     assert entry_details["strategy_lane"] == "yes_realized_target"
     assert (
         entry_details["temperature_path_trade_follow_reason_before_posterior_target_direct"]
@@ -2201,6 +3664,159 @@ def test_posterior_target_direct_buys_new_target_when_path_follow_is_diagnostic(
     assert "entry_execution_block_reason" not in exit_details
     assert "exit_decoupled_from_entry_execution_block" not in exit_details
     assert "exit_suppressed_by_target_execution_block" not in exit_details
+
+
+def test_posterior_target_direct_records_decision_from_posterior_ssot_fact(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "1")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_MIN_PROB_DELTA", "0.001")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_PRIMARY_ONLY_PRECHECK", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_PRIMARY_ONLY_JOB_PAYLOAD", "0")
+    _rewrite_posterior_target_probability(
+        db_path,
+        slug=slug,
+        event_date=event_date,
+        target_outcome="31\u00b0C",
+        target_probability=0.62,
+    )
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    latest = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    payload = json.loads(latest["fact_json"])
+    payload["posterior_ssot_fact"] = {
+        "schema": "bayes_posterior_ssot_fact_v1",
+        "state": "available",
+        "fact_snapshot_id": "fact_unit",
+        "posterior_run_id": "post_unit",
+        "target_bucket": "31\u00b0C",
+        "target_probability": 0.66,
+        "target_probability_pct": 66.0,
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "phase": "D0_breakout",
+        "beta_weak": 0.4,
+        "beta_strong": 0.65,
+        "hard_mask_reason": "none",
+        "ranked_bucket_probabilities": [
+            {"bucket": "31\u00b0C", "probability": 0.66},
+            {"bucket": "30\u00b0C", "probability": 0.34},
+        ],
+        "bucket_probabilities": [
+            {"bucket": "31\u00b0C", "probability": 0.66},
+            {"bucket": "30\u00b0C", "probability": 0.34},
+        ],
+        "layer_chain": {
+            "formula": "continuous_forecast_error_prior_then_sequential_state_zero_inflated_remaining_warming_mixture_then_bucket_integral"
+        },
+        "boundaries": {
+            "live_primary_composer": "sequential_remaining_warming_bayes_runtime_v31",
+            "posterior_activation_mode": "live_no_shadow",
+            "legacy_bucket_product_posterior_used": False,
+            "shadow_posterior_emitted": False,
+        },
+    }
+    payload["fact_snapshot_id"] = "fact_unit"
+    payload["posterior_run_id"] = "post_unit"
+    ssot_rows = payload["posterior_ssot_fact"]["ranked_bucket_probabilities"]
+    running_cdf = 0.0
+    continuous_grid = []
+    for index, row in enumerate(ssot_rows):
+        mass = float(row["probability"])
+        running_cdf += mass
+        continuous_grid.append(
+            {
+                "temp_c": round(20.0 + index * 0.1, 1),
+                "mass": mass,
+                "cdf": running_cdf,
+            }
+        )
+    payload["posterior_continuous_distribution"] = {
+        "schema": "sequential_remaining_warming_continuous_distribution_v31",
+        "source": "sequential_remaining_warming_bayes_runtime_v31",
+        "target_variable": "settlement_daily_max_c",
+        "grid_step_c": 0.1,
+        "grid": continuous_grid,
+        "bucket_probabilities": ssot_rows,
+    }
+    payload["posterior_target_bucket_selection"]["target_probability"] = 0.62
+    payload["posterior_target_bucket_selection"]["ssot_source"] = "legacy_selection_fixture"
+    conn.execute(
+        "UPDATE event_fact_history SET fact_json = ? WHERE id = ?",
+        (json.dumps(payload), latest["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    result = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=3600,
+        enqueue_job=True,
+    )
+
+    assert result["status"] == "recorded"
+    assert result["target_bucket"] == "31\u00b0C"
+    assert result["target_posterior"] == pytest.approx(0.66)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        decision = conn.execute(
+            """
+            SELECT details_json
+            FROM auto_trade_decisions
+            WHERE action = 'entry'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        details = json.loads(decision["details_json"])
+        job_payload = json.loads(
+            conn.execute(
+                "SELECT payload_json FROM auto_trade_jobs ORDER BY id DESC LIMIT 1"
+            ).fetchone()["payload_json"]
+        )
+    finally:
+        conn.close()
+
+    assert details["decision_ssot"] == "posterior_ssot_fact"
+    assert details["posterior_ssot_fact_used"] is True
+    assert details["target_posterior"] == pytest.approx(0.66)
+    assert details["fact_snapshot_id"] == "fact_unit"
+    assert details["posterior_run_id"] == "post_unit"
+    assert details["posterior_target_fact_snapshot_id"] == "fact_unit"
+    assert details["posterior_target_posterior_run_id"] == "post_unit"
+    assert details["posterior_ssot_fact"]["target_probability"] == 0.66
+    assert details["posterior_ssot_phase"] == "D0_breakout"
+    assert job_payload["fact_snapshot_id"] == "fact_unit"
+    assert job_payload["posterior_run_id"] == "post_unit"
+    assert job_payload["posterior_target_direct"]["decision_ssot"] == "posterior_ssot_fact"
+    assert job_payload["posterior_target_direct"]["posterior_ssot_fact_used"] is True
+    assert job_payload["posterior_target_direct"]["fact_snapshot_id"] == "fact_unit"
+    assert job_payload["posterior_target_direct"]["posterior_run_id"] == "post_unit"
+    assert job_payload["entry_expected_targets"][0]["decision_ssot"] == "posterior_ssot_fact"
+    assert job_payload["entry_expected_targets"][0]["fact_snapshot_id"] == "fact_unit"
+    assert job_payload["entry_expected_targets"][0]["posterior_run_id"] == "post_unit"
+    event_payload = job_payload["event_payloads"][0]["payload"]
+    assert event_payload["fact_snapshot_id"] == "fact_unit"
+    assert event_payload["posterior_run_id"] == "post_unit"
+    assert event_payload["posterior_ssot_fact"]["target_probability"] == 0.66
+    assert event_payload["posterior_ssot_fact"]["ranked_bucket_probabilities"][0]["bucket"] == "31\u00b0C"
+    assert "posterior_temperature_distribution" not in event_payload
 
 
 def test_posterior_target_direct_dedupes_same_fact_job(tmp_path, monkeypatch):
@@ -2371,7 +3987,226 @@ def test_posterior_target_direct_skips_job_after_previous_place_order_failure(
     assert details["previous_place_order_retry_block"]["blocked"] is True
 
 
-def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
+def test_posterior_target_direct_retries_after_local_place_order_failure(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    now = _utc_fixture_iso(-300)
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_MIN_PROB_DELTA", "0.001")
+    monkeypatch.setenv("PM_AUTO_TRADE_ENTRY_RETRY_MAX", "3")
+    monkeypatch.setenv("PM_AUTO_TRADE_ENTRY_RETRY_COOLDOWN_SEC", "120")
+    _rewrite_posterior_target_probability(
+        db_path,
+        slug=slug,
+        event_date=event_date,
+        target_outcome="31\u00b0C",
+        target_probability=0.62,
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO edge_trades(
+                slug, event_date, outcome, side, state, last_action, last_action_at,
+                last_status, last_error, entry_retry_count, updated_at
+            )
+            VALUES(?, ?, '31\u00b0C', 'YES', 'entry_failed', 'entry', ?,
+                   'clob_order_service_unavailable',
+                   'HTTPConnectionPool(host=''127.0.0.1'', port=8765): Max retries exceeded with url: /place-order (Caused by NewConnectionError(\"HTTPConnection(host=''127.0.0.1'', port=8765): Failed to establish a new connection: [Errno 61] Connection refused\"))',
+                   275, ?)
+            """,
+            (slug, event_date, now, now),
+        )
+        conn.commit()
+
+    result = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["status"] == "recorded"
+    assert result["job_enqueued"] is True
+    assert result["job_skipped_reason"] == ""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 1
+        decision = conn.execute(
+            """
+            SELECT decided_state, will_order, reason_codes_json, details_json
+            FROM auto_trade_decisions
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert decision["decided_state"] == "entry"
+    assert decision["will_order"] == 1
+    reason_codes = json.loads(decision["reason_codes_json"])
+    assert "posterior_target_previous_place_order_failure_retry_exhausted" not in reason_codes
+    details = json.loads(decision["details_json"])
+    retry_block = details["previous_place_order_retry_block"]
+    assert retry_block["blocked"] is False
+    assert retry_block["retry_allowed_after_local_failure"] is True
+    assert retry_block["retryable_local_failure_reason"] == (
+        "local_clob_order_service_connection_failure"
+    )
+
+
+def test_posterior_target_direct_blocks_after_remote_place_order_502_failure(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    now = _utc_fixture_iso(-300)
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_MIN_PROB_DELTA", "0.001")
+    monkeypatch.setenv("PM_AUTO_TRADE_ENTRY_RETRY_MAX", "3")
+    monkeypatch.setenv("PM_AUTO_TRADE_ENTRY_RETRY_COOLDOWN_SEC", "120")
+    _rewrite_posterior_target_probability(
+        db_path,
+        slug=slug,
+        event_date=event_date,
+        target_outcome="31\u00b0C",
+        target_probability=0.62,
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO edge_trades(
+                slug, event_date, outcome, side, state, last_action, last_action_at,
+                last_status, last_error, entry_retry_count, updated_at
+            )
+            VALUES(?, ?, '31\u00b0C', 'YES', 'entry_failed', 'entry', ?,
+                   'Request failed with status code 502',
+                   'Request failed with status code 502',
+                   3, ?)
+            """,
+            (slug, event_date, now, now),
+        )
+        conn.commit()
+
+    result = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["status"] == "recorded"
+    assert result["job_enqueued"] is False
+    assert result["job_skipped_reason"] == (
+        "posterior_target_previous_place_order_failure_retry_exhausted"
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+        decision = conn.execute(
+            """
+            SELECT decided_state, will_order, reason_codes_json, details_json
+            FROM auto_trade_decisions
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert decision["decided_state"] == "blocked"
+    assert decision["will_order"] == 0
+    reason_codes = json.loads(decision["reason_codes_json"])
+    assert "posterior_target_previous_place_order_failure_retry_exhausted" in reason_codes
+    details = json.loads(decision["details_json"])
+    assert details["previous_place_order_retry_block"]["blocked"] is True
+    assert details["previous_place_order_retry_block"]["last_status"] == (
+        "Request failed with status code 502"
+    )
+
+
+def test_posterior_target_direct_blocks_immediately_after_geoblocked_failure(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    now = _utc_fixture_iso(-300)
+    monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_DECISION_WINDOW_ENABLED", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_MIN_PROB_DELTA", "0.001")
+    monkeypatch.setenv("PM_AUTO_TRADE_ENTRY_RETRY_MAX", "5")
+    monkeypatch.setenv("PM_AUTO_TRADE_ENTRY_RETRY_COOLDOWN_SEC", "120")
+    _rewrite_posterior_target_probability(
+        db_path,
+        slug=slug,
+        event_date=event_date,
+        target_outcome="31\u00b0C",
+        target_probability=0.62,
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO edge_trades(
+                slug, event_date, outcome, side, state, last_action, last_action_at,
+                last_status, last_error, entry_retry_count, updated_at
+            )
+            VALUES(?, ?, '31\u00b0C', 'YES', 'entry_failed', 'entry', ?,
+                   'clob_order_geoblocked',
+                   'Trading restricted in your region, see geoblock docs',
+                   1, ?)
+            """,
+            (slug, event_date, now, now),
+        )
+        conn.commit()
+
+    result = poller.record_posterior_target_direct_decisions(
+        db_path,
+        event_date=event_date,
+        slug=slug,
+        emit_unchanged_sec=0,
+        enqueue_job=True,
+    )
+
+    assert result["status"] == "recorded"
+    assert result["job_enqueued"] is False
+    assert result["job_skipped_reason"] == (
+        "posterior_target_previous_place_order_failure_geoblocked"
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 0
+        decision = conn.execute(
+            """
+            SELECT decided_state, will_order, reason_codes_json, details_json
+            FROM auto_trade_decisions
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert decision["decided_state"] == "blocked"
+    assert decision["will_order"] == 0
+    reason_codes = json.loads(decision["reason_codes_json"])
+    assert "posterior_target_previous_place_order_failure_geoblocked" in reason_codes
+    details = json.loads(decision["details_json"])
+    retry_block = details["previous_place_order_retry_block"]
+    assert retry_block["blocked"] is True
+    assert retry_block["blocked_by_geoblock"] is True
+    assert retry_block["blocked_by_max_retry"] is False
+
+
+def test_posterior_target_local_place_order_retryable_reason_matches_sdk_build_error():
+    assert poller._posterior_target_local_place_order_retryable_reason(
+        "entry_failed exec_failed Cannot read properties of undefined (reading 'toString')"
+    ) == "local_sdk_order_build_metadata_error"
+
+
+def test_posterior_target_direct_existing_position_does_not_block_additional_buy_when_unchanged(
     tmp_path,
     monkeypatch,
 ):
@@ -2403,6 +4238,14 @@ def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
     conn = sqlite3.connect(db_path)
     conn.execute(
         """
+        UPDATE auto_trade_jobs
+        SET state = 'success', updated_at = ?, ended_at = ?
+        WHERE id = ?
+        """,
+        (_utc_fixture_iso(), _utc_fixture_iso(), first["job_id"]),
+    )
+    conn.execute(
+        """
         INSERT INTO edge_trades(slug, event_date, outcome, side, state, position_size, last_order_id, updated_at)
         VALUES(?, ?, ?, 'YES', 'entry', 5.0, 'target-order-31', ?)
         """,
@@ -2420,9 +4263,9 @@ def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
     )
 
     assert second["status"] == "recorded"
-    assert second["entry_order_update_triggered"] is False
-    assert second["old_exit_cleanup_triggered"] is True
-    assert second["old_exit_cleanup_deferred_for_primary_entry"] is False
+    assert second["entry_order_update_triggered"] is True
+    assert second["old_exit_cleanup_triggered"] is False
+    assert second["old_exit_cleanup_deferred_for_primary_entry"] is True
     assert second["job_enqueued"] is True
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -2433,12 +4276,15 @@ def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
                 "SELECT payload_json FROM auto_trade_jobs ORDER BY id DESC LIMIT 1"
             ).fetchone()["payload_json"]
         )
-        assert job_payload["exit_only"] is True
-        assert job_payload["old_exit_cleanup"] is True
-        assert job_payload["posterior_target_direct"]["old_exit_cleanup_triggered"] is True
+        assert job_payload.get("exit_only") is not True
+        assert job_payload.get("old_exit_cleanup") is not True
+        assert job_payload["posterior_target_direct"].get("old_exit_cleanup_triggered") is not True
+        assert job_payload["posterior_target_direct"]["old_exit_cleanup_deferred_for_primary_entry"] is True
         assert job_payload["posterior_target_direct"]["decision_semantics"] == (
-            "ssot_posterior_target_old_exit_cleanup"
+            "ssot_posterior_target_probability_change"
         )
+        assert job_payload["entry_expected_targets"][0]["outcome"] == "31\u00b0C"
+        assert job_payload["entry_expected_targets"][0]["side"] == "YES"
         rows = conn.execute(
             """
             SELECT action, outcome, side, will_order, reason_codes_json, details_json
@@ -2447,19 +4293,6 @@ def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
             LIMIT 4
             """
         ).fetchall()
-        old_created = (
-            datetime.now(timezone.utc) - timedelta(seconds=3600)
-        ).isoformat(timespec="seconds")
-        recent_activity = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        conn.execute(
-            """
-            UPDATE auto_trade_jobs
-            SET created_at = ?, updated_at = ?, ended_at = ?
-            WHERE id = (SELECT MAX(id) FROM auto_trade_jobs)
-            """,
-            (old_created, recent_activity, recent_activity),
-        )
-        conn.commit()
     finally:
         conn.close()
     latest_by_action = {}
@@ -2467,15 +4300,16 @@ def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
         latest_by_action.setdefault(row["action"], row)
     entry_codes = json.loads(latest_by_action["entry"]["reason_codes_json"])
     entry_details = json.loads(latest_by_action["entry"]["details_json"])
-    assert latest_by_action["entry"]["will_order"] == 0
-    assert entry_codes == ["target_switch_non_target_entry_suppressed"]
-    assert "posterior_target_old_exit_cleanup" in entry_details["entry_original_reason_codes"]
-    assert entry_details["old_exit_cleanup_triggered"] is True
-    assert entry_details["entry_suppressed_by_old_exit_cleanup"] is True
+    assert latest_by_action["entry"]["will_order"] == 1
+    assert "posterior_target_active_entry_missing" in entry_codes
+    assert entry_details["primary_target_entry_needed"] is True
+    assert entry_details["target_entry_already_active"] is True
+    assert entry_details["target_entry_pending_order_active"] is False
+    assert entry_details["target_entry_active_position_does_not_block_additional_buy"] is True
+    assert entry_details["old_exit_cleanup_triggered"] is False
+    assert entry_details["old_exit_cleanup_deferred_for_primary_entry"] is True
     if "exit" in latest_by_action:
-        exit_details = json.loads(latest_by_action["exit"]["details_json"])
-        assert latest_by_action["exit"]["will_order"] == 1
-        assert exit_details["old_exit_cleanup_triggered"] is True
+        assert latest_by_action["exit"]["will_order"] == 0
 
     third = poller.record_posterior_target_direct_decisions(
         db_path,
@@ -2485,8 +4319,10 @@ def test_posterior_target_direct_enqueues_old_exit_cleanup_when_unchanged(
         enqueue_job=True,
     )
 
-    assert third["status"] == "unchanged"
-    assert third["old_exit_cleanup_recent"] is True
+    assert third["status"] == "recorded"
+    assert third["entry_order_update_triggered"] is True
+    assert third["job_enqueued"] is False
+    assert third["job_skipped_reason"] == "posterior_target_job_already_enqueued_for_fact"
     conn = sqlite3.connect(db_path)
     try:
         assert conn.execute("SELECT COUNT(*) FROM auto_trade_jobs").fetchone()[0] == 2
@@ -3050,7 +4886,7 @@ def test_posterior_target_direct_worker_executes_new_entry_and_old_exit_fake_liv
     placed = []
     balance_calls = []
 
-    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None):
+    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None, order_context=None):
         placed.append(
             {
                 "cmd": cmd,
@@ -3285,7 +5121,7 @@ def test_posterior_target_direct_exit_submit_failure_records_exit_skip_audit(
     monkeypatch.setattr(swm, "POSITIONS_SYNC_ENABLED", False)
     monkeypatch.setattr(swm, "POSITIONS_ASSUME_ZERO", False)
 
-    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None):
+    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None, order_context=None):
         if cmd == "cancel-orders":
             return True, {"status": "cancelled", "count": 0}
         if token_id == "yes31-token" and side == "BUY":
@@ -3432,7 +5268,7 @@ def test_posterior_target_direct_defers_old_exit_when_primary_entry_submit_fails
 
     placed = []
 
-    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None):
+    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None, order_context=None):
         placed.append(
             {
                 "cmd": cmd,
@@ -3608,6 +5444,7 @@ def test_posterior_target_direct_can_still_enforce_decision_window(tmp_path, mon
     conn.close()
 
 
+@pytest.mark.skip(reason="retired: non-AMSC sources must never rewrite posterior SSOT")
 def test_inline_ctp_recompute_repoints_latest_fact(tmp_path, monkeypatch):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
@@ -3821,6 +5658,11 @@ def test_posterior_target_direct_records_from_summary_cache_without_full_fact_js
             },
         ],
     }
+    _attach_unit_posterior_ssot_fact(
+        summary_payload,
+        target_bucket="31\u00b0C",
+        target_probability=0.62,
+    )
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     latest = conn.execute(
@@ -3884,7 +5726,7 @@ def test_posterior_target_direct_records_from_summary_cache_without_full_fact_js
     assert details["expected_target"]["posterior_target_direct"] is True
 
 
-def test_poll_once_recomputes_ctp_after_source_update_before_decisions(tmp_path, monkeypatch):
+def test_poll_once_does_not_recompute_posterior_after_reference_source_update(tmp_path, monkeypatch):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
     slug, event_date = _insert_fact(db_path)
@@ -3900,10 +5742,6 @@ def test_poll_once_recomputes_ctp_after_source_update_before_decisions(tmp_path,
         lambda *args, **kwargs: {"ok": True, "status": "updated", "fact_id": 22},
     )
 
-    def fake_recompute(*args, **kwargs):
-        calls.append("ctp")
-        return {"ok": True, "status": "recomputed", "reason": kwargs.get("reason")}
-
     def fake_hard_decision(*args, **kwargs):
         calls.append("hard_decision")
         return {"ok": True, "status": "hard_skipped"}
@@ -3912,21 +5750,72 @@ def test_poll_once_recomputes_ctp_after_source_update_before_decisions(tmp_path,
         calls.append("posterior_decision")
         return {"ok": True, "status": "posterior_checked"}
 
-    monkeypatch.setattr(poller, "_recompute_ctp_latest_fact", fake_recompute)
     monkeypatch.setattr(poller, "record_hard_source_direct_decisions", fake_hard_decision)
     monkeypatch.setattr(poller, "record_posterior_target_direct_decisions", fake_posterior_decision)
 
     result = poller.poll_once(db_path, event_date=event_date, slug=slug)
 
-    assert calls == ["ctp", "posterior_decision", "hard_decision"]
-    assert result["ctp_recompute"]["status"] == "recomputed"
-    assert result["ctp_recompute"]["reason"] == "awc"
-    assert result["posterior_target_fast_precheck"] == {}
-    assert result["posterior_target_after_awc_ctp"]["stage"] == "after_awc_ctp_recompute"
-    assert result["posterior_target_after_ctp"]["stage"] == "after_awc_ctp_recompute"
+    assert calls == ["hard_decision"]
+    assert result["ctp_recompute"]["status"] == "retired"
+    assert result["ctp_recompute"]["reason"] == "non_amsc_source_cannot_recompute_posterior"
+    assert result["posterior_target_fast_precheck"]["status"] == "retired"
+    assert result["posterior_target"]["reason"] == "posterior_target_direct_runtime_removed"
+    assert result["posterior_target_after_awc_ctp"] == {}
+    assert result["posterior_target_after_ctp"] == {}
 
 
-def test_poll_once_records_awc_posterior_before_metar_pws_cross_check(tmp_path, monkeypatch):
+def test_poll_once_never_runs_retired_posterior_precheck_before_awc(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    calls = []
+
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_WU_TWC", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_METAR_PWS_ENABLED", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_MARKET_PREFETCH_ENABLED", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_RUN_WORKER_ONCE", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_RUN_WORKER_ONCE", "0")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_FAST_PRECHECK_ENABLED", "1")
+    monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_FAST_PRECHECK_BEFORE_AWC_ENABLED", "1")
+
+    def fake_posterior(*args, **kwargs):
+        calls.append(f"posterior:{kwargs.get('emit_unchanged_sec')}")
+        return {"ok": True, "status": "unchanged"}
+
+    def fake_awc(*args, **kwargs):
+        calls.append("awc")
+        return {"ok": True, "status": "skipped", "reason": "same_awc_latest_at"}
+
+    monkeypatch.setattr(poller, "record_posterior_target_direct_decisions", fake_posterior)
+    monkeypatch.setattr(poller, "_refresh_awc_fact", fake_awc)
+    monkeypatch.setattr(
+        poller,
+        "record_hard_source_direct_decisions",
+        lambda *args, **kwargs: calls.append("hard") or {"ok": True, "status": "unchanged"},
+    )
+
+    result = poller.poll_once(db_path, event_date=event_date, slug=slug)
+
+    assert calls == ["awc", "hard"]
+    assert result["posterior_target_fast_precheck"]["status"] == "retired"
+    assert result["posterior_target_fast_precheck"]["reason"] == (
+        "sequential_bayes_posterior_outbox_is_the_only_runtime_consumer"
+    )
+
+
+def test_poll_once_source_has_no_retired_posterior_target_runtime_call():
+    source = Path(poller.__file__).read_text(encoding="utf-8")
+    poll_once_body = source[
+        source.index("def poll_once(") : source.index("def _refresh_stamp_due(")
+    ]
+
+    assert "record_posterior_target_direct_decisions(" not in poll_once_body
+    assert "_claimable_direct_target_job_id(" not in poll_once_body
+    assert "PM_POSTERIOR_TARGET_DIRECT_FAST_PRECHECK" not in poll_once_body
+    assert "sequential_bayes_posterior_outbox_is_the_only_runtime_consumer" in poll_once_body
+
+
+def test_poll_once_does_not_recompute_posterior_from_awc_or_pws(tmp_path, monkeypatch):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
     slug, event_date = _insert_fact(db_path)
@@ -3947,10 +5836,6 @@ def test_poll_once_records_awc_posterior_before_metar_pws_cross_check(tmp_path, 
         calls.append("metar_pws")
         return {"ok": True, "status": "updated", "fact_id": 23}
 
-    def fake_recompute(*args, **kwargs):
-        calls.append(f"ctp:{kwargs.get('reason')}")
-        return {"ok": True, "status": "recomputed", "reason": kwargs.get("reason"), "fact_id": 24}
-
     def fake_posterior_decision(*args, **kwargs):
         calls.append("posterior_decision")
         return {"ok": True, "status": "posterior_checked"}
@@ -3961,16 +5846,16 @@ def test_poll_once_records_awc_posterior_before_metar_pws_cross_check(tmp_path, 
 
     monkeypatch.setattr(poller, "_refresh_awc_fact", fake_awc)
     monkeypatch.setattr(poller, "_refresh_metar_pws_multi_source_fact", fake_metar_pws)
-    monkeypatch.setattr(poller, "_recompute_ctp_latest_fact", fake_recompute)
     monkeypatch.setattr(poller, "record_posterior_target_direct_decisions", fake_posterior_decision)
     monkeypatch.setattr(poller, "record_hard_source_direct_decisions", fake_hard_decision)
 
     result = poller.poll_once(db_path, event_date=event_date, slug=slug)
 
-    assert calls[:3] == ["awc", "ctp:awc", "posterior_decision"]
-    assert calls[3:] == ["metar_pws", "ctp:metar_pws", "posterior_decision", "hard_decision"]
-    assert result["posterior_target_after_awc_ctp"]["stage"] == "after_awc_ctp_recompute"
-    assert result["posterior_target_after_ctp"]["stage"] == "after_ctp_recompute"
+    assert calls == ["awc", "metar_pws", "hard_decision"]
+    assert result["awc_ctp_recompute"]["status"] == "retired"
+    assert result["ctp_recompute"]["status"] == "retired"
+    assert result["posterior_target_after_awc_ctp"] == {}
+    assert result["posterior_target_after_ctp"] == {}
 
 
 def test_hard_source_job_worker_uses_constrained_snapshot_before_fact_lag(tmp_path, monkeypatch):
@@ -4133,16 +6018,24 @@ def test_poll_once_starts_market_prefetch_inside_wu_peak_window(tmp_path, monkey
         lambda db, event_date, slug="": started.append((db, event_date, slug))
         or {"ok": True, "status": "market_prefetch_background_started", "pid": 1234},
     )
+    record_kwargs = {}
+
+    def fake_record_hard_source_direct_decisions(*args, **kwargs):
+        record_kwargs.update(kwargs)
+        return {"ok": False, "status": "hard_observation_missing"}
+
     monkeypatch.setattr(
         poller,
         "record_hard_source_direct_decisions",
-        lambda *args, **kwargs: {"ok": False, "status": "hard_observation_missing"},
+        fake_record_hard_source_direct_decisions,
     )
 
     result = poller.poll_once(db_path, event_date="2026-06-19")
 
     assert started == [(db_path, "2026-06-19", slug)]
     assert result["market_prefetch"]["status"] == "market_prefetch_background_started"
+    assert result["pre_signal_preparation"]["pre_signal_prepare_state"] == "preparation_started_unconfirmed"
+    assert record_kwargs["preparation_timing"]["pre_signal_prepare_state"] == "preparation_started_unconfirmed"
     assert result["decision"]["status"] == "hard_observation_missing"
 
 
@@ -4163,6 +6056,20 @@ def test_poll_once_can_run_market_prefetch_inline_inside_wu_peak_window(tmp_path
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_LOCAL_HOUR_OVERRIDE", "16.25")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_MARKET_PREFETCH_INLINE", "1")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_WU_TWC", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_PREPARE_OPEN_ORDERS_FETCH", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_PREPARE_POSITIONS_FETCH", "0")
+    monkeypatch.setattr(
+        poller.swm,
+        "_AUTO_TRADE_OPEN_ORDERS_CACHE",
+        {"ts": 0.0, "by_token": {}, "last_source": "unit_test_empty"},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        poller.swm,
+        "POSITIONS_CACHE",
+        {"ts": 0.0, "data": {}, "error": "", "last_source": "unit_test_empty"},
+        raising=False,
+    )
     monkeypatch.setattr(poller, "_refresh_awc_fact", lambda *args, **kwargs: {"ok": True, "status": "skipped_test"})
     monkeypatch.setattr(poller, "_load_latest_fact_payload", lambda *args, **kwargs: payload)
     monkeypatch.setattr(
@@ -4177,11 +6084,17 @@ def test_poll_once_can_run_market_prefetch_inline_inside_wu_peak_window(tmp_path
         or called.append((db, event_date, slug))
         or {"ok": True, "status": "market_prefetch_refreshed", "count": 3},
     )
+    record_kwargs = {}
+
+    def fake_record_hard_source_direct_decisions(*args, **kwargs):
+        sequence.append("decision")
+        record_kwargs.update(kwargs)
+        return {"ok": False, "status": "hard_observation_missing"}
+
     monkeypatch.setattr(
         poller,
         "record_hard_source_direct_decisions",
-        lambda *args, **kwargs: sequence.append("decision")
-        or {"ok": False, "status": "hard_observation_missing"},
+        fake_record_hard_source_direct_decisions,
     )
 
     result = poller.poll_once(db_path, event_date="2026-06-19")
@@ -4190,6 +6103,16 @@ def test_poll_once_can_run_market_prefetch_inline_inside_wu_peak_window(tmp_path
     assert called == [(db_path, "2026-06-19", slug)]
     assert result["market_prefetch"]["status"] == "market_prefetch_refreshed"
     assert result["market_prefetch"]["count"] == 3
+    assert result["pre_signal_preparation"]["pre_signal_prepare_state"] == "preparation_partial"
+    assert result["pre_signal_preparation"]["pre_signal_prepared_at"]
+    assert result["pre_signal_preparation"]["pre_signal_prepare_inline"] is True
+    assert "market_mapping" in result["pre_signal_preparation"]["pre_signal_prepare_missing_components"]
+    assert "orderbook" in result["pre_signal_preparation"]["pre_signal_prepare_missing_components"]
+    assert "open_orders" in result["pre_signal_preparation"]["pre_signal_prepare_missing_components"]
+    assert "positions" in result["pre_signal_preparation"]["pre_signal_prepare_missing_components"]
+    assert result["pre_signal_preparation"]["pre_signal_prepare_components"]["market_prefetch"]["ok"] is True
+    assert record_kwargs["preparation_timing"]["pre_signal_prepare_state"] == "preparation_partial"
+    assert record_kwargs["preparation_timing"]["pre_signal_prepared_at"]
 
 
 def test_poll_once_does_not_market_prefetch_when_decision_window_disabled(tmp_path, monkeypatch):
@@ -4272,17 +6195,111 @@ def test_metar_pws_due_sources_use_configured_peak_intervals(monkeypatch):
     }
 
 
-def test_awc_release_watch_interval_only_during_top_of_hour_window(monkeypatch):
+def test_awc_release_watch_interval_only_during_acquire_window(monkeypatch):
     monkeypatch.setenv("PM_HARD_SOURCE_AWC_RELEASE_WATCH_ENABLED", "1")
-    monkeypatch.setenv("PM_HARD_SOURCE_AWC_RELEASE_WATCH_WINDOW_MIN", "8")
     monkeypatch.setenv("PM_HARD_SOURCE_AWC_RELEASE_WATCH_POLL_SEC", "0.7")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_START_MIN", "5")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_DURATION_SEC", "120")
 
     assert poller._awc_release_watch_interval(
         datetime(2026, 6, 30, 4, 3, 30, tzinfo=timezone.utc)
+    ) is None
+    assert poller._awc_release_watch_target_at(
+        datetime(2026, 6, 30, 4, 3, 30, tzinfo=timezone.utc)
+    ) is None
+    assert poller._awc_release_watch_interval(
+        datetime(2026, 6, 30, 4, 5, 15, tzinfo=timezone.utc)
     ) == pytest.approx(0.7)
     assert poller._awc_release_watch_interval(
-        datetime(2026, 6, 30, 4, 9, 0, tzinfo=timezone.utc)
+        datetime(2026, 6, 30, 4, 6, 59, tzinfo=timezone.utc)
+    ) == pytest.approx(0.7)
+    assert poller._awc_release_watch_target_at(
+        datetime(2026, 6, 30, 4, 5, 15, tzinfo=timezone.utc)
+    ) == datetime(2026, 6, 30, 4, 0, tzinfo=timezone.utc)
+    assert poller._awc_release_watch_interval(
+        datetime(2026, 6, 30, 4, 7, 0, tzinfo=timezone.utc)
     ) is None
+
+
+def test_awc_event_end_final_watch_context_requires_unlocked_event_end(monkeypatch):
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_ENABLED", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_POLL_SEC", "0.6")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_DURATION_SEC", "900")
+    payload = {
+        "event_end_utc": "2026-07-05T12:00:00Z",
+        "weather_likelihood_features": {
+            "zuuu_metar_raw_awc_today_max_c": 37.0,
+            "zuuu_metar_raw_awc_final_daily_max": False,
+        },
+    }
+
+    before = poller._awc_event_end_final_watch_context(
+        payload,
+        now_utc=datetime(2026, 7, 5, 11, 59, tzinfo=timezone.utc),
+    )
+    active = poller._awc_event_end_final_watch_context(
+        payload,
+        now_utc=datetime(2026, 7, 5, 12, 5, tzinfo=timezone.utc),
+    )
+    locked = poller._awc_event_end_final_watch_context(
+        {
+            **payload,
+            "weather_likelihood_features": {
+                **payload["weather_likelihood_features"],
+                "hard_source_final_daily_max": True,
+            },
+        },
+        now_utc=datetime(2026, 7, 5, 12, 5, tzinfo=timezone.utc),
+    )
+
+    assert before["active"] is False
+    assert before["reason"] == "before_awc_final_watch_window"
+    assert active["active"] is True
+    assert active["reason"] == "awc_final_daily_max_event_end_watch"
+    assert active["target_at"] == datetime(2026, 7, 5, 12, 0, tzinfo=timezone.utc)
+    assert active["poll_sec"] == pytest.approx(0.6)
+    assert locked == {"active": False, "reason": "final_daily_max_already_locked"}
+
+
+def test_awc_release_result_reached_target_rejects_probabilistic_post_peak_state_before_event_end():
+    target_at = datetime(2026, 7, 5, 12, 0, tzinfo=timezone.utc)
+
+    assert poller._awc_release_result_reached_target(
+        {
+            "awc_latest_at": "2026-07-05T10:00:00+00:00",
+            "awc_final_daily_max": True,
+            "awc_final_daily_max_state": "awc_latest_after_today_max_and_cooling_post_peak",
+        },
+        target_at,
+    ) is False
+
+
+def test_near_peak_interval_uses_awc_event_end_final_watch(monkeypatch, tmp_path):
+    db_path = tmp_path / "archive.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_ENABLED", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_POLL_SEC", "0.7")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_POLL_SEC", "5")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_NEAR_PEAK_POLL_SEC", "3")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_MAX_POLL_SEC", "5")
+    monkeypatch.setattr(poller, "_awc_release_watch_interval", lambda: None)
+    monkeypatch.setattr(
+        poller,
+        "_load_latest_fact_payload",
+        lambda *args, **kwargs: {"event_end_utc": "2026-07-05T12:00:00Z"},
+    )
+    monkeypatch.setattr(
+        poller,
+        "_awc_event_end_final_watch_context",
+        lambda *args, **kwargs: {"active": True, "poll_sec": 0.7},
+    )
+    monkeypatch.setattr(
+        poller,
+        "_decision_window_state",
+        lambda *args, **kwargs: {"allowed": False},
+    )
+
+    assert poller._near_peak_interval(db_path, event_date="2026-07-05") == pytest.approx(0.7)
 
 
 def test_near_peak_interval_uses_awc_release_watch_when_outside_peak(monkeypatch, tmp_path):
@@ -4685,9 +6702,10 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_dry_run(tmp_path
     assert entry_details["hard_source_ssot_written_at"]
     assert entry_details["hard_source_job_enqueued_at"]
     assert entry_details["hard_source_worker_started_at"]
-    assert entry_details["hard_source_order_submitted_at"]
-    assert entry_details["hard_source_ssot_to_order_ms"] is not None
-    assert entry_details["hard_source_worker_to_order_ms"] is not None
+    assert "hard_source_order_submitted_at" not in entry_details
+    assert entry_details.get("order_submission_time_quality") != "exchange_post_started_at"
+    assert "hard_source_ssot_to_order_ms" not in entry_details
+    assert "hard_source_worker_to_order_ms" not in entry_details
     assert entry_details["ssot_target_bucket"] == "31°C"
     assert entry_details["decision_ssot"] == "auto_trade_target_bucket"
     assert entry_details["decision_basis"] == "hard_source_lower_bound_constraint"
@@ -4712,9 +6730,10 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_dry_run(tmp_path
     assert exit_details["hard_source_direct"] is True
     assert exit_details["hard_source_ssot_written_at"]
     assert exit_details["hard_source_worker_started_at"]
-    assert exit_details["hard_source_order_submitted_at"]
-    assert exit_details["hard_source_ssot_to_order_ms"] is not None
-    assert exit_details["hard_source_worker_to_order_ms"] is not None
+    assert "hard_source_order_submitted_at" not in exit_details
+    assert exit_details["order_submission_time_quality"] == "exchange_post_t5_missing"
+    assert "hard_source_ssot_to_order_ms" not in exit_details
+    assert "hard_source_worker_to_order_ms" not in exit_details
     assert exit_details["ssot_target_bucket"] == "31°C"
     assert exit_details["decision_ssot"] == "auto_trade_target_bucket"
     assert exit_details["decision_basis"] == "hard_source_lower_bound_constraint"
@@ -4767,6 +6786,11 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_dry_run(tmp_path
     assert audit["checks"]["order_decisions_mark_async_recompute"] is True
     assert audit["checks"]["order_decisions_no_legacy_bypass_semantics"] is True
     assert audit["checks"]["hard_source_fast_path_not_waiting_full_fact_bayes"] is True
+    assert audit["checks"]["hard_source_runtime_contract_present"] is True
+    assert (
+        audit["details"]["hard_source_runtime_contract_version"]
+        == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    )
     assert audit["checks"]["fetch_to_ssot_within_sla"] is True
     assert audit["checks"]["ssot_to_job_enqueue_within_sla"] is True
     assert audit["checks"]["job_enqueue_to_worker_within_sla"] is True
@@ -4877,7 +6901,36 @@ def test_hard_source_nonfinal_old_bucket_exits_after_target_entry_submitted(tmp_
 def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_path, monkeypatch):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
+    _create_signal_to_order_timing_table(db_path)
+    _create_awc_hard_source_signals_table(db_path)
     slug, event_date = _insert_fact(db_path)
+    fixed_valid = "2026-06-19T09:00:00Z"
+    fixed_seen = "2026-06-19T09:05:38Z"
+    fixed_fetch = "2026-06-19T09:05:37Z"
+    fixed_submit = "2026-06-19T09:05:40Z"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    latest = conn.execute(
+        """
+        SELECT h.id, h.fact_json
+        FROM event_fact_latest l
+        JOIN event_fact_history h ON h.id = l.fact_id
+        WHERE l.slug = ? AND l.event_date = ?
+        """,
+        (slug, event_date),
+    ).fetchone()
+    fact_payload = json.loads(latest["fact_json"])
+    features = dict(fact_payload["weather_likelihood_features"])
+    features["zuuu_metar_raw_awc_today_max_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_latest_at"] = fixed_valid
+    features["zuuu_metar_raw_awc_fetched_at"] = fixed_fetch
+    fact_payload["weather_likelihood_features"] = features
+    conn.execute(
+        "UPDATE event_fact_history SET fact_as_of = ?, fact_json = ? WHERE id = ?",
+        (fixed_fetch, json.dumps(fact_payload, ensure_ascii=True), latest["id"]),
+    )
+    conn.commit()
+    conn.close()
     monkeypatch.setenv("PM_AUTO_TRADE_ENABLED", "1")
     monkeypatch.setenv("PM_AUTO_TRADE_DRY_RUN", "0")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DECISION_WINDOW_ENABLED", "0")
@@ -4908,10 +6961,13 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     monkeypatch.setattr(swm, "DATA_DIR", tmp_path)
     monkeypatch.setattr(swm, "POSITIONS_SYNC_ENABLED", False)
     monkeypatch.setattr(swm, "POSITIONS_ASSUME_ZERO", False)
+    monkeypatch.setattr(poller, "_utc_now_iso", lambda: fixed_seen)
+    monkeypatch.setattr(swm, "utc_now_iso", lambda: fixed_submit)
+    monkeypatch.setattr(swm, "utc_now_iso_ms", lambda: fixed_submit)
 
     placed = []
 
-    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None):
+    def fake_run_node_order(cmd, token_id="", side="", *, price=None, size=None, order_type=None, amount=None, order_context=None):
         placed.append(
             {
                 "cmd": cmd,
@@ -4925,11 +6981,17 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
         )
         if cmd == "cancel-orders":
             return True, {"status": "cancelled", "count": 1}
+        common = {
+            "status": "submitted",
+            "exchange_post_started": True,
+            "exchange_post_started_at": fixed_submit,
+            "order_submitted_at": fixed_submit,
+        }
         if side == "BUY":
-            return True, {"orderID": "fake-buy-31", "status": "submitted"}
+            return True, {**common, "orderID": "fake-buy-31"}
         if side == "SELL":
-            return True, {"orderID": "fake-sell-30", "status": "submitted"}
-        return True, {"orderID": "fake-order", "status": "submitted"}
+            return True, {**common, "orderID": "fake-sell-30"}
+        return True, {**common, "orderID": "fake-order"}
 
     def fake_run_node_get_order(order_id):
         submitted_buy = next(
@@ -5060,6 +7122,9 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     assert entry_details["hard_source_order_submitted_at"]
     assert entry_details["hard_source_ssot_to_order_ms"] is not None
     assert entry_details["hard_source_worker_to_order_ms"] is not None
+    assert entry_details["awc_hard_source_signal_at"]
+    assert entry_details["signal_to_order_ledger_status"] == "pending_upsert"
+    assert entry_details["signal_to_order_slo_met"] is True
 
     actual_exit = [
         row for row in decisions
@@ -5079,9 +7144,34 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     assert exit_details["hard_source_ssot_to_order_ms"] is not None
     assert exit_details["hard_source_worker_to_order_ms"] is not None
 
+    ledger = conn.execute(
+        "SELECT * FROM signal_to_order_timing WHERE signal_id = ?",
+        (entry_details["signal_id"],),
+    ).fetchone()
+    assert ledger is not None
+    assert ledger["decision_id"] == str(actual_entry[0]["id"])
+    assert ledger["awc_hard_source_signal_at"] == entry_details["awc_hard_source_signal_at"]
+    assert ledger["order_submitted_at"] == entry_details["hard_source_order_submitted_at"]
+    ledger_timing = json.loads(ledger["timing_json"])
+    assert ledger_timing["terminal_state"] == "submitted"
+    assert ledger_timing["order_submitted_at"] == entry_details["hard_source_order_submitted_at"]
+    assert ledger_timing["signal_to_order_slo_met"] is True
+    signal = conn.execute(
+        "SELECT * FROM awc_hard_source_signals WHERE signal_id = ?",
+        (entry_details["signal_id"],),
+    ).fetchone()
+    assert signal is not None
+    assert signal["slug"] == slug
+    assert signal["event_date"] == event_date
+    assert signal["awc_hard_source_signal_at"] == entry_details["awc_hard_source_signal_at"]
+    assert signal["acceptance_state"] == "accepted"
+    assert signal["terminal_state"] == "submitted"
+    assert signal["state_reason"] == "order_submitted"
+
     orders = conn.execute(
         """
-        SELECT order_id, outcome, side, action, price, size, order_type, strategy
+        SELECT order_id, outcome, side, action, price, size, order_type, strategy,
+               decision_id, signal_id, order_intent_id
         FROM auto_orders
         ORDER BY created_at, order_id
         """
@@ -5089,7 +7179,13 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     orders_payload = [dict(row) for row in orders]
     entry_order = next(row for row in orders_payload if row["action"] == "entry")
     exit_order = next(row for row in orders_payload if row["action"] == "exit")
-    assert entry_order == {
+    assert entry_order["decision_id"] == str(actual_entry[0]["id"])
+    assert entry_order["signal_id"] == entry_details["signal_id"]
+    assert entry_order["order_intent_id"]
+    assert {
+        key: entry_order[key]
+        for key in ("order_id", "outcome", "side", "action", "price", "size", "order_type", "strategy")
+    } == {
         "order_id": "fake-buy-31",
         "outcome": "31\u00b0C",
         "side": "YES",
@@ -5101,7 +7197,10 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     }
     assert round(float(entry_order["price"]), 6) == round(float(expected_buy_price), 6)
     assert round(float(entry_order["size"]), 4) == round(float(expected_buy_size), 4)
-    assert exit_order == {
+    assert {
+        key: exit_order[key]
+        for key in ("order_id", "outcome", "side", "action", "price", "size", "order_type", "strategy")
+    } == {
         "order_id": "fake-sell-30",
         "outcome": "30\u00b0C",
         "side": "YES",
@@ -5153,6 +7252,11 @@ def test_hard_source_job_worker_executes_new_entry_and_old_exit_fake_live(tmp_pa
     assert audit["checks"]["order_decisions_mark_async_recompute"] is True
     assert audit["checks"]["order_decisions_no_legacy_bypass_semantics"] is True
     assert audit["checks"]["hard_source_fast_path_not_waiting_full_fact_bayes"] is True
+    assert audit["checks"]["hard_source_runtime_contract_present"] is True
+    assert (
+        audit["details"]["hard_source_runtime_contract_version"]
+        == poller.HARD_SOURCE_RUNTIME_CONTRACT_VERSION
+    )
     assert audit["checks"]["fetch_to_ssot_within_sla"] is True
     assert audit["checks"]["ssot_to_job_enqueue_within_sla"] is True
     assert audit["checks"]["job_enqueue_to_worker_within_sla"] is True
@@ -5335,6 +7439,12 @@ def test_hard_source_wu_twc_final_settlement_updates_latest_and_locks_bucket(tmp
 
     assert refresh["ok"] is True
     assert refresh["status"] == "updated"
+    trace = refresh["source_acquisition_trace"]
+    assert trace["read_only"] is True
+    assert trace["refresh_source_family"] == "wu_twc"
+    assert trace["hard_observation_candidate_ids"] == []
+    assert trace["source_class_counts"][SOURCE_CLASSES["diagnostic_current"]] == 1
+    assert trace["source_latency_trace"][0]["source_id"] == "wu_twc_observed_intraday"
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -5410,6 +7520,7 @@ def test_hard_source_final_lock_writes_single_bucket_ssot_and_orders(tmp_path, m
     payload["weather_likelihood_features"]["hard_source_final_daily_max"] = True
     payload["distribution"][0]["q_bayes_posterior"] = 0.8
     payload["distribution"][1]["q_bayes_posterior"] = 0.2
+    _attach_unit_posterior_ssot_fact(payload, target_bucket="31\u00b0C", target_probability=0.2)
     conn.execute("UPDATE event_fact_history SET fact_json = ? WHERE id = ?", (json.dumps(payload), latest["id"]))
     conn.commit()
     conn.close()
@@ -5523,7 +7634,7 @@ def test_hard_source_expected_entry_override_uses_ssot_target_without_transient_
     assert out["posterior_settlement_size_scale"] == 1.0
     assert out["entry_usable_edge_size_scale"] == 1.0
     assert out["hard_source_direct_target_entry_override"] is True
-    assert swm._entry_usable_edge_order_block_reason(details) == ""
+    assert swm._entry_order_policy_block_reason(details) == ""
     assert audit["entry_usable_edge_size_scale"] == 1.0
     assert audit["hard_source_direct_entry_usable_edge_override"] is True
 
@@ -5559,7 +7670,7 @@ def test_temperature_path_trade_follow_gate_blocks_non_hard_source_yes_targets()
                 "outcome": "30\u00b0C",
                 "side": "NO",
                 "strategy": "lcb_global",
-                "entry_reasons": ["remote_no_defense"],
+                "entry_reasons": ["strongly_excluded_no"],
             },
             {
                 "outcome": "25\u00b0C or below",
@@ -5624,6 +7735,7 @@ def test_hard_source_direct_suppresses_recent_unchanged_decision(tmp_path, monke
     conn = sqlite3.connect(db_path)
     count = conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0]
     assert count == 2
+    conn.close()
 
 
 def test_poll_once_refreshes_wu_twc_before_decision_when_due(tmp_path, monkeypatch):
@@ -5654,37 +7766,77 @@ def test_poll_once_refreshes_wu_twc_before_decision_when_due(tmp_path, monkeypat
     assert calls == ["awc", "wu", "decision"]
 
 
-def test_refresh_awc_fact_returns_retryable_failure_on_db_lock(tmp_path, monkeypatch):
-    import ui.server as ui_server
+def test_refresh_awc_fact_is_read_only_when_reference_fetch_fails(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    before = sqlite3.connect(db_path).execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
 
-    captured = {}
+    def raise_fetch(*args, **kwargs):
+        raise RuntimeError("AWC unavailable")
 
-    def raise_locked(*args, **kwargs):
-        captured["kwargs"] = dict(kwargs)
-        captured["awc_heartbeat"] = os.environ.get("PM_AWC_FACT_REFRESH_HEARTBEAT_SEC")
-        captured["write_retry_attempts"] = os.environ.get("PM_FACT_REFRESH_WRITE_RETRY_ATTEMPTS")
-        captured["write_retry_sleep"] = os.environ.get("PM_FACT_REFRESH_WRITE_RETRY_SLEEP_SEC")
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(ui_server, "refresh_awc_fact_for_chengdu_event", raise_locked)
+    monkeypatch.setattr(poller.swm, "fetch_zuuu_metar_raw_awc_features", raise_fetch)
 
     result = poller._refresh_awc_fact(
-        tmp_path / "archive.db",
-        event_date="2026-06-19",
+        db_path,
+        event_date=event_date,
         hours=48,
         heartbeat_sec=1,
     )
 
     assert result["ok"] is False
-    assert result["status"] == "awc_refresh_failed"
-    assert result["retryable"] is True
-    assert "database is locked" in result["error"]
-    assert captured["kwargs"]["connect_timeout_sec"] == pytest.approx(0.6)
-    assert captured["kwargs"]["busy_timeout_ms"] == 750
-    assert captured["kwargs"]["include_cross_checks"] is False
-    assert captured["awc_heartbeat"] == "0"
-    assert captured["write_retry_attempts"] == "1"
-    assert captured["write_retry_sleep"] == "0.05"
+    assert result["status"] == "awc_reference_fetch_failed"
+    assert result["writes_facts"] is False
+    assert result["writes_posterior"] is False
+    assert "AWC unavailable" in result["error"]
+    trace = result["source_acquisition_trace"]
+    assert trace["read_only"] is True
+    assert trace["refresh_source_family"] == "awc"
+    assert trace["source_latency_trace"][0]["source_id"] == "zuuu_metar_raw_awc"
+    assert "source_not_ok" in trace["source_latency_trace"][0]["quality_flags"]
+    after = sqlite3.connect(db_path).execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+    assert after == before
+
+
+def test_refresh_awc_fact_success_is_reference_only(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _create_schema(db_path)
+    slug, event_date = _insert_fact(db_path)
+    conn = sqlite3.connect(db_path)
+    before = conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+    before_latest = conn.execute(
+        "SELECT fact_id FROM event_fact_latest WHERE slug = ? AND event_date = ?",
+        (slug, event_date),
+    ).fetchone()[0]
+    conn.close()
+
+    monkeypatch.setattr(
+        poller.swm,
+        "fetch_zuuu_metar_raw_awc_features",
+        lambda *args, **kwargs: {
+            "zuuu_metar_raw_awc_latest_at": "2026-06-19T04:00:00Z",
+            "zuuu_metar_raw_awc_today_max_at": "2026-06-19T04:00:00Z",
+            "zuuu_metar_raw_awc_today_max_c": 33.0,
+            "zuuu_metar_raw_awc_latest_temp_c": 33.0,
+            "zuuu_metar_raw_awc_fetched_at": "2026-06-19T04:00:01Z",
+        },
+    )
+
+    result = poller._refresh_awc_fact(db_path, event_date=event_date, hours=48, heartbeat_sec=1)
+
+    assert result["ok"] is True
+    assert result["status"] == "reference_observed"
+    assert result["writes_facts"] is False
+    assert result["writes_posterior"] is False
+    conn = sqlite3.connect(db_path)
+    after = conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+    after_latest = conn.execute(
+        "SELECT fact_id FROM event_fact_latest WHERE slug = ? AND event_date = ?",
+        (slug, event_date),
+    ).fetchone()[0]
+    conn.close()
+    assert after == before
+    assert after_latest == before_latest
 
 
 def test_main_once_returns_structured_failure_without_traceback(monkeypatch, capsys):
@@ -5925,7 +8077,7 @@ def test_auto_trade_worker_claim_requested_job_id_bypasses_queue_order(tmp_path,
     assert states[direct_id] == "running"
 
 
-def test_poll_once_drains_claimable_direct_retry_job(tmp_path, monkeypatch):
+def test_poll_once_drains_claimable_direct_retry_job_after_awc_watch_refresh(tmp_path, monkeypatch):
     db_path = tmp_path / "archive.db"
     _create_schema(db_path)
     slug = "highest-temperature-in-chengdu-on-july-1-2026"
@@ -5963,18 +8115,34 @@ def test_poll_once_drains_claimable_direct_retry_job(tmp_path, monkeypatch):
         job_id = int(cur.lastrowid or 0)
 
     captured = {}
+    events = []
+    awc_target_at = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+
+    def fake_awc_refresh(*args, **kwargs):
+        events.append("awc")
+        return {
+            "ok": True,
+            "status": "skipped",
+            "reason": "same_awc_latest_at",
+            "awc_latest_at": awc_target_at.isoformat(),
+        }
 
     def fake_worker_once(*, db_path=None, requested_job_id=None):
+        events.append("worker")
         captured["db_path"] = Path(db_path)
         captured["requested_job_id"] = int(requested_job_id or 0)
         return {"ok": True, "picked": True, "job_id": int(requested_job_id or 0)}
 
-    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_AWC", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_AWC", "1")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_WU_TWC", "0")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_MARKET_PREFETCH_ENABLED", "0")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_CLAIMABLE_JOB", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_AWC", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_RETURN_AFTER_PRE_AWC_DRAIN", "1")
     monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_DECISION", "1")
     monkeypatch.setenv("PM_POSTERIOR_TARGET_DIRECT_ENABLED", "0")
+    monkeypatch.setattr(poller, "_awc_release_watch_target_at", lambda: awc_target_at)
+    monkeypatch.setattr(poller, "_refresh_awc_fact", fake_awc_refresh)
     monkeypatch.setattr(
         poller,
         "_load_latest_fact_payload",
@@ -5994,15 +8162,126 @@ def test_poll_once_drains_claimable_direct_retry_job(tmp_path, monkeypatch):
 
     result = poller.poll_once(db_path, event_date=event_date, slug=slug)
 
+    assert events == ["awc", "worker"]
     assert captured == {"db_path": db_path, "requested_job_id": job_id}
     assert result["worker"]["ok"] is True
     assert result["worker"]["drain_claimable_direct_job"] is True
     assert result["worker"]["drain_claimable_direct_job_id"] == job_id
-    assert result["worker"]["drain_claimable_direct_stage"] == "before_awc"
-    assert result["decision"]["reason"] == "claimable_direct_job_drained_before_awc"
+    assert result["worker"]["drain_claimable_direct_stage"] == "before_decision"
+    assert result["decision"]["status"] == "unchanged"
 
 
-def test_poll_once_prioritizes_fresh_posterior_job_before_claimable_drain(
+def test_poll_once_holds_non_awc_work_until_awc_release_target(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    slug = "highest-temperature-in-chengdu-on-july-1-2026"
+    event_date = "2026-07-01"
+    target_at = datetime(2026, 6, 30, 23, 0, tzinfo=timezone.utc)
+    events = []
+
+    def fake_awc_refresh(*args, **kwargs):
+        events.append("awc")
+        return {
+            "ok": True,
+            "status": "skipped",
+            "reason": "same_awc_latest_at",
+            "event_date": event_date,
+            "awc_latest_at": "2026-06-30T22:00:00+00:00",
+        }
+
+    def fail_non_awc_work(*args, **kwargs):
+        pytest.fail("non-AWC work must wait until the release target hour is fetched")
+
+    monkeypatch.setenv("PM_HARD_SOURCE_LIVE_SSOT_WRITER_LOCK_ENABLED", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_AWC", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_CLAIMABLE_JOB", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_AWC", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_RETURN_AFTER_PRE_AWC_DRAIN", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_ACQUIRE_HOLD_NON_AWC_UNTIL_TARGET", "1")
+    monkeypatch.setattr(poller, "_awc_release_watch_target_at", lambda: target_at)
+    monkeypatch.setattr(poller, "_refresh_awc_fact", fake_awc_refresh)
+    monkeypatch.setattr(poller, "_load_latest_fact_payload", fail_non_awc_work)
+    monkeypatch.setattr(poller, "record_hard_source_direct_decisions", fail_non_awc_work)
+    monkeypatch.setattr(poller, "_run_worker_once_inline", fail_non_awc_work)
+
+    result = poller.poll_once(db_path, event_date=event_date, slug=slug)
+
+    assert events == ["awc"]
+    assert result["decision"]["reason"] == "awc_acquire_window_waiting_for_target_hour"
+    assert result["decision"]["awc_release_watch_target_at"] == target_at.isoformat()
+    assert result["decision"]["awc_latest_at"] == "2026-06-30T22:00:00+00:00"
+    assert result["worker"] == {}
+
+
+def test_poll_once_holds_non_awc_work_until_awc_event_end_final_report(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    slug = "highest-temperature-in-chengdu-on-july-5-2026"
+    event_date = "2026-07-05"
+    target_at = datetime(2026, 7, 5, 12, 0, tzinfo=timezone.utc)
+    events = []
+
+    def fake_load(*args, **kwargs):
+        events.append("load")
+        return {
+            "slug": slug,
+            "event_date": event_date,
+            "event_end_utc": target_at.isoformat(),
+            "weather_likelihood_features": {
+                "zuuu_metar_raw_awc_today_max_c": 37.0,
+                "zuuu_metar_raw_awc_final_daily_max": False,
+            },
+        }
+
+    def fake_awc_refresh(*args, **kwargs):
+        events.append("awc")
+        return {
+            "ok": True,
+            "status": "skipped",
+            "reason": "same_awc_latest_at",
+            "event_date": event_date,
+            "awc_latest_at": "2026-07-05T10:00:00+00:00",
+            "awc_final_daily_max": False,
+            "awc_final_daily_max_state": "awc_latest_before_event_end",
+        }
+
+    def fail_non_awc_work(*args, **kwargs):
+        pytest.fail("non-AWC work must wait for AWC event-end final report")
+
+    monkeypatch.setenv("PM_HARD_SOURCE_LIVE_SSOT_WRITER_LOCK_ENABLED", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_RELEASE_WATCH_ENABLED", "0")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_ENABLED", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_AWC_FINAL_WATCH_DURATION_SEC", "900")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_REFRESH_AWC", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_CLAIMABLE_JOB", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_AWC", "1")
+    monkeypatch.setenv("PM_HARD_SOURCE_DIRECT_RETURN_AFTER_PRE_AWC_DRAIN", "1")
+    monkeypatch.setattr(poller, "_load_latest_fact_payload", fake_load)
+    monkeypatch.setattr(
+        poller,
+        "_awc_event_end_final_watch_context",
+        lambda payload: {
+            "active": True,
+            "reason": "awc_final_daily_max_event_end_watch",
+            "target_at": target_at,
+            "target_at_utc": target_at.isoformat(),
+            "event_end_utc": target_at.isoformat(),
+            "poll_sec": 1.0,
+        },
+    )
+    monkeypatch.setattr(poller, "_refresh_awc_fact", fake_awc_refresh)
+    monkeypatch.setattr(poller, "record_hard_source_direct_decisions", fail_non_awc_work)
+    monkeypatch.setattr(poller, "_run_worker_once_inline", fail_non_awc_work)
+
+    result = poller.poll_once(db_path, event_date=event_date, slug=slug)
+
+    assert events == ["load", "awc"]
+    assert result["decision"]["reason"] == "awc_final_daily_max_waiting_for_event_end_report"
+    assert result["decision"]["awc_release_watch_target_at"] == target_at.isoformat()
+    assert result["decision"]["awc_watch_context"]["reason"] == "awc_final_daily_max_event_end_watch"
+    assert result["decision"]["awc_latest_at"] == "2026-07-05T10:00:00+00:00"
+    assert result["worker"] == {}
+
+
+def test_poll_once_does_not_run_or_drain_retired_posterior_target_jobs(
     tmp_path,
     monkeypatch,
 ):
@@ -6080,10 +8359,11 @@ def test_poll_once_prioritizes_fresh_posterior_job_before_claimable_drain(
 
     result = poller.poll_once(db_path, event_date=event_date, slug=slug)
 
-    assert captured == {"db_path": db_path, "requested_job_id": 222}
-    assert result["posterior_target_fast_precheck"]["job_id"] == 222
-    assert result["worker"]["job_id"] == 222
-    assert "drain_claimable_direct_job" not in result["worker"]
+    assert captured == {}
+    assert result["posterior_target_fast_precheck"]["status"] == "retired"
+    assert result["posterior_target"]["status"] == "retired"
+    assert result["posterior_target_fast_worker"] == {}
+    assert result["worker"] == {}
 
 
 def test_recent_posterior_old_exit_cleanup_ignores_stuck_job(tmp_path):
@@ -6435,3 +8715,14 @@ def test_poll_once_uses_one_second_wu_twc_due_inside_wu_forecast_window(tmp_path
 
     assert result["ok"] is True
     assert intervals == [1]
+def test_forward_forecast_archive_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("FORECAST_SOURCE_FORWARD_ARCHIVE_ENABLED", raising=False)
+
+    result = poller._archive_forecast_source_forward_metrics(
+        source_id="weather_com_forecast_peak",
+        event_date="2026-07-12",
+        station_id="ZUUU",
+        metrics={"value_c": 36.0},
+    )
+
+    assert result == {"ok": True, "state": "disabled", "writes_research_files": False}

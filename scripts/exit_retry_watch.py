@@ -57,7 +57,12 @@ def _position_size(slug: str, event_date: str, outcome: str, side: str) -> float
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Retry exit when bid exists")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Retired manual exit watcher. Defaults to dry-run; real SELL requires "
+            "--apply and a target_realization_* reason code."
+        )
+    )
     parser.add_argument("--slug", required=True)
     parser.add_argument("--event-date", required=True)
     parser.add_argument("--outcome", required=True)
@@ -67,14 +72,43 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=30.0)
     parser.add_argument("--max-tries", type=int, default=20)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Allow a real SELL after Bayes target_realization exit policy passes.",
+    )
+    parser.add_argument(
+        "--exit-reason-code",
+        action="append",
+        default=[],
+        help="Required with --apply; must include target_realization_*.",
+    )
     args = parser.parse_args()
+
+    reason_codes = [
+        str(code or "").strip()
+        for code in (args.exit_reason_code or [])
+        if str(code or "").strip()
+    ]
+    policy_block = s._exit_order_policy_block_reason(reason_codes)
+    if args.apply and args.dry_run:
+        raise SystemExit("--apply and --dry-run are mutually exclusive")
+    if args.apply and policy_block:
+        raise SystemExit(
+            "real exit_retry_watch SELL blocked by Bayes exit policy: "
+            f"{policy_block}; provide --exit-reason-code target_realization_*"
+        )
 
     token_id = args.token_id or _resolve_token_id(args.slug, args.event_date, args.outcome, args.side)
     if not token_id:
         raise SystemExit("token_id not found")
 
-    if args.dry_run:
+    if args.dry_run or not args.apply:
         s.AUTO_TRADE_DRY_RUN = True
+        print(
+            "dry_run_enabled: exit_retry_watch is retired; "
+            "real SELL requires --apply and --exit-reason-code target_realization_*"
+        )
 
     for attempt in range(1, args.max_tries + 1):
         pos = _position_size(args.slug, args.event_date, args.outcome, args.side)
@@ -95,6 +129,18 @@ def main() -> None:
                 price=best_bid,
                 size=pos,
                 order_type="GTC",
+                order_context=s._bayes_weather_order_context(
+                    slug=args.slug,
+                    event_date=args.event_date,
+                    outcome=args.outcome,
+                    side=args.side,
+                    intent_action="exit",
+                    submit_source="retired_exit_retry_watch_apply",
+                    candidate={
+                        "strategy_source": "target_realization_manual_exit_retry",
+                        "target_adjustment_reason_codes": reason_codes,
+                    },
+                ),
             )
             print("order_ok", ok)
             print("payload", payload)

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,8 @@ READINESS_ENV_KEYS = (
     "PM_MIN_ORDER_SIZE",
     "PM_EXCHANGE_MIN_ORDER_SIZE",
     "PM_ENFORCE_EXCHANGE_MIN_ORDER_SIZE",
+    "PM_TARGET_REALIZATION_V3_ENABLED",
+    "PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET",
     "PM_CLOB_FORCE_DIRECT",
     "PM_CLOB_FORCE_PROXY",
     "PM_PROXY_PORTS",
@@ -46,6 +49,13 @@ READINESS_ENV_OVERRIDE_KEYS = (
     "PM_CLOB_FORCE_DIRECT",
     "PM_CLOB_FORCE_PROXY",
     "PM_PROXY_PORTS",
+    # Read-only cutover probes may use a wider timeout than the 3/5 second
+    # signal-to-order execution budget.  Keep these command-scoped so the
+    # live place-order path retains its strict latency contract.
+    "PM_CLOB_BALANCE_HARD_TIMEOUT_MS",
+    "PM_CLOB_FETCH_OPEN_ORDERS_HARD_TIMEOUT_MS",
+    "PM_CLOB_COMMAND_HARD_TIMEOUT_MS",
+    "PM_CLOB_TIMEOUT_MS",
 )
 
 
@@ -69,12 +79,14 @@ ENTRY_ALLOWED_HARD_REASON_CODES = {
     "residual_exit_lock",
     "target_switch_non_target_entry_suppressed",
     "post_peak_near_settlement_price_blocked",
-    "remote_bucket_realization_prob_above_max",
     "temperature_path_trade_follow_not_allowed",
     "target_realization_plan_notional_nonpositive",
     "clob_submit_failed",
     "manual_ignore",
     "manual_ignore_same_outcome",
+    # A missed execution deadline is a valid fail-closed entry rejection,
+    # not an unknown policy reason or authorization to place a late order.
+    "sequential_bayes_signal_to_order_hard_deadline_exceeded",
 }
 
 
@@ -894,6 +906,48 @@ def _audit_fills_positions_exit(conn: sqlite3.Connection, *, since_iso: str, lim
     }
 
 
+def _target_realization_activation_quiet_state(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Explain an intentional no-intent window before the configured D0 takeover."""
+
+    if not _env_bool("PM_TARGET_REALIZATION_V3_ENABLED", False):
+        return {}
+    activation_date = str(
+        os.environ.get("PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET", "") or ""
+    ).strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", activation_date):
+        return {}
+    today_et = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    if today_et >= activation_date:
+        return {}
+    row = conn.execute(
+        """
+        SELECT id, created_at, event_date, action, decided_state, will_order,
+               reason_codes_json
+        FROM auto_trade_decisions
+        WHERE action = 'hold'
+          AND decided_state = 'frozen'
+          AND COALESCE(will_order, 0) = 0
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return {}
+    codes = _reason_codes(row["reason_codes_json"])
+    reason = "target_realization_d1_existing_positions_frozen"
+    if reason not in codes:
+        return {}
+    return {
+        "active": True,
+        "reason": reason,
+        "activation_date_et": activation_date,
+        "today_et": today_et,
+        "decision_id": int(row["id"] or 0),
+        "decision_created_at": str(row["created_at"] or ""),
+        "event_date": str(row["event_date"] or ""),
+    }
+
+
 def build_db_live_readiness(
     db_path: Path = DEFAULT_DB,
     *,
@@ -923,6 +977,7 @@ def build_db_live_readiness(
             "warnings": [],
         }
     conn: sqlite3.Connection | None = None
+    intentional_quiet_state: dict[str, Any] = {}
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30)
         _configure_readonly_connection(conn)
@@ -970,6 +1025,7 @@ def build_db_live_readiness(
             )
             order_persistence = _audit_order_persistence(conn, since_iso=since_iso, limit=int(limit))
             fills_positions_exit = _audit_fills_positions_exit(conn, since_iso=since_iso, limit=int(limit))
+            intentional_quiet_state = _target_realization_activation_quiet_state(conn)
         except sqlite3.Error as exc:
             return _db_read_error_payload(
                 db_path,
@@ -987,7 +1043,9 @@ def build_db_live_readiness(
     )
     if recent_order_intent_rows <= 0:
         code = "no_recent_entry_order_intent"
-        if live_cutover or live_trading:
+        if intentional_quiet_state:
+            pass
+        elif live_cutover or live_trading:
             blockers.append(code)
         else:
             warnings.append(code)
@@ -1022,6 +1080,7 @@ def build_db_live_readiness(
         "entry_hard_reason_policy": entry_hard_reason_policy,
         "order_persistence": order_persistence,
         "fills_positions_exit": fills_positions_exit,
+        "intentional_quiet_state": intentional_quiet_state,
     }
 
 
@@ -1162,7 +1221,9 @@ def build_live_readiness(
         "blockers": list(blockers),
         "items": [],
         "next_mainline_task": (
-            "enable_live_trading"
+            "observe_first_d0_fact"
+            if bool(live_trading) and not blockers
+            else "enable_live_trading"
             if bool(live_cutover) and not blockers
             else "paper_trading_validation"
             if not blockers
@@ -1233,7 +1294,7 @@ def build_live_readiness(
         },
         {
             "step": "manual_live_enable",
-            "status": "requires_confirmation",
+            "status": "already_enabled" if live_trading else "requires_confirmation",
             "env": {
                 "PM_AUTO_TRADE_ENABLED": "1",
                 "PM_AUTO_TRADE_DRY_RUN": "0",
@@ -1241,7 +1302,7 @@ def build_live_readiness(
         },
         {
             "step": "post_cutover_verify",
-            "status": "pending",
+            "status": "passed" if live_trading and not blockers else "pending",
             "command": (
                 ".venv/bin/python scripts/check_trade_readiness.py "
                 "--live-cutover --since-minutes 180"
@@ -1265,10 +1326,10 @@ def build_live_readiness(
         "clob": clob,
         "db_audit": db,
         "conclusion": (
-            "ready_to_switch_live"
-            if not blockers and live_cutover
-            else "live_running_ready"
+            "live_running_ready"
             if not blockers and live_trading
+            else "ready_to_switch_live"
+            if not blockers and live_cutover
             else "paper_trading_ready"
             if not blockers
             else "not_ready"

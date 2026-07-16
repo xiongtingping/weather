@@ -764,6 +764,13 @@ def _details(row: Optional[sqlite3.Row]) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _first_mapping(*values: Any) -> dict[str, Any]:
+    for value in values:
+        if isinstance(value, Mapping):
+            return dict(value)
+    return {}
+
+
 def _has_sla(details: Mapping[str, Any]) -> bool:
     return bool(
         details.get("hard_source_direct")
@@ -904,6 +911,70 @@ def _final_lock_status(payload: Mapping[str, Any], target_bucket: str) -> dict[s
         "final_bucket_lock": True,
         "target_q": target_q,
         "non_target_nonzero": non_target_nonzero,
+    }
+
+
+def hard_source_lock_consistency_contract() -> dict[str, Any]:
+    return {
+        "schema": "hard_source_lock_consistency_contract_v1",
+        "read_only": True,
+        "scope": "awc_hard_source_final_bucket_lock",
+        "non_final_boundary": (
+            "non-final hard-source observations are lower-bound constraints; "
+            "they must not be audited as one-hot final settlement locks"
+        ),
+        "final_lock_requirements": [
+            "target_bucket_present",
+            "target_bucket_is_top_posterior",
+            "target_probability_is_one_hot",
+            "all_non_target_buckets_zero",
+        ],
+        "guards": {
+            "writes_archive_db": False,
+            "places_orders": False,
+            "upgrades_weak_sources_to_hard_lock": False,
+        },
+    }
+
+
+def _hard_source_lock_consistency_status(
+    payload: Mapping[str, Any],
+    target_bucket: str,
+) -> dict[str, Any]:
+    final_status = _final_lock_status(payload, target_bucket)
+    top_bucket = _top_posterior_bucket(payload)
+    target_q = _to_float(final_status.get("target_q"))
+    final_lock = bool(final_status.get("final_bucket_lock"))
+    base = {
+        "contract_schema": "hard_source_lock_consistency_contract_v1",
+        "target_bucket": target_bucket,
+        "top_posterior_bucket": top_bucket,
+        "final_bucket_lock": final_lock,
+        "target_q": target_q,
+        "non_target_nonzero": list(final_status.get("non_target_nonzero") or []),
+    }
+    if not final_lock:
+        return {
+            **base,
+            "ok": True,
+            "state": "not_final_locked",
+            "reason": "non_final_hard_source_lower_bound_constraint_audited_separately",
+        }
+    missing: list[str] = []
+    if not target_bucket:
+        missing.append("target_bucket_present")
+    if target_bucket and top_bucket != target_bucket:
+        missing.append("target_bucket_is_top_posterior")
+    if target_q is None or target_q < 1.0 - 1e-9:
+        missing.append("target_probability_is_one_hot")
+    if final_status.get("non_target_nonzero"):
+        missing.append("all_non_target_buckets_zero")
+    return {
+        **base,
+        "ok": not missing,
+        "state": "final_locked",
+        "reason": "final_bucket_lock_consistent" if not missing else "final_bucket_lock_not_one_hot",
+        "missing_requirements": missing,
     }
 
 
@@ -1195,21 +1266,59 @@ def _audit_posterior_target(
         and (not exit_details or exit_details.get("target_bucket") == target_bucket)
     )
     posterior_target_sources = {
+        "posterior_ssot_fact.top_bucket",
+        "posterior_ssot_fact",
         "posterior_target_bucket_selection",
         "top_level_ctp_ssot.target_bucket_probability_pct",
     }
+
+    def _posterior_target_semantics_ok(
+        details_json: Mapping[str, Any],
+        *,
+        require_probability_field: bool,
+    ) -> bool:
+        decision_ssot = str(details_json.get("decision_ssot") or "").strip()
+        if decision_ssot == "posterior_ssot_fact":
+            if details_json.get("posterior_ssot_fact_used") is not True:
+                return False
+            if not require_probability_field:
+                return True
+            return (
+                str(details_json.get("target_probability_field") or "").strip()
+                == "posterior_ssot_fact.target_probability"
+            )
+        if decision_ssot == "auto_trade_target_bucket":
+            return str(details_json.get("posterior_target_source") or "") in posterior_target_sources
+        return False
+
     checks["order_decisions_keep_posterior_target_semantics"] = bool(
         entry_details.get("posterior_target_direct") is True
-        and str(entry_details.get("posterior_target_source") or "") in posterior_target_sources
+        and _posterior_target_semantics_ok(entry_details, require_probability_field=True)
         and entry_details.get("target_adjustment_decision_version") == "posterior_target_direct_v1"
         and (
             not exit_details
             or (
                 exit_details.get("posterior_target_direct") is True
-                and str(exit_details.get("posterior_target_source") or "") in posterior_target_sources
+                and _posterior_target_semantics_ok(exit_details, require_probability_field=False)
             )
         )
     )
+    details["posterior_target_semantics_debug"] = {
+        "entry": {
+            "decision_ssot": entry_details.get("decision_ssot"),
+            "posterior_ssot_fact_used": entry_details.get("posterior_ssot_fact_used"),
+            "target_probability_field": entry_details.get("target_probability_field"),
+            "posterior_target_source": entry_details.get("posterior_target_source"),
+            "target_adjustment_decision_version": entry_details.get("target_adjustment_decision_version"),
+        },
+        "exit": {
+            "decision_ssot": exit_details.get("decision_ssot"),
+            "posterior_ssot_fact_used": exit_details.get("posterior_ssot_fact_used"),
+            "target_probability_field": exit_details.get("target_probability_field"),
+            "posterior_target_source": exit_details.get("posterior_target_source"),
+            "target_adjustment_decision_version": exit_details.get("target_adjustment_decision_version"),
+        } if exit_details else {},
+    }
     checks["order_decisions_no_legacy_bypass_semantics"] = bool(
         not _has_legacy_bypass(entry_details)
         and (not exit_details or not _has_legacy_bypass(exit_details))
@@ -1359,6 +1468,7 @@ def audit(
         if not isinstance(payload, dict):
             blockers.append("hard_source_job_payload_invalid")
             return {"ok": False, "checks": checks, "blockers": blockers, "warnings": warnings, "details": details}
+        details["hard_source_lock_consistency_contract"] = hard_source_lock_consistency_contract()
         hard_block = payload.get("hard_source_direct")
         target = (payload.get("entry_expected_targets") or [{}])[0]
         if not isinstance(target, Mapping):
@@ -1401,11 +1511,17 @@ def audit(
             if snapshot_payload
             else {"ok": False, "reason": "job_snapshot_missing"}
         )
+        snapshot_lock_consistency_status = (
+            _hard_source_lock_consistency_status(snapshot_payload, target_bucket)
+            if snapshot_payload
+            else {"ok": False, "reason": "job_snapshot_missing"}
+        )
         details["snapshot_zeroed_lower_buckets"] = snapshot_zeroed
         details["snapshot_lower_buckets_zero_required"] = bool(snapshot_target_index is None or snapshot_target_index > 0)
         details["snapshot_top_posterior_bucket"] = snapshot_top_bucket
         details["snapshot_lower_bucket_zero_status"] = snapshot_lower_zero_status
         details["snapshot_final_lock_status"] = snapshot_final_lock_status
+        details["snapshot_hard_source_lock_consistency_status"] = snapshot_lock_consistency_status
         checks["job_has_constrained_snapshot"] = bool(
             snapshot_payload
             and snapshot_item.get("source") == "hard_source_direct"
@@ -1420,6 +1536,9 @@ def audit(
         checks["job_snapshot_target_is_top_posterior"] = bool(target_bucket and snapshot_top_bucket == target_bucket)
         checks["job_snapshot_lower_buckets_zeroed"] = bool(snapshot_lower_zero_status.get("ok"))
         checks["job_snapshot_final_lock_strict_if_applicable"] = bool(snapshot_final_lock_status.get("ok"))
+        checks["job_snapshot_hard_source_lock_consistent"] = bool(
+            snapshot_lock_consistency_status.get("ok")
+        )
 
         fact = _latest_hard_source_fact(conn, slug=slug, event_date=event_date) if slug and event_date else None
         fact_payload = _load_json(fact["fact_json"]) if fact is not None else None
@@ -1439,18 +1558,27 @@ def audit(
             fact_top_bucket = _top_posterior_bucket(fact_payload)
             fact_lower_zero_status = _lower_bucket_zero_status(fact_payload, target_bucket)
             fact_final_lock_status = _final_lock_status(fact_payload, target_bucket)
+            fact_lock_consistency_status = _hard_source_lock_consistency_status(
+                fact_payload,
+                target_bucket,
+            )
             details["zeroed_lower_buckets"] = zeroed
             details["lower_buckets_zero_required"] = bool(fact_target_index is None or fact_target_index > 0)
             details["latest_fact_top_posterior_bucket"] = fact_top_bucket
             details["latest_fact_lower_bucket_zero_status"] = fact_lower_zero_status
             details["latest_fact_final_lock_status"] = fact_final_lock_status
+            details["latest_fact_hard_source_lock_consistency_status"] = fact_lock_consistency_status
             checks["latest_fact_target_is_top_posterior"] = bool(target_bucket and fact_top_bucket == target_bucket)
             checks["lower_buckets_zeroed"] = bool(fact_lower_zero_status.get("ok"))
             checks["latest_fact_final_lock_strict_if_applicable"] = bool(fact_final_lock_status.get("ok"))
+            checks["latest_fact_hard_source_lock_consistent"] = bool(
+                fact_lock_consistency_status.get("ok")
+            )
         else:
             checks["latest_fact_target_is_top_posterior"] = False
             checks["lower_buckets_zeroed"] = False
             checks["latest_fact_final_lock_strict_if_applicable"] = False
+            checks["latest_fact_hard_source_lock_consistent"] = False
         fact_timing = fact_payload.get("hard_source_direct_timing") if isinstance(fact_payload, dict) else {}
         if not isinstance(fact_timing, Mapping):
             fact_timing = {}
@@ -1505,10 +1633,14 @@ def audit(
             and entry_details.get("ssot_target_bucket") == target_bucket
             and (not exit_details or exit_details.get("ssot_target_bucket") == target_bucket)
         )
+        hard_source_decision_ssots = {
+            "hard_source_direct_ssot_target",
+            "auto_trade_target_bucket",
+        }
         checks["order_decisions_keep_ssot_semantics"] = bool(
-            entry_details.get("decision_ssot") == "auto_trade_target_bucket"
+            entry_details.get("decision_ssot") in hard_source_decision_ssots
             and entry_details.get("decision_basis") == "hard_source_lower_bound_constraint"
-            and (not exit_details or exit_details.get("decision_ssot") == "auto_trade_target_bucket")
+            and (not exit_details or exit_details.get("decision_ssot") in hard_source_decision_ssots)
         )
         checks["order_decisions_mark_async_recompute"] = bool(
             entry_details.get("bayes_recomputed_async") is True
@@ -1526,7 +1658,60 @@ def audit(
             and (not exit_details or not _has_legacy_bypass(exit_details))
         )
         checks["hard_source_fast_path_not_waiting_full_fact_bayes"] = checks["order_decisions_mark_async_recompute"]
+        runtime_contract = _first_mapping(
+            (hard_block or {}).get("hard_source_runtime_contract") if isinstance(hard_block, Mapping) else None,
+            target.get("hard_source_runtime_contract") if isinstance(target, Mapping) else None,
+            snapshot_payload.get("hard_source_runtime_contract") if isinstance(snapshot_payload, Mapping) else None,
+            fact_payload.get("hard_source_runtime_contract") if isinstance(fact_payload, Mapping) else None,
+            entry_details.get("hard_source_runtime_contract"),
+        )
+        runtime_contract_version = str(
+            runtime_contract.get("contract_version")
+            or (
+                (hard_block or {}).get("hard_source_runtime_contract_version")
+                if isinstance(hard_block, Mapping)
+                else ""
+            )
+            or ""
+        )
+        details["hard_source_runtime_contract"] = runtime_contract
+        details["hard_source_runtime_contract_version"] = runtime_contract_version
+        checks["hard_source_runtime_contract_present"] = bool(
+            runtime_contract.get("schema")
+            and runtime_contract_version
+            and runtime_contract.get("module_loaded_at")
+        )
 
+        entry_signal_timing = (
+            entry_details.get("signal_to_order_timing")
+            if isinstance(entry_details.get("signal_to_order_timing"), Mapping)
+            else {}
+        )
+        exit_signal_timing = (
+            exit_details.get("signal_to_order_timing")
+            if isinstance(exit_details.get("signal_to_order_timing"), Mapping)
+            else {}
+        )
+        entry_signal_to_order_ms = _first_float(
+            entry_details.get("awc_signal_to_order_submit_ms"),
+            entry_signal_timing.get("awc_signal_to_order_submit_ms")
+            if isinstance(entry_signal_timing, Mapping)
+            else None,
+        )
+        exit_signal_to_order_ms = _first_float(
+            exit_details.get("awc_signal_to_order_submit_ms"),
+            exit_signal_timing.get("awc_signal_to_order_submit_ms")
+            if isinstance(exit_signal_timing, Mapping)
+            else None,
+        )
+        signal_to_order_fields = [
+            field
+            for field, value in (
+                ("entry_signal_to_order_ms", entry_signal_to_order_ms),
+                ("exit_signal_to_order_ms", exit_signal_to_order_ms),
+            )
+            if value is not None
+        ]
         latencies = {
             "fetch_to_ssot_ms": _first_float(
                 fact_timing.get("fetch_to_ssot_ms"),
@@ -1548,10 +1733,12 @@ def audit(
             "entry_ssot_to_order_ms": _to_float(entry_details.get("hard_source_ssot_to_order_ms")),
             "entry_job_enqueue_to_order_ms": _to_float(entry_details.get("hard_source_job_enqueue_to_order_ms")),
             "entry_fetch_to_order_ms": _to_float(entry_details.get("hard_source_fetch_to_order_ms")),
+            "entry_signal_to_order_ms": entry_signal_to_order_ms,
             "entry_worker_to_order_ms": _to_float(entry_details.get("hard_source_worker_to_order_ms")),
             "exit_ssot_to_order_ms": _to_float(exit_details.get("hard_source_ssot_to_order_ms")),
             "exit_job_enqueue_to_order_ms": _to_float(exit_details.get("hard_source_job_enqueue_to_order_ms")),
             "exit_fetch_to_order_ms": _to_float(exit_details.get("hard_source_fetch_to_order_ms")),
+            "exit_signal_to_order_ms": exit_signal_to_order_ms,
             "exit_worker_to_order_ms": _to_float(exit_details.get("hard_source_worker_to_order_ms")),
         }
         details["latencies_ms"] = latencies
@@ -1572,7 +1759,7 @@ def audit(
             (
                 "fetch_to_order_within_sla",
                 max_fetch_to_order_ms,
-                ["entry_fetch_to_order_ms", "exit_fetch_to_order_ms"],
+                signal_to_order_fields or ["entry_fetch_to_order_ms", "exit_fetch_to_order_ms"],
             ),
         ]
         any_sla_requested = False

@@ -8,14 +8,10 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 STRATEGY_FAMILY = "posterior_settlement"
 LANE_YES_TARGET = "yes_realized_target"
-LANE_NO_REMOTE = "no_remote_bucket"
 LANE_OBSERVE = "observe"
-ALLOWED_LANES = (LANE_YES_TARGET, LANE_NO_REMOTE, LANE_OBSERVE)
+ALLOWED_LANES = (LANE_YES_TARGET, LANE_OBSERVE)
 
 DEFAULT_YES_RELIABILITY_MIN = 0.60
-DEFAULT_REMOTE_NO_PROB_MAX = 0.25
-DEFAULT_REMOTE_MIN_BUCKET_DISTANCE = 2
-DEFAULT_REMOTE_MAX_BUCKET_DISTANCE = 3
 
 TRAJECTORY_SUPPORTED = "supported"
 TRAJECTORY_UNSUPPORTED = "unsupported"
@@ -1545,9 +1541,6 @@ def classify_posterior_settlement_candidate(
     context: Optional[Mapping[str, Any]] = None,
     *,
     yes_reliability_min: float = DEFAULT_YES_RELIABILITY_MIN,
-    remote_no_prob_max: float = DEFAULT_REMOTE_NO_PROB_MAX,
-    remote_min_bucket_distance: int = DEFAULT_REMOTE_MIN_BUCKET_DISTANCE,
-    remote_max_bucket_distance: int = DEFAULT_REMOTE_MAX_BUCKET_DISTANCE,
 ) -> Dict[str, Any]:
     side = str(candidate.get("side") or "").strip().upper()
     candidate_bucket = _candidate_bucket(candidate, context)
@@ -1617,14 +1610,6 @@ def classify_posterior_settlement_candidate(
         candidate_bucket if old_bucket_reverse_leg else second_bucket if ssot_second_target_yes else target_bucket,
         bucket_prob if old_bucket_reverse_leg else second_prob if ssot_second_target_yes else target_prob,
     )
-    remote_prob = _first_prob(
-        candidate,
-        context,
-        "remote_bucket_realization_prob",
-        "posterior_settlement_remote_bucket_prob",
-    )
-    if remote_prob is None and side == "NO":
-        remote_prob = bucket_prob
     directional_dist = bucket_directional_distance(candidate_bucket, target_bucket)
     dist = abs(int(directional_dist)) if directional_dist is not None else bucket_distance(candidate_bucket, target_bucket)
     if dist is None:
@@ -1633,19 +1618,9 @@ def classify_posterior_settlement_candidate(
     lane = LANE_OBSERVE
     allowed = False
     block_reason = "not_a_posterior_settlement_entry"
-    remote_reason = ""
     switch_reason = ""
     if old_bucket_reverse_leg and side in {"YES", "NO"}:
-        if not candidate_bucket:
-            block_reason = "old_bucket_reverse_bucket_missing"
-        elif bucket_prob is None:
-            block_reason = "old_bucket_reverse_posterior_missing"
-        else:
-            lane = LANE_NO_REMOTE if side == "NO" else LANE_YES_TARGET
-            allowed = True
-            block_reason = ""
-            remote_reason = "old_bucket_reverse_after_target_switch" if side == "NO" else ""
-            switch_reason = "target_realization_switch_old_bucket_reverse"
+        block_reason = "retired_old_bucket_reverse_buy_use_sell_old_transition"
     elif side == "YES":
         if not target_bucket:
             block_reason = "target_bucket_missing"
@@ -1669,29 +1644,7 @@ def classify_posterior_settlement_candidate(
             allowed = True
             block_reason = ""
     elif side == "NO":
-        if not candidate_bucket:
-            block_reason = "remote_no_bucket_missing"
-        elif not target_bucket:
-            block_reason = "target_bucket_missing_for_remote_no"
-        elif _same_bucket(candidate_bucket, target_bucket):
-            block_reason = "remote_no_cannot_target_same_bucket"
-        elif directional_dist is None:
-            block_reason = "remote_no_direction_unavailable"
-        elif remote_prob is not None and remote_prob > float(remote_no_prob_max) + 1e-9:
-            block_reason = "remote_bucket_realization_prob_above_max"
-        elif directional_dist <= 0:
-            block_reason = "remote_no_must_be_above_target_bucket"
-        elif dist < int(remote_min_bucket_distance):
-            block_reason = "remote_no_bucket_not_far_enough"
-        elif dist > int(remote_max_bucket_distance):
-            block_reason = "remote_no_bucket_too_far"
-        elif remote_prob is None:
-            block_reason = "remote_bucket_realization_prob_missing"
-        else:
-            lane = LANE_NO_REMOTE
-            allowed = True
-            block_reason = ""
-            remote_reason = "far_from_target_and_low_realization_prob"
+        block_reason = "retired_posterior_settlement_no_use_dynamic_three_leg"
     else:
         block_reason = "side_not_tradeable_for_posterior_settlement"
 
@@ -1724,16 +1677,10 @@ def classify_posterior_settlement_candidate(
         "target_realization_reliability_source": reliability_source,
         "second_target_bucket": second_bucket or None,
         "second_target_posterior": float(second_prob) if second_prob is not None else None,
-        "remote_no_bucket": candidate_bucket if side == "NO" else None,
-        "remote_no_reason": remote_reason,
-        "remote_bucket_realization_prob": float(remote_prob) if remote_prob is not None else None,
         "posterior_settlement_candidate_bucket": candidate_bucket or None,
         "posterior_settlement_candidate_bucket_prob": float(bucket_prob) if bucket_prob is not None else None,
         "posterior_settlement_bucket_distance": int(dist),
         "posterior_settlement_yes_reliability_min": float(yes_reliability_min),
-        "posterior_settlement_remote_no_prob_max": float(remote_no_prob_max),
-        "posterior_settlement_remote_min_bucket_distance": int(remote_min_bucket_distance),
-        "posterior_settlement_remote_max_bucket_distance": int(remote_max_bucket_distance),
         "posterior_settlement_entry_allowed": bool(allowed),
         "posterior_settlement_entry_block_reason": block_reason,
         "bucket_switch_reason": switch_reason,
@@ -1742,9 +1689,6 @@ def classify_posterior_settlement_candidate(
         score_prob = bucket_prob if old_bucket_reverse_leg else target_prob
         out["posterior_settlement_sort_score"] = float(reliability) * 100.0 + float(score_prob or 0.0) * 10.0
         out["posterior_settlement_size_scale"] = min(1.0, max(0.20, float(reliability)))
-    elif lane == LANE_NO_REMOTE:
-        out["posterior_settlement_sort_score"] = (1.0 - float(remote_prob or 1.0)) * 100.0 + min(float(dist), 5.0)
-        out["posterior_settlement_size_scale"] = min(1.0, max(0.20, 1.0 - float(remote_prob or 1.0)))
     else:
         out["posterior_settlement_sort_score"] = 0.0
         out["posterior_settlement_size_scale"] = 0.0

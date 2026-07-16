@@ -23,9 +23,66 @@ class ExitReasonFamilyTests(unittest.TestCase):
     def test_target_realization_exit_family(self) -> None:
         self.assertEqual(
             swm._normalize_exit_reason_family_codes(
-                ["target_realization_switch_buy_exit_old"]
+                ["target_realization_yes_target_invalidated"]
             ),
-            ["target_realization_exit"],
+            ["target_realization"],
+        )
+
+    def test_prefix_spoof_and_retired_exit_codes_are_not_authorized(self) -> None:
+        for code in (
+            "target_realization_market_alpha_take_profit",
+            "target_realization_switch_buy_exit_old",
+            "target_realization_rebalance_over_target",
+            "target_realization_no_capital_recycle",
+            "weather_repricing_target",
+        ):
+            self.assertEqual(swm._exit_reason_family_for_code(code), "")
+            self.assertEqual(
+                swm._exit_order_policy_block_reason(
+                    [code],
+                    details={"exit_reason_family": "target_realization"},
+                ),
+                swm.EXIT_ORDER_POLICY_LEGACY_BLOCK_REASON,
+            )
+
+    def test_exit_authorization_requires_exact_single_declared_family(self) -> None:
+        code = "target_realization_yes_target_invalidated"
+        self.assertEqual(
+            swm._exit_order_policy_block_reason([code], details={}),
+            swm.EXIT_ORDER_POLICY_LEGACY_BLOCK_REASON,
+        )
+        self.assertEqual(
+            swm._exit_order_policy_block_reason(
+                [code],
+                details={
+                    "exit_reason_family_codes": [
+                        "target_realization",
+                        "market_alpha_take_profit",
+                    ]
+                },
+            ),
+            swm.EXIT_ORDER_POLICY_LEGACY_BLOCK_REASON,
+        )
+        self.assertEqual(
+            swm._exit_order_policy_block_reason(
+                [code],
+                details={"exit_reason_family": "target_realization"},
+            ),
+            "",
+        )
+
+    def test_market_alpha_is_accepted_but_runtime_default_denied(self) -> None:
+        code = "market_alpha_take_profit_top_yes_wave_completed"
+        self.assertEqual(
+            swm._exit_reason_family_for_code(code),
+            "market_alpha_take_profit",
+        )
+        self.assertEqual(
+            swm._exit_order_policy_block_reason(
+                [code],
+                details={"exit_reason_family": "market_alpha_take_profit"},
+            ),
+            swm.EXIT_ORDER_POLICY_LEGACY_BLOCK_REASON,
         )
 
     def test_mixed_exit_families_keep_only_bayes_triggers(self) -> None:
@@ -33,13 +90,13 @@ class ExitReasonFamilyTests(unittest.TestCase):
             swm._normalize_exit_reason_family_codes(
                 [
                     "edge_min",
-                    "target_realization_switch_buy_exit_old",
+                    "target_realization_yes_target_invalidated",
                     "stop_loss",
-                    "target_realization_rebalance_over_target",
+                    "target_realization_no_invalidated",
                     "weather_repricing_target",
                 ]
             ),
-            ["target_realization_exit"],
+            ["target_realization"],
         )
 
     def test_operational_exit_codes_do_not_become_strategy_families(self) -> None:
@@ -66,12 +123,12 @@ class ExitReasonFamilyTests(unittest.TestCase):
                         "hold",
                         "exit_wait_fill",
                         "edge_min",
-                        "target_realization_switch_buy_exit_old",
+                        "target_realization_yes_target_invalidated",
                     ]
                 },
                 decision_reason_codes=["exit_no_trigger"],
             ),
-            ["target_realization_switch_buy_exit_old"],
+            ["target_realization_yes_target_invalidated"],
         )
 
     def test_synced_exit_fill_is_operational_not_strategy_family(self) -> None:
@@ -144,9 +201,9 @@ class ExitReasonFamilyTests(unittest.TestCase):
         )
         self.assertEqual(
             swm._dump_exit_reason_family_codes(
-                '["edge_min", "target_realization_rebalance_over_target"]'
+                '["edge_min", "target_realization_no_invalidated"]'
             ),
-            '["target_realization_exit"]',
+            '["target_realization"]',
         )
 
     def test_mixed_operational_and_strategy_codes_only_family_bayes_triggers(self) -> None:
@@ -157,10 +214,10 @@ class ExitReasonFamilyTests(unittest.TestCase):
                     "stop_loss",
                     "order_submitted",
                     "edge_min",
-                    "target_realization_switch_buy_exit_old",
+                    "target_realization_yes_target_invalidated",
                 ]
             ),
-            ["target_realization_exit"],
+            ["target_realization"],
         )
 
     def test_exit_trigger_codes_prefer_bayes_details_codes(self) -> None:
@@ -169,12 +226,12 @@ class ExitReasonFamilyTests(unittest.TestCase):
                 {
                     "exit_reason_codes": [
                         "weather_repricing_target",
-                        "target_realization_rebalance_over_target",
+                        "target_realization_no_invalidated",
                     ]
                 },
                 decision_reason_codes=["exit_no_trigger"],
             ),
-            ["target_realization_rebalance_over_target"],
+            ["target_realization_no_invalidated"],
         )
 
     def test_exit_trigger_codes_ignore_operational_decision_codes(self) -> None:
@@ -201,10 +258,10 @@ class ExitReasonFamilyTests(unittest.TestCase):
                 decision_reason_codes=[
                     "edge_min",
                     "stop_loss",
-                    "target_realization_switch_buy_exit_old",
+                    "target_realization_yes_target_invalidated",
                 ],
             ),
-            ["target_realization_switch_buy_exit_old"],
+            ["target_realization_yes_target_invalidated"],
         )
 
     def test_exit_decision_details_use_bayes_primary_source(self) -> None:
@@ -216,7 +273,7 @@ class ExitReasonFamilyTests(unittest.TestCase):
                 "exit_hold_edge_realizable_min": 0.02,
                 "exit_reason_codes": [
                     "edge_min",
-                    "target_realization_switch_buy_exit_old",
+                    "target_realization_yes_target_invalidated",
                     "weather_repricing_target",
                 ],
             },
@@ -231,17 +288,17 @@ class ExitReasonFamilyTests(unittest.TestCase):
         )
         self.assertEqual(
             details["exit_original_reason_codes"],
-            ["target_realization_switch_buy_exit_old"],
+            ["target_realization_yes_target_invalidated"],
         )
-        self.assertEqual(details["exit_reason_family_codes"], ["target_realization_exit"])
-        self.assertEqual(details["exit_reason_primary_family"], "target_realization_exit")
+        self.assertEqual(details["exit_reason_family_codes"], ["target_realization"])
+        self.assertEqual(details["exit_reason_primary_family"], "target_realization")
         self.assertEqual(details["exit_operational_reason_codes"], ["order_submitted"])
         self.assertEqual(
             details["exit_policy_trigger_reason_codes"],
-            ["target_realization_switch_buy_exit_old"],
+            ["target_realization_yes_target_invalidated"],
         )
-        self.assertEqual(details["exit_policy_family_codes"], ["target_realization_exit"])
-        self.assertEqual(details["exit_policy_primary_family"], "target_realization_exit")
+        self.assertEqual(details["exit_policy_family_codes"], ["target_realization"])
+        self.assertEqual(details["exit_policy_primary_family"], "target_realization")
         self.assertEqual(details["exit_policy_operational_reason_codes"], ["order_submitted"])
         self.assertAlmostEqual(details["exit_policy_legacy_edge_value"], -0.03)
         self.assertAlmostEqual(details["exit_policy_legacy_edge_trigger_value"], -0.031)
@@ -461,8 +518,8 @@ class ExitReasonFamilyTests(unittest.TestCase):
     def test_exit_trigger_policy_keeps_only_bayes_codes(self) -> None:
         result = swm._apply_exit_trigger_policy(
             reasons=["stop loss", "SSOT目标仓位已超目标：执行减仓/再平衡"],
-            codes=["stop_loss", "target_realization_rebalance_over_target"],
-            triggers=["stop_loss", "target_realization_rebalance_over_target"],
+            codes=["stop_loss", "target_realization_no_invalidated"],
+            triggers=["stop_loss", "target_realization_no_invalidated"],
             exit_edge_realizable_only=False,
             hold_edge_realizable_trigger=0.05,
             prev_hold_edge_realizable=0.05,
@@ -480,8 +537,8 @@ class ExitReasonFamilyTests(unittest.TestCase):
             model_dir_exit_ok=False,
         )
 
-        self.assertEqual(result["codes"], ["target_realization_rebalance_over_target"])
-        self.assertEqual(result["triggers"], ["target_realization_rebalance_over_target"])
+        self.assertEqual(result["codes"], ["target_realization_no_invalidated"])
+        self.assertEqual(result["triggers"], ["target_realization_no_invalidated"])
         self.assertEqual(result["legacy_exit_codes_removed"], ["stop_loss"])
         self.assertFalse(result["model_dir_exit_block"])
 

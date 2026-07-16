@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts import entry_counterfactual_review as ecr
+from archive_db_write_queue import connect_archive_db_rw
 
 
 DEFAULT_DB = ROOT / "data" / "archive.db"
@@ -2880,10 +2881,18 @@ def materialize_reject_ledger(
             "db": str(db_path),
             "kind": LEDGER_KIND,
         }
+    gate_cm = None
     if dry_run:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30)
     else:
-        conn = sqlite3.connect(str(db_path), timeout=30)
+        gate_cm = connect_archive_db_rw(
+            db_path,
+            owner="reject_ledger.materialize",
+            timeout_sec=30.0,
+            busy_timeout_ms=30000,
+            row_factory=True,
+        )
+        conn = gate_cm.__enter__()
     conn.row_factory = sqlite3.Row
     try:
         _configure_connection(conn)
@@ -3047,7 +3056,11 @@ def materialize_reject_ledger(
             ],
         }
     finally:
-        conn.close()
+        try:
+            conn.close()
+        finally:
+            if gate_cm is not None:
+                gate_cm.__exit__(None, None, None)
 
 
 def main() -> int:

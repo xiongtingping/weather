@@ -6,15 +6,83 @@
     <string>com.weather.monitor.daemon</string>
     <key>EnvironmentVariables</key>
     <dict>
-      <key>PM_HARD_SOURCE_DIRECT_POLL_SEC</key>
+	      <key>FORECAST_SOURCE_FORWARD_ARCHIVE_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_RESOLUTION_FINAL_SHADOW_CAPTURE_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_RESOLUTION_FINAL_SHADOW_CAPTURE_INTERVAL_SEC</key>
+	      <string>300</string>
+	      <key>PM_OFFICIAL_NWP_CURVE_COLLECTION_ENABLED</key>
+	      <string>1</string>
+      <key>PM_OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED</key>
       <string>1</string>
+    <key>PM_OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_ENABLED</key>
+    <string>1</string>
+    <key>PM_OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_INTERVAL</key>
+    <string>900</string>
+	      <key>PM_AMSC_ZUUU_POLL_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_ARCHIVE_WAL_KEEPER_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_ARCHIVE_WAL_KEEPER_HEARTBEAT_SEC</key>
+	      <string>5</string>
+	      <key>PM_AMSC_ZUUU_SPECI_WATCH_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_AMSC_ZUUU_SPECI_PRODUCTION_PROBABILITY_INGRESS_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_AMSC_ZUUU_SPECI_WATCH_INTERVAL_SEC</key>
+	      <string>60</string>
+	      <key>PM_AMSC_ZUUU_SPECI_WATCH_REPORT_COUNT</key>
+	      <string>24</string>
+	      <key>PM_AMSC_ZUUU_SPECI_WATCH_TIMEOUT_SEC</key>
+	      <string>8</string>
+	      <key>PM_AMSC_ZUUU_SPECI_WATCH_MAX_REPORT_AGE_SEC</key>
+	      <string>900</string>
+	      <key>PM_AMSC_P10_RESIDENT_CONSUMER_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_P10_NEXT_DAY_PREPARATION_ENABLED</key>
+	      <string>1</string>
+		<key>PM_AMSC_ZUUU_POLL_SLOT_START_WINDOW_SEC</key>
+		<string>55</string>
+		<key>PM_AMSC_ZUUU_POLL_SLOT_COMPENSATION_SEC</key>
+		<string>1800</string>
+	      <key>AMSC_ZUUU_REPORT_COUNT</key>
+	      <string>6</string>
+	      <key>AMSC_ZUUU_TIMEOUT</key>
+	      <string>12</string>
+	      <key>AMSC_ZUUU_RELEASE_DELAY_SEC</key>
+	      <string>35</string>
+	      <key>AMSC_ZUUU_POLL_ATTEMPTS</key>
+	      <string>40</string>
+	      <key>AMSC_ZUUU_POLL_INTERVAL_SEC</key>
+	      <string>1</string>
+	      <key>AMSC_ZUUU_STOP_ON_APPLIED</key>
+	      <string>1</string>
+	      <key>AMSC_ZUUU_KICK_TASK_QUEUE</key>
+	      <string>1</string>
+	      <key>AMSC_ZUUU_PRODUCTION_PROBABILITY_UPDATE_ENABLED</key>
+	      <string>1</string>
+	      <key>AMSC_ZUUU_APPLY</key>
+	      <string>1</string>
+	      <key>AMSC_ZUUU_APPLY_CONFIRM</key>
+	      <string>APPLY_AMSC_ZUUU_FACT_SNAPSHOT</string>
+	      <key>AMSC_ZUUU_DB</key>
+	      <string>/Users/xiong/weather/data/archive.db</string>
+	      <key>PM_HARD_SOURCE_DIRECT_POLL_SEC</key>
+	      <string>1</string>
 	      <key>PM_HARD_SOURCE_DIRECT_NEAR_PEAK_POLL_SEC</key>
 	      <string>1</string>
 	      <key>PM_HARD_SOURCE_AWC_RELEASE_WATCH_ENABLED</key>
 	      <string>1</string>
 	      <key>PM_HARD_SOURCE_AWC_RELEASE_WATCH_WINDOW_MIN</key>
-		      <string>8</string>
+        <string>8</string>
 	      <key>PM_HARD_SOURCE_AWC_RELEASE_WATCH_POLL_SEC</key>
+	      <string>1</string>
+	      <key>PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_START_MIN</key>
+	      <string>5</string>
+	      <key>PM_HARD_SOURCE_AWC_ACQUIRE_WINDOW_DURATION_SEC</key>
+	      <string>120</string>
+	      <key>PM_HARD_SOURCE_AWC_ACQUIRE_HOLD_NON_AWC_UNTIL_TARGET</key>
 	      <string>1</string>
 	      <key>PM_HARD_SOURCE_AWC_DYNAMIC_HOURS_ENABLED</key>
 	      <string>1</string>
@@ -22,6 +90,20 @@
 	      <string>8</string>
 	      <key>PM_HARD_SOURCE_AWC_DYNAMIC_MARGIN_HOURS</key>
 	      <string>2</string>
+	      <key>PM_REFRESH_COORDINATOR_AWC_RELEASE_WATCH_WINDOW_MIN</key>
+	      <string>2</string>
+	      <key>PM_HARD_SOURCE_DIRECT_DRAIN_BEFORE_AWC</key>
+	      <string>0</string>
+	      <key>PM_HARD_SOURCE_DIRECT_RETURN_AFTER_PRE_AWC_DRAIN</key>
+	      <string>0</string>
+	      <key>PM_HARD_SOURCE_PREEMPT_NONCRITICAL_REFRESH_ENABLED</key>
+	      <string>1</string>
+	      <key>PM_HARD_SOURCE_PREEMPT_NONCRITICAL_TERM_WAIT_SEC</key>
+	      <string>0.5</string>
+	      <key>PM_HARD_SOURCE_PREEMPT_NONCRITICAL_KILL_AFTER_SEC</key>
+	      <string>1.0</string>
+	      <key>PM_HARD_SOURCE_PREEMPT_NONCRITICAL_OWNERS</key>
+	      <string>model_scan,model_scan_hourly,market_refresh,market_refresh_frequent,market_refresh_urgent,weather_discovery,model_release_watcher,daily_scan,weatherctl_facts</string>
 	      <key>PM_AWC_FACT_REFRESH_RECENT_WINDOW_ENABLED</key>
 	      <string>1</string>
 	      <key>PM_AWC_FACT_REFRESH_RECENT_WINDOW_HOURS</key>

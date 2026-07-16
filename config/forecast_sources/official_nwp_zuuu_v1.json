@@ -1,0 +1,71 @@
+{
+  "schema": "official_nwp_source_catalog_v1",
+  "catalog_id": "official_nwp_zuuu_v1",
+  "state": "accepted_runtime_contract",
+  "station_id": "ZUUU",
+  "target_timezone": "Asia/Shanghai",
+  "providers": {
+    "ecmwf": {
+      "source_id": "ecmwf_ifs_official",
+      "model_id": "ecmwf_ifs",
+      "authority": "ECMWF official Open Data or authorised ECMWF delivery",
+      "allowed_hosts": ["data.ecmwf.int", "api.ecmwf.int"],
+      "transport": "GRIB2",
+      "authorization": "official_open_data_or_authorized_account",
+      "collector_adapter": "ecmwf_open_data_server_side_subset",
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "run_schedule_utc_hours": [0, 6, 12, 18]
+    },
+    "icon": {
+      "source_id": "dwd_icon_global_official",
+      "model_id": "icon_global",
+      "authority": "DWD Open Data Server",
+      "allowed_hosts": ["opendata.dwd.de"],
+      "transport": "GRIB2",
+      "authorization": "official_open_data",
+      "collector_adapter": "dwd_icon_multifile_unstructured_grid_projection",
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "run_schedule_utc_hours": [0, 6, 12, 18]
+    },
+    "gfs": {
+      "source_id": "noaa_nomads_gfs_official",
+      "model_id": "gfs_0p25",
+      "authority": "NOAA/NCEP NOMADS",
+      "allowed_hosts": ["nomads.ncep.noaa.gov"],
+      "transport": "GRIB2",
+      "authorization": "official_operational_data",
+      "collector_adapter": "noaa_nomads_filter_grib2_latlon_subset",
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "run_schedule_utc_hours": [0, 6, 12, 18]
+    },
+    "jma": {
+      "source_id": "jma_gsm_official_or_authorized",
+      "model_id": "jma_gsm",
+      "authority": "JMA official delivery or separately authorised provider",
+      "allowed_hosts": ["data.jma.go.jp", "www.data.jma.go.jp"],
+      "transport": "GRIB2_or_authorized_api",
+      "authorization": "official_delivery_or_authorized_provider_contract",
+      "collector_adapter": "jma_authorized_delivery_adapter",
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "run_schedule_utc_hours": [0, 6, 12, 18]
+    }
+  },
+  "joint_snapshot_policy": {
+    "provider_universe": ["ecmwf", "icon", "gfs", "jma"],
+    "missing_provider_policy": "propagate_availability_mask_to_unique_weak_likelihood_model",
+    "empty_nwp_set_policy": "emit_explicit_empty_nwp_generation_for_taf_wu_twc_or_prior_strong_combination",
+    "provider_correlations_are_model_artifact_parameters": true,
+    "provider_weights_are_model_artifact_parameters": true,
+    "source_combination_calibration_is_model_artifact_parameter": true,
+    "no_provider_may_override_amsc_hard_observation": true
+  },
+  "boundaries": {
+    "taf_wu_twc_are_separate_weak_prediction_sources": true,
+    "open_meteo_retired": true,
+    "no_aggregator_or_republisher_source": true,
+    "raw_transport_and_decoder_identity_required": true,
+    "writes_archive_db": false,
+    "writes_posterior": false,
+    "places_orders": false
+  }
+}

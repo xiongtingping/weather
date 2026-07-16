@@ -1,0 +1,780 @@
+--- a/strong_observation_lr_evaluator.py
++++ b/strong_observation_lr_evaluator.py
+@@ -410,6 +410,7 @@
+         -remaining * (_finite(params.get("post_peak_remaining_penalty_per_c")) or 0.28)
+         if local_hour is not None and local_hour >= reference_peak else 0.0
+     )
++    first_cb_event_state = _text(feature_categories.get("physical.first_cb_event_state")) or "no_cb_yet"
+     first_cb_phase = _text(feature_categories.get("physical.first_cb_timing_phase")) or "no_cb_yet"
+     first_cb_peak_relation = _text(feature_categories.get("physical.first_cb_peak_relation")) or "no_cb_yet"
+     first_cb_penalty_per_c = _finite(
+@@ -420,8 +421,14 @@
+         if first_cb_peak_relation == "below_observed_peak"
+         else 1.0
+     )
++    # First-CB timing is one canonical innovation.  Once its first occurrence
++    # has already been consumed by an earlier checkpoint, retaining the timing
++    # in trajectory state is useful context but must not multiply the same
++    # likelihood penalty again on every later METAR/SPECI.
+     first_cb_remaining_warming_penalty = (
+         -remaining * first_cb_penalty_per_c * first_cb_relation_multiplier
++        if first_cb_event_state == "first_cb_this_event"
++        else 0.0
+     )
+     raw = (
+         rate_penalty
+@@ -431,6 +438,17 @@
+         + first_cb_remaining_warming_penalty
+     )
+     information_scale = _finite(params.get("event_information_scale")) or 0.35
++    preheating_end = _finite(params.get("diurnal_preheating_end_local_hour")) or 8.0
++    full_heating_start = _finite(params.get("diurnal_full_heating_start_local_hour")) or 9.0
++    if local_hour is None or local_hour <= preheating_end:
++        diurnal_information_multiplier = 0.0
++    elif local_hour < full_heating_start:
++        diurnal_information_multiplier = (
++            (local_hour - preheating_end) / max(0.25, full_heating_start - preheating_end)
++        )
++    else:
++        diurnal_information_multiplier = 1.0
++    information_scale *= diurnal_information_multiplier
+     if _text(feature_categories.get("trajectory.pre_event_path_state")) == "no_prior_observation":
+         information_scale *= _finite(params.get("no_history_information_scale")) or 0.25
+     cap = max(0.1, _finite(params.get("maximum_relative_log_penalty")) or 2.5)
+@@ -446,12 +464,15 @@
+         "capacity_penalty": capacity_penalty,
+         "cooling_penalty": cooling_penalty,
+         "post_peak_penalty": post_peak_penalty,
+-        "first_cb_event_state": _text(feature_categories.get("physical.first_cb_event_state")),
++        "first_cb_event_state": first_cb_event_state,
++        "first_cb_direct_penalty_consumed_this_event": first_cb_event_state == "first_cb_this_event",
+         "first_cb_timing_phase": first_cb_phase,
+         "first_cb_peak_relation": first_cb_peak_relation,
+         "first_cb_remaining_warming_penalty": first_cb_remaining_warming_penalty,
+         "first_cb_penalty_is_zero_at_observed_peak": remaining <= 0.0,
+         "information_scale": information_scale,
++        "diurnal_information_multiplier": diurnal_information_multiplier,
++        "preheating_is_x_likelihood_neutral": diurnal_information_multiplier == 0.0,
+         "bounded_raw_log_score": score,
+         "pre_state": pre_state,
+     }
+--- a/strong_observation_lr_operational_state_baseline.py
++++ b/strong_observation_lr_operational_state_baseline.py
+@@ -19,9 +19,9 @@
+ from physical_latent_state_contract import LATENT_STATES
+ 
+ 
+-SCHEMA_VERSION = "strong_observation_lr_operational_state_baseline_v2"
+-SCORING_KIND = "operational_physical_state_aware_lr_v2"
+-STATE_MODEL_SCHEMA = "operational_physical_state_aware_lr_v2"
++SCHEMA_VERSION = "strong_observation_lr_operational_state_baseline_v3"
++SCORING_KIND = "operational_physical_state_aware_lr_v3_first_cb_once"
++STATE_MODEL_SCHEMA = "operational_physical_state_aware_lr_v3_first_cb_once"
+ 
+ STATE_PROFILES: dict[str, dict[str, float]] = {
+     "warming": {"step_rate": 0.9, "trend_rate": 0.7, "remaining_capacity_fraction": 0.80, "remaining_floor_c": 0.50},
+@@ -70,6 +70,8 @@
+     artifact = copy.deepcopy(build_operational_physics_strong_lr_baseline())
+     artifact["operational_physics_parameters"].update(
+         {
++            "diurnal_preheating_end_local_hour": 8.0,
++            "diurnal_full_heating_start_local_hour": 9.0,
+             "first_cb_remaining_warming_penalty_per_c": {
+                 "no_cb_yet": 0.0,
+                 "early_before_peak_window": 0.55,
+@@ -120,6 +122,8 @@
+                 "identity_state_transition_fallback_forbidden": True,
+                 "termination_risk_is_output_marginal_not_input": True,
+                 "first_cb_is_temporal_evidence_not_boolean_gate": True,
++                "first_cb_direct_likelihood_consumed_once": True,
++                "cumulative_evidence_replacement_delta_log_lr": True,
+                 "first_cb_only_penalizes_unrealized_remaining_warming": True,
+                 "first_cb_never_reverses_observed_max_hard_condition": True,
+                 "tcu_is_not_silently_promoted_to_cb": True,
+@@ -190,14 +194,22 @@
+     if weather == "none" and cloud == "clear_or_few" and state == "weather_suppressed":
+         components["physical_regime"] -= _finite(model.get("clear_weather_suppressed_penalty")) or 0.55
+     first_cb_phase = _text(categories.get("physical.first_cb_timing_phase"))
+-    if state in {"warming", "slowing_warming", "cooling_then_rebound"}:
++    first_cb_event_state = _text(categories.get("physical.first_cb_event_state"))
++    if first_cb_event_state == "first_cb_this_event" and state in {"warming", "slowing_warming", "cooling_then_rebound"}:
+         if first_cb_phase == "early_before_peak_window":
+             components["first_cb_state"] -= _finite(model.get("early_first_cb_warming_penalty")) or 0.90
+         elif first_cb_phase == "peak_window":
+             components["first_cb_state"] -= _finite(model.get("peak_window_first_cb_warming_penalty")) or 0.55
+         elif first_cb_phase == "late_after_peak_window":
+             components["first_cb_state"] -= _finite(model.get("late_first_cb_warming_penalty")) or 0.20
+-    raw = sum(components.values()) * (_finite(model.get("state_information_scale")) or 0.30)
++    information_scale = _finite(model.get("state_information_scale")) or 0.30
++    if local_hour is None or local_hour <= 8.0:
++        diurnal_information_multiplier = 0.0
++    elif local_hour < 9.0:
++        diurnal_information_multiplier = local_hour - 8.0
++    else:
++        diurnal_information_multiplier = 1.0
++    raw = sum(components.values()) * information_scale * diurnal_information_multiplier
+     cap = _finite(model.get("maximum_relative_log_penalty")) or 1.75
+     adjustment = max(-cap, min(0.0, raw))
+     return adjustment, {
+@@ -208,10 +220,12 @@
+         "candidate_remaining_warming_c": remaining,
+         "expected_remaining_warming_c": expected_remaining,
+         "first_cb_event_state": _text(categories.get("physical.first_cb_event_state")),
++        "first_cb_direct_penalty_consumed_this_event": first_cb_event_state == "first_cb_this_event",
+         "first_cb_timing_phase": first_cb_phase,
+         "first_cb_peak_relation": _text(categories.get("physical.first_cb_peak_relation")),
+         "components_before_information_scale": components,
+-        "information_scale": _finite(model.get("state_information_scale")) or 0.30,
++        "information_scale": information_scale,
++        "diurnal_information_multiplier": diurnal_information_multiplier,
+         "unbounded_state_log_score": raw,
+         "bounded_state_log_score": adjustment,
+     }
+--- a/sequential_bayes_filter_shadow_runtime.py
++++ b/sequential_bayes_filter_shadow_runtime.py
+@@ -267,6 +267,7 @@
+     decision_as_of: str,
+     deadline_at: str,
+     speci_soft_evidence_only: bool = False,
++    previous_cumulative_raw_log_score: Sequence[Mapping[str, Any]] | None = None,
+ ) -> dict[str, Any]:
+     """Build one conditional update and its composer-owned centred delta.
+ 
+@@ -344,7 +345,10 @@
+         )
+     scoring_kind = _text(artifact.get("scoring_kind"))
+     dynamic_transition = evaluated.get("post_state_transition")
+-    if scoring_kind == "operational_physical_state_aware_lr_v2":
++    if scoring_kind in {
++        "operational_physical_state_aware_lr_v2",
++        "operational_physical_state_aware_lr_v3_first_cb_once",
++    }:
+         if not isinstance(dynamic_transition, Mapping):
+             return _blocked_update(
+                 blockers=["state_aware_event_conditioned_transition_missing"],
+@@ -385,6 +389,37 @@
+                 event=event,
+             )
+         raw_scores.append(raw_score)
++    previous_score_rows = list(previous_cumulative_raw_log_score or [])
++    previous_scores: list[float] = []
++    if previous_score_rows:
++        previous_by_cell = {
++            (_finite(score_row.get("temperature_c")), _text(score_row.get("pre_state"))): score_row
++            for score_row in previous_score_rows
++        }
++        for posterior_row in rows:
++            score_row = previous_by_cell.get(
++                (float(posterior_row["temperature_c"]), _text(posterior_row.get("state")))
++            )
++            if score_row is None:
++                return _blocked_update(
++                    blockers=["previous_cumulative_likelihood_cell_binding_mismatch"],
++                    previous_checkpoint=checkpoint,
++                    event=event,
++                )
++            score = _finite(score_row.get("raw_log_score"))
++            if score is None:
++                return _blocked_update(
++                    blockers=["previous_cumulative_likelihood_score_invalid"],
++                    previous_checkpoint=checkpoint,
++                    event=event,
++                )
++            previous_scores.append(score)
++    else:
++        previous_scores = [0.0 for _ in raw_scores]
++    innovation_scores = [
++        current - previous
++        for current, previous in zip(raw_scores, previous_scores)
++    ]
+     previous_lb = _finite(checkpoint.get("observed_max_lower_bound_c"))
+     event_lb = _event_lower_bound(
+         event, speci_soft_evidence_only=speci_soft_evidence_only
+@@ -393,7 +428,7 @@
+     allowed = [observed_lb is None or float(row["temperature_c"]) >= observed_lb - 1e-12 for row in rows]
+     unnormalized = [
+         float(row["probability"]) * math.exp(score) if allow else 0.0
+-        for row, score, allow in zip(rows, raw_scores, allowed)
++        for row, score, allow in zip(rows, innovation_scores, allowed)
+     ]
+     total = sum(unnormalized)
+     if total <= 0.0 or not math.isfinite(total):
+@@ -405,8 +440,8 @@
+     normalizer_offset = -math.log(total)
+     delta_rows: list[dict[str, Any]] = []
+     pre_weight: list[float] = []
+-    for row, raw_score, allow, weight in zip(rows, raw_scores, allowed, unnormalized):
+-        delta = raw_score + normalizer_offset if allow else None
++    for row, innovation_score, allow, weight in zip(rows, innovation_scores, allowed, unnormalized):
++        delta = innovation_score + normalizer_offset if allow else None
+         delta_rows.append(
+             {
+                 "temperature_c": row["temperature_c"],
+@@ -433,7 +468,7 @@
+             previous_checkpoint=checkpoint,
+             event=event,
+         )
+-    raw_constant = max(raw_scores) - min(raw_scores) <= 1e-12
++    raw_constant = max(innovation_scores) - min(innovation_scores) <= 1e-12
+     hard_changed = any(not value for value in allowed)
+     identity_transition = all(matrix == {state: 1.0} for state, matrix in transition.items())
+     state = "neutral" if raw_constant and not hard_changed and identity_transition else "applied"
+@@ -453,6 +488,14 @@
+         forecast_evidence_snapshot_id=forecast_evidence_snapshot_id,
+         model_artifact_sha256=artifact_hash,
+     )
++    conditional_innovation_rows = [
++        {
++            "temperature_c": row["temperature_c"],
++            "pre_state": row["state"],
++            "log_lr": score,
++        }
++        for row, score in zip(rows, innovation_scores)
++    ]
+     return {
+         "schema": UPDATE_SCHEMA_VERSION,
+         "ok": True,
+@@ -469,6 +512,10 @@
+         "decision_as_of": _text(decision_as_of),
+         "raw_log_score": raw_rows,
+         "raw_log_score_sha256": _text(evaluated.get("raw_log_score_sha256")),
++        "likelihood_update_kind": "cumulative_evidence_replacement_delta_log_lr_v1",
++        "previous_cumulative_raw_log_score_sha256": _sha256(previous_score_rows) if previous_score_rows else "",
++        "conditional_innovation_log_score": conditional_innovation_rows,
++        "conditional_innovation_log_score_sha256": _sha256(conditional_innovation_rows),
+         "strong_observation_input_sha256": _text(evaluated.get("strong_observation_input_sha256")),
+         "strong_evidence_lineage": dict(_mapping(evaluated.get("evidence_lineage"))),
+         "strong_evidence_feature_values": dict(_mapping(evaluated.get("evidence_feature_values"))),
+@@ -622,6 +669,7 @@
+     events.sort(key=lambda event: (_text(event.get("valid_time")), _text(event.get("first_actionable_seen_at")), _text(event.get("canonical_observation_event_id"))))
+     checkpoint = dict(initial_checkpoint)
+     updates: list[dict[str, Any]] = []
++    previous_cumulative_raw_log_score: list[Mapping[str, Any]] = []
+     for sequence, event in enumerate(events, start=1):
+         pre_events = events[: sequence - 1]
+         if pre_events:
+@@ -672,6 +720,7 @@
+             strong_observation_input=strong_input,
+             decision_as_of=decision_as_of,
+             deadline_at=deadline_at,
++            previous_cumulative_raw_log_score=previous_cumulative_raw_log_score,
+         )
+         updates.append(update)
+         if not update.get("ok"):
+@@ -687,6 +736,7 @@
+         if not next_checkpoint.get("ok"):
+             return {"schema": SCHEMA_VERSION, "ok": False, "updates": updates, "reason": "replay_checkpoint_blocked", "read_only": True}
+         checkpoint = dict(next_checkpoint.get("checkpoint") or next_checkpoint)
++        previous_cumulative_raw_log_score = list(update.get("raw_log_score") or [])
+     return {
+         "schema": SCHEMA_VERSION,
+         "ok": True,
+--- a/sequential_bayes_shadow_pipeline.py
++++ b/sequential_bayes_shadow_pipeline.py
+@@ -388,6 +388,37 @@
+             "read_only": True,
+         }
+     previous = _mapping(previous_checkpoint)
++    previous_cumulative_raw_log_score: list[Mapping[str, Any]] = []
++    previous_update_id = _text(previous.get("last_strong_update_id"))
++    if previous_update_id:
++        row = conn.execute(
++            "SELECT raw_log_score_json FROM strong_observation_updates "
++            "WHERE strong_observation_update_id=?",
++            (previous_update_id,),
++        ).fetchone()
++        if row is None:
++            return {
++                "schema": SCHEMA_VERSION,
++                "ok": False,
++                "state": "blocked",
++                "reason": "previous_cumulative_strong_likelihood_missing",
++                "read_only": True,
++            }
++        try:
++            parsed_previous_score = json.loads(_text(row[0]))
++        except (TypeError, ValueError):
++            parsed_previous_score = None
++        if not isinstance(parsed_previous_score, list):
++            return {
++                "schema": SCHEMA_VERSION,
++                "ok": False,
++                "state": "blocked",
++                "reason": "previous_cumulative_strong_likelihood_invalid",
++                "read_only": True,
++            }
++        previous_cumulative_raw_log_score = [
++            _mapping(item) for item in parsed_previous_score
++        ]
+     loaded = load_canonical_observation_event(
+         conn,
+         canonical_observation_event_id=canonical_observation_event_id,
+@@ -500,6 +531,7 @@
+         decision_as_of=decision_as_of,
+         deadline_at=deadline_at,
+         speci_soft_evidence_only=speci_soft_evidence_only,
++        previous_cumulative_raw_log_score=previous_cumulative_raw_log_score,
+     )
+     if not update.get("ok"):
+         return {
+--- a/production_probability_successor_activation_contract.py
++++ b/production_probability_successor_activation_contract.py
+@@ -21,12 +21,12 @@
+     / "production_probability_runtime_activation.json"
+ )
+ BAYES_FORMULA_ID = (
+-    "p0_prior_z_weak_once_then_canonical_event_raw_log_lr_then_weak_revision_"
+-    "replacement_then_reported_x_projection_v2"
++    "p0_prior_z_weak_once_then_canonical_cumulative_evidence_replacement_delta_log_lr_"
++    "then_weak_revision_replacement_then_reported_x_projection_v3"
+ )
+-COMPOSER_SCHEMA = "sequential_bayes_filter_reported_x_v4"
++COMPOSER_SCHEMA = "sequential_bayes_filter_reported_x_v5_cumulative_replacement"
+ CHECKPOINT_SCHEMA = "posterior_checkpoint_v3_reported_x"
+-STRONG_UPDATE_SCHEMA = "strong_observation_update_v4_speci_soft"
++STRONG_UPDATE_SCHEMA = "strong_observation_update_v5_cumulative_replacement_speci_soft"
+ PUBLIC_SSOT_SCHEMA = "sequential_temperature_posterior_ssot_v3_reported_x"
+ PROJECTION_SCHEMA = "reported_physical_x_projection_v1"
+ LATENT_TYPE = "continuous_scheduled_metar_slot_daily_high_z_c"
+--- a/reported_x_successor_checkpoint_runtime.py
++++ b/reported_x_successor_checkpoint_runtime.py
+@@ -51,6 +51,11 @@
+     return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
+ 
+ 
++def _is_sha256(value: Any) -> bool:
++    text = _text(value).lower()
++    return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
++
++
+ def _checkpoint_object(value: Mapping[str, Any]) -> dict[str, Any]:
+     checkpoint = dict(_mapping(value))
+     if not isinstance(checkpoint.get("joint_posterior"), list):
+@@ -374,7 +379,7 @@
+         ),
+         model_artifact_sha256=_text(strong_update.get("model_artifact_sha256")),
+     )
+-    strong_update["schema"] = "strong_observation_update_v4_speci_soft"
++    strong_update["schema"] = "strong_observation_update_v5_cumulative_replacement_speci_soft"
+     strong_update["reported_x_lower_bound_c"] = columns["reported_x_lower_bound_c"]
+     strong_update["termination_risk"] = termination
+     update_row = dict(_mapping(value.get("strong_update_row")))
+@@ -385,6 +390,36 @@
+     auxiliary["termination_risk"] = termination
+     auxiliary["reported_x_lower_bound_c"] = columns["reported_x_lower_bound_c"]
+     auxiliary["probability_target_type"] = TARGET_TYPE
++    likelihood_identity = {
++        "schema": "strong_likelihood_cumulative_replacement_identity_v1",
++        "likelihood_update_kind": _text(strong_update.get("likelihood_update_kind")),
++        "current_cumulative_raw_log_score_sha256": _text(
++            strong_update.get("raw_log_score_sha256")
++        ),
++        "previous_cumulative_raw_log_score_sha256": _text(
++            strong_update.get("previous_cumulative_raw_log_score_sha256")
++        ),
++        "conditional_innovation_log_score_sha256": _text(
++            strong_update.get("conditional_innovation_log_score_sha256")
++        ),
++        "previous_checkpoint_id": _text(strong_update.get("previous_checkpoint_id")),
++    }
++    if (
++        likelihood_identity["likelihood_update_kind"]
++        != "cumulative_evidence_replacement_delta_log_lr_v1"
++        or not _is_sha256(likelihood_identity["current_cumulative_raw_log_score_sha256"])
++        or not _is_sha256(likelihood_identity["conditional_innovation_log_score_sha256"])
++        or not likelihood_identity["previous_checkpoint_id"]
++    ):
++        return {
++            "schema": SCHEMA_VERSION,
++            "ok": False,
++            "state": "blocked",
++            "block_reasons": ["successor_strong_likelihood_replacement_identity_invalid"],
++            "read_only": True,
++            "places_orders": False,
++        }
++    auxiliary["strong_likelihood_update_identity"] = likelihood_identity
+     update_row["path_auxiliary_json"] = _json(auxiliary)
+     return {
+         **value,
+--- a/reported_x_successor_checkpoint_reader.py
++++ b/reported_x_successor_checkpoint_reader.py
+@@ -74,6 +74,7 @@
+         "schema": _text(raw.get("checkpoint_probability_schema")),
+         "posterior_checkpoint_id": _text(raw.get("posterior_checkpoint_id")),
+         "posterior_run_id": _text(raw.get("posterior_run_id")),
++        "previous_checkpoint_id": _text(raw.get("previous_checkpoint_id")),
+         "target_identity": _text(raw.get("target_identity")),
+         "event_date": _text(event_date)[:10],
+         "joint_posterior": joint,
+@@ -97,6 +98,8 @@
+         "source_event_ids": [_text(item) for item in consumed if _text(item)],
+         "consumed_ancestor_sha256": _text(raw.get("consumed_ancestor_sha256")),
+         "checkpoint_kind": _text(raw.get("checkpoint_kind")),
++        "last_strong_update_id": _text(raw.get("last_strong_update_id")),
++        "last_canonical_event_id": _text(raw.get("last_canonical_event_id")),
+         "forecast_evidence_snapshot_id": _text(
+             raw.get("forecast_evidence_snapshot_id")
+         ),
+--- a/production_reported_x_public_ssot_writer.py
++++ b/production_reported_x_public_ssot_writer.py
+@@ -110,7 +110,19 @@
+     auxiliary = _parse_object(_mapping(strong_update_row).get("path_auxiliary_json"))
+     termination = _mapping(auxiliary.get("termination_risk"))
+     timing = _mapping(auxiliary.get("peak_timing_state"))
++    likelihood_identity = _mapping(auxiliary.get("strong_likelihood_update_identity"))
+     if (
++        _text(likelihood_identity.get("schema"))
++        != "strong_likelihood_cumulative_replacement_identity_v1"
++        or _text(likelihood_identity.get("likelihood_update_kind"))
++        != "cumulative_evidence_replacement_delta_log_lr_v1"
++        or not _text(likelihood_identity.get("current_cumulative_raw_log_score_sha256"))
++        or not _text(likelihood_identity.get("conditional_innovation_log_score_sha256"))
++    ):
++        raise ProductionTransactionIntegrityError(
++            "reported_x_public_ssot_strong_likelihood_identity_invalid"
++        )
++    if (
+         _text(termination.get("schema")) != "termination_risk_marginal_v2_reported_x"
+         or _text(termination.get("state")) != "available"
+         or termination.get("updates_posterior") is not False
+@@ -178,6 +190,7 @@
+             auxiliary.get("remaining_warming_marginal") or []
+         ),
+         "termination_risk": dict(termination),
++        "strong_likelihood_update_identity": dict(likelihood_identity),
+         "peak_timing_state": dict(timing),
+         "latent_probability_public": False,
+         "probability_runtime_identity": {
+--- a/scripts/production_reported_x_successor_acceptance.py
++++ b/scripts/production_reported_x_successor_acceptance.py
+@@ -4,6 +4,7 @@
+ from __future__ import annotations
+ 
+ import argparse
++import hashlib
+ import json
+ from pathlib import Path
+ import sqlite3
+@@ -44,6 +45,12 @@
+     return value if isinstance(value, Mapping) else {}
+ 
+ 
++def _sha(value: Any) -> str:
++    return hashlib.sha256(
++        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
++    ).hexdigest()
++
++
+ def _count(conn: sqlite3.Connection, table: str) -> int:
+     return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
+ 
+@@ -84,6 +91,74 @@
+                 invalid.append({"posterior_checkpoint_id": row["posterior_checkpoint_id"], "issues": result.get("issues") or []})
+         if invalid:
+             blockers.append("successor_checkpoint_validation_failed")
++        if _text(activation.get("strong_update_schema")) == "strong_observation_update_v5_cumulative_replacement_speci_soft":
++            checkpoint_by_id = {row["posterior_checkpoint_id"]: row for row in checkpoints}
++            for checkpoint in checkpoints:
++                update_id = _text(checkpoint["last_strong_update_id"])
++                if not update_id:
++                    continue
++                update = conn.execute(
++                    "SELECT * FROM strong_observation_updates WHERE strong_observation_update_id=?",
++                    (update_id,),
++                ).fetchone()
++                if update is None:
++                    invalid.append({"posterior_checkpoint_id": checkpoint["posterior_checkpoint_id"], "issues": ["strong_update_missing"]})
++                    continue
++                auxiliary = _mapping(json.loads(_text(update["path_auxiliary_json"]) or "{}"))
++                identity = _mapping(auxiliary.get("strong_likelihood_update_identity"))
++                issues = []
++                if _text(identity.get("schema")) != "strong_likelihood_cumulative_replacement_identity_v1":
++                    issues.append("replacement_identity_schema_invalid")
++                if _text(identity.get("likelihood_update_kind")) != "cumulative_evidence_replacement_delta_log_lr_v1":
++                    issues.append("replacement_update_kind_invalid")
++                if _text(identity.get("current_cumulative_raw_log_score_sha256")) != _text(update["raw_log_score_sha256"]):
++                    issues.append("current_cumulative_score_sha_mismatch")
++                if _text(identity.get("previous_checkpoint_id")) != _text(update["previous_checkpoint_id"]):
++                    issues.append("previous_checkpoint_identity_mismatch")
++                current_rows = json.loads(_text(update["raw_log_score_json"]) or "[]")
++                previous_checkpoint = checkpoint_by_id.get(_text(update["previous_checkpoint_id"]))
++                previous_rows = []
++                previous_sha = ""
++                if previous_checkpoint is not None and _text(previous_checkpoint["last_strong_update_id"]):
++                    previous_update = conn.execute(
++                        "SELECT raw_log_score_json,raw_log_score_sha256 FROM strong_observation_updates WHERE strong_observation_update_id=?",
++                        (_text(previous_checkpoint["last_strong_update_id"]),),
++                    ).fetchone()
++                    if previous_update is None:
++                        issues.append("previous_cumulative_score_missing")
++                    else:
++                        previous_rows = json.loads(_text(previous_update["raw_log_score_json"]) or "[]")
++                        previous_sha = _text(previous_update["raw_log_score_sha256"])
++                if _text(identity.get("previous_cumulative_raw_log_score_sha256")) != previous_sha:
++                    issues.append("previous_cumulative_score_sha_mismatch")
++                previous_by_cell = {
++                    (float(row["temperature_c"]), _text(row.get("pre_state"))): float(row["raw_log_score"])
++                    for row in previous_rows
++                }
++                innovation = []
++                innovation_by_cell = {}
++                for row in current_rows:
++                    key = (float(row["temperature_c"]), _text(row.get("pre_state")))
++                    score = float(row["raw_log_score"]) - previous_by_cell.get(key, 0.0)
++                    innovation.append({"temperature_c": float(row["temperature_c"]), "pre_state": key[1], "log_lr": score})
++                    innovation_by_cell[key] = score
++                if _text(identity.get("conditional_innovation_log_score_sha256")) != _sha(innovation):
++                    issues.append("conditional_innovation_score_sha_mismatch")
++                normalizer = float(update["normalizer_offset"])
++                for delta in json.loads(_text(update["posterior_delta_json"]) or "[]"):
++                    if delta.get("hard_condition_allowed") is not True:
++                        if delta.get("posterior_delta") is not None:
++                            issues.append("hard_mask_delta_not_null")
++                        continue
++                    key = (float(delta["temperature_c"]), _text(delta.get("pre_state")))
++                    expected = innovation_by_cell.get(key)
++                    if expected is None or abs(float(delta["posterior_delta"]) - (expected + normalizer)) > 1e-9:
++                        issues.append("posterior_delta_not_from_conditional_innovation")
++                        break
++                if issues:
++                    invalid.append({"posterior_checkpoint_id": checkpoint["posterior_checkpoint_id"], "issues": sorted(set(issues))})
++            if invalid:
++                blockers.append("successor_cumulative_replacement_audit_failed")
+         canonical = conn.execute(
+             """SELECT canonical_observation_event_id,report_type,valid_time
+                FROM canonical_observation_events WHERE target_identity=?
+--- a/scripts/production_reported_x_runtime_readiness.py
++++ b/scripts/production_reported_x_runtime_readiness.py
+@@ -118,6 +118,37 @@
+             or ssot.get("latent_probability_public") is not False
+         ):
+             blockers.append("active_reported_x_public_ssot_contract_invalid")
++        likelihood_identity = _mapping(ssot.get("strong_likelihood_update_identity"))
++        if _text(activation.get("strong_update_schema")) == "strong_observation_update_v5_cumulative_replacement_speci_soft":
++            if (
++                _text(likelihood_identity.get("schema"))
++                != "strong_likelihood_cumulative_replacement_identity_v1"
++                or _text(likelihood_identity.get("likelihood_update_kind"))
++                != "cumulative_evidence_replacement_delta_log_lr_v1"
++                or not _text(likelihood_identity.get("current_cumulative_raw_log_score_sha256"))
++                or not _text(likelihood_identity.get("conditional_innovation_log_score_sha256"))
++            ):
++                blockers.append("active_strong_likelihood_replacement_identity_invalid")
++            latest_update_id = _text((checkpoint or {}).get("last_strong_update_id"))
++            latest_update = conn.execute(
++                "SELECT raw_log_score_sha256,path_auxiliary_json FROM strong_observation_updates "
++                "WHERE strong_observation_update_id=?",
++                (latest_update_id,),
++            ).fetchone() if latest_update_id else None
++            if latest_update is None:
++                blockers.append("active_strong_likelihood_update_missing")
++            else:
++                persisted_identity = _mapping(
++                    json.loads(_text(latest_update["path_auxiliary_json"]) or "{}").get(
++                        "strong_likelihood_update_identity"
++                    )
++                )
++                if (
++                    dict(persisted_identity) != dict(likelihood_identity)
++                    or _text(persisted_identity.get("current_cumulative_raw_log_score_sha256"))
++                    != _text(latest_update["raw_log_score_sha256"])
++                ):
++                    blockers.append("active_strong_likelihood_ssot_ledger_mismatch")
+         pending = []
+         if checkpoint is not None:
+             consumed = set(checkpoint.get("consumed_event_ids") or [])
+@@ -142,6 +173,7 @@
+                 "reported_x_distribution": dict(distribution),
+                 "public_fact_as_of": _text(latest["fact_as_of"] if latest else ""),
+                 "pending_canonical_event_ids": pending,
++                "strong_likelihood_update_identity": dict(likelihood_identity),
+             }
+         )
+     installed_monitor = subprocess.run(
+--- a/tests/test_strong_observation_lr_operational_state_baseline.py
++++ b/tests/test_strong_observation_lr_operational_state_baseline.py
+@@ -78,6 +78,23 @@
+     )
+ 
+ 
++def _already_seen_cb_input(temperatures: list[float]) -> dict:
++    events = [_event(index, value) for index, value in enumerate(temperatures)]
++    events[-2]["parsed_observation"]["cloud_text"] = "FEW033CB FEW040"
++    trajectory = build_temperature_trajectory_feature_state(
++        canonical_events=events[:-1],
++        decision_as_of=events[-1]["valid_time"],
++        temporal_role="pre_event",
++    )
++    return build_strong_observation_lr_input(
++        canonical_observation_event=events[-1],
++        trajectory_feature_state=trajectory,
++        forecast_evidence_snapshot_id="forecast-cb-already-seen-v2",
++        prior_context_id="prior-cb-already-seen-v2",
++        source_reliability_pre_state={"zuuu_metar_raw_amsc": {"state": "verified"}},
++    )
++
++
+ def test_state_aware_baseline_is_approved_content_addressed_and_complete() -> None:
+     artifact = build_operational_state_aware_strong_lr_baseline()
+     validation = validate_strong_observation_lr_runtime_artifact(artifact)
+@@ -182,6 +199,54 @@
+     assert late_rows[40.0]["feature_categories"]["physical.first_cb_peak_relation"] == "at_observed_peak"
+ 
+ 
++def test_first_cb_direct_likelihood_penalty_is_consumed_exactly_once() -> None:
++    artifact = build_operational_state_aware_strong_lr_baseline()
++    result = evaluate_strong_observation_raw_log_scores(
++        approved_lr_artifact=artifact,
++        strong_observation_input=_already_seen_cb_input([35.0, 36.0, 37.0]),
++        posterior_cells=[
++            {"temperature_c": 37.0, "state": "warming", "probability": 0.5},
++            {"temperature_c": 40.0, "state": "warming", "probability": 0.5},
++        ],
++    )
++    rows = {row["temperature_c"]: row for row in result["raw_log_score"]}
++    assert rows[40.0]["feature_categories"]["physical.first_cb_event_state"] == "cb_already_seen"
++    assert rows[40.0]["operational_physics_trace"]["first_cb_remaining_warming_penalty"] == 0.0
++    assert rows[40.0]["operational_physics_trace"]["first_cb_direct_penalty_consumed_this_event"] is False
++
++
++def test_preheating_observation_is_neutral_for_final_x_likelihood() -> None:
++    events = [_event(0, 27.0), _event(1, 26.0)]
++    for event, valid in zip(events, ("2026-07-13T22:30:00Z", "2026-07-13T23:00:00Z")):
++        event["valid_time"] = valid
++        event["first_actionable_seen_at"] = valid
++        event["parsed_observation"]["valid_time"] = valid
++    trajectory = build_temperature_trajectory_feature_state(
++        canonical_events=events[:-1],
++        decision_as_of=events[-1]["valid_time"],
++        temporal_role="pre_event",
++    )
++    strong_input = build_strong_observation_lr_input(
++        canonical_observation_event=events[-1],
++        trajectory_feature_state=trajectory,
++        forecast_evidence_snapshot_id="forecast-preheating-v3",
++        prior_context_id="prior-preheating-v3",
++        source_reliability_pre_state={"zuuu_metar_raw_amsc": {"state": "verified"}},
++    )
++    result = evaluate_strong_observation_raw_log_scores(
++        approved_lr_artifact=build_operational_state_aware_strong_lr_baseline(),
++        strong_observation_input=strong_input,
++        posterior_cells=[
++            {"temperature_c": 33.0, "state": "warming", "probability": 0.5},
++            {"temperature_c": 38.0, "state": "warming", "probability": 0.5},
++        ],
++    )
++
++    assert result["ok"] is True
++    assert all(row["operational_physics_trace"]["preheating_is_x_likelihood_neutral"] is True for row in result["raw_log_score"])
++    assert all(row["operational_physics_trace"]["diurnal_information_multiplier"] == 0.0 for row in result["raw_log_score"])
++
++
+ def test_production_p0_and_event_runtime_have_no_v1_builder_fallback() -> None:
+     root = Path(__file__).resolve().parents[1]
+     for relative in ("production_probability_p0_runtime.py", "production_sequential_bayes_event_runtime.py"):
+--- a/tests/test_sequential_bayes_filter_shadow_runtime.py
++++ b/tests/test_sequential_bayes_filter_shadow_runtime.py
+@@ -89,7 +89,12 @@
+     return input_row
+ 
+ 
+-def _update(checkpoint: dict, event: dict, artifact: dict | None = None) -> dict:
++def _update(
++    checkpoint: dict,
++    event: dict,
++    artifact: dict | None = None,
++    previous_cumulative_raw_log_score: list[dict] | None = None,
++) -> dict:
+     return build_strong_observation_update(
+         previous_checkpoint=checkpoint,
+         canonical_observation_event=event,
+@@ -99,6 +104,7 @@
+         strong_observation_input=_strong_input(event),
+         decision_as_of="2026-07-03T07:00:00Z",
+         deadline_at="2026-07-03T07:00:03Z",
++        previous_cumulative_raw_log_score=previous_cumulative_raw_log_score,
+     )
+ 
+ 
+@@ -150,8 +156,24 @@
+     assert update["raw_log_score_sha256"]
+     assert update["posterior_delta_sha256"]
+     assert update["normalizer_offset"] != 0.0
++
++
++def test_unchanged_cumulative_evidence_produces_zero_conditional_innovation() -> None:
++    artifact = _artifact(raw_log_score_by_pre_state={"warming": 0.4, "cooling": -0.4})
++    first = _update(_checkpoint(), _event(temp=29.0), artifact)
++    repeated = _update(
++        _checkpoint(),
++        _event(temp=29.0),
++        artifact,
++        previous_cumulative_raw_log_score=first["raw_log_score"],
++    )
+ 
++    assert repeated["ok"] is True
++    assert repeated["likelihood_update_kind"] == "cumulative_evidence_replacement_delta_log_lr_v1"
++    assert all(row["log_lr"] == 0.0 for row in repeated["conditional_innovation_log_score"])
++    assert all(row["posterior_delta"] == 0.0 for row in repeated["posterior_delta"])
+ 
++
+ def test_duplicate_canonical_event_does_not_create_a_new_posterior_update() -> None:
+     event = _event()
+     update = _update(_checkpoint(consumed=[event["canonical_observation_event_id"]]), event)
+--- a/tests/test_reported_x_successor_checkpoint_runtime.py
++++ b/tests/test_reported_x_successor_checkpoint_runtime.py
+@@ -171,8 +171,16 @@
+         "strong_observation_update": {
+             "canonical_observation_event_id": "speci-34",
+             "model_artifact_sha256": "c" * 64,
++            "previous_checkpoint_id": "pchk-previous",
++            "likelihood_update_kind": "cumulative_evidence_replacement_delta_log_lr_v1",
++            "raw_log_score_sha256": "d" * 64,
++            "previous_cumulative_raw_log_score_sha256": "",
++            "conditional_innovation_log_score_sha256": "e" * 64,
+         },
+-        "strong_update_row": {"path_auxiliary_json": "{}"},
++        "strong_update_row": {
++            "raw_log_score_sha256": "d" * 64,
++            "path_auxiliary_json": "{}",
++        },
+     }
+     result = upgrade_physical_only_strong_candidate(
+         candidate,
+@@ -188,6 +196,11 @@
+     assert termination["schema"] == "termination_risk_marginal_v2_reported_x"
+     assert termination["probability_no_material_new_daily_high"] == 0.7
+     assert termination["updates_posterior"] is False
++    identity = json.loads(result["strong_update_row"]["path_auxiliary_json"])[
++        "strong_likelihood_update_identity"
++    ]
++    assert identity["likelihood_update_kind"] == "cumulative_evidence_replacement_delta_log_lr_v1"
++    assert identity["conditional_innovation_log_score_sha256"] == "e" * 64
+ 
+ 
+ def test_strong_upgrade_refuses_old_closed_bridge_realization_candidate() -> None:
+--- a/tests/test_production_reported_x_public_ssot_writer.py
++++ b/tests/test_production_reported_x_public_ssot_writer.py
+@@ -111,6 +111,14 @@
+                     "canonical_observation_event_id": "event-1",
+                     "strong_observation_update_id": "update-1",
+                 },
++                "strong_likelihood_update_identity": {
++                    "schema": "strong_likelihood_cumulative_replacement_identity_v1",
++                    "likelihood_update_kind": "cumulative_evidence_replacement_delta_log_lr_v1",
++                    "current_cumulative_raw_log_score_sha256": "a" * 64,
++                    "previous_cumulative_raw_log_score_sha256": "",
++                    "conditional_innovation_log_score_sha256": "b" * 64,
++                    "previous_checkpoint_id": "pchk-previous",
++                },
+             }
+         )
+     }
+@@ -135,6 +143,7 @@
+     assert ssot["latent_probability_public"] is False
+     assert "physical_high_distribution" not in ssot
+     assert "latent_scheduled_slot_high_distribution" not in ssot
++    assert ssot["strong_likelihood_update_identity"]["likelihood_update_kind"] == "cumulative_evidence_replacement_delta_log_lr_v1"
+ 
+ 
+ def test_public_fact_rejects_old_termination_schema() -> None:

@@ -1,0 +1,161 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 加载中
+  - generic [ref=e5]: 刷新成功 · 07-05 09:59
+  - button "返回顶部"
+  - banner [ref=e6]:
+    - generic [ref=e9]:
+      - navigation "页面导航" [ref=e10]:
+        - generic [ref=e11]:
+          - link "事件视图" [ref=e12] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+          - link "更新/健康" [ref=e13] [cursor=pointer]:
+            - /url: "#eventsSectionBlock"
+        - link "顶部" [ref=e15] [cursor=pointer]:
+          - /url: "#top"
+      - generic [ref=e16]:
+        - generic "总开关：关闭=全停；开启=恢复策略与数据刷新" [ref=e18] [cursor=pointer]:
+          - checkbox "总开关 开启"
+          - generic [ref=e19]: 总开关
+          - generic [ref=e20]: 开启
+        - generic [ref=e23]:
+          - button "同步" [ref=e24] [cursor=pointer]
+          - button "模型" [ref=e25] [cursor=pointer]
+          - button "盘口" [ref=e26] [cursor=pointer]
+          - button "刷新" [ref=e27] [cursor=pointer]
+          - button "声音开" [pressed] [ref=e28] [cursor=pointer]
+          - button "日志" [ref=e30] [cursor=pointer]
+          - group [ref=e31]:
+            - generic "控制中心" [ref=e32] [cursor=pointer]: 控
+  - main [ref=e33]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e38]: 自动交易执行
+          - generic [ref=e39]: 注意
+        - generic [ref=e40]:
+          - generic [ref=e41]: 同步开启
+          - generic [ref=e43]:
+            - strong [ref=e44]: 成交
+            - text: 暂无
+      - generic [ref=e45]:
+        - generic [ref=e47]:
+          - generic [ref=e48]: 同步
+          - generic [ref=e49]: 模拟
+        - generic [ref=e50]:
+          - button "触发一次" [ref=e51] [cursor=pointer]
+          - generic [ref=e52] [cursor=pointer]:
+            - checkbox "开启" [checked]
+            - generic [ref=e54]: 开启
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - text: 当前/未来事件视图（事实层）
+        - generic [ref=e57]: 已加载 2/2
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e61]:
+            - generic [ref=e62]: 系统更新与数据健康
+            - generic [ref=e63]: Bayes链路 · 模型刷新 · 数据源 · 缓存 · 辅助接口
+          - generic [ref=e64]:
+            - generic [ref=e65]:
+              - generic [ref=e66]: 模型刷新
+              - generic [ref=e67]: 暂无频率样本
+              - generic [ref=e68]: 频率统计链路未供数；不代表模型预报缺失
+            - generic [ref=e69]:
+              - generic [ref=e70]: 数据源健康
+              - generic [ref=e71]: 无需处理
+              - generic [ref=e72]: 本地滞后 0 · 陈旧/缺失 0
+            - generic [ref=e73]:
+              - generic [ref=e74]: 扫描节奏
+              - generic [ref=e75]: —
+              - generic [ref=e76]: 快扫 —d · 全量 — · 启动不跑
+            - generic [ref=e77]:
+              - generic [ref=e78]: 模型窗口 / 限流
+              - generic [ref=e79]: —
+              - generic [ref=e80]: 窗口内 — · 窗口外 — · 冷却 — · 日结定时
+            - generic [ref=e81]:
+              - generic [ref=e82]: Summary缓存
+              - generic [ref=e83]: busy —
+              - generic [ref=e84]: summary · rebuild_running · summary 2026-07-05:24:chengdu
+            - generic [ref=e85]:
+              - generic [ref=e86]: Bayes链路
+              - generic [ref=e87]: 0/5 fresh
+              - generic [ref=e88]: 事实→后验→决策→执行→回顾 · 异常 2
+            - generic [ref=e89]:
+              - generic [ref=e90]: UI快路径
+              - generic [ref=e91]: 快路径
+              - generic [ref=e92]: materialize空闲 · WAL 0B
+            - generic [ref=e93]:
+              - generic [ref=e94]: 辅助接口
+              - generic [ref=e95]: 延迟 3/3
+              - generic [ref=e96]: /api/latest 延迟 · auto-trade-trace 延迟 · 站温 延迟
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - generic [ref=e99]:
+                - generic [ref=e100]:
+                  - generic [ref=e101]: Bayes链路SSOT
+                  - generic [ref=e102]: snapshot uisnap_4935b5aea76 · 生成 07-05 09:59:12 · read_only
+                - generic [ref=e103]: 0/5 fresh
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - generic [ref=e106]:
+                    - generic [ref=e107]: "1"
+                    - strong [ref=e108]: 事实
+                  - generic [ref=e109]: 事实 0
+                  - generic [ref=e110]: blocked · snapshot_rebuild_in_flight · ui_snapshot_rebuild_in_flight
+                - generic [ref=e111]:
+                  - generic [ref=e112]:
+                    - generic [ref=e113]: "2"
+                    - strong [ref=e114]: 后验
+                  - generic [ref=e115]: 0 / 0
+                  - generic [ref=e116]: empty · snapshot_rebuild_in_flight · ui_sections.bayes_posterior_ssot
+                - generic [ref=e117]:
+                  - generic [ref=e118]:
+                    - generic [ref=e119]: "3"
+                    - strong [ref=e120]: 决策
+                  - generic [ref=e121]: 下单 0 · 阻断 0
+                  - generic [ref=e122]: empty · snapshot_rebuild_in_flight · auto_trade_decisions.path_probability_follow
+                - generic [ref=e123]:
+                  - generic [ref=e124]:
+                    - generic [ref=e125]: "4"
+                    - strong [ref=e126]: 执行
+                  - generic [ref=e127]: job 0
+                  - generic [ref=e128]: blocked · snapshot_rebuild_in_flight · jobs+positions+fills
+                - generic [ref=e129]:
+                  - generic [ref=e130]:
+                    - generic [ref=e131]: "5"
+                    - strong [ref=e132]: 回顾
+                  - generic [ref=e133]: 回顾 0
+                  - generic [ref=e134]: empty · snapshot_rebuild_in_flight · daily_review_state
+            - generic [ref=e135]:
+              - generic [ref=e136]: 模型更新时间
+              - generic [ref=e138]: 当前快照没有可展示的模型频率样本；这表示频率统计链路未供数或本次快照未带入模型刷新统计，不等同于模型预报本身缺失。
+            - generic [ref=e139]:
+              - generic [ref=e140]:
+                - generic [ref=e142]: 数据源健康
+                - generic [ref=e143]:
+                  - generic [ref=e144]: 本地滞后 0
+                  - generic [ref=e145]: 陈旧 0
+                  - generic [ref=e146]: 缺失 0
+                  - generic [ref=e147]: 正常 0 已折叠
+                  - generic [ref=e148]: 总计 0
+              - generic [ref=e149]: 生成 —
+              - generic [ref=e151]: 暂无不健康数据源；正常 0 项已折叠。
+              - group [ref=e152]:
+                - generic "展开详情（当前无不健康项） 健康项默认隐藏" [ref=e153] [cursor=pointer]:
+                  - generic [ref=e154]: 展开详情（当前无不健康项）
+                  - generic [ref=e155]: 健康项默认隐藏
+        - generic [ref=e156]:
+          - generic [ref=e157]:
+            - generic [ref=e158]: 事件渲染异常
+            - generic [ref=e159]: 已自动降级为简化卡片，建议检查 edge/分布字段
+            - generic [ref=e160]: 渲染失败：Highest temperature in Chengdu on July 5? · eventIntelAvailablePosteriorSsot is not defined
+            - generic [ref=e161]: 渲染失败：Highest temperature in Chengdu on July 6? · eventIntelAvailablePosteriorSsot is not defined
+          - generic [ref=e162]:
+            - generic [ref=e163]: Highest temperature in Chengdu on July 5?
+            - generic [ref=e164]: Chengdu · 2026-07-05
+            - generic [ref=e165]: 卡片渲染失败：eventIntelAvailablePosteriorSsot is not defined
+          - generic [ref=e166]:
+            - generic [ref=e167]: Highest temperature in Chengdu on July 6?
+            - generic [ref=e168]: Chengdu · 2026-07-06
+            - generic [ref=e169]: 卡片渲染失败：eventIntelAvailablePosteriorSsot is not defined

@@ -9,6 +9,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import sqlite3
@@ -25,10 +26,12 @@ ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data" / "archive.db"
 REBUILD_DIR = ROOT / "data" / "archive_rebuilds"
 BACKUP_DIR = ROOT / "data" / "archive_backups"
+RESTORE_BACKUP_DIR = ROOT / "data" / "archive_restore_backups"
 REPORT_DIR = ROOT / "data" / "reports"
 LOG_DIR = ROOT / "data" / "logs"
 LOCK_PATH = ROOT / "data" / ".archive_db_auto_guard.lock"
 STATE_PATH = ROOT / "data" / "archive_db_auto_guard_state.json"
+SYSTEM_MONITOR_DAEMON = "system/com.weather.monitor.daemon"
 
 USER_LABELS = [
     "com.weather.task_queue_worker",
@@ -52,12 +55,20 @@ USER_LABELS = [
 WEATHER_PROCESS_PATTERNS = [
     "/Users/xiong/weather/scripts/hard_source_direct_poller.py",
     "/Users/xiong/weather/scripts/auto_trade_watcher.py",
+    "/Users/xiong/weather/scripts/task_queue_worker.py",
     "/Users/xiong/weather/scripts/weather_market_anomaly_monitor.py",
     "/Users/xiong/weather/scripts/market_ws_listener.py",
     "/Users/xiong/weather/scripts/market_refresh_1m.sh",
+    "/Users/xiong/weather/scripts/discover_weather_markets_fast.py",
+    "/Users/xiong/weather/scripts/weather_strategy_batch.py",
+    "/Users/xiong/weather/scripts/model_release_watcher.py",
+    "/Users/xiong/weather/scripts/daily_review_coverage_audit.py",
+    "/Users/xiong/weather/scripts/daily_review_post_apply_acceptance_audit.py",
+    "/Users/xiong/weather/scripts/weather_decision_core_audit.py",
     "/Users/xiong/weather/scripts/trade_engine_loop.sh",
     "/Users/xiong/weather/scan_weather_market.py",
     "/Users/xiong/weather/ui/server.py",
+    "-m ui.server",
 ]
 
 INCREMENTAL_ID_TABLES = [
@@ -128,6 +139,52 @@ def _fmt_bytes(value: int | float) -> str:
     return f"{int(value or 0)}B"
 
 
+def candidate_build_disk_preflight(
+    *,
+    source_db: Path = DB,
+    rebuild_dir: Path = REBUILD_DIR,
+) -> dict[str, Any]:
+    """Check whether building a compact candidate can safely allocate disk.
+
+    Low free disk is one trigger for this guard, but candidate construction
+    itself needs scratch space. If that scratch space is unavailable, the guard
+    must stop after auxiliary cleanup instead of making the full disk problem
+    worse with a partial candidate DB.
+    """
+
+    try:
+        db_bytes = int(source_db.stat().st_size)
+    except OSError:
+        db_bytes = 0
+    wal = Path(str(source_db) + "-wal")
+    try:
+        wal_bytes = int(wal.stat().st_size)
+    except OSError:
+        wal_bytes = 0
+    margin = _env_int("PM_ARCHIVE_GUARD_BUILD_FREE_MARGIN_BYTES", 8 * 1024**3)
+    min_build_free = _env_int(
+        "PM_ARCHIVE_GUARD_MIN_BUILD_FREE_BYTES",
+        db_bytes + wal_bytes + margin,
+    )
+    usage_root = rebuild_dir.parent if rebuild_dir.parent.exists() else source_db.parent
+    free_bytes = int(shutil.disk_usage(usage_root).free)
+    ok = free_bytes >= min_build_free
+    return {
+        "schema": "archive_db_auto_guard_candidate_build_disk_preflight_v1",
+        "ok": ok,
+        "source_db": str(source_db),
+        "rebuild_dir": str(rebuild_dir),
+        "usage_root": str(usage_root),
+        "db_bytes": db_bytes,
+        "wal_bytes": wal_bytes,
+        "free_bytes": free_bytes,
+        "required_free_bytes": int(min_build_free),
+        "margin_bytes": int(margin),
+        "block_reason": "" if ok else "insufficient_disk_for_candidate_build",
+        "boundary": "preflight_before_archive_rebuild_candidate_creation",
+    }
+
+
 def _run(cmd: list[str], *, timeout: int = 60, check: bool = False) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(
         cmd,
@@ -158,8 +215,60 @@ def _safe_unlink(path: Path) -> bool:
         return False
 
 
+def _safe_remove_tree(path: Path) -> bool:
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+
+
+def _tail_truncate(path: Path, keep_bytes: int) -> tuple[bool, int]:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False, 0
+    if size <= keep_bytes:
+        return False, 0
+    marker = (
+        f"\n[archive_db_auto_guard retained_tail_bytes={keep_bytes} "
+        f"original_bytes={size} at={_now_utc()}]\n"
+    ).encode("utf-8")
+    try:
+        with path.open("rb+") as handle:
+            handle.seek(max(0, size - keep_bytes))
+            tail = handle.read()
+            handle.seek(0)
+            handle.truncate(0)
+            handle.write(marker + tail)
+        return True, max(0, size - path.stat().st_size)
+    except OSError:
+        return False, 0
+
+
+def _log_keep_bytes(path: Path) -> int:
+    if path.name == "hard_source_direct_poller.log":
+        return _env_int("PM_ARCHIVE_GUARD_HARD_SOURCE_LOG_KEEP_BYTES", 64 * 1024**2)
+    if path.name in {"trade_engine.log", "auto_trade_entry_1m.log", "feedback_loop_hourly.out.log"}:
+        return _env_int("PM_ARCHIVE_GUARD_CORE_LOG_KEEP_BYTES", 32 * 1024**2)
+    return _env_int("PM_ARCHIVE_GUARD_LOG_KEEP_BYTES", 16 * 1024**2)
+
+
 def cleanup_aux_files() -> dict[str, int]:
-    removed = {"weather_anomaly_reports": 0, "rotated_logs": 0, "old_guard_candidates": 0}
+    removed = {
+        "weather_anomaly_reports": 0,
+        "rotated_logs": 0,
+        "old_guard_candidates": 0,
+        "old_restore_backups": 0,
+        "old_guard_reports": 0,
+        "trimmed_logs": 0,
+        "trimmed_log_bytes": 0,
+    }
     anomaly_dir = REPORT_DIR / "weather_anomaly"
     cutoff = time.time() - _env_int("PM_ARCHIVE_GUARD_REPORT_TTL_SEC", 6 * 3600)
     if anomaly_dir.exists():
@@ -187,6 +296,36 @@ def cleanup_aux_files() -> dict[str, int]:
                     removed["old_guard_candidates"] += 1
             except OSError:
                 pass
+    restore_cutoff = time.time() - _env_int("PM_ARCHIVE_GUARD_RESTORE_BACKUP_TTL_SEC", 24 * 3600)
+    if RESTORE_BACKUP_DIR.exists():
+        for path in RESTORE_BACKUP_DIR.iterdir():
+            try:
+                if path.stat().st_mtime < restore_cutoff and _safe_remove_tree(path):
+                    removed["old_restore_backups"] += 1
+            except OSError:
+                pass
+    report_cutoff = time.time() - _env_int("PM_ARCHIVE_GUARD_BUILD_REPORT_TTL_SEC", 24 * 3600)
+    if REPORT_DIR.exists():
+        for pattern in ("archive_db_auto_guard_build_*.json", "archive_db_auto_guard_build_*.md"):
+            for path in REPORT_DIR.glob(pattern):
+                try:
+                    if path.stat().st_mtime < report_cutoff and _safe_unlink(path):
+                        removed["old_guard_reports"] += 1
+                except OSError:
+                    pass
+    log_threshold = _env_int("PM_ARCHIVE_GUARD_LOG_TRIM_THRESHOLD_BYTES", 128 * 1024**2)
+    if LOG_DIR.exists():
+        for path in LOG_DIR.glob("*.log"):
+            keep_bytes = _log_keep_bytes(path)
+            try:
+                if path.stat().st_size <= max(log_threshold, keep_bytes):
+                    continue
+            except OSError:
+                continue
+            trimmed, released = _tail_truncate(path, keep_bytes)
+            if trimmed:
+                removed["trimmed_logs"] += 1
+                removed["trimmed_log_bytes"] += released
     return removed
 
 
@@ -276,13 +415,18 @@ def build_candidate(stamp: str) -> tuple[Path, dict[str, Any]]:
         str(report_md),
         "--print-json",
     ]
-    proc = _run(cmd, timeout=_env_int("PM_ARCHIVE_GUARD_BUILD_TIMEOUT_SEC", 7200))
-    if proc.returncode != 0:
-        raise RuntimeError(f"build_candidate_failed rc={proc.returncode} stderr={proc.stderr[-1000:]}")
-    payload = json.loads(report_json.read_text(encoding="utf-8"))
-    if not payload.get("ok") or not (payload.get("checks") or {}).get("ok"):
-        raise RuntimeError(f"candidate_checks_failed report={report_json}")
-    return output, payload
+    try:
+        proc = _run(cmd, timeout=_env_int("PM_ARCHIVE_GUARD_BUILD_TIMEOUT_SEC", 7200))
+        if proc.returncode != 0:
+            raise RuntimeError(f"build_candidate_failed rc={proc.returncode} stderr={proc.stderr[-1000:]}")
+        payload = json.loads(report_json.read_text(encoding="utf-8"))
+        if not payload.get("ok") or not (payload.get("checks") or {}).get("ok"):
+            raise RuntimeError(f"candidate_checks_failed report={report_json}")
+        return output, payload
+    except Exception:
+        for suffix in ("", "-wal", "-shm"):
+            _safe_unlink(Path(str(output) + suffix))
+        raise
 
 
 def user_uid() -> str:
@@ -303,6 +447,68 @@ def bootstrap_user_labels() -> None:
             continue
         _run(["launchctl", "bootstrap", f"gui/{uid}", str(plist)], timeout=10)
         _run(["launchctl", "enable", f"gui/{uid}/{label}"], timeout=10)
+
+
+def _process_stat(pid: int) -> str:
+    proc = _run(["ps", "-o", "stat=", "-p", str(pid)], timeout=10)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def monitor_daemon_pid() -> int | None:
+    proc = _run(["launchctl", "print", SYSTEM_MONITOR_DAEMON], timeout=10)
+    if proc.returncode != 0:
+        return None
+    match = re.search(r"^\s*pid = (\d+)\s*$", proc.stdout, flags=re.MULTILINE)
+    if not match:
+        return None
+    try:
+        pid = int(match.group(1))
+    except ValueError:
+        return None
+    return pid if pid > 0 else None
+
+
+def pause_monitor_daemon() -> list[dict[str, Any]]:
+    if not _env_bool("PM_ARCHIVE_GUARD_PAUSE_MONITOR_DAEMON", True):
+        return []
+    pid = monitor_daemon_pid()
+    if not pid or pid == os.getpid():
+        return []
+    stat = _process_stat(pid)
+    entry: dict[str, Any] = {
+        "label": SYSTEM_MONITOR_DAEMON,
+        "pid": pid,
+        "stat_before": stat,
+        "stopped_by_guard": False,
+    }
+    if "T" in stat:
+        entry["already_stopped"] = True
+        return [entry]
+    try:
+        os.kill(pid, signal.SIGSTOP)
+        entry["stopped_by_guard"] = True
+    except (ProcessLookupError, PermissionError) as exc:
+        entry["error"] = f"{exc.__class__.__name__}: {exc}"
+    return [entry]
+
+
+def resume_monitor_daemons(paused: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    resumed: list[dict[str, Any]] = []
+    for entry in paused:
+        if not entry.get("stopped_by_guard"):
+            continue
+        pid = int(entry.get("pid") or 0)
+        if not pid:
+            continue
+        result: dict[str, Any] = {"label": entry.get("label"), "pid": pid, "resumed": False}
+        try:
+            os.kill(pid, signal.SIGCONT)
+            result["resumed"] = True
+            result["stat_after"] = _process_stat(pid)
+        except (ProcessLookupError, PermissionError) as exc:
+            result["error"] = f"{exc.__class__.__name__}: {exc}"
+        resumed.append(result)
+    return resumed
 
 
 def matching_weather_pids() -> list[int]:
@@ -532,46 +738,66 @@ def run_guard(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError(f"candidate_initial_checks_failed path={candidate} checks={initial_checks}")
         payload["candidate"] = {"path": str(candidate), "build": {"status": "reused"}, "checks": initial_checks}
     else:
+        disk_preflight = candidate_build_disk_preflight()
+        payload["candidate_build_disk_preflight"] = disk_preflight
+        if not disk_preflight.get("ok"):
+            payload.update(
+                {
+                    "ok": True,
+                    "skipped": disk_preflight.get("block_reason"),
+                    "blocked": disk_preflight.get("block_reason"),
+                    "next_boundary": "free_disk_or_move_backups_before_archive_compact_candidate_build",
+                }
+            )
+            return payload
         candidate, build_payload = build_candidate(stamp)
         payload["candidate"] = {
             "path": str(candidate),
             "build": build_payload.get("build"),
             "checks": build_payload.get("checks"),
         }
-    if not wait_for_quiescent(DB, timeout_sec=_env_int("PM_ARCHIVE_GUARD_QUIESCE_TIMEOUT_SEC", 60)):
-        payload.update({"ok": False, "blocked": "source_db_not_quiescent", "lsof": lsof_db(DB)})
-        return payload
-    if bool(getattr(args, "skip_sync_delta", False)):
-        payload["sync_delta"] = {
-            "skipped": True,
-            "reason": "skip_sync_delta_requested_for_validated_candidate_recovery",
-            "source_db_metrics": db_metrics(DB),
-        }
-    else:
-        payload["sync_delta"] = sync_small_delta(candidate)
-    candidate_checks = validate_candidate(candidate)
-    payload["candidate"]["post_sync_checks"] = candidate_checks
-    if not candidate_checks.get("ok"):
-        payload.update({"ok": False, "blocked": "candidate_post_sync_checks_failed"})
-        return payload
-    if not wait_for_quiescent(DB, timeout_sec=_env_int("PM_ARCHIVE_GUARD_QUIESCE_TIMEOUT_SEC", 60)):
-        payload.update({"ok": False, "blocked": "source_db_not_quiescent_after_sync", "lsof": lsof_db(DB)})
-        return payload
-    backup = swap_candidate(candidate, stamp)
-    payload["backup"] = str(backup)
-    checks = post_checks()
-    payload["post_checks"] = checks
-    if not checks.get("ok"):
-        rollback(backup)
-        payload.update({"ok": False, "blocked": "post_checks_failed_rolled_back"})
-        return payload
-    if not _env_bool("PM_ARCHIVE_GUARD_KEEP_BACKUP", False):
-        _safe_unlink(backup)
-        for suffix in ("-wal", "-shm"):
-            _safe_unlink(BACKUP_DIR / f"archive.db{suffix}.pre_guard_{stamp}")
-        payload["backup_deleted"] = True
-    payload["after"] = db_metrics(DB)
-    payload["elapsed_sec"] = round(time.monotonic() - started, 3)
+    paused_monitors = pause_monitor_daemon()
+    if paused_monitors:
+        payload["paused_monitor_daemons"] = paused_monitors
+    try:
+        if not wait_for_quiescent(DB, timeout_sec=_env_int("PM_ARCHIVE_GUARD_QUIESCE_TIMEOUT_SEC", 60)):
+            payload.update({"ok": False, "blocked": "source_db_not_quiescent", "lsof": lsof_db(DB)})
+            return payload
+        if bool(getattr(args, "skip_sync_delta", False)):
+            payload["sync_delta"] = {
+                "skipped": True,
+                "reason": "skip_sync_delta_requested_for_validated_candidate_recovery",
+                "source_db_metrics": db_metrics(DB),
+            }
+        else:
+            payload["sync_delta"] = sync_small_delta(candidate)
+        candidate_checks = validate_candidate(candidate)
+        payload["candidate"]["post_sync_checks"] = candidate_checks
+        if not candidate_checks.get("ok"):
+            payload.update({"ok": False, "blocked": "candidate_post_sync_checks_failed"})
+            return payload
+        if not wait_for_quiescent(DB, timeout_sec=_env_int("PM_ARCHIVE_GUARD_QUIESCE_TIMEOUT_SEC", 60)):
+            payload.update({"ok": False, "blocked": "source_db_not_quiescent_after_sync", "lsof": lsof_db(DB)})
+            return payload
+        backup = swap_candidate(candidate, stamp)
+        payload["backup"] = str(backup)
+        checks = post_checks()
+        payload["post_checks"] = checks
+        if not checks.get("ok"):
+            rollback(backup)
+            payload.update({"ok": False, "blocked": "post_checks_failed_rolled_back"})
+            return payload
+        if not _env_bool("PM_ARCHIVE_GUARD_KEEP_BACKUP", False):
+            _safe_unlink(backup)
+            for suffix in ("-wal", "-shm"):
+                _safe_unlink(BACKUP_DIR / f"archive.db{suffix}.pre_guard_{stamp}")
+            payload["backup_deleted"] = True
+        payload["after"] = db_metrics(DB)
+        payload["elapsed_sec"] = round(time.monotonic() - started, 3)
+    finally:
+        resumed_monitors = resume_monitor_daemons(paused_monitors)
+        if resumed_monitors:
+            payload["resumed_monitor_daemons"] = resumed_monitors
     return payload
 
 

@@ -445,6 +445,52 @@ class CheckTradeReadinessConfigTest(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertIn("no_recent_entry_order_intent", payload["blockers"])
 
+    def test_db_live_readiness_accepts_pre_activation_d1_freeze_without_intent(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {
+                "PM_AUTO_TRADE_DRY_RUN": "0",
+                "PM_TARGET_REALIZATION_V3_ENABLED": "1",
+                "PM_TARGET_REALIZATION_V3_ACTIVATION_DATE_ET": "2999-01-01",
+            },
+            clear=True,
+        ):
+            db_path = Path(tmpdir) / "archive.db"
+            self._create_readiness_db(db_path)
+            with closing(sqlite3.connect(str(db_path))) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO auto_trade_decisions(
+                        created_at, slug, event_date, outcome, side, action,
+                        decided_state, will_order, reason_codes_json, details_json
+                    ) VALUES (?, ?, ?, ?, ?, 'hold', 'frozen', 0, ?, '{}')
+                    """,
+                    (
+                        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "weather-test",
+                        "2999-01-01",
+                        "70°F or higher",
+                        "YES",
+                        json.dumps(["target_realization_d1_existing_positions_frozen"]),
+                    ),
+                )
+                conn.commit()
+
+            payload = check_trade_readiness.build_db_live_readiness(
+                db_path=db_path,
+                since_minutes=60,
+                live_cutover=True,
+                live_trading=True,
+                dry_run=False,
+            )
+
+        self.assertNotIn("no_recent_entry_order_intent", payload["blockers"])
+        self.assertTrue(payload["intentional_quiet_state"]["active"])
+        self.assertEqual(
+            payload["intentional_quiet_state"]["reason"],
+            "target_realization_d1_existing_positions_frozen",
+        )
+
     def test_live_readiness_reports_blocker_clearance(self):
         with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
             os.environ,

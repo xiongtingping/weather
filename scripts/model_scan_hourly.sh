@@ -126,17 +126,15 @@ if ! weather_scan_lane_acquire "model_scan_hourly" 0 "$LOG" "model_scan_hourly";
   exit 0
 fi
 cleanup_hourly() {
-  weather_refresh_db_writer_release
   weather_scan_lane_release
 }
 trap cleanup_hourly EXIT
 
-if [ "${PM_MODEL_SCAN_DB_LOCK_ENABLED:-1}" = "1" ]; then
-  : "${PM_DB_WRITER_LOCK_WAIT_SEC:=15}"
-  if ! weather_refresh_db_writer_acquire "model_scan_hourly" "$PM_DB_WRITER_LOCK_WAIT_SEC" "$LOG" "model_scan_hourly"; then
-    exit 0
-  fi
-fi
+# Do not hold the archive writer lock around the network/model scan.  The
+# Python runtime acquires the shared queue only for each writable SQLite
+# connection.  A parent-shell lock here is both far too broad and cannot be
+# re-entered by the child process, which would deadlock the scan and block the
+# latency-critical AMSC probability lane.
 
 echo "---- $(date '+%Y-%m-%d %H:%M:%S') model_scan_hourly start ----" >> "$LOG"
 

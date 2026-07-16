@@ -1,0 +1,222 @@
+--- a/sequential_bayes_filter_shadow_runtime.py
++++ b/sequential_bayes_filter_shadow_runtime.py
+@@ -128,7 +128,11 @@
+     return declared if declared == computed else ""
+ 
+ 
+-def _event_lower_bound(event: Mapping[str, Any]) -> float | None:
++def _event_lower_bound(
++    event: Mapping[str, Any], *, speci_soft_evidence_only: bool = False
++) -> float | None:
++    if speci_soft_evidence_only and _text(event.get("report_type")).upper() == "SPECI":
++        return None
+     parsed = _mapping(event.get("parsed_observation"))
+     direct = _finite(
+         event.get("observed_max_lower_bound_c")
+@@ -262,6 +266,7 @@
+     strong_observation_input: Mapping[str, Any],
+     decision_as_of: str,
+     deadline_at: str,
++    speci_soft_evidence_only: bool = False,
+ ) -> dict[str, Any]:
+     """Build one conditional update and its composer-owned centred delta.
+ 
+@@ -381,7 +386,9 @@
+             )
+         raw_scores.append(raw_score)
+     previous_lb = _finite(checkpoint.get("observed_max_lower_bound_c"))
+-    event_lb = _event_lower_bound(event)
++    event_lb = _event_lower_bound(
++        event, speci_soft_evidence_only=speci_soft_evidence_only
++    )
+     observed_lb = max(value for value in (previous_lb, event_lb) if value is not None) if any(value is not None for value in (previous_lb, event_lb)) else None
+     allowed = [observed_lb is None or float(row["temperature_c"]) >= observed_lb - 1e-12 for row in rows]
+     unnormalized = [
+--- a/sequential_bayes_shadow_pipeline.py
++++ b/sequential_bayes_shadow_pipeline.py
+@@ -346,6 +346,7 @@
+     source_reliability_after: Mapping[str, Any],
+     path_auxiliary: Mapping[str, Any],
+     resident_fast_lane_prewarm_dependency_identity: str = "",
++    speci_soft_evidence_only: bool = False,
+ ) -> dict[str, Any]:
+     """Build one immutable Transaction-B candidate without mutation.
+ 
+@@ -498,6 +499,7 @@
+         strong_observation_input=strong_observation_input,
+         decision_as_of=decision_as_of,
+         deadline_at=deadline_at,
++        speci_soft_evidence_only=speci_soft_evidence_only,
+     )
+     if not update.get("ok"):
+         return {
+--- a/p2_canonical_amsc_forward_writer.py
++++ b/p2_canonical_amsc_forward_writer.py
+@@ -18,7 +18,7 @@
+ 
+ from canonical_observation_runtime import canonicalize_observations
+ from canonical_observation_writer import persist_canonical_observation_proposal
+-from sequential_bayes_schema_contract import verify_schema
++from reported_x_successor_schema_contract import verify_schema
+ from strict_amsc_hard_observation_reader import load_strict_amsc_primary_hard_observations
+ 
+ 
+--- a/scripts/apply_amsc_probability_fast_lane_from_plan.py
++++ b/scripts/apply_amsc_probability_fast_lane_from_plan.py
+@@ -22,8 +22,8 @@
+ if str(ROOT) not in sys.path:
+     sys.path.insert(0, str(ROOT))
+ 
+-from production_amsc_archive_probability_ingress import (  # noqa: E402
+-    apply_production_amsc_archive_probability_ingress,
++from production_reported_x_amsc_archive_probability_ingress import (  # noqa: E402
++    apply_reported_x_amsc_archive_probability_ingress,
+ )
+ 
+ 
+@@ -85,7 +85,7 @@
+     started_at = _now_iso()
+     started = time.monotonic()
+     try:
+-        result = apply_production_amsc_archive_probability_ingress(
++        result = apply_reported_x_amsc_archive_probability_ingress(
+             db_path=args.db,
+             raw_archive_dir=args.raw_archive_dir,
+             event_date=event_date,
+--- a/scripts/watch_zuuu_speci_once.py
++++ b/scripts/watch_zuuu_speci_once.py
+@@ -26,10 +26,10 @@
+     sys.path.insert(0, str(ROOT))
+ 
+ from amsc_raw_history_archive import archive_amsc_poll, attach_archive_metadata, raw_text_sha256  # noqa: E402
+-from production_amsc_archive_probability_ingress import (  # noqa: E402
+-    apply_production_amsc_archive_probability_ingress,
++from production_reported_x_amsc_archive_probability_ingress import (  # noqa: E402
++    apply_reported_x_amsc_archive_probability_ingress,
+ )
+-from production_probability_activation_contract import DEFAULT_PATH as DEFAULT_PRODUCTION_ACTIVATION  # noqa: E402
++from production_probability_successor_activation_contract import PRODUCTION_PATH as DEFAULT_PRODUCTION_ACTIVATION  # noqa: E402
+ from production_probability_p0_runtime import DEFAULT_RESOLUTION_AUTHORITY  # noqa: E402
+ from scripts import fetch_zuuu_metar_taf as fetcher  # noqa: E402
+ 
+@@ -317,7 +317,7 @@
+         }
+         if args.production_probability_ingress:
+             try:
+-                realtime_ingress = apply_production_amsc_archive_probability_ingress(
++                realtime_ingress = apply_reported_x_amsc_archive_probability_ingress(
+                     db_path=args.db,
+                     raw_archive_dir=args.archive_dir,
+                     event_date=str(new_sources[0].get("event_date") or "")[:10],
+@@ -332,7 +332,7 @@
+                 )
+             except Exception as exc:  # Canonical/raw evidence remains durable on probability failure.
+                 realtime_ingress = {
+-                    "schema": "production_amsc_archive_probability_ingress_v1",
++                    "schema": "production_reported_x_amsc_archive_probability_ingress_v1",
+                     "ok": False,
+                     "state": "exception_after_raw_archive",
+                     "blockers": [f"{type(exc).__name__}:{exc}"],
+--- a/scripts/apply_amsc_taf_forecast_revision_from_plan.py
++++ b/scripts/apply_amsc_taf_forecast_revision_from_plan.py
+@@ -14,8 +14,8 @@
+     sys.path.insert(0, str(ROOT))
+ 
+ from archive_db_write_queue import connect_archive_db_rw
+-from production_probability_activation_contract import load_production_probability_activation
+-from production_weak_forecast_revision_event_runtime import apply_production_taf_revision_from_source_observations
++from production_probability_successor_activation_contract import load_successor_activation
++from production_reported_x_weak_revision_event_runtime import apply_reported_x_taf_revision_from_source_observations
+ 
+ 
+ def main() -> int:
+@@ -34,9 +34,9 @@
+         fact_as_of = str(plan.get("fact_as_of") or effective.get("fact_as_of") or "")
+         slug = str(plan.get("slug") or effective.get("slug") or "")
+         with connect_archive_db_rw(Path(args.db), owner="amsc_taf_forecast_revision") as conn:
+-            result = apply_production_taf_revision_from_source_observations(
++            result = apply_reported_x_taf_revision_from_source_observations(
+                 conn,
+-                activation=load_production_probability_activation(args.activation),
++                activation=load_successor_activation(args.activation),
+                 event_date=day,
+                 source_observations=effective.get("source_observations") or [],
+                 decision_as_of=fact_as_of,
+--- a/scripts/apply_production_canonical_probability_updates.py
++++ b/scripts/apply_production_canonical_probability_updates.py
+@@ -17,13 +17,13 @@
+     sys.path.insert(0, str(ROOT))
+ 
+ from archive_db_write_queue import connect_archive_db_rw  # noqa: E402
+-from production_canonical_event_drain_runtime import (  # noqa: E402
+-    drain_production_canonical_events,
+-    pending_production_canonical_event_ids,
++from production_reported_x_canonical_event_drain_runtime import (  # noqa: E402
++    drain_reported_x_canonical_events,
++    pending_reported_x_canonical_event_ids,
+ )
+-from production_probability_activation_contract import (  # noqa: E402
++from production_probability_successor_activation_contract import (  # noqa: E402
+-    DEFAULT_PATH as DEFAULT_ACTIVATION,
++    PRODUCTION_PATH as DEFAULT_ACTIVATION,
+-    load_production_probability_activation,
++    load_successor_activation,
+ )
+ from production_probability_p0_runtime import DEFAULT_RESOLUTION_AUTHORITY  # noqa: E402
+ 
+@@ -49,16 +49,16 @@
+     event_date = str(args.event_date or "")[:10]
+     if not args.apply:
+         try:
+-            activation = load_production_probability_activation(args.activation)
++            activation = load_successor_activation(args.activation)
+             conn = sqlite3.connect(f"file:{Path(args.db).expanduser().resolve()}?mode=ro", uri=True)
+             try:
+-                pending = pending_production_canonical_event_ids(
++                pending = pending_reported_x_canonical_event_ids(
+                     conn, event_date=event_date, activation=activation
+                 )
+             finally:
+                 conn.close()
+             result = {
+-                "schema": "production_canonical_event_drain_v1",
++                "schema": "production_reported_x_canonical_event_drain_v1",
+                 "ok": True,
+                 "state": "read_only_plan",
+                 "event_date": event_date,
+@@ -66,12 +66,12 @@
+                 "places_orders": False,
+             }
+         except (OSError, sqlite3.Error, ValueError) as exc:
+-            result = {"schema": "production_canonical_event_drain_v1", "ok": False, "state": "blocked", "reason": f"read_only_plan_failed:{exc}", "places_orders": False}
++            result = {"schema": "production_reported_x_canonical_event_drain_v1", "ok": False, "state": "blocked", "reason": f"read_only_plan_failed:{exc}", "places_orders": False}
+         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+         return 0 if result.get("ok") is True else 1
+     if args.confirm != CONFIRMATION or event_date != _today():
+         result = {
+-            "schema": "production_canonical_event_drain_v1",
++            "schema": "production_reported_x_canonical_event_drain_v1",
+             "ok": False,
+             "state": "blocked",
+             "reason": "confirmation_required_or_noncurrent_event_date",
+@@ -80,9 +80,9 @@
+         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+         return 2
+     try:
+-        activation = load_production_probability_activation(args.activation)
++        activation = load_successor_activation(args.activation)
+         with connect_archive_db_rw(Path(args.db), owner="production_canonical_probability_updates") as conn:
+-            result = drain_production_canonical_events(
++            result = drain_reported_x_canonical_events(
+                 conn,
+                 activation=activation,
+                 event_date=event_date,
+@@ -91,7 +91,7 @@
+                 max_events=args.max_events,
+             )
+     except Exception as exc:
+-        result = {"schema": "production_canonical_event_drain_v1", "ok": False, "state": "blocked", "reason": f"apply_failed:{type(exc).__name__}:{exc}", "places_orders": False}
++        result = {"schema": "production_reported_x_canonical_event_drain_v1", "ok": False, "state": "blocked", "reason": f"apply_failed:{type(exc).__name__}:{exc}", "places_orders": False}
+     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+     return 0 if result.get("ok") is True else 1
+ 

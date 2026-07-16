@@ -14,6 +14,15 @@ if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
   fi
 fi
 
+# Entry authority comes from posterior/target realization contracts only.
+while IFS='=' read -r legacy_runtime_key _; do
+  case "$legacy_runtime_key" in
+    PM_EDGE_REALIZABLE_*|PM_EDGE_TRADEABILITY_*|PM_LCB_GLOBAL_*|PM_ENTRY_USABLE_EDGE_*)
+      unset "$legacy_runtime_key"
+      ;;
+  esac
+done < <(env)
+
 : "${PM_NOFILE_SOFT:=8192}"
 if [[ "$PM_NOFILE_SOFT" =~ ^[0-9]+$ ]]; then
   ulimit -Sn "$PM_NOFILE_SOFT" 2>/dev/null || true

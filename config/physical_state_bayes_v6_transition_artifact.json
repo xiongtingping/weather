@@ -1,0 +1,339 @@
+{
+  "artifact_sha256": "61b602354260735ce96d07b9ef1d37c0129b46a80ff9448b125be780438fba78",
+  "control_coefficient_policy": "frozen_physics_monotonic_v1_not_fit_from_future_truth",
+  "label_policy": "deterministic_physical_state_label_v1",
+  "production_runtime_eligible": true,
+  "promotion_evidence_sha256": "08ef3d90f3a7857fb33ceccf64c3db6cc5ab3ea35ff9c848eeb04c43d4ef1283",
+  "promotion_scope": "canonical_replay_then_controlled_production_cutover",
+  "schema": "physical_state_bayes_v6_transition_artifact_v1",
+  "shadow_only": false,
+  "state": "approved",
+  "training_code_sha256": "52aa61db28d14c4023756d74a14a17f2349f33f1e21a5ee357dbcd6a3474c182",
+  "training_dataset_sha256": "0fc4fa2573b65442d4d50862afc5f99bb0166217e1906623b548f8e5c61f0c48",
+  "training_end_exclusive": "2025-01-01",
+  "training_scope": "NCEI_ZUUU_2021_2025_hourly_physical_observation",
+  "transitions": {
+    "cooling_then_rebound": {
+      "warming": {
+        "base_rate_per_hour": 1.0,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 567
+      }
+    },
+    "final_locked": {},
+    "slowing_warming": {
+      "cooling_then_rebound": {
+        "base_rate_per_hour": 0.012154696132596685,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 11
+      },
+      "temporary_cooling": {
+        "base_rate_per_hour": 0.0011049723756906078,
+        "coefficients": {},
+        "training_transition_count": 1
+      },
+      "temporary_platform": {
+        "base_rate_per_hour": 0.2011049723756906,
+        "coefficients": {},
+        "training_transition_count": 182
+      },
+      "terminal_cooling": {
+        "base_rate_per_hour": 0.057458563535911604,
+        "coefficients": {
+          "cloud_suppression_duration_hours": 0.1,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": -0.3,
+          "future_max_drawdown_c": 0.25,
+          "future_max_increment_c": -0.5,
+          "minutes_to_curve_peak_scaled": -0.15,
+          "precipitation_duration_hours": 0.15,
+          "remaining_warming_c": -0.55
+        },
+        "training_transition_count": 52
+      },
+      "warming": {
+        "base_rate_per_hour": 0.6408839779005525,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 580
+      },
+      "weather_suppressed": {
+        "base_rate_per_hour": 0.008839779005524863,
+        "coefficients": {
+          "cb_feature_available": 0.1,
+          "cb_probability": 0.7,
+          "cloud_feature_available": 0.1,
+          "cloud_suppression_duration_hours": 0.15,
+          "cloud_suppression_probability": 0.9,
+          "precipitation_duration_hours": 0.2,
+          "precipitation_feature_available": 0.15,
+          "precipitation_probability": 1.2
+        },
+        "training_transition_count": 8
+      }
+    },
+    "temporary_cooling": {
+      "cooling_then_rebound": {
+        "base_rate_per_hour": 0.05979869745411486,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 101
+      },
+      "temporary_platform": {
+        "base_rate_per_hour": 0.6814683244523386,
+        "coefficients": {},
+        "training_transition_count": 1151
+      },
+      "weather_suppressed": {
+        "base_rate_per_hour": 0.03197158081705151,
+        "coefficients": {
+          "cb_feature_available": 0.1,
+          "cb_probability": 0.7,
+          "cloud_feature_available": 0.1,
+          "cloud_suppression_duration_hours": 0.15,
+          "cloud_suppression_probability": 0.9,
+          "precipitation_duration_hours": 0.2,
+          "precipitation_feature_available": 0.15,
+          "precipitation_probability": 1.2
+        },
+        "training_transition_count": 54
+      }
+    },
+    "temporary_platform": {
+      "cooling_then_rebound": {
+        "base_rate_per_hour": 0.03467741935483871,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 258
+      },
+      "temporary_cooling": {
+        "base_rate_per_hour": 0.1010752688172043,
+        "coefficients": {},
+        "training_transition_count": 752
+      },
+      "terminal_cooling": {
+        "base_rate_per_hour": 0.09771505376344086,
+        "coefficients": {
+          "cloud_suppression_duration_hours": 0.1,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": -0.3,
+          "future_max_drawdown_c": 0.25,
+          "future_max_increment_c": -0.5,
+          "minutes_to_curve_peak_scaled": -0.15,
+          "precipitation_duration_hours": 0.15,
+          "remaining_warming_c": -0.55
+        },
+        "training_transition_count": 727
+      },
+      "warming": {
+        "base_rate_per_hour": 0.2599462365591398,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 1934
+      },
+      "weather_suppressed": {
+        "base_rate_per_hour": 0.03938172043010753,
+        "coefficients": {
+          "cb_feature_available": 0.1,
+          "cb_probability": 0.7,
+          "cloud_feature_available": 0.1,
+          "cloud_suppression_duration_hours": 0.15,
+          "cloud_suppression_probability": 0.9,
+          "precipitation_duration_hours": 0.2,
+          "precipitation_feature_available": 0.15,
+          "precipitation_probability": 1.2
+        },
+        "training_transition_count": 293
+      }
+    },
+    "terminal_cooling": {
+      "final_locked": {
+        "base_rate_per_hour": 0.9249492900608519,
+        "coefficients": {
+          "future_max_drawdown_c": 0.2,
+          "future_max_increment_c": -0.6,
+          "minutes_to_curve_peak_scaled": -0.2,
+          "remaining_warming_c": -0.8
+        },
+        "training_transition_count": 1368
+      },
+      "warming": {
+        "base_rate_per_hour": 0.07505070993914807,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 111
+      }
+    },
+    "warming": {
+      "cooling_then_rebound": {
+        "base_rate_per_hour": 0.02341191879502292,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 143
+      },
+      "slowing_warming": {
+        "base_rate_per_hour": 0.13621480026195154,
+        "coefficients": {},
+        "training_transition_count": 832
+      },
+      "temporary_cooling": {
+        "base_rate_per_hour": 0.03339882121807466,
+        "coefficients": {},
+        "training_transition_count": 204
+      },
+      "temporary_platform": {
+        "base_rate_per_hour": 0.2888015717092338,
+        "coefficients": {},
+        "training_transition_count": 1764
+      },
+      "terminal_cooling": {
+        "base_rate_per_hour": 0.08218729535036018,
+        "coefficients": {
+          "cloud_suppression_duration_hours": 0.1,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": -0.3,
+          "future_max_drawdown_c": 0.25,
+          "future_max_increment_c": -0.5,
+          "minutes_to_curve_peak_scaled": -0.15,
+          "precipitation_duration_hours": 0.15,
+          "remaining_warming_c": -0.55
+        },
+        "training_transition_count": 502
+      },
+      "weather_suppressed": {
+        "base_rate_per_hour": 0.057138179436804194,
+        "coefficients": {
+          "cb_feature_available": 0.1,
+          "cb_probability": 0.7,
+          "cloud_feature_available": 0.1,
+          "cloud_suppression_duration_hours": 0.15,
+          "cloud_suppression_probability": 0.9,
+          "precipitation_duration_hours": 0.2,
+          "precipitation_feature_available": 0.15,
+          "precipitation_probability": 1.2
+        },
+        "training_transition_count": 349
+      }
+    },
+    "weather_suppressed": {
+      "cooling_then_rebound": {
+        "base_rate_per_hour": 0.004410585404971933,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 11
+      },
+      "temporary_cooling": {
+        "base_rate_per_hour": 0.021251002405773857,
+        "coefficients": {},
+        "training_transition_count": 53
+      },
+      "temporary_platform": {
+        "base_rate_per_hour": 0.132317562149158,
+        "coefficients": {},
+        "training_transition_count": 330
+      },
+      "terminal_cooling": {
+        "base_rate_per_hour": 0.05693664795509222,
+        "coefficients": {
+          "cloud_suppression_duration_hours": 0.1,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": -0.3,
+          "future_max_drawdown_c": 0.25,
+          "future_max_increment_c": -0.5,
+          "minutes_to_curve_peak_scaled": -0.15,
+          "precipitation_duration_hours": 0.15,
+          "remaining_warming_c": -0.55
+        },
+        "training_transition_count": 142
+      },
+      "warming": {
+        "base_rate_per_hour": 0.16680032076984763,
+        "coefficients": {
+          "cloud_suppression_duration_hours": -0.15,
+          "forcing_availability": 0.1,
+          "forecast_rate_c_per_hour": 0.3,
+          "future_max_drawdown_c": -0.15,
+          "future_max_increment_c": 0.35,
+          "minutes_to_curve_peak_scaled": 0.05,
+          "precipitation_duration_hours": -0.2,
+          "remaining_warming_c": 0.15
+        },
+        "training_transition_count": 416
+      }
+    }
+  }
+}

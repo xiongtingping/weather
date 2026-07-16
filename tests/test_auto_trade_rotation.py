@@ -11,6 +11,75 @@ from unittest import mock
 import scan_weather_market as swm
 
 
+def _unit_sequential_execution_contract() -> dict:
+    return {
+        "schema": "sequential_bayes_execution_contract_v1",
+        "contract_id": "seqexec_unit",
+        "trade_eligible": True,
+        "blockers": [],
+        "composer_schema": "sequential_remaining_warming_bayes_runtime_v31",
+        "activation_mode": "live_no_shadow",
+        "formula": "continuous_forecast_error_prior_then_sequential_state_zero_inflated_remaining_warming_mixture_then_bucket_integral",
+        "signal_at": "2099-01-01T00:00:00+00:00",
+        "signal_to_order_slo_deadline_at": "2099-01-01T00:00:03+00:00",
+        "signal_to_order_hard_deadline_at": "2099-01-01T00:00:05+00:00",
+    }
+
+
+def _attach_unit_posterior_ssot_fact(
+    payload: dict,
+    *,
+    target_bucket: str,
+    target_probability: float = 1.0,
+) -> dict:
+    contract = _unit_sequential_execution_contract()
+    payload.setdefault("sequential_bayes_execution_contract", dict(contract))
+    rows = []
+    for raw_row in payload.get("distribution") or payload.get("rows") or []:
+        if not isinstance(raw_row, dict):
+            continue
+        label = str(raw_row.get("outcome") or raw_row.get("bucket") or "").strip()
+        if not label:
+            continue
+        probability = target_probability if label == target_bucket else 0.0
+        rows.append({"outcome": label, "bucket": label, "probability": probability})
+    if not rows:
+        rows.append({"outcome": target_bucket, "bucket": target_bucket, "probability": target_probability})
+    rows.sort(key=lambda row: (-float(row.get("probability") or 0.0), str(row.get("outcome") or "")))
+    payload["posterior_ssot_fact"] = {
+        "schema": "bayes_posterior_ssot_fact_v1",
+        "state": "available",
+        "target_bucket": target_bucket,
+        "target_probability": target_probability,
+        "target_probability_pct": target_probability * 100.0,
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ranked_bucket_probabilities": rows,
+        "bucket_probabilities": rows,
+    }
+    payload["posterior_target_bucket_selection"] = {
+        "target_bucket": target_bucket,
+        "target_probability": target_probability,
+        "target_probability_pct": target_probability * 100.0,
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "target_bucket_selection_source": "posterior_ssot_fact.top_bucket",
+    }
+    direct = payload.get("posterior_target_direct")
+    if isinstance(direct, dict):
+        direct.setdefault("target_bucket", target_bucket)
+        direct.setdefault("decision_ssot", "posterior_ssot_fact")
+        direct.setdefault("posterior_ssot_fact_used", True)
+        direct.setdefault("target_probability_field", "posterior_ssot_fact.target_probability")
+        direct.setdefault("sequential_bayes_execution_contract", dict(contract))
+    for target in payload.get("entry_expected_targets") or []:
+        if isinstance(target, dict):
+            target.setdefault("decision_ssot", "posterior_ssot_fact")
+            target.setdefault("posterior_ssot_fact_used", True)
+            target.setdefault("target_probability_field", "posterior_ssot_fact.target_probability")
+            target.setdefault("sequential_bayes_execution_contract", dict(contract))
+    return payload
+
+
 class TestAutoTradeRotation(unittest.TestCase):
     def test_direct_job_post_end_allows_open_market_snapshot_only(self) -> None:
         payload = {
@@ -63,6 +132,7 @@ class TestAutoTradeRotation(unittest.TestCase):
             ],
             "rows": [{"outcome": "32\u00b0C", "q_entry": 1.0}],
         }
+        _attach_unit_posterior_ssot_fact(payload, target_bucket="32\u00b0C")
 
         self.assertTrue(swm._payload_blocks_new_entry(payload))
         self.assertFalse(
@@ -73,21 +143,10 @@ class TestAutoTradeRotation(unittest.TestCase):
             )
         )
 
-    def test_rising_ask_fast_path_does_not_hide_normal_entry_path(self) -> None:
+    def test_retired_rising_ask_fast_path_is_absent(self) -> None:
         source = inspect.getsource(swm.execute_auto_trades)
-        rising_idx = source.index("if entry_market_on_rising_ask and edge_score_market_ok:")
-        normal_idx = source.index("if order_price >= 1:", rising_idx)
-        rising_line = source[rising_idx:].splitlines()[0]
-        normal_line = source[normal_idx:].splitlines()[0]
-
-        self.assertEqual(
-            len(rising_line) - len(rising_line.lstrip()),
-            len(normal_line) - len(normal_line.lstrip()),
-        )
-        self.assertNotIn(
-            "\n                        continue\n                        if order_price >= 1:",
-            source[rising_idx:normal_idx + len("if order_price >= 1:")],
-        )
+        self.assertNotIn("if entry_market_on_rising_ask and edge_score_market_ok:", source)
+        self.assertNotIn("entry_market_rising_ask", source)
 
     def test_execute_auto_trades_initializes_event_date_key_before_expected_targets(self) -> None:
         source = inspect.getsource(swm.execute_auto_trades)
@@ -170,6 +229,62 @@ class TestAutoTradeRotation(unittest.TestCase):
         self.assertIn('ssot_candidate["strategy_source"] = "posterior_target_direct"', merge_block)
         self.assertIn('"posterior_target_direct_target"', merge_block)
 
+    def test_entry_order_policy_blocks_family_only_posterior_without_ssot_marker(self) -> None:
+        legacy = {
+            "strategy": "lcb_global",
+            "strategy_family": swm.POSTERIOR_SETTLEMENT_FAMILY,
+            "posterior_settlement_entry_allowed": True,
+            "posterior_settlement_size_scale": 1.0,
+            "entry_usable_edge": 1.0,
+            "entry_usable_edge_size_scale": 1.0,
+        }
+
+        self.assertEqual(swm._entry_order_policy_allow_reason(legacy), "")
+        self.assertEqual(
+            swm._entry_order_policy_block_reason(legacy),
+            swm.ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON,
+        )
+
+        ssot = dict(
+            legacy,
+            decision_ssot="posterior_ssot_fact",
+            target_probability_field="posterior_ssot_fact.target_probability",
+            sequential_bayes_execution_contract=_unit_sequential_execution_contract(),
+        )
+        self.assertEqual(
+            swm._entry_order_policy_allow_reason(ssot),
+            "ssot_target_realization",
+        )
+        self.assertEqual(swm._entry_order_policy_block_reason(ssot), "")
+
+    def test_entry_order_policy_blocks_direct_target_without_posterior_ssot_marker(self) -> None:
+        target = {
+            "outcome": "31\u00b0C",
+            "side": "YES",
+            "posterior_target_direct": True,
+            "target_bucket": "31\u00b0C",
+            "entry_reasons": ["posterior_target_direct"],
+        }
+
+        self.assertTrue(swm._is_posterior_target_direct_buy_new_target(target))
+        self.assertEqual(swm._entry_order_policy_allow_reason(target), "")
+        self.assertEqual(
+            swm._entry_order_policy_block_reason(target),
+            swm.ENTRY_ORDER_POLICY_LEGACY_BLOCK_REASON,
+        )
+
+        ssot = dict(
+            target,
+            decision_ssot="posterior_ssot_fact",
+            target_probability_field="posterior_ssot_fact.target_probability",
+            sequential_bayes_execution_contract=_unit_sequential_execution_contract(),
+        )
+        self.assertEqual(
+            swm._entry_order_policy_allow_reason(ssot),
+            "posterior_target_direct_ssot_target",
+        )
+        self.assertEqual(swm._entry_order_policy_block_reason(ssot), "")
+
     def test_ssot_fallback_targets_preserve_tradeability_and_rules_fields(self) -> None:
         targets = swm._build_fallback_targets_from_ssot(
             {
@@ -201,6 +316,74 @@ class TestAutoTradeRotation(unittest.TestCase):
         self.assertTrue(target["rules_contract_ok"])
         self.assertEqual(target["station_id"], "MMMX")
         self.assertTrue(target["source_usable_for_settlement"])
+
+    def test_fallback_decision_targets_block_legacy_payload_without_posterior_ssot_fact(self) -> None:
+        payload = {
+            "entry_expected_targets": [
+                {
+                    "outcome": "30°C or higher",
+                    "side": "YES",
+                    "strategy": "lcb_global",
+                    "entry_ok": True,
+                    "edge_score": 99.0,
+                }
+            ],
+            "distribution": [
+                {"outcome": "30°C or higher", "edge_score_yes": 99.0},
+            ],
+        }
+
+        with mock.patch.object(swm, "_load_latest_fact_payload_for_event", return_value=None):
+            targets, source = swm._resolve_fallback_decision_targets(
+                payload,
+                "highest-temperature-in-chengdu-on-july-6-2026",
+                "2026-07-06",
+            )
+
+        self.assertEqual(targets, [])
+        self.assertEqual(source, "posterior_ssot_fact_missing")
+
+    def test_fallback_decision_targets_accept_posterior_ssot_fact_target_only(self) -> None:
+        payload = {
+            "entry_expected_targets": [
+                {
+                    "outcome": "31°C or higher",
+                    "side": "YES",
+                    "strategy": "target_realization_binary_settlement",
+                    "entry_ok": True,
+                    "entry_reasons": ["posterior_target_direct"],
+                    "posterior_target_direct": True,
+                },
+                {
+                    "outcome": "30°C or higher",
+                    "side": "YES",
+                    "strategy": "lcb_global",
+                    "entry_ok": True,
+                    "edge_score": 99.0,
+                },
+            ],
+            "posterior_target_direct": {"target_bucket": "31°C or higher"},
+            "rows": [
+                {"outcome": "30°C or higher"},
+                {"outcome": "31°C or higher"},
+            ],
+        }
+        _attach_unit_posterior_ssot_fact(payload, target_bucket="31°C or higher", target_probability=0.62)
+
+        targets, source = swm._resolve_fallback_decision_targets(
+            payload,
+            "highest-temperature-in-chengdu-on-july-6-2026",
+            "2026-07-06",
+        )
+
+        self.assertEqual(source, "entry_expected_targets_ssot")
+        self.assertEqual([target["outcome"] for target in targets], ["31°C or higher"])
+        self.assertEqual(targets[0]["decision_ssot"], "posterior_ssot_fact")
+        self.assertTrue(targets[0]["posterior_ssot_fact_used"])
+        self.assertEqual(
+            targets[0]["target_probability_field"],
+            "posterior_ssot_fact.target_probability",
+        )
 
     def test_entry_expected_target_merge_fill_preserves_primary_target_reason(self) -> None:
         merged = swm._merge_entry_expected_targets(
@@ -269,7 +452,7 @@ class TestAutoTradeRotation(unittest.TestCase):
             outcome_label="30°C",
             side_label="YES",
             row_ref=row,
-            exit_codes=["target_realization_switch_buy_exit_old"],
+            exit_codes=["target_realization_yes_target_invalidated"],
         )
 
         self.assertFalse(should_defer)
@@ -277,7 +460,7 @@ class TestAutoTradeRotation(unittest.TestCase):
         meta = swm._target_realization_hard_zero_exit_meta(
             row,
             "YES",
-            ["target_realization_switch_buy_exit_old"],
+            ["target_realization_yes_target_invalidated"],
         )
         self.assertTrue(meta["target_realization_hard_zero_exit"])
         context = meta["target_realization_hard_zero_exit_context"]
@@ -908,7 +1091,7 @@ class TestAutoTradeRotation(unittest.TestCase):
             targets = seen_payloads[0].get("entry_expected_targets") or []
             target_keys = {(item.get("outcome"), item.get("side")) for item in targets}
             self.assertIn(("25°C", "YES"), target_keys)
-            self.assertIn(("26°C", "YES"), target_keys)
+            self.assertNotIn(("26°C", "YES"), target_keys)
             target_25 = next(item for item in targets if item.get("outcome") == "25°C")
             self.assertIn("target_realization_switch", target_25.get("entry_reasons") or [])
 
@@ -963,6 +1146,16 @@ class TestAutoTradeRotation(unittest.TestCase):
                     {"slug": slug, "event_date": run_date, "payload": event_payload}
                 ],
             }
+            _attach_unit_posterior_ssot_fact(
+                event_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.58,
+            )
+            _attach_unit_posterior_ssot_fact(
+                job_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.58,
+            )
 
             seen_payloads = []
             seen_kwargs = []
@@ -980,6 +1173,7 @@ class TestAutoTradeRotation(unittest.TestCase):
                     "os.environ",
                     {
                         "PM_AUTO_TRADE_ENABLED": "1",
+                        "PM_AUTO_TRADE_DRY_RUN": "1",
                         "PM_AUTO_TRADE_EVENT_TIMEOUT_SEC": "60",
                         "PM_AUTO_TRADE_EVENT_BACKOFF_SEC": "0",
                         "PM_AUTO_TRADE_DIRECT_JOB_INLINE": "1",
@@ -1009,6 +1203,67 @@ class TestAutoTradeRotation(unittest.TestCase):
             payload_seen = seen_payloads[0][1]
             targets_seen = payload_seen.get("entry_expected_targets") or []
             self.assertEqual((targets_seen[0].get("outcome"), targets_seen[0].get("side")), ("30°C or higher", "YES"))
+
+    def test_enabled_direct_job_without_posterior_ssot_fact_skips_execute(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            db_path = root / "archive.db"
+            data_dir = root / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+            run_date = "2026-06-30"
+            slug = "highest-temperature-in-chengdu-on-june-30-2026"
+            target = {
+                "slug": slug,
+                "event_date": run_date,
+                "outcome": "30°C or higher",
+                "side": "YES",
+                "strategy": "target_realization_binary_settlement",
+                "entry_ok": True,
+                "entry_reasons": ["posterior_target_direct", "target_realization_order_intent"],
+                "posterior_target_direct": True,
+                "token_id": "yes-token-30",
+                "ask": 0.42,
+            }
+            event_payload = {
+                "slug": slug,
+                "event_date": run_date,
+                "posterior_target_direct_snapshot": True,
+                "posterior_target_direct": {"target_bucket": "30°C or higher"},
+                "entry_expected_targets": [dict(target)],
+                "rows": [{"outcome": "30°C or higher", "yes_token": "yes-token-30"}],
+            }
+            job_payload = {
+                "include_event_keys": [{"slug": slug, "event_date": run_date}],
+                "entry_expected_targets": [dict(target)],
+                "posterior_target_direct": {"target_bucket": "30°C or higher"},
+                "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
+            }
+
+            with mock.patch.object(swm, "DB_PATH", db_path), mock.patch.object(swm, "DATA_DIR", data_dir):
+                swm.init_db()
+                with mock.patch.dict(
+                    "os.environ",
+                    {
+                        "PM_AUTO_TRADE_ENABLED": "1",
+                        "PM_AUTO_TRADE_DRY_RUN": "1",
+                        "PM_AUTO_TRADE_EVENT_TIMEOUT_SEC": "60",
+                        "PM_AUTO_TRADE_EVENT_BACKOFF_SEC": "0",
+                        "PM_AUTO_TRADE_DIRECT_JOB_INLINE": "1",
+                    },
+                    clear=False,
+                ), mock.patch.object(
+                    swm,
+                    "execute_auto_trades",
+                    side_effect=AssertionError("missing posterior_ssot_fact must not execute"),
+                ):
+                    result = swm.run_auto_trades_for_date(run_date, job_payload=job_payload)
+
+        self.assertFalse(result.get("ok"))
+        self.assertTrue(result.get("direct_job_fast_path"))
+        self.assertEqual(result.get("error"), "job_payload_include_event_keys_not_processed")
+        self.assertEqual(result.get("processed"), 0)
+        self.assertGreaterEqual(int(result.get("skipped") or 0), 1)
 
     def test_direct_job_primary_entry_fast_slice_defers_old_and_remote_legs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1052,7 +1307,6 @@ class TestAutoTradeRotation(unittest.TestCase):
                 "posterior_target_direct_snapshot": True,
                 "posterior_target_direct": {
                     "target_bucket": "32°C",
-                    "primary_only_fast_path_allowed": False,
                 },
                 "entry_expected_targets": [dict(primary), dict(old_yes), dict(remote_no)],
                 "rows": [
@@ -1066,15 +1320,16 @@ class TestAutoTradeRotation(unittest.TestCase):
                     {"outcome": "29°C", "no_token": "no-token-29"},
                 ],
             }
+            _attach_unit_posterior_ssot_fact(event_payload, target_bucket="32°C")
             job_payload = {
                 "include_event_keys": [{"slug": slug, "event_date": run_date}],
                 "entry_expected_targets": [dict(primary), dict(old_yes), dict(remote_no)],
                 "posterior_target_direct": {
                     "target_bucket": "32°C",
-                    "primary_only_fast_path_allowed": False,
                 },
                 "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
             }
+            _attach_unit_posterior_ssot_fact(job_payload, target_bucket="32°C")
 
             seen_payloads = []
 
@@ -1087,6 +1342,7 @@ class TestAutoTradeRotation(unittest.TestCase):
                     "os.environ",
                     {
                         "PM_AUTO_TRADE_ENABLED": "1",
+                        "PM_AUTO_TRADE_DRY_RUN": "1",
                         "PM_AUTO_TRADE_EVENT_TIMEOUT_SEC": "60",
                         "PM_AUTO_TRADE_EVENT_BACKOFF_SEC": "0",
                         "PM_AUTO_TRADE_DIRECT_JOB_INLINE": "1",
@@ -1144,12 +1400,14 @@ class TestAutoTradeRotation(unittest.TestCase):
                     {"outcome": "33°C", "yes_token": "yes-token-33"},
                 ],
             }
+            _attach_unit_posterior_ssot_fact(event_payload, target_bucket="32°C")
             job_payload = {
                 "include_event_keys": [{"slug": slug, "event_date": run_date}],
                 "entry_expected_targets": [dict(primary)],
                 "posterior_target_direct": {"target_bucket": "32°C"},
                 "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
             }
+            _attach_unit_posterior_ssot_fact(job_payload, target_bucket="32°C")
 
             seen_payloads = []
 
@@ -1162,6 +1420,7 @@ class TestAutoTradeRotation(unittest.TestCase):
                     "os.environ",
                     {
                         "PM_AUTO_TRADE_ENABLED": "1",
+                        "PM_AUTO_TRADE_DRY_RUN": "1",
                         "PM_AUTO_TRADE_EVENT_TIMEOUT_SEC": "60",
                         "PM_AUTO_TRADE_EVENT_BACKOFF_SEC": "0",
                         "PM_AUTO_TRADE_DIRECT_JOB_INLINE": "1",
@@ -1212,6 +1471,16 @@ class TestAutoTradeRotation(unittest.TestCase):
                 "posterior_target_direct": {"target_bucket": "30°C or higher"},
                 "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
             }
+            _attach_unit_posterior_ssot_fact(
+                event_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.61,
+            )
+            _attach_unit_posterior_ssot_fact(
+                job_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.61,
+            )
             recorded = []
             claim_env = {}
 
@@ -1250,6 +1519,57 @@ class TestAutoTradeRotation(unittest.TestCase):
             self.assertEqual(len(recorded), 1)
             self.assertEqual(recorded[0]["reason_code"], "auto_trade_disabled_direct_target_no_submit")
             self.assertEqual(recorded[0]["targets"][0]["outcome"], "30°C or higher")
+            self.assertEqual(recorded[0]["details"]["decision_ssot"], "posterior_ssot_fact")
+            self.assertTrue(recorded[0]["details"]["posterior_ssot_fact_used"])
+            self.assertEqual(
+                recorded[0]["details"]["target_probability_field"],
+                "posterior_ssot_fact.target_probability",
+            )
+
+    def test_direct_job_disabled_skips_without_posterior_ssot_fact(self) -> None:
+        run_date = "2026-06-30"
+        slug = "highest-temperature-in-chengdu-on-june-30-2026"
+        target = {
+            "slug": slug,
+            "event_date": run_date,
+            "outcome": "30°C or higher",
+            "side": "YES",
+            "strategy": "target_realization_binary_settlement",
+            "entry_ok": True,
+            "entry_reasons": ["posterior_target_direct"],
+            "posterior_target_direct": True,
+            "token_id": "yes-token-30",
+        }
+        event_payload = {
+            "slug": slug,
+            "event_date": run_date,
+            "title": "Highest temperature in Chengdu on June 30?",
+            "posterior_target_direct_snapshot": True,
+            "posterior_target_direct": {"target_bucket": "30°C or higher"},
+            "entry_expected_targets": [dict(target)],
+        }
+        job_payload = {
+            "include_event_keys": [{"slug": slug, "event_date": run_date}],
+            "entry_expected_targets": [dict(target)],
+            "posterior_target_direct": {"target_bucket": "30°C or higher"},
+            "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
+        }
+
+        with mock.patch.object(
+            swm,
+            "_record_auto_trade_fallback_decisions",
+            side_effect=AssertionError("missing posterior_ssot_fact must not write decisions"),
+        ):
+            result = swm._record_direct_target_disabled_job_decisions(
+                run_id=1,
+                run_date=run_date,
+                payload=job_payload,
+            )
+
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("processed"), 0)
+        self.assertEqual(result.get("skipped"), 1)
+        self.assertEqual(result.get("disabled_decisions_written"), 0)
 
     def test_worker_direct_job_bypasses_slow_locks_when_auto_trade_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1285,6 +1605,16 @@ class TestAutoTradeRotation(unittest.TestCase):
                 "posterior_target_direct": {"target_bucket": "30°C or higher"},
                 "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
             }
+            _attach_unit_posterior_ssot_fact(
+                event_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.61,
+            )
+            _attach_unit_posterior_ssot_fact(
+                job_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.61,
+            )
             recorded = []
             claim_env = {}
 
@@ -1369,6 +1699,8 @@ class TestAutoTradeRotation(unittest.TestCase):
             self.assertEqual(result.get("result", {}).get("processed"), 1)
             self.assertEqual(len(recorded), 1)
             self.assertEqual(recorded[0]["reason_code"], "auto_trade_disabled_direct_target_no_submit")
+            self.assertEqual(recorded[0]["details"]["decision_ssot"], "posterior_ssot_fact")
+            self.assertTrue(recorded[0]["details"]["posterior_ssot_fact_used"])
             self.assertEqual(claim_env.get("lease"), "30")
             self.assertEqual(claim_env.get("stuck"), "30")
             self.assertEqual(claim_env.get("orphan"), "15")
@@ -1420,6 +1752,17 @@ class TestAutoTradeRotation(unittest.TestCase):
                     }
                 ],
             }
+            event_payload_ref = job_payload["event_payloads"][0]["payload"]
+            _attach_unit_posterior_ssot_fact(
+                event_payload_ref,
+                target_bucket="30°C or higher",
+                target_probability=0.61,
+            )
+            _attach_unit_posterior_ssot_fact(
+                job_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.61,
+            )
             recorded = []
 
             def _record_disabled(**kwargs):
@@ -1463,6 +1806,8 @@ class TestAutoTradeRotation(unittest.TestCase):
             self.assertTrue(result.get("ok"))
             self.assertTrue(result.get("result", {}).get("direct_target_disabled_fast_path"))
             self.assertEqual(recorded[0]["reason_code"], "auto_trade_disabled_direct_target_no_submit")
+            self.assertEqual(recorded[0]["details"]["decision_ssot"], "posterior_ssot_fact")
+            self.assertTrue(recorded[0]["details"]["posterior_ssot_fact_used"])
 
     def test_worker_enabled_direct_job_passes_inline_payload_without_slow_locks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1500,6 +1845,16 @@ class TestAutoTradeRotation(unittest.TestCase):
                 "posterior_target_direct": {"target_bucket": "30°C or higher"},
                 "event_payloads": [{"slug": slug, "event_date": run_date, "payload": event_payload}],
             }
+            _attach_unit_posterior_ssot_fact(
+                event_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.58,
+            )
+            _attach_unit_posterior_ssot_fact(
+                job_payload,
+                target_bucket="30°C or higher",
+                target_probability=0.58,
+            )
             seen = []
             claim_env = {}
             original_claim_one = swm._auto_trade_job_claim_one
@@ -1693,7 +2048,7 @@ class TestAutoTradeRotation(unittest.TestCase):
                     "posterior_target_direct": {"target_bucket": outcome},
                     "entry_expected_targets": [dict(target)],
                 }
-                return {
+                payload = {
                     "include_event_keys": [{"slug": slug, "event_date": run_date}],
                     "entry_expected_targets": [dict(target)],
                     "posterior_target_direct": {"target_bucket": outcome},
@@ -1701,6 +2056,17 @@ class TestAutoTradeRotation(unittest.TestCase):
                         {"slug": slug, "event_date": run_date, "payload": event_payload}
                     ],
                 }
+                _attach_unit_posterior_ssot_fact(
+                    event_payload,
+                    target_bucket=outcome,
+                    target_probability=0.61,
+                )
+                _attach_unit_posterior_ssot_fact(
+                    payload,
+                    target_bucket=outcome,
+                    target_probability=0.61,
+                )
+                return payload
 
             recorded = []
 
@@ -1895,7 +2261,7 @@ class TestAutoTradeRotation(unittest.TestCase):
         self.assertGreater(payload["entry_usable_edge"], 0)
         self.assertEqual(payload["entry_usable_edge_base_source"], "edge_tradeability_profit_value")
 
-    def test_direct_job_active_primary_entry_fast_confirms_without_full_execute(self) -> None:
+    def test_direct_job_active_filled_position_still_runs_topup_decision_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             db_path = root / "archive.db"
@@ -1951,6 +2317,16 @@ class TestAutoTradeRotation(unittest.TestCase):
                     }
                 ],
             }
+            _attach_unit_posterior_ssot_fact(
+                event_payload,
+                target_bucket="31\u00b0C",
+                target_probability=0.56,
+            )
+            _attach_unit_posterior_ssot_fact(
+                job_payload,
+                target_bucket="31\u00b0C",
+                target_probability=0.56,
+            )
 
             with mock.patch.object(swm, "DB_PATH", db_path), mock.patch.object(swm, "DATA_DIR", data_dir):
                 swm.init_db()
@@ -1989,50 +2365,26 @@ class TestAutoTradeRotation(unittest.TestCase):
 
                 with mock.patch.dict(
                     os.environ,
-                    {
-                        "PM_AUTO_TRADE_ENABLED": "1",
-                        "PM_AUTO_TRADE_DRY_RUN": "0",
-                        "PM_AUTO_TRADE_DIRECT_ACTIVE_ENTRY_FAST_CONFIRM": "1",
-                    },
+                    {"PM_AUTO_TRADE_DIRECT_ACTIVE_ENTRY_FAST_CONFIRM": "1"},
                     clear=False,
-                ), mock.patch.object(swm, "today_date_str", return_value=run_date), mock.patch.object(
-                    swm,
-                    "execute_auto_trades",
-                    side_effect=AssertionError("full execute should not run for active direct target"),
-                ) as execute_mock:
-                    result = swm.run_auto_trade_job_worker_once()
+                ):
+                    result = swm._record_direct_target_already_active_job_decisions(
+                        run_id=None,
+                        run_date=run_date,
+                        payload=job_payload,
+                        job_id=1,
+                        worker_started_at=now,
+                    )
 
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
-                try:
-                    job_state = conn.execute("SELECT state FROM auto_trade_jobs LIMIT 1").fetchone()[0]
-                    decision = conn.execute(
-                        """
-                        SELECT reason_codes_json, details_json
-                        FROM auto_trade_decisions
-                        WHERE slug = ? AND event_date = ? AND outcome = '31°C' AND side = 'YES'
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (slug, event_date),
-                    ).fetchone()
-                finally:
-                    conn.close()
-
-            self.assertTrue(result["ok"])
-            self.assertTrue(result["picked"])
-            self.assertTrue(result["result"]["direct_target_active_entry_fast_confirm"])
-            self.assertEqual(result["result"]["processed"], 1)
-            self.assertEqual(job_state, "success")
-            execute_mock.assert_not_called()
-            self.assertIsNotNone(decision)
-            reason_codes = json.loads(decision["reason_codes_json"] or "[]")
-            details = json.loads(decision["details_json"] or "{}")
-            self.assertIn("order_already_live", reason_codes)
-            self.assertTrue(details["active_entry_fast_confirm"])
-            self.assertTrue(details["target_entry_already_active"])
-            self.assertFalse(details["primary_target_entry_needed"])
-            self.assertEqual(details["last_order_id"], "active-order-31")
+            self.assertFalse(result["ok"])
+            self.assertEqual(
+                result["reason"],
+                "direct_target_active_entry_fast_confirm_incomplete",
+            )
+            self.assertEqual(
+                result["missing"][0]["reason"],
+                "active_position_does_not_block_additional_buy",
+            )
 
     def test_clob_order_service_pending_reconciler_confirms_idempotent_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

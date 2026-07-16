@@ -1883,9 +1883,13 @@ async function main() {
     const orderTypeRaw = String(args["order-type"] || "GTC").toUpperCase();
     const allowMarket = isTruthy(env("PM_ALLOW_MARKET_ORDERS", "0"));
     const isMarket = ["FOK", "FAK"].includes(orderTypeRaw);
+    const postOnly = isTruthy(args["post-only"] || args.postOnly || env("PM_CLOB_POST_ONLY", "0"));
     const deferExec = isTruthy(args["defer-exec"] || args.deferExec || env("PM_CLOB_DEFER_EXEC", "0"));
     if (!allowMarket && isMarket) {
       throw new Error(`limit_only_order_type:${orderTypeRaw}`);
+    }
+    if (postOnly && isMarket) {
+      throw new Error(`post_only_market_order_forbidden:${orderTypeRaw}`);
     }
     const orderType = OrderType[orderTypeRaw] || OrderType.GTC;
     const tickSizeArg = args["tick-size"];
@@ -2017,7 +2021,7 @@ async function main() {
               negRisk,
             },
             orderType,
-            false,
+            postOnly,
             deferExec
           );
         }
@@ -2028,6 +2032,8 @@ async function main() {
           clob_timeout_ms: activeAxiosTimeoutMs,
           operation_timeout_ms: Math.round(placeOrderOperationTimeoutMs),
           max_attempts: placeOrderMaxAttempts,
+          post_only: postOnly,
+          maker_only: postOnly,
           sdk_retry_on_error: sdkRetryOnError,
         };
       }, { maxAttempts: placeOrderMaxAttempts });

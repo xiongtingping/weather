@@ -69,16 +69,7 @@ def _send_sms_message(message: str, recipient: str) -> bool:
 def load_sms_sender() -> Tuple[Optional[Callable[[str, str], bool]], bool, str]:
     sms_enabled = os.environ.get("PM_SMS_ENABLED", "1").strip().lower() in {"1", "true", "yes"}
     recipient = str(os.environ.get("PM_SMS_RECIPIENT", "") or "").strip()
-    if recipient:
-        return _send_sms_message, sms_enabled, recipient
-    try:
-        if str(ROOT_DIR) not in sys.path:
-            sys.path.insert(0, str(ROOT_DIR))
-        from scan_weather_market import SMS_RECIPIENT
-    except Exception as exc:
-        print(f"[auto-trade watcher] sms recipient fallback import failed: {type(exc).__name__}", flush=True)
-        return _send_sms_message, sms_enabled, ""
-    return _send_sms_message, sms_enabled, str(SMS_RECIPIENT or "").strip()
+    return _send_sms_message, sms_enabled, recipient
 
 
 def compile_patterns(values: List[str]) -> List[re.Pattern]:

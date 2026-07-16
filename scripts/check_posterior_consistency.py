@@ -597,7 +597,9 @@ def audit_item(item: Mapping[str, Any], index: int, *, tolerance: float = 5e-4) 
 
 def audit_payload(payload: Mapping[str, Any], *, source: str = "payload", tolerance: float = 5e-4) -> dict[str, Any]:
     facts = payload.get("facts") if isinstance(payload.get("facts"), Mapping) else {}
-    if _snapshot_rebuild_in_flight(payload):
+    items = _items_from_snapshot(payload)
+    temporary = _snapshot_rebuild_in_flight(payload)
+    if temporary and not items:
         return {
             "ok": False,
             "temporary": True,
@@ -610,7 +612,6 @@ def audit_payload(payload: Mapping[str, Any], *, source: str = "payload", tolera
             "warnings": [],
             "items": [],
         }
-    items = _items_from_snapshot(payload)
     checked = [audit_item(item, index, tolerance=tolerance) for index, item in enumerate(items)]
     mismatches: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -631,6 +632,7 @@ def audit_payload(payload: Mapping[str, Any], *, source: str = "payload", tolera
         blockers.append("posterior_mismatch")
     return {
         "ok": not blockers,
+        "temporary": bool(temporary),
         "source": source,
         "snapshot_source": facts.get("source") or payload.get("source"),
         "run_date": _snapshot_run_date(payload),

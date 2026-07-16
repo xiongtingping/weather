@@ -17,6 +17,45 @@ def test_parse_station_from_wunderground_history_url() -> None:
     assert swm.parse_station_from_resolution_source(url) == "ZSPD"
 
 
+def test_streamed_direct_response_keeps_session_open_until_capture_body_is_closed(monkeypatch) -> None:
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.trust_env = True
+            self.closed = False
+            self.response = FakeResponse()
+
+        def get(self, _url, **kwargs):
+            assert kwargs["stream"] is True
+            return self.response
+
+        def close(self) -> None:
+            self.closed = True
+
+    session = FakeSession()
+    monkeypatch.setattr(swm, "ensure_system_proxy_settings", lambda: None)
+    monkeypatch.setattr(swm, "_force_direct_enabled", lambda: False)
+    monkeypatch.setattr(swm, "_should_bypass_proxy", lambda _url, _requested: True)
+    monkeypatch.setattr(swm.requests, "Session", lambda: session)
+
+    response = swm.requests_get("https://provider.example/forecast", bypass_proxy=True, stream=True)
+
+    assert response is session.response
+    assert session.closed is False
+    assert session.trust_env is False
+    swm.close_streaming_requests_response(response)
+    assert response.closed is True
+    assert session.closed is True
+
+
 def test_parse_station_from_weather_gov_timeseries_url() -> None:
     url = "https://www.weather.gov/wrh/timeseries?site=RCTP&hours=72"
     assert swm.parse_station_from_resolution_source(url) == "RCTP"
@@ -183,6 +222,7 @@ def test_weather_com_forecast_peak_matches_event_date_and_stays_display_only(mon
     class FakeResponse:
         status_code = 200
         url = "https://api.weather.com/v3/wx/forecast/daily/10day?apiKey=secret"
+        text = '{"validTimeLocal":["2999-06-11T07:00:00+0800","2999-06-12T07:00:00+0800"],"calendarDayTemperatureMax":[29,31]}'
 
         def json(self):
             return {
@@ -210,6 +250,7 @@ def test_weather_com_forecast_peak_matches_event_date_and_stays_display_only(mon
         "C",
         station_id="ZUUU",
         resolution_source="https://www.wunderground.com/history/daily/cn/chengdu/ZUUU",
+        include_capture_evidence=True,
     )
 
     assert metrics["ok"] is True
@@ -221,6 +262,11 @@ def test_weather_com_forecast_peak_matches_event_date_and_stays_display_only(mon
     assert metrics["not_observed_nowcast"] is True
     assert "secret" not in metrics["source_url"]
     assert calls[0]["params"]["geocode"] == "30.558257,103.945966"
+    assert calls[0]["stream"] is True
+    assert metrics["capture_time_provenance"] == "observed_transport"
+    assert metrics["response_headers_observed"] is True
+    assert metrics["raw_provider_response_utf8"] == FakeResponse.text
+    assert metrics["requested_at"] <= metrics["response_started_at"] <= metrics["response_completed_at"]
 
 
 def test_iem_noaaport_metar_cross_check_reports_same_day_max(monkeypatch) -> None:

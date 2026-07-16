@@ -16,6 +16,8 @@ try:
     from bayesian_likelihood_runtime import precipitation_evidence_profile as _runtime_precipitation_evidence_profile
 except Exception:  # pragma: no cover - runtime helper is optional in isolated tests.
     _runtime_precipitation_evidence_profile = None
+from legacy_evidence_migration_registry import registry_rows as _legacy_evidence_registry_rows
+from source_observation_runtime import PRIMARY_METAR_SOURCE_ID, REFERENCE_METAR_SOURCE_IDS
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = ROOT_DIR / "data" / "archive.db"
@@ -53,6 +55,7 @@ TEMPERATURE_MOMENTUM_HOURS: Dict[str, float] = {
     "2m": 2.0 / 60.0,
     "1m": 1.0 / 60.0,
 }
+METAR_SOURCE_IDS_IN_PRIORITY_ORDER: Tuple[str, ...] = (PRIMARY_METAR_SOURCE_ID, *REFERENCE_METAR_SOURCE_IDS)
 TEMPERATURE_MOMENTUM_WEIGHTS: Dict[str, float] = {
     "1h": 0.48,
     "45m": 0.12,
@@ -289,22 +292,235 @@ def _clamp_probability(value: Any) -> Optional[float]:
     return max(0.0, min(1.0, float(num)))
 
 
-def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+def _mapping_value(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip().startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    return {}
+
+
+def _distribution_row_bucket_label(row: Mapping[str, Any]) -> str:
+    for key in ("outcome", "bucket", "label", "temperature_bucket", "q_temperature_bucket_label"):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _bucket_label_candidates(label: str) -> Tuple[str, ...]:
+    value = str(label or "").strip()
+    candidates = [value]
+    if value.endswith("°C"):
+        candidates.append(value[:-2].strip())
+    if value.endswith("C"):
+        candidates.append(value[:-1].strip())
+    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _extract_layer_contributions(row: Mapping[str, Any]) -> Dict[str, Any]:
+    for key in ("q_bayes_layer_contributions", "layer_contributions"):
+        candidate = _mapping_value(row.get(key))
+        if candidate:
+            return candidate
+    q_meta = _mapping_value(row.get("q_bayes_meta"))
+    candidate = _mapping_value(q_meta.get("layer_contributions"))
+    if candidate:
+        return candidate
+    return {}
+
+
+def _distribution_prob_for_label(distribution: Mapping[str, Any], label: str) -> Optional[float]:
+    for candidate in _bucket_label_candidates(label):
+        if candidate in distribution:
+            prob = _clamp_probability(distribution.get(candidate))
+            if prob is not None:
+                return prob
+    return None
+
+
+def _layer_prob_for_label(
+    layer_contributions: Mapping[str, Any],
+    layer_key: str,
+    label: str,
+) -> Optional[float]:
+    layer = _mapping_value(layer_contributions.get(layer_key))
+    distribution = _mapping_value(layer.get("distribution"))
+    if not distribution:
+        return None
+    return _distribution_prob_for_label(distribution, label)
+
+
+def _layer_beta(
+    row: Mapping[str, Any],
+    layer_contributions: Mapping[str, Any],
+    layer_key: str,
+    *,
+    default: Optional[float],
+) -> Optional[float]:
+    layer = _mapping_value(layer_contributions.get(layer_key))
+    beta = _to_float(layer.get("beta"))
+    if beta is not None:
+        return beta
+    q_meta = _mapping_value(row.get("q_bayes_meta"))
+    row_key = "q_bayes_beta_weak" if layer_key == "forecast_weak_likelihood" else "q_bayes_beta_strong"
+    meta_key = "beta_weak" if layer_key == "forecast_weak_likelihood" else "beta_strong"
+    beta = _to_float(row.get(row_key))
+    if beta is not None:
+        return beta
+    beta = _to_float(q_meta.get(meta_key))
+    if beta is not None:
+        return beta
+    return default
+
+
+def _combined_layer_likelihood_prob(
+    layer_contributions: Mapping[str, Any],
+    label: str,
+    *,
+    beta_weak: Optional[float],
+    beta_strong: Optional[float],
+) -> Optional[float]:
+    weak_layer = _mapping_value(layer_contributions.get("forecast_weak_likelihood"))
+    strong_layer = _mapping_value(layer_contributions.get("metar_strong_likelihood"))
+    weak_dist = _mapping_value(weak_layer.get("distribution"))
+    strong_dist = _mapping_value(strong_layer.get("distribution"))
+    labels = list(dict.fromkeys([str(key) for key in (*weak_dist.keys(), *strong_dist.keys()) if str(key)]))
+    if not labels:
+        return None
+    weak_beta = max(0.0, float(beta_weak if beta_weak is not None else 0.0))
+    strong_beta = max(0.0, float(beta_strong if beta_strong is not None else 1.0))
+    scores: Dict[str, float] = {}
+    for bucket in labels:
+        weak = _clamp_probability(weak_dist.get(bucket))
+        strong = _clamp_probability(strong_dist.get(bucket))
+        score = 1.0
+        if weak_dist:
+            score *= max(1e-12, weak if weak is not None else 1.0) ** weak_beta
+        if strong_dist:
+            score *= max(1e-12, strong if strong is not None else 1.0) ** strong_beta
+        scores[bucket] = float(score)
+    total = sum(scores.values())
+    if total <= 0:
+        return None
+    for candidate in _bucket_label_candidates(label):
+        if candidate in scores:
+            return _clamp_probability(scores[candidate] / total)
+    return None
+
+
+def _hierarchical_bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    layer_contributions = _extract_layer_contributions(row)
+    if not layer_contributions:
+        return {}
+    label = _distribution_row_bucket_label(row)
+    if not label:
+        return {}
+
+    q_meta = _mapping_value(row.get("q_bayes_meta"))
+    prior_prob = _layer_prob_for_label(layer_contributions, "prior", label)
+    beta_weak = _layer_beta(row, layer_contributions, "forecast_weak_likelihood", default=0.0)
+    beta_strong = _layer_beta(row, layer_contributions, "metar_strong_likelihood", default=1.0)
+    likelihood_parts: Dict[str, Dict[str, Any]] = {}
+    layer_parts: Dict[str, Dict[str, Any]] = {}
+    for layer_key in ("prior", "forecast_weak_likelihood", "metar_strong_likelihood"):
+        layer = _mapping_value(layer_contributions.get(layer_key))
+        prob = _layer_prob_for_label(layer_contributions, layer_key, label)
+        part: Dict[str, Any] = {}
+        if prob is not None:
+            part["prob"] = float(prob)
+        for meta_key in ("role", "boundary", "entropy", "sum"):
+            value = layer.get(meta_key)
+            if value not in (None, ""):
+                part[meta_key] = value
+        beta = None
+        if layer_key == "forecast_weak_likelihood":
+            beta = beta_weak
+        elif layer_key == "metar_strong_likelihood":
+            beta = beta_strong
+        if beta is not None:
+            part["beta"] = float(beta)
+        if part:
+            layer_parts[layer_key] = part
+            if layer_key in ("forecast_weak_likelihood", "metar_strong_likelihood"):
+                likelihood_parts[layer_key] = dict(part)
+
+    likelihood_prob = _clamp_probability(
+        row.get("q_likelihood")
+        if row.get("q_likelihood") is not None
+        else row.get("q_bayes_likelihood_prob")
+    )
+    if likelihood_prob is None:
+        likelihood_prob = _combined_layer_likelihood_prob(
+            layer_contributions,
+            label,
+            beta_weak=beta_weak,
+            beta_strong=beta_strong,
+        )
+
+    if not (prior_prob is not None or likelihood_prob is not None or likelihood_parts or layer_parts):
+        return {}
+
+    score_components = _mapping_value(row.get("q_bayes_score_components"))
+    if not score_components:
+        score_components = _mapping_value(q_meta.get("score_components"))
+    return {
+        "schema": "hierarchical_layer_contributions_chain_v1",
+        "role": "hierarchical_joint_likelihood_explanation",
+        "ui_primary_allowed": True,
+        "production_probability_allowed": False,
+        "old_additive_evidence_pool_used": False,
+        "legacy_compat_fallback_used": False,
+        "formula": "continuous_forecast_error_prior_then_sequential_state_zero_inflated_remaining_warming_mixture_then_bucket_integral",
+        "bucket": label,
+        "prior_prob": prior_prob,
+        "likelihood_prob": likelihood_prob,
+        "likelihood_parts": likelihood_parts,
+        "layer_parts": layer_parts,
+        "score_components": score_components,
+        "source": str(row.get("q_bayes_source") or q_meta.get("source") or ""),
+        "phase": row.get("q_bayes_phase") or q_meta.get("phase"),
+        "beta_weak": beta_weak,
+        "beta_strong": beta_strong,
+        "phase_reason": row.get("q_bayes_phase_reason") or q_meta.get("phase_reason"),
+        "hard_mask_reason": row.get("q_bayes_hard_mask_reason") or q_meta.get("hard_mask_reason"),
+    }
+
+
+def _legacy_evidence_channel_fields() -> Dict[str, str]:
+    fields: Dict[str, str] = {}
+    for item in _legacy_evidence_registry_rows():
+        if not isinstance(item, Mapping):
+            continue
+        canonical = str(item.get("canonical_field") or "").strip()
+        prefix = "q_bayes_"
+        suffix = "_evidence"
+        if not (canonical.startswith(prefix) and canonical.endswith(suffix)):
+            continue
+        channel = canonical[len(prefix) : -len(suffix)]
+        if channel:
+            fields[channel] = canonical
+    return fields
+
+
+_LEGACY_EVIDENCE_FIELD_BY_CHANNEL = _legacy_evidence_channel_fields()
+_LEGACY_EVIDENCE_FIELDS_FOR_REPORT_COMPAT = tuple(_LEGACY_EVIDENCE_FIELD_BY_CHANNEL.values())
+
+
+def _legacy_evidence_field(channel: str) -> str:
+    return _LEGACY_EVIDENCE_FIELD_BY_CHANNEL.get(str(channel or "").strip(), "")
+
+
+def _legacy_additive_bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     components_raw = row.get("q_temperature_bucket_score_components")
     components = dict(components_raw) if isinstance(components_raw, Mapping) else {}
     prior_strength = _to_float(row.get("q_bayes_prior_strength"))
-    evidence_keys = (
-        "q_bayes_model_evidence",
-        "q_bayes_wu_forecast_evidence",
-        "q_bayes_taf_peak_evidence",
-        "q_bayes_observed_nowcast_evidence",
-        "q_bayes_temperature_trajectory_evidence",
-        "q_bayes_independent_physics_residual_evidence",
-        "q_bayes_climo_regime_evidence",
-        "q_bayes_post_cool_rebound_regime_prior_evidence",
-        "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
-        "q_bayes_post_cool_rebound_risk_evidence",
-    )
+    evidence_keys = _LEGACY_EVIDENCE_FIELDS_FOR_REPORT_COMPAT
     if prior_strength is None or prior_strength <= 0:
         alpha_total = _to_float(row.get("q_temperature_bucket_alpha_total"))
         evidence_total = sum(
@@ -331,24 +547,24 @@ def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     likelihood_specs = (
         (
             "model",
-            "q_bayes_model_evidence",
+            _legacy_evidence_field("model"),
             ("q_bayes_model_prob", "q_ensemble_qm_bucket", "q_model_temperature_bucket_round"),
         ),
-        ("wu_forecast", "q_bayes_wu_forecast_evidence", ("q_bayes_wu_forecast_prob",)),
-        ("taf_peak", "q_bayes_taf_peak_evidence", ("q_bayes_taf_peak_prob",)),
+        ("wu_forecast", _legacy_evidence_field("wu_forecast"), ("q_bayes_wu_forecast_prob",)),
+        ("taf_peak", _legacy_evidence_field("taf_peak"), ("q_bayes_taf_peak_prob",)),
         (
             "observed_nowcast",
-            "q_bayes_observed_nowcast_evidence",
+            _legacy_evidence_field("observed_nowcast"),
             ("q_bayes_observed_nowcast_prob", "q_bayes_nowcast_prob"),
         ),
         (
             "temperature_trajectory",
-            "q_bayes_temperature_trajectory_evidence",
+            _legacy_evidence_field("temperature_trajectory"),
             ("q_bayes_temperature_trajectory_prob", "q_temperature_trajectory"),
         ),
         (
             "independent_physics_residual",
-            "q_bayes_independent_physics_residual_evidence",
+            _legacy_evidence_field("independent_physics_residual"),
             (
                 "q_bayes_independent_physics_residual_prob",
                 "q_bayes_independent_physics_residual_observed_prob",
@@ -356,15 +572,15 @@ def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
                 "q_bayes_physical_likelihood_observed_prob",
             ),
         ),
-        ("climo_regime", "q_bayes_climo_regime_evidence", ("q_bayes_climo_regime_prob",)),
+        ("climo_regime", _legacy_evidence_field("climo_regime"), ("q_bayes_climo_regime_prob",)),
         (
             "post_cool_rebound_regime_prior",
-            "q_bayes_post_cool_rebound_regime_prior_evidence",
+            _legacy_evidence_field("post_cool_rebound_regime_prior"),
             ("q_bayes_post_cool_rebound_regime_prior_prob",),
         ),
         (
             "post_cool_rebound_intraday_likelihood",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
+            _legacy_evidence_field("post_cool_rebound_intraday_likelihood"),
             ("q_bayes_post_cool_rebound_intraday_likelihood_prob",),
         ),
     )
@@ -373,7 +589,7 @@ def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     likelihood_parts: Dict[str, Dict[str, Any]] = {}
     for name, evidence_key, prob_keys in likelihood_specs:
         component = _to_float(components.get(name))
-        evidence = _to_float(row.get(evidence_key))
+        evidence = _to_float(row.get(evidence_key)) if evidence_key else None
         prob: Optional[float] = None
         for prob_key in prob_keys:
             prob = _clamp_probability(row.get(prob_key))
@@ -414,6 +630,16 @@ def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     ):
         return {}
     return {
+        "schema": "legacy_bayes_chain_retired_compat_v1",
+        "role": "retired_compat",
+        "ui_primary_allowed": False,
+        "production_probability_allowed": False,
+        "replacement": "layer_contributions.forecast_weak_likelihood + layer_contributions.metar_strong_likelihood + root_prior",
+        "legacy_additive_evidence_bridge": row.get("q_bayes_legacy_additive_bridge"),
+        "old_additive_evidence_pool_used": bool(row.get("q_bayes_old_additive_evidence_pool_used")),
+        "production_replacement_required": bool(row.get("q_bayes_production_replacement_required")),
+        "replacement_posterior_runtime": row.get("q_bayes_replacement_posterior_runtime")
+        or "hierarchical_posterior_pipeline_runtime.py",
         "prior_prob": prior_prob,
         "likelihood_prob": likelihood_prob,
         "prior_component": history_component,
@@ -426,6 +652,13 @@ def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
         "likelihood_parts": likelihood_parts,
         "source": str(row.get("q_bayes_source") or ""),
     }
+
+
+def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    hierarchical = _hierarchical_bayes_chain_for_distribution_row(row)
+    if hierarchical:
+        return hierarchical
+    return _legacy_additive_bayes_chain_for_distribution_row(row)
 
 
 def _round(value: Any, decimals: int = 2) -> Optional[float]:
@@ -449,6 +682,13 @@ def _observed_path_temperature_c(observed_current_c: Any, observed_today_max_c: 
     return None, "missing"
 
 
+def _metar_source_date_mismatch(features: Mapping[str, Any], source_id: str) -> bool:
+    return (
+        _to_bool(features.get(f"{source_id}_date_mismatch")) is True
+        or _to_bool(features.get("metar_observation_date_mismatch")) is True
+    )
+
+
 def _observed_current_temperature_c(features: Mapping[str, Any]) -> Tuple[Optional[float], str]:
     if not isinstance(features, Mapping):
         return None, "missing"
@@ -457,32 +697,39 @@ def _observed_current_temperature_c(features: Mapping[str, Any]) -> Tuple[Option
         _source_is_wu_twc_intraday(source_hint)
         and _wu_twc_intraday_demote_reason(features)
     )
-    awc_date_mismatch = (
-        _to_bool(features.get("zuuu_metar_raw_awc_date_mismatch")) is True
-        or _to_bool(features.get("metar_observation_date_mismatch")) is True
-    )
     wu_current_mismatch = "event_date_mismatch" in str(
         features.get("wu_twc_observed_intraday_current_error")
         or features.get("wu_twc_observed_intraday_max_error")
         or ""
     )
-    candidates = [
-        ("observed_current_temp_c", features.get("observed_current_temp_c"), "observed_current_temp", not demoted_wu_current),
-        ("observed_temp_c", features.get("observed_temp_c"), source_hint or "observed_temp_c", not demoted_wu_current),
+    candidates = []
+    for source_id in METAR_SOURCE_IDS_IN_PRIORITY_ORDER:
+        candidates.append(
+            (
+                f"{source_id}_latest_temp_c",
+                features.get(f"{source_id}_latest_temp_c"),
+                f"{source_id}_latest_temp",
+                not _metar_source_date_mismatch(features, source_id),
+            )
+        )
+    candidates.append(
         (
-            "zuuu_metar_raw_awc_latest_temp_c",
-            features.get("zuuu_metar_raw_awc_latest_temp_c"),
-            "zuuu_metar_raw_awc_latest_temp",
-            not awc_date_mismatch,
-        ),
-        ("metar_temperature_c", features.get("metar_temperature_c"), "metar_temperature_c", not awc_date_mismatch),
+            "metar_temperature_c",
+            features.get("metar_temperature_c"),
+            "metar_temperature_c",
+            not _metar_source_date_mismatch(features, PRIMARY_METAR_SOURCE_ID),
+        )
+    )
+    candidates.append(("observed_current_temp_c", features.get("observed_current_temp_c"), "observed_current_temp", not demoted_wu_current))
+    candidates.append(("observed_temp_c", features.get("observed_temp_c"), source_hint or "observed_temp_c", not demoted_wu_current))
+    candidates.append(
         (
             "wu_twc_observed_intraday_current_temp_c",
             features.get("wu_twc_observed_intraday_current_temp_c"),
             "wu_twc_observed_intraday_current",
             not wu_current_mismatch,
-        ),
-    ]
+        )
+    )
     for _key, value, source, allowed in candidates:
         if not allowed:
             continue
@@ -556,13 +803,10 @@ def _wu_twc_intraday_demote_reason(features: Mapping[str, Any]) -> str:
 def _hard_observed_today_max_c(features: Mapping[str, Any]) -> Tuple[Optional[float], str, str]:
     if not isinstance(features, Mapping):
         return None, "", "features_missing"
-    awc_mismatch = (
-        _to_bool(features.get("zuuu_metar_raw_awc_date_mismatch")) is True
-        or _to_bool(features.get("metar_observation_date_mismatch")) is True
-    )
-    awc_max = _to_float(features.get("zuuu_metar_raw_awc_today_max_c"))
-    if awc_max is not None and not awc_mismatch:
-        return float(awc_max), "zuuu_metar_raw_awc", ""
+    for source_id in METAR_SOURCE_IDS_IN_PRIORITY_ORDER:
+        hard_max = _to_float(features.get(f"{source_id}_today_max_c"))
+        if hard_max is not None and not _metar_source_date_mismatch(features, source_id):
+            return float(hard_max), source_id, ""
     generic = _to_float(features.get("observed_today_max_c"))
     generic_source = str(features.get("observed_today_max_source") or "").strip()
     if generic is None:
@@ -579,40 +823,50 @@ def _hard_observed_today_max_c(features: Mapping[str, Any]) -> Tuple[Optional[fl
 
 def _selected_temperature_momentum_rates(features: Mapping[str, Any]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     generic_rates: Dict[str, float] = {}
-    awc_rates: Dict[str, float] = {}
+    primary_rates: Dict[str, float] = {}
+    reference_rates: Dict[str, float] = {}
     if not isinstance(features, Mapping):
         return {}, {"source": "", "core_source": "", "supplement_source": "", "wu_twc_supplement_demoted_reason": ""}
     for label in TEMPERATURE_MOMENTUM_WINDOWS:
         generic = _to_float(features.get(f"temperature_momentum_{label}_c_per_hour"))
         if generic is not None:
             generic_rates[label] = float(generic)
-        awc = _to_float(features.get(f"zuuu_metar_raw_awc_temperature_momentum_{label}_c_per_hour"))
-        if awc is not None:
-            awc_rates[label] = float(awc)
+        primary = _to_float(features.get(f"{PRIMARY_METAR_SOURCE_ID}_temperature_momentum_{label}_c_per_hour"))
+        if primary is not None:
+            primary_rates[label] = float(primary)
+        for source_id in REFERENCE_METAR_SOURCE_IDS:
+            reference = _to_float(features.get(f"{source_id}_temperature_momentum_{label}_c_per_hour"))
+            if reference is not None:
+                reference_rates.setdefault(label, float(reference))
     source = str(features.get("temperature_momentum_source") or "").strip()
-    if source == "zuuu_metar_raw_awc":
+    if source == PRIMARY_METAR_SOURCE_ID:
         for label, rate in generic_rates.items():
-            awc_rates.setdefault(label, rate)
+            primary_rates.setdefault(label, rate)
+    elif source in REFERENCE_METAR_SOURCE_IDS:
+        for label, rate in generic_rates.items():
+            reference_rates.setdefault(label, rate)
     demote = _wu_twc_intraday_demote_reason(features)
     selected: Dict[str, float] = {}
     supplement_rates: Dict[str, float] = {}
-    if awc_rates:
-        if "1h" in awc_rates:
-            selected["1h"] = awc_rates["1h"]
+    core_rates = primary_rates or reference_rates
+    core_source = PRIMARY_METAR_SOURCE_ID if primary_rates else (next((item for item in REFERENCE_METAR_SOURCE_IDS if reference_rates), "") or "")
+    if core_rates:
+        if "1h" in core_rates:
+            selected["1h"] = core_rates["1h"]
         if not demote:
             for label in ("45m", "30m", "15m", "10m", "5m", "3m", "2m", "1m"):
                 if label in generic_rates and label not in selected:
                     selected[label] = generic_rates[label]
                     supplement_rates[label] = generic_rates[label]
-        return selected or awc_rates, {
-            "source": "zuuu_metar_raw_awc_core",
-            "core_source": "zuuu_metar_raw_awc",
+        return selected or core_rates, {
+            "source": f"{core_source}_core",
+            "core_source": core_source,
             "supplement_source": source if supplement_rates else "",
             "supplement_rates_c_per_hour": supplement_rates,
             "context_rates_c_per_hour": {
-                label: awc_rates[label]
+                label: core_rates[label]
                 for label in ("24h", "12h", "6h", "3h", "2h")
-                if label in awc_rates
+                if label in core_rates
             },
             "wu_twc_supplement_demoted_reason": demote,
         }
@@ -1477,40 +1731,37 @@ def _distribution_rows(payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
             "display_probability_market_dead_reason": str(raw.get("display_probability_market_dead_reason") or "").strip() or None,
             "is_cumulative_bucket": _is_cumulative_bucket(label),
             "q_physical_enabled": bool(raw.get("q_bayes_physical_likelihood_enabled")),
-            "q_physical_evidence": _to_float(raw.get("q_bayes_physical_likelihood_evidence")) or 0.0,
+            "q_physical_evidence": _to_float(raw.get(_legacy_evidence_field("physical_likelihood"))) or 0.0,
             "q_physical_observed_prob": phys_observed,
             "q_physical_observed_prob_pct": _pct(phys_observed, 4),
         }
         diagnostic_keys = (
             "q_bayes_source",
+            "q_bayes_phase",
+            "q_bayes_beta_weak",
+            "q_bayes_beta_strong",
+            "q_bayes_phase_reason",
+            "q_bayes_hard_mask_reason",
+            "q_bayes_layer_contributions",
+            "q_bayes_score_components",
             "q_bayes_prior_strength",
             "q_temperature_bucket_alpha",
             "q_temperature_bucket_alpha_total",
-            "q_bayes_model_evidence",
             "q_bayes_model_prob",
-            "q_bayes_wu_forecast_evidence",
             "q_bayes_wu_forecast_prob",
-            "q_bayes_taf_peak_evidence",
             "q_bayes_taf_peak_prob",
-            "q_bayes_observed_nowcast_evidence",
             "q_bayes_observed_nowcast_prob",
-            "q_bayes_nowcast_evidence",
             "q_bayes_nowcast_prob",
-            "q_bayes_independent_physics_residual_evidence",
             "q_bayes_independent_physics_residual_prob",
             "q_bayes_independent_physics_residual_observed_prob",
-            "q_bayes_climo_regime_evidence",
             "q_bayes_climo_regime_prob",
-            "q_bayes_post_cool_rebound_regime_prior_evidence",
             "q_bayes_post_cool_rebound_regime_prior_prob",
-            "q_bayes_post_cool_rebound_intraday_likelihood_evidence",
             "q_bayes_post_cool_rebound_intraday_likelihood_prob",
-            "q_bayes_post_cool_rebound_risk_evidence",
             "q_bayes_post_cool_rebound_risk_prob",
             "q_bayes_physical_likelihood_prob",
             "q_bayes_physical_likelihood_observed_prob",
-            "q_bayes_physical_likelihood_evidence",
             "q_bayes_physical_likelihood_source",
+            *_LEGACY_EVIDENCE_FIELDS_FOR_REPORT_COMPAT,
             "q_bayes_wu_forecast_status",
             "q_bayes_taf_peak_status",
             "wu_forecast_peak_at",
@@ -1849,7 +2100,7 @@ def _apply_d0_observed_feasibility_guard(
         observed_max is not None
         and observed_temp is not None
         and (
-            "zuuu_metar_raw_awc" in hard_source
+            any(source_id in hard_source for source_id in METAR_SOURCE_IDS_IN_PRIORITY_ORDER)
             or "metar" in hard_source
             or bool(features.get("observed_today_max_trusted"))
         )
@@ -1892,8 +2143,10 @@ def _apply_d0_observed_feasibility_guard(
     ) or any(
         token in source_text
         for token in (
+            "zuuu_metar_raw_amsc",
             "zuuu_metar_raw_awc",
             "metar",
+            "amsc",
             "awc",
             "airport",
             "wu_twc_observed_intraday",
@@ -2209,7 +2462,7 @@ def _temperature_trajectory_status(
         "temperature_trajectory_regime_v1_available": regime_available,
         "temperature_trajectory_path_mu_c": _round(regime_path_mu, 2),
         "temperature_trajectory_path_sigma_c": _round(regime_path_sigma, 2),
-        "temperature_trajectory_evidence": _round(regime_evidence, 3),
+        "temperature_trajectory_overlay_strength": _round(regime_evidence, 3),
         "temperature_trajectory_rate_hat_c_per_hour": _round(regime_rate, 2),
         "temperature_trajectory_accel_hat_c_per_hour2": _round(regime_accel, 3),
         "temperature_trajectory_forcing_turn_probability": _round(regime_forcing_turn_probability, 3),
@@ -3436,22 +3689,37 @@ def _metar_weather_profile(raw_text: Any) -> Dict[str, Any]:
 
 def _merged_metar_weather_profile(features: Mapping[str, Any]) -> Dict[str, Any]:
     profiles: List[Dict[str, Any]] = []
-    for key in ("zuuu_metar_raw_awc_latest_raw", "zuuu_metar_raw_awc_today_max_raw"):
+    for key in (
+        "zuuu_metar_raw_amsc_latest_raw",
+        "zuuu_metar_raw_amsc_today_max_raw",
+        "zuuu_metar_raw_awc_latest_raw",
+        "zuuu_metar_raw_awc_today_max_raw",
+    ):
         profile = _metar_weather_profile(features.get(key))
         if profile.get("available"):
             profile["source_field"] = key
             profiles.append(profile)
     if not profiles:
         return {"available": False, "source": "metar_raw", "weather_tokens": [], "cloud_groups": []}
+    primary_profiles = [
+        profile for profile in profiles
+        if str(profile.get("source_field") or "").startswith("zuuu_metar_raw_amsc")
+    ]
+    active_profiles = primary_profiles or profiles
     latest_present_weather_profiles = [
         profile for profile in profiles
-        if profile.get("source_field") == "zuuu_metar_raw_awc_latest_raw"
+        if profile.get("source_field") == "zuuu_metar_raw_amsc_latest_raw"
     ]
-    present_weather_profiles = latest_present_weather_profiles or profiles
+    if not latest_present_weather_profiles and not primary_profiles:
+        latest_present_weather_profiles = [
+            profile for profile in profiles
+            if profile.get("source_field") == "zuuu_metar_raw_awc_latest_raw"
+        ]
+    present_weather_profiles = latest_present_weather_profiles or active_profiles
     merged: Dict[str, Any] = {
         "available": True,
-        "source": "metar_raw",
-        "profiles": profiles[:3],
+        "source": "zuuu_metar_raw_amsc" if primary_profiles else "metar_raw_reference_fallback",
+        "profiles": active_profiles[:3],
         "present_weather_source_fields": [
             str(profile.get("source_field") or "") for profile in present_weather_profiles
         ],
@@ -3481,7 +3749,7 @@ def _merged_metar_weather_profile(features: Mapping[str, Any]) -> Dict[str, Any]
         merged["no_precip_confirmed"] = False
     elif merged.get("precip_observed"):
         merged["no_precip_confirmed"] = False
-    for profile in profiles:
+    for profile in active_profiles:
         value = profile.get("cloud_groups")
         if isinstance(value, list):
             merged["cloud_groups"].extend(value)
@@ -3491,7 +3759,7 @@ def _merged_metar_weather_profile(features: Mapping[str, Any]) -> Dict[str, Any]
         ("mid_cloud_cover_pct", "mid_cloud_cover_pct"),
         ("high_cloud_cover_pct", "high_cloud_cover_pct"),
     ):
-        vals = [_to_float(profile.get(profile_key)) for profile in profiles]
+        vals = [_to_float(profile.get(profile_key)) for profile in active_profiles]
         nums = [float(v) for v in vals if v is not None]
         merged[out_key] = _round(max(nums), 1) if nums else None
     return merged
@@ -3518,6 +3786,7 @@ def _temperature_momentum_flags(features: Mapping[str, Any]) -> Dict[str, Any]:
         "temperature_momentum_effective_c_per_hour",
         "temperature_trajectory_stable_rate_c_per_hour",
         "temperature_rise_rate_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
         "zuuu_metar_raw_awc_temperature_momentum_1h_c_per_hour",
         "temperature_momentum_1h_c_per_hour",
     )
@@ -3547,12 +3816,16 @@ def _dewpoint_moisture_profile(
     no_precip: bool,
     precip_present: bool,
 ) -> Dict[str, Any]:
-    raw_token = _metar_temperature_token(features.get("zuuu_metar_raw_awc_latest_raw"))
+    raw_token = _metar_temperature_token(
+        features.get("zuuu_metar_raw_amsc_latest_raw")
+        or features.get("zuuu_metar_raw_awc_latest_raw")
+    )
     observed_temp = _first_float_feature(
         features,
         "observed_temp_c",
         "observed_temp",
         "metar_temperature_c",
+        "zuuu_metar_raw_amsc_latest_temp_c",
         "zuuu_metar_raw_awc_latest_temp_c",
     )
     if observed_temp is None:
@@ -3561,6 +3834,7 @@ def _dewpoint_moisture_profile(
         features,
         "dewpoint_c",
         "dew_point_c",
+        "zuuu_metar_raw_amsc_latest_dewpoint_c",
         "zuuu_metar_raw_awc_latest_dewpoint_c",
     )
     if dewpoint is None:
@@ -3613,7 +3887,7 @@ def _dewpoint_moisture_profile(
         conclusion = "露点处于中性或缺少云雨/动量配合，只作为湿球背景，不单独调桶。"
     return {
         "available": bool(state != "missing"),
-        "source": "awc_metar_dewpoint_and_runtime_features",
+        "source": "amsc_metar_dewpoint_and_runtime_features",
         "role": "wet_bulb_boundary_layer_moisture_auxiliary",
         "override_allowed": False,
         "state": state,
@@ -3647,10 +3921,14 @@ def _pressure_profile(
     no_precip: bool,
     precip_present: bool,
 ) -> Dict[str, Any]:
-    raw_pressure = _metar_pressure_hpa_token(features.get("zuuu_metar_raw_awc_latest_raw"))
+    raw_pressure = _metar_pressure_hpa_token(
+        features.get("zuuu_metar_raw_amsc_latest_raw")
+        or features.get("zuuu_metar_raw_awc_latest_raw")
+    )
     pressure = _first_float_feature(
         features,
         "pressure_hpa",
+        "zuuu_metar_raw_amsc_latest_pressure_hpa",
         "awc_pressure_hpa",
         "zuuu_metar_raw_awc_latest_pressure_hpa",
     )
@@ -3658,6 +3936,7 @@ def _pressure_profile(
         pressure = raw_pressure
     previous_pressure = _first_float_feature(
         features,
+        "zuuu_metar_raw_amsc_previous_pressure_hpa",
         "awc_previous_pressure_hpa",
         "zuuu_metar_raw_awc_previous_pressure_hpa",
     )
@@ -3744,40 +4023,67 @@ def _awc_wind_profile(
     no_precip: bool,
     precip_present: bool,
 ) -> Dict[str, Any]:
-    direction = _first_float_feature(features, "awc_wind_dir_deg", "zuuu_metar_raw_awc_latest_wind_dir_deg")
-    speed = _first_float_feature(features, "awc_wind_speed_mps", "zuuu_metar_raw_awc_latest_wind_speed_mps")
-    gust = _first_float_feature(features, "awc_wind_gust_mps", "zuuu_metar_raw_awc_latest_wind_gust_mps")
+    direction = _first_float_feature(
+        features,
+        "zuuu_metar_raw_amsc_latest_wind_dir_deg",
+        "awc_wind_dir_deg",
+        "zuuu_metar_raw_awc_latest_wind_dir_deg",
+    )
+    speed = _first_float_feature(
+        features,
+        "zuuu_metar_raw_amsc_latest_wind_speed_mps",
+        "awc_wind_speed_mps",
+        "zuuu_metar_raw_awc_latest_wind_speed_mps",
+    )
+    gust = _first_float_feature(
+        features,
+        "zuuu_metar_raw_amsc_latest_wind_gust_mps",
+        "awc_wind_gust_mps",
+        "zuuu_metar_raw_awc_latest_wind_gust_mps",
+    )
     variable_from = _first_float_feature(
         features,
+        "zuuu_metar_raw_amsc_latest_wind_variable_from_deg",
         "awc_wind_variable_from_deg",
         "zuuu_metar_raw_awc_latest_wind_variable_from_deg",
     )
     variable_to = _first_float_feature(
         features,
+        "zuuu_metar_raw_amsc_latest_wind_variable_to_deg",
         "awc_wind_variable_to_deg",
         "zuuu_metar_raw_awc_latest_wind_variable_to_deg",
     )
     variable = bool(
-        _truthy(features.get("awc_wind_variable"))
+        _truthy(features.get("zuuu_metar_raw_amsc_latest_wind_variable"))
+        or _truthy(features.get("awc_wind_variable"))
         or _truthy(features.get("zuuu_metar_raw_awc_latest_wind_variable"))
         or (variable_from is not None and variable_to is not None)
-        or str(features.get("awc_wind_dir_text") or features.get("zuuu_metar_raw_awc_latest_wind_dir_text") or "").strip().upper() == "VRB"
+        or str(
+            features.get("zuuu_metar_raw_amsc_latest_wind_dir_text")
+            or features.get("awc_wind_dir_text")
+            or features.get("zuuu_metar_raw_awc_latest_wind_dir_text")
+            or ""
+        ).strip().upper() == "VRB"
     )
     previous_direction = _first_float_feature(
         features,
+        "zuuu_metar_raw_amsc_previous_wind_dir_deg",
         "awc_previous_wind_dir_deg",
         "zuuu_metar_raw_awc_previous_wind_dir_deg",
     )
     previous_speed = _first_float_feature(
         features,
+        "zuuu_metar_raw_amsc_previous_wind_speed_mps",
         "awc_previous_wind_speed_mps",
         "zuuu_metar_raw_awc_previous_wind_speed_mps",
     )
     previous_variable = bool(
-        _truthy(features.get("awc_previous_wind_variable"))
+        _truthy(features.get("zuuu_metar_raw_amsc_previous_wind_variable"))
+        or _truthy(features.get("awc_previous_wind_variable"))
         or _truthy(features.get("zuuu_metar_raw_awc_previous_wind_variable"))
         or str(
-            features.get("awc_previous_wind_dir_text")
+            features.get("zuuu_metar_raw_amsc_previous_wind_dir_text")
+            or features.get("awc_previous_wind_dir_text")
             or features.get("zuuu_metar_raw_awc_previous_wind_dir_text")
             or ""
         ).strip().upper() == "VRB"
@@ -3796,6 +4102,7 @@ def _awc_wind_profile(
         "temperature_momentum_effective_c_per_hour",
         "temperature_trajectory_stable_rate_c_per_hour",
         "temperature_rise_rate_c_per_hour",
+        "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour",
         "zuuu_metar_raw_awc_temperature_momentum_1h_c_per_hour",
         "temperature_momentum_1h_c_per_hour",
     )
@@ -3834,7 +4141,7 @@ def _awc_wind_profile(
     )
     if direction is None and speed is None and not variable:
         state = "missing"
-        conclusion = "AWC 风组缺失"
+        conclusion = "AMSC 风组缺失"
     elif stable_direction and speed is not None and 1.5 <= float(speed) <= 6.5 and dry_clear_context and momentum_up:
         state = "warming_assist"
         conclusion = "稳定风叠加无雨、少云、较低露点和升温动量，只作为升温辅助。"
@@ -3846,7 +4153,7 @@ def _awc_wind_profile(
         conclusion = "风向/风速仅作通风、平流、对流边界背景，不单独调整目标桶。"
     return {
         "available": bool(state != "missing"),
-        "source": "zuuu_metar_raw_awc_wind",
+        "source": "zuuu_metar_raw_amsc_wind",
         "role": "ventilation_advection_convective_boundary_auxiliary",
         "override_allowed": False,
         "state": state,
@@ -3907,14 +4214,15 @@ def _runtime_precip_profile(features: Mapping[str, Any], metar_profile: Mapping[
     elif metar_profile.get("precip_observed"):
         augmented.setdefault("metar_rain_observed", True)
         augmented.setdefault("observed_precip_rate_mm_per_h", 0.1)
-        augmented.setdefault("precipitation_source", "zuuu_metar_raw_awc_present_weather")
+        augmented.setdefault("precipitation_source", "zuuu_metar_raw_amsc_present_weather")
     elif metar_profile.get("no_precip_confirmed"):
         augmented["metar_no_precip_observed"] = True
+        augmented["amsc_metar_no_precip_observed"] = True
         augmented["awc_metar_no_precip_observed"] = True
         augmented["is_raining_observed"] = False
         augmented["observed_precip_rate_mm_per_h"] = 0.0
         augmented["precipitation_rate_mm_per_h"] = 0.0
-        augmented["precipitation_source"] = "zuuu_metar_raw_awc_present_weather"
+        augmented["precipitation_source"] = "zuuu_metar_raw_amsc_present_weather"
     if _runtime_precipitation_evidence_profile is not None:
         try:
             profile = _runtime_precipitation_evidence_profile(augmented)
@@ -4006,9 +4314,20 @@ def _physical_weather_modifier(
     if high_cloud is None:
         high_cloud = _to_float(metar_profile.get("high_cloud_cover_pct"))
     solar = _first_float_feature(features_map, "solar_radiation", "shortwave_radiation")
-    dew = _first_float_feature(features_map, "dewpoint_c", "dew_point_c", "zuuu_metar_raw_awc_latest_dewpoint_c")
+    dew = _first_float_feature(
+        features_map,
+        "dewpoint_c",
+        "dew_point_c",
+        "zuuu_metar_raw_amsc_latest_dewpoint_c",
+        "zuuu_metar_raw_awc_latest_dewpoint_c",
+    )
     if dew is None:
-        dew = _to_float(_metar_temperature_token(features_map.get("zuuu_metar_raw_awc_latest_raw")).get("dewpoint_raw_value"))
+        dew = _to_float(
+            _metar_temperature_token(
+                features_map.get("zuuu_metar_raw_amsc_latest_raw")
+                or features_map.get("zuuu_metar_raw_awc_latest_raw")
+            ).get("dewpoint_raw_value")
+        )
     nowcast = _precip_nowcast_risk(features_map)
 
     components: List[Dict[str, Any]] = []
@@ -4594,6 +4913,7 @@ def _temperature_stage_from_payload(payload: Mapping[str, Any]) -> Optional[Dict
         "observed_precip_rate_mm_per_h": _round(features.get("observed_precip_rate_mm_per_h"), 2),
         "metar_rain_observed": features.get("metar_rain_observed"),
         "metar_cavok_observed": features.get("metar_cavok_observed"),
+        "amsc_metar_no_precip_observed": features.get("amsc_metar_no_precip_observed"),
         "awc_metar_no_precip_observed": features.get("awc_metar_no_precip_observed"),
         "physical_weather_state": physical_modifier.get("state"),
         "physical_weather_peak_mu_adjustment_c": physical_modifier.get("peak_mu_adjustment_c"),
@@ -4601,6 +4921,9 @@ def _temperature_stage_from_payload(payload: Mapping[str, Any]) -> Optional[Dict
     }
     for label in TEMPERATURE_MOMENTUM_WINDOWS:
         stage[f"temperature_momentum_{label}_c_per_hour"] = _round(selected_rates.get(label), 2)
+        amsc_rate = _to_float(features.get(f"zuuu_metar_raw_amsc_temperature_momentum_{label}_c_per_hour"))
+        if amsc_rate is not None:
+            stage[f"amsc_metar_temperature_momentum_{label}_c_per_hour"] = _round(amsc_rate, 2)
         awc_rate = _to_float(features.get(f"zuuu_metar_raw_awc_temperature_momentum_{label}_c_per_hour"))
         if awc_rate is not None:
             stage[f"awc_metar_temperature_momentum_{label}_c_per_hour"] = _round(awc_rate, 2)
@@ -5231,15 +5554,35 @@ def _hard_source_direct_bucket(
     )
     if settlement:
         return settlement
-    awc = _build(
-        source_id="zuuu_metar_raw_awc",
-        source_label="AWC Raw METAR",
-        value_key="zuuu_metar_raw_awc_today_max_c",
-        observed_at_keys=("zuuu_metar_raw_awc_today_max_at", "zuuu_metar_raw_awc_latest_at"),
-        fetched_at_key="zuuu_metar_raw_awc_fetched_at",
-        fetch_duration_key="zuuu_metar_raw_awc_fetch_duration_ms",
-        priority=1.0,
-    )
+    metar_candidates = []
+    for priority, source_id, label in (
+        (1.5, PRIMARY_METAR_SOURCE_ID, "AMSC Raw METAR"),
+        (1.0, "zuuu_metar_raw_awc", "AWC Raw METAR reference"),
+    ):
+        metar_candidates.append(
+            _build(
+                source_id=source_id,
+                source_label=label,
+                value_key=f"{source_id}_today_max_c",
+                observed_at_keys=(f"{source_id}_today_max_at", f"{source_id}_latest_at"),
+                fetched_at_key=f"{source_id}_fetched_at",
+                fetch_duration_key=f"{source_id}_fetch_duration_ms",
+                priority=priority,
+            )
+        )
+        metar_candidates.append(
+            _build(
+                source_id=source_id,
+                source_label=f"{label} latest",
+                value_key=f"{source_id}_latest_temp_c",
+                observed_at_keys=(f"{source_id}_latest_at",),
+                fetched_at_key=f"{source_id}_fetched_at",
+                fetch_duration_key=f"{source_id}_fetch_duration_ms",
+                priority=priority - 0.05,
+                fallback=True,
+                semantics="latest_metar_temperature_lower_bound_constraint_for_ssot_posterior",
+            )
+        )
     wu_today_max = _build(
         source_id="wu_twc_observed_intraday",
         source_label="WU/TWC intraday observed",
@@ -5261,13 +5604,13 @@ def _hard_source_direct_bucket(
         fallback=True,
         semantics="intraday_observed_lower_bound_constraint_for_ssot_posterior",
     )
-    candidates = [item for item in (awc, wu_today_max, wu_current) if item]
+    candidates = [item for item in (*metar_candidates, wu_today_max, wu_current) if item]
     if not candidates:
         return {}
     candidates.sort(
         key=lambda item: (
-            float(item.get("observed_max_c") or float("-inf")),
             float(item.get("priority") or 0.0),
+            float(item.get("observed_max_c") or float("-inf")),
             (_parse_datetime(item.get("observed_at")) or datetime.min.replace(tzinfo=timezone.utc)).timestamp(),
         ),
         reverse=True,
@@ -8861,109 +9204,6 @@ def _bucket_directional_distance(a: Any, b: Any) -> Optional[float]:
     return float(a_score) - float(b_score)
 
 
-def _remote_no_defense_candidate(
-    rows: Sequence[Mapping[str, Any]],
-    target_label: Any,
-    second_target_label: Any = "",
-) -> Dict[str, Any]:
-    target = str(target_label or "").strip()
-    second = str(second_target_label or "").strip()
-    min_raw = _to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MIN_BUCKET_DISTANCE"))
-    max_raw = _to_float(os.environ.get("PM_TARGET_REALIZATION_REMOTE_NO_MAX_BUCKET_DISTANCE"))
-    if min_raw is None or not math.isfinite(float(min_raw)):
-        min_raw = 2.0
-    remote_min_distance = int(max(1, min(20, round(float(min_raw)))))
-    if max_raw is None or not math.isfinite(float(max_raw)):
-        max_raw = 3.0
-    remote_max_distance = int(max(remote_min_distance, min(20, round(float(max_raw)))))
-    candidates: List[Dict[str, Any]] = []
-    for raw in rows or []:
-        label = str(raw.get("outcome") or raw.get("label") or "").strip()
-        if not label or label == target or (second and label == second):
-            continue
-        q_target, q_field = _target_bucket_probability(raw)
-        distance = _bucket_distance(label, target)
-        directional_distance = _bucket_directional_distance(label, target)
-        second_distance = _bucket_distance(label, second) if second else None
-        if distance is None or directional_distance is None:
-            continue
-        directional_bucket_distance = int(round(float(directional_distance)))
-        if not (remote_min_distance <= directional_bucket_distance <= remote_max_distance):
-            continue
-        no_ask = _price_probability(raw.get("best_ask_no"))
-        no_bid = _price_probability(raw.get("best_bid_no"))
-        yes_ask = _price_probability(raw.get("best_ask"))
-        yes_bid = _price_probability(raw.get("best_bid"))
-        if no_ask is None and yes_bid is not None:
-            no_ask = max(0.0, min(1.0, 1.0 - yes_bid))
-        if no_bid is None and yes_ask is not None:
-            no_bid = max(0.0, min(1.0, 1.0 - yes_ask))
-        q_value = float(q_target) if q_target is not None else 1.0
-        min_distance = min(distance, second_distance) if second_distance is not None else distance
-        # Prefer buckets clearly away from both target legs and with low posterior
-        # realization probability. Price is only execution context, not target choice.
-        distance_bonus = min(4.0, max(0.0, float(min_distance)))
-        score = distance_bonus * 0.35 + (1.0 - min(1.0, max(0.0, q_value))) * 0.65
-        candidates.append(
-            {
-                "bucket": label,
-                "outcome": label,
-                "remote_no_bucket": label,
-                "remote_bucket_realization_prob": q_value if q_target is not None else None,
-                "remote_bucket_realization_pct": _pct(q_value) if q_target is not None else None,
-                "target_probability_field": q_field or None,
-                "target_distance": _round(distance, 2),
-                "second_target_distance": _round(second_distance, 2),
-                "distance_from_active_legs": _round(min_distance, 2),
-                "remote_no_directional_bucket_distance": directional_bucket_distance,
-                "remote_no_min_bucket_distance": remote_min_distance,
-                "remote_no_max_bucket_distance": remote_max_distance,
-                "best_ask_no": no_ask,
-                "best_bid_no": no_bid,
-                "score": _round(score, 4),
-                "enabled": bool(q_value <= 0.20),
-            }
-        )
-    candidates.sort(
-        key=lambda item: (
-            int(bool(item.get("enabled"))),
-            float(item.get("score") or -1.0),
-            float(item.get("distance_from_active_legs") or 0.0),
-        ),
-        reverse=True,
-    )
-    best = candidates[0] if candidates else {}
-    if not best:
-        return {
-            "available": False,
-            "remote_no_bucket": "",
-            "reason": "no_above_remote_bucket_candidate_in_distance_window",
-            "remote_no_min_bucket_distance": remote_min_distance,
-            "remote_no_max_bucket_distance": remote_max_distance,
-            "version": "remote_no_defense_candidate_v1",
-        }
-    reason = (
-        f"目标桶 {target or '—'} 上方 +{int(best.get('remote_no_directional_bucket_distance') or 0)} 桶"
-        f"{('/第二目标 ' + second) if second else ''}，"
-        f"该桶后验兑现概率 {_round(best.get('remote_bucket_realization_pct'), 1)}%，"
-        "只作为 NO 防守腿；价格只用于限价/预算。"
-    )
-    return {
-        "available": True,
-        "remote_no_bucket": best.get("remote_no_bucket"),
-        "remote_bucket_realization_prob": best.get("remote_bucket_realization_prob"),
-        "remote_bucket_realization_pct": best.get("remote_bucket_realization_pct"),
-        "remote_no_reason": reason,
-        "enabled": bool(best.get("enabled")),
-        "candidate": best,
-        "candidates": candidates[:5],
-        "remote_no_min_bucket_distance": remote_min_distance,
-        "remote_no_max_bucket_distance": remote_max_distance,
-        "selection_rule": "target-above +2/+3 buckets only; exclude target/second target; prefer low final-posterior realization probability",
-        "version": "remote_no_defense_candidate_v1",
-    }
-
-
 def _sell_old_buy_new_position_legs(
     *,
     target_label: str,
@@ -9274,8 +9514,6 @@ def _target_bucket_trade_plan(
             }
         )
 
-    second_target_label = str(target_candidates[1].get("outcome") or "") if len(target_candidates) > 1 else ""
-    remote_no = _remote_no_defense_candidate(all_rows or target_candidates, target_label, second_target_label)
     position_legs = _sell_old_buy_new_position_legs(
         target_label=target_label,
         target_side=target_side,
@@ -9309,11 +9547,6 @@ def _target_bucket_trade_plan(
         ],
         "buckets": buckets,
         **position_legs,
-        "remote_no_bucket": remote_no.get("remote_no_bucket"),
-        "remote_bucket_realization_prob": remote_no.get("remote_bucket_realization_prob"),
-        "remote_bucket_realization_pct": remote_no.get("remote_bucket_realization_pct"),
-        "remote_no_reason": remote_no.get("remote_no_reason") or remote_no.get("reason"),
-        "remote_no_candidate": remote_no,
     }
 
 
@@ -9564,10 +9797,6 @@ def _decision_text(
         "action": action,
         "target_realization_trade_plan": trade_plan,
         "target_bucket": top_label,
-        "remote_no_bucket": trade_plan.get("remote_no_bucket"),
-        "remote_bucket_realization_prob": trade_plan.get("remote_bucket_realization_prob"),
-        "remote_bucket_realization_pct": trade_plan.get("remote_bucket_realization_pct"),
-        "remote_no_reason": trade_plan.get("remote_no_reason"),
         "suppressed_higher_bucket_group": higher_group if momentum_blocking or trajectory_cooling or lower_boundary_suppressed_by_track else None,
         "main_reason_not_rain": bool((momentum_blocking or lower_boundary_suppressed_by_track) and not precip_cooling),
         "watch_buckets": [str(row.get("outcome") or "") for row in target_candidates[:3] if row.get("outcome")],

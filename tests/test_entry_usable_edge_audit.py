@@ -5,8 +5,13 @@ from scan_weather_market import (
     _build_candidate_decision_context,
     _build_entry_usable_edge_audit,
     _candidate_sort_score_value,
-    _entry_usable_edge_order_block_reason,
+    _entry_order_policy_block_reason,
     _entry_strategy_family_from_details,
+    _exit_order_policy_allow_reason,
+    _exit_order_policy_block_reason,
+    _exit_order_policy_guard_details,
+    _filter_executable_exit_payload,
+    _normalize_exit_reason_family_codes,
     _normalize_entry_block_reason_codes,
 )
 
@@ -41,34 +46,130 @@ class EntryUsableEdgeAuditTest(unittest.TestCase):
         self.assertTrue(audit["settlement_exit_only"])
 
     def test_posterior_settlement_order_guard_uses_posterior_block_reason(self):
-        allowed = _entry_usable_edge_order_block_reason(
-            {
-                "strategy_family": "posterior_settlement",
-                "posterior_settlement_entry_allowed": True,
-            }
-        )
-        blocked = _entry_usable_edge_order_block_reason(
-            {
-                "strategy_family": "posterior_settlement",
-                "posterior_settlement_entry_allowed": False,
-                "posterior_settlement_entry_block_reason": "target_realization_reliability_below_min",
-            }
-        )
+        with patch(
+            "scan_weather_market.validate_sequential_bayes_execution_context",
+            return_value={"ok": True, "blockers": []},
+        ):
+            allowed = _entry_order_policy_block_reason(
+                {
+                    "strategy_family": "posterior_settlement",
+                    "posterior_settlement_entry_allowed": True,
+                    "decision_ssot": "posterior_ssot_fact",
+                    "target_probability_field": "posterior_ssot_fact.target_probability",
+                }
+            )
+            blocked = _entry_order_policy_block_reason(
+                {
+                    "strategy_family": "posterior_settlement",
+                    "posterior_settlement_entry_allowed": False,
+                    "posterior_settlement_entry_block_reason": "target_realization_reliability_below_min",
+                    "decision_ssot": "posterior_ssot_fact",
+                    "target_probability_field": "posterior_ssot_fact.target_probability",
+                }
+            )
 
         self.assertEqual(allowed, "")
         self.assertEqual(blocked, "target_realization_reliability_below_min")
 
     def test_posterior_settlement_order_guard_blocks_zero_ssot_plan_notional(self):
-        blocked = _entry_usable_edge_order_block_reason(
-            {
-                "strategy_family": "posterior_settlement",
-                "posterior_settlement_entry_allowed": True,
-                "target_realization_plan_notional": 0.0,
-                "target_realization_plan_notional_source": "ui_snapshot_ssot",
-            }
-        )
+        with patch(
+            "scan_weather_market.validate_sequential_bayes_execution_context",
+            return_value={"ok": True, "blockers": []},
+        ):
+            blocked = _entry_order_policy_block_reason(
+                {
+                    "strategy_family": "posterior_settlement",
+                    "posterior_settlement_entry_allowed": True,
+                    "target_realization_plan_notional": 0.0,
+                    "target_realization_plan_notional_source": "ui_snapshot_ssot",
+                    "decision_ssot": "posterior_ssot_fact",
+                    "target_probability_field": "posterior_ssot_fact.target_probability",
+                }
+            )
 
         self.assertEqual(blocked, "target_realization_plan_notional_nonpositive")
+
+    def test_legacy_exit_codes_are_not_bayes_exit_triggers(self):
+        reasons, codes, removed = _filter_executable_exit_payload(
+            ["旧退出诊断", "Bayes目标桶切换：旧YES目标桶退出"],
+            [
+                "stop_loss",
+                "trail_stop",
+                "edge_min",
+                "weather_repricing_exit",
+                "target_realization_switch_buy_exit_old",
+            ],
+            side="YES",
+        )
+
+        self.assertEqual(codes, [])
+        self.assertEqual(
+            sorted(removed),
+            [
+                "edge_min",
+                "stop_loss",
+                "target_realization_switch_buy_exit_old",
+                "trail_stop",
+                "weather_repricing_exit",
+            ],
+        )
+        self.assertEqual(
+            _normalize_exit_reason_family_codes(
+                [
+                    "stop_loss",
+                    "trail_stop",
+                    "edge_min",
+                    "target_realization_yes_target_invalidated",
+                ]
+            ),
+            ["target_realization"],
+        )
+        self.assertEqual(reasons, [])
+
+    def test_exit_order_policy_blocks_non_bayes_exit_submit(self):
+        block_reason = _exit_order_policy_block_reason(
+            ["stop_loss", "trail_stop", "edge_min", "weather_repricing_exit"]
+        )
+        details = _exit_order_policy_guard_details(
+            ["stop_loss", "trail_stop", "edge_min", "weather_repricing_exit"],
+            reasons=["旧退出诊断"],
+            block_reason=block_reason,
+            side="YES",
+        )
+
+        self.assertEqual(block_reason, "non_bayes_exit_candidate_disabled")
+        self.assertFalse(details["exit_order_policy_allowed"])
+        self.assertEqual(details["exit_order_policy_allow_reason"], "")
+        self.assertEqual(details["exit_order_policy_allowed_reason_codes"], [])
+        self.assertEqual(
+            sorted(details["exit_order_policy_removed_legacy_codes"]),
+            ["edge_min", "stop_loss", "trail_stop", "weather_repricing_exit"],
+        )
+
+    def test_exit_order_policy_allows_target_realization_exit_submit(self):
+        codes = ["target_realization_yes_target_invalidated"]
+        family = {"exit_reason_family": "target_realization"}
+        block_reason = _exit_order_policy_block_reason(codes, details=family)
+        details = _exit_order_policy_guard_details(
+            codes,
+            reasons=["Bayes目标桶切换：旧YES目标桶退出"],
+            details=family,
+            block_reason=block_reason,
+            side="YES",
+        )
+
+        self.assertEqual(block_reason, "")
+        self.assertEqual(
+            _exit_order_policy_allow_reason(codes, details=family),
+            "target_realization",
+        )
+        self.assertTrue(details["exit_order_policy_allowed"])
+        self.assertEqual(details["exit_order_policy_allow_reason"], "target_realization")
+        self.assertEqual(
+            details["exit_order_policy_allowed_reason_codes"],
+            ["target_realization_yes_target_invalidated"],
+        )
+        self.assertEqual(details["exit_order_policy_removed_legacy_codes"], [])
 
     def test_posterior_settlement_sort_score_takes_priority(self):
         self.assertAlmostEqual(
@@ -833,38 +934,55 @@ class EntryUsableEdgeAuditTest(unittest.TestCase):
         self.assertFalse(audit["entry_usable_edge_block_nonpositive"])
         self.assertTrue(audit["entry_usable_edge_size_floor_applied"])
         self.assertEqual(
-            _entry_usable_edge_order_block_reason(audit),
-            "entry_usable_edge_nonpositive",
+            _entry_order_policy_block_reason(audit),
+            "non_bayes_entry_candidate_disabled",
         )
 
-    def test_order_guard_blocks_nonpositive_or_zero_entry_usable_edge_size(self):
+    def test_order_guard_blocks_legacy_edge_candidates_even_when_edge_positive(self):
         self.assertEqual(
-            _entry_usable_edge_order_block_reason(
+            _entry_order_policy_block_reason(
                 {
                     "entry_usable_edge": -0.001,
                     "entry_usable_edge_size_scale": 0.0,
                     "entry_usable_edge_block_nonpositive": True,
                 }
             ),
-            "entry_usable_edge_nonpositive",
+            "non_bayes_entry_candidate_disabled",
         )
         self.assertEqual(
-            _entry_usable_edge_order_block_reason(
+            _entry_order_policy_block_reason(
                 {
                     "entry_usable_edge": 0.02,
                     "entry_usable_edge_size_scale": 0.0,
                 }
             ),
-            "entry_usable_edge_size_zero",
+            "non_bayes_entry_candidate_disabled",
         )
         self.assertEqual(
-            _entry_usable_edge_order_block_reason(
+            _entry_order_policy_block_reason(
                 {
                     "entry_usable_edge": 0.02,
                     "entry_usable_edge_size_scale": 0.4,
+                    "strategy": "lcb_global",
                 }
             ),
-            "",
+            "non_bayes_entry_candidate_disabled",
+        )
+
+    def test_order_guard_blocks_trajectory_projected_bucket_as_entry_source(self):
+        self.assertEqual(
+            _entry_order_policy_block_reason(
+                {
+                    "strategy_family": "path_probability_follow",
+                    "entry_strategy_family": "path_probability_follow",
+                    "strategy": "path_probability_follow",
+                    "temperature_trajectory_projected_bucket": "32°C",
+                    "breakout_candidate_bucket": "32°C",
+                    "entry_usable_edge": 0.08,
+                    "entry_usable_edge_size_scale": 1.0,
+                }
+            ),
+            "non_bayes_entry_candidate_disabled",
         )
 
     def test_reason_codes_add_churn_penalty(self):

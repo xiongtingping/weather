@@ -91,3 +91,28 @@ def test_ctp_materializer_preserves_hard_zero_observed_constraint_for_broken_low
     ]
     assert "q_bayes_lcb" not in row
     assert "q_bayes_ucb" not in row
+
+
+def test_ctp_materializer_source_trace_has_source_observation_id() -> None:
+    module = load_materializer_module()
+    row = {
+        "id": 42,
+        "event_date": "2026-07-03",
+        "fact_as_of": "2026-07-03T08:00:00Z",
+    }
+    payload = {
+        "station_id": "ZUUU",
+        "fact_as_of": "2026-07-03T08:00:00Z",
+    }
+
+    trace = module._materializer_source_trace(
+        row=row,
+        payload=payload,
+        parent_raw_json='{"fact": 42}',
+        created_at="2026-07-03T09:00:00Z",
+    )
+
+    assert trace["source_observation_ids"]
+    assert trace["source_observations"][0]["source_observation_id"] == trace["source_observation_ids"][0]
+    assert trace["source_latency_trace"][0]["source_observation_id"] == trace["source_observation_ids"][0]
+    assert trace["source_observations"][0]["source_event_id"] == trace["source_event_ids"][0]

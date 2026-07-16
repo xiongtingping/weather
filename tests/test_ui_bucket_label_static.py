@@ -55,6 +55,107 @@ def test_dashboard_uses_local_font_stack_without_remote_google_fonts():
     assert '"PingFang SC"' in html
 
 
+def test_recovered_bayes_chain_is_marked_retired_compat_in_frontend():
+    html = UI_INDEX.read_text(encoding="utf-8")
+    block = _function_block("bayesChainForDistributionRow")
+
+    assert "LEGACY_BAYES_CHAIN_RETIRED_COMPAT_META" in html
+    assert "legacy_bayes_chain_retired_compat_v1" in html
+    assert "ui_primary_allowed: false" in html
+    assert "production_probability_allowed: false" in html
+    assert "replacement_posterior_runtime: 'hierarchical_posterior_pipeline_runtime.py'" in html
+    assert "recoveredLegacyEvidence = true" not in block
+    assert "hasLegacyEvidencePart" in block
+
+
+def test_distribution_table_legacy_likelihood_fallback_is_retired_compat_helper():
+    html = UI_INDEX.read_text(encoding="utf-8")
+    helper = _function_block("legacyDistributionLikelihoodCompatForRow")
+    table = _function_block("renderDistributionTable")
+
+    assert "legacyDistributionLikelihoodCompatForRow" in html
+    assert "return null;" in helper
+    assert "schema: 'legacy_evidence_boundary_v1'" not in helper
+    assert "const rawLegacyLikelihoodCompat = legacyDistributionLikelihoodCompatForRow(row);" in table
+    assert "rawLegacyLikelihoodCompat && typeof rawLegacyLikelihoodCompat === 'object'" in table
+    assert "const componentProbability = (componentKey, evidenceKey, fallback)" not in table
+
+
+def test_physical_likelihood_panel_prefers_metar_strong_layer_before_legacy_fallback():
+    metar_block = _function_block("metarStrongLikelihoodSnapshotFromItem")
+    legacy_block = _function_block("legacyPhysicalLikelihoodSnapshotCompatFromItem")
+    wrapper_block = _function_block("physicalLikelihoodSnapshotFromItem")
+
+    assert "data.metar_strong_likelihood" in metar_block
+    assert "data.state_probs" in metar_block
+    assert "data.remaining_warming_by_state" in metar_block
+    assert "data.hard_constraints" in metar_block
+    assert "schema: 'metar_strong_likelihood_snapshot_v1'" in metar_block
+    assert "return null;" in legacy_block
+    assert "schema: 'legacy_physical_likelihood_retired_compat_v1'" not in legacy_block
+    assert "metarStrongLikelihoodSnapshotFromItem(item, snapshot)" in wrapper_block
+    assert "legacyPhysicalLikelihoodSnapshotCompatFromItem(item, snapshot)" in wrapper_block
+
+
+def test_trajectory_peak_estimate_reads_backend_ssot_without_frontend_mixture_math():
+    backend_block = _function_block("eventIntelBackendTrajectoryPeakEstimateData")
+    mixture_block = _function_block("eventIntelRemainingWarmingMixtureData")
+    path_block = _function_block("eventIntelPathReachProbabilityForBucket")
+
+    assert "trajectory_peak_estimate" in backend_block
+    assert "temperature_trajectory_peak_estimate" in backend_block
+    assert "path_reach_probability_by_bucket" in backend_block
+    assert "eventIntelBackendTrajectoryPeakEstimateData(...inputs)" in mixture_block
+    assert "const variance" not in mixture_block
+    assert "Math.sqrt(Math.max(0, variance))" not in mixture_block
+    assert "pathReachByBucket" in path_block
+
+
+def test_physical_realtime_and_timeline_use_strong_layer_not_legacy_evidence():
+    realtime_block = _function_block("renderPhysicalLikelihoodRealtimeStrip")
+    timeline_block = _function_block("renderTemperatureTrajectoryTimeline")
+    helper_block = _function_block("physicalStrongLikelihoodLayerDisplay")
+
+    assert "physicalStrongLikelihoodLayerDisplay" in realtime_block
+    assert "physicalStrongLikelihoodLayerDisplay" in timeline_block
+    assert "metarStrongLikelihoodSnapshotFromItem(item, payload)" in realtime_block
+    assert "metarStrongLikelihoodSnapshotFromItem(item, payload)" in timeline_block
+    assert "schema === 'metar_strong_likelihood_snapshot_v1'" in helper_block
+    assert "sourceRole === 'metar_strong_likelihood'" in helper_block
+    assert "physical_likelihood_evidence" not in realtime_block
+    assert "physical_likelihood_evidence" not in timeline_block
+
+
+def test_daily_trade_advice_uses_strong_likelihood_not_legacy_evidence_weights():
+    html = UI_INDEX.read_text(encoding="utf-8")
+    start = html.index("function formatDailyTradeAdviceSummary")
+    end = html.index("function isPosteriorSettlementCandidate", start)
+    block = html[start:end]
+
+    assert "metarStrongLikelihoodSnapshotFromItem(item, payload)" in block
+    assert "physicalStrongLikelihoodLayerDisplay(strongTradeSnapshot)" in block
+    assert "hard_constraints" in block
+    assert "q_bayes_model_evidence" not in block
+    assert "q_bayes_wu_forecast_evidence" not in block
+    assert "q_bayes_taf_peak_evidence" not in block
+    assert "q_bayes_observed_nowcast_evidence" not in block
+    assert "q_bayes_physical_likelihood_evidence" not in block
+    assert "q_bayes_independent_physics_residual_evidence" not in block
+
+
+def test_temperature_regime_panel_does_not_render_legacy_trajectory_evidence():
+    extract_block = _function_block("temperatureRegimeV1Extract")
+    panel_block = _function_block("renderTemperatureTrajectoryRegimeV1Panel")
+
+    assert "mergedDirect.evidence" in extract_block
+    assert "q_bayes_temperature_trajectory_evidence" not in extract_block
+    assert "temperature_trajectory_evidence" not in extract_block
+    assert "路径快照" in panel_block
+    assert "兼容读数" not in panel_block
+    assert "q_bayes_temperature_trajectory_evidence" not in panel_block
+    assert "temperature_trajectory_evidence" not in panel_block
+
+
 def test_source_peak_value_rows_do_not_frontend_bucketize_without_ssot_bucket():
     value_block = _function_block("sourcePeakBucketFromValue")
     mode_block = _function_block("sourcePeakBucketModeText")
@@ -77,8 +178,8 @@ def test_top_posterior_chart_renders_single_snapshot_as_short_line_not_points():
     assert "created_at_replay" in block
     assert "source: 'created_at_replay'" in block
     assert "const isSingleSnapshot = timestamps.length <= 1;" in block
-    assert "Top 3 最高温落桶后验趋势" in block
-    assert "实线：最高温落桶后验概率" in block
+    assert "Top 3 温度目标概率趋势" in block
+    assert "实线：最终概率" in block
     assert "未结算" in block
     assert "非当前实况" in block
     assert "${latestTime} 短线快照" in block
@@ -121,10 +222,10 @@ def test_final_posterior_distribution_does_not_fallback_to_temperature_path_dist
 def test_trade_copy_keeps_target_selection_path_probability_and_market_price_separate():
     html = UI_INDEX.read_text(encoding="utf-8")
 
-    assert "目标选择看 SSOT 落桶后验/资金计划" in html
+    assert "目标选择看后端最终概率/资金计划" in html
     assert "路径概率只作执行跟随门控" in html
     assert "价格/盘口仅作执行检查" in html
-    assert "交易建议按目标桶落桶后验" in html
+    assert "交易建议按目标桶最终概率" in html
     assert "目标桶路径概率" not in html
     assert "路径概率目标桶" not in html
     assert "目标选择只看目标桶路径概率" not in html
@@ -299,17 +400,17 @@ def test_event_bayes_prior_step_emphasizes_temperature_bucket_probability_change
     html = UI_INDEX.read_text(encoding="utf-8")
     block = _function_block("renderEventBayesPriorStep")
 
-    assert "气候背景组件桶" in block
+    assert "目标桶起点" in block
     assert "bayes-prior-spotlight" in block
-    assert "climate_prior 组件 Top" in block
-    assert "温度桶概率变化" in block
-    assert "相对 climate_prior 组件 Top" in block
+    assert "气候Top ${topPriorLabel} ${topPriorProb}" in block
+    assert "同一目标桶起点" in block
+    assert "气候分位" in block
     assert "bayes-prior-bar-row" in block
     assert "bayes-prior-bar-fill" in block
     assert "距Top ${ppDeltaText(delta)}" in block
     assert "bayes-prior-impact-grid" in block
-    assert "气候说明增量" in block
-    assert "盆地说明增量" in block
+    assert "气候影响" in block
+    assert "气候/环流" in block
     assert "q_bayes_climo_regime_pp_max_delta" in block
     assert "并入气候 ${ppImpactText(ppMaxDelta)}" in block
     assert "temperature_adjustment_c" in block
@@ -333,6 +434,7 @@ def test_chengdu_decision_bucket_strip_uses_top_three_posterior_rows():
 def test_distribution_bayes_chain_renders_step_delta_and_reason_cards():
     html = UI_INDEX.read_text(encoding="utf-8")
     block = _function_block("renderDistributionTable")
+    legacy_helper = _function_block("legacyDistributionLikelihoodCompatForRow")
 
     assert "bayes-step-card" in block
     assert "bayes-chain-steps" in block
@@ -341,13 +443,15 @@ def test_distribution_bayes_chain_renders_step_delta_and_reason_cards():
     assert "evidenceReason" in block
     assert "observedConstraintReason" in block
     assert "posteriorReason" in block
-    assert "chain.likelihood_parts" in block
-    assert "part.evidence" in block
-    assert "channelWeightText" in block
-    assert "channelContributionText" in block
+    assert "chain.likelihood_parts" not in block
+    assert "chain.likelihood_parts" not in legacy_helper
+    assert "part.evidence" not in legacy_helper
+    assert "legacyDistributionLikelihoodCompatForRow(row)" in block
+    assert "channelPrecisionShareText" in block
+    assert "channelDisplayImpactText" in block
     assert "bayes-driver-weight-chip" in block
-    assert "主支持" in block
-    assert "最高组件支持" in block
+    assert "主因" in block
+    assert "单源最高" in block
     assert "贡献=P×w" not in html
     assert "eventIntelMergeDistributionDiagnostics(payload.bucket_probabilities, itemDistribution)" in html
     assert "eventIntelMergeDistributionDiagnostics(itemPathRows" not in html
@@ -374,17 +478,27 @@ def test_temperature_regime_v1_panel_uses_ctp_source_component_fields():
     assert "regime_probs" in panel_block
     assert "forcing_onset_probs" in panel_block
     assert "peak_hour_distribution" in panel_block
-    assert "CTP 满权" in panel_block
-    assert "q_bayes_temperature_trajectory_mu_c / sigma_c / evidence 指向 v1" in panel_block
-    assert "energy_balance_nowcast 保持独立物理源" in panel_block
-    assert "v1 默认替代旧 temperature_trajectory likelihood update" in panel_block
-    assert "temperature-regime-v1-flow" in panel_block
+    assert "路径快照" in panel_block
+    assert "v1 后端轨迹" in panel_block
+    assert "强度缩放" in panel_block
+    assert "独立物理证据单独展示，不在前端二次扣减。" in panel_block
+    assert "temperature-regime-v1-summary-grid" in panel_block
+    assert "temperature-regime-v1-fit-strip" in panel_block
     assert "const regimeV1PanelHtml = renderTemperatureTrajectoryRegimeV1Panel(item, payload" in physical_block
     assert "${observedDynamicLayout ? '' : regimeV1PanelHtml}" in physical_block
     assert "const regimeV1PanelHtml = renderTemperatureTrajectoryRegimeV1Panel(item, item" in fallback_block
     assert "const regimeV1PanelHtml = renderTemperatureTrajectoryRegimeV1Panel(data, data" in html
     assert "const regimeV1PanelHtml = renderTemperatureTrajectoryRegimeV1Panel(item, payload || item" in html
     assert "{ key: 'temperature_trajectory', label: 'v1轨迹'" in ctp_chain_block
+
+
+def test_temperature_posterior_ctp_chain_is_null_safe_for_missing_bayes_chain():
+    block = _function_block("renderTemperaturePosteriorCtpChainPanel")
+
+    assert ".map(([label, rawRow]) => {" in block
+    assert "const row = rawRow && typeof rawRow === 'object' ? rawRow : {};" in block
+    assert "const chain = bayesChainForDistributionRow(row) || {};" in block
+    assert "chain.likelihood_prob ?? row.q_likelihood" in block
 
 
 def test_temperature_trajectory_timeline_prioritizes_hourly_awc_reports():
@@ -422,7 +536,8 @@ def test_event_bayes_likelihood_step_uses_merged_diagnostics_and_weights():
     assert "channelContribution(channel)" in step_block
     assert "if (channel.status)" in step_block
     assert "statusParts.join(' · ')" in step_block
-    assert "最高源概率" in step_block
+    assert "最强来源" in step_block
+    assert "按目标桶概率排序" in step_block
 
 
 def test_model_likelihood_panel_exposes_qm_bias_and_model_hit_rates():
@@ -488,6 +603,53 @@ def test_mean_bucket_missing_reason_is_visible_for_pending_model_rows():
     assert "bucket-focus-value is-na" in expected_block
     assert "均值桶缺失" in summary_block
     assert ".bucket-focus-value.is-na" in html
+
+
+def test_pending_model_blocks_frontend_physical_verdict_fallback():
+    html = UI_INDEX.read_text(encoding="utf-8")
+    verdict_block = _function_block("buildTodayPhysicalEvidenceVerdict")
+
+    assert "function eventIntelPosteriorSsotMissingReason" in html
+    assert "function isMarketDiscoveryPendingModelItem" in html
+    assert "function eventIntelPosteriorSsotPendingForDisplay" in html
+    assert "function marketDiscoveryPendingDisplayReason" in html
+    assert "eventIntelPosteriorSsotPendingForDisplay(" in verdict_block
+    assert "return {\n          available: false," in verdict_block
+    assert "后验SSOT未物化" in verdict_block
+    assert "等待后端生成 posterior_ssot_fact 后再展示物理总判。" in verdict_block
+    assert verdict_block.index("pendingPosteriorReason") < verdict_block.index("targetSwitchPhysicalModifier")
+
+
+def test_pending_model_blocks_distribution_top_spotlight_fallback():
+    block = _function_block("renderDistributionTable")
+    pending_idx = block.index("const posteriorSsotPendingReason = eventIntelPosteriorSsotPendingForDisplay(itemRef, distribution);")
+    ssot_idx = block.index("const posteriorSsotForSpotlight = eventIntelPosteriorSsotSection(itemRef);")
+    hard_outlook_idx = block.index("const hardOutlookLabel = targetOutlookForSpotlight")
+
+    assert pending_idx < ssot_idx
+    assert "source: 'posterior_ssot_pending'" in block
+    assert block.index("if (posteriorSsotPendingReason)") < hard_outlook_idx
+    assert "const capitalLabel = String(capitalPlanForSpotlight" not in block
+    assert "source: 'capital_plan'" not in block
+    assert "source === 'capital_plan'" not in block
+    assert "source: 'distribution_top'" not in block
+    assert "posteriorSpotlightPrimary.source === 'distribution_top'" not in block
+    assert "posteriorSpotlightCompactText(posteriorSsotPendingReason, 104)" in block
+
+
+def test_pending_model_blocks_intraday_physical_axis_neutral_fallback():
+    html = UI_INDEX.read_text(encoding="utf-8")
+    block = _function_block("renderEventIntelIntradayEvidenceAxis")
+    pending_idx = block.index("const pendingPosteriorReason = eventIntelPosteriorSsotPendingForDisplay(")
+    evidence_idx = block.index("const evidence = (Array.isArray(data.evidence_conclusions)")
+
+    assert "function renderEventIntelIntradayEvidenceAxis(payload, item = null)" in html
+    assert pending_idx < evidence_idx
+    assert "后验SSOT未物化" in block
+    assert "等待模型分布生成" in block
+    assert "不把空证据解释为中性或拉扯" in block
+    assert "renderEventIntelIntradayEvidenceAxis(payload, item)" in html
+    assert "renderEventIntelIntradayEvidenceAxis(payload || {}, item)" in html
 
 
 def test_target_bucket_temperature_progress_renders_from_ssot_outlook():
@@ -594,7 +756,7 @@ def test_daily_trade_advice_never_falls_back_target_to_posterior_top():
 
     assert "targetLabel || topLabel" not in block
     assert "const targetBucketText = targetHasSsotLabel ? fmtBucket(targetLabel) : '目标桶缺失';" in block
-    assert "const targetProbabilityLabel = targetHasSsotLabel ? eventIntelFinalBucketProbabilityLabel(targetLabel) : '目标桶后验';" in block
+    assert "const targetProbabilityLabel = targetHasSsotLabel ? eventIntelFinalBucketProbabilityLabel(targetLabel) : '目标桶概率';" in block
     assert "item.single_temperature_top_label || item.model_top_label" not in block
     assert "item.single_temperature_top_q || item.model_top_q" not in block
 
@@ -603,7 +765,7 @@ def test_market_context_and_decision_copy_keep_model_reference_separate():
     html = UI_INDEX.read_text(encoding="utf-8")
     block = _function_block("renderEventIntelAnomalyDynamic")
 
-    assert "结论 · 最高温落桶后验 · 当前建议" in html
+    assert "结论 · 最终概率 · 当前建议" in html
     assert "结论 · 校准后桶概率 · 当前建议" not in html
     assert "模型参考最高 ${marketFlow.model_top_label || '—'}" in block
     assert "模型 ${marketFlow.model_top_label || '—'}" in block
@@ -719,7 +881,7 @@ def test_corrected_top_summary_groups_qraw_methods_weights_and_qm_delta():
     summary_block = _function_block("renderCorrectedTopBucketBlock")
 
     assert "模型原始最高桶" in summary_block
-    assert "CTP 源组件校准摘要" in summary_block
+    assert "模型校准摘要" in summary_block
     assert "动态融合概率列" not in summary_block
     assert "模型校准增量" in summary_block
     assert "qmDeltaText" in summary_block
@@ -728,8 +890,11 @@ def test_corrected_top_summary_groups_qraw_methods_weights_and_qm_delta():
     assert "q_floor" in summary_block
     assert "q_ceil" in summary_block
     assert "q_raw_static" in summary_block
-    assert "模型源权重口径" in summary_block
-    assert "动态 / 场景 / 等权只作为模型组件诊断" in summary_block
+    assert "模型侧诊断" in summary_block
+    assert "模型校准组件" in summary_block
+    assert "只作为模型诊断" in summary_block
+    assert "动态权重" in summary_block
+    assert "场景权重" in summary_block
     assert "全部口径最高桶对照" not in summary_block
     assert "summaryTable" not in summary_block
     assert "${summaryTable}" not in summary_block

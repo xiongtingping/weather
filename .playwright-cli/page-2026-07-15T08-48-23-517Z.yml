@@ -1,0 +1,14 @@
+- generic [active] [ref=e1]:
+  - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic "自动交易：关闭=停止自动交易；开启=允许自动交易，数据刷新不受影响" [ref=e8] [cursor=pointer]:
+      - checkbox "自动交易 开启"
+      - generic [ref=e9]: 自动交易
+      - generic [ref=e11]: 开启
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]: SSOT 概率主线
+        - generic [ref=e16]: 单一只读快照 · 前端不复算
+      - generic [ref=e17]: 正在读取 /api/ui_snapshot…

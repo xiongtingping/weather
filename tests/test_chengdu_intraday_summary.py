@@ -2111,6 +2111,105 @@ class ChengduIntradaySummaryTest(unittest.TestCase):
             14.27,
         )
 
+    def test_distribution_rows_prefer_hierarchical_layer_contributions_chain(self):
+        payload = {
+            "rows": [
+                {
+                    "outcome": "30°C",
+                    "q_temperature_bucket_posterior": 0.20,
+                    "q_bayes_meta": {
+                        "source": "hierarchical_posterior_pipeline_runtime_v1",
+                        "phase": "d0_awc_preparation_window",
+                        "beta_weak": 0.4,
+                        "beta_strong": 1.2,
+                        "phase_reason": "unit_test_phase",
+                        "hard_mask_reason": "none",
+                        "score_components": {
+                            "prior": -1.20,
+                            "forecast_weak_likelihood": -0.10,
+                            "metar_strong_likelihood": -0.30,
+                        },
+                        "layer_contributions": {
+                            "prior": {
+                                "role": "root_prior",
+                                "boundary": "historical_climate_date_site_terrain_weather_type_only",
+                                "distribution": {"30°C": 0.45, "31°C": 0.55},
+                            },
+                            "forecast_weak_likelihood": {
+                                "role": "prediction_weak_likelihood",
+                                "boundary": "models_taf_wu_twc_forecasts_only_no_hard_facts",
+                                "beta": 0.4,
+                                "distribution": {"30°C": 0.35, "31°C": 0.65},
+                            },
+                            "metar_strong_likelihood": {
+                                "role": "observation_strong_likelihood",
+                                "boundary": "metar_temperature_momentum_physics_cloud_rain_state_once_no_double_count",
+                                "beta": 1.2,
+                                "distribution": {"30°C": 0.20, "31°C": 0.80},
+                            },
+                        },
+                    },
+                },
+                {
+                    "outcome": "31°C",
+                    "q_temperature_bucket_posterior": 0.80,
+                    "q_bayes_meta": {
+                        "source": "hierarchical_posterior_pipeline_runtime_v1",
+                        "phase": "d0_awc_preparation_window",
+                        "beta_weak": 0.4,
+                        "beta_strong": 1.2,
+                        "phase_reason": "unit_test_phase",
+                        "hard_mask_reason": "none",
+                        "score_components": {
+                            "prior": -0.90,
+                            "forecast_weak_likelihood": -0.05,
+                            "metar_strong_likelihood": -0.15,
+                        },
+                        "layer_contributions": {
+                            "prior": {
+                                "role": "root_prior",
+                                "boundary": "historical_climate_date_site_terrain_weather_type_only",
+                                "distribution": {"30°C": 0.45, "31°C": 0.55},
+                            },
+                            "forecast_weak_likelihood": {
+                                "role": "prediction_weak_likelihood",
+                                "boundary": "models_taf_wu_twc_forecasts_only_no_hard_facts",
+                                "beta": 0.4,
+                                "distribution": {"30°C": 0.35, "31°C": 0.65},
+                            },
+                            "metar_strong_likelihood": {
+                                "role": "observation_strong_likelihood",
+                                "boundary": "metar_temperature_momentum_physics_cloud_rain_state_once_no_double_count",
+                                "beta": 1.2,
+                                "distribution": {"30°C": 0.20, "31°C": 0.80},
+                            },
+                        },
+                    },
+                    "q_bayes_wu_forecast_evidence": 99.0,
+                    "q_bayes_wu_forecast_prob": 0.01,
+                },
+            ]
+        }
+
+        rows = _distribution_rows(payload)
+        by_bucket = {row["outcome"]: row for row in rows}
+        chain = by_bucket["31°C"]["bayes_chain"]
+
+        self.assertEqual(chain["schema"], "hierarchical_layer_contributions_chain_v1")
+        self.assertEqual(chain["role"], "hierarchical_joint_likelihood_explanation")
+        self.assertFalse(chain["old_additive_evidence_pool_used"])
+        self.assertFalse(chain["legacy_compat_fallback_used"])
+        self.assertAlmostEqual(chain["prior_prob"], 0.55)
+        self.assertAlmostEqual(chain["likelihood_parts"]["forecast_weak_likelihood"]["prob"], 0.65)
+        self.assertAlmostEqual(chain["likelihood_parts"]["metar_strong_likelihood"]["prob"], 0.80)
+        self.assertAlmostEqual(chain["beta_weak"], 0.4)
+        self.assertAlmostEqual(chain["beta_strong"], 1.2)
+        self.assertEqual(chain["phase"], "d0_awc_preparation_window")
+        self.assertGreater(chain["likelihood_prob"], 0.5)
+        self.assertNotIn("wu_forecast", chain["likelihood_parts"])
+        self.assertEqual(by_bucket["31°C"]["q_prior"], chain["prior_prob"])
+        self.assertEqual(by_bucket["31°C"]["q_likelihood"], chain["likelihood_prob"])
+
     def test_keeps_cumulative_bucket_out_of_single_top(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "archive.db"
@@ -2733,46 +2832,6 @@ class ChengduIntradaySummaryTest(unittest.TestCase):
         self.assertIsNone(trajectory["temperature_rise_rate_c_per_hour"])
         self.assertFalse(trajectory["temperature_rise_rate_trusted"])
         self.assertIn("unstable_temperature_rise_rate_suppressed", trajectory["missing_fields"])
-
-    def test_remote_no_defense_candidate_supplied_by_backend(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            db = Path(tmp) / "archive.db"
-            conn = _make_db(db)
-            payload = {
-                "weather_likelihood_refreshed_at": "2026-06-15T16:40:00+00:00",
-                "weather_likelihood_features": {},
-                "rows": [
-                    {"outcome": "31°C or below", "q_temperature_bucket_posterior": 0.38, "best_bid": 0.30, "best_ask": 0.36},
-                    {"outcome": "32°C", "q_temperature_bucket_posterior": 0.22, "best_bid": 0.20, "best_ask": 0.26},
-                    {"outcome": "33°C", "q_temperature_bucket_posterior": 0.16, "best_bid": 0.12, "best_ask": 0.18},
-                    {"outcome": "38°C", "q_temperature_bucket_posterior": 0.01, "best_bid": 0.01, "best_ask": 0.02},
-                ],
-            }
-            conn.execute(
-                """
-                INSERT INTO event_runs(run_date, event_date, slug, title, payload_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "2026-06-15",
-                    "2026-06-15",
-                    "highest-temperature-in-chengdu-on-june-15-2026",
-                    "Highest temperature in Chengdu on June 15?",
-                    json.dumps(payload),
-                    "2026-06-15T16:41:00+00:00",
-                ),
-            )
-            conn.commit()
-            conn.close()
-
-            summary = build_chengdu_intraday_summary(db, event_date="2026-06-15")
-
-        self.assertTrue(summary["ok"])
-        trade_plan = summary["decision"]["target_realization_trade_plan"]
-        self.assertEqual(trade_plan["remote_no_bucket"], "33°C")
-        self.assertEqual(summary["decision"]["remote_no_bucket"], "33°C")
-        self.assertLess(trade_plan["remote_bucket_realization_prob"], 0.20)
-        self.assertIn("上方 +2 桶", trade_plan["remote_no_reason"])
 
     def test_d0_refresh_cadence_uses_seconds_inside_peak_window(self):
         payload = {

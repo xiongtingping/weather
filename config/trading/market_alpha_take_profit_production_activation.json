@@ -1,0 +1,11 @@
+{
+  "schema": "market_alpha_take_profit_production_activation_v1",
+  "state": "disabled",
+  "strategy_artifact_sha256": "",
+  "cutover_artifact_sha256": "",
+  "live_decision_write_authorized": false,
+  "live_submit_authorized": false,
+  "reason_family": "market_alpha_take_profit",
+  "reason_code": "market_alpha_take_profit_top_yes_wave_completed",
+  "frozen_take_profit_price": 0.9
+}

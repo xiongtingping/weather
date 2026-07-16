@@ -132,3 +132,78 @@ def test_page_probability_consistency_rejects_stale_ctp_bucket_probability() -> 
 
     assert result["ok"] is False
     assert "ctp_probability_mismatch" in codes
+
+
+def test_page_probability_consistency_accepts_v6_reported_x_ui_projection() -> None:
+    payload = {
+        "run_date": "2026-07-15",
+        "facts": {
+            "source": "event_fact_latest_summary_with_upcoming",
+            "items": [
+                {
+                    "slug": "highest-temperature-in-chengdu-on-july-15-2026",
+                    "event_date": "2026-07-15",
+                    "posterior_ssot_fact": {
+                        "schema": "sequential_temperature_posterior_ssot_v4_reported_x",
+                        "reported_physical_x_distribution": [
+                            {"temperature_c": 38.0, "probability": 0.50},
+                            {"temperature_c": 39.0, "probability": 0.30},
+                            {"temperature_c": 40.0, "probability": 0.20},
+                        ],
+                    },
+                    "ui_sections": {
+                        "physical_high_posterior": {
+                            "state": "available",
+                            "top_temperature_c": 38.0,
+                            "top_probability": 0.50,
+                            "ranked_temperature_probabilities": [
+                                {"temperature_c": 38.0, "probability": 0.50},
+                                {"temperature_c": 39.0, "probability": 0.30},
+                                {"temperature_c": 40.0, "probability": 0.20},
+                            ],
+                        }
+                    },
+                }
+            ],
+        },
+    }
+
+    result = audit.audit_payload(payload, source="test")
+
+    assert result["ok"] is True
+    assert result["checked_items"] == 1
+    assert result["checked_fields"] == 6
+    assert result["items"][0]["top_buckets"][0]["bucket"] == "38°C"
+
+
+def test_page_probability_consistency_rejects_stale_v6_reported_x_ui_projection() -> None:
+    payload = {
+        "facts": {
+            "items": [
+                {
+                    "posterior_ssot_fact": {
+                        "schema": "sequential_temperature_posterior_ssot_v4_reported_x",
+                        "reported_physical_x_distribution": {"38": 0.60, "39": 0.40},
+                    },
+                    "ui_sections": {
+                        "physical_high_posterior": {
+                            "state": "available",
+                            "top_temperature_c": 39.0,
+                            "top_probability": 0.40,
+                            "ranked_temperature_probabilities": [
+                                {"temperature_c": 38.0, "probability": 0.40},
+                                {"temperature_c": 39.0, "probability": 0.60},
+                            ],
+                        }
+                    },
+                }
+            ]
+        }
+    }
+
+    result = audit.audit_payload(payload, source="test")
+    codes = {item["code"] for item in result["mismatches"]}
+
+    assert result["ok"] is False
+    assert "reported_x_ui_probability_mismatch" in codes
+    assert "reported_x_ui_top_temperature_mismatch" in codes

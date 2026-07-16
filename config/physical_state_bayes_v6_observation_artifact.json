@@ -1,0 +1,272 @@
+{
+  "artifact_sha256": "dbddfd1bd2fe78b6ebd8dc715556591ff80f97ae2efae92794ba4a3c7a4dacb5",
+  "label_policy": "deterministic_physical_state_label_v1",
+  "production_runtime_eligible": true,
+  "promotion_evidence_sha256": "08ef3d90f3a7857fb33ceccf64c3db6cc5ab3ea35ff9c848eeb04c43d4ef1283",
+  "promotion_scope": "canonical_replay_then_controlled_production_cutover",
+  "schema": "physical_state_bayes_v6_observation_artifact_v1",
+  "shadow_only": false,
+  "state": "approved",
+  "state_models": {
+    "cooling_then_rebound": {
+      "continuous_covariance": [
+        [
+          0.25,
+          0.018216264388231408
+        ],
+        [
+          0.018216264388231408,
+          11.04654090402029
+        ]
+      ],
+      "continuous_mean": [
+        -1.1393298059964727,
+        3.130511463844797
+      ],
+      "training_row_count": 567,
+      "weather_signature_probabilities": {
+        "__other__": 0.0008718395815170009,
+        "cloud=broken|weather=convective|convective=1": 0.0008718395815170009,
+        "cloud=broken|weather=none|convective=0": 0.0008718395815170009,
+        "cloud=broken|weather=precipitation|convective=0": 0.0008718395815170009,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.013077593722755012,
+        "cloud=clear_or_few|weather=none|convective=0": 0.7401918047079338,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.0008718395815170009,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 0.0008718395815170009,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.004359197907585004,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.0008718395815170009,
+        "cloud=scattered|weather=convective|convective=1": 0.044463818657367045,
+        "cloud=scattered|weather=none|convective=0": 0.1909328683522232,
+        "cloud=scattered|weather=precipitation|convective=0": 0.0008718395815170009
+      }
+    },
+    "final_locked": {
+      "continuous_covariance": [
+        [
+          0.7586366459330675,
+          -0.42335464727867744
+        ],
+        [
+          -0.42335464727867744,
+          14.552005874730046
+        ]
+      ],
+      "continuous_mean": [
+        -0.47969140004538235,
+        5.832539142273656
+      ],
+      "training_row_count": 8814,
+      "weather_signature_probabilities": {
+        "__other__": 5.668612890425713e-05,
+        "cloud=broken|weather=convective|convective=1": 0.018649736409500597,
+        "cloud=broken|weather=none|convective=0": 0.05390850858794853,
+        "cloud=broken|weather=precipitation|convective=0": 0.056402698259735845,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.02817300606541579,
+        "cloud=clear_or_few|weather=none|convective=0": 0.41284507680970467,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.0035712261209681993,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 0.00017005838671277137,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0006235474179468284,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.00017005838671277137,
+        "cloud=scattered|weather=convective|convective=1": 0.11592313360920582,
+        "cloud=scattered|weather=none|convective=0": 0.24494076299529505,
+        "cloud=scattered|weather=precipitation|convective=0": 0.06456550082194887
+      }
+    },
+    "slowing_warming": {
+      "continuous_covariance": [
+        [
+          0.25,
+          -0.14158069720823352
+        ],
+        [
+          -0.14158069720823352,
+          14.271903877181831
+        ]
+      ],
+      "continuous_mean": [
+        1.2099447513812154,
+        9.220994475138122
+      ],
+      "training_row_count": 905,
+      "weather_signature_probabilities": {
+        "__other__": 0.0005485463521667581,
+        "cloud=broken|weather=convective|convective=1": 0.0027427317608337905,
+        "cloud=broken|weather=none|convective=0": 0.012616566099835436,
+        "cloud=broken|weather=precipitation|convective=0": 0.0005485463521667581,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.019199122325836534,
+        "cloud=clear_or_few|weather=none|convective=0": 0.8113000548546352,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.0005485463521667581,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 0.0005485463521667581,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0016456390565002743,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.0005485463521667581,
+        "cloud=scattered|weather=convective|convective=1": 0.021393307734503566,
+        "cloud=scattered|weather=none|convective=0": 0.1267142073505211,
+        "cloud=scattered|weather=precipitation|convective=0": 0.0016456390565002743
+      }
+    },
+    "temporary_cooling": {
+      "continuous_covariance": [
+        [
+          0.25,
+          -0.011678928893116598
+        ],
+        [
+          -0.011678928893116598,
+          4.88580135193151
+        ]
+      ],
+      "continuous_mean": [
+        -1.1468324452338663,
+        3.0213143872113677
+      ],
+      "training_row_count": 1689,
+      "weather_signature_probabilities": {
+        "__other__": 0.0002948982601002654,
+        "cloud=broken|weather=convective|convective=1": 0.0002948982601002654,
+        "cloud=broken|weather=none|convective=0": 0.0002948982601002654,
+        "cloud=broken|weather=precipitation|convective=0": 0.0002948982601002654,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.012680625184311413,
+        "cloud=clear_or_few|weather=none|convective=0": 0.8030079622530227,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.0002948982601002654,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 0.0002948982601002654,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0020642878207018578,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.0002948982601002654,
+        "cloud=scattered|weather=convective|convective=1": 0.029194927749926276,
+        "cloud=scattered|weather=none|convective=0": 0.15069301091123563,
+        "cloud=scattered|weather=precipitation|convective=0": 0.0002948982601002654
+      }
+    },
+    "temporary_platform": {
+      "continuous_covariance": [
+        [
+          0.25,
+          0.0
+        ],
+        [
+          0.0,
+          19.43155206964633
+        ]
+      ],
+      "continuous_mean": [
+        0.0,
+        5.131900604432505
+      ],
+      "training_row_count": 7445,
+      "weather_signature_probabilities": {
+        "__other__": 6.710058377507885e-05,
+        "cloud=broken|weather=convective|convective=1": 6.710058377507885e-05,
+        "cloud=broken|weather=none|convective=0": 6.710058377507885e-05,
+        "cloud=broken|weather=precipitation|convective=0": 6.710058377507885e-05,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.01858686170569684,
+        "cloud=clear_or_few|weather=none|convective=0": 0.5705562638394954,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 6.710058377507885e-05,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 6.710058377507885e-05,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0011407099241763404,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 6.710058377507885e-05,
+        "cloud=scattered|weather=convective|convective=1": 0.03818023216801986,
+        "cloud=scattered|weather=none|convective=0": 0.37099912769241095,
+        "cloud=scattered|weather=precipitation|convective=0": 6.710058377507885e-05
+      }
+    },
+    "terminal_cooling": {
+      "continuous_covariance": [
+        [
+          0.31335839553260214,
+          0.030364800992755063
+        ],
+        [
+          0.030364800992755063,
+          23.181390404584192
+        ]
+      ],
+      "continuous_mean": [
+        -1.226873733963538,
+        8.717083051991898
+      ],
+      "training_row_count": 1481,
+      "weather_signature_probabilities": {
+        "__other__": 0.0003361344537815126,
+        "cloud=broken|weather=convective|convective=1": 0.014453781512605042,
+        "cloud=broken|weather=none|convective=0": 0.06285714285714286,
+        "cloud=broken|weather=precipitation|convective=0": 0.04134453781512605,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.04134453781512605,
+        "cloud=clear_or_few|weather=none|convective=0": 0.4110924369747899,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.0030252100840336134,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 0.0003361344537815126,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0003361344537815126,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.0003361344537815126,
+        "cloud=scattered|weather=convective|convective=1": 0.12067226890756302,
+        "cloud=scattered|weather=none|convective=0": 0.27058823529411763,
+        "cloud=scattered|weather=precipitation|convective=0": 0.033277310924369745
+      }
+    },
+    "warming": {
+      "continuous_covariance": [
+        [
+          0.4433514086508164,
+          0.38945008343999354
+        ],
+        [
+          0.38945008343999354,
+          19.825227240406004
+        ]
+      ],
+      "continuous_mean": [
+        1.4105711012927509,
+        6.7191948944526265
+      ],
+      "training_row_count": 6111,
+      "weather_signature_probabilities": {
+        "__other__": 8.173273395995096e-05,
+        "cloud=broken|weather=convective|convective=1": 0.004168369431957499,
+        "cloud=broken|weather=none|convective=0": 0.04846751123825092,
+        "cloud=broken|weather=precipitation|convective=0": 0.008255006129955047,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.015937883122190438,
+        "cloud=clear_or_few|weather=none|convective=0": 0.6210870453616674,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.0023702492848385777,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 8.173273395995096e-05,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0013894564773191662,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.00024519820187985286,
+        "cloud=scattered|weather=convective|convective=1": 0.04127503064977524,
+        "cloud=scattered|weather=none|convective=0": 0.24004903964037597,
+        "cloud=scattered|weather=precipitation|convective=0": 0.016591744993870044
+      }
+    },
+    "weather_suppressed": {
+      "continuous_covariance": [
+        [
+          0.25,
+          0.06622241561668875
+        ],
+        [
+          0.06622241561668875,
+          4.74138838400953
+        ]
+      ],
+      "continuous_mean": [
+        -0.20184221065278335,
+        2.3676411694032837
+      ],
+      "training_row_count": 2497,
+      "weather_signature_probabilities": {
+        "__other__": 0.00019972039145196724,
+        "cloud=broken|weather=convective|convective=1": 0.041741561813461156,
+        "cloud=broken|weather=none|convective=0": 0.28819652486518876,
+        "cloud=broken|weather=precipitation|convective=0": 0.20870780906730577,
+        "cloud=clear_or_few|weather=convective|convective=1": 0.01298182544437787,
+        "cloud=clear_or_few|weather=none|convective=0": 0.00019972039145196724,
+        "cloud=clear_or_few|weather=precipitation|convective=0": 0.021370081885360496,
+        "cloud=overcast_or_obscured|weather=convective|convective=1": 0.00019972039145196724,
+        "cloud=overcast_or_obscured|weather=none|convective=0": 0.0009986019572598363,
+        "cloud=overcast_or_obscured|weather=precipitation|convective=0": 0.0009986019572598363,
+        "cloud=scattered|weather=convective|convective=1": 0.16756540842820053,
+        "cloud=scattered|weather=none|convective=0": 0.00019972039145196724,
+        "cloud=scattered|weather=precipitation|convective=0": 0.2566407030157779
+      }
+    }
+  },
+  "training_code_sha256": "52aa61db28d14c4023756d74a14a17f2349f33f1e21a5ee357dbcd6a3474c182",
+  "training_dataset_sha256": "0fc4fa2573b65442d4d50862afc5f99bb0166217e1906623b548f8e5c61f0c48",
+  "training_end_exclusive": "2025-01-01",
+  "training_scope": "NCEI_ZUUU_2021_2025_hourly_physical_observation"
+}

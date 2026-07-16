@@ -58,6 +58,36 @@ def test_fetch_wunderground_hourly_temperatures_prefers_native_decimal_values(
     assert rows[0]["native_decimal"] is True
 
 
+def test_fetch_wunderground_hourly_temperatures_falls_back_to_inline_page_curve_when_api_blocked(
+    monkeypatch,
+) -> None:
+    api_url = (
+        "https://api.weather.com/v3/wx/forecast/hourly/15day"
+        "?apiKey=test&geocode=30.573%2C103.958&units=e&language=en-US&format=json"
+    )
+    html = (
+        f'<script>const endpoint="{api_url}";</script>'
+        '{"temperature":[82,90,88],"validTimeLocal":['
+        '"2026-07-12T12:00:00+0800","2026-07-12T13:00:00+0800","2026-07-12T14:00:00+0800"]}'
+    )
+
+    def fake_requests_get(url, **kwargs):
+        if "api.weather.com" not in url:
+            return types.SimpleNamespace(status_code=200, text=html)
+        return types.SimpleNamespace(status_code=403, text="Bad Request - Blocked")
+
+    monkeypatch.setattr(swm, "requests_get", fake_requests_get)
+
+    rows = swm.fetch_wunderground_hourly_temperatures(
+        "https://www.wunderground.com/hourly/cn/chengdu/ZUUU",
+        market_unit="C",
+    )
+
+    assert [row["temperature"] for row in rows] == [82.0, 90.0, 88.0]
+    assert rows[0]["unit"] == "F"
+    assert rows[0]["derived_from"] == "wunderground_hourly_page_inline_payload"
+
+
 def test_weather_com_hourly_peak_metrics_emit_plateau_distribution(monkeypatch) -> None:
     class FakeResponse:
         status_code = 200
@@ -93,6 +123,8 @@ def test_weather_com_hourly_peak_metrics_emit_plateau_distribution(monkeypatch) 
     assert metrics["expected_peak_window_end_hour_local"] == 17.0
     assert [row["hour_local"] for row in metrics["expected_peak_hour_distribution"]] == [15.0, 16.0, 17.0]
     assert metrics["peak_at"].startswith("2999-06-12T16:00:00")
+    assert len(metrics["hourly_curve"]) == 5
+    assert metrics["hourly_curve"][1]["temperature_c"] == 31.0
 
 
 def test_wunderground_forecast_peak_metrics_emit_hourly_plateau(monkeypatch) -> None:
@@ -131,6 +163,8 @@ def test_wunderground_forecast_peak_metrics_emit_hourly_plateau(monkeypatch) -> 
     assert metrics["expected_peak_window_start_hour_local"] == 15.0
     assert metrics["expected_peak_window_end_hour_local"] == 17.0
     assert [row["hour_local"] for row in metrics["expected_peak_hour_distribution"]] == [15.0, 16.0, 17.0]
+    assert len(metrics["hourly_curve"]) == 4
+    assert metrics["hourly_curve"][1]["temperature_c"] == 31.0
 
 
 def test_wunderground_forecast_rejects_hourly_plateau_far_below_daily_peak(monkeypatch) -> None:

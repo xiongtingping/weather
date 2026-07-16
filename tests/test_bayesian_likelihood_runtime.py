@@ -16,7 +16,7 @@ from bayesian_likelihood_runtime import (
     parse_temperature_bucket,
     precipitation_evidence_profile,
 )
-from bayesian_probability_runtime import apply_bayesian_probability_update
+from posterior_pipeline_entry_runtime import apply_bayesian_probability_update
 from scan_weather_market import (
     _build_weather_likelihood_features,
     _compact_weather_likelihood_features,
@@ -276,7 +276,7 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
 
         self.assertLess(cool["likelihood_probs"][1], warm["likelihood_probs"][1])
 
-    def test_bimodal_detection_sets_risk_scale(self) -> None:
+    def test_bimodal_detection_is_diagnostic_and_does_not_apply_a_legacy_size_gate(self) -> None:
         report = compute_weather_likelihood_vector(
             ["24°C", "29°C", "34°C"],
             {
@@ -287,7 +287,7 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
         )
 
         self.assertTrue(report["bimodal"]["bimodal"])
-        self.assertLess(report["risk_size_scale"], 1.0)
+        self.assertEqual(report["risk_size_scale"], 1.0)
         self.assertTrue(detect_bimodal_temperature_distribution([20, 20.2, 20.1, 26, 26.2, 26.1])["bimodal"])
 
     def test_dynamic_config_matches_time_philosophy(self) -> None:
@@ -515,6 +515,73 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
         self.assertGreater(peak["mu_c"], 31.0)
         self.assertLess(peak["mu_c"], 35.5)
 
+    def test_peak_estimator_reads_amsc_taf_and_metar_local_time(self) -> None:
+        peak = estimate_peak_temperature_from_features(
+            {
+                "unit": "C",
+                "event_tz": "Asia/Shanghai",
+                "observed_temp_c": 37.0,
+                "observed_today_max_c": 38.0,
+                "observed_today_max_source": "zuuu_metar_raw_amsc",
+                "zuuu_metar_raw_amsc_latest_temp_c": 37.0,
+                "taf_forecast_peak_c": 38.0,
+                "taf_forecast_peak_local": "2026-07-08T17:00:00+08:00",
+                "zuuu_metar_raw_amsc_latest_local": "2026-07-08T16:30:00+08:00",
+                "forecast_sigma_c": 1.0,
+                "observation_month": 7,
+            }
+        )
+
+        self.assertTrue(peak["enabled"])
+        self.assertEqual(peak["forecast_peak_temp_c"], 38.0)
+        self.assertEqual(peak["hour_local"], 16.5)
+        self.assertEqual(peak["peak_hour_local"], 17.0)
+
+    def test_peak_estimator_keeps_platform_recoil_path_before_peak_window_end(self) -> None:
+        peak = estimate_peak_temperature_from_features(
+            {
+                "unit": "C",
+                "event_tz": "Asia/Shanghai",
+                "observed_temp_c": 37.0,
+                "observed_today_max_c": 38.0,
+                "observed_today_max_source": "zuuu_metar_raw_amsc",
+                "zuuu_metar_raw_amsc_latest_temp_c": 37.0,
+                "zuuu_metar_raw_amsc_today_max_c": 38.0,
+                "taf_forecast_peak_c": 38.0,
+                "taf_forecast_peak_local": "2026-07-08T17:00:00+08:00",
+                "zuuu_metar_raw_amsc_latest_local": "2026-07-08T16:30:00+08:00",
+                "forecast_sigma_c": 1.0,
+                "observation_month": 7,
+                "cloud_cover_pct": 35.0,
+                "cloud_cover_low_pct": 0.0,
+                "dewpoint_c": 21.0,
+                "wind_speed_mps": 2.0,
+                "zuuu_metar_raw_amsc_latest_cloud_text": "SCT040",
+                "zuuu_metar_raw_amsc_latest_weather_text": "",
+                "zuuu_metar_raw_amsc_rolling_temperature_summary": {
+                    "state": "platform",
+                    "latest_drop_from_rolling_max_c": 1.0,
+                    "rolling_max_c": 38.0,
+                    "current_temp_c": 37.0,
+                    "point_count": 5,
+                },
+                "temperature_momentum_source": "zuuu_metar_raw_amsc",
+                "zuuu_metar_raw_amsc_temperature_momentum_30m_c_per_hour": -2.0,
+                "zuuu_metar_raw_amsc_temperature_momentum_1h_c_per_hour": -1.0,
+                "zuuu_metar_raw_amsc_temperature_momentum_2h_c_per_hour": 0.0,
+            }
+        )
+
+        self.assertTrue(peak["enabled"])
+        self.assertTrue(peak["platform_recoil_active"])
+        self.assertEqual(
+            peak["platform_recoil_watch"]["reason"],
+            "hard_metar_near_high_platform_before_peak_window_end",
+        )
+        self.assertGreaterEqual(peak["extrapolation_c"], 38.5)
+        self.assertGreater(peak["mu_c"], 38.0)
+        self.assertLess(peak["mu_c"], 39.0)
+
     def test_high_temp_guard_blocks_favorable_physics_amplification(self) -> None:
         features = {
             "unit": "C",
@@ -618,7 +685,7 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
         self.assertLess(report["likelihood_probs"][1], 1e-8)
         self.assertGreater(report["likelihood_probs"][0], report["likelihood_probs"][1] * 1e6)
 
-    def test_peak_estimator_locks_observed_max_after_lock_hour(self) -> None:
+    def test_peak_estimator_does_not_finalize_observed_max_after_predicted_lock_hour(self) -> None:
         peak = estimate_peak_temperature_from_features(
             {
                 "unit": "C",
@@ -630,9 +697,27 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
         )
 
         self.assertTrue(peak["enabled"])
+        self.assertEqual(peak["source"], "energy_balance_nowcast")
+        self.assertEqual(peak["observed_peak_finalization_state"], "provisional")
+        self.assertTrue(peak["prediction_window_lock_forbidden"])
+        self.assertGreater(peak["sigma_c"], 0.3)
+
+    def test_peak_estimator_locks_only_with_explicit_final_daily_max_evidence(self) -> None:
+        peak = estimate_peak_temperature_from_features(
+            {
+                "unit": "C",
+                "forecast_peak_temp": 33.0,
+                "observed_temp": 29.0,
+                "observed_today_max_c": 31.2,
+                "observation_hour_local": 14.25,
+                "hard_source_final_daily_max": True,
+            }
+        )
+
+        self.assertTrue(peak["enabled"])
         self.assertEqual(peak["source"], "locked_observed")
         self.assertAlmostEqual(peak["mu_c"], 31.2)
-        self.assertLessEqual(peak["sigma_c"], 0.3)
+        self.assertEqual(peak["observed_peak_finalization_state"], "final")
 
     def test_peak_estimator_uses_peak_window_before_locking_observed_max(self) -> None:
         peak = estimate_peak_temperature_from_features(
@@ -650,8 +735,8 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
         self.assertTrue(peak["enabled"])
         self.assertEqual(peak["source"], "energy_balance_nowcast")
         self.assertEqual(peak["peak_window_start_hour_local"], 14.0)
-        self.assertEqual(peak["peak_window_end_hour_local"], 17.0)
-        self.assertAlmostEqual(peak["hours_to_peak_window"], 2.75)
+        self.assertEqual(peak["peak_window_end_hour_local"], 16.5)
+        self.assertAlmostEqual(peak["hours_to_peak_window"], 2.25)
         self.assertGreater(peak["mu_c"], 31.0)
 
     def test_peak_estimator_live_regime_uses_curvature_and_peak_distribution(self) -> None:
@@ -1155,162 +1240,11 @@ class BayesianLikelihoodRuntimeTests(unittest.TestCase):
         )
 
         self.assertTrue(peak["enabled"])
-        self.assertEqual(peak["source"], "locked_trusted_observed")
+        self.assertEqual(peak["source"], "energy_balance_nowcast")
         self.assertAlmostEqual(peak["mu_c"], 28.0)
         self.assertEqual(peak["observed_today_max_source"], "zuuu_metar_raw_awc_today_max_c")
         self.assertEqual(peak["raw_observed_today_max_demoted_reason"], "wu_twc_intraday_deformation_alert")
-
-    def test_probability_runtime_uses_physical_likelihood_as_extra_evidence(self) -> None:
-        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "24"
-        items = [
-            {
-                "label": "24°C or below",
-                "q": {"q_round": 0.50, "q_raw": 0.50},
-                "per_model_q": {"m1": {"q_round": 0.50}},
-                "active_models": ["m1"],
-                "bayes_likelihood_features": {"dewpoint_c": 25.1, "forecast_peak_temp_c": 28.0},
-            },
-            {
-                "label": "26°C or higher",
-                "q": {"q_round": 0.50, "q_raw": 0.50},
-                "per_model_q": {"m1": {"q_round": 0.50}},
-                "active_models": ["m1"],
-            },
-        ]
-
-        meta = apply_bayesian_probability_update(items, weights={"m1": 1.0}, days_to_event=0.1)
-
-        self.assertTrue(meta["physical_likelihood_enabled"])
-        self.assertEqual(meta["physical_likelihood_source"], "weather_physical_likelihood")
-        self.assertGreater(items[1]["q"]["q_bayes_posterior"], items[0]["q"]["q_bayes_posterior"])
-        self.assertTrue(items[0]["q_bayes_meta"]["physical_likelihood_enabled"])
-        self.assertLess(items[0]["q_bayes_meta"]["physical_likelihood_prob"], 1e-6)
-        physical_row = items[0]["q_bayes_meta"]["physical_likelihood_row"]
-        self.assertTrue(physical_row["hard_zero"])
-        self.assertIn("dewpoint_above_bucket", physical_row["hard_reasons"])
-        self.assertIn("dewpoint", physical_row["components"])
-        self.assertTrue(items[0]["q_bayes_physical_likelihood_hard_zero"])
-        self.assertIn("dewpoint_above_bucket", items[0]["q_bayes_physical_likelihood_hard_reasons"])
-        self.assertIn("dewpoint", items[0]["q_bayes_physical_likelihood_components"])
-        self.assertIn("dewpoint", items[0]["q"]["q_bayes_physical_likelihood_components"])
-        self.assertIn("wet_bulb_constraint", items[0]["q_bayes_physical_likelihood_component_groups"])
-        self.assertIn(
-            "wet_bulb_constraint",
-            items[0]["q"]["q_bayes_physical_likelihood_component_groups"],
-        )
-        self.assertTrue(math.isclose(sum(item["q"]["q_raw"] for item in items), 1.0, rel_tol=0, abs_tol=1e-12))
-
-    def test_probability_runtime_allows_small_physical_likelihood_for_chengdu_d0_scope(self) -> None:
-        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_CITY_ALLOWLIST"] = "chengdu"
-        os.environ["PM_BAYES_LIKELIHOOD_STATION_ALLOWLIST"] = "ZUUU"
-        os.environ["PM_BAYES_LIKELIHOOD_D0_ONLY"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_D0_MAX_DAYS"] = "0.75"
-        items = [
-            {
-                "label": "30°C",
-                "q": {"q_round": 0.50, "q_raw": 0.50},
-                "per_model_q": {"m1": {"q_round": 0.50}},
-                "active_models": ["m1"],
-                "weather_likelihood_features": {
-                    "city": "chengdu",
-                    "station_id": "ZUUU",
-                    "forecast_peak_temp_c": 31.0,
-                    "observed_temp_c": 30.0,
-                    "observed_today_max_c": 30.5,
-                    "observation_hour_local": 14.0,
-                    "dewpoint_c": 22.0,
-                },
-            },
-            {
-                "label": "31°C",
-                "q": {"q_round": 0.50, "q_raw": 0.50},
-                "per_model_q": {"m1": {"q_round": 0.50}},
-                "active_models": ["m1"],
-            },
-        ]
-
-        meta = apply_bayesian_probability_update(items, weights={"m1": 1.0}, days_to_event=0.2)
-
-        self.assertTrue(meta["physical_likelihood_scope_allowed"])
-        self.assertEqual(meta["physical_likelihood_scope_reason"], "station_allowlist")
-        self.assertTrue(meta["physical_likelihood_stage_allowed"])
-        self.assertEqual(meta["physical_likelihood_stage_reason"], "d0_window")
-        self.assertGreater(meta["physical_likelihood_evidence"], 0.0)
-        self.assertLessEqual(meta["physical_likelihood_evidence"], 1.0)
-        self.assertTrue(items[0]["q_bayes_meta"]["physical_likelihood_enabled"])
-
-    def test_probability_runtime_blocks_physical_likelihood_outside_d0_scope(self) -> None:
-        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_EVIDENCE"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_CITY_ALLOWLIST"] = "chengdu"
-        os.environ["PM_BAYES_LIKELIHOOD_STATION_ALLOWLIST"] = "ZUUU"
-        os.environ["PM_BAYES_LIKELIHOOD_D0_ONLY"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_D0_MAX_DAYS"] = "0.75"
-        items = [
-            {
-                "label": "30°C",
-                "q": {"q_round": 0.50, "q_raw": 0.50},
-                "per_model_q": {"m1": {"q_round": 0.50}},
-                "active_models": ["m1"],
-                "weather_likelihood_features": {
-                    "city": "chengdu",
-                    "station_id": "ZUUU",
-                    "forecast_peak_temp_c": 31.0,
-                    "observed_temp_c": 30.0,
-                    "observed_today_max_c": 30.5,
-                    "observation_hour_local": 14.0,
-                    "dewpoint_c": 22.0,
-                },
-            },
-            {
-                "label": "31°C",
-                "q": {"q_round": 0.50, "q_raw": 0.50},
-                "per_model_q": {"m1": {"q_round": 0.50}},
-                "active_models": ["m1"],
-            },
-        ]
-
-        meta = apply_bayesian_probability_update(items, weights={"m1": 1.0}, days_to_event=1.2)
-
-        self.assertTrue(meta["physical_likelihood_scope_allowed"])
-        self.assertFalse(meta["physical_likelihood_stage_allowed"])
-        self.assertEqual(meta["physical_likelihood_stage_reason"], "outside_d0_window")
-        self.assertEqual(meta["physical_likelihood_evidence"], 0.0)
-        self.assertFalse(items[0]["q_bayes_meta"]["physical_likelihood_enabled"])
-
-    def test_model_distribution_only_features_do_not_add_uniform_evidence(self) -> None:
-        os.environ["PM_BAYES_PROBABILITY_ENABLED"] = "1"
-        os.environ["PM_BAYES_LIKELIHOOD_ENABLED"] = "1"
-        items = [
-            {
-                "label": "24°C",
-                "q": {"q_round": 0.20, "q_raw": 0.20},
-                "per_model_q": {"m1": {"q_round": 0.20}},
-                "active_models": ["m1"],
-                "weather_likelihood_features": {
-                    "unit": "C",
-                    "forecast_peak_temp": 27.0,
-                    "temperature_distribution": [26.5, 27.0, 27.5],
-                },
-            },
-            {
-                "label": "27°C",
-                "q": {"q_round": 0.80, "q_raw": 0.80},
-                "per_model_q": {"m1": {"q_round": 0.80}},
-                "active_models": ["m1"],
-            },
-        ]
-
-        meta = apply_bayesian_probability_update(items, weights={"m1": 1.0}, days_to_event=1.0)
-
-        self.assertFalse(meta["physical_likelihood_enabled"])
-        self.assertEqual(meta["physical_likelihood_evidence"], 0.0)
+        self.assertEqual(peak["observed_peak_finalization_state"], "provisional")
 
     def test_wu_forecast_peak_is_not_physical_residual_by_default(self) -> None:
         report = compute_weather_likelihood_vector(

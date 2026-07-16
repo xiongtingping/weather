@@ -1,0 +1,10 @@
+{
+  "schema": "production_probability_v6_market_context_activation_v1",
+  "state": "disabled",
+  "context_path": "",
+  "market_context_sha256": "",
+  "bridge_artifact_sha256": "",
+  "places_orders": false,
+  "authorizes_clob": false,
+  "blocks_physical_x": false
+}

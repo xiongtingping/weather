@@ -55,58 +55,10 @@ class TestSsotBuildAutoTradeSsot(unittest.TestCase):
         self.assertIs(ssot["main_entry_ok"], False)
         self.assertIn("signal_lcb=0.110<0.350", ssot["main_entry_reasons"])
 
-    def test_compute_edge_fields_backfills_lcb_runtime_fields(self) -> None:
-        from ui.server import _compute_edge_fields_in_place
+    def test_ui_does_not_backfill_lcb_runtime_fields(self) -> None:
+        from ui import server
 
-        row = {
-            "outcome": "23C",
-            "run_date": "2026-04-15",
-            "event_date": "2026-04-15",
-            "best_ask": 0.30,
-            "best_bid": 0.25,
-            "spread": 0.05,
-            "ask_depth_topN": 100.0,
-            "ask_depth_total": 100.0,
-            "entry_size_yes": 10.0,
-            "q_round": 0.65,
-            "q_raw": 0.65,
-            "q_calibrated": 0.65,
-            "q_entry": 0.65,
-            "q_edge": 0.65,
-            "q_round_model_spread": 0.01,
-            "time_factor_yes": 0.80,
-            "time_factor": 0.80,
-            "time_trend": 0.0,
-            "time_freshness": 1.0,
-            "structure_factor": 1.0,
-        }
-
-        with patch.dict(
-            "os.environ",
-            {
-                "PM_EDGE_TRADEABILITY_ENABLED": "1",
-                "PM_EDGE_REALIZABLE_V2_ENABLED": "1",
-                "PM_LCB_GLOBAL_ENABLED": "1",
-                "PM_LCB_GLOBAL_SIGNAL_LCB_MIN": "0",
-                "PM_LCB_GLOBAL_PATH_LCB_MIN": "0",
-                "PM_LCB_GLOBAL_EDGE_LCB_MIN": "0",
-                "PM_LCB_GLOBAL_EDGE_LCB_MIN_D0": "0",
-                "PM_LCB_GLOBAL_EDGE_LCB_MIN_D1": "0",
-                "PM_EDGE_POLICY_REQUIRE_EXEC_AUDIT": "0",
-                "PM_EDGE_POLICY_REQUIRE_V2": "0",
-                "PM_EDGE_PATH_CALIBRATION_PATH": "",
-                "PM_EDGE_REALIZABLE_CALIBRATION_PATH": "",
-                "PM_EDGE_REALIZABLE_CALIBRATION_PATH_ORDERS": "",
-            },
-            clear=False,
-        ):
-            _compute_edge_fields_in_place(row, 0.1)
-
-        self.assertIsNotNone(row.get("exec_edge_entry_yes"))
-        self.assertIsNotNone(row.get("edge_signal_lcb_yes"))
-        self.assertIsNotNone(row.get("edge_path_p_reach_lcb_yes"))
-        self.assertIsNotNone(row.get("edge_tradeability_profit_value_yes"))
-        self.assertIs(row.get("edge_tradeability_pass_yes"), True)
+        self.assertFalse(hasattr(server, "_compute_edge_fields_in_place"))
 
     def test_builds_candidate_from_side_specific_lcb_fields(self) -> None:
         from ui.server import _ssot_build_auto_trade_ssot
@@ -210,11 +162,11 @@ class TestSsotBuildAutoTradeSsot(unittest.TestCase):
         self.assertIsInstance(cand, dict)
         self.assertEqual(cand.get("source_fit_tier"), "settlement_source")
         self.assertEqual(cand.get("source_trust_tier"), "settlement_source")
-        self.assertEqual(cand.get("weather_strategy_source_fit_tier"), "settlement_source")
-        self.assertEqual(cand.get("weather_strategy_source_trust_tier"), "settlement_source")
+        self.assertNotIn("weather_strategy_source_fit_tier", cand)
+        self.assertNotIn("weather_strategy_source_trust_tier", cand)
         self.assertTrue(cand.get("source_usable_for_settlement"))
-        self.assertTrue(cand.get("weather_strategy_source_usable_for_settlement"))
-        self.assertEqual(cand.get("weather_strategy_settlement_station"), "KNYC")
+        self.assertNotIn("weather_strategy_source_usable_for_settlement", cand)
+        self.assertNotIn("weather_strategy_settlement_station", cand)
 
     def test_model_yes_top_direct_match_still_follows_tradeability_gate(self) -> None:
         from ui.server import _ssot_build_auto_trade_ssot
@@ -339,7 +291,7 @@ class TestSsotBuildAutoTradeSsot(unittest.TestCase):
             any("Plain LCB高价Q峰值桶NO" in reason for reason in ssot["main_entry_reasons"])
         )
 
-    def test_get_or_build_rebuilds_legacy_ssot_missing_lcb_fields(self) -> None:
+    def test_get_or_build_does_not_recompute_missing_lcb_fields(self) -> None:
         from ui.server import _get_or_build_auto_trade_ssot
 
         payload = {
@@ -422,9 +374,9 @@ class TestSsotBuildAutoTradeSsot(unittest.TestCase):
         self.assertIsInstance(ssot, dict)
         cand = ssot["main_candidate"]
         self.assertIsInstance(cand, dict)
-        self.assertIsNotNone(cand.get("edge_signal_lcb"))
-        self.assertIsNotNone(cand.get("edge_path_p_reach_lcb"))
-        self.assertIsNotNone(cand.get("edge_tradeability_profit_value"))
+        self.assertIsNone(cand.get("edge_signal_lcb"))
+        self.assertIsNone(cand.get("edge_path_p_reach_lcb"))
+        self.assertIsNone(cand.get("edge_tradeability_profit_value"))
 
     def test_get_or_build_rebuilds_legacy_ssot_missing_source_fit(self) -> None:
         from ui.server import _get_or_build_auto_trade_ssot

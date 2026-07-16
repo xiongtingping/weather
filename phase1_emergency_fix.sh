@@ -113,13 +113,11 @@ echo "[5/6] 清理僵尸任务..."
 read -p "是否清理超过 10 分钟的运行中任务? (y/N): " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    CLEANED=$(sqlite3 data/archive.db "
-    UPDATE auto_trade_jobs
-    SET state='timeout', ended_at=datetime('now')
-    WHERE state='running'
-    AND datetime(started_at, '+10 minutes') < datetime('now');
-    SELECT changes();
-    ")
+    CLEANED=$(python3 - <<'PY'
+from auto_trade_job_writer import mark_running_jobs_timeout_older_than
+print(mark_running_jobs_timeout_older_than("data/archive.db", minutes=10))
+PY
+    )
     echo "✓ 已清理 $CLEANED 个僵尸任务"
 else
     echo "✓ 跳过清理"

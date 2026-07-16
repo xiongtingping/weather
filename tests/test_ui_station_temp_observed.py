@@ -185,6 +185,59 @@ def test_slim_ui_snapshot_summary_rebuilds_stale_temperature_trajectory_status()
     assert "stale" not in status
 
 
+def test_slim_ui_snapshot_summary_syncs_root_temperature_trajectory_into_compact() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-9-2026",
+        "event_date": "2026-07-09",
+        "weather_likelihood_features": {
+            "observed_temp_c": 33.0,
+            "observed_today_max_c": 34.0,
+            "temperature_trajectory_state": "platform",
+            "temperature_trajectory_gate_state": "not_warming",
+            "temperature_trajectory_stable_rate_c_per_hour": 0.75,
+            "zuuu_metar_raw_amsc_temperature_point_count": 1,
+            "zuuu_metar_raw_amsc_temperature_trajectory_realization_state": "insufficient_points",
+        },
+        "weather_likelihood_features_compact": {
+            "zuuu_metar_raw_amsc_temperature_point_count": 1,
+            "zuuu_metar_raw_amsc_temperature_trajectory_realization_state": "insufficient_points",
+        },
+        "temperature_trajectory": {
+            "schema": "temperature_trajectory_summary_v1",
+            "state": "platform",
+            "gate_state": "not_warming",
+            "gate_reason": "trajectory_state_platform",
+            "stable_rate_c_per_hour": 0.75,
+            "effective_rate_c_per_hour": 0.75,
+            "adjusted_rate_c_per_hour": 0.0,
+            "confidence": 0.7,
+            "rolling_temperature_observation_summary": {
+                "point_count": 5,
+                "current_temp_c": 33.0,
+                "rolling_max_c": 34.0,
+                "rolling_slope_c_per_hour": 0.75,
+            },
+        },
+        "distribution": [
+            {"outcome": "37°C", "q_temperature_bucket_posterior": 0.25},
+        ],
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+
+    compact = slim["weather_likelihood_features_compact"]
+    assert compact["temperature_trajectory_state"] == "platform"
+    assert compact["temperature_trajectory_gate_state"] == "not_warming"
+    assert compact["temperature_trajectory_gate_reason"] == "trajectory_state_platform"
+    assert compact["temperature_trajectory_point_count"] == 5
+    assert compact["temperature_trajectory_current_temp_c"] == 33.0
+    assert compact["temperature_trajectory_rolling_max_c"] == 34.0
+    assert compact["temperature_trajectory_adjusted_rate_c_per_hour"] == 0.0
+    assert compact["zuuu_metar_raw_amsc_temperature_point_count"] == 1
+    assert compact["zuuu_metar_raw_amsc_temperature_trajectory_realization_state"] == "insufficient_points"
+    assert slim["temperature_trajectory_status"]["rolling_point_count"] == 5
+
+
 def test_slim_ui_snapshot_summary_keeps_locked_observed_trajectory_diagnostic() -> None:
     payload = {
         "slug": "highest-temperature-in-chengdu-on-july-2-2026",

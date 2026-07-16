@@ -51,7 +51,22 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   }
 fi
 echo "$$" > "$LOCK_PID_FILE"
-trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
+WORKER_CHILD_PID=""
+SHUTDOWN_REQUESTED=0
+
+cleanup_worker() {
+  rm -rf "$LOCK_DIR" 2>/dev/null || true
+}
+
+forward_worker_shutdown() {
+  SHUTDOWN_REQUESTED=1
+  if [ -n "${WORKER_CHILD_PID:-}" ] && kill -0 "$WORKER_CHILD_PID" 2>/dev/null; then
+    kill -TERM "$WORKER_CHILD_PID" 2>/dev/null || true
+  fi
+}
+
+trap cleanup_worker EXIT
+trap forward_worker_shutdown TERM INT
 
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then
@@ -107,6 +122,26 @@ export PM_AUTO_TRADE_ENTRY_PREFETCH_MAX_ATTEMPTS="$(normalize_positive_int_max "
 export PM_AUTO_TRADE_ENTRY_PREFETCH_BUDGET_SEC="$(normalize_positive_int_max "${PM_AUTO_TRADE_ENTRY_PREFETCH_BUDGET_SEC:-10}" 10 10)"
 
 echo "$(now_text) [auto_worker] start poll_sec=${POLL_SEC} once_timeout=${ONCE_TIMEOUT_SEC} event_timeout=${PM_AUTO_TRADE_EVENT_TIMEOUT_SEC}s worker_nice=${WORKER_NICE}" >> "$LOG"
+case "${PM_AUTO_TRADE_WORKER_PERSISTENT_PROCESS:-0}" in
+  1|true|TRUE|yes|YES|on|ON)
+    echo "$(now_text) [auto_worker] persistent_process schema_fast_path=${PM_AUTO_TRADE_WORKER_EXISTING_SCHEMA_FAST_PATH:-0}" >> "$LOG"
+    nice -n "$WORKER_NICE" "$PY" "$ROOT/scan_weather_market.py" --auto-trade-job-worker &
+    WORKER_CHILD_PID=$!
+    set +e
+    wait "$WORKER_CHILD_PID"
+    worker_rc=$?
+    if [ "$SHUTDOWN_REQUESTED" = "1" ] && kill -0 "$WORKER_CHILD_PID" 2>/dev/null; then
+      wait "$WORKER_CHILD_PID"
+      worker_rc=$?
+    fi
+    set -e
+    WORKER_CHILD_PID=""
+    if [ "$SHUTDOWN_REQUESTED" = "1" ]; then
+      exit 0
+    fi
+    exit "$worker_rc"
+    ;;
+esac
 while true; do
   if _weather_scan_active; then
     echo "$(now_text) [auto_worker] worker_deferred weather_scan_active" >> "$LOG"

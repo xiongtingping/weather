@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts import archive_db_rebuild_dry_run as dry_run  # noqa: E402
+from auto_trade_job_writer import copy_auto_trade_jobs_for_archive_rebuild  # noqa: E402
 
 
 DEFAULT_DB = ROOT / "data" / "archive.db"
@@ -31,6 +32,7 @@ DEFAULT_OUTPUT_DIR = ROOT / "data" / "archive_rebuilds"
 DEFAULT_REPORT_DIR = ROOT / "data" / "reports"
 ACTIVE_JOB_STATES = tuple(sorted(dry_run.ACTIVE_JOB_STATES))
 CANDIDATE_TABLES = set(dry_run.CANDIDATE_TABLES)
+CANDIDATE_COPY_BOUNDARY_SCHEMA = "archive_db_rebuild_candidate_copy_boundary_v1"
 
 
 def _utc_stamp() -> str:
@@ -39,6 +41,50 @@ def _utc_stamp() -> str:
 
 def _now_utc() -> str:
     return datetime.now(ZoneInfo("UTC")).replace(microsecond=0).isoformat()
+
+
+def build_archive_rebuild_candidate_copy_boundary(
+    *,
+    source_db: Path | str = "",
+    output_db: Path | str = "",
+) -> dict[str, Any]:
+    return {
+        "schema": CANDIDATE_COPY_BOUNDARY_SCHEMA,
+        "read_only": True,
+        "execution_mode": "candidate_db_table_copy_not_fact_snapshot_mutation",
+        "source_db": str(source_db or ""),
+        "output_db": str(output_db or ""),
+        "source_db_mode": "attach_read_only",
+        "output_scope": "candidate_archive_db_file",
+        "write_owner": "scripts/archive_db_rebuild_build.py",
+        "fact_writer_integration": {
+            "status": "not_applicable_for_candidate_copy",
+            "reason": "archive_rebuild_copies_tables_into_a_separate_candidate_db_and_does_not_append_or_repoint_live_fact_snapshot",
+        },
+        "guards": {
+            "writes_archive_db": False,
+            "writes_candidate_archive_db": True,
+            "replaces_source_db": False,
+            "writes_auto_trade_decisions": False,
+            "places_orders": False,
+            "historical_backfill": False,
+            "restarts_launchd": False,
+            "changes_parameters": False,
+            "executes_sql_against_source_db": False,
+        },
+        "allowed_sql_scope": [
+            "CREATE/INSERT/INDEX only inside output candidate DB",
+            "SELECT only from read-only attached source DB",
+        ],
+        "blocked_operations": [
+            "replace_source_archive_db",
+            "append_live_event_fact_history",
+            "repoint_live_event_fact_latest",
+            "write_live_event_fact_summary_cache",
+            "place_order",
+            "restart_launchd",
+        ],
+    }
 
 
 def _q(name: str) -> str:
@@ -213,19 +259,11 @@ def _copy_latest_by_event_table(
 
 
 def _copy_auto_trade_jobs(conn: sqlite3.Connection, *, cutoff: str) -> dict[str, Any]:
-    placeholders = ",".join("?" for _ in ACTIVE_JOB_STATES)
-    before = conn.total_changes
-    conn.execute(
-        f"""
-        INSERT INTO main.auto_trade_jobs
-        SELECT *
-        FROM src.auto_trade_jobs
-        WHERE state IN ({placeholders})
-           OR substr(created_at, 1, 10) >= ?
-        """,
-        (*ACTIVE_JOB_STATES, cutoff),
+    copied = copy_auto_trade_jobs_for_archive_rebuild(
+        conn,
+        active_states=ACTIVE_JOB_STATES,
+        cutoff=cutoff,
     )
-    copied = int(conn.total_changes - before)
     return {
         "table": "auto_trade_jobs",
         "policy": "keep_recent_created_at_and_active_states",
@@ -748,6 +786,10 @@ def build_candidate(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at_utc": _now_utc(),
         "source_db": str(source),
         "output_db": str(output),
+        "candidate_copy_boundary": build_archive_rebuild_candidate_copy_boundary(
+            source_db=source,
+            output_db=output,
+        ),
         "plan_summary": plan.get("summary", {}),
         "settings": plan.get("settings", {}),
         "build": {

@@ -105,7 +105,21 @@ def write_materialize_db(db_path: Path, payload: dict) -> int:
             slug TEXT NOT NULL,
             event_date TEXT NOT NULL,
             fact_id INTEGER NOT NULL,
-            updated_at TEXT
+            updated_at TEXT,
+            PRIMARY KEY(slug, event_date)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE event_fact_summary_cache (
+            fact_id INTEGER PRIMARY KEY,
+            slug TEXT NOT NULL,
+            event_date TEXT NOT NULL,
+            run_date TEXT NOT NULL,
+            fact_as_of TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
         )
         """
     )
@@ -344,7 +358,7 @@ def test_materialize_ctp_latest_facts_apply_repoints_latest_with_ctp(tmp_path: P
     db_path = tmp_path / "archive.db"
     original_fact_id = write_materialize_db(db_path, sample_payload_without_ctp())
 
-    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None)
+    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None, allow_historical=True)
 
     assert report["ok"] is True
     assert report["would_append_event_fact_history_rows"] == 1
@@ -372,10 +386,36 @@ def test_materialize_ctp_latest_facts_apply_repoints_latest_with_ctp(tmp_path: P
     assert {"grid", "cdf_values", "quantiles_c", "quantile_grid", "bucket_probabilities"}.issubset(posterior)
     assert payload["target_bucket_probability_field"] == "posterior_temperature_distribution.bucket_probabilities"
     assert payload["distribution"][0]["posterior_field"] == "posterior_temperature_distribution.bucket_probabilities"
-    assert summary["summary_cache_source"] == "event_fact_summary_cache"
-    assert summary["summary_cache_version"] == module.SUMMARY_CACHE_VERSION
+    assert summary["summary_cache_source"] == "weather_fact_snapshot_writer"
     assert summary["target_bucket_probability_field"] == "posterior_temperature_distribution.bucket_probabilities"
     assert audit.audit_latest_fact_ctp_coverage(db_path) == []
+
+
+def test_materialize_ctp_latest_facts_blocks_historical_apply_without_allow(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = load_module(MATERIALIZE_SCRIPT, "materialize_ctp_latest_facts")
+    db_path = tmp_path / "archive.db"
+    original_fact_id = write_materialize_db(db_path, sample_payload_without_ctp())
+    monkeypatch.setattr(module, "_is_historical_event_date", lambda event_date, *, today_key: True)
+
+    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None)
+
+    assert report["ok"] is False
+    assert report["allow_historical"] is False
+    assert report["historical_apply_blocked"] == 1
+    assert report["would_append_event_fact_history_rows"] == 1
+    assert report["applied_event_fact_history_rows"] == 0
+    assert report["items"][0]["apply_blocked_reason"] == "historical_apply_requires_explicit_allow"
+    conn = sqlite3.connect(db_path)
+    latest_fact_id = conn.execute("SELECT fact_id FROM event_fact_latest").fetchone()[0]
+    history_count = conn.execute("SELECT COUNT(*) FROM event_fact_history").fetchone()[0]
+    summary_count = conn.execute("SELECT COUNT(*) FROM event_fact_summary_cache").fetchone()[0]
+    conn.close()
+    assert latest_fact_id == original_fact_id
+    assert history_count == 1
+    assert summary_count == 0
 
 
 def test_materialize_ctp_latest_facts_replays_stale_regime_v1_component(
@@ -393,7 +433,7 @@ def test_materialize_ctp_latest_facts_replays_stale_regime_v1_component(
     monkeypatch.setenv("PM_BAYES_TAF_PEAK_ENABLED", "0")
     monkeypatch.setenv("PM_BAYES_TRAJECTORY_REGIME_V1_SOURCE_COMPONENT_ENABLED", "1")
 
-    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None)
+    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None, allow_historical=True)
 
     assert report["ok"] is True
     assert report["already_complete"] == 0
@@ -413,11 +453,11 @@ def test_materialize_ctp_latest_facts_replays_stale_regime_v1_component(
     ).fetchone()
     conn.close()
     payload = json.loads(latest["fact_json"])
-    groups = payload["posterior_temperature_distribution"]["source_components"]["groups"]
-    assert any(group.get("group") == "temperature_trajectory" for group in groups)
     assert payload["ctp_replay_reason"] == "available_regime_v1_missing_temperature_trajectory_component"
     assert payload["q_bayes_temperature_trajectory_enabled"] is True
-    assert payload["q_bayes_temperature_trajectory_evidence"] > 0
+    assert payload["temperature_trajectory_overlay_strength"] > 0
+    assert payload["temperature_trajectory_overlay"]["replacement"] == "layer_contributions.metar_strong_likelihood"
+    assert "q_bayes_temperature_trajectory_evidence" not in payload
     assert payload["target_bucket_probability_pct"] == payload["posterior_highest_probability_pct"]
     assert payload["target_bucket_selection"]["target_probability_pct"] == payload["posterior_highest_probability_pct"]
     assert payload["posterior_target_bucket_selection"] == payload["target_bucket_selection"]
@@ -481,7 +521,7 @@ def test_materialize_ctp_latest_facts_replays_regime_v1_precision_change(
     monkeypatch.setenv("PM_BAYES_TAF_PEAK_ENABLED", "0")
     monkeypatch.setenv("PM_BAYES_TRAJECTORY_REGIME_V1_SOURCE_COMPONENT_ENABLED", "1")
 
-    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None)
+    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None, allow_historical=True)
 
     assert report["ok"] is True
     assert report["already_complete"] == 0
@@ -502,8 +542,10 @@ def test_materialize_ctp_latest_facts_replays_regime_v1_precision_change(
     conn.close()
     materialized = json.loads(latest["fact_json"])
     assert materialized["ctp_replay_reason"] == "available_regime_v1_temperature_trajectory_precision_changed"
-    assert materialized["q_bayes_temperature_trajectory_evidence"] > 0.1
-    assert materialized["q_bayes_temperature_trajectory_evidence_scale"] > 0
+    assert materialized["temperature_trajectory_overlay_strength"] > 0.1
+    assert materialized["temperature_trajectory_overlay_strength_scale"] > 0
+    assert "q_bayes_temperature_trajectory_evidence" not in materialized
+    assert "q_bayes_temperature_trajectory_evidence_scale" not in materialized
     features = materialized["weather_likelihood_features"]
     assert features["temperature_momentum_posterior_gate_allowed"] is True
     assert "1h" in features["temperature_momentum_posterior_confirmed_windows"]
@@ -528,7 +570,7 @@ def test_materialize_ctp_latest_facts_marks_locked_observed_trajectory_inactive(
     monkeypatch.setenv("PM_BAYES_TAF_PEAK_ENABLED", "0")
     monkeypatch.setenv("PM_BAYES_TRAJECTORY_REGIME_V1_SOURCE_COMPONENT_ENABLED", "1")
 
-    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None)
+    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None, allow_historical=True)
 
     assert report["ok"] is True
     assert report["already_complete"] == 0
@@ -549,7 +591,8 @@ def test_materialize_ctp_latest_facts_marks_locked_observed_trajectory_inactive(
     assert not any(group.get("group") == "temperature_trajectory" for group in groups)
     assert payload["ctp_replay_reason"] == "stale_temperature_trajectory_component_without_available_regime_v1"
     assert payload["q_bayes_temperature_trajectory_enabled"] is False
-    assert payload["q_bayes_temperature_trajectory_evidence"] == 0.0
+    assert payload["temperature_trajectory_overlay_strength"] == 0.0
+    assert "q_bayes_temperature_trajectory_evidence" not in payload
     assert payload["q_bayes_temperature_trajectory_status"] == "locked_trusted_observed_after_peak_window"
     assert payload["q_bayes_temperature_trajectory_na_reason"] == "hard_observed_peak_locked_after_peak_window"
     assert payload["q_bayes_temperature_trajectory_peak_estimator_source"] == "locked_trusted_observed"
@@ -560,7 +603,7 @@ def test_materialize_ctp_latest_facts_repairs_missing_summary_cache(tmp_path: Pa
     db_path = tmp_path / "archive.db"
     original_fact_id = write_materialize_db(db_path, sample_payload())
 
-    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None)
+    report = module.run(db_path, apply=True, slug_like="%temperature%", limit=None, allow_historical=True)
 
     assert report["ok"] is True
     assert report["already_complete"] == 1
@@ -575,6 +618,5 @@ def test_materialize_ctp_latest_facts_repairs_missing_summary_cache(tmp_path: Pa
     conn.close()
     assert row is not None
     summary = json.loads(row[0])
-    assert summary["summary_cache_source"] == "event_fact_summary_cache"
-    assert summary["summary_cache_version"] == module.SUMMARY_CACHE_VERSION
+    assert summary["summary_cache_source"] == "weather_fact_snapshot_writer"
     assert summary["posterior_temperature_distribution"]["status"] == "ok"

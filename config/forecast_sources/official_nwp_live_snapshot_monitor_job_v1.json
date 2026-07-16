@@ -1,0 +1,20 @@
+{
+  "schema": "official_nwp_live_snapshot_monitor_job_v1",
+  "job_id": "official_nwp_live_peak_anchor_snapshot_v1",
+  "enabled_by_default": false,
+  "enable_environment_key": "PM_OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_ENABLED",
+  "target_timezone": "Asia/Shanghai",
+  "target_day_offset": 1,
+  "target_peak_anchor_local_hour": 14,
+  "collection_interval_sec": 900,
+  "snapshot_max_age_sec": 3600,
+  "providers": ["ecmwf", "icon", "gfs"],
+  "execution_budget": {
+    "max_provider_runs_per_job": 1,
+    "max_run_fallbacks": 2,
+    "hot_path_network_acquisition": false,
+    "writes_archive_db": false,
+    "writes_posterior": false,
+    "places_orders": false
+  }
+}

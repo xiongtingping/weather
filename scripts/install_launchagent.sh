@@ -16,7 +16,7 @@ fi
 
 install -d "$DST_DIR" "$ROOT/data" "$ROOT/data/logs"
 
-PLISTS=(
+ALL_PLISTS=(
   com.xiong.weather.ui.plist
   com.weather.market_ws.plist
   com.weather.market_refresh_1m.plist
@@ -31,6 +31,28 @@ PLISTS=(
   com.weather.archive_db_governance_offpeak.plist
   com.weather.archive_db_auto_guard.plist
 )
+PLISTS=("${ALL_PLISTS[@]}")
+if [ -n "${PM_LAUNCHD_ONLY:-}" ]; then
+  IFS=',' read -r -a requested_plists <<< "${PM_LAUNCHD_ONLY}"
+  PLISTS=()
+  for requested in "${requested_plists[@]}"; do
+    requested="$(printf '%s' "$requested" | xargs)"
+    [ -n "$requested" ] || continue
+    if [[ "$requested" != *.plist ]]; then
+      requested="${requested}.plist"
+    fi
+    for allowed in "${ALL_PLISTS[@]}"; do
+      if [ "$requested" = "$allowed" ]; then
+        PLISTS+=("$allowed")
+        break
+      fi
+    done
+  done
+  if [ "${#PLISTS[@]}" -eq 0 ]; then
+    echo "PM_LAUNCHD_ONLY did not name a supported LaunchAgent." >&2
+    exit 2
+  fi
+fi
 LEGACY_PLISTS=(
   com.weather.auto_trade_worker.plist
   com.weather.trade_sync_loop.plist

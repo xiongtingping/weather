@@ -13,7 +13,7 @@ from scan_weather_market import (
 def test_soft_forecast_posterior_status_marks_captured_not_in_main_posterior() -> None:
     status = _soft_forecast_posterior_status(
         peak_c=32.2,
-        evidence=0.0,
+        posterior_signal=0.0,
         status="zero_scaled",
         source="wunderground_forecast_daily_peak",
     )
@@ -23,6 +23,7 @@ def test_soft_forecast_posterior_status_marks_captured_not_in_main_posterior() -
     assert status["posterior_status"] == "captured_not_in_main_posterior"
     assert status["posterior_label"] == "已抓取但未进入主后验"
     assert status["not_in_posterior_reason"] == "created_at_safe_walk_forward_weight_zero"
+    assert status["posterior_evidence"] == 0.0
 
 
 def test_merge_decision_details_module_fallback_is_available_for_trade_sync() -> None:
@@ -42,7 +43,7 @@ def test_merge_decision_details_module_fallback_is_available_for_trade_sync() ->
 def test_soft_forecast_posterior_status_marks_included_when_evidence_is_nonzero() -> None:
     status = _soft_forecast_posterior_status(
         peak_c=32.0,
-        evidence=4.0,
+        posterior_signal=4.0,
         status="active",
         source="zuuu_taf_awc_tx_peak",
     )
@@ -52,6 +53,7 @@ def test_soft_forecast_posterior_status_marks_included_when_evidence_is_nonzero(
     assert status["posterior_status"] == "included_in_main_posterior"
     assert status["posterior_label"] == "已进入主后验"
     assert status["not_in_posterior_reason"] == ""
+    assert status["posterior_evidence"] == 4.0
 
 
 def test_compact_entry_payload_limits_size_and_keeps_core_fields() -> None:

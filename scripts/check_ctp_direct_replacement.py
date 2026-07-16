@@ -49,7 +49,7 @@ def _function_body(text: str, function_name: str) -> str:
 
 def audit_additive_runtime_path() -> List[Dict[str, Any]]:
     issues: List[Dict[str, Any]] = []
-    path = ROOT / "bayesian_probability_runtime.py"
+    path = ROOT / "posterior_pipeline_entry_runtime.py"
     text = _read(path)
     body = _function_body(text, "apply_bayesian_probability_update")
     forbidden_patterns = [
@@ -67,12 +67,12 @@ def audit_additive_runtime_path() -> List[Dict[str, Any]]:
                     "detail": "legacy additive evidence runtime marker remains in apply_bayesian_probability_update",
                 }
             )
-    if "build_temperature_posterior_distribution(" not in body:
+    if "_apply_hierarchical_bayesian_probability_update(" not in body:
         issues.append(
             {
-                "code": "ctp_runtime_call_missing",
+                "code": "hierarchical_runtime_call_missing",
                 "file": str(path.relative_to(ROOT)),
-                "detail": "apply_bayesian_probability_update does not call CTP runtime",
+                "detail": "apply_bayesian_probability_update does not call the hierarchical runtime",
             }
         )
     return issues
@@ -110,7 +110,7 @@ def audit_fallback() -> List[Dict[str, Any]]:
         r"additive[_a-z\s-]*pool[_a-z\s-]*fallback",
         r"old[_a-z\s-]*additive[_a-z\s-]*fallback",
     ]
-    for rel in ("bayesian_probability_runtime.py", "temperature_posterior_runtime.py", "ui/server.py"):
+    for rel in ("posterior_pipeline_entry_runtime.py", "temperature_posterior_runtime.py", "ui/server.py"):
         path = ROOT / rel
         text = _read(path)
         for pattern in patterns:

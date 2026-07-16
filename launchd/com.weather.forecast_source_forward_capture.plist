@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.forecast_source_forward_capture</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+      <string>-c</string>
+    <string>exec /usr/bin/env python3 /Users/xiong/weather/scripts/capture_current_forecast_source_forward.py --event-date &quot;$(TZ=Asia/Shanghai /bin/date +%F)&quot; --output /Users/xiong/weather/data/research/forecast_source_skill/forward/hourly_capture_latest.json --allow-research-write</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>UserName</key>
+  <string>xiong</string>
+  <key>GroupName</key>
+  <string>staff</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/xiong</string>
+    <key>USER</key>
+    <string>xiong</string>
+    <key>LOGNAME</key>
+    <string>xiong</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/forecast_source_forward_capture.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/forecast_source_forward_capture.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.dynamic_three_leg_execution</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/resident_dynamic_three_leg_execution.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <key>Disabled</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PM_DYNAMIC_THREE_LEG_RESIDENT_SUBMITTER_ENABLED</key>
+    <string>0</string>
+    <key>PM_DYNAMIC_THREE_LEG_DECISION_RESIDENT_ENABLED</key>
+    <string>0</string>
+    <key>PM_DYNAMIC_THREE_LEG_PRODUCTION_ENABLED</key>
+    <string>0</string>
+    <key>PM_DYNAMIC_THREE_LEG_LIVE_SUBMIT_ENABLED</key>
+    <string>0</string>
+    <key>PM_MARKET_ALPHA_TAKE_PROFIT_PRODUCTION_ENABLED</key>
+    <string>0</string>
+    <key>PM_MARKET_ALPHA_TAKE_PROFIT_LIVE_SUBMIT_ENABLED</key>
+    <string>0</string>
+    <key>PM_CLOB_ORDER_SERVICE_URL</key>
+    <string>http://127.0.0.1:8765</string>
+    <key>PM_DYNAMIC_THREE_LEG_RESIDENT_POLL_SEC</key>
+    <string>0.05</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/dynamic_three_leg_execution.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/dynamic_three_leg_execution.err.log</string>
+</dict>
+</plist>

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "archive.db"
 
 sys.path.insert(0, str(ROOT))
-from bayesian_probability_runtime import apply_bayesian_probability_update  # noqa: E402
+from posterior_pipeline_entry_runtime import apply_bayesian_probability_update  # noqa: E402
 from temperature_posterior_runtime import temperature_bucket_bounds  # noqa: E402
 
 

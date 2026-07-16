@@ -11,6 +11,16 @@ if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
   wait_for_polymarket_credentials_if_required "trade_engine" "${PM_TRADE_ENGINE_CREDENTIAL_RECHECK_SEC:-60}"
 fi
 
+# Production Bayes runtime permanently excludes the retired V2 Edge gate.
+# Keep any legacy values in .env from re-entering a daemon after its launch.
+while IFS='=' read -r legacy_runtime_key _; do
+  case "$legacy_runtime_key" in
+    PM_EDGE_REALIZABLE_*|PM_EDGE_TRADEABILITY_*|PM_LCB_GLOBAL_*|PM_ENTRY_USABLE_EDGE_*)
+      unset "$legacy_runtime_key"
+      ;;
+  esac
+done < <(env)
+
 if [[ "${PM_DATA_ONLY_MODE:-0}" =~ ^(1|true|yes|on)$ ]] || [[ "${PM_ACCOUNT_REQUESTS_DISABLED:-0}" =~ ^(1|true|yes|on)$ ]]; then
   echo "[trade_engine] account-requests disabled; skip unified engine"
   exit 0
