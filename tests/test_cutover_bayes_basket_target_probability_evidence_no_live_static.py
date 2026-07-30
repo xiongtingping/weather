@@ -53,14 +53,12 @@ def test_narrow_cutover_checkpoints_before_transaction_and_reprobes() -> None:
     assert first_probe < checkpoint < second_probe < cutover
     assert "--target-writer-stopped" in text
     assert "bayes_basket_target_no_live_vertical_slice_RKPK_v3.json" in text
-    assert "bayes_basket_probability_evidence_RKPK_formal_packet.json" in text
-    assert "metar_trajectory_candidate_packet.json" in text
-    assert text.index("FORMAL_PROBABILITY_EVIDENCE_PACKET") < text.index(
-        "CANDIDATE_PROBABILITY_EVIDENCE_PACKET"
-    )
-    assert "--probability-evidence-packet" in text
-    assert "--expected-probability-station-id RKPK" in text
-    assert "--require-no-probability-activations" in text
+    assert "SCHEMA_BOOTSTRAP_PACKET" in text
+    assert "coordinate_registry_manifest" in text
+    assert 'len(stations) != 45' in text
+    assert '"${READINESS_STATION_ARGS[@]}"' in text
+    assert "probability_evidence_packet=\"\"" in text
+    assert "--expected-probability-station-id RKPK" not in text
     assert '"${transaction_args[@]}"' in text
 
 
@@ -89,9 +87,11 @@ def test_narrow_cutover_retains_live_pause_and_has_local_rollback() -> None:
     assert "curl -X POST" not in text
     assert "prune_bayes_basket_target_maintenance_artifacts.py" in text
     assert "APPLY_BOUNDED_MAINTENANCE_RETENTION" in text
-    assert text.index("success=1") < text.index(
-        "prune_bayes_basket_target_maintenance_artifacts.py"
+    assert text.index("prune_bayes_basket_target_maintenance_artifacts.py") < text.rindex(
+        "success=1"
     )
+    assert "delete_recovery_after_success" in text
+    assert "bayes_basket_target_m9_06_atomic_cutover" in text
 
 
 def test_narrow_cutover_requires_schema_resource_ws_and_no_live_postcheck() -> None:
@@ -112,6 +112,41 @@ def test_narrow_cutover_requires_schema_resource_ws_and_no_live_postcheck() -> N
     assert "event_date='2026-07-27'" not in text
     assert "basket_probability_bridge_bucket_probability" in text
     assert 'resources.get("wal_bytes")' in text
+    assert "forward_oos" not in text.lower()
+
+
+def test_canonical_two_round_scope_and_future_day_contract_are_explicit() -> None:
+    text = _text()
+    assert "capture_round(db)" in text
+    assert "probability_scope_snapshot(Path(sys.argv[1]))" in text
+    assert "OUTSIDE_SCOPE_BEFORE" in text
+    assert "OUTSIDE_SCOPE_AFTER" in text
+    assert "NON_RKPK" not in text
+    assert "started_station_ids" in text
+    assert "not_started_station_ids" in text
+    assert '"${SETTLEMENT_STATION_ARGS[@]}"' in text
+
+
+def test_m9_06_atomic_receipt_closes_all_stages_and_recovery_order() -> None:
+    text = _text()
+    assert "ATOMIC_STAGE_DIR" in text
+    assert "ATOMIC_RECEIPT" in text
+    assert "ATOMIC_LATEST" in text
+    assert "build_cutover_receipt" in text
+    assert "build_release_identity" in text
+    assert "build_idempotent_replay_receipt" in text
+    assert "delete_recovery_after_success" in text
+    assert "SCHEMA_BOOTSTRAP_PACKET" in text
+    assert '"legacy_fallback_used": False' in text
+    assert text.rindex("success=1") < text.rindex(
+        "delete_recovery_after_success"
+    )
+    assert text.index("protected_pid_postcheck") < text.index(
+        "resident_acceptance_round_{index}"
+    )
+    assert text.index("enumerate(rounds, start=1)") < text.rindex(
+        "delete_recovery_after_success"
+    )
 
 
 def test_cutover_materializes_daily_and_settlement_version_receipts_after_postcheck() -> None:

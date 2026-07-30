@@ -32,6 +32,7 @@ from .atomic_ledger import (
 )
 from .contracts import (
     ContractError,
+    MODEL_IDS,
     ProbabilityEnvelope,
     content_sha256,
     timestamp_eq,
@@ -89,8 +90,10 @@ from .market_registry import (
     load_started_registry_rows,
 )
 from .official_nwp_capture_scheduler import (
+    MAX_DISCOVERED_SCOPES,
     candidate_run_initializations,
     capture_scope as capture_official_nwp_scope,
+    prefetch_candidate_raw_training,
     registry_capture_scopes,
 )
 from .p0_producer import compatible_run_candidates
@@ -143,6 +146,7 @@ PRODUCTION_EXECUTION_MODE = "production_no_live"
 MAX_PREPARED_CYCLES_PER_SCOPE = 1
 MAX_FORWARD_P0_STATIONS = 45
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
+MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
 MAX_POST_FILL_RECOMPUTES_PER_PASS = 128
 MAX_REGIME_ARTIFACTS_PER_PASS = 256
 MAX_FORWARD_DECISIONS_PER_PASS = MAX_FORWARD_STORE_BATCH_ROWS
@@ -523,9 +527,10 @@ class TargetProductionWorker:
                 not raw_station_allowlist
                 and self.db_path == DEFAULT_TARGET_DB.resolve()
             ):
-                # The RKPK vertical gate has passed. The default production
-                # no-live consumer now admits exactly the frozen canonical
-                # 45-station registry, never arbitrary registry additions.
+                # Production scope is the frozen canonical 45-station
+                # registry.  A station-specific vertical slice must be
+                # passed explicitly and can never become the resident
+                # default through an empty environment variable.
                 raw_station_allowlist = CANONICAL_TARGET_STATIONS
         else:
             raw_station_allowlist = station_allowlist
@@ -771,7 +776,7 @@ class TargetProductionWorker:
         scopes = registry_capture_scopes(
             registry,
             as_of_utc=as_of_utc,
-            max_scopes=45,
+            max_scopes=MAX_DISCOVERED_SCOPES,
         )
         if station_allowlist:
             allowed = set(station_allowlist)
@@ -849,9 +854,10 @@ class TargetProductionWorker:
             fresh = bool(str(row[1] or "") > as_of_utc)
             return (2 if fresh else 1, decision, fresh)
 
-        # Priority is missing -> stale -> fresh. Round-robin is maintained
-        # independently inside each class so a permanently failing station
-        # cannot monopolize the four bounded acquisition slots.
+        # Priority is missing -> stale -> fresh, but every non-empty class
+        # receives one slot before the remaining capacity returns to priority
+        # order.  This preserves urgency without letting a permanent backlog
+        # of missing scopes starve stale/fresh updates forever.
         priority_groups: dict[
             int, list[tuple[str, str, bool, Mapping[str, Any]]]
         ] = {0: [], 1: [], 2: []}
@@ -868,6 +874,11 @@ class TargetProductionWorker:
             or {}
         )
         selected: list[tuple[bool, Mapping[str, Any]]] = []
+        rotated_by_priority: dict[
+            int, list[tuple[str, str, bool, Mapping[str, Any]]]
+        ] = {}
+        base_cursor_by_priority: dict[int, int] = {}
+        taken_by_priority = {0: 0, 1: 0, 2: 0}
         for priority in (0, 1, 2):
             ordered = sorted(
                 priority_groups[priority],
@@ -876,18 +887,42 @@ class TargetProductionWorker:
             if not ordered:
                 continue
             cursor = int(cursors.get(priority, 0)) % len(ordered)
-            rotated = ordered[cursor:] + ordered[:cursor]
-            take = min(
-                MAX_RESIDENT_NWP_SCOPES_PER_CYCLE - len(selected),
-                len(rotated),
+            base_cursor_by_priority[priority] = cursor
+            rotated_by_priority[priority] = (
+                ordered[cursor:] + ordered[:cursor]
             )
-            selected.extend(
-                (fresh, scope)
-                for _day, _station, fresh, scope in rotated[:take]
-            )
-            cursors[priority] = (cursor + take) % len(ordered)
-            if len(selected) >= MAX_RESIDENT_NWP_SCOPES_PER_CYCLE:
+        for priority in (0, 1, 2):
+            rotated = rotated_by_priority.get(priority, [])
+            if (
+                not rotated
+                or len(selected) >= MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
+            ):
+                continue
+            _day, _station, fresh, scope = rotated[0]
+            selected.append((fresh, scope))
+            taken_by_priority[priority] = 1
+        while len(selected) < MAX_RESIDENT_NWP_SCOPES_PER_CYCLE:
+            advanced = False
+            for priority in (0, 1, 2):
+                rotated = rotated_by_priority.get(priority, [])
+                index = taken_by_priority[priority]
+                if (
+                    index >= len(rotated)
+                    or len(selected)
+                    >= MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
+                ):
+                    continue
+                _day, _station, fresh, scope = rotated[index]
+                selected.append((fresh, scope))
+                taken_by_priority[priority] += 1
+                advanced = True
+            if not advanced:
                 break
+        for priority, rotated in rotated_by_priority.items():
+            take = taken_by_priority[priority]
+            cursors[priority] = (
+                base_cursor_by_priority[priority] + take
+            ) % len(rotated)
         self._resident_nwp_scope_cursor_by_priority = cursors
 
         scope_failures: list[dict[str, Any]] = []
@@ -895,6 +930,8 @@ class TargetProductionWorker:
         successful_inboxes: list[
             tuple[tuple[str, str], Mapping[str, Any]]
         ] = []
+        candidate_prefetch_results: list[dict[str, Any]] = []
+        candidate_prefetch_attempt_count = 0
         run_cursors = dict(
             getattr(self, "_nwp_run_fallback_cursor_by_scope", {})
             or {}
@@ -912,41 +949,90 @@ class TargetProductionWorker:
                         scope["settlement_timezone"]
                     ),
                 )
-                artifacts = load_production_artifacts(
-                    read_conn,
-                    station_id=station,
-                    evaluation_at_utc=as_of_utc,
-                    require_calibration=True,
-                    require_policy=False,
-                )
-                compatible = compatible_run_candidates(
-                    artifacts=artifacts,
-                    station=station,
-                    event_date=event_date,
-                    settlement_timezone=str(
-                        scope["settlement_timezone"]
-                    ),
-                    decision_at_utc=as_of_utc,
-                    run_initializations=raw_run_candidates,
-                )
-                # Formal P0 is station-scoped and always uses an activated
-                # ensemble of at least two models. Forward scorecard/OOS is
-                # intentionally not consulted by this no-live scheduler.
-                compatible = [
-                    item
-                    for item in compatible
-                    if len({
-                        str(value or "").strip().upper()
-                        for value in (
-                            item.get("activation_binding") or {}
-                        ).get("selected_models", [])
-                        if str(value or "").strip()
-                    }) >= 2
-                ]
-                if not compatible:
-                    raise ContractError(
-                        "resident_nwp_no_activated_two_model_run_scope"
+                try:
+                    artifacts = load_production_artifacts(
+                        read_conn,
+                        station_id=station,
+                        evaluation_at_utc=as_of_utc,
+                        require_calibration=True,
+                        require_policy=False,
                     )
+                    compatible = compatible_run_candidates(
+                        artifacts=artifacts,
+                        station=station,
+                        event_date=event_date,
+                        settlement_timezone=str(
+                            scope["settlement_timezone"]
+                        ),
+                        decision_at_utc=as_of_utc,
+                        run_initializations=raw_run_candidates,
+                    )
+                    # Formal P0 is station-scoped and always uses an activated
+                    # ensemble of at least two models. Forward scorecard/OOS is
+                    # intentionally not consulted by this no-live scheduler.
+                    compatible = [
+                        item
+                        for item in compatible
+                        if len({
+                            str(value or "").strip().upper()
+                            for value in (
+                                item.get("activation_binding") or {}
+                            ).get("selected_models", [])
+                            if str(value or "").strip()
+                        }) >= 2
+                    ]
+                    if not compatible:
+                        raise ContractError(
+                            "resident_nwp_no_activated_two_model_run_scope"
+                        )
+                except Exception:
+                    # Raw candidate acquisition must not depend on an already
+                    # activated P0 combination: that would make evidence
+                    # collection circular and leave new stations permanently
+                    # unable to accumulate strict publication/arrival history.
+                    # Keep this lane candidate-only and bounded to one scope
+                    # per resident cycle; it never writes the P0 inbox.
+                    if (
+                        raw_run_candidates
+                        and candidate_prefetch_attempt_count
+                        < MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE
+                    ):
+                        candidate_run = raw_run_candidates[
+                            1 if len(raw_run_candidates) > 1 else 0
+                        ]
+                        candidate_prefetch_attempt_count += 1
+                        try:
+                            candidate_prefetch_results.append(
+                                prefetch_candidate_raw_training(
+                                    registry_snapshot_path=registry_path,
+                                    scope=scope,
+                                    as_of_utc=as_of_utc,
+                                    run_initialization_utc=candidate_run,
+                                    candidate_models=MODEL_IDS,
+                                    output_root=(
+                                        self.nwp_runtime_root / "captures"
+                                    ),
+                                )
+                            )
+                        except Exception as candidate_exc:
+                            candidate_prefetch_results.append({
+                                "state": "BLOCKED_FAIL_CLOSED",
+                                "candidate_only": True,
+                                "p0_materialization_authorized": False,
+                                "station_id": station,
+                                "event_date": event_date,
+                                "reason": (
+                                    "resident_nwp_candidate_prefetch_failed:"
+                                    f"{type(candidate_exc).__name__}:"
+                                    f"{candidate_exc}"
+                                ),
+                                "writes_target_database": False,
+                                "calls_order_gateway": False,
+                                "places_orders": False,
+                                "live_submit_authorized": False,
+                                "orders_submitted": 0,
+                            })
+                    raise
 
                 capture_candidates = list(compatible)
                 fallback_policy = "BOUNDED_MATURE_FALLBACK"
@@ -1003,21 +1089,24 @@ class TargetProductionWorker:
                         "resident_nwp_scope_capture_incomplete"
                     )
 
-                scope_root = (
-                    self.nwp_runtime_root / "compiled" / station
-                )
-                scope_inbox = (
-                    scope_root / event_date / "p0-inbox.json"
-                )
-                p0 = refresh_resident_p0(
-                    capture_paths=capture_paths,
-                    registry_snapshot_path=registry_path,
-                    event_date=event_date,
-                    output_root=scope_root,
-                    inbox_path=scope_inbox,
-                    db_path=self.db_path,
-                )
-                candidate_inbox = load_bounded_json(scope_inbox)
+                scope_root = self.nwp_runtime_root / "compiled" / station
+                # The per-scope inbox is only a merge intermediate.  Keep it
+                # for the shortest possible lifetime while preserving the
+                # compiled decode/state/P0 artifacts that carry lineage.
+                with tempfile.TemporaryDirectory(
+                    prefix=".resident-nwp-scope-inbox-",
+                    dir=self.nwp_runtime_root,
+                ) as temporary:
+                    scope_inbox = Path(temporary) / "p0-inbox.json"
+                    p0 = refresh_resident_p0(
+                        capture_paths=capture_paths,
+                        registry_snapshot_path=registry_path,
+                        event_date=event_date,
+                        output_root=scope_root,
+                        inbox_path=scope_inbox,
+                        db_path=self.db_path,
+                    )
+                    candidate_inbox = load_bounded_json(scope_inbox)
                 if (
                     not isinstance(candidate_inbox, Mapping)
                     or candidate_inbox.get("schema")
@@ -1162,6 +1251,10 @@ class TargetProductionWorker:
             )
             merged_packet_count = len(merged_rows)
 
+        candidate_capture_succeeded = any(
+            row.get("state") == "CAPTURED_CANDIDATE"
+            for row in candidate_prefetch_results
+        )
         if scope_results:
             state = (
                 "updated"
@@ -1174,6 +1267,10 @@ class TargetProductionWorker:
             )
             first = scope_results[0]
             reason = ""
+        elif candidate_capture_succeeded:
+            state = "candidate_capture_only"
+            first = {}
+            reason = "formal_p0_scope_not_eligible"
         else:
             state = "blocked_fail_closed"
             first = {}
@@ -1192,6 +1289,15 @@ class TargetProductionWorker:
             "scope_results": scope_results,
             "scope_failures": scope_failures,
             "skipped_incompatible_scopes": scope_failures,
+            "candidate_prefetch_results": candidate_prefetch_results,
+            "candidate_prefetch_attempt_count":
+                candidate_prefetch_attempt_count,
+            "candidate_prefetch_success_count": sum(
+                row.get("state") == "CAPTURED_CANDIDATE"
+                for row in candidate_prefetch_results
+            ),
+            "candidate_prefetch_scope_limit":
+                MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE,
             "capture": first.get("capture"),
             "run_fallback_policy": first.get(
                 "run_fallback_policy"

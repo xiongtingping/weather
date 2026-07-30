@@ -3,40 +3,132 @@ from __future__ import annotations
 import copy
 import sqlite3
 
+import pytest
+
 from scripts.accept_bayes_basket_target_probability_resident_two_rounds import (
+    CANONICAL_STATION_IDS,
     MAX_CORE_ROWS,
     _latest_core_chain_rows,
+    _probability_authority,
+    _station_counts,
     _validate_core_chain_rows,
     compare_rounds,
+    normalize_station_scope,
 )
+
+
+SCOPE = ("EGLC", "RKPK")
+
+
+def _replay(station: str) -> dict:
+    return {
+        "station_id": station,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "Asia/Seoul",
+        "rows": [{"row_sha256": "1" * 64}],
+        "continuation": {
+            "last_rowid": 1,
+            "chain_sha256": "2" * 64,
+        },
+    }
 
 
 def _round() -> dict:
     return {
         "state": "PASS",
         "round_sha256": "a" * 64,
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(SCOPE),
+        },
+        "started_station_ids": list(SCOPE),
+        "not_started_station_ids": [],
         "services": {
             "com.weather.reported_trajectory_no": 1,
             "com.weather.market_ws": 2,
             "com.weather.clob_order_service": 3,
         },
-        "non_target_station_counts": {"auto_trade_decisions": 10},
-        "station_counts": {"auto_trade_decisions": 20},
-        "durable_ssot_replay": {
-            "station_id": "RKPK",
-            "event_date": "2026-07-29",
-            "settlement_timezone": "Asia/Seoul",
-            "rows": [{"row_sha256": "1" * 64}],
-            "continuation": {
-                "last_rowid": 1,
-                "chain_sha256": "2" * 64,
-            },
+        "outside_scope_station_counts": {"auto_trade_decisions": 10},
+        "scoped_station_counts": {"auto_trade_decisions": 20},
+        "station_results": {
+            station: {
+                "state": "PASS",
+                "started": True,
+                "durable_ssot_replay": _replay(station),
+            }
+            for station in SCOPE
         },
         "production_no_live": True,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
         "orders_submitted": 0,
     }
+
+
+def test_default_scope_is_exact_frozen_45() -> None:
+    assert normalize_station_scope() == CANONICAL_STATION_IDS
+    assert len(CANONICAL_STATION_IDS) == 45
+    with pytest.raises(RuntimeError, match="duplicate_or_empty"):
+        normalize_station_scope(("RKPK", "RKPK"))
+    with pytest.raises(RuntimeError, match="not_canonical"):
+        normalize_station_scope(("XXXX",))
+
+
+def test_station_counts_separate_scope_from_outside_scope() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions(station_id TEXT NOT NULL)"
+    )
+    conn.executemany(
+        "INSERT INTO auto_trade_decisions VALUES(?)",
+        [("EGLC",), ("RKPK",), ("ZUUU",)],
+    )
+    scoped, outside = _station_counts(conn, station_ids=SCOPE)
+    assert scoped["auto_trade_decisions"] == 2
+    assert outside["auto_trade_decisions"] == 1
+
+
+def test_probability_authority_uses_highest_materialized_stage() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history("
+        "station_id TEXT,event_date TEXT,stage TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_latest("
+        "station_id TEXT,event_date TEXT,checkpoint_id TEXT,stage TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO basket_probability_bridge_history VALUES(?,?,?)",
+        [
+            ("RKPK", "2026-07-30", "P0"),
+            ("RKPK", "2026-07-30", "P0-M"),
+            ("RKPK", "2026-07-30", "P1"),
+        ],
+    )
+    conn.execute(
+        "INSERT INTO basket_probability_bridge_latest VALUES(?,?,?,?)",
+        ("RKPK", "2026-07-30", "p1", "P1"),
+    )
+    passed = _probability_authority(
+        conn,
+        station_id="RKPK",
+        event_dates=("2026-07-30",),
+    )
+    assert passed["state"] == "PASS"
+    conn.execute(
+        "UPDATE basket_probability_bridge_latest SET stage='P0'"
+    )
+    blocked = _probability_authority(
+        conn,
+        station_id="RKPK",
+        event_dates=("2026-07-30",),
+    )
+    assert blocked["state"] == "BLOCKED_FAIL_CLOSED"
+    assert (
+        "probability_latest_authority_downgraded:2026-07-30"
+        in blocked["blockers"]
+    )
 
 
 def test_core_direction_round_trip_binds_previous_state() -> None:
@@ -60,8 +152,10 @@ def test_core_direction_round_trip_binds_previous_state() -> None:
     result = _validate_core_chain_rows(rows)
     assert result["validated_count"] == 2
     assert result["violations"] == []
-    replay = _validate_core_chain_rows(rows)
-    assert replay["content_sha256"] == result["content_sha256"]
+    assert (
+        _validate_core_chain_rows(rows)["content_sha256"]
+        == result["content_sha256"]
+    )
 
 
 def test_core_direction_predecessor_drift_fails_closed() -> None:
@@ -81,8 +175,7 @@ def test_core_direction_predecessor_drift_fails_closed() -> None:
             '"core_transition":{"direction_transition":"MIGRATE"}}',
         ),
     ]
-    result = _validate_core_chain_rows(rows)
-    assert len(result["violations"]) == 2
+    assert len(_validate_core_chain_rows(rows)["violations"]) == 2
 
 
 def test_core_chain_query_reads_latest_bounded_window_in_causal_order() -> None:
@@ -104,9 +197,7 @@ def test_core_chain_query_reads_latest_bounded_window_in_causal_order() -> None:
         "insert into auto_trade_decisions values('OTHER','basket',?)",
         (payload,),
     )
-
     rows, truncated = _latest_core_chain_rows(conn, station_id="RKPK")
-
     assert truncated is True
     assert len(rows) == MAX_CORE_ROWS
     assert [row[0] for row in rows] == list(
@@ -114,48 +205,66 @@ def test_core_chain_query_reads_latest_bounded_window_in_causal_order() -> None:
     )
 
 
-def test_two_round_acceptance_allows_target_advance_only() -> None:
+def test_two_round_acceptance_allows_all_scoped_stations_to_advance() -> None:
     first = _round()
     second = copy.deepcopy(first)
     second["round_sha256"] = "b" * 64
-    second["station_counts"]["auto_trade_decisions"] = 21
+    second["scoped_station_counts"]["auto_trade_decisions"] = 22
     result = compare_rounds(first, second)
     assert result["state"] == "PASS"
     assert result["calls_order_gateway"] is False
     assert result["orders_submitted"] == 0
 
 
-def test_two_round_acceptance_rejects_service_or_non_target_drift() -> None:
+def test_two_round_acceptance_rejects_service_or_outside_scope_drift() -> None:
     first = _round()
     second = copy.deepcopy(first)
     second["services"]["com.weather.market_ws"] = 99
-    second["non_target_station_counts"]["auto_trade_decisions"] = 11
+    second["outside_scope_station_counts"]["auto_trade_decisions"] = 11
     result = compare_rounds(first, second)
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
     assert "service_pid_drift" in result["blockers"]
-    assert "non_target_station_write_detected" in result["blockers"]
+    assert "outside_scope_station_write_detected" in result["blockers"]
 
 
 def test_two_round_acceptance_rejects_deletion_and_live_boundary() -> None:
     first = _round()
     second = copy.deepcopy(first)
-    second["station_counts"]["auto_trade_decisions"] = 19
+    second["scoped_station_counts"]["auto_trade_decisions"] = 19
     second["live_submit_authorized"] = True
     result = compare_rounds(first, second)
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
     assert (
-        "target_append_only_count_decreased:auto_trade_decisions"
+        "scoped_append_only_count_decreased:auto_trade_decisions"
         in result["blockers"]
     )
     assert "no_live_boundary_invalid" in result["blockers"]
 
 
-def test_two_round_acceptance_rejects_same_count_content_root_drift() -> None:
+def test_two_round_acceptance_rejects_per_station_replay_drift() -> None:
     first = _round()
     second = copy.deepcopy(first)
-    second["round_sha256"] = "b" * 64
-    second["durable_ssot_replay"]["rows"][0]["row_sha256"] = "9" * 64
-    second["durable_ssot_replay"]["continuation"]["chain_sha256"] = "8" * 64
+    second["station_results"]["RKPK"]["durable_ssot_replay"]["rows"][0][
+        "row_sha256"
+    ] = "9" * 64
     result = compare_rounds(first, second)
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
-    assert "durable_ssot_replay_not_append_only_prefix" in result["blockers"]
+    assert (
+        "RKPK:durable_ssot_replay_not_append_only_prefix"
+        in result["blockers"]
+    )
+
+
+def test_future_station_can_become_started_without_waiting_for_settlement() -> None:
+    first = _round()
+    first["started_station_ids"] = ["EGLC"]
+    first["not_started_station_ids"] = ["RKPK"]
+    first["station_results"]["RKPK"] = {
+        "state": "NOT_STARTED_NO_MATERIALIZATION_REQUIRED",
+        "started": False,
+        "durable_ssot_replay": None,
+    }
+    second = _round()
+    second["round_sha256"] = "b" * 64
+    result = compare_rounds(first, second)
+    assert result["state"] == "PASS"

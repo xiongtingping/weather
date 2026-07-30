@@ -36,6 +36,7 @@ MAX_JSON_NODES = 500_000
 MAX_TARGET_DB_BYTES = 256 * MIB
 MAX_TARGET_WAL_BYTES = 64 * MIB
 MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * MIB
+MAX_TARGET_RESEARCH_RAW_FILES = 100_000
 MIN_TARGET_FREE_BYTES = 512 * MIB
 # Keep the runtime hard stop identical to the declared no-live performance
 # budget.  A looser code-level ceiling would let the process cross the
@@ -330,13 +331,38 @@ def assert_target_raw_retention_budget(
 
     root = Path(output_root).expanduser().resolve()
     retained = 0
-    for path in root.glob("*/raw/*"):
-        if not path.is_file() or path.is_symlink():
-            continue
-        try:
-            retained += int(path.stat().st_size)
-        except OSError as exc:
-            raise ResourceBoundError("target_raw_retention_stat_failed") from exc
+    retained_files = 0
+    retained_dirs = 0
+    if root.is_dir():
+        for current, directories, files in os.walk(
+            root,
+            followlinks=False,
+        ):
+            directories[:] = [
+                name
+                for name in directories
+                if not (Path(current) / name).is_symlink()
+            ]
+            retained_dirs += len(directories)
+            if retained_dirs > MAX_TARGET_RESEARCH_RAW_FILES:
+                raise ResourceBoundError(
+                    "target_raw_retention_entry_count_exceeded"
+                )
+            for name in files:
+                path = Path(current) / name
+                if path.is_symlink():
+                    continue
+                retained_files += 1
+                if retained_files > MAX_TARGET_RESEARCH_RAW_FILES:
+                    raise ResourceBoundError(
+                        "target_raw_retention_file_count_exceeded"
+                    )
+                try:
+                    retained += int(path.stat().st_size)
+                except OSError as exc:
+                    raise ResourceBoundError(
+                        "target_raw_retention_stat_failed"
+                    ) from exc
     if retained + max(0, int(bytes_needed)) > int(limit):
         raise ResourceBoundError("target_raw_aggregate_retention_budget_exceeded")
     if _filesystem_free_bytes(root) < max(0, int(min_free_bytes)) + max(0, int(bytes_needed)):
@@ -390,6 +416,8 @@ def inspect_target_resource_budget(
                         violations.append("target_raw_retention_stat_failed")
             if raw_bytes > MAX_TARGET_RESEARCH_RAW_BYTES:
                 violations.append("target_aggregate_raw_bytes_exceeded")
+            if raw_file_count > MAX_TARGET_RESEARCH_RAW_FILES:
+                violations.append("target_raw_file_count_exceeded")
 
     free_bytes = _filesystem_free_bytes(resolved.parent if resolved.name != ":memory:" else Path.cwd())
     if free_bytes < MIN_TARGET_FREE_BYTES:
@@ -421,6 +449,7 @@ def inspect_target_resource_budget(
             "max_database_bytes": MAX_TARGET_DB_BYTES,
             "max_wal_bytes": MAX_TARGET_WAL_BYTES,
             "max_research_raw_bytes": MAX_TARGET_RESEARCH_RAW_BYTES,
+            "max_research_raw_files": MAX_TARGET_RESEARCH_RAW_FILES,
             "min_free_bytes": MIN_TARGET_FREE_BYTES,
             "max_process_rss_bytes": MAX_TARGET_PROCESS_RSS_BYTES,
         },
@@ -459,6 +488,7 @@ __all__ = [
     "MAX_TARGET_DB_BYTES",
     "MAX_TARGET_PROCESS_RSS_BYTES",
     "MAX_TARGET_RESEARCH_RAW_BYTES",
+    "MAX_TARGET_RESEARCH_RAW_FILES",
     "MAX_TARGET_WAL_BYTES",
     "MIN_TARGET_FREE_BYTES",
     "MAX_WS_EVIDENCE_CACHE_ROW_BYTES",

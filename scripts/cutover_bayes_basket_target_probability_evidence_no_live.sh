@@ -2,10 +2,11 @@
 set -euo pipefail
 
 # Narrow target-only maintenance window:
-# target WAL -> probability-evidence DDL -> RKPK v3 no-live artifact packet.
+# target WAL -> probability-evidence DDL -> canonical no-live resident proof.
 # market_ws and clob_order_service must remain on their original PIDs.
 
 ROOT="/Users/xiong/weather"
+cd "$ROOT"
 TARGET_LABEL="com.weather.reported_trajectory_no"
 MARKET_WS_LABEL="com.weather.market_ws"
 CLOB_LABEL="com.weather.clob_order_service"
@@ -13,9 +14,10 @@ TARGET_PLIST="/Library/LaunchDaemons/${TARGET_LABEL}.plist"
 TARGET_DB="$ROOT/data/bayes_basket_target_ssot.db"
 TARGET_PAUSE="$ROOT/data/bayes_basket_target_migration_paused.flag"
 LIVE_PAUSE="$ROOT/data/live_paused.flag"
-PACKET="$ROOT/output/audits/bayes_basket_target_no_live_vertical_slice_RKPK_v3.json"
-FORMAL_PROBABILITY_EVIDENCE_PACKET="$ROOT/output/audits/bayes_basket_probability_evidence_RKPK_formal_packet.json"
-CANDIDATE_PROBABILITY_EVIDENCE_PACKET="$ROOT/output/audits/bayes_basket_target_probability_evidence_rkpk_v1/metar_trajectory_candidate_packet.json"
+# The transaction-fenced helper still consumes its historical schema
+# bootstrap packet. It is not the production station scope; the resident,
+# readiness, snapshots and two-round acceptance all use CANONICAL_STATIONS.
+SCHEMA_BOOTSTRAP_PACKET="$ROOT/output/audits/bayes_basket_target_no_live_vertical_slice_RKPK_v3.json"
 ACTIVATION="$ROOT/config/trading/bayes_basket_target_production_no_live_activation_v1.json"
 PY="$ROOT/.venv/bin/python"
 STAMP="$(/bin/date -u +%Y%m%dT%H%M%SZ)"
@@ -27,12 +29,15 @@ CUTOVER_RECEIPT="$AUDIT_DIR/bayes_basket_target_probability_evidence_cutover_${S
 FINAL_READINESS="$AUDIT_DIR/bayes_basket_target_probability_evidence_readiness_${STAMP}.json"
 RESIDENT_ACCEPTANCE="$AUDIT_DIR/bayes_basket_target_probability_resident_two_rounds_${STAMP}.json"
 RESIDENT_VERIFIED="$AUDIT_DIR/bayes_basket_target_probability_resident_two_rounds_verified_${STAMP}.json"
-NON_RKPK_BEFORE="$AUDIT_DIR/bayes_basket_target_probability_non_rkpk_before_${STAMP}.json"
-NON_RKPK_AFTER="$AUDIT_DIR/bayes_basket_target_probability_non_rkpk_after_${STAMP}.json"
+OUTSIDE_SCOPE_BEFORE="$AUDIT_DIR/bayes_basket_target_probability_outside_scope_before_${STAMP}.json"
+OUTSIDE_SCOPE_AFTER="$AUDIT_DIR/bayes_basket_target_probability_outside_scope_after_${STAMP}.json"
 DAILY_ACCEPTANCE="$AUDIT_DIR/bayes_basket_target_daily_no_live_${STAMP}.json"
 SETTLEMENT_VERSION="$AUDIT_DIR/bayes_basket_target_settlement_version_${STAMP}.json"
 FAILURE_RECEIPT="$AUDIT_DIR/bayes_basket_target_probability_evidence_failure_${STAMP}.json"
 RETENTION_RECEIPT="$AUDIT_DIR/bayes_basket_target_backup_retention_${STAMP}.json"
+ATOMIC_STAGE_DIR="$AUDIT_DIR/bayes_basket_target_m9_06_stages_${STAMP}"
+ATOMIC_RECEIPT="$AUDIT_DIR/bayes_basket_target_m9_06_atomic_cutover_${STAMP}.json"
+ATOMIC_LATEST="$AUDIT_DIR/bayes_basket_target_m9_06_atomic_cutover_latest.json"
 RUN_USER="${SUDO_USER:-xiong}"
 if [ "$RUN_USER" = "root" ]; then
   RUN_USER="xiong"
@@ -47,12 +52,30 @@ if [ "${1:-}" != "--confirm-target-probability-evidence-production-no-live" ]; t
   exit 2
 fi
 for required in \
-  "$PY" "$TARGET_PLIST" "$TARGET_DB" "$PACKET" "$ACTIVATION" \
+  "$PY" "$TARGET_PLIST" "$TARGET_DB" "$SCHEMA_BOOTSTRAP_PACKET" "$ACTIVATION" \
   "$ROOT/scripts/restore_bayes_basket_target_backup.py"; do
   if [ ! -f "$required" ] || [ -L "$required" ]; then
     echo "required_regular_path_invalid=$required" >&2
     exit 1
   fi
+done
+
+CANONICAL_STATION_ALLOWLIST="$(
+  "$PY" - <<'PY'
+from bayes_basket_target.station_registry import coordinate_registry_manifest
+
+stations = coordinate_registry_manifest()["station_ids"]
+if len(stations) != 45 or len(set(stations)) != 45:
+    raise SystemExit("canonical_station_registry_invalid")
+print(",".join(stations))
+PY
+)"
+IFS=',' read -r -a CANONICAL_STATIONS <<< "$CANONICAL_STATION_ALLOWLIST"
+READINESS_STATION_ARGS=()
+SETTLEMENT_STATION_ARGS=()
+for station in "${CANONICAL_STATIONS[@]}"; do
+  READINESS_STATION_ARGS+=(--station-id "$station")
+  SETTLEMENT_STATION_ARGS+=(--station-id "$station")
 done
 
 service_pid() {
@@ -111,6 +134,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from bayes_basket_target.atomic_cutover_receipt import content_sha256
+
 (
     output_raw,
     database,
@@ -139,7 +164,9 @@ payload = {
     "calls_order_gateway": False,
     "live_submit_authorized": False,
     "orders_submitted": 0,
+    "legacy_fallback_used": False,
 }
+payload["content_sha256"] = content_sha256(payload)
 encoded = (
     json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 ).encode("utf-8")
@@ -207,6 +234,130 @@ cleanup() {
 }
 trap cleanup EXIT
 
+current_market_ws_pid="$(service_pid "$MARKET_WS_LABEL" || true)"
+current_clob_pid="$(service_pid "$CLOB_LABEL" || true)"
+current_target_pid="$(service_pid "$TARGET_LABEL" || true)"
+replay_probe="$({
+  sudo -u "$RUN_USER" "$PY" - \
+    "$ATOMIC_LATEST" "$ATOMIC_RECEIPT" "$TARGET_DB" \
+    "$CANONICAL_STATION_ALLOWLIST" "$ACTIVATION" \
+    "$SCHEMA_BOOTSTRAP_PACKET" "$current_market_ws_pid" "$current_clob_pid" \
+    "$current_target_pid" "$LIVE_PAUSE" <<'PY'
+import hashlib
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+from bayes_basket_target.atomic_cutover_receipt import (
+    build_idempotent_replay_receipt,
+    build_release_identity,
+    content_sha256,
+    validate_cutover_receipt,
+    write_receipt_if_changed,
+)
+
+latest_raw, output_raw, database_raw, station_csv, activation_raw, bootstrap_raw, market_pid, clob_pid, target_pid, live_pause_raw = sys.argv[1:]
+latest = Path(latest_raw).expanduser().resolve()
+database = Path(database_raw).expanduser().resolve()
+live_pause = Path(live_pause_raw).expanduser()
+if (
+    not latest.is_file()
+    or latest.is_symlink()
+    or not database.is_file()
+    or not market_pid
+    or not clob_pid
+    or not target_pid
+    or live_pause.is_symlink()
+    or not live_pause.is_file()
+):
+    print("NOT_APPLICABLE")
+    raise SystemExit(0)
+try:
+    previous = json.loads(latest.read_text(encoding="utf-8"))
+    if not isinstance(previous, dict):
+        raise ValueError("latest_receipt_mapping_required")
+    activation_sha = hashlib.sha256(Path(activation_raw).read_bytes()).hexdigest()
+    bootstrap_sha = hashlib.sha256(Path(bootstrap_raw).read_bytes()).hexdigest()
+    schema_sha = content_sha256({
+        "schema": "bayes_basket_target_probability_evidence_schema_v1",
+        "tables": [
+            "basket_probability_evidence_artifact",
+            "basket_probability_evidence_promotion",
+            "basket_probability_evidence_activation",
+            "basket_probability_update_proof",
+            "basket_probability_bridge_history",
+            "basket_probability_bridge_latest",
+            "basket_probability_bridge_bucket_probability",
+        ],
+        "execution_mode": "production_no_live",
+    })
+    release = build_release_identity(
+        station_ids=tuple(value for value in station_csv.split(",") if value),
+        schema_sha256=schema_sha,
+        activation_sha256=activation_sha,
+        artifact_sha256=bootstrap_sha,
+    )
+    if previous.get("protected_service_pids_after") != {
+        "com.weather.market_ws": int(market_pid),
+        "com.weather.clob_order_service": int(clob_pid),
+    }:
+        print("NOT_APPLICABLE")
+        raise SystemExit(0)
+    if int(previous.get("target_service_pid_after") or 0) != int(target_pid):
+        print("NOT_APPLICABLE")
+        raise SystemExit(0)
+    required_tables = {
+        "basket_probability_evidence_artifact",
+        "basket_probability_evidence_promotion",
+        "basket_probability_evidence_activation",
+        "basket_probability_update_proof",
+        "basket_probability_bridge_history",
+        "basket_probability_bridge_latest",
+        "basket_probability_bridge_bucket_probability",
+    }
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        quick_check = connection.execute("PRAGMA quick_check").fetchone()
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    if not quick_check or quick_check[0] != "ok" or not required_tables.issubset(tables):
+        print("NOT_APPLICABLE")
+        raise SystemExit(0)
+    stat = database.stat()
+    if previous.get("target_database_fingerprint_after") != {
+        "device": int(stat.st_dev),
+        "inode": int(stat.st_ino),
+        "size": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }:
+        print("NOT_APPLICABLE")
+        raise SystemExit(0)
+    replay = build_idempotent_replay_receipt(
+        previous,
+        station_ids=tuple(value for value in station_csv.split(",") if value),
+        release_sha256=release["release_sha256"],
+    )
+    validate_cutover_receipt(replay)
+except Exception:
+    print("NOT_APPLICABLE")
+    raise SystemExit(0)
+write_receipt_if_changed(Path(output_raw), replay)
+print(json.dumps(replay, sort_keys=True))
+PY
+} 2>/dev/null
+})"
+if [[ "$replay_probe" == *'"state": "NOOP_IDEMPOTENT"'* ]]; then
+  success=1
+  trap - EXIT
+  echo "target_probability_evidence_no_live_cutover_noop state=NOOP_IDEMPOTENT writes=0 atomic_receipt=${ATOMIC_RECEIPT} latest=${ATOMIC_LATEST}"
+  exit 0
+fi
+
 /usr/bin/touch "$LIVE_PAUSE"
 market_ws_pid_before="$(service_pid "$MARKET_WS_LABEL")"
 clob_pid_before="$(service_pid "$CLOB_LABEL")"
@@ -243,7 +394,7 @@ cutover_started=1
 transaction_args=(
   "$ROOT/scripts/cutover_bayes_basket_target_ssot_v4_transaction_fenced.py"
   --db "$TARGET_DB"
-  --packet "$PACKET"
+  --packet "$SCHEMA_BOOTSTRAP_PACKET"
   --activation "$ACTIVATION"
   --pause-file "$TARGET_PAUSE"
   --backup-db "$BACKUP"
@@ -252,31 +403,6 @@ transaction_args=(
   --confirm-transaction-fenced-cutover
 )
 probability_evidence_packet=""
-for candidate_packet in \
-  "$FORMAL_PROBABILITY_EVIDENCE_PACKET" \
-  "$CANDIDATE_PROBABILITY_EVIDENCE_PACKET"; do
-  if [ ! -e "$candidate_packet" ]; then
-    continue
-  fi
-  if [ ! -f "$candidate_packet" ] \
-    || [ -L "$candidate_packet" ]; then
-    failure_reason="probability_evidence_packet_path_invalid"
-    echo "probability_evidence_packet_path_invalid" >&2
-    exit 1
-  fi
-  probability_evidence_packet="$candidate_packet"
-  break
-done
-if [ -n "$probability_evidence_packet" ]; then
-  transaction_args+=(
-    --probability-evidence-packet "$probability_evidence_packet"
-    --expected-probability-station-id RKPK
-  )
-  if [ "$probability_evidence_packet" = \
-    "$CANDIDATE_PROBABILITY_EVIDENCE_PACKET" ]; then
-    transaction_args+=(--require-no-probability-activations)
-  fi
-fi
 sudo -u "$RUN_USER" "$PY" "${transaction_args[@]}"
 
 if [ "$(service_pid "$MARKET_WS_LABEL")" != "$market_ws_pid_before" ]; then
@@ -317,7 +443,7 @@ fi
 
 sudo -u "$RUN_USER" "$PY" \
   "$ROOT/scripts/bayes_basket_target_production_readiness.py" \
-  --station-id RKPK \
+  "${READINESS_STATION_ARGS[@]}" \
   --output "$FINAL_READINESS" || true
 sudo -u "$RUN_USER" "$PY" - \
   "$FINAL_READINESS" "$target_pid_before" "$reported_pid_after" \
@@ -469,7 +595,7 @@ from scripts.run_bayes_basket_target_post_migration_no_live import (
     probability_scope_snapshot,
 )
 
-payload = probability_scope_snapshot(Path(sys.argv[1]), station_id="RKPK")
+payload = probability_scope_snapshot(Path(sys.argv[1]))
 write_bounded_json(Path(sys.argv[2]).resolve(), payload, limit=1024 * 1024)
 PY
 }
@@ -497,10 +623,10 @@ for label in labels:
 PY
 }
 
-# The resident helper captures two consecutive service-owned rounds.  The
-# outer snapshots cover every probability/evidence/bridge table, including
-# tables not present in the legacy helper's narrower station list.
-snapshot_probability_scope "$NON_RKPK_BEFORE"
+# The resident helper captures two consecutive service-owned rounds. The
+# outer snapshots prove that rows outside the canonical/explicit scope do not
+# change while all in-scope stations may advance.
+snapshot_probability_scope "$OUTSIDE_SCOPE_BEFORE"
 assert_user_domain_quiescent
 sudo -u "$RUN_USER" "$PY" - "$TARGET_DB" "$RESIDENT_ACCEPTANCE" <<'PY'
 import resource
@@ -534,7 +660,7 @@ def service_rss_bytes(services):
 
 
 def bounded_round(db):
-    receipt = capture_round(db, station_id="RKPK")
+    receipt = capture_round(db)
     resources = dict(receipt.get("resources") or {})
     resources["resident_service_rss_bytes"] = service_rss_bytes(
         receipt.get("services") or {}
@@ -559,10 +685,10 @@ if result.get("state") != "PASS":
         + ",".join(result.get("blockers") or [])
     )
 PY
-snapshot_probability_scope "$NON_RKPK_AFTER"
+snapshot_probability_scope "$OUTSIDE_SCOPE_AFTER"
 assert_user_domain_quiescent
 sudo -u "$RUN_USER" "$PY" - \
-  "$RESIDENT_ACCEPTANCE" "$NON_RKPK_BEFORE" "$NON_RKPK_AFTER" \
+  "$RESIDENT_ACCEPTANCE" "$OUTSIDE_SCOPE_BEFORE" "$OUTSIDE_SCOPE_AFTER" \
   "$RESIDENT_VERIFIED" <<'PY'
 import json
 import sys
@@ -588,7 +714,6 @@ verified = verify_two_round_resident_receipts(
     rounds[1],
     before_snapshot=before,
     after_snapshot=after,
-    station_id="RKPK",
 )
 verified["source_acceptance"] = str(acceptance_path)
 verified["source_acceptance_content_sha256"] = acceptance.get(
@@ -603,25 +728,401 @@ if verified.get("state") != "PASS":
 PY
 
 as_of_utc="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"
-sudo -u "$RUN_USER" "$PY" \
-  "$ROOT/scripts/accept_bayes_basket_target_daily_no_live.py" \
-  --db "$TARGET_DB" \
-  --station-id RKPK \
-  --as-of-utc "$as_of_utc" \
-  --raw-root "$ROOT/data/research/bayes_basket_target/model_arrivals" \
-  --output "$DAILY_ACCEPTANCE"
+sudo -u "$RUN_USER" "$PY" - \
+  "$RESIDENT_VERIFIED" "$DAILY_ACCEPTANCE" "$TARGET_DB" "$as_of_utc" \
+  "$ROOT/data/research/bayes_basket_target/model_arrivals" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from bayes_basket_target.resource_bounds import write_bounded_json
+
+receipt_raw, output_raw, database, as_of_utc, raw_root = sys.argv[1:]
+receipt = json.loads(Path(receipt_raw).read_text(encoding="utf-8"))
+output = Path(output_raw)
+station_outputs = {}
+for station in receipt.get("started_station_ids") or []:
+    station_output = output.with_name(
+        f"{output.stem}_{station}{output.suffix}"
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "/Users/xiong/weather/scripts/"
+            "accept_bayes_basket_target_daily_no_live.py",
+            "--db",
+            database,
+            "--station-id",
+            str(station),
+            "--as-of-utc",
+            as_of_utc,
+            "--raw-root",
+            raw_root,
+            "--output",
+            str(station_output),
+        ],
+        check=True,
+        timeout=120,
+    )
+    station_outputs[str(station)] = str(station_output)
+write_bounded_json(
+    output,
+    {
+        "schema": "bayes_basket_target_daily_no_live_canonical_index_v1",
+        "station_scope": receipt.get("station_scope"),
+        "started_station_ids": receipt.get("started_station_ids") or [],
+        "not_started_station_ids": (
+            receipt.get("not_started_station_ids") or []
+        ),
+        "station_outputs": station_outputs,
+        "production_no_live": True,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    },
+)
+PY
 sudo -u "$RUN_USER" "$PY" \
   "$ROOT/scripts/audit_bayes_basket_target_settlement_version.py" \
   --db "$TARGET_DB" \
   --as-of-utc "$as_of_utc" \
-  --station-id RKPK \
+  "${SETTLEMENT_STATION_ARGS[@]}" \
   --latest-labeled-event-date \
   --output "$SETTLEMENT_VERSION"
 
-success=1
-trap - EXIT
 "$PY" "$ROOT/scripts/prune_bayes_basket_target_maintenance_artifacts.py" \
   --apply \
   --confirm APPLY_BOUNDED_MAINTENANCE_RETENTION \
   --receipt "$RETENTION_RECEIPT"
-echo "target_probability_evidence_no_live_cutover_ok reported_pid=${reported_pid_after} market_ws_pid=${market_ws_pid_before} clob_pid=${clob_pid_before} receipt=${CUTOVER_RECEIPT} resident=${RESIDENT_VERIFIED} daily=${DAILY_ACCEPTANCE} settlement_version=${SETTLEMENT_VERSION}"
+
+# Seal every maintenance stage, delete only the bounded recovery image after
+# all no-live checks have passed, and write one final content-addressed M9-06
+# receipt.  Until this block returns successfully, the EXIT trap can restore
+# the pre-cutover database and restart only the target writer.
+sudo -u "$RUN_USER" "$PY" - \
+  "$ATOMIC_STAGE_DIR" "$ATOMIC_RECEIPT" "$ATOMIC_LATEST" "$TARGET_DB" \
+  "$QUIESCENCE" "$WAL_RECEIPT" "$CUTOVER_RECEIPT" \
+  "$FINAL_READINESS" "$RESIDENT_ACCEPTANCE" "$RESIDENT_VERIFIED" \
+  "$DAILY_ACCEPTANCE" "$SETTLEMENT_VERSION" "$RETENTION_RECEIPT" \
+  "$BACKUP" "$ACTIVATION" "$SCHEMA_BOOTSTRAP_PACKET" \
+  "$CANONICAL_STATION_ALLOWLIST" \
+  "$market_ws_pid_before" "$(service_pid "$MARKET_WS_LABEL")" \
+  "$clob_pid_before" "$(service_pid "$CLOB_LABEL")" \
+  "$target_pid_before" "$reported_pid_after" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+from bayes_basket_target.atomic_cutover_receipt import (
+    build_cutover_receipt,
+    build_release_identity,
+    content_sha256,
+    recovery_file_identity,
+    seal_stage,
+    source_stage_receipt,
+    write_receipt_if_changed,
+)
+
+(
+    stage_dir_raw,
+    atomic_receipt_raw,
+    atomic_latest_raw,
+    database_raw,
+    quiescence_raw,
+    wal_raw,
+    cutover_raw,
+    readiness_raw,
+    acceptance_raw,
+    verified_raw,
+    daily_raw,
+    settlement_raw,
+    retention_raw,
+    backup_raw,
+    activation_raw,
+    bootstrap_raw,
+    station_csv,
+    market_before,
+    market_after,
+    clob_before,
+    clob_after,
+    target_before,
+    target_after,
+) = sys.argv[1:]
+
+stage_dir = Path(stage_dir_raw).resolve()
+database = Path(database_raw).resolve()
+stat = database.stat()
+database_fingerprint = {
+    "device": int(stat.st_dev),
+    "inode": int(stat.st_ino),
+    "size": int(stat.st_size),
+    "mtime_ns": int(stat.st_mtime_ns),
+}
+stage_dir.mkdir(parents=True, exist_ok=True)
+stages = {}
+
+
+def save_stage(name, receipt):
+    stages[name] = receipt
+    write_receipt_if_changed(
+        stage_dir / f"{name}.json",
+        receipt,
+    )
+
+
+def source(name, path):
+    save_stage(name, source_stage_receipt(name, path))
+
+
+def bounded_source_identity(label, path):
+    candidate = Path(path).resolve()
+    if candidate.is_symlink() or not candidate.is_file():
+        raise SystemExit(f"m9_06_postcheck_source_invalid:{label}")
+    raw = candidate.read_bytes()
+    if len(raw) > 16 * 1024 * 1024:
+        raise SystemExit(f"m9_06_postcheck_source_too_large:{label}")
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise SystemExit(f"m9_06_postcheck_source_not_mapping:{label}")
+    return {
+        "path": str(candidate),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "schema": str(payload.get("schema") or ""),
+        "state": str(payload.get("state") or ""),
+    }
+
+
+station_ids = tuple(
+    sorted(value.strip().upper() for value in station_csv.split(",") if value.strip())
+)
+if len(station_ids) != 45 or len(set(station_ids)) != 45:
+    raise SystemExit("m9_06_canonical_station_scope_invalid")
+
+with open(activation_raw, "rb") as handle:
+    activation_sha = hashlib.sha256(handle.read()).hexdigest()
+with open(bootstrap_raw, "rb") as handle:
+    bootstrap_sha = hashlib.sha256(handle.read()).hexdigest()
+
+save_stage(
+    "preflight",
+    seal_stage(
+        "preflight",
+        {
+            "schema": "bayes_basket_target_m9_06_preflight_v1",
+            "state": "PASS",
+            "station_scope": {"mode": "canonical_allowlist", "station_ids": list(station_ids)},
+            "activation_sha256": activation_sha,
+            "schema_bootstrap_sha256": bootstrap_sha,
+            "legacy_fallback_used": False,
+            "production_no_live": True,
+            "calls_order_gateway": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        },
+    ),
+)
+source("writer_quiescence", quiescence_raw)
+source("wal_checkpoint", wal_raw)
+source("schema_activation_replace", cutover_raw)
+
+save_stage(
+    "resident_restart",
+    seal_stage(
+        "resident_restart",
+        {
+            "schema": "bayes_basket_target_m9_06_resident_restart_v1",
+            "state": "PASS",
+            "target_writer_pid_before": int(target_before),
+            "target_writer_pid_after": int(target_after),
+            "target_writer_restarted": int(target_before) != int(target_after),
+            "production_no_live": True,
+            "calls_order_gateway": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        },
+    ),
+)
+save_stage(
+    "protected_pid_postcheck",
+    seal_stage(
+        "protected_pid_postcheck",
+        {
+            "schema": "bayes_basket_target_m9_06_protected_pid_postcheck_v1",
+            "state": "PASS",
+            "protected_service_pids_before": {
+                "com.weather.market_ws": int(market_before),
+                "com.weather.clob_order_service": int(clob_before),
+            },
+            "protected_service_pids_after": {
+                "com.weather.market_ws": int(market_after),
+                "com.weather.clob_order_service": int(clob_after),
+            },
+            "pid_stability": int(market_before) == int(market_after)
+            and int(clob_before) == int(clob_after),
+            "postcheck_receipts": {
+                label: bounded_source_identity(label, path)
+                for label, path in (
+                    ("readiness", readiness_raw),
+                    ("resident_verified", verified_raw),
+                    ("daily", daily_raw),
+                    ("settlement_version", settlement_raw),
+                )
+            },
+            "production_no_live": True,
+            "calls_order_gateway": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        },
+    ),
+)
+
+acceptance = json.loads(Path(acceptance_raw).read_text(encoding="utf-8"))
+rounds = acceptance.get("rounds")
+if not isinstance(rounds, list) or len(rounds) != 2:
+    raise SystemExit("m9_06_two_round_receipts_missing")
+for index, round_payload in enumerate(rounds, start=1):
+    save_stage(
+        f"resident_acceptance_round_{index}",
+        seal_stage(
+            f"resident_acceptance_round_{index}",
+            {
+                "schema": "bayes_basket_target_m9_06_resident_round_v1",
+                "state": round_payload.get("state"),
+                "source_content_sha256": content_sha256(round_payload),
+                "round": round_payload,
+                "production_no_live": True,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            },
+        ),
+    )
+release = build_release_identity(
+    station_ids=station_ids,
+    schema_sha256=content_sha256({
+        "schema": "bayes_basket_target_probability_evidence_schema_v1",
+        "tables": [
+            "basket_probability_evidence_artifact",
+            "basket_probability_evidence_promotion",
+            "basket_probability_evidence_activation",
+            "basket_probability_update_proof",
+            "basket_probability_bridge_history",
+            "basket_probability_bridge_latest",
+            "basket_probability_bridge_bucket_probability",
+        ],
+        "execution_mode": "production_no_live",
+    }),
+    activation_sha256=activation_sha,
+    artifact_sha256=bootstrap_sha,
+)
+recovery_before = Path(backup_raw)
+recovery_claim = recovery_file_identity(recovery_before)
+retention_sha = content_sha256(
+    json.loads(Path(retention_raw).read_text(encoding="utf-8"))
+)
+recovery_claim_payload = {
+    "schema": "bayes_basket_target_m9_06_recovery_cleanup_v1",
+    "state": "READY_TO_CLEAN",
+    "recovery": recovery_claim,
+    "retention_receipt_sha256": retention_sha,
+    "production_no_live": True,
+    "calls_order_gateway": False,
+    "live_submit_authorized": False,
+    "orders_submitted": 0,
+}
+stages["recovery_cleanup"] = seal_stage(
+    "recovery_cleanup",
+    recovery_claim_payload,
+)
+final = build_cutover_receipt(
+    station_ids=station_ids,
+    stage_receipts=stages,
+    release=release,
+    protected_pids_before={
+        "com.weather.market_ws": int(market_before),
+        "com.weather.clob_order_service": int(clob_before),
+    },
+    protected_pids_after={
+        "com.weather.market_ws": int(market_after),
+        "com.weather.clob_order_service": int(clob_after),
+    },
+    target_pid_before=int(target_before),
+    target_pid_after=int(target_after),
+    recovery=recovery_claim,
+    target_database_fingerprint=database_fingerprint,
+)
+write_receipt_if_changed(Path(atomic_receipt_raw), final)
+write_receipt_if_changed(Path(atomic_latest_raw), final)
+print(json.dumps({
+    "schema": final["schema"],
+    "state": final["state"],
+    "content_sha256": final["content_sha256"],
+    "stage_count": len(stages),
+    "recovery_deleted": recovery_claim["deleted_after_success"],
+    "writes": final["writes"],
+}, sort_keys=True))
+PY
+
+# The database and its rollback receipt are now durable.  Disarm rollback
+# before deleting the bounded recovery image: cleanup failure may leave one
+# harmless backup, but can never leave a changed database without a receipt.
+success=1
+trap - EXIT
+
+sudo -u "$RUN_USER" "$PY" - \
+  "$BACKUP" "$ATOMIC_RECEIPT" "$ATOMIC_LATEST" \
+  "$ATOMIC_STAGE_DIR/recovery_cleanup.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from bayes_basket_target.atomic_cutover_receipt import (
+    delete_recovery_after_success,
+    finalize_recovery_cleanup_receipt,
+    seal_stage,
+    validate_cutover_receipt,
+    write_receipt_if_changed,
+)
+
+backup_raw, receipt_raw, latest_raw, stage_raw = sys.argv[1:]
+receipt_path = Path(receipt_raw).resolve()
+latest_path = Path(latest_raw).resolve()
+previous = json.loads(receipt_path.read_text(encoding="utf-8"))
+validate_cutover_receipt(previous)
+recovery_before = previous["recovery"]
+recovery = delete_recovery_after_success(
+    Path(backup_raw).resolve(),
+    expected_sha256=str(recovery_before["sha256"]),
+)
+cleanup_stage = seal_stage(
+    "recovery_cleanup",
+    {
+        "schema": "bayes_basket_target_m9_06_recovery_cleanup_v1",
+        "state": "CLEANED",
+        "previous_receipt_sha256": previous["content_sha256"],
+        "recovery": recovery,
+        "production_no_live": True,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    },
+)
+final = finalize_recovery_cleanup_receipt(
+    previous,
+    recovery=recovery,
+    recovery_stage_receipt=cleanup_stage,
+)
+write_receipt_if_changed(Path(stage_raw), cleanup_stage)
+write_receipt_if_changed(receipt_path, final)
+write_receipt_if_changed(latest_path, final)
+print(json.dumps({
+    "schema": final["schema"],
+    "state": final["state"],
+    "content_sha256": final["content_sha256"],
+    "recovery_deleted": recovery["deleted_after_success"],
+}, sort_keys=True))
+PY
+
+echo "target_probability_evidence_no_live_cutover_ok reported_pid=${reported_pid_after} market_ws_pid=${market_ws_pid_before} clob_pid=${clob_pid_before} receipt=${CUTOVER_RECEIPT} atomic_receipt=${ATOMIC_RECEIPT} resident=${RESIDENT_VERIFIED} daily=${DAILY_ACCEPTANCE} settlement_version=${SETTLEMENT_VERSION}"

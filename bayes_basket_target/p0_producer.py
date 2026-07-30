@@ -688,13 +688,27 @@ def build_packets(
     ):
         raise ContractError("p0_input_mapping_required")
     registry_by_station = _registry_scopes(registry, event_date=event_date)
+    curves = _curve_rows_from_receipts(decode_receipts, event_date=event_date)
+    covered_stations = sorted(set(curves) & set(registry_by_station))
+    if not covered_stations:
+        raise ContractError("p0_no_registry_curve_station_overlap")
     for evidence in decode_receipts:
         if str(evidence.get("market_registry_snapshot_sha256") or "") != str(
             registry.get("snapshot_sha256") or ""
         ):
             raise ContractError("p0_decode_registry_snapshot_lineage_mismatch")
         evidence_timezone = str(evidence.get("target_timezone") or "")
-        for station_id, rows in registry_by_station.items():
+        evidence_stations = sorted({
+            str(row.get("station_id") or "").strip().upper()
+            for row in _validated_curve_entries(evidence, event_date=event_date)
+            if str(row.get("station_id") or "").strip().upper()
+        })
+        if not evidence_stations:
+            raise ContractError("p0_native_decode_station_scope_missing")
+        for station_id in evidence_stations:
+            if station_id not in registry_by_station:
+                raise ContractError("p0_native_decode_station_registry_missing")
+            rows = registry_by_station[station_id]
             assert_probability_timezone_matches_market(
                 probability_timezone=evidence_timezone,
                 market_timezone=registry_settlement_timezone(
@@ -703,8 +717,7 @@ def build_packets(
                     event_date=event_date,
                 ),
             )
-    curves = _curve_rows_from_receipts(decode_receipts, event_date=event_date)
-    stations = sorted(set(curves) & set(registry_by_station))
+    stations = covered_stations
     destination = output_dir.expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
     db = resolve_target_database(db_path)

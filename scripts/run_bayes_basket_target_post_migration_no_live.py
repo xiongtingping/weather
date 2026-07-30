@@ -33,10 +33,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.activation import load_target_activation  # noqa: E402
+from bayes_basket_target.atomic_cutover_receipt import (  # noqa: E402
+    FORWARD_OOS_BOUNDARY as ATOMIC_FORWARD_OOS_BOUNDARY,
+    build_release_identity,
+    seal_stage,
+)
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
 from bayes_basket_target.resource_bounds import load_bounded_json, write_bounded_json  # noqa: E402
 from bayes_basket_target.ssot import production_ssot_schema_status  # noqa: E402
+from bayes_basket_target.station_registry import (  # noqa: E402
+    coordinate_registry_manifest,
+)
 from scripts.ingest_bayes_basket_target_artifacts import (  # noqa: E402
     packet_binding_counts,
     validate_packet_sha256,
@@ -45,9 +53,12 @@ from scripts.ingest_bayes_basket_target_artifacts import (  # noqa: E402
 
 SCHEMA = "bayes_basket_target_post_migration_no_live_run_v1"
 EXECUTION_MODE = "production_no_live"
-VERTICAL_SLICE_STATION_ID = "RKPK"
+CANONICAL_STATION_IDS = tuple(
+    coordinate_registry_manifest()["station_ids"]
+)
+MAX_STATION_SCOPE = 45
 RESIDENT_ACCEPTANCE_SCHEMA = (
-    "bayes_basket_target_probability_resident_two_round_acceptance_v1"
+    "bayes_basket_target_probability_resident_two_round_acceptance_v2"
 )
 DEFAULT_CANONICAL_DB = ROOT / "data/archive.db"
 DEFAULT_ACTIVATION = (
@@ -76,6 +87,10 @@ MAX_CHILD_FILE_BYTES = MAX_TARGET_DB_BYTES + MAX_TARGET_WAL_BYTES
 MAX_RSS_BYTES = 768 * 1024 * 1024
 MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 600
+FORWARD_OOS_BOUNDARY = {
+    "blocks_production_no_live": False,
+    "blocks_formal_promotion_or_live": True,
+}
 
 PROTECTED_PROCESS_PATTERNS = {
     "reported_trajectory_no": "scripts/reported_trajectory_no_daemon.py",
@@ -118,6 +133,40 @@ ZERO_BOUNDARY_KEYS = {
     "exchange_orders_submitted",
     "orders_submitted",
 }
+FALSE_BOUNDARY_KEYS.update({"legacy_fallback_used", "old_fallback_used"})
+
+
+def normalize_station_scope(
+    station_ids: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    canonical = tuple(CANONICAL_STATION_IDS)
+    if len(canonical) != MAX_STATION_SCOPE or len(set(canonical)) != len(
+        canonical
+    ):
+        raise RuntimeError("canonical_station_registry_invalid")
+    raw = canonical if station_ids is None else tuple(station_ids)
+    normalized = tuple(
+        sorted(
+            {
+                str(station_id or "").strip().upper()
+                for station_id in raw
+                if str(station_id or "").strip()
+            }
+        )
+    )
+    if not normalized:
+        raise RuntimeError("post_migration_station_scope_empty")
+    if len(normalized) > MAX_STATION_SCOPE:
+        raise RuntimeError("post_migration_station_scope_exceeds_limit")
+    if len(normalized) != len(raw):
+        raise RuntimeError("post_migration_station_scope_duplicate_or_empty")
+    unknown = sorted(set(normalized) - set(canonical))
+    if unknown:
+        raise RuntimeError(
+            "post_migration_station_scope_not_canonical:"
+            + ",".join(unknown)
+        )
+    return normalized
 
 
 def _now() -> str:
@@ -268,16 +317,17 @@ def _table_counts(conn: sqlite3.Connection) -> dict[str, int]:
 def probability_scope_snapshot(
     db_path: Path,
     *,
-    station_id: str = VERTICAL_SLICE_STATION_ID,
+    station_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Read bounded target/non-target counts for every probability table.
+    """Read bounded in-scope/outside-scope counts for probability tables.
 
     This is deliberately independent of the resident acceptance helper.  It
     gives the cutover a complete before/after witness, including bridge
     tables that the legacy two-round helper does not inspect.
     """
 
-    station = str(station_id or "").strip().upper()
+    scope = normalize_station_scope(station_ids)
+    placeholders = ",".join("?" for _ in scope)
     database = resolve_target_database(db_path)
     with _open_read_only(database) as conn:
         present = {
@@ -291,8 +341,8 @@ def probability_scope_snapshot(
             if table not in present:
                 tables[table] = {
                     "state": "MISSING",
-                    "target": -1,
-                    "non_target": -1,
+                    "scoped": -1,
+                    "outside_scope": -1,
                 }
                 continue
             columns = {
@@ -306,63 +356,77 @@ def probability_scope_snapshot(
                 ):
                     tables[table] = {
                         "state": "STATION_JOIN_MISSING",
-                        "target": -1,
-                        "non_target": -1,
+                        "scoped": -1,
+                        "outside_scope": -1,
                     }
                     continue
                 target = int(conn.execute(
                     "SELECT COUNT(*) FROM "
                     "basket_probability_bridge_bucket_probability b "
                     "JOIN basket_probability_bridge_history h "
-                    "ON h.history_id=b.history_id WHERE h.station_id=?",
-                    (station,),
+                    "ON h.history_id=b.history_id "
+                    f"WHERE UPPER(COALESCE(h.station_id,'')) IN ({placeholders})",
+                    scope,
                 ).fetchone()[0])
-                non_target = int(conn.execute(
+                outside_scope = int(conn.execute(
                     "SELECT COUNT(*) FROM "
                     "basket_probability_bridge_bucket_probability b "
                     "JOIN basket_probability_bridge_history h "
                     "ON h.history_id=b.history_id "
-                    "WHERE UPPER(COALESCE(h.station_id,''))<>?",
-                    (station,),
+                    "WHERE UPPER(COALESCE(h.station_id,'')) NOT IN "
+                    f"({placeholders})",
+                    scope,
                 ).fetchone()[0])
                 tables[table] = {
                     "state": "READY",
-                    "target": target,
-                    "non_target": non_target,
+                    "scoped": target,
+                    "outside_scope": outside_scope,
                 }
                 continue
             if "station_id" not in columns:
                 tables[table] = {
                     "state": "STATION_COLUMN_MISSING",
-                    "target": -1,
-                    "non_target": -1,
+                    "scoped": -1,
+                    "outside_scope": -1,
                 }
                 continue
             target = int(conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE station_id=?",
-                (station,),
-            ).fetchone()[0])
-            non_target = int(conn.execute(
                 f"SELECT COUNT(*) FROM {table} "
-                "WHERE UPPER(COALESCE(station_id,''))<>?",
-                (station,),
+                "WHERE UPPER(COALESCE(station_id,'')) IN "
+                f"({placeholders})",
+                scope,
+            ).fetchone()[0])
+            outside_scope = int(conn.execute(
+                f"SELECT COUNT(*) FROM {table} "
+                "WHERE UPPER(COALESCE(station_id,'')) NOT IN "
+                f"({placeholders})",
+                scope,
             ).fetchone()[0])
             tables[table] = {
                 "state": "READY",
-                "target": target,
-                "non_target": non_target,
+                "scoped": target,
+                "outside_scope": outside_scope,
             }
     return {
         "schema": "bayes_basket_target_probability_scope_snapshot_v1",
-        "station_id": station,
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(scope),
+            "canonical_default": station_ids is None,
+            "max_station_count": MAX_STATION_SCOPE,
+        },
         "database": str(database),
         "tables": tables,
         "missing_tables": sorted(
             table for table, value in tables.items()
             if value.get("state") != "READY"
         ),
-        "non_target_counts": {
-            table: int(value["non_target"])
+        "outside_scope_counts": {
+            table: int(value["outside_scope"])
+            for table, value in tables.items()
+        },
+        "scoped_counts": {
+            table: int(value["scoped"])
             for table, value in tables.items()
         },
     }
@@ -374,23 +438,24 @@ def verify_two_round_resident_receipts(
     *,
     before_snapshot: Mapping[str, Any] | None = None,
     after_snapshot: Mapping[str, Any] | None = None,
-    station_id: str = VERTICAL_SLICE_STATION_ID,
+    station_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Verify the bounded two-round RKPK resident acceptance contract.
+    """Verify bounded canonical/allowlisted two-round resident acceptance.
 
     Forward OOS is intentionally not read here.  It is a promotion/live gate,
     never a production_no_live gate.
     """
 
-    station = str(station_id or "").strip().upper()
+    scope = normalize_station_scope(station_ids)
     blockers: list[str] = []
-    if station != VERTICAL_SLICE_STATION_ID:
-        blockers.append("resident_acceptance_station_not_rkpk")
     rounds = (first, second)
     for index, receipt in enumerate(rounds, start=1):
         if receipt.get("state") != "PASS":
             blockers.append(f"resident_round_{index}_not_pass")
-        if str(receipt.get("station_id") or station).upper() != station:
+        receipt_scope = tuple(
+            (receipt.get("station_scope") or {}).get("station_ids") or ()
+        )
+        if receipt_scope != scope:
             blockers.append(f"resident_round_{index}_station_mismatch")
         if receipt.get("production_no_live") is not True:
             blockers.append(f"resident_round_{index}_production_mode_invalid")
@@ -423,10 +488,15 @@ def verify_two_round_resident_receipts(
         if runtime.get("fallback_contract_failures"):
             blockers.append(f"resident_round_{index}_fallback_contract_invalid")
         fallback = runtime.get("fallback_proof_counts") or {}
-        if int(fallback.get("P0_HISTORICAL_TILT") or 0) < 1:
-            blockers.append(f"resident_round_{index}_theta_zero_not_consumed")
-        if int(fallback.get("METAR_TRAJECTORY_UPDATE") or 0) < 1:
-            blockers.append(f"resident_round_{index}_identity_lr_not_consumed")
+        if receipt.get("started_station_ids"):
+            if int(fallback.get("P0_HISTORICAL_TILT") or 0) < 1:
+                blockers.append(
+                    f"resident_round_{index}_theta_zero_not_consumed"
+                )
+            if int(fallback.get("METAR_TRAJECTORY_UPDATE") or 0) < 1:
+                blockers.append(
+                    f"resident_round_{index}_identity_lr_not_consumed"
+                )
         if runtime.get("missing_bridge_tables"):
             blockers.append(f"resident_round_{index}_bridge_schema_missing")
 
@@ -446,32 +516,55 @@ def verify_two_round_resident_receipts(
     ):
         blockers.append("resident_three_service_pid_invalid")
 
-    first_core = (first.get("core_chain") or {}).get("latest") or {}
-    second_core = (second.get("core_chain") or {}).get("latest") or {}
-    if not first_core or not second_core:
-        blockers.append("resident_core_direction_latest_missing")
-    else:
+    first_station_results = first.get("station_results") or {}
+    second_station_results = second.get("station_results") or {}
+    started_both = sorted(
+        set(first.get("started_station_ids") or [])
+        & set(second.get("started_station_ids") or [])
+    )
+    if not started_both:
+        blockers.append("resident_no_canonical_station_started_both_rounds")
+    for station in started_both:
+        first_core = (
+            (first_station_results.get(station) or {}).get("core_chain") or {}
+        ).get("latest") or {}
+        second_core = (
+            (second_station_results.get(station) or {}).get("core_chain") or {}
+        ).get("latest") or {}
+        if not first_core or not second_core:
+            blockers.append(
+                f"resident_core_direction_latest_missing:{station}"
+            )
+            continue
         first_rowid = int(first_core.get("rowid") or 0)
         second_rowid = int(second_core.get("rowid") or 0)
         if second_rowid < first_rowid:
-            blockers.append("resident_core_direction_rowid_rewind")
+            blockers.append(
+                f"resident_core_direction_rowid_rewind:{station}"
+            )
         elif second_rowid == first_rowid:
             # An unchanged poll must be zero-write.  Two identical durable
             # snapshots are a valid second round; requiring a fresh row here
             # would contradict the resident deduplication contract.
             if dict(second_core) != dict(first_core):
-                blockers.append("resident_core_direction_same_row_drift")
+                blockers.append(
+                    f"resident_core_direction_same_row_drift:{station}"
+                )
         else:
             if (
                 second_core.get("current_core_buckets")
                 != first_core.get("core_buckets")
             ):
-                blockers.append("resident_core_predecessor_mismatch")
+                blockers.append(
+                    f"resident_core_predecessor_mismatch:{station}"
+                )
             if (
                 second_core.get("current_direction")
                 != first_core.get("direction")
             ):
-                blockers.append("resident_direction_predecessor_mismatch")
+                blockers.append(
+                    f"resident_direction_predecessor_mismatch:{station}"
+                )
 
     if before_snapshot is None or after_snapshot is None:
         blockers.append("probability_scope_before_after_snapshot_missing")
@@ -480,24 +573,43 @@ def verify_two_round_resident_receipts(
         after_missing = after_snapshot.get("missing_tables") or []
         if before_missing or after_missing:
             blockers.append("probability_scope_table_missing")
-        before_counts = before_snapshot.get("non_target_counts") or {}
-        after_counts = after_snapshot.get("non_target_counts") or {}
+        before_scope = tuple(
+            (before_snapshot.get("station_scope") or {}).get("station_ids")
+            or ()
+        )
+        after_scope = tuple(
+            (after_snapshot.get("station_scope") or {}).get("station_ids")
+            or ()
+        )
+        if before_scope != scope or after_scope != scope:
+            blockers.append("probability_scope_snapshot_mismatch")
+        before_counts = before_snapshot.get("outside_scope_counts") or {}
+        after_counts = after_snapshot.get("outside_scope_counts") or {}
         if before_counts != after_counts:
-            blockers.append("non_rkpk_probability_table_write_detected")
+            blockers.append("outside_scope_probability_table_write_detected")
 
     identity = {
         "schema": RESIDENT_ACCEPTANCE_SCHEMA,
-        "station_id": station,
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(scope),
+            "max_station_count": MAX_STATION_SCOPE,
+        },
+        "started_station_ids": second.get("started_station_ids") or [],
+        "not_started_station_ids": (
+            second.get("not_started_station_ids") or []
+        ),
         "round_one_sha256": first.get("round_sha256"),
         "round_two_sha256": second.get("round_sha256"),
         "services": second_services,
-        "non_rkpk_counts_before": (
-            dict((before_snapshot or {}).get("non_target_counts") or {})
+        "outside_scope_counts_before": (
+            dict((before_snapshot or {}).get("outside_scope_counts") or {})
         ),
-        "non_rkpk_counts_after": (
-            dict((after_snapshot or {}).get("non_target_counts") or {})
+        "outside_scope_counts_after": (
+            dict((after_snapshot or {}).get("outside_scope_counts") or {})
         ),
         "blockers": sorted(set(blockers)),
+        "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
         "production_no_live": True,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
@@ -520,36 +632,97 @@ def _validate_activation(payload: Mapping[str, Any]) -> list[str]:
     return blockers
 
 
+def _atomic_stage(stage: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Attach one M9-06 content-addressed stage without changing payload semantics."""
+
+    return seal_stage(stage, payload, state=str(payload.get("state") or "OBSERVED"))
+
+
+def _release_identity(
+    *,
+    station_ids: Sequence[str],
+    activation_path: Path,
+    packet_sha256: str,
+    schema_status: Mapping[str, Any],
+) -> dict[str, Any]:
+    return build_release_identity(
+        station_ids=station_ids,
+        schema_sha256=content_sha256(dict(schema_status)),
+        activation_sha256=_sha256_file(activation_path),
+        artifact_sha256=packet_sha256,
+    )
+
+
+def _finalize_runner_result(
+    result: dict[str, Any],
+    *,
+    stage: str,
+) -> dict[str, Any]:
+    result["atomic_stage_receipt"] = _atomic_stage(stage, result)
+    result["receipt_sha256"] = content_sha256(result)
+    return result
+
+
 def _validate_market_manifest(payload: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if payload.get("evidence_only") is not True:
         blockers.append("market_manifest_not_evidence_only")
     if payload.get("authorizes_order") is not False:
         blockers.append("market_manifest_authorizes_order_invalid")
-    scope = payload.get("station_scope")
-    if (
-        not isinstance(scope, Mapping)
-        or scope.get("mode") != "allowlist"
-        or not isinstance(scope.get("station_ids"), list)
-        or not scope.get("station_ids")
-    ):
+    stations, event_dates = _manifest_scope(payload)
+    if not stations:
         blockers.append("market_manifest_exact_station_allowlist_missing")
-    if not str(
-        payload.get("event_date") or payload.get("target_local_date") or ""
-    ).strip():
+    if not event_dates:
         blockers.append("market_manifest_event_date_missing")
     return blockers
 
 
-def _validate_vertical_slice_scope(
+def _manifest_scope(
+    manifest: Mapping[str, Any],
+) -> tuple[list[str], list[str]]:
+    scopes: list[Mapping[str, Any]] = []
+    top_scope = manifest.get("station_scope")
+    if isinstance(top_scope, Mapping):
+        scopes.append(manifest)
+    nested = manifest.get("scope_manifests")
+    if isinstance(nested, Mapping):
+        scopes.extend(
+            value for value in nested.values()
+            if isinstance(value, Mapping)
+        )
+    elif isinstance(nested, list):
+        scopes.extend(
+            value for value in nested if isinstance(value, Mapping)
+        )
+    stations: set[str] = set()
+    event_dates: set[str] = set()
+    for item in scopes:
+        scope = item.get("station_scope")
+        if not isinstance(scope, Mapping) or scope.get("mode") != "allowlist":
+            continue
+        stations.update(
+            str(value or "").strip().upper()
+            for value in scope.get("station_ids") or []
+            if str(value or "").strip()
+        )
+        event_date = str(
+            item.get("event_date")
+            or item.get("target_local_date")
+            or ""
+        ).strip()
+        if event_date:
+            event_dates.add(event_date)
+    return sorted(stations), sorted(event_dates)
+
+
+def _validate_exact_station_scope(
     *,
-    station_id: str,
+    station_ids: Sequence[str],
     packet: Mapping[str, Any],
     manifest: Mapping[str, Any],
 ) -> list[str]:
+    expected = list(normalize_station_scope(station_ids))
     blockers: list[str] = []
-    if station_id != VERTICAL_SLICE_STATION_ID:
-        blockers.append("vertical_slice_station_not_frozen_authority")
     packet_stations = sorted(
         {
             str(value or "").strip().upper()
@@ -557,8 +730,8 @@ def _validate_vertical_slice_scope(
             if str(value or "").strip()
         }
     )
-    if packet_stations != [station_id]:
-        blockers.append("artifact_packet_not_single_station_exact_scope")
+    if packet_stations != expected:
+        blockers.append("artifact_packet_not_exact_station_scope")
     for key, rows in packet.items():
         if not isinstance(rows, list):
             continue
@@ -566,23 +739,17 @@ def _validate_vertical_slice_scope(
             if not isinstance(row, Mapping) or "station_id" not in row:
                 continue
             row_station = str(row.get("station_id") or "").strip().upper()
-            if row_station and row_station != station_id:
-                blockers.append(f"artifact_packet_cross_station_row:{key}")
+            if row_station and row_station not in expected:
+                blockers.append(
+                    f"artifact_packet_outside_station_scope:{key}"
+                )
                 break
-    scope = manifest.get("station_scope")
-    manifest_stations = (
-        sorted(
-            {
-                str(value or "").strip().upper()
-                for value in scope.get("station_ids") or []
-                if str(value or "").strip()
-            }
-        )
-        if isinstance(scope, Mapping)
-        else []
-    )
-    if manifest_stations != [station_id]:
-        blockers.append("market_manifest_not_single_station_exact_scope")
+    manifest_stations, _ = _manifest_scope(manifest)
+    if (
+        not manifest_stations
+        or not set(manifest_stations).issubset(set(expected))
+    ):
+        blockers.append("market_manifest_outside_station_scope")
     return blockers
 
 
@@ -611,7 +778,7 @@ def _validate_boundary_tree(value: Any, *, path: str = "$") -> list[str]:
 
 def _build_preflight(
     *,
-    station_id: str,
+    station_ids: Sequence[str],
     db_path: Path,
     activation_path: Path,
     packet_path: Path,
@@ -635,8 +802,8 @@ def _build_preflight(
         raise RuntimeError("market_manifest_mapping_required")
     blockers.extend(_validate_market_manifest(manifest))
     blockers.extend(
-        _validate_vertical_slice_scope(
-            station_id=station_id,
+        _validate_exact_station_scope(
+            station_ids=station_ids,
             packet=packet,
             manifest=manifest,
         )
@@ -669,7 +836,11 @@ def _build_preflight(
     return {
         "state": "PASS" if not blockers else "BLOCKED_FAIL_CLOSED",
         "blockers": sorted(set(blockers)),
-        "vertical_slice_station_id": station_id,
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(station_ids),
+            "max_station_count": MAX_STATION_SCOPE,
+        },
         "resources": resources,
         "schema_status": schema_status,
         "artifact_packet": {
@@ -681,11 +852,8 @@ def _build_preflight(
         "market_manifest": {
             "path": str(market_manifest_path),
             "sha256": _sha256_file(market_manifest_path),
-            "event_date": (
-                manifest.get("event_date")
-                or manifest.get("target_local_date")
-            ),
-            "station_scope": manifest.get("station_scope"),
+            "event_dates": _manifest_scope(manifest)[1],
+            "station_ids": _manifest_scope(manifest)[0],
         },
         "activation": {
             "path": str(activation_path),
@@ -694,6 +862,14 @@ def _build_preflight(
         },
         "protected_processes": processes,
         "table_counts": counts,
+        "forward_oos_boundary": dict(ATOMIC_FORWARD_OOS_BOUNDARY),
+        "legacy_fallback_used": False,
+        "release": _release_identity(
+            station_ids=station_ids,
+            activation_path=activation_path,
+            packet_sha256=packet_sha,
+            schema_status=schema_status,
+        ),
     }
 
 
@@ -734,7 +910,7 @@ def _default_worker_runner(
 
 def run(
     *,
-    station_id: str = VERTICAL_SLICE_STATION_ID,
+    station_ids: Sequence[str] | None = None,
     db_path: Path = DEFAULT_TARGET_DB,
     canonical_db_path: Path = DEFAULT_CANONICAL_DB,
     activation_path: Path = DEFAULT_ACTIVATION,
@@ -750,7 +926,7 @@ def run(
     worker_runner: Callable[..., int] = _default_worker_runner,
 ) -> dict[str, Any]:
     started_at = _now()
-    station = str(station_id or "").strip().upper()
+    scope = normalize_station_scope(station_ids)
     db = _bounded_file(
         resolve_target_database(db_path),
         label="target_db",
@@ -770,7 +946,7 @@ def run(
     receipt.parent.mkdir(parents=True, exist_ok=True)
 
     preflight = _build_preflight(
-        station_id=station,
+        station_ids=scope,
         db_path=db,
         activation_path=activation,
         packet_path=packet,
@@ -784,11 +960,12 @@ def run(
             "schema": SCHEMA,
             "state": "BLOCKED_FAIL_CLOSED",
             "stage": "preflight",
-            "station_id": station,
+            "station_scope": preflight["station_scope"],
             "started_at_utc": started_at,
             "completed_at_utc": _now(),
             "preflight": preflight,
             "worker_invoked": False,
+            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -797,7 +974,7 @@ def run(
             "target_db_fingerprint_before": db_before,
             "target_db_fingerprint_after": _db_fingerprint(db),
         }
-        result["receipt_sha256"] = content_sha256(result)
+        _finalize_runner_result(result, stage="preflight")
         write_bounded_json(receipt, result, limit=MAX_OUTPUT_BYTES)
         return result
     if not execute:
@@ -805,11 +982,12 @@ def run(
             "schema": SCHEMA,
             "state": "PREFLIGHT_READY",
             "stage": "preflight",
-            "station_id": station,
+            "station_scope": preflight["station_scope"],
             "started_at_utc": started_at,
             "completed_at_utc": _now(),
             "preflight": preflight,
             "worker_invoked": False,
+            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -818,19 +996,15 @@ def run(
             "target_db_fingerprint_before": db_before,
             "target_db_fingerprint_after": _db_fingerprint(db),
         }
-        result["receipt_sha256"] = content_sha256(result)
+        _finalize_runner_result(result, stage="preflight")
         write_bounded_json(receipt, result, limit=MAX_OUTPUT_BYTES)
         return result
 
     manifest_payload = load_bounded_json(manifest)
     if not isinstance(manifest_payload, Mapping):
         raise RuntimeError("market_manifest_mapping_required")
-    event_date = str(
-        manifest_payload.get("event_date")
-        or manifest_payload.get("target_local_date")
-        or ""
-    ).strip()
-    if not event_date:
+    _, event_dates = _manifest_scope(manifest_payload)
+    if not event_dates:
         raise RuntimeError("market_manifest_event_date_missing")
     env = dict(os.environ)
     env.update(
@@ -839,8 +1013,8 @@ def run(
             "PM_TARGET_EXECUTION_MODE": EXECUTION_MODE,
             "PM_TARGET_ACTIVATION": str(activation),
             "PM_TARGET_MARKET_MANIFEST": str(manifest),
-            "PM_TARGET_STATION_ALLOWLIST": station,
-            "PM_TARGET_EVENT_DATE_ALLOWLIST": event_date,
+            "PM_TARGET_STATION_ALLOWLIST": ",".join(scope),
+            "PM_TARGET_EVENT_DATE_ALLOWLIST": ",".join(event_dates),
             "PM_OFFICIAL_NWP_PROXY": proxy_url,
             "HTTP_PROXY": proxy_url,
             "HTTPS_PROXY": proxy_url,
@@ -913,7 +1087,7 @@ def run(
                 else "BLOCKED_FAIL_CLOSED"
             ),
             "stage": "worker_complete",
-            "station_id": station,
+            "station_scope": preflight["station_scope"],
             "started_at_utc": started_at,
             "completed_at_utc": _now(),
             "preflight": preflight,
@@ -931,6 +1105,7 @@ def run(
             "protected_processes_after": processes_after,
             "table_counts_before": preflight["table_counts"],
             "table_counts_after": counts_after,
+            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -939,7 +1114,7 @@ def run(
             "target_db_fingerprint_before": db_before,
             "target_db_fingerprint_after": _db_fingerprint(db),
         }
-        result["receipt_sha256"] = content_sha256(result)
+        _finalize_runner_result(result, stage="resident_restart")
         write_bounded_json(receipt, result, limit=MAX_OUTPUT_BYTES)
         return result
     finally:
@@ -949,7 +1124,13 @@ def run(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--station-id", default=VERTICAL_SLICE_STATION_ID)
+    parser.add_argument(
+        "--station-allowlist",
+        help=(
+            "comma-separated canonical station allowlist; omitted means "
+            "the frozen canonical 45-station registry"
+        ),
+    )
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     parser.add_argument("--canonical-db", type=Path, default=DEFAULT_CANONICAL_DB)
     parser.add_argument("--activation", type=Path, default=DEFAULT_ACTIVATION)
@@ -975,7 +1156,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = run(
-            station_id=args.station_id,
+            station_ids=(
+                args.station_allowlist.split(",")
+                if args.station_allowlist
+                else None
+            ),
             db_path=args.db,
             canonical_db_path=args.canonical_db,
             activation_path=args.activation,
@@ -996,13 +1181,14 @@ def main() -> int:
             "state": "BLOCKED_FAIL_CLOSED",
             "stage": "coordinator_exception",
             "reason": f"{type(exc).__name__}:{exc}",
+            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
-        result["receipt_sha256"] = content_sha256(result)
+        _finalize_runner_result(result, stage="preflight")
         write_bounded_json(
             args.receipt.expanduser().resolve(),
             result,

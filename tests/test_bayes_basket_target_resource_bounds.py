@@ -254,6 +254,33 @@ def test_aggregate_raw_budget_covers_all_providers(tmp_path: Path) -> None:
         resource_bounds.assert_target_raw_retention_budget(tmp_path, bytes_needed=17, limit=32)
 
 
+def test_aggregate_raw_budget_counts_deep_candidate_provider_layout(
+    tmp_path: Path,
+) -> None:
+    raw = (
+        tmp_path
+        / "candidate_raw/2026-07-30/Asia_Seoul/RKPK/run"
+        / "gem_gdps_official/raw/hash.bin"
+    )
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"x" * 17)
+
+    assert resource_bounds.assert_target_raw_retention_budget(
+        tmp_path,
+        bytes_needed=1,
+        limit=32,
+    ) == 17
+    with pytest.raises(
+        resource_bounds.ResourceBoundError,
+        match="aggregate_retention",
+    ):
+        resource_bounds.assert_target_raw_retention_budget(
+            tmp_path,
+            bytes_needed=16,
+            limit=32,
+        )
+
+
 def test_raw_budget_rejects_write_that_would_cross_free_space_floor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

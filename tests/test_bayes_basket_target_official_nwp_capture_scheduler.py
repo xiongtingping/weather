@@ -120,6 +120,264 @@ def test_scheduler_exposes_all_five_model_provider_roles() -> None:
     )
 
 
+def test_candidate_prefetch_is_single_scope_raw_only_and_isolates_provider_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "d" * 64},
+    )
+    calls = []
+
+    def provider_runner(**kwargs):
+        calls.append(kwargs)
+        provider = kwargs["provider_id"]
+        if provider == scheduler.MODEL_PROVIDER_IDS["ICON"]:
+            partial = kwargs["output_dir"] / "partial.bin"
+            partial.parent.mkdir(parents=True, exist_ok=True)
+            partial.write_bytes(b"partial")
+            raise RuntimeError("provider temporarily unavailable")
+        path = kwargs["output_dir"] / "decode.json"
+        model = next(
+            model_id
+            for model_id, provider_id in scheduler.MODEL_PROVIDER_IDS.items()
+            if provider_id == provider
+        )
+        arrival_identity = {
+            "schema": "bayes_basket_target_prospective_model_arrival_v1",
+            "provider_id": provider,
+            "model_id": model,
+            "station_id": "RKPK",
+            "target_local_date": "2026-07-30",
+            "run_initialization_utc": "2026-07-29T00:00:00Z",
+            "published_at_utc": "2026-07-29T00:30:00Z",
+            "received_at_utc": "2026-07-29T01:00:00Z",
+            "raw_payload_sha256s": ["a" * 64],
+            "receipt_sha256": "b" * 64,
+        }
+        write_bounded_json_if_changed(path, {
+            "arrival": {
+                **arrival_identity,
+                "content_sha256": content_sha256(arrival_identity),
+            },
+        })
+        return {
+            "blocked_count": 0,
+            "records": [{"status": "CAPTURED", "path": str(path)}],
+        }
+
+    result = scheduler.prefetch_candidate_raw_training(
+        registry_snapshot_path=registry_path,
+        scope={
+            "event_date": "2026-07-30",
+            "settlement_timezone": "Asia/Seoul",
+            "station_ids": ["RKPK"],
+        },
+        as_of_utc="2026-07-29T06:00:00Z",
+        run_initialization_utc="2026-07-29T00:00:00Z",
+        # Provider ids and names are both accepted; the duplicate ECMWF
+        # entry must not cause a second fetch.
+        candidate_models=(
+            "ECMWF",
+            "ecmwf_ifs025_official",
+            "GFS",
+            "ICON",
+            "GEM",
+        ),
+        output_root=tmp_path / "prefetch",
+        provider_runner=provider_runner,
+    )
+
+    assert [call["provider_id"] for call in calls] == [
+        "ecmwf_ifs025_official",
+        "gfs_0p25_official",
+        "icon_global_official",
+        "gem_gdps_official",
+    ]
+    assert all(call["station_ids"] == ["RKPK"] for call in calls)
+    assert all(
+        call["run_initialization_utc"] == "2026-07-29T00:00:00Z"
+        for call in calls
+    )
+    assert result["state"] == "CAPTURED_CANDIDATE"
+    assert result["candidate_only"] is True
+    assert len(result["content_sha256"]) == 64
+    assert result["p0_materialization_authorized"] is False
+    assert result["production_no_live"] is True
+    assert result["creates_p0"] is False
+    assert result["creates_activation"] is False
+    assert result["native_arrival_indexed"] is False
+    assert result["writes_target_database"] is False
+    assert result["calls_order_gateway"] is False
+    assert result["successful_models"] == ["ECMWF", "GFS", "GEM"]
+    assert result["complete_provider_count"] == 3
+    assert len(result["capture_paths"]) == 3
+    assert Path(result["receipt_path"]).is_file()
+    assert all(
+        row["native_arrival_indexed"] is False
+        for row in result["providers"]
+    )
+    assert next(
+        row for row in result["providers"] if row["model_id"] == "ICON"
+    )["state"] == "BLOCKED_FAIL_CLOSED"
+    icon_dir = (
+        tmp_path / "prefetch/candidate_raw/2026-07-30"
+        / "Asia_Seoul/RKPK/20260729T000000Z/icon_global_official"
+    )
+    assert not icon_dir.exists()
+
+    replay = scheduler.prefetch_candidate_raw_training(
+        registry_snapshot_path=registry_path,
+        scope={
+            "event_date": "2026-07-30",
+            "settlement_timezone": "Asia/Seoul",
+            "station_ids": ["RKPK"],
+        },
+        as_of_utc="2026-07-29T06:01:00Z",
+        run_initialization_utc="2026-07-29T00:00:00Z",
+        candidate_models=("ECMWF", "GFS", "ICON", "GEM"),
+        output_root=tmp_path / "prefetch",
+        provider_runner=provider_runner,
+    )
+    assert [call["provider_id"] for call in calls[4:]] == [
+        "icon_global_official"
+    ]
+    assert replay["content_sha256"] == result["content_sha256"]
+
+
+def test_candidate_prefetch_rejects_paths_without_arrival_evidence_and_cleans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "d" * 64},
+    )
+
+    def provider_runner(**kwargs):
+        path = kwargs["output_dir"] / "decode.json"
+        write_bounded_json_if_changed(path, {
+            "provider_id": kwargs["provider_id"],
+            "forecast": 31.0,
+        })
+        return {
+            "blocked_count": 0,
+            "records": [{"status": "CAPTURED", "path": str(path)}],
+        }
+
+    result = scheduler.prefetch_candidate_raw_training(
+        registry_snapshot_path=tmp_path / "registry.json",
+        scope={
+            "event_date": "2026-07-30",
+            "settlement_timezone": "Asia/Seoul",
+            "station_ids": ["KDAL"],
+        },
+        as_of_utc="2026-07-29T06:00:00Z",
+        run_initialization_utc="2026-07-29T00:00:00Z",
+        candidate_models=("ECMWF", "GFS"),
+        output_root=tmp_path / "prefetch",
+        provider_runner=provider_runner,
+    )
+
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert result["capture_paths"] == []
+    assert all(
+        "publication_arrival_evidence_missing"
+        in str(row.get("reason") or "")
+        for row in result["providers"]
+    )
+    run_root = (
+        tmp_path / "prefetch/candidate_raw/2026-07-30"
+        / "Asia_Seoul/KDAL/20260729T000000Z"
+    )
+    assert not (run_root / "ecmwf_ifs025_official").exists()
+    assert not (run_root / "gfs_0p25_official").exists()
+
+
+@pytest.mark.parametrize(
+    ("models", "error"),
+    [
+        (("ECMWF",), "official_nwp_candidate_model_count_below_minimum"),
+        (
+            ("ECMWF", "GFS", "ICON", "GEM", "CMA", "HRRR"),
+            "official_nwp_candidate_model_count_exceeded",
+        ),
+        (("NOT_A_MODEL", "GFS"), "official_nwp_candidate_model_invalid"),
+    ],
+)
+def test_candidate_prefetch_requires_two_to_five_known_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    models: tuple[str, ...],
+    error: str,
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "e" * 64},
+    )
+    with pytest.raises(scheduler.ContractError, match=error):
+        scheduler.prefetch_candidate_raw_training(
+            registry_snapshot_path=tmp_path / "registry.json",
+            scope={
+                "event_date": "2026-07-30",
+                "settlement_timezone": "Asia/Seoul",
+                "station_ids": ["RKPK"],
+            },
+            as_of_utc="2026-07-29T06:00:00Z",
+            run_initialization_utc="2026-07-29T00:00:00Z",
+            candidate_models=models,
+            output_root=tmp_path / "prefetch",
+            provider_runner=lambda **_: {},
+        )
+
+
+def test_candidate_prefetch_rejects_multiple_stations_and_future_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "f" * 64},
+    )
+    kwargs = {
+        "registry_snapshot_path": tmp_path / "registry.json",
+        "scope": {
+            "event_date": "2026-07-30",
+            "settlement_timezone": "Asia/Seoul",
+            "station_ids": ["RKPK", "KDAL"],
+        },
+        "as_of_utc": "2026-07-29T06:00:00Z",
+        "run_initialization_utc": "2026-07-29T00:00:00Z",
+        "candidate_models": ("ECMWF", "GFS"),
+        "output_root": tmp_path / "prefetch",
+        "provider_runner": lambda **_: {},
+    }
+    with pytest.raises(
+        scheduler.ContractError,
+        match="official_nwp_candidate_scope_must_be_one_station",
+    ):
+        scheduler.prefetch_candidate_raw_training(**kwargs)
+
+    kwargs["scope"] = {
+        "event_date": "2026-07-30",
+        "settlement_timezone": "Asia/Seoul",
+        "station_ids": ["RKPK"],
+    }
+    kwargs["as_of_utc"] = "2026-07-28T23:59:00Z"
+    with pytest.raises(
+        scheduler.ContractError,
+        match="official_nwp_candidate_run_after_as_of",
+    ):
+        scheduler.prefetch_candidate_raw_training(**kwargs)
+
+
 def test_registry_scopes_use_each_market_timezone_and_skip_closed() -> None:
     rows = []
     for station, day, timezone_name in (
@@ -147,6 +405,58 @@ def test_registry_scopes_use_each_market_timezone_and_skip_closed() -> None:
     assert ("RKPK", "2026-07-27", "Asia/Seoul") in identities
     assert ("KORD", "2026-07-28", "America/Chicago") in identities
     assert all(station != "OLD" for station, _, _ in identities)
+
+
+def test_registry_scope_discovery_covers_canonical_multiday_catalog() -> None:
+    rows = []
+    stations = [f"S{index:03d}" for index in range(45)]
+    for day in (
+        "2026-07-29",  # closed
+        "2026-07-30",  # open
+        "2026-07-31",  # not started
+        "2026-08-01",  # not started
+        "2026-08-03",  # more than 72 hours away
+    ):
+        for station in stations:
+            rows.append({
+                "station_id": station,
+                "event_date": day,
+                "settlement_timezone": "America/New_York",
+                "outcome": "mid",
+                "source_eligible": 1,
+                "market_active": 1,
+                "market_accepting_orders": 1,
+            })
+
+    scopes = scheduler.registry_capture_scopes(
+        {"rows": rows},
+        as_of_utc="2026-07-30T16:00:00Z",
+    )
+
+    assert scheduler.MAX_DISCOVERED_SCOPES == 135
+    assert scheduler.MAX_SCOPES_PER_CYCLE == 4
+    assert len(scopes) == 135
+    by_day = {
+        day: [
+            row for row in scopes if row["event_date"] == day
+        ]
+        for day in {row["event_date"] for row in scopes}
+    }
+    assert set(by_day) == {
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+    }
+    assert all(len(by_day[day]) == 45 for day in by_day)
+    assert {
+        row["event_day_state"] for row in by_day["2026-07-30"]
+    } == {"open"}
+    assert {
+        row["event_day_state"] for row in by_day["2026-07-31"]
+    } == {"not_started"}
+    assert {
+        row["event_day_state"] for row in by_day["2026-08-01"]
+    } == {"not_started"}
 
 
 def test_capture_falls_back_until_exact_selected_mask_is_complete(

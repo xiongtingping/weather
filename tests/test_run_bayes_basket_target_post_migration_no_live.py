@@ -2,64 +2,184 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from scripts import run_bayes_basket_target_post_migration_no_live as runner
 
 
-def test_vertical_slice_accepts_only_exact_rkpk_scope() -> None:
+def _scope() -> tuple[str, ...]:
+    return ("EGLC", "RKPK")
+
+
+def _snapshot(outside: int = 0) -> dict:
+    return {
+        "missing_tables": [],
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(_scope()),
+        },
+        "outside_scope_counts": {
+            table: outside
+            for table in runner.PROBABILITY_ACCEPTANCE_TABLES
+        },
+    }
+
+
+def _round(
+    *,
+    rowid: int,
+    current_core: list[str],
+    current_direction: str | None,
+    core: list[str],
+    direction: str,
+    candidate_activations: int = 0,
+) -> dict:
+    station_results = {}
+    for station in _scope():
+        station_results[station] = {
+            "state": "PASS",
+            "started": True,
+            "core_chain": {
+                "latest": {
+                    "rowid": rowid,
+                    "current_core_buckets": current_core,
+                    "core_buckets": core,
+                    "current_direction": current_direction,
+                    "direction": direction,
+                }
+            },
+        }
+    return {
+        "state": "PASS",
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(_scope()),
+        },
+        "started_station_ids": list(_scope()),
+        "not_started_station_ids": [],
+        "round_sha256": "a" * 64,
+        "services": {
+            "com.weather.reported_trajectory_no": 101,
+            "com.weather.market_ws": 102,
+            "com.weather.clob_order_service": 103,
+        },
+        "resources": {
+            "database_bytes": 1024,
+            "wal_bytes": 0,
+            "free_bytes": 4 * 1024 * 1024 * 1024,
+            "resident_service_rss_bytes": {
+                "com.weather.reported_trajectory_no": 1024,
+                "com.weather.market_ws": 1024,
+                "com.weather.clob_order_service": 1024,
+            },
+            "acceptance_process_rss_bytes": 1024,
+        },
+        "probability_evidence_runtime": {
+            "candidate_activation_count_all": candidate_activations,
+            "fallback_contract_failures": [],
+            "fallback_proof_counts": {
+                "P0_HISTORICAL_TILT": 2,
+                "METAR_TRAJECTORY_UPDATE": 2,
+            },
+            "missing_bridge_tables": [],
+        },
+        "station_results": station_results,
+        "production_no_live": True,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+
+
+def test_default_scope_is_frozen_canonical_45() -> None:
+    scope = runner.normalize_station_scope()
+    assert scope == runner.CANONICAL_STATION_IDS
+    assert len(scope) == 45
+
+
+def test_preflight_contract_exposes_release_and_m9_06_stage_receipt() -> None:
+    assert runner.FORWARD_OOS_BOUNDARY["blocks_production_no_live"] is False
+    assert "legacy_fallback_used" in runner.FALSE_BOUNDARY_KEYS
+    stage = runner._atomic_stage(
+        "preflight",
+        {
+            "schema": "fixture",
+            "state": "PREFLIGHT_READY",
+            "production_no_live": True,
+            "calls_order_gateway": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+            "legacy_fallback_used": False,
+        },
+    )
+    assert stage["schema"] == "bayes_basket_target_m9_06_stage_receipt_v1"
+    assert len(stage["content_sha256"]) == 64
+
+
+def test_explicit_canonical_allowlist_is_exact_and_bounded() -> None:
     packet = {
-        "station_ids": ["RKPK"],
-        "calibration_artifacts": [{"station_id": "RKPK"}],
+        "station_ids": ["EGLC", "RKPK"],
+        "calibration_artifacts": [
+            {"station_id": "EGLC"},
+            {"station_id": "RKPK"},
+        ],
         "global_priors": [{"global_prior_id": "global"}],
     }
     manifest = {
         "station_scope": {
             "mode": "allowlist",
-            "station_ids": ["RKPK"],
+            "station_ids": ["RKPK", "EGLC"],
         }
     }
-
-    assert runner._validate_vertical_slice_scope(
-        station_id="RKPK",
+    assert runner._validate_exact_station_scope(
+        station_ids=_scope(),
         packet=packet,
         manifest=manifest,
     ) == []
 
 
-def test_vertical_slice_rejects_batch_and_cross_station_rows() -> None:
-    blockers = runner._validate_vertical_slice_scope(
-        station_id="RKPK",
+def test_nested_resident_ws_manifest_resolves_all_started_scopes() -> None:
+    manifest = {
+        "scope_manifests": {
+            "EGLC|2026-07-30": {
+                "station_scope": {
+                    "mode": "allowlist",
+                    "station_ids": ["EGLC"],
+                },
+                "event_date": "2026-07-30",
+            },
+            "RKPK|2026-07-31": {
+                "station_scope": {
+                    "mode": "allowlist",
+                    "station_ids": ["RKPK"],
+                },
+                "target_local_date": "2026-07-31",
+            },
+        }
+    }
+    stations, event_dates = runner._manifest_scope(manifest)
+    assert stations == ["EGLC", "RKPK"]
+    assert event_dates == ["2026-07-30", "2026-07-31"]
+
+
+def test_exact_scope_rejects_outside_rows_and_unknown_station() -> None:
+    blockers = runner._validate_exact_station_scope(
+        station_ids=_scope(),
         packet={
-            "station_ids": ["RKPK", "EGLC"],
-            "calibration_artifacts": [
-                {"station_id": "RKPK"},
-                {"station_id": "EGLC"},
-            ],
+            "station_ids": ["EGLC", "RKPK"],
+            "calibration_artifacts": [{"station_id": "ZUUU"}],
         },
         manifest={
             "station_scope": {
                 "mode": "allowlist",
-                "station_ids": ["RKPK", "EGLC"],
+                "station_ids": ["ZUUU"],
             }
         },
     )
-
-    assert "artifact_packet_not_single_station_exact_scope" in blockers
-    assert "artifact_packet_cross_station_row:calibration_artifacts" in blockers
-    assert "market_manifest_not_single_station_exact_scope" in blockers
-
-
-def test_vertical_slice_station_cannot_change_before_oos_gate() -> None:
-    blockers = runner._validate_vertical_slice_scope(
-        station_id="EGLC",
-        packet={"station_ids": ["EGLC"]},
-        manifest={
-            "station_scope": {
-                "mode": "allowlist",
-                "station_ids": ["EGLC"],
-            }
-        },
-    )
-    assert "vertical_slice_station_not_frozen_authority" in blockers
+    assert "artifact_packet_outside_station_scope:calibration_artifacts" in blockers
+    assert "market_manifest_outside_station_scope" in blockers
+    with pytest.raises(RuntimeError, match="not_canonical"):
+        runner.normalize_station_scope(("XXXX",))
 
 
 def test_recursive_no_live_boundary_rejects_nested_escape() -> None:
@@ -90,9 +210,7 @@ def test_child_file_limit_covers_bounded_target_db_and_wal(
         lambda kind, limits: observed.append((kind, limits)),
     )
     runner._child_file_limit()
-    expected = (
-        runner.MAX_TARGET_DB_BYTES + runner.MAX_TARGET_WAL_BYTES
-    )
+    expected = runner.MAX_TARGET_DB_BYTES + runner.MAX_TARGET_WAL_BYTES
     assert observed == [
         (runner.resource.RLIMIT_FSIZE, (expected, expected))
     ]
@@ -107,15 +225,13 @@ def test_runner_counts_training_facts_labels_and_version_vectors() -> None:
         ):
             conn.execute(f"CREATE TABLE {table}(id INTEGER PRIMARY KEY)")
             conn.execute(f"INSERT INTO {table} DEFAULT VALUES")
-
         counts = runner._table_counts(conn)
-
     assert counts["basket_policy_training_fact"] == 1
     assert counts["basket_policy_training_label"] == 1
     assert counts["basket_target_execution_version_vectors"] == 1
 
 
-def test_probability_scope_snapshot_covers_all_probability_and_bridge_tables(
+def test_probability_scope_snapshot_allows_all_in_scope_stations_to_advance(
     tmp_path,
 ) -> None:
     db = tmp_path / "target.db"
@@ -128,7 +244,11 @@ def test_probability_scope_snapshot_covers_all_probability_and_bridge_tables(
                 )
                 conn.executemany(
                     f"INSERT INTO {table}(history_id) VALUES(?)",
-                    [("RKPK-history",), ("ZUUU-history",)],
+                    [
+                        ("EGLC-history",),
+                        ("RKPK-history",),
+                        ("ZUUU-history",),
+                    ],
                 )
             elif table == "basket_probability_bridge_history":
                 conn.execute(
@@ -137,7 +257,11 @@ def test_probability_scope_snapshot_covers_all_probability_and_bridge_tables(
                 )
                 conn.executemany(
                     f"INSERT INTO {table}(history_id,station_id) VALUES(?,?)",
-                    [("RKPK-history", "RKPK"), ("ZUUU-history", "ZUUU")],
+                    [
+                        ("EGLC-history", "EGLC"),
+                        ("RKPK-history", "RKPK"),
+                        ("ZUUU-history", "ZUUU"),
+                    ],
                 )
             else:
                 conn.execute(
@@ -145,210 +269,133 @@ def test_probability_scope_snapshot_covers_all_probability_and_bridge_tables(
                 )
                 conn.executemany(
                     f"INSERT INTO {table}(station_id) VALUES(?)",
-                    [("RKPK",), ("ZUUU",)],
+                    [("EGLC",), ("RKPK",), ("ZUUU",)],
                 )
         conn.commit()
-
-    snapshot = runner.probability_scope_snapshot(db)
-
-    assert snapshot["missing_tables"] == []
-    assert set(snapshot["non_target_counts"]) == set(tables)
-    assert all(value == 1 for value in snapshot["non_target_counts"].values())
-
-
-def test_two_round_resident_verifier_binds_core_direction_and_zero_boundaries():
-    def round_receipt(rowid, current_core, current_direction, core, direction):
-        return {
-            "state": "PASS",
-            "station_id": "RKPK",
-            "round_sha256": "a" * 64,
-            "services": {
-                "com.weather.reported_trajectory_no": 101,
-                "com.weather.market_ws": 102,
-                "com.weather.clob_order_service": 103,
-            },
-            "resources": {
-                "database_bytes": 1024,
-                "wal_bytes": 0,
-                "free_bytes": 4 * 1024 * 1024 * 1024,
-                "resident_service_rss_bytes": {
-                    "com.weather.reported_trajectory_no": 1024,
-                    "com.weather.market_ws": 1024,
-                    "com.weather.clob_order_service": 1024,
-                },
-            },
-            "probability_evidence_runtime": {
-                "candidate_activation_count_all": 0,
-                "fallback_contract_failures": [],
-                "fallback_proof_counts": {
-                    "P0_HISTORICAL_TILT": 1,
-                    "METAR_TRAJECTORY_UPDATE": 1,
-                },
-                "missing_bridge_tables": [],
-            },
-            "core_chain": {
-                "latest": {
-                    "rowid": rowid,
-                    "current_core_buckets": current_core,
-                    "core_buckets": core,
-                    "current_direction": current_direction,
-                    "direction": direction,
-                }
-            },
-            "production_no_live": True,
-            "calls_order_gateway": False,
-            "live_submit_authorized": False,
-            "orders_submitted": 0,
-        }
-
-    first = round_receipt(10, [], None, ["38C", "39C"], "UP")
-    second = round_receipt(
-        11,
-        ["38C", "39C"],
-        "UP",
-        ["37C", "38C"],
-        "DOWN",
+    snapshot = runner.probability_scope_snapshot(
+        db,
+        station_ids=_scope(),
     )
-    before = {"missing_tables": [], "non_target_counts": {
-        table: 0 for table in runner.PROBABILITY_ACCEPTANCE_TABLES
-    }}
-    after = {"missing_tables": [], "non_target_counts": {
-        table: 0 for table in runner.PROBABILITY_ACCEPTANCE_TABLES
-    }}
+    assert snapshot["missing_tables"] == []
+    assert all(value == 2 for value in snapshot["scoped_counts"].values())
+    assert all(
+        value == 1
+        for value in snapshot["outside_scope_counts"].values()
+    )
 
+
+def test_two_round_verifier_accepts_each_started_station_advancing() -> None:
+    first = _round(
+        rowid=10,
+        current_core=[],
+        current_direction=None,
+        core=["38C", "39C"],
+        direction="UP",
+    )
+    second = _round(
+        rowid=11,
+        current_core=["38C", "39C"],
+        current_direction="UP",
+        core=["37C", "38C"],
+        direction="DOWN",
+    )
     result = runner.verify_two_round_resident_receipts(
         first,
         second,
-        before_snapshot=before,
-        after_snapshot=after,
+        before_snapshot=_snapshot(),
+        after_snapshot=_snapshot(),
+        station_ids=_scope(),
     )
-
     assert result["state"] == "PASS"
     assert result["calls_order_gateway"] is False
     assert result["orders_submitted"] == 0
-
-
-def test_two_round_resident_verifier_rejects_non_rkpk_delta_and_candidate_activation():
-    base = {
-        "state": "PASS",
-        "station_id": "RKPK",
-        "round_sha256": "a" * 64,
-        "services": {
-            "com.weather.reported_trajectory_no": 101,
-            "com.weather.market_ws": 102,
-            "com.weather.clob_order_service": 103,
-        },
-        "resources": {
-            "database_bytes": 1024,
-            "wal_bytes": 0,
-            "free_bytes": 4 * 1024 * 1024 * 1024,
-            "resident_service_rss_bytes": {
-                "com.weather.reported_trajectory_no": 1024,
-                "com.weather.market_ws": 1024,
-                "com.weather.clob_order_service": 1024,
-            },
-        },
-        "probability_evidence_runtime": {
-            "candidate_activation_count_all": 1,
-            "fallback_contract_failures": [],
-            "fallback_proof_counts": {
-                "P0_HISTORICAL_TILT": 1,
-                "METAR_TRAJECTORY_UPDATE": 1,
-            },
-            "missing_bridge_tables": [],
-        },
-        "core_chain": {"latest": {
-            "rowid": 1,
-            "current_core_buckets": [],
-            "core_buckets": ["38C"],
-            "current_direction": None,
-            "direction": "UP",
-        }},
-        "production_no_live": True,
-        "calls_order_gateway": False,
-        "live_submit_authorized": False,
-        "orders_submitted": 0,
+    assert result["forward_oos_boundary"] == {
+        "blocks_production_no_live": False,
+        "blocks_formal_promotion_or_live": True,
     }
-    second = dict(base)
-    second["round_sha256"] = "b" * 64
-    second["core_chain"] = {"latest": {
-        "rowid": 2,
-        "current_core_buckets": ["38C"],
-        "core_buckets": ["39C"],
-        "current_direction": "UP",
-        "direction": "DOWN",
-    }}
-    tables = runner.PROBABILITY_ACCEPTANCE_TABLES
 
-    result = runner.verify_two_round_resident_receipts(
-        base,
-        second,
-        before_snapshot={"missing_tables": [], "non_target_counts": {
-            table: 0 for table in tables
-        }},
-        after_snapshot={"missing_tables": [], "non_target_counts": {
-            table: 1 for table in tables
-        }},
+
+def test_two_round_verifier_rejects_outside_scope_write_and_candidate_activation():
+    first = _round(
+        rowid=1,
+        current_core=[],
+        current_direction=None,
+        core=["38C"],
+        direction="UP",
+        candidate_activations=1,
     )
-
+    second = _round(
+        rowid=2,
+        current_core=["38C"],
+        current_direction="UP",
+        core=["39C"],
+        direction="DOWN",
+        candidate_activations=1,
+    )
+    result = runner.verify_two_round_resident_receipts(
+        first,
+        second,
+        before_snapshot=_snapshot(0),
+        after_snapshot=_snapshot(1),
+        station_ids=_scope(),
+    )
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
     assert "resident_round_1_candidate_activation_nonzero" in result["blockers"]
-    assert "non_rkpk_probability_table_write_detected" in result["blockers"]
+    assert "outside_scope_probability_table_write_detected" in result["blockers"]
 
 
-def test_two_round_resident_verifier_accepts_unchanged_zero_write_round():
-    services = {
-        "com.weather.reported_trajectory_no": 101,
-        "com.weather.market_ws": 102,
-        "com.weather.clob_order_service": 103,
+def test_two_round_verifier_accepts_future_not_started_zero_write() -> None:
+    receipt = _round(
+        rowid=10,
+        current_core=["37C"],
+        current_direction="NEUTRAL",
+        core=["38C", "39C"],
+        direction="UP",
+    )
+    receipt["started_station_ids"] = ["EGLC"]
+    receipt["not_started_station_ids"] = ["RKPK"]
+    receipt["station_results"]["RKPK"] = {
+        "state": "NOT_STARTED_NO_MATERIALIZATION_REQUIRED",
+        "started": False,
+        "core_chain": None,
     }
-    receipt = {
-        "state": "PASS",
-        "station_id": "RKPK",
-        "round_sha256": "a" * 64,
-        "services": services,
-        "resources": {
-            "database_bytes": 1024,
-            "wal_bytes": 0,
-            "free_bytes": 4 * 1024 * 1024 * 1024,
-            "resident_service_rss_bytes": {
-                label: 1024 for label in services
-            },
-            "acceptance_process_rss_bytes": 1024,
-        },
-        "probability_evidence_runtime": {
-            "candidate_activation_count_all": 0,
-            "fallback_contract_failures": [],
-            "fallback_proof_counts": {
-                "P0_HISTORICAL_TILT": 1,
-                "METAR_TRAJECTORY_UPDATE": 1,
-            },
-            "missing_bridge_tables": [],
-        },
-        "core_chain": {"latest": {
-            "rowid": 10,
-            "current_core_buckets": ["37C"],
-            "core_buckets": ["38C", "39C"],
-            "current_direction": "NEUTRAL",
-            "direction": "UP",
-        }},
-        "production_no_live": True,
-        "calls_order_gateway": False,
-        "live_submit_authorized": False,
-        "orders_submitted": 0,
-    }
-    snapshot = {
-        "missing_tables": [],
-        "non_target_counts": {
-            table: 0 for table in runner.PROBABILITY_ACCEPTANCE_TABLES
-        },
-    }
-
     result = runner.verify_two_round_resident_receipts(
         receipt,
         {**receipt, "round_sha256": "b" * 64},
-        before_snapshot=snapshot,
-        after_snapshot=snapshot,
+        before_snapshot=_snapshot(),
+        after_snapshot=_snapshot(),
+        station_ids=_scope(),
     )
-
     assert result["state"] == "PASS"
+
+
+def test_two_round_verifier_blocks_when_no_canonical_station_starts() -> None:
+    receipt = _round(
+        rowid=10,
+        current_core=[],
+        current_direction=None,
+        core=["38C"],
+        direction="NEUTRAL",
+    )
+    receipt["started_station_ids"] = []
+    receipt["not_started_station_ids"] = list(_scope())
+    receipt["probability_evidence_runtime"]["fallback_proof_counts"] = {}
+    receipt["station_results"] = {
+        station: {
+            "state": "NOT_STARTED_NO_MATERIALIZATION_REQUIRED",
+            "started": False,
+            "core_chain": None,
+        }
+        for station in _scope()
+    }
+    result = runner.verify_two_round_resident_receipts(
+        receipt,
+        {**receipt, "round_sha256": "b" * 64},
+        before_snapshot=_snapshot(),
+        after_snapshot=_snapshot(),
+        station_ids=_scope(),
+    )
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert "resident_no_canonical_station_started_both_rounds" in result[
+        "blockers"
+    ]

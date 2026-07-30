@@ -69,10 +69,10 @@ def test_vertical_slice_and_delivery_state_authorities_are_unique() -> None:
     slice_contract = architecture["production_constitution"]["vertical_slice"]
     status = roadmap["delivery_status_authority"]
 
-    assert slice_contract["station_id"] == "RKPK"
-    assert slice_contract["source_lane"] == "AWC"
+    assert slice_contract["station_id"] == "CANONICAL_45"
+    assert slice_contract["source_lane"] == "AMSC_AWC_ROUTED"
     assert slice_contract["batch_expansion_requires"] == (
-        "RKPK_VERTICAL_CHAIN_MATERIALIZED_RUNNING_REPLAY_VERIFIED"
+        "CANONICAL_45_BOUNDED_NO_LIVE_EXPANSION"
     )
     assert (
         slice_contract[
@@ -81,9 +81,9 @@ def test_vertical_slice_and_delivery_state_authorities_are_unique() -> None:
         is False
     )
     assert status["is_only_status_authority"] is True
-    assert status["vertical_slice_station_id"] == "RKPK"
+    assert status["vertical_slice_station_id"] == "CANONICAL_45"
     assert status["batch_expansion_gate"] == (
-        "RKPK_VERTICAL_CHAIN_MATERIALIZED_RUNNING_REPLAY_VERIFIED"
+        "CANONICAL_45_BOUNDED_NO_LIVE_EXPANSION"
     )
     assert (
         status[
@@ -107,12 +107,13 @@ def test_current_change_has_complete_impact_matrix() -> None:
         "M8-13_forward_OOS_promotion",
         "M5-06_authority_input_zero_write",
         "M6-02_economic_quote_identity",
+        "CANONICAL_45_CANDIDATE_MODEL_PREFETCH_SEPARATED_FROM_FORMAL_P0",
     ]
     assert impact["change_kind"] == (
         "IMPLEMENTATION_RUNNING_SETTLED_LABEL_MATERIALIZED_FORWARD_EXPANSION_READY"
     )
     assert impact["new_schema_or_stage"] is False
-    assert impact["current_exact_scope"] == "RKPK"
+    assert impact["current_exact_scope"] == "CANONICAL_45"
     assert impact["forward_rebuild_required"] is False
     assert impact["maintenance_window_required"] is False
     assert impact["rollback"].startswith("PRESERVE_APPEND_ONLY")

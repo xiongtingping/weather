@@ -37,15 +37,15 @@
       },
       "document_id": "bayes_basket_target_architecture_v1",
       "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.json",
-      "json_sha256": "84eca33cd0aa6facddb91649e391f9282ee5bcee1fa81ca9ef03b359640af613",
+      "json_sha256": "b9124f775fdd0bd0943e8ff09b7c5ee1ca7d208009bfdbc8879cdf363032b5ce",
       "markdown": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.md",
-      "markdown_sha256": "ed261e465362902daba07f1f357e25b401a40540126de04b6e0e689c93e87871",
+      "markdown_sha256": "9410c9a30721f195e02ccf583c2461e8fb0ea81f42dd0aad1dfd501ec74b4f58",
       "status": "TARGET_PRODUCTION_NO_LIVE",
-      "version": "1.14.40"
+      "version": "1.14.45"
     }
   ],
-  "manifest_sha256": "d7f91c0a0fb1ef38e0a5606071db6f8de388628a734510b5dea394942dd32c5d",
-  "receipt_sha256": "27914f566f43b2ffc3d917f4ef1d949607cdb081c542a30844ed307bda092d5d",
+  "manifest_sha256": "540fb9b370f8438d15c602f17927d71001c884e72e18dcb073e57b4e63db1e08",
+  "receipt_sha256": "863c51fd52a0ed06cd4415a8a318a6f305d88f24c7c828a57eeb29592de2ea87",
   "roadmap": {
     "checks": {
       "architecture_reference_matches": true,
@@ -59,10 +59,10 @@
       "version_matches": true
     },
     "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.json",
-    "json_sha256": "217170ef685e806d6a4a4f6420499f98b908c7efae224e8ee409ab8c6b3ed3dd",
-    "markdown_sha256": "80cfd35b317ec52d2e8e7d3f89b693819d8baa62cd6069f6f04b5a2a1dddd947",
+    "json_sha256": "272f7f500927d41b9fdbc0eb8b28ed93f4147766a2114c13ab51152967ed96b6",
+    "markdown_sha256": "cc04cc7ff0d762bc0407fbf194b32b37af0543adcfaf1b8d67d2bc554772dd2f",
     "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
-    "version": "1.6.84"
+    "version": "1.6.90"
   },
   "schema": "bayes_basket_target_document_authority_audit_v1",
   "status": "PASS",
@@ -70,9 +70,9 @@
     {
       "does_not_authorize_live": true,
       "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
-      "json_sha256": "d190ad2d13452fdc421766051c86fae18fd1d16b3897272b082d41f990dd7d1d",
+      "json_sha256": "37b53e430a6da0d67a85b69f7641f34294dd0a6da606b8c8dcb97c601e40d4aa",
       "machine_forbids_p0f": true,
-      "markdown_sha256": "195c423366fa776d22b7dc8076fde18f67a6832cc10e02aec9de5ee8fee7152a",
+      "markdown_sha256": "aaff1d4ccea0180494165d0a1d6e1ec19dccaaed6ea4b8c8f4eadb8a91946bba",
       "markdown_stage_contract_present": true,
       "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.md",
       "present": true,

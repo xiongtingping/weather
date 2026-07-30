@@ -601,7 +601,9 @@ def test_resident_nwp_skips_incompatible_scope_without_starving_next_station(
     )
 
     def capture_scopes(*args, **kwargs):
-        assert kwargs["max_scopes"] == 45
+        assert kwargs["max_scopes"] == (
+            production_worker_module.MAX_DISCOVERED_SCOPES
+        )
         return scopes
 
     monkeypatch.setattr(
