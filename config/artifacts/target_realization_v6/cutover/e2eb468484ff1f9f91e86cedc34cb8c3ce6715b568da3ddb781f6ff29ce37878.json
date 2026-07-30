@@ -1,0 +1,15 @@
+{
+  "approved_at": "2026-07-16T14:27:41Z",
+  "cutover_artifact_sha256": "e2eb468484ff1f9f91e86cedc34cb8c3ce6715b568da3ddb781f6ff29ce37878",
+  "exact_exit_reason_policy_sha256": "26ee418e7ddc467e26e6eeeff3668acddf0af9870c87ecebcfdf147c68960cac",
+  "external_disk_dependency": false,
+  "linearization_point": "activation_and_plist_installed_then_live_pause_removed",
+  "places_orders": false,
+  "runtime_closure_sha256": "51e3b29d7044cde160978bd1db51aa0a21087cc67a2b82d36389c7d2126dc2a3",
+  "schema": "target_realization_v6_cutover_artifact_v1",
+  "state": "accepted_for_managed_atomic_cutover",
+  "strategy_artifact_sha256": "01fd9d8f41995d1dc9aa5972bc07126a9b06932272d3467f45ae31557d801867",
+  "test_receipt_sha256": "de7b4dfa71651c84f02a4023b9dde93728395131470b2bd29bf1944c8fadc8c4",
+  "v5_fallback_forbidden": true,
+  "zero_order_receipt_sha256": "b91db201e1157bfcfd6d40570c8fddf9f7f6b6444cf03e565e8f20698c73ac18"
+}

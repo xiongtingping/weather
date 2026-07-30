@@ -23,6 +23,10 @@ def _coverage(ok: bool = False):
 def _receipt(value: dict) -> str:
     payload = {
         **value,
+        "runtime_sha256": {
+            name: readiness._sha(path)
+            for name, path in readiness.V6_RUNTIME_FILES.items()
+        },
         "generator_sha256": readiness._sha(
             readiness.ROOT / "scripts/production_reported_x_market_no_order_drill.py"
         ),
@@ -49,18 +53,26 @@ def test_bridge_accumulation_is_safe_and_does_not_block_physical_x(monkeypatch, 
     monkeypatch.setattr(
         readiness,
         "audit_physical_x",
-        lambda **_kwargs: {"ok": True, "state": "ready"},
+        lambda *_args, **_kwargs: {"ok": True, "state": "ready"},
     )
-    writer_sha = readiness._sha(readiness.ROOT / "production_reported_x_market_transaction_writer.py")
+    monkeypatch.setattr(
+        readiness,
+        "resolve_active_v6_market_context",
+        lambda **_kwargs: {
+            "state": "disabled", "market_projection_available": False,
+            "na_reason": "market_projection_context_disabled",
+        },
+    )
     receipt = tmp_path / "receipt.json"
     receipt.write_text(
         _receipt({
-            "schema": "production_reported_x_market_no_order_drill_v1",
+            "schema": "production_probability_v6_market_no_order_drill_v2",
             "ok": True,
             "state": "accepted",
-            "backup_unchanged": True,
+            "archive_unchanged": True,
+            "writes_archive_db": False,
+            "external_disk_required": False,
             "forbidden_execution_tokens": [],
-            "writer_sha256": writer_sha,
             "activation_bound": False,
         })
     )
@@ -68,6 +80,7 @@ def test_bridge_accumulation_is_safe_and_does_not_block_physical_x(monkeypatch, 
         db=db,
         probability_activation=tmp_path / "probability.json",
         bridge_activation=tmp_path / "bridge.json",
+        market_context_activation=tmp_path / "context.json",
         pair_registry=tmp_path / "pairs.db",
         no_order_receipt=receipt,
         event_date="2026-07-15",
@@ -78,7 +91,7 @@ def test_bridge_accumulation_is_safe_and_does_not_block_physical_x(monkeypatch, 
     assert result["boundary"]["bridge_sample_or_oos_shortage_blocks_physical_x_live"] is False
 
 
-def test_approved_bridge_and_ready_x_make_market_projection_ready(monkeypatch, tmp_path: Path) -> None:
+def test_approved_operational_baseline_is_ready_even_when_calibration_coverage_accumulates(monkeypatch, tmp_path: Path) -> None:
     db = tmp_path / "archive.db"
     _db(db)
     monkeypatch.setattr(
@@ -86,37 +99,73 @@ def test_approved_bridge_and_ready_x_make_market_projection_ready(monkeypatch, t
         "load_active_resolution_bridge_artifact",
         lambda **_kwargs: (
             {"state": "production_enabled", "activation_sha256": "b" * 64},
-            {"artifact_sha256": "a" * 64},
+            {
+                "artifact_sha256": "a" * 64,
+                "kernel_kind": readiness.OPERATIONAL_BASELINE_KERNEL_KIND,
+            },
         ),
     )
     monkeypatch.setattr(
         readiness,
         "build_resolution_bridge_pair_coverage_audit",
-        lambda **_kwargs: _coverage(True),
+        lambda **_kwargs: _coverage(False),
     )
     monkeypatch.setattr(
         readiness,
         "audit_physical_x",
-        lambda **_kwargs: {"ok": True, "state": "ready"},
+        lambda *_args, **_kwargs: {"ok": True, "state": "ready"},
+    )
+    monkeypatch.setattr(
+        readiness,
+        "resolve_active_v6_market_context",
+        lambda **_kwargs: {
+            "state": "available", "market_projection_available": True,
+            "market_context": {"market_context_sha256": "d" * 64},
+            "activation": {"activation_sha256": "e" * 64},
+        },
+    )
+    monkeypatch.setattr(
+        readiness,
+        "_latest_reported_x_distribution",
+        lambda _db: {"38": 1.0},
+    )
+    monkeypatch.setattr(
+        readiness,
+        "build_physical_only_resolution_contract",
+        lambda *_args, **_kwargs: {"resolution_contract_id": "physical"},
+    )
+    monkeypatch.setattr(
+        readiness,
+        "build_posterior_market_projection",
+        lambda **_kwargs: {
+            "ok": True,
+            "state": "market_projection_available",
+            "market_bucket_probabilities": {"37C": 0.1, "38C": 0.8, "39C": 0.1},
+            "reported_x_unchanged": True,
+        },
     )
     receipt = tmp_path / "receipt.json"
     receipt.write_text(
         _receipt({
-            "schema": "production_reported_x_market_no_order_drill_v1",
+            "schema": "production_probability_v6_market_no_order_drill_v2",
             "ok": True,
             "state": "accepted",
-            "backup_unchanged": True,
+            "archive_unchanged": True,
+            "writes_archive_db": False,
+            "external_disk_required": False,
             "forbidden_execution_tokens": [],
-            "writer_sha256": readiness._sha(readiness.ROOT / "production_reported_x_market_transaction_writer.py"),
             "activation_bound": True,
             "bridge_activation_sha256": "b" * 64,
             "bridge_artifact_sha256": "a" * 64,
+            "market_context_activation_sha256": "e" * 64,
+            "market_context_sha256": "d" * 64,
         })
     )
     result = readiness.audit(
         db=db,
         probability_activation=tmp_path / "probability.json",
         bridge_activation=tmp_path / "bridge.json",
+        market_context_activation=tmp_path / "context.json",
         pair_registry=tmp_path / "pairs.db",
         no_order_receipt=receipt,
         event_date="2026-07-15",
@@ -124,3 +173,5 @@ def test_approved_bridge_and_ready_x_make_market_projection_ready(monkeypatch, t
     assert result["ok"] is True
     assert result["state"] == "production_ready"
     assert result["production_market_projection_ready"] is True
+    assert result["pair_coverage_role"] == "calibrated_successor_readiness_only"
+    assert result["boundary"]["operational_baseline_pair_coverage_is_live_gate"] is False

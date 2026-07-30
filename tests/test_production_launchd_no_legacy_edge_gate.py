@@ -4,18 +4,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION_PLISTS = (
+RETIRED_PLISTS = (
     ROOT / "launchd" / "com.weather.trade_engine.plist",
-    ROOT / "launchd" / "com.weather.auto_trade_entry_1m.plist",
     ROOT / "launchd" / "com.xiong.weather.ui.plist",
 )
-FORBIDDEN = ("PM_EDGE_REALIZABLE_V2_ENABLED", "PM_EDGE_REALIZABLE_V2_GATE_ENTRY")
 
 
-def test_production_daemon_plists_do_not_inject_retired_edge_gate_environment() -> None:
-    for plist in PRODUCTION_PLISTS:
-        text = plist.read_text(encoding="utf-8")
-        assert all(token not in text for token in FORBIDDEN), plist
+def test_retired_trade_engine_and_ui_plists_are_absent() -> None:
+    assert all(not plist.exists() for plist in RETIRED_PLISTS)
 
 
 def test_production_wrappers_unset_retired_edge_gate_after_env_loading() -> None:

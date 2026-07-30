@@ -1,0 +1,71 @@
+{
+  "cleanup_performed": false,
+  "external_archive_dependency": false,
+  "invalid_receipt_or_stat_errors": [],
+  "production_dependency": false,
+  "provider_rows": [
+    {
+      "provider": "historical_native",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    },
+    {
+      "provider": "historical_truth_raw",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    },
+    {
+      "provider": "icon_history_rehydrated",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    },
+    {
+      "provider": "model_arrivals",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    },
+    {
+      "provider": "official_nwp_request_control",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    }
+  ],
+  "receipt_reference_count": 23035,
+  "resource_budget": {
+    "database_bytes": 52019200,
+    "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "free_bytes": 45154521088,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 805306368,
+      "max_research_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 208191488,
+    "raw_bytes": 678990995,
+    "raw_file_count": 22572,
+    "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target",
+    "shm_bytes": 0,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 0
+  },
+  "root": "/Users/xiong/weather/data/research/bayes_basket_target",
+  "schema": "bayes_basket_target_resource_audit_v1",
+  "stale_temporary_files": [],
+  "state": "AUDIT_ONLY",
+  "unreferenced_raw": []
+}

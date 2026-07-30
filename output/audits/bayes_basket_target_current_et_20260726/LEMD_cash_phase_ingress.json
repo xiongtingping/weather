@@ -1,0 +1,40 @@
+{
+  "calls_order_gateway": false,
+  "markets": [
+    {
+      "cash_phase_decision": {
+        "cash_template_usdc": 2.0,
+        "checkpoint_id": "p1_e5c0c2c287fcab33e18dcf9340cb4368",
+        "clock_phase": "STANDARD",
+        "heavy_to_standard_at_local": "2026-07-25T12:00:00-04:00",
+        "next_phase": "STANDARD",
+        "observed_at_local": "2026-07-26T09:08:00-04:00",
+        "policy_sha256": "8cc5cb56985d5584a8b689200448a7bfa0f65a2a81e6f7f58e0ffa72e73bbdd4",
+        "policy_version": "target-no-live-cash-design-v2-LEMD",
+        "previous_phase": "STANDARD",
+        "reason_code": "CLOCK_PHASE_UNCHANGED",
+        "schema": "basket_cash_phase_decision_v1",
+        "standard_to_tail_at_local": "2026-07-26T12:00:00-04:00",
+        "transitioned": false
+      },
+      "cash_phase_input": {
+        "checkpoint_id": "p1_e5c0c2c287fcab33e18dcf9340cb4368",
+        "current_phase": "STANDARD",
+        "event_date_local": "2026-07-26",
+        "observed_at_utc": "2026-07-26T13:08:00Z",
+        "policy_version": "target-no-live-cash-design-v2-LEMD",
+        "station_id": "LEMD",
+        "station_timezone": "America/New_York"
+      },
+      "event_date": "2026-07-26",
+      "station_id": "LEMD"
+    }
+  ],
+  "observed_at": "2026-07-26T13:08:00Z",
+  "phase_decision_sha256": "9aa9e46b3bb6b2df845b897ab78e9a0a082d630e51a793207faf2b4e8c25e24b",
+  "places_orders": false,
+  "policy_sha256": "8cc5cb56985d5584a8b689200448a7bfa0f65a2a81e6f7f58e0ffa72e73bbdd4",
+  "policy_version": "target-no-live-cash-design-v2-LEMD",
+  "producer_schema": "bayes_basket_target_cash_phase_producer_v1",
+  "schema": "bayes_basket_cash_phase_ingress_v1"
+}

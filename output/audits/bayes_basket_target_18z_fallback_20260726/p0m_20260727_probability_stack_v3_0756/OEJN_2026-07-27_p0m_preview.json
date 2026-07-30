@@ -1,0 +1,51 @@
+{
+  "bridge_sha256": "a974235da138d73a334c73d4a21d2ce5053ec2a212b604a04fd3f64511e8883c",
+  "bucket_ordinals": {
+    "30°C or below": 0,
+    "31°C": 1,
+    "32°C": 2,
+    "33°C": 3,
+    "34°C": 4,
+    "35°C": 5,
+    "36°C": 6,
+    "37°C": 7,
+    "38°C": 8,
+    "39°C": 9,
+    "40°C or higher": 10
+  },
+  "checkpoint_id": "p0m_cfb4b20b4eb0761b824cab218e0017c3",
+  "decision_at_utc": "2026-07-26T07:56:00Z",
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T08:30:00Z",
+  "lineage": {
+    "activation_ids": "no-live-cal-e31fccf02d2049412d9d0a1e898185fc,no-live-cal-e3f8f46d9bcd720c9b548f0d98ed7cc0,no-live-ens-67aa03c8f4952c60b915dc0f21484da1",
+    "available_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+    "calibration_artifact_ids": "cal-candidate-OEJN-ECMWF-summer-9c4f1014d5f1,cal-candidate-OEJN-ICON-summer-9c4f1014d5f1",
+    "ensemble_artifact_id": "ens-candidate-OEJN-summer-9c4f1014d5f1-ebccaaecb576",
+    "model_bundle_ready_at_utc": "2026-07-26T04:11:19Z",
+    "model_envelope_lower_c": "37.602",
+    "model_envelope_span_c": "0.312",
+    "model_envelope_upper_c": "37.914",
+    "model_run_ids": "current-5a44e39066fa20a0d360dc3d516854c3,current-8b0dd79b8d2e1183b822ee5249779013",
+    "model_run_initialization_utc": "2026-07-25T18:00:00Z",
+    "selection_evidence_sha256": "4b93aa6f45a3c0de155e3d4e06517a6c2e829ac8eaf55031b5e3f07034c6a8da"
+  },
+  "posterior_sha256": "cfb4b20b4eb0761b824cab218e0017c30bf93aa1d4801d648d63d34edac8bace",
+  "posterior_version": "p0m_probability_stack_v2",
+  "probabilities": {
+    "30°C or below": 6.203069692345409e-07,
+    "31°C": 1.2867748198169826e-05,
+    "32°C": 0.00018321614689573162,
+    "33°C": 0.0017470356849783042,
+    "34°C": 0.011157581620329732,
+    "35°C": 0.04733875095736309,
+    "36°C": 0.13150823405917852,
+    "37°C": 0.23534724993787068,
+    "38°C": 0.2675113469226785,
+    "39°C": 0.19119727995558894,
+    "40°C or higher": 0.11399581665994912
+  },
+  "schema": "bayes_basket_probability_envelope_v1",
+  "stage": "P0-M",
+  "station_id": "OEJN"
+}

@@ -1,0 +1,1247 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "native_arrival_claimed": false,
+    "writes_production_db": false
+  },
+  "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+  "ensemble_artifact_content_sha256": "24a6cef69cc2151af6f9619455de3c9e53e8da0c5fa3ff17755ec61b6390d102",
+  "excluded_burn_in_dates": [
+    "2026-06-28",
+    "2026-06-29",
+    "2026-06-30"
+  ],
+  "lead_bucket": "d2",
+  "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+  "minimum_selected_models": 2,
+  "minimum_train_days": 3,
+  "prediction_count": 26,
+  "predictions": [
+    {
+      "combined_tmax_c": 20.14925,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-06-30T07:34:08Z",
+      "event_date": "2026-07-01",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "b35c07589d89e9b475342b5c69e2d0da6b69f07e57bbb31fa384a50544abead3",
+          "published_at_utc": "2026-06-30T07:34:08Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-01/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "b35c07589d89e9b475342b5c69e2d0da6b69f07e57bbb31fa384a50544abead3"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "431994529e100f5159100bcfce7182575c01aa4302b3b6766e549067db26f596",
+          "published_at_utc": "2026-06-30T03:50:06Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-01/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "431994529e100f5159100bcfce7182575c01aa4302b3b6766e549067db26f596"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.05,
+        "GFS": 0.95
+      },
+      "selection_evidence_sha256": "d1de102788e4c04b716ea80ef2b4f447909b4bfc59f827cb32f620dd35972015",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-06-30",
+      "train_n": 3,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 24.94425,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-01T07:34:08Z",
+      "event_date": "2026-07-02",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "6bd15402b16a0d2003f9868a4a6f6e9e7481ec99203c6f47be750689b16bb355",
+          "published_at_utc": "2026-07-01T07:34:08Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-02/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "6bd15402b16a0d2003f9868a4a6f6e9e7481ec99203c6f47be750689b16bb355"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "9e72393857e75d71b71f430983d469266b275e08e4d82259ff5e1a6536922448",
+          "published_at_utc": "2026-07-01T03:57:46Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-02/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "9e72393857e75d71b71f430983d469266b275e08e4d82259ff5e1a6536922448"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.25,
+        "GFS": 0.75
+      },
+      "selection_evidence_sha256": "177f57b2084295458eaf2c6cc5fc9193b766dc359c0b8e49c366f20188b69ff4",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-01",
+      "train_n": 4,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 25.907850000000003,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-02T07:34:07Z",
+      "event_date": "2026-07-03",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "3d4faef077cba155003d1305593f6cbee67a78f34679520ba050d928eebf4b96",
+          "published_at_utc": "2026-07-02T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-03/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "3d4faef077cba155003d1305593f6cbee67a78f34679520ba050d928eebf4b96"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "2327ce5fdc4d2614dc9132d6779917fe6fe164409b905129928b3bb2af29dc42",
+          "published_at_utc": "2026-07-02T03:45:19Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-03/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "2327ce5fdc4d2614dc9132d6779917fe6fe164409b905129928b3bb2af29dc42"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "selection_evidence_sha256": "761c6c8c197d8343e12ce35febf46db531291d7dfebed7cddf9b05fd836fc64f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-02",
+      "train_n": 5,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 23.93875,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-03T07:34:07Z",
+      "event_date": "2026-07-04",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "4ed7aba28961786a80cf341c95cd94788996d4a1fa0de6628305ac5725a7a5d8",
+          "published_at_utc": "2026-07-03T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-04/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "4ed7aba28961786a80cf341c95cd94788996d4a1fa0de6628305ac5725a7a5d8"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "a8ec0861437c5adae913c99c72d8b0d7a8ca2a7d08a1a5fdb48491406a890937",
+          "published_at_utc": "2026-07-03T03:58:38Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-04/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "a8ec0861437c5adae913c99c72d8b0d7a8ca2a7d08a1a5fdb48491406a890937"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "selection_evidence_sha256": "d6f0cb638369c45d3e2130b6bb1b673086bee1b51da172d3aa31cd3f13c723a7",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-03",
+      "train_n": 6,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 25.13735,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-04T07:34:07Z",
+      "event_date": "2026-07-05",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "c42e2b4af00261eff20fbca2644416a920271baec0815821f806a1be935c01c2",
+          "published_at_utc": "2026-07-04T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-05/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "c42e2b4af00261eff20fbca2644416a920271baec0815821f806a1be935c01c2"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "5ca29dd1af1b41c3a8e64375e8a68e841c7770728cd7bf9b947bd9afe76a244c",
+          "published_at_utc": "2026-07-04T03:59:19Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-05/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "5ca29dd1af1b41c3a8e64375e8a68e841c7770728cd7bf9b947bd9afe76a244c"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.85,
+        "GFS": 0.15
+      },
+      "selection_evidence_sha256": "2bd7f18d3a7aa050f611d93565e29e854bacd922ca77f39a6e6f3e853ce8e6ae",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-04",
+      "train_n": 7,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 28.702999999999996,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-05T07:34:07Z",
+      "event_date": "2026-07-06",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "ec817cb69abafcedbaa2fa1639a6dad5b44aa4966dca22854291d06adad48405",
+          "published_at_utc": "2026-07-05T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-06/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "ec817cb69abafcedbaa2fa1639a6dad5b44aa4966dca22854291d06adad48405"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "f19351de5e976d85864224cbf824a3d4af8a355afce605894e3da0b8e4f68294",
+          "published_at_utc": "2026-07-05T03:58:51Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-06/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "f19351de5e976d85864224cbf824a3d4af8a355afce605894e3da0b8e4f68294"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.95,
+        "GFS": 0.05
+      },
+      "selection_evidence_sha256": "47e89232e6f88a9c821e81159a6e71d886f8ddbcb099ad7d6d90d76e3880406d",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-05",
+      "train_n": 8,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 26.02405,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-07T07:34:07Z",
+      "event_date": "2026-07-08",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "07e02ccf9b7589205e32b19574487cfb2834223cd7fc70374d5b99f552f92e63",
+          "published_at_utc": "2026-07-07T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-08/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "07e02ccf9b7589205e32b19574487cfb2834223cd7fc70374d5b99f552f92e63"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "a63a2f5baa2e1c986b2112a12cd0795583c49e4e2f2cd5168eb9f417284bce6b",
+          "published_at_utc": "2026-07-07T03:45:32Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-08/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "a63a2f5baa2e1c986b2112a12cd0795583c49e4e2f2cd5168eb9f417284bce6b"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.95,
+        "GFS": 0.05
+      },
+      "selection_evidence_sha256": "1b3deda59ab18a66273f2b9078b86746d894c35ac26b5b2fc4580341fe244e79",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-06",
+      "train_n": 9,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 28.668,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-08T07:34:07Z",
+      "event_date": "2026-07-09",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "090bb24beff0a7cf0e15853b4584456208407d27108535eac44465fa499d1f18",
+          "published_at_utc": "2026-07-08T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-09/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "090bb24beff0a7cf0e15853b4584456208407d27108535eac44465fa499d1f18"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "87b16e8320d917263529643b4da54401b1d4a5a1c5719861da4d535036b57274",
+          "published_at_utc": "2026-07-08T03:59:19Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-09/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "87b16e8320d917263529643b4da54401b1d4a5a1c5719861da4d535036b57274"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.75,
+        "GFS": 0.25
+      },
+      "selection_evidence_sha256": "f59512a54a801384b298fc34926190e8fc4498ab77b020b26a0fb8dc37210c3b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-08",
+      "train_n": 10,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 29.0285,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-09T07:34:06Z",
+      "event_date": "2026-07-10",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "11881d0eaa87dd2d46a7bd03a87efcf5c04cf12411242172963a992291560975",
+          "published_at_utc": "2026-07-09T07:34:06Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-10/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "11881d0eaa87dd2d46a7bd03a87efcf5c04cf12411242172963a992291560975"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "993f3958611b58b7a55a9b37a5d12bb17418490047a968d40138eeebd4d0a8e8",
+          "published_at_utc": "2026-07-09T03:43:47Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-10/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "993f3958611b58b7a55a9b37a5d12bb17418490047a968d40138eeebd4d0a8e8"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.55,
+        "GFS": 0.45
+      },
+      "selection_evidence_sha256": "28aa57f2040a5a0740050e71c7442fd7ffd2424146ccb1a02717d876dc72fbdf",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-09",
+      "train_n": 11,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 32.495599999999996,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-10T07:34:07Z",
+      "event_date": "2026-07-11",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "08c45acadc12f56bd8209d19f85067b16d3930336ed361a104c3b65890b8ec86",
+          "published_at_utc": "2026-07-10T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-11/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "08c45acadc12f56bd8209d19f85067b16d3930336ed361a104c3b65890b8ec86"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "9f7f043e36ae53df7081228c0db96c515fd2e3f5146d47cd23d6c62659fffd75",
+          "published_at_utc": "2026-07-10T03:58:10Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-11/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "9f7f043e36ae53df7081228c0db96c515fd2e3f5146d47cd23d6c62659fffd75"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.4,
+        "GFS": 0.6
+      },
+      "selection_evidence_sha256": "50980eaccb11394aae318c7c1fd97382ad4e1224028561fa2b0274d8254ed0b8",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-10",
+      "train_n": 12,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 31.1201,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-11T07:34:07Z",
+      "event_date": "2026-07-12",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "c8129c172e5532f97c3167c32f1a173b8939124bccf1a397a4a47d816c4ae972",
+          "published_at_utc": "2026-07-11T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-12/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "c8129c172e5532f97c3167c32f1a173b8939124bccf1a397a4a47d816c4ae972"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "6dad7fc1e2433e379df0f1ef91381e23f2aa24d68914bbc56bf3aa8d6ce4d18c",
+          "published_at_utc": "2026-07-11T03:55:29Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-12/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "6dad7fc1e2433e379df0f1ef91381e23f2aa24d68914bbc56bf3aa8d6ce4d18c"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.3,
+        "GFS": 0.7
+      },
+      "selection_evidence_sha256": "f679f293271839412f7f9fc416901c7fa8ddd5dcc757e98a9b405886f409a207",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-11",
+      "train_n": 13,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 31.47375,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-12T07:34:07Z",
+      "event_date": "2026-07-13",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "ceddaf2c2d8533945c0f6e1962e224f7a4653c3879f449d52532a737982db11a",
+          "published_at_utc": "2026-07-12T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260628_0713.json#RKPK/2026-07-13/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "ceddaf2c2d8533945c0f6e1962e224f7a4653c3879f449d52532a737982db11a"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "8d278fe914b46194b08820c0970b4bc906a9fd02b32c0228040a1bb75a2ee652",
+          "published_at_utc": "2026-07-12T03:58:25Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260628_0713.json#RKPK/2026-07-13/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "8d278fe914b46194b08820c0970b4bc906a9fd02b32c0228040a1bb75a2ee652"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.25,
+        "GFS": 0.75
+      },
+      "selection_evidence_sha256": "f8024a23a0ce3af118f281b4b1d7e432fbe3e62a8a0bf476ff47d87d02e88288",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-12",
+      "train_n": 14,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 30.1835,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-13T07:34:10Z",
+      "event_date": "2026-07-14",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "f44e980cc686c8cb1af06aaab2af4d3a85e34032586d41ac804efcd189533ad4",
+          "published_at_utc": "2026-07-13T07:34:10Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-14/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "f44e980cc686c8cb1af06aaab2af4d3a85e34032586d41ac804efcd189533ad4"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "7c3c892d3f7ea270773fe2e9cce889166b3121416f19e37eaaed8f404785ac83",
+          "published_at_utc": "2026-07-13T03:56:57Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-14/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "7c3c892d3f7ea270773fe2e9cce889166b3121416f19e37eaaed8f404785ac83"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.3,
+        "GFS": 0.7
+      },
+      "selection_evidence_sha256": "59b33bcd220a6ad1c980fe59f7909cda7000204c6ebb8c04f4176e3cd6a4aac3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-13",
+      "train_n": 15,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 31.75785,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-14T07:34:08Z",
+      "event_date": "2026-07-15",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "3700e8e053ac01d9728e23d353ec6c3d703e3c62c62fa52407602a830785e02f",
+          "published_at_utc": "2026-07-14T07:34:08Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-15/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "3700e8e053ac01d9728e23d353ec6c3d703e3c62c62fa52407602a830785e02f"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "fa1701d26e1df054fa15637e71dac3b9ae30114101da5a9355ac6ea7cd6726be",
+          "published_at_utc": "2026-07-14T03:57:00Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-15/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "fa1701d26e1df054fa15637e71dac3b9ae30114101da5a9355ac6ea7cd6726be"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.35,
+        "GFS": 0.65
+      },
+      "selection_evidence_sha256": "39fc27e016e0b04f26dbea9a0178b9a1031d7a196f474b2f96658d23d148efd6",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-14",
+      "train_n": 16,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 30.540899999999997,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-15T07:34:08Z",
+      "event_date": "2026-07-16",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "ad8ed44ee32b64897b4b535658a8c7bd4c6d090d9980f6bab5d9f705bc10e058",
+          "published_at_utc": "2026-07-15T07:34:08Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-16/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "ad8ed44ee32b64897b4b535658a8c7bd4c6d090d9980f6bab5d9f705bc10e058"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "8adb7aeca8cf14a58e814046a898a3605fe7daf132e43cc7f8de492aff87afe9",
+          "published_at_utc": "2026-07-15T03:57:41Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-16/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "8adb7aeca8cf14a58e814046a898a3605fe7daf132e43cc7f8de492aff87afe9"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.3,
+        "GFS": 0.7
+      },
+      "selection_evidence_sha256": "1d534f6ada1459f0d36df2ee4d0bcf93d8716b1a284fdb4335b52842152511a4",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-15",
+      "train_n": 17,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 32.208,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-16T07:34:07Z",
+      "event_date": "2026-07-17",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "3079256a45a5878f81c875a7598dfc30450123ced46ecd4834dc11cd83731b1f",
+          "published_at_utc": "2026-07-16T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-17/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "3079256a45a5878f81c875a7598dfc30450123ced46ecd4834dc11cd83731b1f"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "a4f7469ec5dd9cb674acbf7bcd277fc5f7c129b51721b1fdcc148a04e40cdbd5",
+          "published_at_utc": "2026-07-16T03:42:15Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-17/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "a4f7469ec5dd9cb674acbf7bcd277fc5f7c129b51721b1fdcc148a04e40cdbd5"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.5,
+        "GFS": 0.5
+      },
+      "selection_evidence_sha256": "9614699c21fd2e74e6505490c3e8749c4152ae0a2ae940978f1264c15c67ec1d",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-16",
+      "train_n": 18,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 30.56485,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-17T07:34:07Z",
+      "event_date": "2026-07-18",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "16045613e8ae6c733330608d99f18b33a4a21943aa305305836a624887361d44",
+          "published_at_utc": "2026-07-17T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-18/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "16045613e8ae6c733330608d99f18b33a4a21943aa305305836a624887361d44"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "0ac61d197d57e052b48fc88eb0c996897e190d66f665709ebe6e9809fd5f922f",
+          "published_at_utc": "2026-07-17T03:44:33Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-18/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "0ac61d197d57e052b48fc88eb0c996897e190d66f665709ebe6e9809fd5f922f"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "selection_evidence_sha256": "30447110508b9924cb64a944e6d85842d11285ffb9be1e3ec8c8749e5300738a",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-17",
+      "train_n": 19,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 31.9544875,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-18T07:34:07Z",
+      "event_date": "2026-07-19",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "47a11dc1a6e7cd27a63e58e7a5aade54d822662205407c0c4039d2daf23470f7",
+          "published_at_utc": "2026-07-18T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-19/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "47a11dc1a6e7cd27a63e58e7a5aade54d822662205407c0c4039d2daf23470f7"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "565647cd2d8dcd5d57bb140acf94f9bc3c118451edaf419db89179d8ff9e901e",
+          "published_at_utc": "2026-07-18T03:54:04Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-19/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "565647cd2d8dcd5d57bb140acf94f9bc3c118451edaf419db89179d8ff9e901e"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "selection_evidence_sha256": "523201d806741b44036448bfd206ee1b1d47b51aac14ddd713381bb7946a089f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-18",
+      "train_n": 20,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 31.814051724137933,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-19T07:34:06Z",
+      "event_date": "2026-07-20",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "cac2f3b04dccea5f184a1e09e9a70d55b5892cb79676a14fc058bcb9e3f59638",
+          "published_at_utc": "2026-07-19T07:34:06Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-20/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "cac2f3b04dccea5f184a1e09e9a70d55b5892cb79676a14fc058bcb9e3f59638"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "a77445dd7da91c3167632d4e0b3684c1fcc5df457cce3592f75222f4e4e95898",
+          "published_at_utc": "2026-07-19T03:44:49Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-20/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "a77445dd7da91c3167632d4e0b3684c1fcc5df457cce3592f75222f4e4e95898"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.5,
+        "GFS": 0.5
+      },
+      "selection_evidence_sha256": "3883b16641e8f65e0ef5f4a2138ebb89a98a676a85ac3eea853108d454642306",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-19",
+      "train_n": 21,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 31.55173166666667,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-20T07:34:07Z",
+      "event_date": "2026-07-21",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "a0e038b0eae1913da2ec6045e76e087ac43b4397a4ee0063a155338d36cd24b9",
+          "published_at_utc": "2026-07-20T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-21/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "a0e038b0eae1913da2ec6045e76e087ac43b4397a4ee0063a155338d36cd24b9"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "8c601bd9dc31ca8bfb7fa766336196f506828b89bc6df6dbc9a5c730ef6dc36b",
+          "published_at_utc": "2026-07-20T03:44:38Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-21/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "8c601bd9dc31ca8bfb7fa766336196f506828b89bc6df6dbc9a5c730ef6dc36b"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.55,
+        "GFS": 0.45
+      },
+      "selection_evidence_sha256": "863b12e8f477259e0b80c0499e0f3d27c4b86adfb6f4116aae110979a208937e",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-20",
+      "train_n": 22,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 32.81829193548388,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-21T07:34:07Z",
+      "event_date": "2026-07-22",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "43059e3007422f0c94206be8e59b16d44ea4c6fd0aee1240854bf0ab661900c0",
+          "published_at_utc": "2026-07-21T07:34:07Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-22/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "43059e3007422f0c94206be8e59b16d44ea4c6fd0aee1240854bf0ab661900c0"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "f92f7cee8a0501c67e2429824ffa6be60519ac1b7923fc81593542a3215fc008",
+          "published_at_utc": "2026-07-21T03:44:58Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-22/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "f92f7cee8a0501c67e2429824ffa6be60519ac1b7923fc81593542a3215fc008"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.55,
+        "GFS": 0.45
+      },
+      "selection_evidence_sha256": "6338dce07d2af76cadbca0263d3640a33d3c530ad99fab7796419b97a6a606e8",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-21",
+      "train_n": 23,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 33.1864125,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-22T07:34:08Z",
+      "event_date": "2026-07-23",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "6e20dbb080c71628b65c1b1653cbdd129021192380bdeb1af6245ad31954c9ab",
+          "published_at_utc": "2026-07-22T07:34:08Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260723_0724_retry.json#RKPK/2026-07-23/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "6e20dbb080c71628b65c1b1653cbdd129021192380bdeb1af6245ad31954c9ab"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "15a8d420e511eda1cc3bf65e0c7ff2ae1ff7a4fe78d1d587a7ed67474484198d",
+          "published_at_utc": "2026-07-22T03:53:22Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-23/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "15a8d420e511eda1cc3bf65e0c7ff2ae1ff7a4fe78d1d587a7ed67474484198d"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.6,
+        "GFS": 0.4
+      },
+      "selection_evidence_sha256": "2e8d45d3a13c8fc0247f5adf9896b99851c5ee3ca0830970935b004dec7d362f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-22",
+      "train_n": 24,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 35.22954696969697,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-23T07:34:06Z",
+      "event_date": "2026-07-24",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "bc1da8330587633b7bcfd50fc755bd6dcb5206f4920362f521f0adeb725c0ab6",
+          "published_at_utc": "2026-07-23T07:34:06Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260723_0724_retry.json#RKPK/2026-07-24/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "bc1da8330587633b7bcfd50fc755bd6dcb5206f4920362f521f0adeb725c0ab6"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "06cc81eefd6246a596d736dcb11cff7a87586ac5c0ff8dd8d3a6a43347a94501",
+          "published_at_utc": "2026-07-23T03:59:40Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-24/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "06cc81eefd6246a596d736dcb11cff7a87586ac5c0ff8dd8d3a6a43347a94501"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "selection_evidence_sha256": "521ceb3e9bfa171e9b6e45491d61f54329345b0174e81c029a163d796aa88b9e",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-23",
+      "train_n": 25,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 35.5942955882353,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-24T07:34:09Z",
+      "event_date": "2026-07-25",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "0047335df3eb909ed9e18a4f723d0ef3d1ff051e10285ae6c3caf0ae512ba858",
+          "published_at_utc": "2026-07-24T07:34:09Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-25/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "0047335df3eb909ed9e18a4f723d0ef3d1ff051e10285ae6c3caf0ae512ba858"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "e9d2c7c0de88c236293efc186c036e52d1530dc0b042b4ea005c4dc156b5c389",
+          "published_at_utc": "2026-07-24T03:55:45Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-25/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "e9d2c7c0de88c236293efc186c036e52d1530dc0b042b4ea005c4dc156b5c389"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "selection_evidence_sha256": "451db6fc8ed03252f5428c084947083570f05f254c5d902262b16e95c6b757ef",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-24",
+      "train_n": 26,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 37.57861571428571,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-25T07:34:00Z",
+      "event_date": "2026-07-26",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "45d317ca3c97645c5c850517c7115d2adc2103e790955bf54a8b4c1e1cd1defe",
+          "published_at_utc": "2026-07-25T07:34:00Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260714_0726.json#RKPK/2026-07-26/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "45d317ca3c97645c5c850517c7115d2adc2103e790955bf54a8b4c1e1cd1defe"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "01aef25a1210a5257b52a9ae846878b4bb5111ce166f01f489798fe49b4482fa",
+          "published_at_utc": "2026-07-25T03:46:24Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260714_0726.json#RKPK/2026-07-26/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "01aef25a1210a5257b52a9ae846878b4bb5111ce166f01f489798fe49b4482fa"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "selection_evidence_sha256": "dbff3cd6aea260c2b36606f2d6d41a844234120733390cc9a540ab7c51dcf4a9",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-25",
+      "train_n": 27,
+      "train_start_date": "2026-06-28"
+    },
+    {
+      "combined_tmax_c": 36.0275,
+      "crossfit_prediction_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+      "decision_at_utc": "2026-07-26T07:34:00Z",
+      "event_date": "2026-07-27",
+      "lead_bucket": "d2",
+      "model_rows": [
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "ECMWF",
+          "model_run_id": "903561fbeaebecb8baa28203d0cbd914d9812d7058067289c23d05ae48497524",
+          "published_at_utc": "2026-07-26T07:34:00Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_ecmwf_d1_20260727.json#RKPK/2026-07-27/ECMWF",
+          "raw_object_verified": true,
+          "source_object_sha256": "903561fbeaebecb8baa28203d0cbd914d9812d7058067289c23d05ae48497524"
+        },
+        {
+          "availability_class": "official_publication_schedule_historical_replay",
+          "available_at_utc": null,
+          "model_id": "GFS",
+          "model_run_id": "8684ee92a1803506879ef628ab13ff96e26d8f1c0662e4b123ef0d81a4969370",
+          "published_at_utc": "2026-07-26T03:45:01Z",
+          "raw_object_ref": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_native_gfs_d1_20260727.json#RKPK/2026-07-27/GFS",
+          "raw_object_verified": true,
+          "source_object_sha256": "8684ee92a1803506879ef628ab13ff96e26d8f1c0662e4b123ef0d81a4969370"
+        }
+      ],
+      "prediction_oos": true,
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.6,
+        "GFS": 0.4
+      },
+      "selection_evidence_sha256": "559c04dc9f60a5afe31e05e48df9e4c2e9cce1809e471c1dcd039db5b6fa9a7c",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-26",
+      "train_n": 28,
+      "train_start_date": "2026-06-28"
+    }
+  ],
+  "run_cycle": "00Z",
+  "schema": "bayes_basket_nwp_crossfit_predictions_v1",
+  "station_id": "RKPK"
+}

@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping
 
 from resolution_bridge_activation_runtime import SCHEMA_VERSION as ACTIVATION_SCHEMA, activation_sha256
 from resolution_bridge_artifact_runtime import (
     CANDIDATE_STATE,
+    OPERATIONAL_BASELINE_KERNEL_KIND,
     PRODUCTION_STATE,
     artifact_sha256,
     validate_resolution_bridge_artifact,
@@ -66,15 +68,29 @@ def compile_resolution_bridge_promotion(
         blockers.append("bridge_promotion_approval_not_accepted")
     if _text(receipt.get("candidate_artifact_sha256")) != _text(candidate.get("artifact_sha256")):
         blockers.append("bridge_promotion_candidate_sha_mismatch")
-    if receipt.get("oos_review_accepted") is not True or receipt.get("coverage_review_accepted") is not True:
+    operational_baseline = (
+        _text(candidate.get("kernel_kind")) == OPERATIONAL_BASELINE_KERNEL_KIND
+    )
+    if operational_baseline:
+        if (
+            receipt.get("operational_baseline_review_accepted") is not True
+            or receipt.get("probabilistic_residual_support_review_accepted") is not True
+            or receipt.get("hard_exclusion_disabled_review_accepted") is not True
+            or receipt.get("sample_or_oos_live_gate") is not False
+        ):
+            blockers.append("bridge_operational_baseline_review_not_accepted")
+    elif receipt.get("oos_review_accepted") is not True or receipt.get("coverage_review_accepted") is not True:
         blockers.append("bridge_promotion_reviews_not_accepted")
     if not _text(receipt.get("approval_id")) or not _text(receipt.get("reviewer")) or not _time(receipt.get("approved_at")):
         blockers.append("bridge_promotion_approval_lineage_invalid")
     supplied_receipt_sha = _text(receipt.get("approval_receipt_sha256"))
     if supplied_receipt_sha != approval_receipt_sha256(receipt):
         blockers.append("bridge_promotion_approval_receipt_sha_invalid")
+    normalized_artifact_path = Path(_text(artifact_path))
     if not _text(artifact_path):
         blockers.append("bridge_promotion_artifact_path_missing")
+    elif normalized_artifact_path.is_absolute() or ".." in normalized_artifact_path.parts:
+        blockers.append("bridge_promotion_artifact_path_must_be_repo_relative")
     if blockers:
         return {
             "schema": SCHEMA_VERSION,
@@ -93,6 +109,11 @@ def compile_resolution_bridge_promotion(
         "approval_id": _text(receipt.get("approval_id")),
         "approval_receipt_sha256": supplied_receipt_sha,
         "approved_at": _text(receipt.get("approved_at")),
+        "promotion_basis": (
+            "approved_sample_nonblocking_operational_baseline"
+            if operational_baseline
+            else "approved_calibrated_oos_artifact"
+        ),
     }
     production_core.pop("artifact_sha256", None)
     artifact = {**production_core, "artifact_sha256": artifact_sha256(production_core)}

@@ -15,6 +15,15 @@
     <true/>
     <key>WorkingDirectory</key>
     <string>/Users/xiong/weather</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>WEATHER_SERVICE_DOMAIN</key>
+      <string>system</string>
+      <key>PM_TARGET_EXECUTION_MODE</key>
+    <string>production_no_live</string>
+    <key>PM_CLOB_ORDER_SERVICE_READ_ONLY</key>
+    <string>1</string>
+    </dict>
     <key>StandardOutPath</key>
     <string>/Users/xiong/weather/data/logs/clob_order_service.out.log</string>
     <key>StandardErrorPath</key>

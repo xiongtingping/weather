@@ -40,7 +40,7 @@ if lsof "$ACTIVE" "$ROOT/data/archive.db-wal" "$ROOT/data/archive.db-shm" 2>/dev
 fi
 
 sqlite3 "$SOURCE" 'PRAGMA quick_check;' | grep -qx ok
-rm -rf "$ROOT/data/db_writer.lock"
+rm -rf "$ROOT/data/db_writer.user.lock"
 rm -f "$ROOT/data/archive.db-wal" "$ROOT/data/archive.db-shm"
 mv "$ACTIVE" "$FAILED"
 mv "$SOURCE" "$ACTIVE"

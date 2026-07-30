@@ -983,7 +983,7 @@ AUTO_TRADE_CONFIG_ENV_SSOT_SNAPSHOT = {
     for key in AUTO_TRADE_CONFIG_ENV_SSOT_KEYS
     if os.environ.get(key) is not None
 }
-DB_WRITER_LOCK_DIR = DATA_DIR / "db_writer.lock"
+DB_WRITER_LOCK_DIR = DATA_DIR / "db_writer.user.lock"
 OURAIRPORTS_INDEX: Dict[str, Tuple[float, float]] = {}
 OURAIRPORTS_CITY: Dict[str, str] = {}
 OURAIRPORTS_CITY_INDEX: Dict[str, Tuple[float, float, int]] = {}

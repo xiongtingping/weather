@@ -1,0 +1,71 @@
+- generic [active] [ref=e1]:
+  - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: 状态灯
+        - generic [ref=e11]:
+          - generic "AMSC" [ref=e12]
+          - generic "AWC" [ref=e15]
+          - generic "TWC" [ref=e18]
+          - generic "WU" [ref=e21]
+          - generic "Fact" [ref=e24]
+          - generic "DB" [ref=e27]
+          - generic "GFS" [ref=e30]
+          - generic "ICON" [ref=e33]
+          - generic "ECMWF" [ref=e36]
+          - generic "NWS" [ref=e39]
+          - generic "扫描" [ref=e42]
+          - generic "缓存" [ref=e45]
+          - generic "UI" [ref=e48]
+          - generic "接口" [ref=e51]
+      - generic "自动交易：关闭=停止自动交易；开启=允许自动交易，数据刷新不受影响" [ref=e56] [cursor=pointer]:
+        - checkbox "自动交易 开启"
+        - generic [ref=e57]: 自动交易
+        - generic [ref=e59]: 开启
+  - main [ref=e60]:
+    - region "天气市场数字看板" [ref=e61]:
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e64]: Weather SSOT · Read only
+          - heading "天气市场数字看板" [level=1] [ref=e65]
+          - generic [ref=e66]: 等待完整 SSOT 快照…
+        - generic [ref=e67]: 等待数据
+      - generic [ref=e68]: 正在读取后验、报文、方向和执行分区…
+      - generic [ref=e71]: 前端只读展示：后验概率、变化、篮子桶和硬 NO 均来自服务端物化字段；缺字段显示“未物化”，不在浏览器重算。
+      - status [ref=e72]: 概率链路：等待探针…
+    - region "中国机场天气数据看板" [ref=e73]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - generic [ref=e76]: 中国城市天气与策略数据看板
+          - generic [ref=e77]: 多城市视角 · 机场代码 · METAR/SPECI · AMSC TAF · 官方 GFS / ICON / ECMWF · SSOT 后验 · 方向闸门 · 篮子组合；每项带来源时间，缺失显示真实原因
+        - generic [ref=e78]: 读取中…
+      - generic [ref=e80]: 正在读取中国机场站点快照…
+      - generic [ref=e81]: 正在检查数据源完整性…
+    - region "独立跟单控制" [ref=e82]:
+      - generic [ref=e83]:
+        - generic [ref=e84]: Independent line · copy_follow_v1
+        - generic [ref=e85]: 独立跟单
+        - generic [ref=e86]: 仅跟单城市和四桶资金比例；不影响 Bayes 自动交易
+      - generic [ref=e87]: 独立配置 · 源钱包 0x8fbd7c… · 更新38m前
+      - generic [ref=e88]:
+        - generic "仅控制独立跟单线，不改变自动交易开关" [ref=e89] [cursor=pointer]:
+          - checkbox "开启" [checked]
+          - generic [ref=e91]: 开启
+        - generic [ref=e92]:
+          - generic [ref=e93]: 单城市预算
+          - group "单城市预算" [ref=e94]:
+            - button "30U" [pressed] [ref=e95] [cursor=pointer]
+            - button "50U" [ref=e96] [cursor=pointer]
+            - button "100U" [ref=e97] [cursor=pointer]
+            - button "200U" [ref=e98] [cursor=pointer]
+        - generic [ref=e99]: 已运行 · 30U/城市
+    - generic [ref=e100]:
+      - generic [ref=e101]:
+        - generic [ref=e102]: 报文轨迹 NO · Production SSOT
+        - generic [ref=e103]: AMSC/AWC 官方 METAR/SPECI · FAK NO ≤ 0.99 · 前端只读
+      - generic [ref=e104]: 正在读取 /api/ui_snapshot…
+    - generic [ref=e108]:
+      - text: 暂无可展示事件
+      - generic [ref=e109]: 状态统计：已结算 0 · 已收盘/过峰 0 · 已延后过期 0 · 锁定 0 · 低盘口 0 · 总数 0

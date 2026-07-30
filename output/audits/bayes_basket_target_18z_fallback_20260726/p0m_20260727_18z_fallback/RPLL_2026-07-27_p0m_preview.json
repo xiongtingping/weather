@@ -1,0 +1,47 @@
+{
+  "bridge_sha256": "100796ff54b019bbe2e506bb9d19cebcc494de046f865c338965fdee416d1cf4",
+  "bucket_ordinals": {
+    "25°C or below": 0,
+    "26°C": 1,
+    "27°C": 2,
+    "28°C": 3,
+    "29°C": 4,
+    "30°C": 5,
+    "31°C": 6,
+    "32°C": 7,
+    "33°C": 8,
+    "34°C": 9,
+    "35°C or higher": 10
+  },
+  "checkpoint_id": "p0m_08f926bd4e30a2ad5b0d6edffd229e8a",
+  "decision_at_utc": "2026-07-26T06:24:00Z",
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T07:00:00Z",
+  "lineage": {
+    "activation_ids": "no-live-cal-5e43a4957aecf20f9bd776d388d54e62,no-live-cal-6c9afbfef4d8ff81d758c9fec183d243,no-live-cal-adeda94c19c192b164f89a54db8d23d2,no-live-ens-187c2d6f4cb58bf691e85a76971cce04",
+    "available_model_set_hash": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+    "calibration_artifact_ids": "cal-candidate-RPLL-ECMWF-summer-9c4f1014d5f1,cal-candidate-RPLL-GFS-summer-9c4f1014d5f1,cal-candidate-RPLL-ICON-summer-9c4f1014d5f1",
+    "ensemble_artifact_id": "ens-candidate-RPLL-summer-9c4f1014d5f1",
+    "model_bundle_ready_at_utc": "2026-07-26T04:32:06Z",
+    "model_run_ids": "current-31dfe88741a82e39026102ea91769090,current-8535da16811a4e8024f000e507d09659,current-8bfe504fe765bfc37f17b90eb5b3b254",
+    "model_run_initialization_utc": "2026-07-25T18:00:00Z"
+  },
+  "posterior_sha256": "08f926bd4e30a2ad5b0d6edffd229e8a56733b971dfb1c9c88ecd13b5ed70cfd",
+  "posterior_version": "p0m_ensemble_v1",
+  "probabilities": {
+    "25°C or below": 0.00018931608739972453,
+    "26°C": 0.0033799119843069066,
+    "27°C": 0.03037953826513609,
+    "28°C": 0.13432157433292133,
+    "29°C": 0.2933726432832781,
+    "30°C": 0.3172740878584007,
+    "31°C": 0.16990163169694636,
+    "32°C": 0.04494675769073476,
+    "33°C": 0.005850003985744679,
+    "34°C": 0.00037272028602413455,
+    "35°C or higher": 1.1814529107109311e-05
+  },
+  "schema": "bayes_basket_probability_envelope_v1",
+  "stage": "P0-M",
+  "station_id": "RPLL"
+}

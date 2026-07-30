@@ -15,7 +15,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from archive_db_write_queue import connect_archive_db_rw
-from production_probability_v6_activation_contract import validate_v6_activation
+from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
+    validate_v6_activation,
+)
+from production_probability_v6_market_inputs_runtime import prewarm_v6_market_inputs
 from production_probability_v6_weak_revision_event_runtime import apply_v6_taf_revision_from_source_observations
 
 
@@ -48,6 +52,20 @@ def main() -> int:
             & eligible_days
         )
         activation = validate_v6_activation(json.loads(Path(args.activation).read_text(encoding="utf-8")))
+        projection_role = (
+            "basket_probability_only"
+            if str(activation.get("composer_schema") or "")
+            == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+            else "legacy_realization"
+        )
+        market_inputs_by_day = {
+            day: prewarm_v6_market_inputs(
+                event_date=day,
+                root=ROOT,
+                strategy_projection_role=projection_role,
+            )
+            for day in target_days
+        }
         results = []
         with connect_archive_db_rw(Path(args.db), owner="amsc_taf_forecast_revision_v6") as conn:
             for day in target_days:
@@ -77,6 +95,7 @@ def main() -> int:
                     source_observations=observations,
                     decision_as_of=decision_as_of,
                     public_slug="",
+                    market_inputs=market_inputs_by_day[day],
                 )
                 results.append({"event_date": day, **outcome})
         failures = [item for item in results if item.get("ok") is not True]

@@ -1,0 +1,32 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-73aaecba82d575ddb030224f",
+    "capture_mode": "prospective",
+    "content_sha256": "1dc8a65e905ded4c37b839a50ae3114274bb81770ce62a416285f96a502ae714",
+    "decision_at_utc": "2026-07-23T20:00:00Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ECMWF",
+    "open_meteo": false,
+    "production_authority": false,
+    "provider_id": "ecmwf_ifs025_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-23T12:27:00Z",
+    "raw_payload_sha256s": [
+      "6edf1cdb5ced660e89aaf1c7027d19aa26b55507a85c2f8d41509888a7f4de98"
+    ],
+    "receipt_sha256": "ccfe84c54b7f3d69bf0fe76150a535a63b525a3a4d3f20a7a0e3630aa0d94370",
+    "received_at_utc": "2026-07-23T16:07:30Z",
+    "run_initialization_utc": "2026-07-23T06:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://data.ecmwf.int/forecasts/20260723/06z/ifs/0p25/oper/20260723060000-12h-oper-fc.grib2",
+    "station_id": "ZUUU",
+    "target_local_date": "2026-07-23",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-07-23T18:00:00Z"
+  },
+  "prior_evidence_reused": true,
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/73aaecba82d575ddb030224fd43807f3ce9d717634543be6c35b4167ab5c758b.json"
+}

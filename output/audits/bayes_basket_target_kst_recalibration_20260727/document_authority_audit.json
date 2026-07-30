@@ -1,0 +1,73 @@
+{
+  "authority_id": "bayes-basket-target-architecture-v1",
+  "boundary": {
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "read_only": true,
+    "reads_shared_live_db": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "authority_pair_consistent": true,
+    "exactly_one_current_logical_authority": true,
+    "execution_mode_no_live": true,
+    "gateway_disabled": true,
+    "live_submit_disabled": true,
+    "manifest_schema_valid": true,
+    "roadmap_consistent": true,
+    "subordinate_contracts_safe": true
+  },
+  "current_authority_count": 1,
+  "documents": [
+    {
+      "checks": {
+        "json_present": true,
+        "json_status_matches": true,
+        "json_version_matches": true,
+        "machine_live_order_disabled": true,
+        "markdown_present": true,
+        "markdown_status_matches": true,
+        "markdown_version_matches": true
+      },
+      "document_id": "bayes_basket_target_architecture_v1",
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.json",
+      "markdown": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.md",
+      "status": "TARGET_PRODUCTION_NO_LIVE",
+      "version": "1.14.9"
+    }
+  ],
+  "receipt_sha256": "238ff383b31ce9d1586f42e57dd0aec18fcab9de61f31f9b96f46d0ed78c8aed",
+  "roadmap": {
+    "checks": {
+      "architecture_reference_matches": true,
+      "json_present": true,
+      "json_status_matches": true,
+      "json_version_matches": true,
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.json",
+    "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
+    "version": "1.6.38"
+  },
+  "schema": "bayes_basket_target_document_authority_audit_v1",
+  "status": "PASS",
+  "subordinate_contracts": [
+    {
+      "does_not_authorize_live": true,
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    {
+      "does_not_authorize_live": true,
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/basket_phase_policy_versions_v2.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    }
+  ]
+}

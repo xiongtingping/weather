@@ -1,0 +1,146 @@
+{
+  "calls_order_gateway": false,
+  "completed_at_utc": "2026-07-28T01:34:51.664Z",
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "preflight": {
+    "activation": {
+      "execution_mode": "production_no_live",
+      "path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "sha256": "0bdb99c71f03a56b18a25504d23990b4f740ac5760cc2deea6204c8994601e91"
+    },
+    "artifact_packet": {
+      "binding_counts": {
+        "calibration_activations": -1,
+        "calibration_artifacts": -1,
+        "cash_phase_authority_manifests": -1,
+        "cash_phase_policies": -1,
+        "ensemble_artifacts": -1,
+        "ensemble_selection_evidence": -1
+      },
+      "expected_counts": {
+        "calibration_activations": 3,
+        "calibration_artifacts": 2,
+        "cash_phase_authority_manifests": 1,
+        "cash_phase_policies": 1,
+        "ensemble_artifacts": 1,
+        "ensemble_selection_evidence": 1
+      },
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_no_live_vertical_slice_RKPK_v1.json",
+      "sha256": "d77bf209bcb19005fd317f6f64563877d57264bd61b6e166f77fa21aba2c5ce7"
+    },
+    "blockers": [
+      "target_production_ssot_schema_not_installed"
+    ],
+    "market_manifest": {
+      "event_date": "2026-07-27",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/ws_rkpk_20260727_manifest_p1_latest.json",
+      "sha256": "bacc4391548df4e15898a21bf7b0d75137f00b4c44f42dd3cae7067b24afdb3d",
+      "station_scope": {
+        "mode": "allowlist",
+        "source_lane": "AWC_ONLY",
+        "station_ids": [
+          "RKPK"
+        ]
+      }
+    },
+    "protected_processes": {
+      "clob_order_service": 95880,
+      "market_ws": 89318,
+      "reported_trajectory_no": 48372
+    },
+    "resources": {
+      "blockers": [],
+      "free_bytes": 12890611712,
+      "limits": {
+        "max_input_bytes": 16777216,
+        "max_output_bytes": 16777216,
+        "max_rss_bytes": 805306368,
+        "max_target_db_bytes": 268435456,
+        "max_target_wal_bytes": 67108864,
+        "minimum_free_bytes": 2147483648
+      },
+      "rss_bytes": 32948224,
+      "state": "PASS",
+      "target_db_bytes": 77271040,
+      "target_wal_bytes": 0
+    },
+    "schema_status": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": []
+      },
+      "ledger_missing_columns": {
+        "auto_trade_decisions": [],
+        "basket_target_order_intents": []
+      },
+      "ledger_schema_ok": true,
+      "maker_grid_oos_missing_tables": [],
+      "maker_grid_oos_schema_ok": true,
+      "missing_tables": [],
+      "ok": false,
+      "policy_training_constraint_ok": true,
+      "policy_training_missing_columns": {
+        "basket_policy_training_fact": [],
+        "basket_policy_training_label": []
+      },
+      "policy_training_schema_ok": true,
+      "probability_stage_contract_ok": true,
+      "quote_freshness_missing_columns": [],
+      "regime_missing_columns": [],
+      "regime_schema_ok": false,
+      "regime_superseded_schema": {
+        "columns_exact": true,
+        "committed_partial_unique_ok": false,
+        "controlled_update_trigger_ok": false,
+        "legacy_no_update_absent": false,
+        "missing_columns": [],
+        "no_delete_trigger_ok": true,
+        "ok": false,
+        "supports_superseded": false,
+        "table_present": true
+      },
+      "schema": "bayes_basket_target_ssot_v4",
+      "settlement_timezone_missing_columns": {},
+      "target_tables_present": true
+    },
+    "state": "BLOCKED_FAIL_CLOSED",
+    "table_counts": {
+      "auto_trade_decisions": 119,
+      "basket_confirmed_inventory_snapshot": 11,
+      "basket_official_ws_snapshot": 0,
+      "basket_order_state_snapshot": 11,
+      "basket_probability_envelope": 13,
+      "basket_target_capital_reservations": 0,
+      "basket_target_execution_cycles": 119,
+      "basket_target_order_events": 0,
+      "basket_target_order_intents": 0
+    },
+    "vertical_slice_station_id": "RKPK"
+  },
+  "receipt_sha256": "082d2eb9c3d259154707ffdf8b7ba0029e54065ab17554b20f08adbeba3945e9",
+  "schema": "bayes_basket_target_post_migration_no_live_run_v1",
+  "stage": "preflight",
+  "started_at_utc": "2026-07-28T01:34:51.621Z",
+  "state": "BLOCKED_FAIL_CLOSED",
+  "station_id": "RKPK",
+  "target_db_fingerprint_after": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785197141939779640,
+    "size": 77271040
+  },
+  "target_db_fingerprint_before": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785197141939779640,
+    "size": 77271040
+  },
+  "worker_invoked": false
+}

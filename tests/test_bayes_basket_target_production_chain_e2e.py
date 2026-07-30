@@ -1,0 +1,709 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from bayes_basket_target.atomic_ledger import (
+    AtomicLedgerError,
+    apply_target_ledger_schema,
+    close_target_cycle,
+    commit_target_atomic_bundle,
+    initialize_capital_pool,
+    transition_target_cycle_state,
+)
+from bayes_basket_target.contracts import (
+    ContractError,
+    ProbabilityEnvelope,
+    content_sha256,
+)
+from bayes_basket_target.delta_v2_artifact import (
+    ARTIFACT_SCHEMA as DELTA_V2_ARTIFACT_SCHEMA,
+    DeltaV2PolicyArtifact,
+)
+from bayes_basket_target.market_registry import (
+    apply_target_market_registry_schema,
+)
+from bayes_basket_target.production import commit_production_candidate_atomic, compile_production_plan
+from bayes_basket_target.production_io import target_atomic_facts_from_cycle
+from bayes_basket_target.production_worker import TargetProductionWorker
+from bayes_basket_target.regime_materialization import build_regime_artifact
+from bayes_basket_target.ssot import apply_production_ssot_schema
+from tests.bayes_basket_target_e2e_fixtures import (
+    DECISION,
+    _cash_input,
+    _cash_policy,
+    _envelope,
+    _market_snapshot,
+    _policy_inputs,
+)
+
+
+def _inputs() -> tuple[list[ProbabilityEnvelope], dict, dict, list, dict, object]:
+    prior, artifacts, activations = _policy_inputs()
+    # Make the local rehearsal exercise all three legs.  This is a test-only
+    # policy; it is not an activation or a production default.
+    default_policy = dict(prior.default_policy)
+    default_policy.update({
+        "base_coverage": 0.95,
+        "maximum_coverage": 1.0,
+        "total_budget_usdc": 12.0,
+        "clip_min_notional_usdc": 0.1,
+    })
+    prior = prior.create(
+        global_prior_id=prior.global_prior_id,
+        strategy_version=prior.strategy_version,
+        family_parameters=prior.family_parameters,
+        default_policy=default_policy,
+        valid_from_utc=prior.valid_from_utc,
+        valid_until_utc=prior.valid_until_utc,
+    )
+    envelopes: list[ProbabilityEnvelope] = []
+    for stage, checkpoint in (("P0", "e2e-p0"), ("P0-M", "e2e-p0m"), ("P1", "e2e-p1")):
+        raw = _envelope(stage, checkpoint).to_dict()
+        raw["lineage"] = {
+            **raw["lineage"],
+            "canonical_observation_event_id": "obs-e2e-1",
+            "canonical_observation_sha256": "a" * 64,
+            "canonical_observation_committed_at": DECISION,
+            "hard_bound_id": "bound-e2e-1",
+            "reported_high_c": "37",
+            "reported_hard_lower_bound": "37",
+            "reported_high_bucket": "38",
+            "reported_high_ordinal": "38",
+            "settlement_unit": "C",
+            "source_lane": "AMSC",
+            "report_type": "METAR",
+            "hard_excluded_buckets": "37",
+            "model_envelope_lower_bucket": "37",
+            "model_envelope_upper_bucket": "39",
+            "model_envelope_span_c": "2",
+        }
+        envelopes.append(ProbabilityEnvelope.from_mapping(raw))
+    market = _market_snapshot()
+    for row in market["buckets"]:
+        row["yes_token"] = "yes-" + str(row["bucket"])
+        row["filled_shares"] = 0.0
+        row["pending_shares"] = 0.0
+    cash_policy = _cash_policy("e2e-cash-heavy-v1", 6.0)
+    return envelopes, {prior.global_prior_id: prior}, {item.artifact_id: item for item in artifacts}, activations, market, cash_policy
+
+
+def _delta_v2_policy() -> DeltaV2PolicyArtifact:
+    raw = {
+        "schema": DELTA_V2_ARTIFACT_SCHEMA,
+        "artifact_id": "delta-v2-e2e-v1",
+        "station_id": "ZUUU",
+        "stage": "P1",
+        "season_bin": "summer",
+        "maturity_bin": "d1",
+        "liquidity_bin": "liquid",
+        "strategy_version": "target-v1",
+        "value_weights": {
+            "lambda_profit_floor": 0.0,
+            "lambda_cvar": 0.0,
+            "lambda_shortfall": 0.0,
+            "lambda_breakthrough": 0.0,
+            "lambda_overfill": 0.0,
+            "lambda_excess_hhi": 0.0,
+            "cvar_alpha": 0.1,
+            "hhi_max": 1.0,
+            "expected_pnl_scale": 1.0,
+            "profit_floor_scale": 1.0,
+            "cvar_scale": 1.0,
+            "coverage_scale": 1.0,
+            "overfill_scale": 1.0,
+            "excess_hhi_scale": 1.0,
+        },
+        "execution_weights": {
+            "epsilon_score": 0.000001,
+            "lambda_wait": 0.0,
+            "lambda_queue": 0.0,
+            "lambda_adverse_selection": 0.0,
+            "lambda_reprice": 0.0,
+            "lambda_capital_lock": 0.0,
+            "wait_scale": 1.0,
+            "queue_scale": 1.0,
+            "adverse_selection_scale": 1.0,
+            "reprice_scale": 1.0,
+            "capital_lock_scale": 1.0,
+            "maximum_candidates": 64,
+        },
+        "cash_clip_grid": [0.5],
+        "price_grid": [0.1],
+        "timeout_grid_seconds": [30.0],
+        "fill_distribution_artifact_sha256": "1" * 64,
+        "training_evidence_sha256": "2" * 64,
+        "train_start_date": "2026-05-01",
+        "train_end_date": "2026-05-31",
+        "holdout_start_date": "2026-06-01",
+        "holdout_end_date": "2026-06-30",
+        "sample_n": 200,
+        "holdout_n": 80,
+        "consecutive_forward_windows": 2,
+        "compared_baselines": ["EV_ONLY", "HOLD", "ZERO_WEIGHT", "v1"],
+        "oos_metrics": {
+            "delta_score_lift_vs_v1": 0.1,
+            "profit_floor_lift": 0.0,
+            "resource_failures": 0.0,
+        },
+        "oos_gate_version": "delta-v2-e2e-oos-v1",
+        "oos_gate_passed": True,
+        "trained_through_utc": "2026-07-20T00:00:00Z",
+        "valid_from_utc": "2026-07-21T00:00:00Z",
+        "valid_until_utc": "2026-08-01T00:00:00Z",
+        "authority_scope": "PRODUCTION_NO_LIVE",
+    }
+    raw["content_sha256"] = content_sha256(raw)
+    return DeltaV2PolicyArtifact.from_mapping(raw)
+
+
+def _fill_resolver(**_kwargs: object) -> dict[str, object]:
+    return {
+        "fill_distribution": [
+            {"probability": 0.1, "fill_fraction": 0.0},
+            {"probability": 0.2, "fill_fraction": 0.5},
+            {"probability": 0.7, "fill_fraction": 1.0},
+        ],
+        "execution_costs": {
+            "wait": 0.0,
+            "queue": 0.0,
+            "adverse_selection": 0.0,
+            "reprice": 0.0,
+            "capital_lock": 0.0,
+        },
+        "fill_artifact_content_sha256": "3" * 64,
+    }
+
+
+def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
+    tmp_path: Path,
+) -> None:
+    envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
+    delta_policy = _delta_v2_policy()
+    compiled = compile_production_plan(
+        probability_envelopes=envelopes,
+        market_snapshot=market,
+        policy_activations=activations,
+        global_priors=priors,
+        policy_artifacts=artifacts,
+        evaluation_at_utc=DECISION,
+        season_bin="summer",
+        maturity_bin="d1",
+        liquidity_bin="liquid",
+        strategy_version="target-v1",
+        base_policy={"clip_max_notional_usdc": 3.0},
+        delta_v2_policy=delta_policy,
+        delta_v2_fill_resolver=_fill_resolver,
+        regime_artifact=build_regime_artifact(envelopes[-1]),
+        cash_phase_policy=cash_policy,
+        cash_phase_input=_cash_input(cash_policy),
+        resource_probe_ok=True,
+    )
+    compiled["production_inputs"] = {
+        "strategy_version": "target-v1",
+        "season_bin": "summer",
+        "probability_maturity_bin": "d1",
+        "liquidity_bin": "liquid",
+        "cash_phase_policy_version": cash_policy.policy_version,
+        "cash_phase_policy_sha256": cash_policy.content_sha256,
+        "delta_v2_artifact_id": delta_policy.artifact_id,
+        "delta_v2_artifact_sha256": delta_policy.content_sha256,
+        "delta_v2_fill_distribution_artifact_sha256": (
+            delta_policy.fill_distribution_artifact_sha256
+        ),
+        "delta_v2_resolution_blocker": None,
+    }
+    assert compiled["status"] == "ready_no_live"
+    assert compiled["execution_mode"] == "production_no_live"
+    assert compiled["live_submit_authorized"] is False
+    assert compiled["plan"]["delta_v2_audit"]["authorized"] is True
+    eligible_count = len([
+        row for row in compiled["order_sizing_decisions"]
+        if row["eligible"] and row["candidate_present"]
+    ])
+    assert eligible_count == len(
+        compiled["plan"]["execution_gap_support"]
+    )
+    assert eligible_count > 1
+
+    facts = target_atomic_facts_from_cycle(compiled)
+    incomplete = json.loads(json.dumps(compiled))
+    incomplete["order_sizing_decisions"] = incomplete[
+        "order_sizing_decisions"
+    ][:-1]
+    with sqlite3.connect(":memory:") as incomplete_conn:
+        with pytest.raises(
+            ContractError,
+            match=(
+                "production_candidate_complete_basket_intents_incomplete"
+            ),
+        ):
+            commit_production_candidate_atomic(
+                incomplete_conn,
+                compiled_plan=incomplete,
+                market_snapshot=market,
+                observation=facts["observation"],
+                bound=facts["bound"],
+                created_at_utc=DECISION,
+            )
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        apply_target_market_registry_schema(conn)
+        conn.execute(
+            "INSERT INTO basket_target_market_registry_snapshot "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (
+                "1" * 64, "reported_trajectory_market_registry_v1",
+                "shared_live_registry_export_only", DECISION,
+                "/read-only/e2e.db", 1, DECISION, "2" * 64,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO basket_target_market_registry(
+              snapshot_sha256,slug,event_date,outcome,city_slug,station_id,
+              settlement_timezone,settlement_unit,source_lane,source_eligible,
+              source_block_reason,resolution_url,rules_sha256,yes_token,
+              no_token,market_active,market_accepting_orders,registry_json,
+              refreshed_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "1" * 64, "e2e-market", "2026-07-23", "38", "chengdu",
+                "ZUUU", "Asia/Shanghai", "C", "amsc", 1, "", "",
+                "3" * 64, "yes-38", "no-38", 1, 1, "{}", DECISION,
+            ),
+        )
+        p1 = envelopes[-1]
+        p1_raw = p1.to_dict()
+        conn.execute(
+            """
+            INSERT INTO basket_probability_envelope VALUES(
+              ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            )
+            """,
+            (
+                p1.checkpoint_id, p1.stage, p1.checkpoint_id,
+                p1.station_id, p1.event_date, p1.settlement_timezone,
+                p1.decision_at_utc, p1.fresh_until_utc,
+                json.dumps(p1_raw["bucket_ordinals"]),
+                json.dumps(p1_raw["probabilities"]),
+                p1.posterior_version, p1.posterior_sha256,
+                p1.bridge_sha256, json.dumps(p1_raw["lineage"]),
+                p1.content_sha256, "COMMITTED", DECISION,
+            ),
+        )
+        conn.execute(
+                """
+                INSERT INTO basket_official_ws_snapshot VALUES(
+                  ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                )
+                """,
+            (
+                market["snapshot_id"], market["market_id"],
+                market["station_id"], market["event_date"],
+                    market["settlement_timezone"], market["sequence"],
+                    market["observed_at"], market["quote_version"],
+                    market["quote_observed_at"], market["quote_expires_at"],
+                    "7" * 64, "OFFICIAL_CLOB_WS",
+                    market["inventory_version"], market["order_state_version"],
+                market["remaining_budget_usdc"],
+                json.dumps(market["buckets"]),
+                json.dumps(_cash_input(cash_policy).to_dict()),
+                "4" * 64, "COMMITTED", DECISION,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO basket_confirmed_inventory_snapshot "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                "e2e-inventory-snapshot", "ZUUU", "2026-07-23",
+                market["inventory_version"], market["observed_at"], 1,
+                "{}", "5" * 64, "COMMITTED", DECISION,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO basket_order_state_snapshot "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                "e2e-order-state-snapshot", "ZUUU", "2026-07-23",
+                market["order_state_version"], market["observed_at"], 1,
+                "{}", "6" * 64, "COMMITTED", DECISION,
+            ),
+        )
+        initialize_capital_pool(
+            conn, balance_usdc=30.0, capital_epoch_id="e2e-capital-v1", updated_at_utc=DECISION
+        )
+        conn.execute(
+            """
+            CREATE TRIGGER inject_production_training_fact_failure
+            BEFORE INSERT ON basket_policy_training_fact
+            BEGIN
+              SELECT RAISE(ABORT, 'injected_production_training_fact_failure');
+            END
+            """
+        )
+        with pytest.raises(
+            AtomicLedgerError,
+            match="training_fact_canonical_write_failed",
+        ):
+            commit_production_candidate_atomic(
+                conn,
+                compiled_plan=compiled,
+                market_snapshot=market,
+                observation=facts["observation"],
+                bound=facts["bound"],
+                created_at_utc=DECISION,
+            )
+        for table in (
+            "basket_target_observation_facts",
+            "basket_target_bound_facts",
+            "basket_target_execution_cycles",
+            "auto_trade_decisions",
+            "basket_target_order_intents",
+            "basket_target_execution_version_vectors",
+            "basket_target_capital_reservations",
+            "basket_policy_training_fact",
+        ):
+            assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0
+        conn.execute("DROP TRIGGER inject_production_training_fact_failure")
+
+        first = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=compiled,
+            market_snapshot=market,
+            observation=facts["observation"],
+            bound=facts["bound"],
+            created_at_utc=DECISION,
+        )
+        assert first["state"] == "committed"
+        assert first["receipt"]["intent_count"] == eligible_count
+        assert first["receipt"]["training_fact_state"] == "committed"
+        assert first["delta_v2_training_fact"]["state"] == "committed"
+        assert first["orders_submitted"] == 0
+        assert first["places_orders"] is False
+        assert first["calls_order_gateway"] is False
+        forward = first["forward_observation_receipt"]
+        assert forward["cycle_id"] == first["receipt"]["cycle_id"]
+        assert forward["decision_id"] == first["receipt"]["decision_id"]
+        assert forward["decision_at_utc"] == DECISION
+        assert forward["forward_evidence_binding"]["probability_decision_at_utc"] <= DECISION
+        assert forward["forward_evidence_binding"]["ws_quote_observed_at_utc"] <= DECISION
+        assert forward["forward_evidence_binding"]["cash_observed_at_utc"] <= DECISION
+        assert forward["calls_order_gateway"] is False
+        assert forward["authorizes_order"] is False
+
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents"
+        ).fetchone()[0] == eligible_count
+        assert conn.execute("SELECT will_order FROM auto_trade_decisions").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents WHERE live_submit_authorized=0"
+        ).fetchone()[0] == eligible_count
+        execution_candidates = {
+            json.loads(str(row[0])).get("execution_candidate")
+            for row in conn.execute(
+                "SELECT intent_json FROM basket_target_order_intents"
+            ).fetchall()
+        }
+        assert execution_candidates == {"MAKER"}
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_version_vectors "
+            "WHERE vector_policy='EXECUTION'"
+        ).fetchone()[0] == eligible_count
+        assert conn.execute(
+            "SELECT COUNT(DISTINCT target_price_id) "
+            "FROM basket_target_execution_version_vectors "
+            "WHERE vector_policy='EXECUTION'"
+        ).fetchone()[0] == eligible_count
+        fact_id = conn.execute(
+            "SELECT fact_id FROM basket_policy_training_fact"
+        ).fetchone()[0]
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_version_vectors "
+            "WHERE vector_policy='EXECUTION' AND training_fact_id=?",
+            (fact_id,),
+        ).fetchone()[0] == eligible_count
+        reserved = conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0]
+        assert reserved == pytest.approx(first["receipt"]["reserved_amount_usdc"])
+
+        replay = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=compiled,
+            market_snapshot=market,
+            observation=facts["observation"],
+            bound=facts["bound"],
+            created_at_utc=DECISION,
+        )
+        assert replay["state"] == "already_committed"
+        assert replay["delta_v2_training_fact"]["state"] == "already_committed"
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents"
+        ).fetchone()[0] == eligible_count
+        assert conn.execute("SELECT version FROM basket_target_capital_pool").fetchone()[0] == 1
+
+        blocked = json.loads(json.dumps(compiled))
+        blocked.update(
+            {
+                "status": "blocked",
+                "cadence_allows_candidate": False,
+                "cadence_decision": "HOLD",
+                "reason_codes": ["test_zero_intent"],
+            }
+        )
+        blocked["plan"] = {**blocked["plan"], "state": "BLOCKED"}
+        zero = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=blocked,
+            market_snapshot=market,
+            observation=facts["observation"],
+            bound=facts["bound"],
+            # The binding normalizer emits six fractional digits while the
+            # append-only ledger retains this three-digit source spelling.
+            # They are the same instant and must exact-join semantically.
+            created_at_utc="2026-07-23T04:30:01.123Z",
+        )
+        assert zero["candidate_will_order"] is False
+        zero_fact_id = zero["delta_v2_training_fact"]["fact_id"]
+        zero_vector = conn.execute(
+            "SELECT vector_policy,order_intent_id,training_fact_id,vector_json "
+            "FROM basket_target_execution_version_vectors WHERE training_fact_id=?",
+            (zero_fact_id,),
+        ).fetchone()
+        assert zero_vector[0] == "NO_EXECUTION"
+        assert zero_vector[1] is None
+        assert zero_vector[2] == zero_fact_id
+        assert '"policy":"NO_EXECUTION"' in zero_vector[3]
+        assert zero["forward_observation_receipt"]["cycle_id"] == zero["receipt"]["cycle_id"]
+        assert (
+            zero["forward_observation_receipt"]["forward_evidence_binding"]["cash_phase"]
+            == compiled["plan"]["lineage"]["cash_phase"]
+        )
+        decision_details = json.loads(
+            conn.execute(
+                "SELECT details_json FROM auto_trade_decisions WHERE cycle_id=?",
+                (zero["receipt"]["cycle_id"],),
+            ).fetchone()[0]
+        )
+        assert decision_details["current_core_buckets"] == (
+            blocked["plan"]["current_core_buckets"]
+        )
+        assert decision_details["core_buckets"] == (
+            blocked["plan"]["core_buckets"]
+        )
+        assert decision_details["core_buckets"]
+        assert decision_details["direction"] == blocked["plan"]["direction"]
+        assert decision_details["current_direction"] == (
+            blocked["plan"]["current_direction"]
+        )
+        assert decision_details["core_transition"] == (
+            blocked["plan"]["core_transition"]
+        )
+        assert decision_details["core_transition"][
+            "direction_transition"
+        ] in {"INITIALIZE", "MIGRATE", "NEUTRALIZE", "KEEP", "HOLD"}
+        assert (
+            decision_details["forward_evidence_binding"]["content_sha256"]
+            == zero["forward_observation_receipt"]["forward_evidence_binding"]["content_sha256"]
+        )
+        assert conn.execute(
+            "SELECT intent_count FROM basket_policy_training_fact WHERE fact_id=?",
+            (zero_fact_id,),
+        ).fetchone()[0] == 0
+        worker = TargetProductionWorker.__new__(TargetProductionWorker)
+        worker.commit_conn = conn
+        worker.cash_phase_forward_store_root = tmp_path
+        worker.cash_phase_forward_store_path = (
+            tmp_path / "cash-phase-forward.sqlite3"
+        )
+        forward_flush = worker._flush_cash_phase_forward_observations()
+        assert forward_flush["state"] == "committed"
+        assert forward_flush["observation_count"] == 2
+        assert forward_flush["calls_order_gateway"] is False
+        forward_replay = worker._flush_cash_phase_forward_observations()
+        assert forward_replay["state"] == "already_current"
+        assert forward_replay["observation_count"] == 2
+
+        cycle_id = first["receipt"]["cycle_id"]
+        transition_target_cycle_state(
+            conn, cycle_id=cycle_id, expected_state="prepared", new_state="reconcile_required", updated_at_utc=DECISION
+        )
+        closed = close_target_cycle(
+            conn,
+            cycle_id=cycle_id,
+            outcome="released",
+            closed_at_utc=DECISION,
+            reason="e2e_rehearsal",
+        )
+        assert closed["state"] == "settled"
+        assert conn.execute("SELECT reserved_usdc FROM basket_target_capital_pool").fetchone()[0] == 0.0
+        # The production close helper is exercised separately in the atomic
+        # ledger matrix; this direct assertion makes the rehearsal receipt
+        # explicitly prove that no order/outbox tables are touched.
+        assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('orders','outbox')").fetchone()[0] == 0
+
+        tamper_cases = [
+            (
+                "auto_trade_decisions",
+                "UPDATE auto_trade_decisions SET decision_sha256=? "
+                "WHERE cycle_id=?",
+                ("0" * 64, zero["receipt"]["cycle_id"]),
+                "decision_content_address_mismatch",
+            ),
+            (
+                "basket_probability_envelope",
+                "UPDATE basket_probability_envelope SET station_id='DRIFT' "
+                "WHERE envelope_id=(SELECT probability_envelope_id "
+                "FROM basket_policy_training_fact WHERE fact_id=?)",
+                (zero_fact_id,),
+                "probability_binding_drift",
+            ),
+            (
+                "basket_confirmed_inventory_snapshot",
+                "UPDATE basket_confirmed_inventory_snapshot SET complete=0 "
+                "WHERE inventory_snapshot_id=(SELECT inventory_snapshot_id "
+                "FROM basket_policy_training_fact WHERE fact_id=?)",
+                (zero_fact_id,),
+                "inventory_ssot_drift",
+            ),
+            (
+                "basket_policy_training_fact",
+                "UPDATE basket_policy_training_fact SET feature_json='{}' "
+                "WHERE fact_id=?",
+                (zero_fact_id,),
+                "policy_or_state_binding_drift|content_address_mismatch",
+            ),
+        ]
+        for index, (table, statement, params, reason) in enumerate(tamper_cases):
+            savepoint = f"forward_tamper_{index}"
+            conn.execute(f"SAVEPOINT {savepoint}")
+            trigger_names = [
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='trigger' AND tbl_name=?",
+                    (table,),
+                ).fetchall()
+            ]
+            for trigger_name in trigger_names:
+                conn.execute(f'DROP TRIGGER "{trigger_name}"')
+            conn.execute(statement, params)
+            worker.cash_phase_forward_store_path = (
+                tmp_path / f"tamper-{index}.sqlite3"
+            )
+            tamper_result = worker._flush_cash_phase_forward_observations()
+            assert tamper_result["state"] == "blocked_fail_closed"
+            assert tamper_result["promotion_allowed"] is False
+            assert tamper_result["quarantined_count"] == 1
+            assert (
+                tamper_result["reason"]
+                == "cash_phase_forward_poison_quarantined"
+            )
+            conn.execute(f"ROLLBACK TO {savepoint}")
+            conn.execute(f"RELEASE {savepoint}")
+
+
+def test_missing_delta_v2_policy_blocks_before_m5_intents() -> None:
+    envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
+
+    compiled = compile_production_plan(
+        probability_envelopes=envelopes,
+        market_snapshot=market,
+        policy_activations=activations,
+        global_priors=priors,
+        policy_artifacts=artifacts,
+        evaluation_at_utc=DECISION,
+        season_bin="summer",
+        maturity_bin="d1",
+        liquidity_bin="liquid",
+        strategy_version="target-v1",
+        cash_phase_policy=cash_policy,
+        cash_phase_input=_cash_input(cash_policy),
+    )
+
+    assert compiled["status"] == "blocked"
+    assert "delta_v2_policy_missing" in compiled["reason_codes"]
+    assert "delta_v2_fill_resolver_missing" in compiled["reason_codes"]
+    assert compiled["delta_v2_audit"]["authorized"] is False
+    assert compiled["live_submit_authorized"] is False
+    assert compiled["boundary"]["calls_order_gateway"] is False
+
+
+def test_sizing_failure_is_not_misreported_as_a_cadence_block() -> None:
+    envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
+    compiled = compile_production_plan(
+        probability_envelopes=envelopes,
+        market_snapshot=market,
+        policy_activations=activations,
+        global_priors=priors,
+        policy_artifacts=artifacts,
+        evaluation_at_utc=DECISION,
+        season_bin="summer",
+        maturity_bin="d1",
+        liquidity_bin="liquid",
+        strategy_version="target-v1",
+        base_policy={
+            "clip_min_notional_usdc": 1.0,
+            "clip_max_notional_usdc": 3.0,
+        },
+        delta_v2_policy=_delta_v2_policy(),
+        delta_v2_fill_resolver=_fill_resolver,
+        regime_artifact=build_regime_artifact(envelopes[-1]),
+        cash_phase_policy=cash_policy,
+        cash_phase_input=_cash_input(cash_policy),
+        resource_probe_ok=True,
+    )
+
+    assert compiled["status"] == "hold"
+    assert compiled["reason_codes"] == ["clip_below_minimum"]
+    assert "cadence_gate_blocked" not in compiled["reason_codes"]
+    assert any(
+        row["candidate_present"]
+        and not row["eligible"]
+        and row["reason_code"] == "clip_below_minimum"
+        for row in compiled["order_sizing_decisions"]
+    )
+
+
+def test_optimizer_hold_remains_a_compiled_no_live_decision() -> None:
+    envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
+    raw_policy = _delta_v2_policy().to_dict()
+    raw_policy["execution_weights"]["epsilon_score"] = 1_000_000.0
+    raw_policy["content_sha256"] = content_sha256(
+        {
+            key: value
+            for key, value in raw_policy.items()
+            if key != "content_sha256"
+        }
+    )
+    compiled = compile_production_plan(
+        probability_envelopes=envelopes,
+        market_snapshot=market,
+        policy_activations=activations,
+        global_priors=priors,
+        policy_artifacts=artifacts,
+        evaluation_at_utc=DECISION,
+        season_bin="summer",
+        maturity_bin="d1",
+        liquidity_bin="liquid",
+        strategy_version="target-v1",
+        base_policy={"clip_max_notional_usdc": 3.0},
+        delta_v2_policy=raw_policy,
+        delta_v2_fill_resolver=_fill_resolver,
+        regime_artifact=build_regime_artifact(envelopes[-1]),
+        cash_phase_policy=cash_policy,
+        cash_phase_input=_cash_input(cash_policy),
+        resource_probe_ok=True,
+    )
+
+    assert compiled["status"] == "hold"
+    assert compiled["live_submit_authorized"] is False
+    assert compiled["boundary"]["calls_order_gateway"] is False

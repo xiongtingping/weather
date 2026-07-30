@@ -1,9 +1,16 @@
 {
-  "artifact_sha256": "dbddfd1bd2fe78b6ebd8dc715556591ff80f97ae2efae92794ba4a3c7a4dacb5",
+  "artifact_sha256": "42096d179fb743200a0e1c52b946f9f3e0c590e0eb3562d14fc7e97d020d84ad",
   "label_policy": "deterministic_physical_state_label_v1",
   "production_runtime_eligible": true,
-  "promotion_evidence_sha256": "08ef3d90f3a7857fb33ceccf64c3db6cc5ab3ea35ff9c848eeb04c43d4ef1283",
+  "promotion_evidence_sha256": "b8dc3e4592043af42ab8381bf567dbc94f9a595c55129ec54a422b62f5334357",
   "promotion_scope": "canonical_replay_then_controlled_production_cutover",
+  "quantized_observation_policy": {
+    "huberize_mahalanobis_tail": true,
+    "measurement_error_model": "independent_uniform_rounding_moment_matched_gaussian",
+    "robust_mahalanobis_radius": 3.0,
+    "schema": "quantized_integer_temperature_robust_likelihood_v1",
+    "temperature_quantization_c": 1.0
+  },
   "schema": "physical_state_bayes_v6_observation_artifact_v1",
   "shadow_only": false,
   "state": "approved",
@@ -265,7 +272,132 @@
       }
     }
   },
-  "training_code_sha256": "52aa61db28d14c4023756d74a14a17f2349f33f1e21a5ee357dbcd6a3474c182",
+  "time_conditioned_observation_policy": {
+    "adverse_y_coupling_policy": {
+      "candidate_effect_direction": "one_sided_high_temperature_suppression_only",
+      "candidate_gap_scale_c": 5.0,
+      "candidate_penalty_monotonicity": "non_increasing_log_penalty_with_candidate_y",
+      "hard_bounds_discounted": false,
+      "instantaneous_adverse_exposure_floor": 0.2,
+      "latent_state_update": "candidate_conditional_y_neutral",
+      "maximum_candidate_log_penalty": 1.5,
+      "persistent_duration_reference_minutes": 120.0,
+      "schema": "adverse_regime_candidate_y_coupling_guard_v2",
+      "shared_maturity_aggregation": "minimum_across_candidates_conservative",
+      "tempering_order": "temper_then_candidate_conditional_y_center_then_monotone_penalty"
+    },
+    "convective_evidence_adverse_strength": {
+      "cb": 0.8,
+      "none": 0.0,
+      "tcu": 0.35,
+      "thunderstorm": 1.0
+    },
+    "daylight_remaining_reference_hours": 12.0,
+    "event_correlation_policy": {
+      "change_point_information_weight": 1.0,
+      "change_point_resets_cluster": true,
+      "cluster_information_budget": 2.0,
+      "combination": "minimum_interval_and_persistent_regime",
+      "first_observation_basis": "canonical_event_count",
+      "first_observation_full_weight": true,
+      "independent_interval_minutes": 60.0,
+      "minimum_event_information_weight": 0.1,
+      "persistent_regime_minimum_weight": 0.2,
+      "persistent_regime_reference_minutes": 45.0,
+      "physical_event_cluster_signature": "weather_cloud_fog_and_quantization_robust_trajectory_phase",
+      "schema": "canonical_physical_event_cluster_information_budget_v2",
+      "scope": "soft_observation_emission_only_hard_bounds_undiscounted"
+    },
+    "forecast_regime_state_log_adjustments": {
+      "adverse_forecast_observed_adverse_early": {
+        "cooling_then_rebound": -0.1,
+        "final_locked": -0.2,
+        "slowing_warming": -0.05,
+        "temporary_cooling": 0.25,
+        "temporary_platform": 0.1,
+        "terminal_cooling": -0.1,
+        "warming": -0.15,
+        "weather_suppressed": 0.5
+      },
+      "adverse_forecast_observed_adverse_late": {
+        "cooling_then_rebound": -0.25,
+        "final_locked": 0.55,
+        "slowing_warming": -0.2,
+        "temporary_cooling": 0.05,
+        "temporary_platform": -0.05,
+        "terminal_cooling": 0.45,
+        "warming": -0.35,
+        "weather_suppressed": 0.4
+      },
+      "clear_forecast_observed_adverse_rebound": {
+        "cooling_then_rebound": 0.65,
+        "final_locked": -0.65,
+        "slowing_warming": 0.1,
+        "temporary_cooling": 0.4,
+        "temporary_platform": 0.2,
+        "terminal_cooling": -0.35,
+        "warming": 0.05,
+        "weather_suppressed": -0.15
+      }
+    },
+    "forecast_role": "conditioning_modulator_not_independent_likelihood",
+    "future_rise_scale_c": 1.5,
+    "lock_maturity_weights": {
+      "curve_peak_passage": 0.35,
+      "daylight_progress": 0.35,
+      "future_rise_exhaustion": 0.3
+    },
+    "maximum_abs_log_adjustment": 2.0,
+    "minutes_to_peak_scale": 90.0,
+    "rate_strength_scale_c_per_hour": 3.0,
+    "schema": "time_conditioned_all_weather_regime_conditioned_observation_likelihood_v2",
+    "state_log_adjustments": {
+      "early_adverse": {
+        "cooling_then_rebound": 0.75,
+        "final_locked": -1.4,
+        "slowing_warming": 0.1,
+        "temporary_cooling": 0.85,
+        "temporary_platform": 0.4,
+        "terminal_cooling": -0.6,
+        "warming": -0.15,
+        "weather_suppressed": 0.8
+      },
+      "early_fair_warming": {
+        "cooling_then_rebound": 0.1,
+        "final_locked": -1.0,
+        "slowing_warming": 0.4,
+        "temporary_cooling": -0.4,
+        "temporary_platform": 0.0,
+        "terminal_cooling": -0.7,
+        "warming": 0.75,
+        "weather_suppressed": -0.5
+      },
+      "late_adverse": {
+        "cooling_then_rebound": -0.3,
+        "final_locked": 1.0,
+        "slowing_warming": -0.2,
+        "temporary_cooling": 0.1,
+        "temporary_platform": -0.1,
+        "terminal_cooling": 0.75,
+        "warming": -0.4,
+        "weather_suppressed": 0.35
+      },
+      "late_stable_fair": {
+        "cooling_then_rebound": -0.2,
+        "final_locked": 0.65,
+        "slowing_warming": 0.0,
+        "temporary_cooling": 0.1,
+        "temporary_platform": 0.35,
+        "terminal_cooling": 0.45,
+        "warming": -0.4,
+        "weather_suppressed": -0.15
+      }
+    },
+    "station_latitude_deg": 30.5785,
+    "station_longitude_deg": 103.9471,
+    "timezone": "Asia/Shanghai"
+  },
+  "training_code_sha256": "609229afad7e93d2213a557bcd80282a7402d8fda7a60671b16aa3fee0d36b4a",
   "training_dataset_sha256": "0fc4fa2573b65442d4d50862afc5f99bb0166217e1906623b548f8e5c61f0c48",
   "training_end_exclusive": "2025-01-01",
   "training_scope": "NCEI_ZUUU_2021_2025_hourly_physical_observation"

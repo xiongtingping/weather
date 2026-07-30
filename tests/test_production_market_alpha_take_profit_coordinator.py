@@ -15,7 +15,7 @@ SLUG = "highest-temperature-in-chengdu-on-july-14-2026"
 ARTIFACT = "strategy-approved"
 
 
-def _conn() -> sqlite3.Connection:
+def _conn(*, entry_strategy_leg: str = "top_yes_wave") -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     apply_forward_schema(conn)
     apply_dynamic_three_leg_position_lot_schema(conn, writer_quiescent=True)
@@ -57,8 +57,10 @@ def _conn() -> sqlite3.Connection:
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             "lot-current", 2, "dynamic_three_leg_weather", SLUG, "2026-07-14", "37°C",
-            "YES", "yes-37", "top_yes_wave", ARTIFACT, "entry-intent", "post-entry",
-            0.40, 20.0, 20.0, 8.0, 0.90, "open", NOW, None, NOW,
+            "YES", "yes-37", entry_strategy_leg, ARTIFACT, "entry-intent", "post-entry",
+            0.40, 20.0, 20.0, 8.0,
+            0.90 if entry_strategy_leg == "top_yes_wave" else None,
+            "open", NOW, None, NOW,
         ),
     )
     conn.commit()
@@ -131,3 +133,22 @@ def test_quote_trigger_holds_without_full_depth_and_writes_nothing(monkeypatch) 
     )
     assert result["state"] == "hold_take_profit_not_executable"
     assert conn.execute("SELECT COUNT(*) FROM posterior_execution_intents").fetchone()[0] == 0
+
+
+def test_second_yes_lot_promoted_by_latest_posterior_uses_current_top_wave_exit(monkeypatch) -> None:
+    monkeypatch.setenv("PM_MARKET_ALPHA_TAKE_PROFIT_PRODUCTION_ENABLED", "1")
+    monkeypatch.setenv("PM_MARKET_ALPHA_TAKE_PROFIT_LIVE_SUBMIT_ENABLED", "1")
+    conn = _conn(entry_strategy_leg="second_yes")
+
+    result = run_market_alpha_take_profit_once(
+        conn,
+        raw_guard_snapshot_fetcher=_raw,
+        activation=_activation(),
+        preliminary_as_of=NOW,
+    )
+
+    assert result["state"] == "intent_prepared"
+    cycle = json.loads(conn.execute("SELECT cycle_json FROM market_alpha_take_profit_cycles").fetchone()[0])
+    assert cycle["candidate"]["entry_strategy_leg"] == "second_yes"
+    assert cycle["candidate"]["take_profit_price_source"] == "promoted_current_top_yes_policy"
+    assert conn.execute("SELECT limit_price FROM posterior_execution_intents").fetchone()[0] == 0.90

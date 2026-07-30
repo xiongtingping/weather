@@ -6,7 +6,7 @@
   "target_day_basis": "market_resolution_local_date",
   "providers": {
     "ecmwf": {
-      "allowed_run_hours_utc": [0, 12],
+      "allowed_run_hours_utc": [0, 6, 12, 18],
       "curve_time_resolution_hours": 3,
       "maximum_planned_lead_hours": 144,
       "official_schedule_url": "https://www.ecmwf.int/en/forecasts/datasets/open-data",

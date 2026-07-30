@@ -1,0 +1,33 @@
+{
+  "schema": "bayes_basket_target_document_authority_v1",
+  "authority_id": "bayes-basket-target-architecture-v1",
+  "current_logical_authorities": [
+    {
+      "document_id": "bayes_basket_target_architecture_v1",
+      "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.md",
+      "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.json",
+      "version": "1.14.40",
+      "status": "TARGET_PRODUCTION_NO_LIVE"
+    }
+  ],
+  "roadmap": {
+    "path": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
+    "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
+    "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.json",
+    "version": "1.6.84",
+    "status": "DEVELOPMENT_PLAN_NOT_LIVE_AUTHORITY"
+  },
+  "subordinate_contracts": [
+    {
+      "document_id": "station_basket_policy_hierarchy_v1",
+      "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.md",
+      "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
+      "version": "1.1.17",
+      "status": "TARGET_PRODUCTION_NO_LIVE_RUNNING"
+    },
+    "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/basket_phase_policy_versions_v2.md"
+  ],
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "calls_order_gateway": false
+}

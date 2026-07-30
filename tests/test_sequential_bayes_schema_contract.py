@@ -10,6 +10,7 @@ from sequential_bayes_schema_contract import (
     TRIGGER_DDL,
     apply_forward_schema,
     build_forward_schema_plan,
+    verify_additive_schema_compatibility,
     verify_schema,
 )
 
@@ -122,3 +123,20 @@ def test_schema_verification_rejects_preexisting_p1_object_with_wrong_ddl(tmp_pa
 
     assert verification["ok"] is False
     assert "canonical_observation_events" in verification["incompatible_tables"]
+
+
+def test_runtime_compatibility_accepts_additive_columns_but_rejects_base_drift(tmp_path: Path) -> None:
+    db = tmp_path / "archive.db"
+    _empty_db(db)
+    with sqlite3.connect(db) as conn:
+        apply_forward_schema(conn)
+        conn.execute("ALTER TABLE posterior_checkpoints ADD COLUMN future_generation_sha256 TEXT")
+        compatible = verify_additive_schema_compatibility(conn)
+        assert compatible["ok"] is True
+        assert compatible["accepted_extension_columns"]["posterior_checkpoints"] == ["future_generation_sha256"]
+
+    wrong = sqlite3.connect(":memory:")
+    wrong.execute(TABLE_DDL["canonical_observation_events"].replace("revision_no INTEGER", "revision_no TEXT"))
+    result = verify_additive_schema_compatibility(wrong)
+    assert result["ok"] is False
+    assert "revision_no:contract_mismatch" in result["incompatible_table_columns"]["canonical_observation_events"]

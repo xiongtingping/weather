@@ -1,0 +1,82 @@
+{
+  "as_of_utc": "2026-07-24T11:48:37Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "offline_research_only": true,
+    "places_orders": false,
+    "reads_market_state": false,
+    "reads_probability_state": false,
+    "uses_production_database": false,
+    "writes_production_state": false
+  },
+  "calibration_activations": [],
+  "calibration_artifacts": [],
+  "calibration_model_rows": [],
+  "checks": {
+    "all_candidates_unpromoted": true,
+    "calls_order_gateway": false,
+    "candidate_artifact_count_positive": false,
+    "model_lineage_complete": false,
+    "model_provider_set_complete": false,
+    "oos_promotion_gate_complete": false,
+    "orders_submitted": 0,
+    "promotion_allowed": false,
+    "published_receive_timestamps_complete": false,
+    "residual_count_positive": false,
+    "strict_asof_replay_pass": false,
+    "three_model_available": false,
+    "truth_lineage_complete": false,
+    "truth_source_canonical_ingress": true,
+    "writes_production_db": false
+  },
+  "ensemble_artifacts": [],
+  "et_history_evidence": {
+    "as_of_utc": "2026-07-24T11:48:37Z",
+    "joined_station_days": 0,
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rebuild_20260724_direct_amsc/prospective_refresh_20260724_amsc_primary/et_history.json",
+    "promotion_allowed": false,
+    "receipt_sha256": "ec27c224540734e714278f85162596c9d50c10527dfbf39414cc86f706e7c4fa",
+    "state": "BLOCKED_EVIDENCE"
+  },
+  "evidence_sha256": "c835521130787942f34f0be6022a7fa9d73bbddc3df4c0cdf0256322161258fd",
+  "input_artifacts": {
+    "canonical_observation_evidence": {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rebuild_20260724_direct_amsc/prospective_refresh_20260724_amsc_primary/canonical.json",
+      "sha256": "afa6d3731db59ecd690a850540f1cc933eb6025793236e9d2e5b405e4ee9cfbb"
+    },
+    "et_history_evidence": {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rebuild_20260724_direct_amsc/prospective_refresh_20260724_amsc_primary/et_history.json",
+      "sha256": "0a54b7fd6163b74f071a651c1e5492cafbc97b1be057d45da1d34dcfda3c7298"
+    },
+    "native_model_decode_evidence": {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_native_model_arrival_decode.json",
+      "sha256": "08c56dbd92b29032141c4dd26d55added329b59d05a0ad604b2261e04eb0c34f"
+    }
+  },
+  "model_arrival_evidence": [],
+  "oos_reports": [],
+  "promotion_decisions": [],
+  "receipt_sha256": "20663f20fb7de286357b77d30eade67222e76a017b66ee09b128fce19deb8edc",
+  "residual_evidence": [],
+  "schema": "bayes_basket_target_calibration_evidence_v1",
+  "settlement_definition": "official_daily_tmax_c",
+  "source_quality": {
+    "canonical_observation_evidence_sha256": "29039aaf86108715b41493f977a7120fdc176be64e5af74b2de9077b859702b5",
+    "failure_reason": "et_history_evidence_blocked_evidence",
+    "model_arrival_audit": {
+      "complete_curve_count": 135,
+      "decoded_point_count": 681,
+      "promotion_allowed": false
+    },
+    "model_arrival_source": "NATIVE_MODEL_DECODE_EVIDENCE",
+    "model_provider_set_blockers": [],
+    "model_source": "NATIVE_MODEL_DECODE_EVIDENCE",
+    "observation_source": "CANONICAL_AMSC_AWC_INGRESS",
+    "status": "VALID_BLOCKED_EVIDENCE"
+  },
+  "station_registry": [],
+  "strict_asof_replay_sha256": "b100643e51b373a20b31df70203c3c31a35043de0b76ba83ee1be0eeea626730",
+  "target_timezone": "America/New_York",
+  "truth_evidence": []
+}

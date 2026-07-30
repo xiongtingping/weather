@@ -1,0 +1,20 @@
+{
+  "ev_edge_lcb_authorized": false,
+  "exact_exit_reason_policy_sha256": "26ee418e7ddc467e26e6eeeff3668acddf0af9870c87ecebcfdf147c68960cac",
+  "legacy_v5_codes_authorized": false,
+  "market_alpha_take_profit": [
+    "market_alpha_take_profit_hard_exclusion_no_999",
+    "market_alpha_take_profit_main_yes_999",
+    "market_alpha_take_profit_second_yes_999",
+    "market_alpha_take_profit_trajectory_no_999"
+  ],
+  "prefix_authority": false,
+  "schema": "target_realization_v6_exact_exit_reason_policy_v1",
+  "target_realization": [
+    "target_realization_main_yes_invalidated",
+    "target_realization_main_yes_upside_risk_stage_1",
+    "target_realization_main_yes_upside_risk_stage_2",
+    "target_realization_main_yes_upside_risk_stage_3",
+    "target_realization_main_yes_upside_risk_stage_4"
+  ]
+}

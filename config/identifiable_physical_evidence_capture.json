@@ -1,0 +1,33 @@
+{
+  "schema": "identifiable_physical_evidence_capture_config_v1",
+  "state": "enabled",
+  "resident_service": "com.weather.reported_trajectory_no",
+  "station_id": "ZUUU",
+  "taf_amd": {
+    "enabled": true,
+    "success_interval_sec": 1800,
+    "failure_retry_sec": 300,
+    "count": 12,
+    "timeout_sec": 15
+  },
+  "official_nwp": {
+    "enabled": true,
+    "success_interval_sec": 1800,
+    "failure_retry_sec": 600,
+    "target_day_offset": 0,
+    "target_day_offsets": [0, 1, 2, 3],
+    "providers": ["ecmwf", "icon", "gfs"],
+    "max_provider_runs_per_cycle": 1,
+    "runtime_python": "/Users/xiong/.local/weather-official-nwp-venv/bin/python",
+    "cycle_timeout_sec": 600
+  },
+  "boundary": {
+    "hard_no_lane_reads_this_capture": false,
+    "writes_posterior": false,
+    "writes_ssot": false,
+    "writes_decision_or_intent": false,
+    "places_orders": false,
+    "adds_fourth_service": false,
+    "nwp_child_is_ephemeral": true
+  }
+}

@@ -1,10 +1,11 @@
 {
-  "schema": "resolution_bridge_production_activation_v1",
-  "state": "disabled",
-  "artifact_path": "",
-  "artifact_sha256": "",
-  "approval_id": "",
-  "approval_receipt_sha256": "",
+  "activation_sha256": "d3001e0ec6013e79445c1105e70a131383617a9c8c3a8daf35308e96a93d89d6",
+  "approval_id": "ADR-XSB-OPERATIONAL-SOFT-PROJECTION-0001",
+  "approval_receipt_sha256": "150e3e6f92f89d7cbbe917d569a34e536315bfb636f840f554bbe5ece385e59c",
+  "artifact_path": "config/artifacts/resolution_bridge/9ddddbcf3e8ca847d88e62367ec62a6fe7d052ea5cc907d0a0064f02fb402efd.json",
+  "artifact_sha256": "9ddddbcf3e8ca847d88e62367ec62a6fe7d052ea5cc907d0a0064f02fb402efd",
+  "authorizes_clob": false,
   "places_orders": false,
-  "authorizes_clob": false
+  "schema": "resolution_bridge_production_activation_v1",
+  "state": "production_enabled"
 }

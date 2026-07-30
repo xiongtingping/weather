@@ -75,8 +75,12 @@ def build_official_nwp_daily_curve_plan(
     start_local = datetime.combine(target_day, time.min, tzinfo=target_zone)
     end_local = start_local + timedelta(days=1)
     start_utc, end_utc = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
-    if run > start_utc:
-        return {"schema": SCHEMA_VERSION, "ok": False, "state": "blocked", "blockers": ["official_nwp_daily_curve_run_after_target_window_start"], "boundary": {"network_acquisition": False, "writes_posterior": False, "places_orders": False}}
+    # A same-day 06Z/12Z/18Z cycle is valid evidence for the remaining part
+    # of that local day.  The previous guard compared the run time with the
+    # local-day boundary and therefore rejected every intraday refresh after
+    # midnight (for Chengdu, 06Z is already 14:00 local).  Run selection is
+    # bounded by the caller's current time; this planner only projects the
+    # exact declared points that lie inside the target day.
     expected: list[str] = []
     for lead in range(0, max_lead_hours + 1, resolution_hours):
         valid = run + timedelta(hours=lead)

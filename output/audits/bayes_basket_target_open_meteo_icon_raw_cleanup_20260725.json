@@ -1,0 +1,547 @@
+{
+  "deleted": [],
+  "eligible_unreferenced": [],
+  "eligible_unreferenced_bytes": 0,
+  "eligible_unreferenced_count": 0,
+  "generated_at_utc": "2026-07-25T19:04:15Z",
+  "mode": "dry_run",
+  "raw_file_count_after": 45,
+  "raw_file_count_before": 45,
+  "retained_referenced": [
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7013,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/06a7a7721502a5ab360518084349ce97abb91f43a43b2117164b33020af9330a.json",
+      "sha256": "06a7a7721502a5ab360518084349ce97abb91f43a43b2117164b33020af9330a"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 6988,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/1a785a4dabb11c90b5d6b6c605c4ae6e3d565c82a932c08bab38636c6674b809.json",
+      "sha256": "1a785a4dabb11c90b5d6b6c605c4ae6e3d565c82a932c08bab38636c6674b809"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/1ae889f62c224b8ef7dfbd81d42e07a03b83d2197af04cd133a9a1474869f158.json",
+      "sha256": "1ae889f62c224b8ef7dfbd81d42e07a03b83d2197af04cd133a9a1474869f158"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/1ebbeb96b440c07f7a4c0d8f84628663ba9719c7bac7ddc55414fe202f940efa.json",
+      "sha256": "1ebbeb96b440c07f7a4c0d8f84628663ba9719c7bac7ddc55414fe202f940efa"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/1f40e18096051b325000d6884592c8d629e9f1189847ea3339ed6a0445c709fa.json",
+      "sha256": "1f40e18096051b325000d6884592c8d629e9f1189847ea3339ed6a0445c709fa"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/2347ca6851bf174a42d552ae0bc46a5641544822b2bb52c08642d5b919d5f0f0.json",
+      "sha256": "2347ca6851bf174a42d552ae0bc46a5641544822b2bb52c08642d5b919d5f0f0"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/3ac4e5f5e72ef0a5d04052a46973b7f4c7b19acba9286cc6706d7284bc86af76.json",
+      "sha256": "3ac4e5f5e72ef0a5d04052a46973b7f4c7b19acba9286cc6706d7284bc86af76"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377.json",
+      "sha256": "43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/432f569c07a03b25c9b2014a42da73162f4895f2632de349dd5908caf71d4b6c.json",
+      "sha256": "432f569c07a03b25c9b2014a42da73162f4895f2632de349dd5908caf71d4b6c"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/47ff1f534a9419d055406e046f758d637c75398c63108959b8971c219b4853b7.json",
+      "sha256": "47ff1f534a9419d055406e046f758d637c75398c63108959b8971c219b4853b7"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/495196a8c4582f359b4ccb957c47dac499e2cd819d6c5c7ad31d6d6bac9a18ca.json",
+      "sha256": "495196a8c4582f359b4ccb957c47dac499e2cd819d6c5c7ad31d6d6bac9a18ca"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/49eb9841baddd2070b026f4d71de0806f71af004b8a832b2b5f80b5f812eea67.json",
+      "sha256": "49eb9841baddd2070b026f4d71de0806f71af004b8a832b2b5f80b5f812eea67"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/4a832ec54259c040bad4b91002813244f1c87c630de30274f817bae147e8e850.json",
+      "sha256": "4a832ec54259c040bad4b91002813244f1c87c630de30274f817bae147e8e850"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/5348696846ed26efa81eaa8e7865e727844921d95f52b4c0c21e9c31faec02af.json",
+      "sha256": "5348696846ed26efa81eaa8e7865e727844921d95f52b4c0c21e9c31faec02af"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/57d6137164e84c842f5346d5b856584e894c88461cf012dff86e468fdb0dcba4.json",
+      "sha256": "57d6137164e84c842f5346d5b856584e894c88461cf012dff86e468fdb0dcba4"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/5994516d2bde50834275cf1bd1d8f4195ef12ab71e904edb3721610b36ffb9a1.json",
+      "sha256": "5994516d2bde50834275cf1bd1d8f4195ef12ab71e904edb3721610b36ffb9a1"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/5c1bc8cadd763db172f4c8bfaefcda315dd2568de956579bcff6c4048c2ce45e.json",
+      "sha256": "5c1bc8cadd763db172f4c8bfaefcda315dd2568de956579bcff6c4048c2ce45e"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7060,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/6146612b1e50433979892b9549d81ae327ebfc6d1ef66d474b6489e3be7f5daa.json",
+      "sha256": "6146612b1e50433979892b9549d81ae327ebfc6d1ef66d474b6489e3be7f5daa"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/6187ddef064182b633260bc13e6c5d617e497916bf05f20c9cdd5377a354d479.json",
+      "sha256": "6187ddef064182b633260bc13e6c5d617e497916bf05f20c9cdd5377a354d479"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/6206ed60ace2a077c1a9f3310b460bad39f99363adbaf88788f1d5d4019a2f9f.json",
+      "sha256": "6206ed60ace2a077c1a9f3310b460bad39f99363adbaf88788f1d5d4019a2f9f"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/62ae5cbcf30704ff43a33b0a23cf37f2c26df72c1b86af2932547064dc720c3d.json",
+      "sha256": "62ae5cbcf30704ff43a33b0a23cf37f2c26df72c1b86af2932547064dc720c3d"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/780569d7cef866ad2ad87ebcd4c172b0f474a873fd89c47292b79dd070f833d2.json",
+      "sha256": "780569d7cef866ad2ad87ebcd4c172b0f474a873fd89c47292b79dd070f833d2"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7037,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/79a77ef8fd2e9cb9bd67f69b70fea4d157e88548327bfdab0bdb84ec8548fddf.json",
+      "sha256": "79a77ef8fd2e9cb9bd67f69b70fea4d157e88548327bfdab0bdb84ec8548fddf"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/8929c7d36e664c449e6e85c56bcfe48dda71641e8d3cf1c021ee1631b72b976d.json",
+      "sha256": "8929c7d36e664c449e6e85c56bcfe48dda71641e8d3cf1c021ee1631b72b976d"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7059,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/9ab2e0abd7d28f56dc05b7c663a9f3d19fcb594a0e060cc60b581dbb896be334.json",
+      "sha256": "9ab2e0abd7d28f56dc05b7c663a9f3d19fcb594a0e060cc60b581dbb896be334"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/a17da1139fad178b984654a6c9bb7cfb3747982259eea7e630718c6bf259b8c3.json",
+      "sha256": "a17da1139fad178b984654a6c9bb7cfb3747982259eea7e630718c6bf259b8c3"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/a29842a2cdaa47b1262ab55fa5368ea2deeea1df9fbf2c2069c36e09fa691e8c.json",
+      "sha256": "a29842a2cdaa47b1262ab55fa5368ea2deeea1df9fbf2c2069c36e09fa691e8c"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/a9a5614d4c177cad3bc450bd19df8afbfc2a1492f670b0fae5f25e1aafa1f47e.json",
+      "sha256": "a9a5614d4c177cad3bc450bd19df8afbfc2a1492f670b0fae5f25e1aafa1f47e"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7058,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/b98f10bc2f0f798dd86be17d80f8663d0ac90f0a2803d053a14ce988400de320.json",
+      "sha256": "b98f10bc2f0f798dd86be17d80f8663d0ac90f0a2803d053a14ce988400de320"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/bd933b5cd300d9708e71146e99d7347bf3e4015b21d8b27498f5018c63141073.json",
+      "sha256": "bd933b5cd300d9708e71146e99d7347bf3e4015b21d8b27498f5018c63141073"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/be4d698a72f73dc03cf73fb7b7167b57dcfc0fe154bf6327be8f84d1154fe740.json",
+      "sha256": "be4d698a72f73dc03cf73fb7b7167b57dcfc0fe154bf6327be8f84d1154fe740"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7063,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/c4b2191b1c751d0dfe263cc31637ad47e518d187fed89088bc6de321f526683d.json",
+      "sha256": "c4b2191b1c751d0dfe263cc31637ad47e518d187fed89088bc6de321f526683d"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7059,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/c786e597db35a7706916d971e9f28911c57bf6ed4ce0fe21856d9d17857aac13.json",
+      "sha256": "c786e597db35a7706916d971e9f28911c57bf6ed4ce0fe21856d9d17857aac13"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/cabaf21392509338f30712060db00c3b54967aa3468670e2a7a943ca8088c603.json",
+      "sha256": "cabaf21392509338f30712060db00c3b54967aa3468670e2a7a943ca8088c603"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/cacdc789744ee27f40a17e7fed3451a4258dd90910f674510e29be3abff257ee.json",
+      "sha256": "cacdc789744ee27f40a17e7fed3451a4258dd90910f674510e29be3abff257ee"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/ceff5fee799a6bba1301de026676acd6afde8d4fae84c4ed3e067d3ed3d445c1.json",
+      "sha256": "ceff5fee799a6bba1301de026676acd6afde8d4fae84c4ed3e067d3ed3d445c1"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/d20a01cf35c260751e15c9bbf3885ce91f365147c5abd287b042b39082ae5175.json",
+      "sha256": "d20a01cf35c260751e15c9bbf3885ce91f365147c5abd287b042b39082ae5175"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 6969,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/d2d97ef7ddc04cf201c4d063d0bd00d6741447e9caf8fbd39d2e49777efe7a4c.json",
+      "sha256": "d2d97ef7ddc04cf201c4d063d0bd00d6741447e9caf8fbd39d2e49777efe7a4c"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/d44a9c54287056d59aa4961c982086a64041b7acdd87d429cf4517adab30d69f.json",
+      "sha256": "d44a9c54287056d59aa4961c982086a64041b7acdd87d429cf4517adab30d69f"
+    },
+    {
+      "active_reference_count": 3,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/e47c3a2ea32c5e57baf37599ead03ee12d8545e83dda5a0f108eed938403e3ef.json",
+      "sha256": "e47c3a2ea32c5e57baf37599ead03ee12d8545e83dda5a0f108eed938403e3ef"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/eb393557d8228a7228f43add4ffc143a356fc0d05008edd33d07cf7256b591b7.json",
+      "sha256": "eb393557d8228a7228f43add4ffc143a356fc0d05008edd33d07cf7256b591b7"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7049,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/f66a1b653ecd1cd43129271d40f7f585eb9f8f682f4497c44e1207f56898c833.json",
+      "sha256": "f66a1b653ecd1cd43129271d40f7f585eb9f8f682f4497c44e1207f56898c833"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7061,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/f99a5bb8d68446cfcbb22c0771e11c06e67b7db1847ad9d252e75c4c854e91c4.json",
+      "sha256": "f99a5bb8d68446cfcbb22c0771e11c06e67b7db1847ad9d252e75c4c854e91c4"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7062,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/fbfa7fb5dcd88cb0d34bef13064b3c11376da3be0d8e5b414e2782e21e1a2a39.json",
+      "sha256": "fbfa7fb5dcd88cb0d34bef13064b3c11376da3be0d8e5b414e2782e21e1a2a39"
+    },
+    {
+      "active_reference_count": 4,
+      "active_references": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_open_meteo_icon_rebuild_20260714_20260724.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/resource_audit.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence_aggregator_20260714_20260724.json"
+      ],
+      "bytes": 7064,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw/fe40e6ae8c850e0260e6fd957994ef71a984ed1ad4fa5aecddbdc990778c5202.json",
+      "sha256": "fe40e6ae8c850e0260e6fd957994ef71a984ed1ad4fa5aecddbdc990778c5202"
+    }
+  ],
+  "retained_referenced_bytes": 317541,
+  "retained_referenced_count": 45,
+  "schema": "bayes_basket_target_open_meteo_icon_raw_cleanup_v1",
+  "target_raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_open_meteo/raw",
+  "workspace_scan_root": "/Users/xiong/weather"
+}

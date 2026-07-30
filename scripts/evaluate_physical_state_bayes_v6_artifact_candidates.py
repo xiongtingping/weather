@@ -49,6 +49,8 @@ def _emission_log_score(model: Mapping[str, Any], row: Mapping[str, Any]) -> flo
         values,
         list(model["continuous_mean"]),
         [list(item) for item in model["continuous_covariance"]],
+        ((0.0, 0.0), (0.0, 0.0)),
+        float("inf"),
     )
     probabilities = model["weather_signature_probabilities"]
     signature = _weather_signature(row)

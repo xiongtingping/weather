@@ -1,5 +1,6 @@
 import json
 
+from production_probability_v6_activation_contract import FORMULA_ID
 from production_probability_v6_market_bundle_runtime import (
     build_v6_market_transaction_bundle,
 )
@@ -92,7 +93,7 @@ def test_v6_market_bundle_projects_b_and_creates_orderless_atomic_handoff_rows()
     activation = {
         "schema": "production_probability_v6_activation_v1",
         "state": "production_enabled",
-        "bayes_formula_id": "p0_weak_conditioned_continuous_y_x_8_state_then_pre_event_controlled_predict_then_canonical_joint_emission_then_regular_metar_hard_bound_then_reported_x_projection_v1",
+        "bayes_formula_id": FORMULA_ID,
         "composer_schema": "physical_state_bayes_v6_pre_event_predict_update",
         "checkpoint_schema": "posterior_checkpoint_v4_physical_state_bayes_v6",
         "strong_update_schema": "strong_observation_update_v6_pre_event_predict_emission",
@@ -102,7 +103,7 @@ def test_v6_market_bundle_projects_b_and_creates_orderless_atomic_handoff_rows()
         "v5_fallback_forbidden": True,
         "pre_event_predict_does_not_consume_current_observation": True,
         "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
+        "nwp_hourly_curve_not_reapplied_as_independent_likelihood": True,
         "runtime_manifest_sha256": "r" * 64,
         "transition_artifact_sha256": "t" * 64,
         "observation_artifact_sha256": "a" * 64,

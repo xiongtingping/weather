@@ -291,16 +291,16 @@ def _launchd_restart_surfaces(root: Path, sources: Mapping[str, str]) -> list[di
                 "status": "manual_restart_surface",
             }
         )
-    if "MONITOR_LABEL=\"com.weather.monitor.daemon\"" in install_monitor and "launchctl kickstart" in install_monitor:
+    if "LABEL=\"com.weather.monitor.daemon\"" in install_monitor and "launchctl bootstrap" in install_monitor:
         surfaces.append(
             {
-                "id": "monitor_launchdaemon_install_and_kickstart",
+                "id": "monitor_launchagent_install_and_bootstrap",
                 "file": "scripts/install_monitor_launchdaemon.sh",
-                "domain": "system/com.weather.monitor.daemon",
+                "domain": "gui/${uid}/com.weather.monitor.daemon",
                 "scope": "monitor_hard_source_daemon_only",
-                "command": "sudo bash scripts/install_monitor_launchdaemon.sh && sudo launchctl kickstart -k system/com.weather.monitor.daemon",
-                "requires_sudo": True,
-                "boundary": "only accepted monitor daemon domain for this repo",
+                "command": "bash scripts/install_monitor_launchdaemon.sh",
+                "requires_sudo": False,
+                "boundary": "only accepted user monitor domain for this repo",
                 "status": "allowed_monitor_restart_path",
             }
         )

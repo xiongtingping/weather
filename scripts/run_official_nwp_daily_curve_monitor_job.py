@@ -21,18 +21,21 @@ from official_nwp_daily_curve_monitor_job_runtime import (  # noqa: E402
     load_monitor_job_contract,
 )
 from official_nwp_daily_curve_plan_runtime import load_daily_curve_run_contract  # noqa: E402
+from official_nwp_request_control import try_acquire_capture_lease  # noqa: E402
 
 
 def _truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _load_completed_provider_runs(path: Path) -> dict[str, str]:
+def _load_completed_provider_runs(path: Path, *, capture_generation: str) -> dict[str, str]:
     try:
         previous = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     if not isinstance(previous, dict):
+        return {}
+    if str(previous.get("capture_generation") or "") != str(capture_generation or ""):
         return {}
     direct = previous.get("completed_provider_runs")
     if isinstance(direct, dict):
@@ -45,6 +48,21 @@ def _load_completed_provider_runs(path: Path) -> dict[str, str]:
         if provider and run:
             completed[provider] = run
     return completed
+
+
+def _load_completed_provider_target_runs(path: Path, *, capture_generation: str) -> dict[str, str]:
+    """Load completion state keyed by provider and local target date."""
+
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(previous, dict) or str(previous.get("capture_generation") or "") != str(capture_generation or ""):
+        return {}
+    direct = previous.get("completed_provider_target_runs")
+    if isinstance(direct, dict):
+        return {str(key): str(run) for key, run in direct.items() if str(key) and str(run)}
+    return {}
 
 
 def _atomic_json(path: Path, value: dict) -> None:
@@ -82,11 +100,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--catalog", type=Path, default=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json")
     parser.add_argument("--curve-source-root", type=Path, default=ROOT / "data" / "runtime" / "official_nwp_curve_sources_v2")
     parser.add_argument("--status-path", type=Path, default=ROOT / "data" / "runtime" / "official_nwp_curve_sources_v2" / "monitor_job_status_latest.json")
+    parser.add_argument("--provider", choices=("ecmwf", "icon", "gfs"), help="one repair slot; keeps the normal monitor contract unchanged")
+    parser.add_argument("--target-day-offset", type=int, choices=(0, 1, 2, 3), help="one local day repair slot")
     args = parser.parse_args(argv)
     job = load_monitor_job_contract(args.job_contract)
+    if args.provider:
+        job = {**job, "providers": [args.provider], "execution_budget": {**dict(job.get("execution_budget") or {}), "max_provider_runs_per_job": 1}}
+    if args.target_day_offset is not None:
+        job = {**job, "target_day_offsets": [args.target_day_offset], "target_day_rotation_interval_sec": 3600}
     allow_execute = args.execute and _truthy(os.environ.get(str(job.get("enable_environment_key") or "PM_OFFICIAL_NWP_CURVE_COLLECTION_ENABLED")))
     status_path = args.status_path.expanduser().resolve()
     lease = _try_acquire_run_lease(status_path.with_suffix(status_path.suffix + ".lock")) if allow_execute else None
+    capture_lease = try_acquire_capture_lease(args.curve_source_root) if allow_execute and lease is not None else None
     if allow_execute and lease is None:
         result = {
             "schema": "official_nwp_daily_curve_monitor_job_result_v1",
@@ -95,17 +120,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             "blockers": ["official_nwp_curve_monitor_run_already_in_progress"],
             "boundary": {"writes_archive_db": False, "writes_posterior": False, "places_orders": False},
         }
+    elif allow_execute and capture_lease is None:
+        result = {
+            "schema": "official_nwp_daily_curve_monitor_job_result_v1",
+            "ok": False,
+            "state": "blocked",
+            "blockers": ["official_nwp_capture_already_in_progress"],
+            "boundary": {"writes_archive_db": False, "writes_posterior": False, "places_orders": False},
+        }
     else:
         try:
-            result = build_official_nwp_daily_curve_monitor_job(job_contract=job, curve_contract=load_daily_curve_run_contract(args.curve_contract), execute=allow_execute, curve_source_root=args.curve_source_root, catalog_path=args.catalog, completed_provider_runs=_load_completed_provider_runs(status_path))
+            # A targeted future-day slot is still idempotent.  Do not redownload
+            # the same provider/run merely because the caller selected one
+            # offset explicitly; a genuinely newer run remains eligible via
+            # the newest-first candidate list.
+            legacy_completed = _load_completed_provider_runs(status_path, capture_generation=str(job.get("capture_generation") or ""))
+            target_completed = _load_completed_provider_target_runs(status_path, capture_generation=str(job.get("capture_generation") or ""))
+            result = build_official_nwp_daily_curve_monitor_job(job_contract=job, curve_contract=load_daily_curve_run_contract(args.curve_contract), execute=allow_execute, curve_source_root=args.curve_source_root, catalog_path=args.catalog, completed_provider_runs=legacy_completed, completed_provider_target_runs=target_completed)
         finally:
             if lease is not None:
                 lease.close()
+            if capture_lease is not None:
+                capture_lease.close()
     if args.execute and not allow_execute:
         result["ok"] = False
         result["state"] = "blocked"
         result["blockers"] = sorted(set([*list(result.get("blockers") or []), "official_nwp_curve_monitor_execute_not_explicitly_enabled"]))
     result["status_path"] = str(status_path)
+    result["capture_generation"] = str(job.get("capture_generation") or "")
     if allow_execute and "official_nwp_curve_monitor_run_already_in_progress" not in list(result.get("blockers") or []):
         _atomic_json(status_path, result)
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

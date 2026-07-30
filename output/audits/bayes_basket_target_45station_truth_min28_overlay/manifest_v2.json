@@ -1,0 +1,393 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_database": false
+  },
+  "checks": {
+    "exact_45_station_scope": true,
+    "future_truth_used": false,
+    "minimum_28_samples_ready_station_count": 45
+  },
+  "content_sha256": "c3e580e0023c119b94beb7e82c8d3b6dafe696247cf463e34eeb03920fbacae0",
+  "overlay_station_ids": [
+    "EHAM",
+    "EPWA",
+    "RCSS",
+    "SBGR",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "schema": "bayes_basket_target_truth_manifest_overlay_v1",
+  "source_manifest": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/manifest.json",
+  "source_manifest_content_sha256": "f46fdf79b7c9409a9dba0c4c2d8c8baf239768d69a6f8943d574c763e5f74915",
+  "station_count": 45,
+  "truth_results": [
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/CYYZ/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "CYYZ"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/EDDM/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "EDDM"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/EFHK/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "EFHK"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/EGLC/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "EGLC"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_truth_gap_refill/EHAM/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "EHAM"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_truth_gap_refill/EPWA/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 0,
+      "sample_count": 30,
+      "state": "TRUTH_READY",
+      "station_id": "EPWA"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/FACT/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "FACT"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KATL/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KATL"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KAUS/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KAUS"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KBKF/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KBKF"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KDAL/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KDAL"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KHOU/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KHOU"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KLAX/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KLAX"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KLGA/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KLGA"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KMIA/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KMIA"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KORD/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KORD"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KSEA/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KSEA"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KSFO/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "KSFO"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/LEMD/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "LEMD"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/LFPB/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "LFPB"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/LIMC/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "LIMC"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/LTAC/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "LTAC"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/MMMX/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "MMMX"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/MPMG/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "MPMG"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/NZWN/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "NZWN"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/OEJN/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "OEJN"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/OPKC/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "OPKC"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/RCSS/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 0,
+      "sample_count": 30,
+      "state": "TRUTH_READY",
+      "station_id": "RCSS"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/RJTT/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "RJTT"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/RKPK/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "RKPK"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/RKSI/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "RKSI"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/RPLL/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "RPLL"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/SAEZ/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "SAEZ"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_truth_gap_refill/SBGR/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "SBGR"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/VILK/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "VILK"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/WMKK/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "WMKK"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/WSSS/calibration_truth_dataset.json",
+      "label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "WSSS"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZBAA/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 0,
+      "sample_count": 30,
+      "state": "TRUTH_READY",
+      "station_id": "ZBAA"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZGGG/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "ZGGG"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZGSZ/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "ZGSZ"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZHHH/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 0,
+      "sample_count": 30,
+      "state": "TRUTH_READY",
+      "station_id": "ZHHH"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZSPD/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 0,
+      "sample_count": 30,
+      "state": "TRUTH_READY",
+      "station_id": "ZSPD"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZSQD/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 2,
+      "sample_count": 28,
+      "state": "TRUTH_READY",
+      "station_id": "ZSQD"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZUCK/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "ZUCK"
+    },
+    {
+      "dataset": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZUUU/calibration_truth_dataset.json",
+      "label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+      "missing_date_count": 1,
+      "sample_count": 29,
+      "state": "TRUTH_READY",
+      "station_id": "ZUUU"
+    }
+  ]
+}

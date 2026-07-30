@@ -7,7 +7,10 @@ import sqlite3
 from dynamic_three_leg_position_lot_schema_contract import apply_dynamic_three_leg_position_lot_schema
 from dynamic_three_leg_production_activation import materialize_dynamic_three_leg_activation
 from market_alpha_take_profit_schema_contract import apply_market_alpha_take_profit_schema
-from production_dynamic_three_leg_input_provider import freeze_production_dynamic_three_leg_inputs
+from production_dynamic_three_leg_input_provider import (
+    _actionable_bucket_labels,
+    freeze_production_dynamic_three_leg_inputs,
+)
 from sequential_bayes_schema_contract import apply_forward_schema
 
 
@@ -125,6 +128,7 @@ def _exchange(request) -> dict:
 
 
 def test_freezes_one_exchange_backed_bundle_before_claim_without_ev_or_legacy_positions() -> None:
+    requests = []
     result = freeze_production_dynamic_three_leg_inputs(
         _conn(),
         outbox={
@@ -134,7 +138,7 @@ def test_freezes_one_exchange_backed_bundle_before_claim_without_ev_or_legacy_po
             "fact_snapshot_id": "fact-current",
         },
         preliminary_as_of=NOW,
-        exchange_snapshot_fetcher=_exchange,
+        exchange_snapshot_fetcher=lambda request: requests.append(request) or _exchange(request),
         production_activation=_activation(),
     )
 
@@ -145,6 +149,30 @@ def test_freezes_one_exchange_backed_bundle_before_claim_without_ev_or_legacy_po
     assert result["capital_snapshot"]["capital_policy_id"] == "dynamic_three_leg_capital_policy_v2_top20_second4_99_excluded_no100"
     assert result["position_snapshot"]["legacy_edge_trades_consumed"] is False
     assert result["exchange_snapshot"]["ev_edge_lcb_consumed"] is False
+    assert [row["bucket"] for row in requests[0]["buckets"]] == ["37°C", "38°C"]
+
+
+def test_actionable_quotes_include_certified_exclusion_and_managed_position_only() -> None:
+    realization = {
+        "target_bucket": "37°C",
+        "second_target_bucket": "38°C",
+        "strong_physical_evidence": {"bucket_exclusions": [
+            {
+                "bucket": "35°C", "excluded": True,
+                "full_support_exclusion_verified": True,
+                "settlement_exclusion_certificate_state": "valid",
+                "settlement_exclusion_certificate": {
+                    "state": "valid", "full_support_exclusion_verified": True,
+                },
+            },
+            {"bucket": "34°C", "excluded": True, "full_support_exclusion_verified": False},
+        ]},
+    }
+    positions = {"positions": [
+        {"bucket": "36°C", "position_size": 2.0, "management_scope": "dynamic_three_leg"},
+        {"bucket": "40°C", "position_size": 3.0, "management_scope": "external_unmanaged"},
+    ]}
+    assert _actionable_bucket_labels(realization, positions) == ["35°C", "36°C", "37°C", "38°C"]
 
 
 def test_missing_market_token_fails_before_exchange_call() -> None:

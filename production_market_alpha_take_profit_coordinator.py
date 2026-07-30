@@ -54,7 +54,8 @@ def run_market_alpha_take_profit_once(
              JOIN event_fact_latest l ON l.slug=p.slug AND l.event_date=p.event_date
              JOIN event_fact_history h ON h.id=l.fact_id
             WHERE p.state='open' AND p.remaining_size>0
-              AND p.entry_strategy_leg='top_yes_wave' AND p.outcome_side='YES'
+              AND p.entry_strategy_leg IN ('top_yes_wave','second_yes')
+              AND p.outcome_side='YES'
             ORDER BY p.updated_at,p.position_lot_id LIMIT 24"""
     ).fetchall()
     if not rows:
@@ -103,7 +104,8 @@ def run_market_alpha_take_profit_once(
         return {"schema": SCHEMA_VERSION, "ok": True, "state": "hold_take_profit_not_executable", "quote": quote, "places_orders": False}
     position = {
         "management_scope": "dynamic_three_leg_weather",
-        "strategy_leg": _text(row[7]),
+        "strategy_leg": "top_yes_wave",
+        "entry_strategy_leg": _text(row[7]),
         "bucket": _text(row[4]),
         "side": _text(row[5]),
         "token_id": _text(row[6]),
@@ -111,7 +113,13 @@ def run_market_alpha_take_profit_once(
         "position_lot_version": _text(row[1]),
         "position_size": size,
         "entry_strategy_artifact_sha256": _text(row[8]),
-        "frozen_take_profit_price": row[11],
+        "frozen_take_profit_price": 0.90,
+        "effective_take_profit_price": 0.90,
+        "take_profit_price_source": (
+            "entry_frozen_top_yes_wave"
+            if _text(row[7]) == "top_yes_wave"
+            else "promoted_current_top_yes_policy"
+        ),
         "opened_at": _text(row[12]),
     }
     result = commit_market_alpha_take_profit_candidate(

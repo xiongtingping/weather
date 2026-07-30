@@ -1,0 +1,601 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-05",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "LEMD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "LEMD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "LEMD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "reason": "batch_budget_exceeded",
+      "source_lane": "awc",
+      "stations": "LEMD"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-06-28",
+    "2026-06-29",
+    "2026-06-30",
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-06-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-28T22:00:00Z",
+      "target_day_start_utc": "2026-06-27T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-06-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-29T22:00:00Z",
+      "target_day_start_utc": "2026-06-28T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-06-30",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-30T22:00:00Z",
+      "target_day_start_utc": "2026-06-29T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-01T22:00:00Z",
+      "target_day_start_utc": "2026-06-30T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-02T22:00:00Z",
+      "target_day_start_utc": "2026-07-01T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-03T22:00:00Z",
+      "target_day_start_utc": "2026-07-02T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-04T22:00:00Z",
+      "target_day_start_utc": "2026-07-03T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-05T22:00:00Z",
+      "target_day_start_utc": "2026-07-04T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-06T22:00:00Z",
+      "target_day_start_utc": "2026-07-05T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-07T22:00:00Z",
+      "target_day_start_utc": "2026-07-06T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-08T22:00:00Z",
+      "target_day_start_utc": "2026-07-07T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-09T22:00:00Z",
+      "target_day_start_utc": "2026-07-08T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-10T22:00:00Z",
+      "target_day_start_utc": "2026-07-09T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-11T22:00:00Z",
+      "target_day_start_utc": "2026-07-10T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-12T22:00:00Z",
+      "target_day_start_utc": "2026-07-11T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-13T22:00:00Z",
+      "target_day_start_utc": "2026-07-12T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-14T22:00:00Z",
+      "target_day_start_utc": "2026-07-13T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-15T22:00:00Z",
+      "target_day_start_utc": "2026-07-14T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-16T22:00:00Z",
+      "target_day_start_utc": "2026-07-15T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-17T22:00:00Z",
+      "target_day_start_utc": "2026-07-16T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-18T22:00:00Z",
+      "target_day_start_utc": "2026-07-17T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-19T22:00:00Z",
+      "target_day_start_utc": "2026-07-18T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-20T22:00:00Z",
+      "target_day_start_utc": "2026-07-19T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-21T22:00:00Z",
+      "target_day_start_utc": "2026-07-20T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-22T22:00:00Z",
+      "target_day_start_utc": "2026-07-21T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-23T22:00:00Z",
+      "target_day_start_utc": "2026-07-22T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-24T22:00:00Z",
+      "target_day_start_utc": "2026-07-23T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-25T22:00:00Z",
+      "target_day_start_utc": "2026-07-24T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-26T22:00:00Z",
+      "target_day_start_utc": "2026-07-25T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:14:04Z",
+      "event_date": "2026-07-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-27T22:00:00Z",
+      "target_day_start_utc": "2026-07-26T22:00:00Z",
+      "target_timezone": "Europe/Madrid"
+    }
+  ],
+  "evidence_sha256": "41ae6286fecea0a654effa3d3a515dccef21e14a18294959c24140c490b2cdb3",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-06-28",
+          "response_sha256": "88fb43dc4cf7ed2bf3ba731cf336e017c705292328637d64c920c49688e0a5b4",
+          "returned_rows": 19,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260628_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-06-29",
+          "response_sha256": "73bdc3c33c709f67bd04d5b3ad0817616b86042900aac46bf395aa7a8318c2cd",
+          "returned_rows": 48,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260629_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-06-30",
+          "response_sha256": "ece98351e8cd3744b0909979059e2bd17be7a803eee9662a4cee4ba68aa66a6b",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260630_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-01",
+          "response_sha256": "66578b4a50c8430497981cb0441e9bb48d1e5bdad9d69bd5fe625f3724988182",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260701_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-02",
+          "response_sha256": "10f41f383de4f5368b0c1082732b4e78428ebcf5819f2734ee50316734656ca4",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260702_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-03",
+          "response_sha256": "768bad0ab44f7ca92299693a01020d5bff13e37d406d021aeaf2653a8929d3f6",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260703_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-04",
+          "response_sha256": "f5332937e335a8faaea1ef9289802f2c05f228bdd1985947e9cbad48cc512bc5",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260704_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260705_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-06",
+          "response_sha256": "79dddb439e80f66633aa756497e1a1b94b53f453100a0e1b12a389c99f95d89d",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260706_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260707_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-08",
+          "response_sha256": "bfbee6a668c8d63a89e11fe22f683c1837ce61eb96e670e980a5cf0bcea8b18b",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260708_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-09",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260709_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        },
+        {
+          "event_date": "2026-07-10",
+          "response_sha256": "b3c63eff3e163d10cbd02db2246f457c813598f453e2263dd79dbaf038323062",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LEMD&format=json&date=20260710_2200&hours=24",
+          "stations": [
+            "LEMD"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "LEMD"
+        },
+        {
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "LEMD"
+        },
+        {
+          "event_date": "2026-07-09",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "LEMD"
+        },
+        {
+          "event_date": "2026-07-11",
+          "reason": "batch_budget_exceeded",
+          "stations": "LEMD"
+        }
+      ],
+      "query_count": 13,
+      "reference_only": false,
+      "returned": 449,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "bounded_doh_connect_to",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": true,
+        "connect_to": [
+          "aviationweather.gov:443:150.171.110.101:443"
+        ],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-28T16:14:04Z",
+  "observation_count": 1322,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/LEMD/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/five_model_45station_truth_raw",
+  "receipt_sha256": "938ca0c3c46681c20102387bbc274bcda49b219c137ecda9b679b8e0e5c02d32",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/LEMD/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 1322
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 29,
+  "station_day_keys": [
+    "LEMD|2026-06-28",
+    "LEMD|2026-06-29",
+    "LEMD|2026-06-30",
+    "LEMD|2026-07-01",
+    "LEMD|2026-07-02",
+    "LEMD|2026-07-03",
+    "LEMD|2026-07-04",
+    "LEMD|2026-07-05",
+    "LEMD|2026-07-06",
+    "LEMD|2026-07-07",
+    "LEMD|2026-07-08",
+    "LEMD|2026-07-09",
+    "LEMD|2026-07-10",
+    "LEMD|2026-07-11",
+    "LEMD|2026-07-12",
+    "LEMD|2026-07-13",
+    "LEMD|2026-07-14",
+    "LEMD|2026-07-15",
+    "LEMD|2026-07-16",
+    "LEMD|2026-07-17",
+    "LEMD|2026-07-18",
+    "LEMD|2026-07-19",
+    "LEMD|2026-07-20",
+    "LEMD|2026-07-21",
+    "LEMD|2026-07-22",
+    "LEMD|2026-07-23",
+    "LEMD|2026-07-24",
+    "LEMD|2026-07-25",
+    "LEMD|2026-07-26"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "Europe/Madrid"
+}

@@ -18,7 +18,7 @@ def _write_clean_backend(root: Path) -> None:
     _write(
         root / "production_probability_v6_activation_contract.py",
         '''
-BAYES_FORMULA_ID = "p0_weak_conditioned_continuous_y_x_8_state_then_pre_event_controlled_predict_then_canonical_joint_emission_then_regular_metar_hard_bound_then_reported_x_projection_v1"
+BAYES_FORMULA_ID = "p0_weak_conditioned_continuous_y_x_8_state_then_pre_event_controlled_predict_then_quantized_robust_time_conditioned_all_weather_forecast_regime_conditioned_canonical_joint_emission_then_regular_metar_hard_bound_then_reported_x_projection_v4"
 COMPOSER_SCHEMA = "physical_state_bayes_v6_pre_event_predict_update"
 PUBLIC_SSOT_SCHEMA = "sequential_temperature_posterior_ssot_v4_reported_x"
 CHECKPOINT_SCHEMA = "posterior_checkpoint_v4_physical_state_bayes_v6"

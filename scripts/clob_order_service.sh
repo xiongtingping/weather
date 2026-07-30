@@ -4,12 +4,26 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-LIVE_PAUSE_FILE="${PM_LIVE_PAUSE_FILE:-$ROOT/data/live_paused.flag}"
-if [ -f "$LIVE_PAUSE_FILE" ]; then
-  mkdir -p "$ROOT/data/logs"
-  printf '[clob_order_service] live paused by %s at %s\n' "$LIVE_PAUSE_FILE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$ROOT/data/logs/live_pause.log"
-  exec sleep "${PM_LIVE_PAUSE_SLEEP_SEC:-86400}"
+. "$ROOT/scripts/lib/bounded_service_logs.sh"
+weather_prepare_bounded_service_logs \
+  "$ROOT/data/logs/clob_order_service.out.log" \
+  "$ROOT/data/logs/clob_order_service.err.log"
+
+if [ "${WEATHER_SERVICE_DOMAIN:-}" != "system" ]; then
+  echo "[clob_order_service] system_domain_required" >&2
+  exit 78
 fi
+
+if [ "${PM_TARGET_EXECUTION_MODE:-}" != "production_no_live" ]; then
+  echo "[clob_order_service] production_no_live_required" >&2
+  exit 78
+fi
+
+# The gateway must stay available during a managed maintenance window so its
+# capabilities and durable idempotency state can be audited before exposure.
+# `clob_order_service.mjs` checks this same pause file at every place-order
+# admission and rejects before any idempotency write, signing, or exchange POST.
+export PM_LIVE_PAUSE_FILE="${PM_LIVE_PAUSE_FILE:-$ROOT/data/live_paused.flag}"
 
 if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
   # shellcheck disable=SC1091
@@ -17,6 +31,13 @@ if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
   load_repo_env_file "$ROOT/.env"
   load_polymarket_launchctl_env
 fi
+
+# Preserve the launchd authority after optional credential loading.  This
+# resident supplies evidence and health only; order submission remains closed.
+export WEATHER_SERVICE_DOMAIN=system
+export PM_LIVE_PAUSE_FILE="$ROOT/data/live_paused.flag"
+export PM_TARGET_EXECUTION_MODE=production_no_live
+export PM_CLOB_ORDER_SERVICE_READ_ONLY=1
 
 NODE_BIN="${NODE_BIN:-/usr/local/bin/node}"
 if [ ! -x "$NODE_BIN" ]; then

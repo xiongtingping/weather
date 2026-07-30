@@ -32,6 +32,7 @@ RUNTIME_FILES = (
     "external_forecast_snapshot_runtime.py",
     "weak_forecast_revision_bayes_runtime.py",
     "weak_forecast_evidence_snapshot_runtime.py",
+    "forecast_background_context_runtime.py",
     "weak_forecast_revision_schema_contract.py",
     "weak_forecast_revision_transaction_runtime.py",
     "production_weak_forecast_revision_writer.py",

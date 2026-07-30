@@ -1,0 +1,382 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+import pytest
+
+from bayes_basket_target import (
+    BasketCashPhaseInput,
+    BasketCashPhasePolicyArtifact,
+    CashPhase,
+    ContractError,
+    OrderSizingDecision,
+    evaluate_cash_phase,
+    resolve_cash_phase_policy,
+)
+
+
+def _policy(
+    *,
+    version: str = "cash-test-v1",
+    timezone_name: str = "Asia/Shanghai",
+    cash_by_phase: dict[str, float] | None = None,
+    valid_from: str = "2026-07-01T00:00:00Z",
+    valid_until: str = "2026-08-01T00:00:00Z",
+) -> BasketCashPhasePolicyArtifact:
+    return BasketCashPhasePolicyArtifact.create(
+        policy_version=version,
+        station_id="ZUUU",
+        station_timezone=timezone_name,
+        heavy_to_standard_local_time="19:54",
+        standard_to_tail_local_time="09:58",
+        cash_by_phase=cash_by_phase or {"HEAVY": 6.0, "STANDARD": 4.0, "TAIL": 1.0},
+        valid_from_utc=valid_from,
+        valid_until_utc=valid_until,
+        evidence_status="DESIGN_CANDIDATE",
+    )
+
+
+def _input(
+    policy: BasketCashPhasePolicyArtifact,
+    *,
+    current: CashPhase = CashPhase.HEAVY,
+    observed: str = "2026-07-23T00:00:00Z",
+    event_date: str = "2026-07-23",
+    timezone_name: str | None = None,
+    checkpoint: str = "cash-test-checkpoint",
+) -> BasketCashPhaseInput:
+    return BasketCashPhaseInput.from_mapping({
+        "policy_version": policy.policy_version,
+        "station_id": policy.station_id,
+        "current_phase": current.value,
+        "event_date_local": event_date,
+        "observed_at_utc": observed,
+        "station_timezone": timezone_name or policy.station_timezone,
+        "checkpoint_id": checkpoint,
+    })
+
+
+def test_policy_content_addressing_and_unknown_version_fail_closed() -> None:
+    policy = _policy()
+    assert BasketCashPhasePolicyArtifact.from_mapping(policy.to_dict()) == policy
+    bad_sha = {**policy.to_dict(), "content_sha256": "b" * 64}
+    with pytest.raises(ContractError, match="content_sha_mismatch"):
+        BasketCashPhasePolicyArtifact.from_mapping(bad_sha)
+    with pytest.raises(ContractError, match="policy_version_mismatch"):
+        evaluate_cash_phase(policy, _input(replace(_input(policy), policy_version="other")))
+    with pytest.raises(ContractError, match="promoted_invalid"):
+        BasketCashPhasePolicyArtifact.create(
+            policy_version="cash-test-bad-bool",
+            station_id="ZUUU",
+            station_timezone="Asia/Shanghai",
+            heavy_to_standard_local_time="19:54",
+            standard_to_tail_local_time="09:58",
+            cash_by_phase={"HEAVY": 6.0, "STANDARD": 4.0, "TAIL": 1.0},
+            valid_from_utc="2026-07-01T00:00:00Z",
+            valid_until_utc="2026-08-01T00:00:00Z",
+            evidence_status="DESIGN_CANDIDATE",
+            promoted="false",
+        )
+
+
+def test_unknown_or_missing_iana_timezone_and_naive_time_fail_closed() -> None:
+    with pytest.raises(ContractError, match="unknown_iana_timezone"):
+        _policy(timezone_name="Mars/Phobos")
+    policy = _policy()
+    with pytest.raises(ContractError, match="unknown_iana_timezone"):
+        _input(policy, timezone_name="Mars/Phobos")
+    with pytest.raises(ContractError, match="timezone_required"):
+        _input(policy, observed="2026-07-23T00:00:00")
+
+
+def test_valid_window_and_unobserved_phase_fail_closed() -> None:
+    policy = _policy()
+    with pytest.raises(ContractError, match="outside_validity"):
+        evaluate_cash_phase(policy, _input(policy, observed="2026-08-01T00:00:00Z"))
+    partial = _policy(cash_by_phase={"STANDARD": 4.0, "TAIL": 1.0})
+    with pytest.raises(ContractError, match="unobserved_phase"):
+        evaluate_cash_phase(
+            partial,
+            _input(partial, observed="2026-07-22T10:00:00Z"),
+        )
+
+
+def test_local_clock_boundaries_are_inclusive_then_exclusive() -> None:
+    policy = _policy()
+    before = evaluate_cash_phase(
+        policy,
+        _input(policy, observed="2026-07-22T11:53:59Z"),  # 19:53:59 local
+    )
+    at_standard = evaluate_cash_phase(
+        policy,
+        _input(policy, observed="2026-07-22T11:54:00Z"),  # D-1 19:54 local
+    )
+    at_tail = evaluate_cash_phase(
+        policy,
+        _input(policy, observed="2026-07-23T01:58:00Z"),  # D 09:58 local
+    )
+    assert before.clock_phase is CashPhase.HEAVY
+    assert at_standard.clock_phase is CashPhase.STANDARD
+    assert at_tail.clock_phase is CashPhase.TAIL
+    assert at_standard.cash_template_usdc == 4.0
+    assert at_tail.cash_template_usdc == 1.0
+
+
+def test_dst_fall_back_uses_station_local_zoneinfo() -> None:
+    policy = _policy(
+        timezone_name="America/New_York",
+        valid_from="2026-10-01T00:00:00Z",
+        valid_until="2026-12-01T00:00:00Z",
+    )
+    standard = evaluate_cash_phase(
+        policy,
+        _input(
+            policy,
+            event_date="2026-11-01",
+            observed="2026-11-01T13:58:00Z",  # 08:58 EST
+        ),
+    )
+    tail = evaluate_cash_phase(
+        policy,
+        _input(
+            policy,
+            event_date="2026-11-01",
+            observed="2026-11-01T14:58:00Z",  # 09:58 EST
+        ),
+    )
+    assert standard.clock_phase is CashPhase.STANDARD
+    assert tail.clock_phase is CashPhase.TAIL
+    assert standard.observed_at_local.endswith("-05:00")
+    assert tail.observed_at_local.endswith("-05:00")
+
+
+def test_phase_transition_is_monotonic_under_time_reversal() -> None:
+    policy = _policy()
+    heavy_to_standard = evaluate_cash_phase(
+        policy,
+        _input(policy, current=CashPhase.HEAVY, observed="2026-07-22T11:54:00Z"),
+    )
+    held_after_reversal = evaluate_cash_phase(
+        policy,
+        _input(policy, current=heavy_to_standard.next_phase, observed="2026-07-22T11:53:00Z"),
+    )
+    tail_to_reversal = evaluate_cash_phase(
+        policy,
+        _input(policy, current=CashPhase.TAIL, observed="2026-07-22T11:53:00Z"),
+    )
+    assert heavy_to_standard.next_phase is CashPhase.STANDARD
+    assert held_after_reversal.next_phase is CashPhase.STANDARD
+    assert held_after_reversal.reason_code == "MONOTONIC_HOLD_NO_REGRESSION"
+    assert tail_to_reversal.next_phase is CashPhase.TAIL
+
+
+def test_repeated_forward_backward_cross_day_warp_keeps_phase_monotonic() -> None:
+    policy = _policy()
+    observations = [
+        "2026-07-22T11:53:59Z",
+        "2026-07-22T11:54:00Z",
+        "2026-07-22T11:53:59Z",
+        "2026-07-23T01:58:00Z",
+        "2026-07-23T01:57:59Z",
+        "2026-07-22T11:54:00Z",
+        "2026-07-24T12:00:00Z",
+    ]
+    phases = []
+    current = CashPhase.HEAVY
+    for index, observed in enumerate(observations):
+        result = evaluate_cash_phase(
+            policy,
+            _input(
+                policy,
+                current=current,
+                observed=observed,
+                event_date="2026-07-23",
+                checkpoint=f"warp-{index}",
+            ),
+        )
+        assert result.previous_phase is current
+        if index == 1:
+            assert result.next_phase is CashPhase.STANDARD
+        if index >= 3:
+            assert result.next_phase is CashPhase.TAIL
+        phases.append(result.next_phase)
+        current = result.next_phase
+    assert phases == [CashPhase.HEAVY, CashPhase.STANDARD, CashPhase.STANDARD, CashPhase.TAIL, CashPhase.TAIL, CashPhase.TAIL, CashPhase.TAIL]
+
+
+def test_order_sizing_formula_and_zero_candidate_boundaries() -> None:
+    policy = _policy()
+    phase = evaluate_cash_phase(policy, _input(policy))
+    sized = OrderSizingDecision.compute(
+        bucket="38",
+        phase_decision=phase,
+        delta_shares=100.0,
+        r_limit=0.20,
+        remaining_budget=10.0,
+        executable_depth_cash=12.0,
+        candidate_present=True,
+    )
+    assert sized.c_base == 4.0
+    assert sized.c_order == pytest.approx(min(4.0, 0.20 * 100.0, 10.0, 12.0))
+    assert sized.q_order == pytest.approx(sized.c_order / sized.r_limit)
+    assert sized.remaining_budget_after == pytest.approx(6.0)
+
+    cases = [
+        {"delta_shares": 0.0, "r_limit": 0.20, "remaining_budget": 10.0, "executable_depth_cash": 12.0, "candidate_present": True},
+        {"delta_shares": 100.0, "r_limit": 0.20, "remaining_budget": 0.0, "executable_depth_cash": 12.0, "candidate_present": True},
+        {"delta_shares": 100.0, "r_limit": 0.20, "remaining_budget": 10.0, "executable_depth_cash": 0.0, "candidate_present": True},
+        {"delta_shares": 100.0, "r_limit": 0.20, "remaining_budget": 10.0, "executable_depth_cash": 12.0, "candidate_present": False},
+    ]
+    for case in cases:
+        result = OrderSizingDecision.compute(bucket="38", phase_decision=phase, **case)
+        assert result.c_order == 0.0
+        assert result.q_order == 0.0
+        assert result.eligible is False
+    with pytest.raises(ContractError, match="candidate_present_invalid"):
+        OrderSizingDecision.compute(
+            bucket="38",
+            phase_decision=phase,
+            delta_shares=1.0,
+            r_limit=0.20,
+            remaining_budget=1.0,
+            executable_depth_cash=1.0,
+            candidate_present="false",
+        )
+
+
+def test_discrete_clip_closes_target_gap_budget_depth_and_promotion_caps() -> None:
+    policy = _policy(cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0})
+    phase = evaluate_cash_phase(policy, _input(policy))
+    sized = OrderSizingDecision.compute(
+        bucket="38",
+        phase_decision=phase,
+        delta_shares=100.0,
+        r_limit=0.30,
+        remaining_budget=20.0,
+        executable_depth_cash=8.0,
+        candidate_present=True,
+        target_clip_notional_usdc=4.10,
+        minimum_clip_notional_usdc=1.00,
+        share_quantum=0.10,
+    )
+    assert sized.eligible is True
+    assert sized.raw_c_order == pytest.approx(4.10)
+    assert sized.q_order == pytest.approx(13.60)
+    assert sized.c_order == pytest.approx(sized.q_order * sized.r_limit)
+    assert sized.c_order <= 4.10 + 1e-9
+    assert sized.q_order <= sized.delta_shares + 1e-9
+    assert sized.q_order <= sized.depth_shares_cap + 1e-9
+
+    below_minimum = OrderSizingDecision.compute(
+        bucket="38",
+        phase_decision=phase,
+        delta_shares=100.0,
+        r_limit=0.30,
+        remaining_budget=20.0,
+        executable_depth_cash=0.95,
+        candidate_present=True,
+        target_clip_notional_usdc=4.10,
+        minimum_clip_notional_usdc=1.00,
+        share_quantum=0.10,
+    )
+    assert below_minimum.eligible is False
+    assert below_minimum.reason_code == "clip_below_minimum"
+    assert below_minimum.c_order == 0.0
+    assert below_minimum.remaining_budget_after == pytest.approx(20.0)
+
+
+def test_delta_v2_target_clip_is_not_replaced_by_legacy_cash_template() -> None:
+    policy = _policy(
+        cash_by_phase={
+            "HEAVY": 0.25,
+            "STANDARD": 0.25,
+            "TAIL": 0.25,
+        }
+    )
+    phase = evaluate_cash_phase(policy, _input(policy))
+    sized = OrderSizingDecision.compute(
+        bucket="40°C",
+        phase_decision=phase,
+        delta_shares=232.2222222222,
+        r_limit=0.004,
+        remaining_budget=12.0,
+        executable_depth_cash=2.26,
+        candidate_present=True,
+        target_clip_notional_usdc=0.9288888888,
+        minimum_clip_notional_usdc=0.01,
+        cash_template_caps_target=False,
+        share_quantum=0.01,
+    )
+
+    assert sized.cash_template_caps_target is False
+    assert sized.c_base == pytest.approx(0.25)
+    assert sized.raw_c_order == pytest.approx(0.9288888888)
+    assert sized.c_order == pytest.approx(0.92888)
+    assert sized.q_order == pytest.approx(232.22)
+    assert sized.eligible is True
+    assert sized.reason_code == "sized_discrete"
+
+
+def test_discrete_clip_is_monotonic_and_rejects_invalid_quantum() -> None:
+    policy = _policy(cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0})
+    phase = evaluate_cash_phase(policy, _input(policy))
+
+    def sized(budget: float, depth: float, gap: float) -> OrderSizingDecision:
+        return OrderSizingDecision.compute(
+            bucket="38",
+            phase_decision=phase,
+            delta_shares=gap,
+            r_limit=0.25,
+            remaining_budget=budget,
+            executable_depth_cash=depth,
+            candidate_present=True,
+            target_clip_notional_usdc=10.0,
+            minimum_clip_notional_usdc=0.25,
+            share_quantum=0.01,
+        )
+
+    baseline = sized(5.0, 5.0, 100.0)
+    assert sized(6.0, 5.0, 100.0).c_order + 1e-9 >= baseline.c_order
+    assert sized(5.0, 6.0, 100.0).c_order + 1e-9 >= baseline.c_order
+    assert sized(5.0, 5.0, 110.0).c_order + 1e-9 >= baseline.c_order
+    with pytest.raises(ContractError, match="share_quantum_nonpositive"):
+        OrderSizingDecision.compute(
+            bucket="38",
+            phase_decision=phase,
+            delta_shares=1.0,
+            r_limit=0.25,
+            remaining_budget=1.0,
+            executable_depth_cash=1.0,
+            candidate_present=True,
+            share_quantum=0.0,
+        )
+
+
+def test_cash_policy_resolution_requires_one_exact_valid_artifact() -> None:
+    policy = _policy()
+    assert resolve_cash_phase_policy(
+        [policy],
+        policy_version=policy.policy_version,
+        station_id=policy.station_id,
+        observed_at_utc="2026-07-23T00:00:00Z",
+        required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+    ) == policy
+    with pytest.raises(
+        ContractError,
+        match="formal_resolution_requires_manifest_and_oos_receipt",
+    ):
+        resolve_cash_phase_policy(
+            [policy],
+            policy_version=policy.policy_version,
+            station_id=policy.station_id,
+            observed_at_utc="2026-07-23T00:00:00Z",
+            required_authority_scope="FORMAL_PROMOTED",
+        )
+    with pytest.raises(ContractError, match="resolution_not_unique"):
+        resolve_cash_phase_policy(
+            [policy, policy],
+            policy_version=policy.policy_version,
+            station_id=policy.station_id,
+            observed_at_utc="2026-07-23T00:00:00Z",
+            required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+        )

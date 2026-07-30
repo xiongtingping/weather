@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from physical_latent_state_contract import LATENT_STATES
 from physical_state_bayes_v6.contracts import (
     CandidateForcingSlice,
@@ -9,6 +11,7 @@ from physical_state_bayes_v6.contracts import (
     ScenarioTransition,
 )
 from physical_state_bayes_v6.core import predict_to_event, pre_event_prediction_sha256
+from physical_state_bayes_v6.scenario_joint import SCENARIO_JOINT_SCHEMA, scenario_joint_sha256
 from production_probability_v6_activation_contract import (
     CHECKPOINT_SCHEMA,
     COMPOSER_SCHEMA,
@@ -43,7 +46,7 @@ def _activation():
         "v5_fallback_forbidden": True,
         "pre_event_predict_does_not_consume_current_observation": True,
         "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
+        "nwp_hourly_curve_not_reapplied_as_independent_likelihood": True,
         "runtime_manifest_sha256": "b" * 64,
         "transition_artifact_sha256": "c" * 64,
         "observation_artifact_sha256": "d" * 64,
@@ -69,6 +72,11 @@ def test_compiler_materializes_v6_update_without_post_transition() -> None:
         )
         for y_c in (34.2, 38.2)
     )
+    scenario_joint = [
+        {"continuous_y_c": row.y_c, "state": row.state,
+         "scenario_id": f"scenario-{row.y_c}", "probability": row.probability}
+        for row in previous_joint
+    ]
     previous = {
         "checkpoint_probability_schema": CHECKPOINT_SCHEMA,
         "posterior_checkpoint_id": "checkpoint-0",
@@ -88,6 +96,9 @@ def test_compiler_materializes_v6_update_without_post_transition() -> None:
         "resolution_contract_id": "resolution-1",
         "consumed_event_ids": [],
         "replay_generation": 1,
+        "scenario_joint_posterior_json": json.dumps(scenario_joint),
+        "scenario_joint_posterior_sha256": scenario_joint_sha256(scenario_joint),
+        "scenario_joint_schema": SCENARIO_JOINT_SCHEMA,
     }
     event = {
         "canonical_observation_event_id": "event-1",
@@ -118,6 +129,15 @@ def test_compiler_materializes_v6_update_without_post_transition() -> None:
         cb_present=False,
         log_emission_by_cell={(row.y_c, row.state): 0.0 for row in prediction.joint},
         observation_artifact_sha256="d" * 64,
+        log_component_by_cell={
+            (row.y_c, row.state): {
+                "temperature_momentum_log_score": 0.0,
+                "physical_fields_log_score": 0.0,
+                "temporal_adjustment_log_score": 0.0,
+                "total_log_emission": 0.0,
+            }
+            for row in prediction.joint
+        },
     )
 
     candidate = build_v6_transaction_b_candidate(
@@ -141,6 +161,12 @@ def test_compiler_materializes_v6_update_without_post_transition() -> None:
     assert update["no_post_emission_transition"] == 1
     assert update["scenario_control_lineage_sha256"] == "2" * 64
     assert update["canonical_emission_input_sha256"] == "3" * 64
+    scenario_trace = json.loads(update["path_auxiliary_json"])["event_local_scenario_responsibility_trace"]
+    assert scenario_trace["marginal_matches_production_posterior"] is True
+    assert scenario_trace["marginal_consistency_max_abs_error"] <= 1e-9
+    assert abs(sum(row["probability_after"] for row in scenario_trace["rows"]) - 1.0) < 1e-12
+    assert scenario_trace["carried_forward_to_next_event"] is True
+    assert checkpoint["scenario_joint_schema"] == "physical_state_bayes_v6_scenario_joint_checkpoint_v1"
     assert checkpoint["checkpoint_probability_schema"] == CHECKPOINT_SCHEMA
     assert checkpoint["reported_x_lower_bound_c"] == 35
     assert candidate["reported_physical_x_distribution"] == {38: 1.0}

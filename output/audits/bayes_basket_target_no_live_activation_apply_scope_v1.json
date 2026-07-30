@@ -1,0 +1,39 @@
+{
+  "activated_at": "2026-07-26T08:53:05.969Z",
+  "activation_contract_sha256": "93c5fcda7316f49828aff3057c3c708207fe051d51c9f2913f55aba05d57f186",
+  "activation_path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+  "backup_path": "/Users/xiong/weather/data/.bayes_basket_target_activation_pre_scope_20260726.db",
+  "calls_order_gateway": false,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "execution_mode": "production_no_live",
+  "generation": 4,
+  "live_decision_write_authorized": false,
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "receipt_sha256": "0d74baf11faf3a4e6732076df9b4bdfe0023c1527c77942eb496ae86d08d5fd3",
+  "schema": "bayes_basket_target_no_live_activation_apply_v1",
+  "writer_quiescence": {
+    "all_core_services_absent": null,
+    "boundary": {
+      "calls_order_gateway": false,
+      "database_scope": "isolated_target_no_live",
+      "places_orders": false,
+      "read_only_probe": true,
+      "stops_services": false,
+      "writes_production_db": false
+    },
+    "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "probe_errors": [],
+    "probe_mode": "isolated_target_database_scope",
+    "quiescent": true,
+    "receipt_sha256": "b2905d64a78f96f497cb72d7cb777bcb333cd5775643edc1ee0b843482dddec6",
+    "schema": "bayes_basket_target_writer_quiescence_receipt_v2",
+    "service_states": {
+      "system": "not_probed",
+      "user": "not_probed"
+    },
+    "writer_process_hits": []
+  },
+  "writes_orders": false
+}

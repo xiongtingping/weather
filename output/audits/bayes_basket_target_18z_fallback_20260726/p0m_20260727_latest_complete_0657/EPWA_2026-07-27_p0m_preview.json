@@ -1,0 +1,47 @@
+{
+  "bridge_sha256": "96a8c7e2b55e4d0f3fd2bd2a602032d067b1b286a7ed09300531c950cd253a1e",
+  "bucket_ordinals": {
+    "18°C or below": 0,
+    "19°C": 1,
+    "20°C": 2,
+    "21°C": 3,
+    "22°C": 4,
+    "23°C": 5,
+    "24°C": 6,
+    "25°C": 7,
+    "26°C": 8,
+    "27°C": 9,
+    "28°C or higher": 10
+  },
+  "checkpoint_id": "p0m_c1adabd061836930a369764956d0e3e7",
+  "decision_at_utc": "2026-07-26T06:57:00Z",
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T08:00:00Z",
+  "lineage": {
+    "activation_ids": "no-live-cal-b986821d40030f30c3109d2ed765d15c,no-live-cal-c0348ee982aaa88e26d489966ba902d8,no-live-cal-e8083f6acdb046d0baaa361fcb5ebe9a,no-live-ens-b273763d274d24082ab2347200090866",
+    "available_model_set_hash": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+    "calibration_artifact_ids": "cal-candidate-EPWA-ECMWF-summer-9c4f1014d5f1,cal-candidate-EPWA-GFS-summer-9c4f1014d5f1,cal-candidate-EPWA-ICON-summer-9c4f1014d5f1",
+    "ensemble_artifact_id": "ens-candidate-EPWA-summer-9c4f1014d5f1",
+    "model_bundle_ready_at_utc": "2026-07-26T04:32:06Z",
+    "model_run_ids": "current-7f48ed1d21a52b49ccb0b09744d0f61e,current-8aa0b4dcbc77178455bf3c95c179a2ea,current-ed3ebd1ef05924a5b52b6e7717d35af9",
+    "model_run_initialization_utc": "2026-07-25T18:00:00Z"
+  },
+  "posterior_sha256": "c1adabd061836930a369764956d0e3e75fa06ec79cffa9aac7e2005fb082d80b",
+  "posterior_version": "p0m_ensemble_v1",
+  "probabilities": {
+    "18°C or below": 0.01354680456916181,
+    "19°C": 0.043718359799250366,
+    "20°C": 0.11493747618709946,
+    "21°C": 0.20505291350046387,
+    "22°C": 0.24832143848394897,
+    "23°C": 0.20414489003650096,
+    "24°C": 0.11391039844616169,
+    "25°C": 0.04312348955247006,
+    "26°C": 0.011069605360222157,
+    "27°C": 0.0019252998077604736,
+    "28°C or higher": 0.00024932425696019947
+  },
+  "schema": "bayes_basket_probability_envelope_v1",
+  "stage": "P0-M",
+  "station_id": "EPWA"
+}

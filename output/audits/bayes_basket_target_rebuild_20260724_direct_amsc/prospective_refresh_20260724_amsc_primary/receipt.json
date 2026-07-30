@@ -1,0 +1,65 @@
+{
+  "as_of_utc": "2026-07-24T11:48:37Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "reads_shared_live_database": true,
+    "restarts_services": false,
+    "shared_live_read_mode": "sqlite_mode_ro_query_only",
+    "writes_shared_live_database": false,
+    "writes_target_database": false
+  },
+  "receipt_sha256": "4dc0cb85e50ed1d396b78bd68ca316bc3f3645fae8217b96ca554f4d3580497b",
+  "schema": "bayes_basket_target_evidence_refresh_v1",
+  "stages": {
+    "calibration": {
+      "calibration_artifacts": 0,
+      "ensemble_artifacts": 0,
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_rebuild_20260724_direct_amsc/prospective_refresh_20260724_amsc_primary/calibration.json",
+      "promotion_allowed": false,
+      "receipt_sha256": "20663f20fb7de286357b77d30eade67222e76a017b66ee09b128fce19deb8edc",
+      "schema": "bayes_basket_target_calibration_evidence_v1"
+    },
+    "canonical": {
+      "accepted_truth_count": 208,
+      "observation_count": 7472,
+      "quarantined_truth_count": 49,
+      "receipt_sha256": "29039aaf86108715b41493f977a7120fdc176be64e5af74b2de9077b859702b5",
+      "state": "EXPORTED"
+    },
+    "et_history": {
+      "blocker_count": 0,
+      "calls_order_gateway": false,
+      "input_counts": {
+        "accepted_model_rows": 675,
+        "blocked_model_rows": 0,
+        "fatal_truth_rows": 0,
+        "joined_station_days": 0,
+        "model_rows": 675,
+        "pending_event_days": 45,
+        "quarantined_truth_rows": 1672,
+        "truth_day_rows": 228,
+        "truth_observation_rows": 7472
+      },
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_rebuild_20260724_direct_amsc/prospective_refresh_20260724_amsc_primary/et_history.json",
+      "pending_event_day_count": 45,
+      "promotion_allowed": false,
+      "receipt_sha256": "ec27c224540734e714278f85162596c9d50c10527dfbf39414cc86f706e7c4fa",
+      "schema": "bayes_basket_target_et_history_evidence_v1",
+      "state": "BLOCKED_EVIDENCE",
+      "writes_target_db": false
+    },
+    "readiness": {
+      "blockers": [
+        "target_materialized_inputs_incomplete"
+      ],
+      "state": "blocked"
+    },
+    "release": {
+      "manifest_sha256": "df54f66b1e68cfadbb5d5cd3d5cb49b0610a51930088a4f1eaaf865fa235ac7a",
+      "release_state": "BLOCKED_NOT_RELEASE"
+    }
+  },
+  "state": "BLOCKED_EVIDENCE"
+}

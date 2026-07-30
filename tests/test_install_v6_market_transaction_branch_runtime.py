@@ -7,6 +7,14 @@ from scripts.install_v6_market_transaction_branch_runtime import (
 )
 
 
+def test_installer_is_idempotent_for_evolved_live_runtime() -> None:
+    root = Path(__file__).resolve().parents[1]
+    drain = (root / "production_probability_v6_canonical_event_drain_runtime.py").read_text()
+    ingress = (root / "production_probability_v6_amsc_archive_ingress.py").read_text()
+    assert transform_drain(drain) == drain
+    assert transform_ingress(ingress) == ingress
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

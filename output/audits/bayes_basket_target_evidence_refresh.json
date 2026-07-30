@@ -1,0 +1,147 @@
+{
+  "as_of_utc": "2026-07-26T00:41:05Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "reads_shared_live_database": true,
+    "restarts_services": false,
+    "shared_live_read_mode": "sqlite_mode_ro_query_only",
+    "writes_shared_live_database": false,
+    "writes_target_database": false
+  },
+  "receipt_sha256": "ebc5d77716352c7fd7c82b9177bab80e5a5d1db932a003746c553aa21ea0eabe",
+  "schema": "bayes_basket_target_evidence_refresh_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "amsc"
+    ],
+    "included_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS"
+    ],
+    "mode": "allowlist"
+  },
+  "stages": {
+    "calibration": {
+      "calibration_artifacts": 72,
+      "ensemble_artifacts": 0,
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence.json",
+      "promotion_allowed": false,
+      "receipt_sha256": "de0ebc0c00c3a9db1f19c6c18b69c29f58148d763e2d03537f17476df38dfea5",
+      "schema": "bayes_basket_target_calibration_evidence_v1"
+    },
+    "canonical": {
+      "accepted_truth_count": 134,
+      "historical_materialization": {
+        "accepted_truth_count": 396,
+        "blocker_count": 0,
+        "boundary": {
+          "calls_order_gateway": false,
+          "historical_only": true,
+          "places_orders": false,
+          "reads_shared_live_database": false,
+          "target_only": true,
+          "writes_production_db": false,
+          "writes_shared_live_database": false,
+          "writes_target_db": false
+        },
+        "event_dates": [
+          "2026-07-14",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-17",
+          "2026-07-18",
+          "2026-07-19",
+          "2026-07-20",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24"
+        ],
+        "observation_count": 14529,
+        "output": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_canonical_observation_evidence.json",
+        "quarantined_observation_count": 26,
+        "receipt_sha256": "5eba5408379ed69bebef05abfb6eb281bec6a01d4d53c706aed91f871bf9ca7b",
+        "reference_observation_count": 0,
+        "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+        "state": "EXPORTED"
+      },
+      "observation_count": 5336,
+      "quarantined_truth_count": 47,
+      "receipt_sha256": "e35e447a9409050d4f089ac88b4798f8dbe656799a5098bbf0c3878a77b9e1f8",
+      "state": "EXPORTED",
+      "used_path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_canonical_observation_evidence.json"
+    },
+    "et_history": {
+      "blocker_count": 0,
+      "calls_order_gateway": false,
+      "excluded_non_closed_event_dates": [],
+      "input_counts": {
+        "accepted_model_rows": 4824,
+        "blocked_model_rows": 0,
+        "coverage_gap_count": 360,
+        "fatal_truth_rows": 0,
+        "joined_station_days": 36,
+        "model_rows": 4824,
+        "pending_event_days": 0,
+        "quarantined_truth_rows": 0,
+        "truth_day_rows": 396,
+        "truth_observation_rows": 14529
+      },
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_et_history_evidence.json",
+      "pending_event_day_count": 0,
+      "promotion_allowed": false,
+      "receipt_sha256": "38b1144bed3031064ef31deddc0631fef3b95d3b423b63fb718dc4b3d4bf7405",
+      "schema": "bayes_basket_target_et_history_evidence_v1",
+      "state": "READY_FOR_STRICT_ASOF",
+      "writes_target_db": false
+    },
+    "readiness": {
+      "blockers": [
+        "official_ws_manifest_missing",
+        "target_materialized_inputs_incomplete"
+      ],
+      "state": "blocked"
+    },
+    "release": {
+      "manifest_sha256": "66cd56be1953dfb0886edac99eeefb26ace3e11d03357e6fac2d00a55c03035e",
+      "release_state": "BLOCKED_NOT_RELEASE"
+    }
+  },
+  "state": "READY_FOR_STRICT_ASOF"
+}

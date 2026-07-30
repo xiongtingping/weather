@@ -16,6 +16,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from standing_exit_999_runtime import tick_supports_0999
+
 
 SCHEMA_VERSION = "dynamic_three_leg_clob_gateway_adapter_v1"
 GUARD_SCHEMA_VERSION = "dynamic_three_leg_execution_guard_v1"
@@ -104,6 +106,7 @@ def evaluate_execution_guard_snapshot(
     size = _finite(row.get("size") if row.get("size") is not None else payload.get("size"))
     notional = _finite(row.get("notional") if row.get("notional") is not None else payload.get("notional"))
     expected_balance = _finite(payload.get("expected_token_balance"))
+    standing_exit_coverage_order = payload.get("standing_exit_coverage_order") is True
     observed_at = _parse_utc(evidence.get("observed_at"))
     now = _parse_utc(evaluated_at)
     age_ms = (now - observed_at).total_seconds() * 1000 if now is not None and observed_at is not None else None
@@ -144,10 +147,24 @@ def evaluate_execution_guard_snapshot(
     elif side == "SELL" and limit_price is not None:
         best_price = max((price for price, _size in bids), default=None)
         executable_depth = sum(level_size for price, level_size in bids if price + 1e-12 >= limit_price)
-        if best_price is None or best_price + 1e-12 < limit_price or executable_depth + 1e-9 < float(size or 0):
+        if not standing_exit_coverage_order and (best_price is None or best_price + 1e-12 < limit_price or executable_depth + 1e-9 < float(size or 0)):
             blockers.append("clob_execution_guard_sell_quote_or_depth_not_executable")
+        if standing_exit_coverage_order:
+            metadata = _mapping(evidence.get("token_metadata"))
+            if abs(float(limit_price) - 0.999) > 1e-12 or not tick_supports_0999(metadata.get("tick_size")):
+                blockers.append("clob_execution_guard_standing_999_tick_unsupported")
 
-    position_current = expected_balance is not None and conditional_balance is not None and abs(conditional_balance - expected_balance) <= position_tolerance
+    # BUY does not consume an existing conditional position.  Its duplicate
+    # and cap protection is the durable intent/risk ledger; requiring a fresh
+    # conditional balance here adds no safety and creates an avoidable network
+    # dependency.  SELL must still reconcile the exact managed lot balance.
+    position_current = (
+        expected_balance is not None and expected_balance >= 0
+        if side == "BUY"
+        else expected_balance is not None
+        and conditional_balance is not None
+        and abs(conditional_balance - expected_balance) <= position_tolerance
+    )
     if not position_current:
         blockers.append("clob_execution_guard_position_snapshot_drift")
     if side == "BUY":
@@ -169,6 +186,7 @@ def evaluate_execution_guard_snapshot(
         "size": size,
         "notional": notional,
         "expected_token_balance": expected_balance,
+        "standing_exit_coverage_order": standing_exit_coverage_order,
         "conditional_balance": conditional_balance,
         "conditional_allowance": conditional_allowance,
         "conditional_usable": conditional_usable,
@@ -207,8 +225,11 @@ def evaluate_dynamic_three_leg_exchange_snapshot(
     amount_decimals = evidence.get("amount_decimals")
     decimals = int(amount_decimals) if isinstance(amount_decimals, int) else -1
     books = _mapping(evidence.get("order_books_by_token"))
+    top_quotes = _mapping(evidence.get("top_quotes_by_token"))
+    token_metadata = _mapping(evidence.get("token_metadata_by_token"))
     requested_buckets = requested.get("buckets") if isinstance(requested.get("buckets"), list) else []
     buckets: dict[str, dict[str, Any]] = {}
+    quote_diagnostics: list[dict[str, str]] = []
     maximum_book_age_ms = 0.0
     for raw in requested_buckets:
         row = _mapping(raw)
@@ -217,24 +238,43 @@ def evaluate_dynamic_three_leg_exchange_snapshot(
         yes_book, no_book = _mapping(books.get(yes_token)), _mapping(books.get(no_token))
         quote: dict[str, Any] = {"yes_token_id": yes_token, "no_token_id": no_token}
         for side, token_id, book in (("yes", yes_token, yes_book), ("no", no_token, no_book)):
-            if not bucket or not token_id or _text(book.get("asset_id")) != token_id:
+            top_quote = _mapping(top_quotes.get(token_id))
+            evidence_row = top_quote if top_quote else book
+            if not bucket or not token_id or _text(evidence_row.get("asset_id")) != token_id:
                 blockers.append("dynamic_three_leg_exchange_book_identity_mismatch")
                 continue
-            book_time = _parse_exchange_time(book.get("timestamp"))
+            book_time = _parse_exchange_time(evidence_row.get("timestamp"))
             book_age_ms = (now - book_time).total_seconds() * 1000 if now is not None and book_time is not None else None
             if book_age_ms is None or book_age_ms < -250 or book_age_ms > max(0, int(max_snapshot_age_ms)):
                 blockers.append("dynamic_three_leg_exchange_book_stale")
             else:
                 maximum_book_age_ms = max(maximum_book_age_ms, book_age_ms)
             bids, asks = _book_levels(book.get("bids")), _book_levels(book.get("asks"))
-            bid = max((price for price, _size in bids), default=None)
-            ask = min((price for price, _size in asks), default=None)
-            if bid is None or ask is None or bid > ask:
-                blockers.append("dynamic_three_leg_exchange_two_sided_quote_missing")
+            bid = _finite(top_quote.get("best_bid")) if top_quote else max((price for price, _size in bids), default=None)
+            ask = _finite(top_quote.get("best_ask")) if top_quote else min((price for price, _size in asks), default=None)
+            if bid is not None and not 0 < bid < 1:
+                bid = None
+            if ask is not None and not 0 < ask < 1:
+                ask = None
+            if bid is not None and ask is not None and bid > ask:
+                blockers.append("dynamic_three_leg_exchange_crossed_quote")
+            if bid is None or ask is None:
+                quote_diagnostics.append({
+                    "bucket": bucket,
+                    "side": side.upper(),
+                    "state": (
+                        "quote_unavailable" if bid is None and ask is None
+                        else "ask_missing" if ask is None
+                        else "bid_missing"
+                    ),
+                })
             quote[f"{side}_bid"] = bid
             quote[f"{side}_ask"] = ask
-            quote[f"{side}_bid_depth"] = sum(size for price, size in bids if bid is not None and abs(price - bid) <= 1e-12)
-            quote[f"{side}_ask_depth"] = sum(size for price, size in asks if ask is not None and abs(price - ask) <= 1e-12)
+            quote[f"{side}_bid_depth"] = None if top_quote else sum(size for price, size in bids if bid is not None and abs(price - bid) <= 1e-12)
+            quote[f"{side}_ask_depth"] = None if top_quote else sum(size for price, size in asks if ask is not None and abs(price - ask) <= 1e-12)
+            metadata = _mapping(token_metadata.get(token_id))
+            quote[f"{side}_tick_size"] = _text(metadata.get("tick_size"))
+            quote[f"{side}_neg_risk"] = metadata.get("neg_risk") if isinstance(metadata.get("neg_risk"), bool) else None
         if bucket:
             buckets[bucket] = quote
     if len(buckets) != len(requested_buckets):
@@ -259,11 +299,16 @@ def evaluate_dynamic_three_leg_exchange_snapshot(
         "ok": not blockers,
         "state": "available" if not blockers else "blocked",
         "block_reasons": sorted(set(blockers)),
+        "upstream_evidence_errors": sorted({
+            _text(reason) for reason in evidence.get("evidence_errors") or [] if _text(reason)
+        }),
         "request_id": _text(requested.get("request_id")),
         "as_of": _text(evidence.get("observed_at")),
         "snapshot_age_ms": age_ms,
         "maximum_book_age_ms": maximum_book_age_ms,
         "buckets": buckets,
+        "quote_diagnostics": quote_diagnostics,
+        "candidate_side_quote_validation_deferred_to_materializer": True,
         "collateral_balance": collateral_balance,
         "collateral_allowance": collateral_allowance,
         "available_cash_usdc": collateral_usable,
@@ -329,6 +374,19 @@ class LocalDynamicThreeLegClobGateway:
 
     def lookup_order(self, lookup: Mapping[str, Any]) -> dict[str, Any]:
         return self._post("/reconcile-order", {"idempotency_key": lookup.get("idempotency_key")})
+
+    def cancel_order(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Cancel one exact order identity; never broad-cancel or retry."""
+
+        return self._post("/cancel-order", {
+            "order_id": request.get("order_id") or request.get("orderID"),
+            "idempotency_key": request.get("idempotency_key"),
+        })
+
+    def lookup_exchange_order(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        return self._post("/lookup-exchange-order", {
+            "order_id": request.get("order_id") or request.get("orderID") or request.get("exchange_order_id"),
+        })
 
 
 __all__ = [

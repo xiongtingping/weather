@@ -102,8 +102,8 @@ def test_trimmed_former_top_counts_toward_current_second_without_duplicate_buy()
     assert any(row["bucket"] == "33C" and row["strategy_leg"] == "top_yes_wave" for row in result["buy_candidates"])
 
 
-def test_second_entry_promoted_to_top_must_exit_before_top_wave_reentry() -> None:
-    position = _position("33C", "YES", notional=5.0, size=10.0, cost=0.5)
+def test_second_entry_promoted_to_top_is_retained_and_topped_up_without_churn() -> None:
+    position = _position("33C", "YES", notional=4.99, size=9.98, cost=0.5)
     position["strategy_leg"] = "second_yes"
     result = build_dynamic_three_leg_transition_plan(
         desired_trading_plan=_plan(top="33C", second="34C"),
@@ -111,10 +111,35 @@ def test_second_entry_promoted_to_top_must_exit_before_top_wave_reentry() -> Non
         decision_as_of="2026-07-13T00:00:00.500Z",
     )
 
-    assert result["phase"] == "SELL_OLD"
-    assert result["sell_intents"][0]["full_exit"] is True
-    assert result["sell_intents"][0]["strategy_leg"] == "second_yes"
-    assert result["buy_candidates"] == []
+    assert result["phase"] == "BUY_NEW"
+    assert result["sell_intents"] == []
+    promoted = next(row for row in result["buy_candidates"] if row["strategy_leg"] == "top_yes_wave")
+    assert promoted["bucket"] == "33C"
+    assert promoted["notional"] == 15.01
+    assert promoted["target_notional_usdc"] == 20.0
+
+
+def test_malformed_role_side_or_notional_cannot_reach_execution_transition() -> None:
+    over_cap = _plan()
+    over_cap["candidates"][1]["notional"] = 5.0
+    wrong_side = _plan()
+    wrong_side["candidates"][2]["side"] = "YES"
+
+    over_cap_result = build_dynamic_three_leg_transition_plan(
+        desired_trading_plan=over_cap,
+        position_snapshot=_snapshot(),
+        decision_as_of="2026-07-13T00:00:00.500Z",
+    )
+    wrong_side_result = build_dynamic_three_leg_transition_plan(
+        desired_trading_plan=wrong_side,
+        position_snapshot=_snapshot(),
+        decision_as_of="2026-07-13T00:00:00.500Z",
+    )
+
+    assert over_cap_result["phase"] == "BLOCKED"
+    assert "dynamic_transition_desired_candidate_notional_cap_exceeded" in over_cap_result["block_reasons"]
+    assert wrong_side_result["phase"] == "BLOCKED"
+    assert "dynamic_transition_desired_candidate_side_role_mismatch" in wrong_side_result["block_reasons"]
 
 
 def test_continuing_position_only_buys_remaining_allocation() -> None:

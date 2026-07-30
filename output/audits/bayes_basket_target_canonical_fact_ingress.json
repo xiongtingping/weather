@@ -1,0 +1,12 @@
+{
+  "accepted_observation_count": 14773,
+  "calls_order_gateway": false,
+  "inserted_count": 14773,
+  "places_orders": false,
+  "receipt_sha256": "be60efdd07995a808aff502e8e624abe6d41d8d912f950bf1af2ec6902939d98",
+  "replayed_count": 0,
+  "schema": "bayes_basket_target_canonical_fact_ingress_v1",
+  "state": "COMMITTED",
+  "writes_shared_live_database": false,
+  "writes_target_database": true
+}

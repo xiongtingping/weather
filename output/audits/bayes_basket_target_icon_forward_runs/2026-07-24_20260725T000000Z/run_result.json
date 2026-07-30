@@ -1,0 +1,65 @@
+{
+  "as_of_utc": "2026-07-25T02:02:00Z",
+  "blocked_count": 4,
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_service": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "promotion_allowed": false,
+    "prospective_only": true,
+    "protected_production_line_touched": false,
+    "target_only": true,
+    "writes_market_state": false,
+    "writes_probability_state": false,
+    "writes_production_db": false,
+    "writes_target_database": false
+  },
+  "capture_count": 4,
+  "capture_results": [
+    {
+      "forecast_hour": 0,
+      "reason_codes": [
+        "HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T00:00:00Z"
+    },
+    {
+      "forecast_hour": 1,
+      "reason_codes": [
+        "HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T01:00:00Z"
+    },
+    {
+      "forecast_hour": 2,
+      "reason_codes": [
+        "HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T02:00:00Z"
+    },
+    {
+      "forecast_hour": 3,
+      "reason_codes": [
+        "HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T03:00:00Z"
+    }
+  ],
+  "captured_count": 0,
+  "fanout": null,
+  "output_root": "/Users/xiong/weather/output/audits/bayes_basket_target_icon_forward_runs/2026-07-24_20260725T000000Z",
+  "plan_sha256": "b43465004706e89b46300b62f372d530347abb85c5aa15844837d90941d7ab0c",
+  "receipt_sha256": "59844df435359e92f373459dc52cae8c2d65c1765863daf743601466caa993a3",
+  "run_initialization_utc": "2026-07-25T00:00:00Z",
+  "schema": "bayes_basket_target_icon_forward_capture_scheduler_v1",
+  "target_local_date": "2026-07-24"
+}

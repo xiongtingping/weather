@@ -69,8 +69,8 @@ AMSC 日终独立形成 final X；弱模型使用“当时预测版本 + final X
 
 交易只消费 committed RealizationState：动态主 YES（当前最高后验、20 USDC、0.90 波段退出）、动态次 YES（当前次高、预计峰值前最后 30 分钟、严格小于 5 USDC、执行常量 4.99 USDC、吃结算）和联合物理证据经 approved bridge 排除的 NO（100 USDC）。生产 runtime 永久禁止 EV、Edge、LCB、repricing、stop-loss 和 trail-stop gate。
 
-两阶段动态三腿 schema 已安装，但 resident persistent disabled、未加载，六个 production/live 开关为 0。只有 probability identity、approved bridge、accepted strategy activation、无 unresolved intent、gateway-attested `T1→T5≤3s` 与 signal-to-order safety 全部闭合，`trade_strategy_loop.live_ready` 才能为真。
+两阶段动态三腿 schema 已安装，但 resident persistent disabled、未加载，六个 production/live 开关为 0。只有 probability identity、approved bridge、accepted strategy activation、无 unresolved intent 与 signal-to-order 硬截止安全全部闭合，`trade_strategy_loop.live_ready` 才能为真。gateway-attested `T1→T5≤3s` 是首笔真实 POST 后的持续验收证据，不得与初次 live activation 互锁。
 
 ## 部署与变更
 
-首次 v5 patch cutover 已完成，禁止二次执行。任何受 runtime manifest 覆盖的代码或 artifact 变化都必须通过 `refresh_reported_x_runtime_manifest_epoch.sh` 在 writer-quiescent 窗口创建新 orderless activation/P0 generation、全 canonical replay、零订单验收并验证 readiness。文档、测试或运维口头确认不能热换 deployed identity。
+旧 v5 patch/refresh cutover 已退役，禁止二次执行。任何受 runtime manifest 覆盖的代码或 artifact 变化都必须通过当前唯一入口 `cutover_v6_probability_and_soft_market_projection.sh` 在 writer-quiescent 窗口创建新 orderless activation/P0 generation、全 canonical replay、零订单验收并验证 readiness。该入口只允许本机 APFS CoW 回滚阶段；外置盘仅是可丢弃冷归档，缺失、离线、变慢或失败均不得影响 AMSC/METAR/SPECI 采集、SSOT、readiness、切换或恢复。文档、测试或运维口头确认不能热换 deployed identity。

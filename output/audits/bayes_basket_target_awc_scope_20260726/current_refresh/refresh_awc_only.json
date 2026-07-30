@@ -1,0 +1,114 @@
+{
+  "as_of_utc": "2026-07-25T19:55:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "reads_shared_live_database": true,
+    "restarts_services": false,
+    "shared_live_read_mode": "sqlite_mode_ro_query_only",
+    "writes_shared_live_database": false,
+    "writes_target_database": false
+  },
+  "receipt_sha256": "10a916a7d34693ab918a5e15730e644678cac917baad0471bdd3f8bed2d7f242",
+  "schema": "bayes_basket_target_evidence_refresh_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "amsc"
+    ],
+    "included_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS"
+    ],
+    "mode": "allowlist"
+  },
+  "stages": {
+    "calibration": {
+      "calibration_artifacts": 0,
+      "ensemble_artifacts": 0,
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/current_refresh/calibration_awc_only.json",
+      "promotion_allowed": false,
+      "receipt_sha256": "a0c8599c2b9c2f878dd50fdc55d009537e777e33b13d7701da9ebc4a687a877f",
+      "schema": "bayes_basket_target_calibration_evidence_v1"
+    },
+    "canonical": {
+      "accepted_truth_count": 134,
+      "historical_materialization": null,
+      "observation_count": 5336,
+      "quarantined_truth_count": 47,
+      "receipt_sha256": "71a8f1446ef72224462ec71651d7e9d99e07e657da29afa98b73ef81d539c438",
+      "state": "EXPORTED",
+      "used_path": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/current_refresh/canonical_awc_only.json"
+    },
+    "et_history": {
+      "blocker_count": 0,
+      "calls_order_gateway": false,
+      "excluded_non_closed_event_dates": [],
+      "input_counts": {
+        "accepted_model_rows": 5688,
+        "blocked_model_rows": 0,
+        "coverage_gap_count": 396,
+        "fatal_truth_rows": 0,
+        "joined_station_days": 0,
+        "model_rows": 5688,
+        "pending_event_days": 36,
+        "quarantined_truth_rows": 1595,
+        "truth_day_rows": 150,
+        "truth_observation_rows": 5336
+      },
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/current_refresh/et_history_awc_only.json",
+      "pending_event_day_count": 36,
+      "promotion_allowed": false,
+      "receipt_sha256": "286dd2cdd9e216407614cb55dc8d38c7d3221382d0fbdffca2e6e2acebe5f6a4",
+      "schema": "bayes_basket_target_et_history_evidence_v1",
+      "state": "BLOCKED_EVIDENCE",
+      "writes_target_db": false
+    },
+    "readiness": {
+      "blockers": [
+        "official_ws_manifest_missing",
+        "target_materialized_inputs_incomplete"
+      ],
+      "state": "blocked"
+    },
+    "release": {
+      "manifest_sha256": "06595e0920e8cfbc088d3e897c97511e8fc5ea93534c90d6c2526ac4b95bc996",
+      "release_state": "BLOCKED_NOT_RELEASE"
+    }
+  },
+  "state": "BLOCKED_EVIDENCE"
+}

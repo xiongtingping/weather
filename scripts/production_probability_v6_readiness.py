@@ -18,6 +18,12 @@ from physical_state_bayes_v6.artifact_contracts import (
     validate_transition_artifact,
 )
 from production_probability_v6_activation_contract import validate_v6_activation
+from production_probability_v6_activation_contract import IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+from identifiable_physical_state_bayes.core import (
+    validate_observation_artifact as validate_physical_observation_artifact,
+    validate_state_model_artifact,
+)
+from identifiable_physical_state_bayes.reporting import validate_reporting_operator_artifact
 from production_probability_v6_runtime_manifest import (
     audit_v6_runtime_manifest_dependency_closure,
     v6_runtime_manifest_sha256,
@@ -115,16 +121,35 @@ def audit(
             )
         except (OSError, ValueError, json.JSONDecodeError):
             blockers.append("v6_candidate_activation_invalid")
-    if activation_value and transition_value and (
-        activation_value.get("transition_artifact_sha256")
-        != transition_value.get("artifact_sha256")
-    ):
-        blockers.append("v6_transition_artifact_activation_mismatch")
-    if activation_value and observation_value and (
-        activation_value.get("observation_artifact_sha256")
-        != observation_value.get("artifact_sha256")
-    ):
-        blockers.append("v6_observation_artifact_activation_mismatch")
+    identifiable_physical = bool(
+        activation_value
+        and activation_value.get("composer_schema") == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+    )
+    if identifiable_physical:
+        physical_artifacts = (
+            (root / "config/artifacts/identifiable_physical_state_model_v1.json", validate_state_model_artifact, "physical_state_model_artifact_sha256"),
+            (root / "config/artifacts/identifiable_physical_observation_v1.json", validate_physical_observation_artifact, "physical_observation_artifact_sha256"),
+            (root / "config/artifacts/amsc_frozen_reporting_operator_v1.json", validate_reporting_operator_artifact, "physical_reporting_operator_sha256"),
+        )
+        for artifact_path, validator, activation_field in physical_artifacts:
+            try:
+                artifact = validator(json.loads(artifact_path.read_text(encoding="utf-8")))
+            except (OSError, ValueError, json.JSONDecodeError):
+                blockers.append(f"v6_{activation_field}_invalid")
+                continue
+            if activation_value.get(activation_field) != artifact.get("artifact_sha256"):
+                blockers.append(f"v6_{activation_field}_activation_mismatch")
+    else:
+        if activation_value and transition_value and (
+            activation_value.get("transition_artifact_sha256")
+            != transition_value.get("artifact_sha256")
+        ):
+            blockers.append("v6_transition_artifact_activation_mismatch")
+        if activation_value and observation_value and (
+            activation_value.get("observation_artifact_sha256")
+            != observation_value.get("artifact_sha256")
+        ):
+            blockers.append("v6_observation_artifact_activation_mismatch")
     if activation_value and activation_value.get("runtime_manifest_sha256") != v6_runtime_manifest_sha256(root):
         blockers.append("v6_runtime_manifest_activation_mismatch")
     try:
@@ -154,7 +179,7 @@ def audit(
         except (OSError, ValueError, json.JSONDecodeError):
             blockers.append(invalid_reason)
             continue
-        if (
+        identity_mismatch = (
             value.get("ok") is not True
             or value.get("places_orders") is not False
             or not activation_value
@@ -162,11 +187,24 @@ def audit(
             != activation_value.get("activation_contract_sha256")
             or value.get("runtime_manifest_sha256")
             != activation_value.get("runtime_manifest_sha256")
-            or value.get("transition_artifact_sha256")
-            != activation_value.get("transition_artifact_sha256")
-            or value.get("observation_artifact_sha256")
-            != activation_value.get("observation_artifact_sha256")
-        ):
+        )
+        if not identity_mismatch and identifiable_physical:
+            identity_mismatch = any(
+                value.get(field) != activation_value.get(field)
+                for field in (
+                    "physical_state_model_artifact_sha256",
+                    "physical_observation_artifact_sha256",
+                    "physical_reporting_operator_sha256",
+                )
+            )
+        elif not identity_mismatch:
+            identity_mismatch = (
+                value.get("transition_artifact_sha256")
+                != activation_value.get("transition_artifact_sha256")
+                or value.get("observation_artifact_sha256")
+                != activation_value.get("observation_artifact_sha256")
+            )
+        if identity_mismatch:
             blockers.append(invalid_reason)
     production_v6_active = bool(
         active_activation_value

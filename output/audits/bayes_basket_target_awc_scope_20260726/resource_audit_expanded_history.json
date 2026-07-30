@@ -1,0 +1,35 @@
+{
+  "cleanup_performed": false,
+  "external_archive_dependency": false,
+  "invalid_receipt_or_stat_errors": [],
+  "production_dependency": false,
+  "provider_rows": [],
+  "receipt_reference_count": 22206,
+  "resource_budget": {
+    "database_bytes": 52019200,
+    "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "free_bytes": 44401524736,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 805306368,
+      "max_research_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 230391808,
+    "raw_bytes": 16422187,
+    "raw_file_count": 4,
+    "raw_root": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/historical_backfill",
+    "shm_bytes": 0,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 0
+  },
+  "root": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/historical_backfill",
+  "schema": "bayes_basket_target_resource_audit_v1",
+  "stale_temporary_files": [],
+  "state": "AUDIT_ONLY",
+  "unreferenced_raw": []
+}

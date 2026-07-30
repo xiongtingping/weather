@@ -1,4 +1,21 @@
+import hashlib
+import json
+
 from strong_posterior_three_leg_strategy import build_strong_posterior_three_leg_strategy
+
+
+def _certificate(bucket):
+    core = {
+        "state": "valid", "bucket": bucket,
+        "resolution_contract_id": "resolution-1", "posterior_checkpoint_id": "checkpoint-1",
+        "bridge_artifact_sha256": "a" * 64, "target_contract_sha256": "b" * 64,
+        "physical_distribution_sha256": "c" * 64, "physical_hard_support_sha256": "d" * 64,
+        "hard_residual_support_authority_sha256": "e" * 64,
+        "physical_hard_support_c": [31.0], "hard_residual_support_c": [0.0],
+        "settlement_support_witness_c": [31.0], "full_support_exclusion_verified": True,
+    }
+    raw = json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return {**core, "certificate_sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest()}
 
 
 def _evidence():
@@ -18,6 +35,8 @@ def _evidence():
                 "composer_joint_strong_model": True,
                 "confidence": 1.0,
                 "settlement_exclusion_certificate_state": "valid",
+                "full_support_exclusion_verified": True,
+                "settlement_exclusion_certificate": _certificate("30°C"),
             }
         ],
     }
@@ -48,7 +67,7 @@ def test_missing_physical_evidence_or_settlement_window_fails_closed():
     assert "three_leg_composer_strong_physical_evidence_invalid" in result["block_reasons"]
 
 
-def test_unreachable_upper_bucket_requires_joint_composer_exclusion() -> None:
+def test_soft_unreachable_upper_bucket_never_authorizes_no_without_hard_certificate() -> None:
     evidence = {
         "joint_feature_model_applied": True,
         "top_bucket": "32°C",
@@ -75,9 +94,9 @@ def test_unreachable_upper_bucket_requires_joint_composer_exclusion() -> None:
     )
     no_leg = result["legs"][2]
     assert no_leg["strategy_leg"] == "strongly_excluded_no"
-    assert no_leg["bucket"] == "34°C"
-    assert no_leg["action"] == "BUY"
-    assert no_leg["physical_exclusion_kind"] == "remaining_warming_unattainable"
+    assert no_leg["bucket"] == ""
+    assert no_leg["action"] == "HOLD"
+    assert no_leg["block_reason"] == "strongly_excluded_no_bucket_missing"
 
 
 def test_no_leg_waits_until_settlement_window_and_never_rebuilds_x_to_b() -> None:

@@ -8,6 +8,7 @@ surface consumed by the dynamic three-leg strategy.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from typing import Any, Mapping
 
@@ -64,6 +65,43 @@ def _blocked(*reasons: str) -> dict[str, Any]:
         "creates_strategy_signal": False,
         "read_only": True,
     }
+
+
+def _canonical_sha(value: Mapping[str, Any], *, omit: str = "") -> str:
+    payload = {key: item for key, item in value.items() if key != omit}
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _valid_hard_exclusion_certificate(
+    certificate: Mapping[str, Any], *, bucket: str
+) -> bool:
+    cert = _mapping(certificate)
+    required_hashes = (
+        "bridge_artifact_sha256",
+        "target_contract_sha256",
+        "physical_distribution_sha256",
+        "physical_hard_support_sha256",
+        "hard_residual_support_authority_sha256",
+    )
+    return bool(
+        _text(cert.get("state")) == "valid"
+        and cert.get("full_support_exclusion_verified") is True
+        and _text(cert.get("bucket")) == bucket
+        and _text(cert.get("resolution_contract_id"))
+        and _text(cert.get("posterior_checkpoint_id"))
+        and all(len(_text(cert.get(field))) == 64 for field in required_hashes)
+        and isinstance(cert.get("physical_hard_support_c"), list)
+        and bool(cert.get("physical_hard_support_c"))
+        and isinstance(cert.get("hard_residual_support_c"), list)
+        and bool(cert.get("hard_residual_support_c"))
+        and isinstance(cert.get("settlement_support_witness_c"), list)
+        and bool(cert.get("settlement_support_witness_c"))
+        and len(_text(cert.get("certificate_sha256"))) == 64
+        and _text(cert.get("certificate_sha256"))
+        == _canonical_sha(cert, omit="certificate_sha256")
+    )
 
 
 def _probabilities(
@@ -238,11 +276,10 @@ def build_v6_strong_physical_evidence_projection(
         ratio = _log_ratio(posterior[label], previous[label])
         certificate = _mapping(certificates.get(label))
         hard_excluded = bool(
-            posterior[label] <= EPSILON
-            and _text(certificate.get("state")) == "valid"
+            _valid_hard_exclusion_certificate(certificate, bucket=label)
             and source_id == AMSC_SOURCE_ID
         )
-        soft_excluded = bool(
+        soft_unreachable = bool(
             not hard_excluded
             and posterior[label] <= float(exclusion_ceiling) + EPSILON
             and ratio <= float(exclusion_ratio_ceiling)
@@ -252,8 +289,6 @@ def build_v6_strong_physical_evidence_projection(
         kind = (
             "observed_daily_high_exceeded"
             if hard_excluded
-            else "remaining_warming_unattainable"
-            if soft_excluded
             else ""
         )
         joint_support = bool(
@@ -268,8 +303,9 @@ def build_v6_strong_physical_evidence_projection(
             "joint_strong_support": joint_support,
             "excluded": bool(kind),
             "exclusion_kind": kind,
-            "exclusion_confidence": 1.0 if hard_excluded else 1.0 - posterior[label] if soft_excluded else None,
+            "exclusion_confidence": 1.0 if hard_excluded else None,
             "settlement_exclusion_certificate": dict(certificate) if hard_excluded else {},
+            "soft_unreachability_diagnostic": soft_unreachable,
         }
         if kind:
             exclusions.append(
@@ -282,8 +318,10 @@ def build_v6_strong_physical_evidence_projection(
                     "physical_support": dict(physical_exclusion_support),
                     "physical_support_count": physical_exclusion_support_count,
                     "settlement_exclusion_certificate_state": (
-                        "valid" if hard_excluded else "not_required_for_soft_physical_exclusion"
+                        "valid"
                     ),
+                    "settlement_exclusion_certificate": dict(certificate),
+                    "full_support_exclusion_verified": True,
                 }
             )
     parsed = _mapping(event.get("parsed_observation"))
@@ -336,6 +374,7 @@ def build_v6_strong_physical_evidence_projection(
             "market_quote_not_consumed": True,
             "physical_x_not_compared_directly_to_market_bucket_b": True,
             "hard_market_bucket_exclusion_certificate_required": True,
+            "soft_unreachability_never_authorizes_no": True,
             "old_v5_feature_trace_not_consumed": True,
         },
         "read_only": True,

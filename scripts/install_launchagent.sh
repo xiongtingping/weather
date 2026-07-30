@@ -17,16 +17,8 @@ fi
 install -d "$DST_DIR" "$ROOT/data" "$ROOT/data/logs"
 
 ALL_PLISTS=(
-  com.xiong.weather.ui.plist
   com.weather.market_ws.plist
-  com.weather.market_refresh_1m.plist
-  com.weather.model_scan.plist
-  com.weather.daily_scan.plist
   com.weather.auto_trade_entry_1m.plist
-  com.weather.trade_engine.plist
-  com.weather.task_queue_worker.plist
-  com.weather.q_calibrated_writeback_hourly.plist
-  com.weather.feedback_loop_hourly.plist
   com.weather.daily_trade_sms_summary.plist
   com.weather.archive_db_governance_offpeak.plist
   com.weather.archive_db_auto_guard.plist
@@ -57,6 +49,16 @@ LEGACY_PLISTS=(
   com.weather.auto_trade_worker.plist
   com.weather.trade_sync_loop.plist
   com.weather.auto_trade_watcher.plist
+  com.weather.daily_scan.plist
+  com.weather.dynamic_three_leg_execution.plist
+  com.weather.feedback_loop_hourly.plist
+  com.weather.market_refresh_1m.plist
+  com.weather.model_scan.plist
+  com.weather.q_calibrated_writeback_hourly.plist
+  com.weather.target_realization_worker.plist
+  com.weather.task_queue_worker.plist
+  com.weather.trade_engine.plist
+  com.xiong.weather.ui.plist
 )
 
 /usr/bin/python3 - "$USER_NAME" "$GROUP_NAME" "$ROOT" "$DST_DIR" "${PLISTS[@]}" >"$ROOT/data/.launchd_entries.tmp" <<'PY'

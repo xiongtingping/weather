@@ -41,6 +41,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--curve-source-root", type=Path, default=ROOT / "data" / "runtime" / "official_nwp_curve_sources_v2")
     parser.add_argument("--status-path", type=Path)
     parser.add_argument("--timeout-sec", type=float, default=45.0)
+    parser.add_argument("--max-point-workers", type=int, default=1)
     args = parser.parse_args(argv)
     result = collect_official_daily_curve(
         contract=load_daily_curve_run_contract(args.contract.expanduser().resolve()),
@@ -50,6 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         curve_source_root=args.curve_source_root,
         catalog_path=args.catalog,
         timeout_sec=args.timeout_sec,
+        max_point_workers=max(1, min(4, args.max_point_workers)),
         execute=args.execute,
     )
     result["attempted_at"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")

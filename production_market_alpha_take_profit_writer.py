@@ -241,16 +241,37 @@ def commit_market_alpha_take_profit_candidate(
              FROM dynamic_three_leg_position_lots WHERE position_lot_id=?""",
         (_text(candidate.get("position_lot_id")),),
     ).fetchone()
+    entry_leg = _text(candidate.get("entry_strategy_leg"))
+    target_source = _text(candidate.get("take_profit_price_source"))
+    stored_target = float(current_lot[7]) if current_lot is not None and current_lot[7] is not None else None
+    dynamic_role_target_valid = bool(
+        current_lot is not None
+        and (
+            (
+                entry_leg == "top_yes_wave"
+                and _text(current_lot[4]) == "top_yes_wave"
+                and stored_target is not None
+                and abs(stored_target - 0.90) <= 1e-12
+                and target_source == "entry_frozen_top_yes_wave"
+            )
+            or (
+                entry_leg == "second_yes"
+                and _text(current_lot[4]) == "second_yes"
+                and stored_target is None
+                and target_source == "promoted_current_top_yes_policy"
+            )
+        )
+    )
     if not (
         current_lot is not None
         and _text(current_lot[0]) == _text(candidate.get("position_lot_version"))
         and _text(current_lot[1]) == _text(candidate.get("position_bucket"))
         and _text(current_lot[2]) == "YES"
         and _text(current_lot[3]) == _text(candidate.get("token_id"))
-        and _text(current_lot[4]) == "top_yes_wave"
+        and dynamic_role_target_valid
         and _text(current_lot[5]) == strategy_artifact
         and float(current_lot[6] or 0.0) + 1e-9 >= float(candidate.get("requested_sell_size") or 0.0)
-        and abs(float(current_lot[7] or 0.0) - 0.90) <= 1e-12
+        and abs(float(candidate.get("frozen_take_profit_price") or 0.0) - 0.90) <= 1e-12
         and _text(current_lot[8]) == "open"
     ):
         return _blocked("market_alpha_position_lot_ssot_stale", candidate=candidate)

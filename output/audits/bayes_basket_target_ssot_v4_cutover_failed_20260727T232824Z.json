@@ -1,0 +1,16 @@
+{
+  "authorizes_order": false,
+  "calls_order_gateway": false,
+  "committed_stages": {
+    "forward_store_initialized": false,
+    "hard_no_timezone_migrated": false,
+    "no_live_activation_applied": false,
+    "ssot_schema_migrated": false
+  },
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "rollback_state": "not_required",
+  "schema": "bayes_basket_target_ssot_v4_cutover_failure_v1",
+  "state": "aborted_before_writer_stop"
+}

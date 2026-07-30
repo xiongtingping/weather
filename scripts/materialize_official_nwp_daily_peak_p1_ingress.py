@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from official_nwp_daily_peak_strict_asof_runtime import build_official_nwp_daily_peak_tier_a_proposal  # noqa: E402
+from archive_db_write_queue import connect_archive_db_rw  # noqa: E402
 from strict_asof_forecast_p1_ingress_writer import (  # noqa: E402
     StrictForecastP1IngressError,
     persist_tier_a_forecast_p1_proposal,
@@ -49,6 +50,35 @@ def _read_json(path: Path) -> Mapping[str, Any] | None:
 
 def _revision_paths(root: Path) -> list[Path]:
     return sorted(path for path in root.glob("*/daily_peak_revisions/*.json") if path.is_file())
+
+
+def _summary(result: Mapping[str, Any]) -> dict[str, Any]:
+    outcomes = [row for row in result.get("outcomes") or [] if isinstance(row, Mapping)]
+    eligible = [row for row in result.get("eligible_proposals") or [] if isinstance(row, Mapping)]
+    quarantined = [row for row in result.get("quarantined_revisions") or [] if isinstance(row, Mapping)]
+    state_counts: dict[str, int] = {}
+    for row in outcomes:
+        state = _text(row.get("state")) or "unknown"
+        state_counts[state] = state_counts.get(state, 0) + 1
+    return {
+        "schema": SCHEMA_VERSION,
+        "ok": result.get("ok") is True,
+        "state": _text(result.get("state")),
+        "apply_authorized": result.get("apply_authorized") is True,
+        "eligible_count": len(eligible),
+        "quarantined_count": len(quarantined),
+        "outcome_state_counts": state_counts,
+        "newly_appended": [
+            {
+                "provider_id": _text(row.get("provider_id")),
+                "event_date": _text(row.get("event_date"))[:10],
+                "state": _text(row.get("state")),
+            }
+            for row in outcomes
+            if _text(row.get("state")) == "appended"
+        ],
+        "boundary": {"writes_posterior": False, "places_orders": False},
+    }
 
 
 def plan_official_nwp_daily_peak_p1_materialization(
@@ -133,10 +163,49 @@ def materialize_official_nwp_daily_peak_p1(
     outcomes: list[dict[str, Any]] = []
     for item in result["eligible_proposals"]:
         try:
-            with sqlite3.connect(db.expanduser().resolve(), timeout=0.25) as conn:
+            with connect_archive_db_rw(
+                db.expanduser().resolve(),
+                owner="official_nwp_daily_peak_p1_materialization",
+                timeout_sec=2.0,
+                busy_timeout_ms=1000,
+                queue_wait_sec=2.0,
+            ) as conn:
+                observation = item["proposal"].get("source_observation") or {}
+                existing = conn.execute(
+                    "SELECT source_event_id,source_observation_id FROM source_observations "
+                    "WHERE source_event_id=? OR source_observation_id=?",
+                    (str(observation.get("source_event_id") or ""), str(observation.get("source_observation_id") or "")),
+                ).fetchall()
+                if len(existing) == 1 and tuple(existing[0]) == (
+                    str(observation.get("source_event_id") or ""),
+                    str(observation.get("source_observation_id") or ""),
+                ):
+                    outcomes.append({
+                        "revision_path": item["revision_path"],
+                        "provider_id": item["provider_id"],
+                        "event_date": item["event_date"],
+                        "state": "already_materialized_immutable",
+                        "existing_p1_identity_authoritative": True,
+                    })
+                    continue
+                if existing:
+                    outcomes.append({
+                        "revision_path": item["revision_path"],
+                        "provider_id": item["provider_id"],
+                        "event_date": item["event_date"],
+                        "state": "quarantined_existing_p1_identity_collision",
+                        "block_reasons": ["existing_p1_identity_bound_to_different_immutable_semantics"],
+                    })
+                    continue
                 conn.execute("BEGIN IMMEDIATE")
-                appended = persist_tier_a_forecast_p1_proposal(conn, item["proposal"])
-                conn.commit()
+                try:
+                    appended = persist_tier_a_forecast_p1_proposal(
+                        conn, item["proposal"]
+                    )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
             outcomes.append({
                 "revision_path": item["revision_path"],
                 "provider_id": item["provider_id"],
@@ -154,7 +223,7 @@ def materialize_official_nwp_daily_peak_p1(
             })
     result["apply_authorized"] = True
     result["outcomes"] = outcomes
-    result["state"] = "applied" if any(item["state"] in {"appended", "idempotent"} for item in outcomes) else "pending_or_blocked"
+    result["state"] = "applied" if any(item["state"] in {"appended", "idempotent", "already_materialized_immutable"} for item in outcomes) else "pending_or_blocked"
     result["ok"] = not any(item["state"] == "quarantined_p1_append_failure" for item in outcomes)
     return result
 
@@ -166,6 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--station-id", default="ZUUU")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--confirm", default="")
+    parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
     if args.apply and args.confirm != CONFIRMATION_PHRASE:
         print(json.dumps({
@@ -183,7 +253,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         station_id=args.station_id,
         apply=args.apply,
     )
-    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    print(json.dumps(_summary(result) if args.summary else result, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if result.get("ok") is True else 2
 
 

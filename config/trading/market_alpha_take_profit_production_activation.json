@@ -1,11 +1,13 @@
 {
-  "schema": "market_alpha_take_profit_production_activation_v1",
-  "state": "disabled",
-  "strategy_artifact_sha256": "",
-  "cutover_artifact_sha256": "",
+  "activation_contract_sha256": "9d8df1fb31e181cee98fc6aace903da097eae464e82abc692c5d4f528bfcacd4",
+  "cutover_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "frozen_take_profit_price": 0.0,
   "live_decision_write_authorized": false,
   "live_submit_authorized": false,
+  "reason_code": "retired_v5_market_alpha",
   "reason_family": "market_alpha_take_profit",
-  "reason_code": "market_alpha_take_profit_top_yes_wave_completed",
-  "frozen_take_profit_price": 0.9
+  "schema": "market_alpha_take_profit_production_activation_v1",
+  "state": "disabled_superseded_by_target_realization_v6",
+  "strategy_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "superseded_generation": "target_realization_v6"
 }

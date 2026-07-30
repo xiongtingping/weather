@@ -13,10 +13,16 @@ import math
 from datetime import date
 from typing import Any, Mapping, Sequence
 
+from resolution_operational_projection_authority_runtime import (
+    CONTRACT_ID as OPERATIONAL_PROJECTION_AUTHORITY_CONTRACT_ID,
+)
+
 
 SCHEMA_VERSION = "resolution_x_s_bridge_artifact_v1"
 CANDIDATE_STATE = "shadow_candidate_ready"
 PRODUCTION_STATE = "production_approved"
+CALIBRATED_KERNEL_KIND = "calendar_season_shrunk_discrete_residual_pmf_v1"
+OPERATIONAL_BASELINE_KERNEL_KIND = "same_station_sample_free_operational_residual_prior_v1"
 AUTHORITY_CONTRACT_ID = "zuuu_amsc_wunderground_daily_high_v4"
 PHYSICAL_SOURCE_ID = "amsc_zuuu_scheduled_metar_daily_max_v2"
 SETTLEMENT_SOURCE_ID = "wunderground_zuuu_historical_observation_daily_high_final_v3"
@@ -96,7 +102,7 @@ def _pmf(value: Any, *, field: str) -> tuple[dict[int, float], list[str]]:
         output[residual] = parsed
     if not output or abs(sum(output.values()) - 1.0) > 1e-8:
         issues.append(f"{field}_not_normalized")
-    if output and (min(output) < -8 or max(output) > 8):
+    if output and (min(output) < -20 or max(output) > 20):
         issues.append(f"{field}_residual_support_out_of_contract")
     return output, issues
 
@@ -125,11 +131,13 @@ def validate_resolution_bridge_artifact(
         "settlement_source_id": SETTLEMENT_SOURCE_ID,
         "target_type": "amsc_scheduled_regular_metar_reported_daily_max_c",
         "settlement_type": "wunderground_zuuu_historical_observation_daily_max_c",
-        "kernel_kind": "calendar_season_shrunk_discrete_residual_pmf_v1",
     }
     for field, expected in identities.items():
         if _text(artifact.get(field)) != expected:
             issues.append(f"bridge_artifact_{field}_invalid")
+    kernel_kind = _text(artifact.get("kernel_kind"))
+    if kernel_kind not in {CALIBRATED_KERNEL_KIND, OPERATIONAL_BASELINE_KERNEL_KIND}:
+        issues.append("bridge_artifact_kernel_kind_invalid")
     for field in ("authority_contract_sha256", "training_dataset_sha256"):
         if not _sha256(artifact.get(field)):
             issues.append(f"bridge_artifact_{field}_invalid")
@@ -143,18 +151,57 @@ def validate_resolution_bridge_artifact(
         _season_pmf, season_issues = _pmf(raw, field=f"seasonal_residual_pmf_{season}")
         issues.extend(season_issues)
     coverage = _mapping(artifact.get("coverage"))
-    if int(coverage.get("distinct_event_days") or 0) < 90:
-        issues.append("bridge_artifact_event_day_coverage_below_minimum")
-    if int(coverage.get("distinct_physical_x_values") or 0) < 12:
-        issues.append("bridge_artifact_physical_x_support_below_minimum")
-    if int(coverage.get("distinct_settlement_s_values") or 0) < 12:
-        issues.append("bridge_artifact_settlement_s_support_below_minimum")
     oos = _mapping(artifact.get("oos_evaluation"))
-    if int(oos.get("evaluated_event_days") or 0) < 18:
-        issues.append("bridge_artifact_oos_event_days_below_minimum")
-    for field in ("mean_log_loss", "mean_absolute_error_c", "mean_crps"):
-        if _finite(oos.get(field)) is None:
-            issues.append(f"bridge_artifact_oos_{field}_invalid")
+    if kernel_kind == CALIBRATED_KERNEL_KIND:
+        if int(coverage.get("distinct_event_days") or 0) < 90:
+            issues.append("bridge_artifact_event_day_coverage_below_minimum")
+        if int(coverage.get("distinct_physical_x_values") or 0) < 12:
+            issues.append("bridge_artifact_physical_x_support_below_minimum")
+        if int(coverage.get("distinct_settlement_s_values") or 0) < 12:
+            issues.append("bridge_artifact_settlement_s_support_below_minimum")
+        if int(oos.get("evaluated_event_days") or 0) < 18:
+            issues.append("bridge_artifact_oos_event_days_below_minimum")
+        for field in ("mean_log_loss", "mean_absolute_error_c", "mean_crps"):
+            if _finite(oos.get(field)) is None:
+                issues.append(f"bridge_artifact_oos_{field}_invalid")
+    elif kernel_kind == OPERATIONAL_BASELINE_KERNEL_KIND:
+        baseline = _mapping(artifact.get("operational_baseline"))
+        if (
+            _text(artifact.get("operational_projection_authority_contract_id"))
+            != OPERATIONAL_PROJECTION_AUTHORITY_CONTRACT_ID
+            or not _sha256(
+                artifact.get("operational_projection_authority_contract_sha256")
+            )
+        ):
+            issues.append("bridge_artifact_operational_projection_authority_invalid")
+        support = baseline.get("residual_support_c")
+        expected_support = sorted(global_pmf)
+        try:
+            normalized_support = (
+                sorted(int(value) for value in support)
+                if isinstance(support, Sequence)
+                and not isinstance(support, (str, bytes, bytearray))
+                else []
+            )
+        except (TypeError, ValueError):
+            normalized_support = []
+        if (
+            baseline.get("sample_or_oos_required_for_runtime") is not False
+            or baseline.get("calibrated_artifact_replaces_baseline_when_approved") is not True
+            or baseline.get("hard_exclusion_certificates_authorized") is not False
+            or baseline.get("residual_support_is_probabilistic_not_authority_hard_envelope") is not True
+            or _text(baseline.get("construction"))
+            != "same_station_integer_maximum_soft_heavy_tail_prior_v2"
+            or normalized_support != expected_support
+            or expected_support != list(range(-20, 21))
+            or baseline.get("soft_tail_mass_present") is not True
+            or baseline.get("soft_projection_exact_zero_forbidden_without_hard_certificate") is not True
+        ):
+            issues.append("bridge_artifact_operational_baseline_contract_invalid")
+        if seasonal:
+            issues.append("bridge_artifact_operational_baseline_must_not_claim_seasonal_calibration")
+        if _text(oos.get("state")) != "not_required_for_operational_baseline":
+            issues.append("bridge_artifact_operational_baseline_oos_state_invalid")
     if _forbidden_paths(artifact):
         issues.append("bridge_artifact_contains_forbidden_trading_input")
     supplied_sha = _text(artifact.get("artifact_sha256"))
@@ -163,6 +210,11 @@ def validate_resolution_bridge_artifact(
     if require_production:
         if artifact.get("bridge_closed") is not True or artifact.get("validated") is not True:
             issues.append("bridge_artifact_production_closure_invalid")
+        if (
+            artifact.get("production_runtime_eligible") is not True
+            or artifact.get("shadow_only") is not False
+        ):
+            issues.append("bridge_artifact_production_runtime_boundary_invalid")
         if not _text(artifact.get("approval_id")) or not _sha256(artifact.get("approval_receipt_sha256")):
             issues.append("bridge_artifact_approval_lineage_missing")
     else:
@@ -260,6 +312,11 @@ def materialize_closed_resolution_contract(
         "authority_contract_id": AUTHORITY_CONTRACT_ID,
         "authority_contract_sha256": _text(artifact.get("authority_contract_sha256")),
         "rounding_rule": _text(target.get("rounding_rule")),
+        # A fitted or operational PMF support is not a proof that residual
+        # tails are impossible.  Hard NO certificates require a separately
+        # approved authority envelope, which no current bridge artifact has.
+        "hard_exclusion_certificates_authorized": False,
+        "hard_exclusion_certificate_na_reason": "authority_hard_residual_envelope_not_approved",
     }
     return {**core, "resolution_contract_id": f"xsb_{_sha(core)[:24]}"}
 
@@ -267,7 +324,10 @@ def materialize_closed_resolution_contract(
 __all__ = [
     "AUTHORITY_CONTRACT_ID",
     "CANDIDATE_STATE",
+    "CALIBRATED_KERNEL_KIND",
     "PHYSICAL_SOURCE_ID",
+    "OPERATIONAL_BASELINE_KERNEL_KIND",
+    "OPERATIONAL_PROJECTION_AUTHORITY_CONTRACT_ID",
     "PRODUCTION_STATE",
     "ResolutionBridgeArtifactError",
     "SCHEMA_VERSION",

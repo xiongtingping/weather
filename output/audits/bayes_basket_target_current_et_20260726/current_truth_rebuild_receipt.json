@@ -1,0 +1,164 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-26",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "EDDM,EPWA,FACT,LEMD,LTAC,NZWN,RJTT,RKPK"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-26"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-26T12:29:58Z",
+      "event_date": "2026-07-26",
+      "reason": "target_event_day_not_closed_in_et",
+      "state": "open",
+      "target_day_end_utc": "2026-07-27T04:00:00Z",
+      "target_day_start_utc": "2026-07-26T04:00:00Z",
+      "target_timezone": "America/New_York"
+    }
+  ],
+  "evidence_sha256": "8b2fab99cc7a3bb4078f547d172e0d5e97e333aaaa9b8f2c68e2997d57d692ff",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-07-26",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=EDDM%2CEPWA%2CFACT%2CLEMD%2CLTAC%2CNZWN%2CRJTT%2CRKPK&format=json&date=20260727_0400&hours=24",
+          "stations": [
+            "EDDM",
+            "EPWA",
+            "FACT",
+            "LEMD",
+            "LTAC",
+            "NZWN",
+            "RJTT",
+            "RKPK"
+          ]
+        },
+        {
+          "event_date": "2026-07-26",
+          "response_sha256": "eda2c01ca54fd02e3879a4cf2a202720891ad51736898d9c6d1b8b60567edefe",
+          "returned_rows": 55,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI%2CWMKK%2CWSSS&format=json&date=20260727_0400&hours=24",
+          "stations": [
+            "RKSI",
+            "WMKK",
+            "WSSS"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-07-26",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "EDDM,EPWA,FACT,LEMD,LTAC,NZWN,RJTT,RKPK"
+        }
+      ],
+      "query_count": 2,
+      "reference_only": false,
+      "returned": 55,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "bounded_doh_connect_to",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": false,
+        "connect_to": [
+          "aviationweather.gov:443:150.171.110.193:443"
+        ],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-26T12:29:58Z",
+  "observation_count": 55,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_current_et_20260726/current_canonical_observation_evidence.json",
+  "pending_event_dates": [
+    "2026-07-26"
+  ],
+  "raw_root": "/Users/xiong/weather/output/audits/bayes_basket_target_current_et_20260726/current_truth_raw",
+  "receipt_sha256": "8d488edf865209ff4b17887dc0f855bf3943a551af84b582611073e495fb8279",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_current_et_20260726/current_reference_evidence.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 55
+  },
+  "state": "PARTIAL_PENDING_ET_CLOSE",
+  "station_day_count": 3,
+  "station_day_keys": [
+    "RKSI|2026-07-26",
+    "WMKK|2026-07-26",
+    "WSSS|2026-07-26"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

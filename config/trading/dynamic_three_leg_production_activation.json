@@ -1,9 +1,11 @@
 {
-  "schema": "dynamic_three_leg_production_activation_v1",
-  "state": "disabled",
-  "strategy_artifact_sha256": "",
-  "cutover_artifact_sha256": "",
-  "risk_reservation_write_authorized": false,
+  "activation_contract_sha256": "8af14f77a1eee78674f0dea683b8a2d80a0887f2fc949074f893cfa7854e6da0",
+  "cutover_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "live_decision_write_authorized": false,
-  "live_submit_authorized": false
+  "live_submit_authorized": false,
+  "risk_reservation_write_authorized": false,
+  "schema": "dynamic_three_leg_production_activation_v1",
+  "state": "disabled_superseded_by_target_realization_v6",
+  "strategy_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "superseded_generation": "target_realization_v6"
 }

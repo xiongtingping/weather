@@ -80,3 +80,42 @@ def test_current_architecture_cannot_reclaim_retired_joint_composer(tmp_path: Pa
         "authority_check_failed:current_architecture_does_not_claim_retired_joint_composer"
         in result["blockers"]
     )
+
+
+def test_execution_schema_runbook_cannot_restore_retired_probability_cutover(
+    tmp_path: Path,
+) -> None:
+    for relative in (
+        "docs/constitution/SYSTEM_CHARTER.md",
+        "docs/adr/ADR-0003-PRODUCTION-SUCCESSOR-V6-PRE-EVENT-STATE-SPACE-BAYES.md",
+        "docs/adr/ADR-0002-TARGET-ARCHITECTURE-SHADOW-AUTHORITY.md",
+        "docs/adr/ADR-0001-PRODUCTION-PROBABILITY-MODEL-IDENTITY.md",
+        "docs/architecture/TARGET_ARCHITECTURE_V2.md",
+        "docs/architecture/CURRENT_ARCHITECTURE.md",
+        "docs/runbooks/REPORTED_X_PROBABILITY_CUTOVER.md",
+        "docs/runbooks/PHYSICAL_STATE_BAYES_V6_PRODUCTION_CUTOVER.md",
+        "docs/runbooks/SEQUENTIAL_BAYES_PRODUCTION_CUTOVER.md",
+        "docs/runbooks/V31_ONLY_DEPLOYMENT_ACCEPTANCE.md",
+        "docs/runbooks/DYNAMIC_POSITION_MARKET_ALPHA_SCHEMA_CUTOVER.md",
+    ):
+        source = ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    execution = tmp_path / "docs/runbooks/DYNAMIC_POSITION_MARKET_ALPHA_SCHEMA_CUTOVER.md"
+    execution.write_text(
+        execution.read_text(encoding="utf-8").replace(
+            "当前唯一概率切换入口是 `scripts/cutover_v6_probability_and_soft_market_projection.sh`",
+            "旧合并入口可以恢复为概率切换入口",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = audit_probability_document_authority(tmp_path)
+    assert result["ok"] is False
+    assert (
+        "authority_check_failed:execution_schema_runbook_decouples_probability"
+        in result["blockers"]
+    )

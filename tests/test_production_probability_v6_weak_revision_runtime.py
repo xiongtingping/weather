@@ -12,6 +12,7 @@ from production_probability_v6_activation_contract import (
     activation_sha256,
 )
 from production_probability_v6_weak_revision_runtime import compile_v6_weak_revision_candidate
+from physical_state_bayes_v6.scenario_joint import SCENARIO_JOINT_SCHEMA, scenario_joint_sha256
 
 
 def _activation():
@@ -28,7 +29,7 @@ def _activation():
         "v5_fallback_forbidden": True,
         "pre_event_predict_does_not_consume_current_observation": True,
         "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
+        "nwp_hourly_curve_not_reapplied_as_independent_likelihood": True,
         "runtime_manifest_sha256": "1" * 64,
         "transition_artifact_sha256": "2" * 64,
         "observation_artifact_sha256": "3" * 64,
@@ -51,10 +52,20 @@ def _snapshot(snapshot_id, low, high, forcing):
         "likelihood_by_x_json": json.dumps({"34": low, "38": high}),
         "forecast_scenario_paths_sha256": forcing * 64,
         "candidate_scenario_responsibilities_sha256": "9" * 64,
+        "candidate_scenario_responsibilities_json": json.dumps({"rows": [
+            {"continuous_y_c": y, "scenarios": [{"scenario_id": f"{snapshot_id}-scenario", "responsibility": 1.0}]}
+            for y in (34.0, 38.0)
+        ]}),
     }
 
 
 def test_revision_reweights_y_but_preserves_state_conditionals_and_history() -> None:
+    scenario_joint = [
+        {"continuous_y_c": 34.0, "state": "warming", "scenario_id": "old-scenario", "probability": 0.2},
+        {"continuous_y_c": 34.0, "state": "weather_suppressed", "scenario_id": "old-scenario", "probability": 0.2},
+        {"continuous_y_c": 38.0, "state": "warming", "scenario_id": "old-scenario", "probability": 0.3},
+        {"continuous_y_c": 38.0, "state": "weather_suppressed", "scenario_id": "old-scenario", "probability": 0.3},
+    ]
     previous = {
         "checkpoint_probability_schema": CHECKPOINT_SCHEMA,
         "posterior_checkpoint_id": "checkpoint-1",
@@ -78,6 +89,9 @@ def test_revision_reweights_y_but_preserves_state_conditionals_and_history() -> 
         "latent_observed_lower_bound_c": 32.5,
         "observation_artifact_sha256": "3" * 64,
         "replay_generation": 2,
+        "scenario_joint_posterior_json": json.dumps(scenario_joint),
+        "scenario_joint_posterior_sha256": scenario_joint_sha256(scenario_joint),
+        "scenario_joint_schema": SCENARIO_JOINT_SCHEMA,
     }
     result = compile_v6_weak_revision_candidate(
         activation=_activation(),

@@ -1,0 +1,23 @@
+{
+  "calls_order_gateway": false,
+  "exported_at_utc": "2026-07-29T06:32:49.295Z",
+  "filters": {
+    "as_of_utc": "2026-07-29T06:45:00Z",
+    "event_date": "2026-07-30",
+    "excluded_future_row_count": 0,
+    "include_not_started_for_p0": true,
+    "station_id": "WSSS"
+  },
+  "forward_p0_catalog_only": true,
+  "places_orders": false,
+  "row_count": 0,
+  "rows": [],
+  "schema": "bayes_basket_target_market_registry_snapshot_v1",
+  "snapshot_sha256": "aa18c3757cc1aae9e49bcf7803b5c5d7d15c92f060bc78c66747408fefda8bc4",
+  "source_database_path": "/Users/xiong/weather/data/archive.db",
+  "source_row_count": 0,
+  "source_schema": "reported_trajectory_market_registry_v1",
+  "source_scope": "shared_live_registry_export_only",
+  "stable_scope_sha256": "246cf44b1f1d4a19cdedb603a04b429d8ee1db3db52cbeef07af69f80a11b287",
+  "writes_shared_live_database": false
+}

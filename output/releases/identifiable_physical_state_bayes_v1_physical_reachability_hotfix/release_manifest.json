@@ -1,0 +1,66 @@
+{
+  "activates_production": false,
+  "activation_contract_sha256": "fd35114671b5c8902def80cefddfce3d7924a0e207079dcd02ab1e1810d52dcb",
+  "adds_fourth_service": false,
+  "blocking_gates": {
+    "additive_schema_plan_valid": true,
+    "candidate_artifacts_valid": true,
+    "current_basket_hard_no_production_accepted": true,
+    "observation_identifiability_boundary_declared": true,
+    "runtime_dependency_closure_complete": true,
+    "zero_order_transaction_b_accepted": true
+  },
+  "files": {
+    "amsc_frozen_reporting_operator_v1.json": {
+      "sha256": "73bd195e256d1275d1829ae85fdb32e5bf6ee331ee8861e6c52c44af2acb8494",
+      "size_bytes": 1649
+    },
+    "identifiable_physical_observation_v1.json": {
+      "sha256": "5c0d6a8ec769f2226c0fbbdbee3f0346b7e41d91c16b7216e7b3926f6ac08ea0",
+      "size_bytes": 4125
+    },
+    "identifiable_physical_state_model_v1.json": {
+      "sha256": "599537d11d8c578bd1a7b7e44c88522329333466f008d5ef81f2518f32d373bf",
+      "size_bytes": 10997
+    },
+    "production_probability_runtime_activation.json": {
+      "sha256": "75d2306592aeb0ef17e22cdfe3a6373be42ee52b8064c5eea86a86b298f76426",
+      "size_bytes": 3128
+    }
+  },
+  "non_blocking_diagnostics": {
+    "no_worse_mean_crps_than_legacy": false,
+    "no_worse_mean_nll_than_legacy": false,
+    "research_evidence_gates": {
+      "canonical_replay_blocking_gates_pass": false,
+      "canonical_replay_complete": true,
+      "state_parameter_draws_bound_to_calibration": false,
+      "strict_asof_parameter_calibration_ready": false
+    }
+  },
+  "physical_reachability_hotfix": {
+    "historical_database_mutation": false,
+    "previous_state_model_artifact_sha256": "a2c8942f6f361de9654ee6da1e6e655beccd76251c63d0245a8aa2832d56f653",
+    "schema": "identifiable_physical_reachability_hotfix_release_v1",
+    "source_backed_upper_reachability_error_c": 3.0,
+    "state_model_artifact_sha256": "7af9e075f2bdd29c115b4f8916871d32703f2eb8d9537d6ceaed24b7145206b4"
+  },
+  "places_orders": false,
+  "promotion_policy": {
+    "calibration_activation_role": "non_blocking_diagnostic_only",
+    "canonical_replay_activation_role": "non_blocking_diagnostic_only",
+    "crps_activation_role": "non_blocking_diagnostic_only",
+    "nll_activation_role": "non_blocking_diagnostic_only",
+    "nll_crps_excluded_from_blocking_gate_set": true,
+    "research_evidence_excluded_from_blocking_gate_set": true,
+    "sample_volume_activation_role": "non_blocking_diagnostic_only",
+    "strict_asof_activation_role": "non_blocking_diagnostic_only"
+  },
+  "promotion_ready": true,
+  "readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+  "release_manifest_sha256": "a59498d16c5b0f8acf8041d98081d0dc46f66e03dd8dcaa3dfdd258901d38d4c",
+  "resident_service": "com.weather.reported_trajectory_no",
+  "runtime_manifest_sha256": "1bbd8c5dcfc54fa5d40f5147dbd3c7078ca98217a8e59157cffefe6e4bdd320f",
+  "schema": "identifiable_physical_state_release_bundle_v1",
+  "state": "release_built_not_active"
+}

@@ -1,0 +1,129 @@
+{
+  "as_of_utc": "2026-07-26T19:35:44Z",
+  "calls_order_gateway": false,
+  "live_submit_authorized": false,
+  "migration_retired_tables": [
+    {
+      "audit_table": "basket_probability_envelope_legacy_no_settlement_timezone_v1",
+      "formal_table": "basket_probability_envelope",
+      "row_count": 223
+    },
+    {
+      "audit_table": "basket_official_ws_snapshot_legacy_no_settlement_timezone_v1",
+      "formal_table": "basket_official_ws_snapshot",
+      "row_count": 8
+    },
+    {
+      "audit_table": "basket_official_ws_evidence_cache_legacy_no_settlement_timezone_v1",
+      "formal_table": "basket_official_ws_evidence_cache",
+      "row_count": 5
+    },
+    {
+      "audit_table": "basket_target_execution_cycles_legacy_no_settlement_timezone_v1",
+      "formal_table": "basket_target_execution_cycles",
+      "row_count": 231
+    },
+    {
+      "audit_table": "auto_trade_decisions_legacy_no_settlement_timezone_v1",
+      "formal_table": "auto_trade_decisions",
+      "row_count": 231
+    }
+  ],
+  "migration_state": "migrated",
+  "order_events": 0,
+  "order_intents": 0,
+  "orders_submitted": 0,
+  "p0_materialize_blockers": [
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/EDDM_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/EFHK_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/FACT_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/LTAC_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/NZWN_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/OEJN_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/OPKC_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/RJTT_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/RKPK_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/WMKK_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    },
+    {
+      "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_18z_fallback_20260726/p0m_20260727_probability_stack_min2_v3_0940/WSSS_2026-07-27_p0m.json",
+      "reason": "ContractError:target_timezone_missing"
+    }
+  ],
+  "p0_materialize_count": 1,
+  "p1_scopes": [
+    [
+      "RKPK",
+      "2026-07-27",
+      "2026-07-26T19:05:46.249000Z",
+      "Asia/Seoul"
+    ]
+  ],
+  "registry_state": "COMMITTED",
+  "resident_p1_ingress": {
+    "blockers": [],
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "p1_update_count": 1,
+    "places_orders": false,
+    "probability_scope_count": 1,
+    "receipts": [
+      {
+        "event_date": "2026-07-27",
+        "observation_count": 5,
+        "p0_rebase": false,
+        "p1_checkpoint_ids": [
+          "p1_01445b0ed608403a3e5c0684e5452b88"
+        ],
+        "p1_update_count": 1,
+        "state": "COMMITTED",
+        "station_id": "RKPK",
+        "writes": [
+          {
+            "envelope_id": "p1_01445b0ed608403a3e5c0684e5452b88",
+            "schema": "bayes_basket_probability_materialization_v1",
+            "state": "COMMITTED",
+            "wrote": true
+          }
+        ]
+      }
+    ],
+    "schema": "bayes_basket_target_resident_p1_ingress_v1",
+    "scope_count": 1,
+    "state": "COMMITTED",
+    "updated_scope_count": 1,
+    "writes_target_ssot": true
+  },
+  "schema": "bayes_basket_target_multistation_resident_p1_rehearsal_v1",
+  "temporary_database_retained": false
+}

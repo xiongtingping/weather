@@ -1,0 +1,255 @@
+{
+  "after": {
+    "calls_order_gateway": false,
+    "legacy_decision_row_count": 0,
+    "legacy_decision_table_collision": false,
+    "legacy_decision_table_present": true,
+    "live_submit_authorized": false,
+    "mutation_required": false,
+    "production_ssot_schema": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": []
+      },
+      "ledger_missing_columns": {
+        "auto_trade_decisions": []
+      },
+      "ledger_schema_ok": true,
+      "missing_tables": [],
+      "ok": true,
+      "probability_stage_contract_ok": true,
+      "schema": "bayes_basket_target_ssot_v3",
+      "settlement_timezone_missing_columns": {},
+      "target_tables_present": true
+    },
+    "schema": "bayes_basket_target_ssot_migration_plan_v1",
+    "target_ledger_schema": {
+      "blocking_authority": "auto_trade_decisions",
+      "calls_order_gateway": false,
+      "missing_columns": {},
+      "missing_tables": [],
+      "ok": true,
+      "places_orders": false,
+      "schema": "bayes_basket_target_atomic_ledger_v1"
+    },
+    "writes_orders": false
+  },
+  "backup_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_timezone-v1.backup.db",
+  "before": {
+    "calls_order_gateway": false,
+    "legacy_decision_row_count": 231,
+    "legacy_decision_table_collision": false,
+    "legacy_decision_table_present": true,
+    "live_submit_authorized": false,
+    "mutation_required": true,
+    "production_ssot_schema": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": []
+      },
+      "ledger_missing_columns": {
+        "auto_trade_decisions": []
+      },
+      "ledger_schema_ok": true,
+      "missing_tables": [],
+      "ok": false,
+      "probability_stage_contract_ok": true,
+      "schema": "bayes_basket_target_ssot_v3",
+      "settlement_timezone_missing_columns": {
+        "basket_official_ws_evidence_cache": [
+          "settlement_timezone"
+        ],
+        "basket_official_ws_snapshot": [
+          "settlement_timezone"
+        ],
+        "basket_probability_envelope": [
+          "settlement_timezone"
+        ]
+      },
+      "target_tables_present": true
+    },
+    "schema": "bayes_basket_target_ssot_migration_plan_v1",
+    "target_ledger_schema": {
+      "blocking_authority": "auto_trade_decisions",
+      "calls_order_gateway": false,
+      "missing_columns": {
+        "auto_trade_decisions": [
+          "settlement_timezone"
+        ],
+        "basket_target_execution_cycles": [
+          "settlement_timezone"
+        ]
+      },
+      "missing_tables": [],
+      "ok": false,
+      "places_orders": false,
+      "schema": "bayes_basket_target_atomic_ledger_v1"
+    },
+    "writes_orders": false
+  },
+  "calls_order_gateway": false,
+  "capital_pool": null,
+  "legacy_archive_table": null,
+  "live_submit_authorized": false,
+  "market_registry_schema": {
+    "ok": true,
+    "schema": "bayes_basket_target_market_registry_snapshot_v1",
+    "tables": [
+      "basket_target_market_registry_snapshot",
+      "basket_target_market_registry"
+    ]
+  },
+  "migration_at_utc": "2026-07-26T23:17:40Z",
+  "pause_file": "/Users/xiong/weather/data/bayes_basket_target_migration_paused.flag",
+  "pause_marker_token": "bayes-basket-target-m5-migration-v1",
+  "schema": "bayes_basket_target_ssot_migration_receipt_v1",
+  "schema_result": {
+    "live_order_authorized": false,
+    "ok": true,
+    "schema": "bayes_basket_target_ssot_v3",
+    "settlement_timezone_upgrade": {
+      "dropped_empty_tables": [],
+      "preserved_row_counts": {
+        "auto_trade_decisions_legacy_no_settlement_timezone_v1": 231,
+        "basket_official_ws_evidence_cache_legacy_no_settlement_timezone_v1": 5,
+        "basket_official_ws_snapshot_legacy_no_settlement_timezone_v1": 8,
+        "basket_probability_envelope_legacy_no_settlement_timezone_v1": 223,
+        "basket_target_execution_cycles_legacy_no_settlement_timezone_v1": 231
+      },
+      "retired_tables": [
+        {
+          "audit_table": "basket_probability_envelope_legacy_no_settlement_timezone_v1",
+          "formal_table": "basket_probability_envelope",
+          "row_count": 223
+        },
+        {
+          "audit_table": "basket_official_ws_snapshot_legacy_no_settlement_timezone_v1",
+          "formal_table": "basket_official_ws_snapshot",
+          "row_count": 8
+        },
+        {
+          "audit_table": "basket_official_ws_evidence_cache_legacy_no_settlement_timezone_v1",
+          "formal_table": "basket_official_ws_evidence_cache",
+          "row_count": 5
+        },
+        {
+          "audit_table": "basket_target_execution_cycles_legacy_no_settlement_timezone_v1",
+          "formal_table": "basket_target_execution_cycles",
+          "row_count": 231
+        },
+        {
+          "audit_table": "auto_trade_decisions_legacy_no_settlement_timezone_v1",
+          "formal_table": "auto_trade_decisions",
+          "row_count": 231
+        }
+      ],
+      "schema": "bayes_basket_target_settlement_timezone_upgrade_v1"
+    },
+    "tables": [
+      "auto_trade_decisions",
+      "basket_cash_phase_policy_artifact",
+      "basket_confirmed_inventory_snapshot",
+      "basket_global_prior_artifact",
+      "basket_official_ws_evidence_cache",
+      "basket_official_ws_evidence_cache_legacy_no_settlement_timezone_v1",
+      "basket_official_ws_snapshot",
+      "basket_official_ws_snapshot_legacy_no_settlement_timezone_v1",
+      "basket_order_state_snapshot",
+      "basket_p0_preselection_plan",
+      "basket_policy_activation",
+      "basket_policy_promotion",
+      "basket_policy_training_fact",
+      "basket_probability_envelope",
+      "basket_probability_envelope_legacy_no_settlement_timezone_v1",
+      "basket_station_policy_artifact",
+      "basket_strategy_activation_state",
+      "basket_target_bound_facts",
+      "basket_target_capital_pool",
+      "basket_target_capital_reservations",
+      "basket_target_execution_cycles",
+      "basket_target_execution_cycles_legacy_no_settlement_timezone_v1",
+      "basket_target_execution_version_vectors",
+      "basket_target_market_registry",
+      "basket_target_market_registry_snapshot",
+      "basket_target_observation_facts",
+      "basket_target_order_events",
+      "basket_target_order_intents",
+      "basket_target_order_reconciliations",
+      "basket_target_writer_lock_wait_telemetry",
+      "calibration_activation",
+      "calibration_artifact_promotion",
+      "calibration_ensemble_artifact",
+      "calibration_ensemble_selection_evidence",
+      "calibration_historical_asof_model_run",
+      "calibration_model_artifact",
+      "calibration_model_station_residual",
+      "calibration_station_daily_high_truth",
+      "calibration_station_registry"
+    ],
+    "target_tables": [
+      "basket_probability_envelope",
+      "basket_official_ws_snapshot",
+      "basket_confirmed_inventory_snapshot",
+      "basket_order_state_snapshot",
+      "basket_cash_phase_policy_artifact",
+      "basket_p0_preselection_plan",
+      "basket_target_observation_facts",
+      "basket_target_bound_facts",
+      "basket_target_execution_cycles",
+      "auto_trade_decisions",
+      "basket_target_order_intents",
+      "basket_target_capital_pool",
+      "basket_target_capital_reservations",
+      "basket_target_execution_version_vectors",
+      "basket_target_order_events",
+      "basket_target_order_reconciliations",
+      "basket_target_writer_lock_wait_telemetry"
+    ],
+    "writes_orders": false,
+    "writes_production_db": true
+  },
+  "state": "migrated",
+  "writer_quiescence_receipt": {
+    "all_core_services_absent": null,
+    "boundary": {
+      "calls_order_gateway": false,
+      "database_scope": "isolated_target_no_live",
+      "places_orders": false,
+      "read_only_probe": true,
+      "reported_service_loaded": false,
+      "reported_target_writer_absent": true,
+      "stops_services": false,
+      "target_database_handles_absent": true,
+      "unrelated_core_services_may_run": true,
+      "writes_production_db": false
+    },
+    "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "probe_errors": [],
+    "probe_mode": "isolated_target_database_scope",
+    "quiescent": true,
+    "receipt_sha256": "55dce8dd248bd0da595c9a3e4f9198c86f8a463f484626df8d27cafc5a17a77f",
+    "schema": "bayes_basket_target_writer_quiescence_receipt_v2",
+    "service_states": {
+      "system": {
+        "com.weather.clob_order_service": "not_probed_unrelated",
+        "com.weather.market_ws": "not_probed_unrelated",
+        "com.weather.reported_trajectory_no": false
+      },
+      "user": {
+        "com.weather.clob_order_service": "not_probed_unrelated",
+        "com.weather.market_ws": "not_probed_unrelated",
+        "com.weather.reported_trajectory_no": false
+      }
+    },
+    "writer_process_hits": []
+  },
+  "writes_orders": false
+}

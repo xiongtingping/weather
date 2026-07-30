@@ -1,0 +1,32 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-d3e243ee8312fb561ea655b5",
+    "capture_mode": "prospective",
+    "content_sha256": "1b13a2727b88ed5d84b89ebca99b2baab8cd54ada0846ddcbb3978625713c27d",
+    "decision_at_utc": "2026-07-23T21:03:24Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ECMWF",
+    "open_meteo": false,
+    "production_authority": false,
+    "provider_id": "ecmwf_ifs025_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-23T07:34:00Z",
+    "raw_payload_sha256s": [
+      "fc398e4bbedd06981740eb88f9002a22093c00bbe8aefa11489206dcdb4fef9b"
+    ],
+    "receipt_sha256": "de76b11f7984d0c69483d3a57d98c14bcf5359ec3533682c7f5ab53d8e32d447",
+    "received_at_utc": "2026-07-23T19:39:07Z",
+    "run_initialization_utc": "2026-07-23T00:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://data.ecmwf.int/forecasts/20260723/00z/ifs/0p25/oper/20260723000000-51h-oper-fc.grib2",
+    "station_id": "LEMD",
+    "target_local_date": "2026-07-24",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-07-25T03:00:00Z"
+  },
+  "fanout_source_receipt_sha256": "901d9736f6e00229806dceb9ae018748db046064de45bc709051981b1f1d18eb",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/901d9736f6e00229806dceb9ae018748db046064de45bc709051981b1f1d18eb.json"
+}

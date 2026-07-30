@@ -1,0 +1,105 @@
+{
+  "activation": {
+    "activation_sha256": "10780f04761a435cfe9dc67a06d2ed62ec9f6a4abd5b7181ebe885db24355566",
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "generation": 11,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "previous_generation": 11,
+    "state": "UNCHANGED_ZERO_WRITE"
+  },
+  "calls_order_gateway": false,
+  "capital_epoch_migration": {
+    "apply": {
+      "after": {
+        "balance_usdc": 12.0,
+        "capital_epoch_id": "target-no-live-acea30579ec010ac393a9592",
+        "reserved_usdc": 0.6711,
+        "version": 426
+      },
+      "before": {
+        "balance_usdc": 12.0,
+        "capital_epoch_id": "target-no-live-acea30579ec010ac393a9592",
+        "reserved_usdc": 0.6711,
+        "version": 426
+      },
+      "calls_order_gateway": false,
+      "idempotent": true,
+      "migration_content_sha256": "2671f65285c61b1ec0c7fd8b03a8fb9b3c8e3f1dd2bd75edd5bd39f20da5c6a9",
+      "migration_id": "capital_epoch_acea30579ec010ac393a95925215c04aa43bdae9",
+      "orders_submitted": 0,
+      "reads_shared_live_capital": false,
+      "rows_written": 0,
+      "runtime_contract_sha256": "acea30579ec010ac393a95925215c04aa43bdae9d95925f9872d5deeb3c2293c",
+      "schema": "bayes_basket_target_no_live_capital_epoch_migration_v1",
+      "state": "UNCHANGED_ZERO_WRITE",
+      "target_owned_only": true
+    },
+    "replay": {
+      "after": {
+        "balance_usdc": 12.0,
+        "capital_epoch_id": "target-no-live-acea30579ec010ac393a9592",
+        "reserved_usdc": 0.6711,
+        "version": 426
+      },
+      "before": {
+        "balance_usdc": 12.0,
+        "capital_epoch_id": "target-no-live-acea30579ec010ac393a9592",
+        "reserved_usdc": 0.6711,
+        "version": 426
+      },
+      "calls_order_gateway": false,
+      "idempotent": true,
+      "migration_content_sha256": "2671f65285c61b1ec0c7fd8b03a8fb9b3c8e3f1dd2bd75edd5bd39f20da5c6a9",
+      "migration_id": "capital_epoch_acea30579ec010ac393a95925215c04aa43bdae9",
+      "orders_submitted": 0,
+      "reads_shared_live_capital": false,
+      "rows_written": 0,
+      "runtime_contract_sha256": "acea30579ec010ac393a95925215c04aa43bdae9d95925f9872d5deeb3c2293c",
+      "schema": "bayes_basket_target_no_live_capital_epoch_migration_v1",
+      "state": "UNCHANGED_ZERO_WRITE",
+      "target_owned_only": true
+    }
+  },
+  "capital_pool_after_restart": {
+    "balance_usdc": 12.0,
+    "capital_epoch_id": "target-no-live-acea30579ec010ac393a9592",
+    "reserved_usdc": 0.6711,
+    "version": 426
+  },
+  "clob_order_service_pid_after": 95880,
+  "clob_order_service_pid_before": 95880,
+  "created_at_utc": "2026-07-29T03:23:52.867Z",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "execution_mode": "production_no_live",
+  "execution_state_counts": {
+    "basket_target_execution_receipts": 0,
+    "basket_target_execution_transition_versions": 0,
+    "basket_target_order_events": 0,
+    "basket_target_post_fill_recompute_requests": 0
+  },
+  "live_authorized_intent_count": 0,
+  "live_pause_retained": true,
+  "live_pause_sha256_after": "b28c5260b6254f7582e3eebdb4d880ba1863e6331d2ed3214324d6b41cee6e20",
+  "live_pause_sha256_before": "b28c5260b6254f7582e3eebdb4d880ba1863e6331d2ed3214324d6b41cee6e20",
+  "live_submit_authorized": false,
+  "market_ws_pid_after": 98056,
+  "market_ws_pid_before": 98056,
+  "orders_submitted": 0,
+  "quick_check": "ok",
+  "quote_freshness_policy": {
+    "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+    "content_sha256": "4e6c9a76da7c08e7c6102b5669b885290149cf196c756575e298cb0ada644a69",
+    "evidence_status": "DESIGN_CANDIDATE",
+    "max_quote_age_seconds": 60.0,
+    "policy_id": "target-official-ws-60s-no-live-v2",
+    "schema": "bayes_basket_quote_freshness_policy_v1",
+    "valid_from_utc": "2026-07-01T00:00:00Z",
+    "valid_until_utc": "2027-01-01T00:00:00Z"
+  },
+  "schema": "rkpk_jit_ws_no_live_cutover_receipt_v2",
+  "state": "ACTIVATED_AND_TARGET_RESTARTED",
+  "target_pid_after": 3795,
+  "target_pid_before": 90973
+}

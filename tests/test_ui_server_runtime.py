@@ -17,6 +17,18 @@ from ui import server
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_ui_server_does_not_use_sqlite_connect_context_as_connection_lifetime() -> None:
+    """The sqlite context manager does not close connections on exit.
+
+    UI polling is frequent and the three read paths previously leaked one DB
+    and WAL descriptor per request, eventually making localhost reset every
+    new socket.  All UI SQLite reads must go through an explicit-closing
+    helper instead.
+    """
+
+    assert "with sqlite3.connect(" not in inspect.getsource(server)
+
+
 def mark_ui_snapshot_rebuilding(cache_key: str) -> None:
     server._UI_SNAPSHOT_REBUILDING[cache_key] = {
         "cache_key": cache_key,
@@ -115,6 +127,42 @@ def insert_event_fact_history_with_unit_prior(*args, **kwargs) -> int:
         if not pending_model and not _unit_prior_contract_covers_payload(item):
             attach_unit_prior_contract(item)
     return getattr(server, "_insert_event_fact_history")(*args, **kwargs)
+
+
+def insert_ui_date_fact(
+    conn: sqlite3.Connection,
+    *,
+    run_date: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    payload: dict,
+) -> int:
+    cursor = conn.execute(
+        """
+        INSERT INTO event_fact_history
+          (run_date, slug, event_date, fact_as_of, composer_version, fact_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_date,
+            slug,
+            event_date,
+            fact_as_of,
+            server.FACTS_COMPOSER_VERSION,
+            json.dumps(payload, ensure_ascii=False),
+            fact_as_of,
+        ),
+    )
+    fact_id = int(cursor.lastrowid)
+    conn.execute(
+        """
+        INSERT INTO event_fact_latest (slug, event_date, fact_id, updated_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (slug, event_date, fact_id, fact_as_of),
+    )
+    return fact_id
 
 
 def build_ui_event_fact_write_compat_plan_with_unit_prior(*args, **kwargs) -> dict:
@@ -368,6 +416,33 @@ def test_ui_snapshot_summary_does_not_attach_chengdu_shadow_to_other_cities(tmp_
     assert "basin_regime_feature_set" not in slim
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("北京", "beijing"),
+        ("ZGGG", "guangzhou"),
+        ("chengdu_zuuu", "chengdu"),
+        ("青岛", "qingdao"),
+    ],
+)
+def test_ui_snapshot_city_filter_supports_independent_production_cities(raw: str, expected: str) -> None:
+    assert server._normalize_ui_snapshot_city_filter(raw) == expected
+
+
+def test_ui_snapshot_city_filter_matches_station_identity_without_copying_probability() -> None:
+    item = {
+        "slug": "highest-temperature-in-beijing-on-july-22-2026",
+        "station_id": "ZBAA",
+        "city": "Beijing",
+        "posterior_ssot_fact": {
+            "city_posterior_scope": "independent_station_day_production",
+            "city_probability_not_copied_from_zuuu": True,
+        },
+    }
+    assert server._ui_snapshot_summary_item_matches_city_filter(item, "beijing") is True
+    assert server._ui_snapshot_summary_item_matches_city_filter(item, "chengdu") is False
+
+
 def test_ui_index_renders_model_weight_shadow_and_basin_feature_set() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
 
@@ -439,14 +514,21 @@ def test_ui_index_records_backend_ui_snapshot_dashboard_sections() -> None:
     assert "const orderbook = execution.orderbook && typeof execution.orderbook === 'object' ? execution.orderbook : {};" in html
     assert "const order = Array.isArray(sections.order) && sections.order.length" in html
     assert "source_to_posterior: '源→后验'" in html
-    assert "awc_signal_to_order: '硬源 3s'" in html
+    assert "awc_signal_to_order: 'v6 执行 3s'" in html
+    assert "ui_snapshot_v6_execution_deadline_section_v1" in html
+    assert "canonical→commit" in html
+    assert "commit余量" in html
+    assert "gateway未调用" in html
     assert "data.latest_source_response_completed_at" in html
     assert "data.latest_source_to_posterior_ms ?? data.latest_source_response_to_posterior_ms" in html
     assert "data.amsc_latency_slo_audit" in html
     assert "AMSC SLO" in html
     assert "valid→fetch" in html
-    assert "fact→posterior" in html
-    assert "posterior→decision" in html
+    assert "transport→canonical" in html
+    assert "canonical→checkpoint" in html
+    assert "checkpoint→public fact" in html
+    assert "public fact→decision" in html
+    assert "checkpoint→decision" in html
     assert "慢在抓取" in html
     assert "响应→后验" in html
     assert "后验→决策" in html
@@ -633,6 +715,93 @@ def test_ui_snapshot_dashboard_sections_exposes_source_to_posterior_timing() -> 
     assert order_audit["valid_to_decision_ms"] == 1_830_000
 
 
+def test_v6_source_to_posterior_timing_joins_canonical_checkpoint_fact_and_decision() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE canonical_observation_events(
+          canonical_observation_event_id TEXT,target_identity TEXT,state TEXT,
+          selected_source_observation_id TEXT,selected_source_id TEXT,valid_time TEXT,
+          first_transport_seen_at TEXT,first_actionable_seen_at TEXT,accepted_at TEXT,
+          parsed_observation_json TEXT
+        );
+        CREATE TABLE strong_observation_updates(
+          strong_observation_update_id TEXT,canonical_observation_event_id TEXT,state TEXT,
+          started_at TEXT,completed_at TEXT
+        );
+        CREATE TABLE posterior_checkpoints(
+          posterior_checkpoint_id TEXT,posterior_run_id TEXT,last_strong_update_id TEXT,
+          state TEXT,committed_at TEXT
+        );
+        CREATE TABLE event_fact_history(
+          id INTEGER PRIMARY KEY,event_date TEXT,fact_as_of TEXT,fact_json TEXT
+        );
+        CREATE TABLE auto_trade_decisions(
+          id INTEGER PRIMARY KEY,event_date TEXT,correlation_id TEXT,posterior_run_id TEXT,
+          decision_id TEXT,action TEXT,decided_state TEXT,created_at TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO canonical_observation_events VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "canobs_1", "physical_weather_day_v1:ZUUU:2026-07-17", "accepted_primary",
+            "srcobs_1", "zuuu_metar_raw_amsc", "2026-07-16T18:00:00Z",
+            "2026-07-16T18:00:41Z", "2026-07-16T18:00:41Z",
+            "2026-07-16T18:00:41Z", '{"temperature_c":24.0}',
+        ),
+    )
+    conn.execute(
+        "INSERT INTO strong_observation_updates VALUES(?,?,?,?,?)",
+        ("strong_1", "canobs_1", "applied", "2026-07-16T18:00:41Z", "2026-07-16T18:00:42.268Z"),
+    )
+    conn.execute(
+        "INSERT INTO posterior_checkpoints VALUES(?,?,?,?,?)",
+        ("checkpoint_1", "posterior_1", "strong_1", "committed", "2026-07-16T18:00:42.268Z"),
+    )
+    conn.execute(
+        "INSERT INTO event_fact_history VALUES(?,?,?,?)",
+        (
+            1, "2026-07-17", "2026-07-16T18:00:42.268Z",
+            json.dumps({"posterior_ssot_fact": {
+                "fact_snapshot_id": "fact_1",
+                "posterior_checkpoint_id": "checkpoint_1",
+                "last_canonical_event_id": "canobs_1",
+            }}),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO auto_trade_decisions VALUES(?,?,?,?,?,?,?,?)",
+        (
+            1, "2026-07-17", "strong_1", "posterior_1", "decision_1",
+            "hold", "blocked", "2026-07-16T18:00:44.171Z",
+        ),
+    )
+    payload = {"slug": "highest-temperature-in-chengdu-on-july-17-2026"}
+
+    server._attach_v6_source_to_posterior_timing_for_ui_snapshot(
+        conn, payload, event_date="2026-07-17"
+    )
+
+    timing = payload["source_to_posterior_timing"]
+    assert timing["schema"] == "v6_source_to_posterior_timing_ssot_v1"
+    assert timing["latest_source_event_id"] == "canobs_1"
+    assert timing["posterior_checkpoint_id"] == "checkpoint_1"
+    assert timing["public_fact_snapshot_id"] == "fact_1"
+    assert timing["decision_id"] == "decision_1"
+    assert timing["decision_action"] == "hold"
+    assert timing["posterior_apply_runtime_ms"] == 1268
+    assert timing["checkpoint_to_public_fact_ms"] == 0
+    assert timing["public_fact_to_decision_ms"] == 1903
+    row = server._ui_snapshot_source_to_posterior_timing_from_item(payload)
+    audit = row["amsc_latency_slo_audit"]
+    assert audit["fetched_to_posterior_ms"] == 1268
+    assert audit["posterior_to_decision_ms"] == 1903
+    assert audit["slo_met"] is True
+    assert row["frontend_recompute_allowed"] is False
+
+
 def test_ui_snapshot_dashboard_sections_exposes_awc_signal_to_order_timing() -> None:
     item = {
         "slug": "highest-temperature-in-chengdu-on-july-4-2026",
@@ -721,6 +890,76 @@ def test_ui_snapshot_dashboard_sections_exposes_awc_signal_to_order_timing() -> 
     assert awc["safety_checks"]["orderbook_checked_at"] == "2026-07-04T10:06:52.700Z"
     assert awc["frontend_recompute_allowed"] is False
     assert awc["decision_recompute_allowed"] is False
+
+
+def test_ui_snapshot_dashboard_sections_prefers_v6_execution_deadline_ssot() -> None:
+    item = {
+        "slug": "highest-temperature-in-chengdu-on-july-17-2026",
+        "event_date": "2026-07-17",
+        "v6_execution_deadline_timing": {
+            "schema": "v6_execution_deadline_timing_ssot_v1",
+            "state": "deadline_expired_fail_closed",
+            "canonical_observation_event_id": "canobs_1",
+            "posterior_run_id": "post_1",
+            "first_actionable_seen_at": "2026-07-16T18:00:41.000Z",
+            "transaction_b_committed_at": "2026-07-16T18:00:42.268Z",
+            "outbox_completed_at": "2026-07-16T18:00:44.171Z",
+            "observation_to_order_hard_deadline_at": "2026-07-16T18:00:44.000Z",
+            "deadline_policy": "canonical_first_actionable_plus_3000ms",
+            "deadline_budget_ms": 3000,
+            "actionable_to_commit_ms": 1268,
+            "remaining_at_commit_ms": 1732,
+            "actionable_to_terminal_ms": 3171,
+            "deadline_overrun_ms": 171,
+            "outbox_state": "dead_letter",
+            "outbox_attempt_count": 0,
+            "terminal_reason": "production_observation_to_order_hard_deadline_expired",
+            "called_gateway": False,
+            "gateway_response_present": False,
+            "deadline_met": False,
+            "fail_closed": True,
+            "late_execution_forbidden": True,
+        },
+        # Legacy timing must not override the current production contract.
+        "signal_to_order_timing": {
+            "schema": "signal_to_order_timing_v1",
+            "signal_id": "legacy_signal",
+            "terminal_state": "submitted",
+            "awc_signal_to_order_submit_ms": 100,
+            "signal_to_order_slo_ms": 3000,
+            "signal_to_order_slo_met": True,
+        },
+    }
+
+    sections = server._build_ui_snapshot_dashboard_sections(
+        {"path_probability_follow": {}},
+        facts_map={"source": "unit", "total": 1},
+        items=[item],
+        freshness_state="fresh",
+        freshness_reason="",
+        latest_fact_as_of="2026-07-16T18:00:44.171Z",
+        posterior_available_count=1,
+        posterior_not_materialized_count=0,
+        posterior_missing_count=0,
+        latest_posterior_as_of="2026-07-16T18:00:42.268Z",
+    )
+
+    section = sections["awc_signal_to_order"]
+    assert section["schema"] == "ui_snapshot_v6_execution_deadline_section_v1"
+    assert section["state"] == "blocked"
+    assert section["source"] == "facts.items[].v6_execution_deadline_timing"
+    assert section["latest_terminal_state"] == "deadline_expired_fail_closed"
+    assert section["latest_signal_to_order_ms"] == 3171
+    assert section["signal_to_order_slo_ms"] == 3000
+    assert section["signal_to_order_slo_met"] is False
+    assert section["deadline_overrun_ms"] == 171
+    assert section["remaining_at_commit_ms"] == 1732
+    assert section["outbox_state"] == "dead_letter"
+    assert section["outbox_attempt_count"] == 0
+    assert section["called_gateway"] is False
+    assert section["fail_closed"] is True
+    assert section["frontend_recompute_allowed"] is False
+    assert section["decision_recompute_allowed"] is False
 
 
 def test_ui_snapshot_dashboard_sections_marks_awc_signal_to_order_empty_when_no_signal() -> None:
@@ -1663,6 +1902,9 @@ def test_ui_snapshot_summary_exposes_raw_amsc_hard_observation_when_strong_likel
     assert observed["schema"] == "ui_bayes_observation_strong_section_v1"
     assert observed["state"] == "raw_observation_only"
     assert observed["na_reason"] == "metar_strong_likelihood_not_materialized"
+    assert observed["materialized"] is True
+    assert observed["materialization_state"] == "raw_observation"
+    assert observed["materialization_label"] == "官方原始报文已物化"
     assert observed["hard_source_count"] == 1
     assert observed["latest_hard_observation"]["source_id"] == "zuuu_metar_raw_amsc"
     assert observed["latest_hard_observation"]["temperature_c"] == pytest.approx(36.0)
@@ -1710,7 +1952,8 @@ def test_ui_snapshot_summary_derives_awc_hard_observation_from_fact_features() -
 
     assert observed["state"] == "available"
     assert observed["hard_source_count"] == 1
-    assert latest["source_id"] == "zuuu_metar_raw_amsc"
+    assert latest["source_id"] == "zuuu_metar_raw_awc"
+    assert latest["source_lane"] == "awc"
     assert latest["temperature_c"] == pytest.approx(30.0)
     assert latest["dewpoint_c"] == pytest.approx(23.0)
     assert latest["observed_today_max_c"] == pytest.approx(31.0)
@@ -1718,9 +1961,42 @@ def test_ui_snapshot_summary_derives_awc_hard_observation_from_fact_features() -
     assert latest["ui_display_derived_from_fact_features"] is True
     assert latest["not_posterior_input"] is True
     assert slim["source_observations"][0]["source_observation_id"] == latest["source_observation_id"]
-    assert slim["source_acquisition_trace"]["source_observations"][0]["source_id"] == "zuuu_metar_raw_amsc"
+    assert observed["source_lanes"] == ["awc"]
+    assert slim["source_acquisition_trace"]["source_observations"][0]["source_id"] == "zuuu_metar_raw_awc"
     assert slim["source_acquisition_trace"]["boundary"] == "display_only_from_existing_fact_fields_no_frontend_recompute_no_db_write"
     assert slim["ui_sections"]["prior"]["state"] == "missing"
+
+
+def test_ui_snapshot_summary_marks_awc_raw_observation_materialized_without_likelihood() -> None:
+    payload = {
+        "slug": "highest-temperature-in-chengdu-on-july-6-2026",
+        "event_date": "2026-07-06",
+        "source_observations": [
+            {
+                "source_id": "zuuu_metar_raw_awc",
+                "source_lane": "awc",
+                "source_class": "hard_observation_candidate",
+                "source_role": "hard_source_observation",
+                "hard_eligible": True,
+                "station_id": "ZUUU",
+                "valid_time": "2026-07-06T06:30:00+00:00",
+                "temperature_c": 36.0,
+                "observed_today_max_c": 37.0,
+                "source_observation_id": "src_obs_awc_raw_only",
+            }
+        ],
+        "posterior_ssot_fact": {"state": "not_materialized"},
+    }
+
+    slim = server._slim_fact_payload_for_ui_snapshot_summary(payload)
+    observed = slim["ui_sections"]["observation_strong"]
+
+    assert observed["state"] == "raw_observation_only"
+    assert observed["materialized"] is True
+    assert observed["materialization_state"] == "raw_observation"
+    assert observed["materialization_label"] == "官方原始报文已物化"
+    assert observed["source_lanes"] == ["awc"]
+    assert observed["latest_hard_observation"]["source_lane"] == "awc"
 
 
 def test_ui_snapshot_observation_strong_marks_likelihood_without_hard_point() -> None:
@@ -2083,7 +2359,7 @@ def test_ui_snapshot_phase0_contract_exposes_dashboard_sections() -> None:
     ]
     assert sections["facts"]["latest_fact_as_of"] == "2026-07-04T07:06:04+00:00"
     assert sections["posterior"]["latest_posterior_as_of"] == "2026-07-04T07:06:03+00:00"
-    assert sections["decisions"]["source"] == "auto_trade_decisions.path_probability_follow"
+    assert sections["decisions"]["source"] == "auto_trade_decisions"
     assert sections["decisions"]["latest_decision_at"] == "2026-07-04T07:06:09+00:00"
     assert sections["decisions"]["latest"][0]["reason_codes"] == ["orderbook_stale"]
     assert "details" not in sections["decisions"]["latest"][0]
@@ -2101,7 +2377,7 @@ def test_ui_snapshot_phase0_contract_exposes_dashboard_sections() -> None:
     assert apply_gate["gates"][0]["gate"] == "daily_review_persistence_apply"
     assert apply_gate["gates"][0]["blockers_now"] == ["daily_review_persistence_schema_missing"]
     assert sections["review"]["apply_gate_na_reason"] == ""
-    assert out["panel_freshness"]["decisions"]["source"] == "auto_trade_decisions.path_probability_follow"
+    assert out["panel_freshness"]["decisions"]["source"] == "auto_trade_decisions"
     assert out["panel_freshness"]["orderbook"]["stale_reason"] == "orderbook_stale"
     assert out["panel_freshness"]["review"]["review_count"] == 1
 
@@ -4237,7 +4513,7 @@ def test_ui_snapshot_summary_metadata_fallback_attaches_timeline_before_compacti
     assert attach < compact
 
 
-def test_latest_ui_default_run_date_prefers_chengdu_today_over_future() -> None:
+def test_latest_ui_default_run_date_keeps_current_day_while_window_open() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     server.ensure_fact_tables(conn)
@@ -4259,30 +4535,22 @@ def test_latest_ui_default_run_date_prefers_chengdu_today_over_future() -> None:
         "city": "Chengdu",
         "distribution": [{"outcome": "29°C", "q_round": 1.0}],
     }
-    today_id = insert_event_fact_history_with_unit_prior(
+    insert_ui_date_fact(
         conn,
         run_date="2026-06-21",
         slug=today_slug,
         event_date="2026-06-23",
         fact_as_of="2026-06-22T23:00:00+00:00",
-        model_snapshot_id=None,
-        market_snapshot_id=None,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item=payload_today,
+        payload=payload_today,
     )
-    future_id = insert_event_fact_history_with_unit_prior(
+    insert_ui_date_fact(
         conn,
         run_date="2026-06-24",
         slug=future_slug,
         event_date="2026-06-24",
         fact_as_of="2026-06-23T01:00:00+00:00",
-        model_snapshot_id=None,
-        market_snapshot_id=None,
-        composer_version=server.FACTS_COMPOSER_VERSION,
-        item=payload_future,
+        payload=payload_future,
     )
-    server._upsert_event_fact_latest(conn, today_slug, "2026-06-23", today_id)
-    server._upsert_event_fact_latest(conn, future_slug, "2026-06-24", future_id)
     conn.commit()
 
     old_today = server._chengdu_today_date_key
@@ -4292,6 +4560,57 @@ def test_latest_ui_default_run_date_prefers_chengdu_today_over_future() -> None:
         assert server.latest_ui_default_run_date(conn, max_scan=10) == "2026-06-23"
     finally:
         server._chengdu_today_date_key = old_today
+
+
+def test_latest_ui_default_run_date_advances_after_published_market_window() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    server.ensure_fact_tables(conn)
+    conn.execute(
+        """
+        CREATE TABLE event_runs (
+            event_date TEXT,
+            event_end_utc TEXT,
+            settlement_actual REAL,
+            market_closed INTEGER
+        )
+        """
+    )
+    today_slug = "highest-temperature-in-chengdu-on-june-23-2026"
+    future_slug = "highest-temperature-in-chengdu-on-june-24-2026"
+    for event_date, slug in (("2026-06-23", today_slug), ("2026-06-24", future_slug)):
+        payload = {
+            "slug": slug,
+            "event_date": event_date,
+            "run_date": event_date,
+            "title": f"Highest temperature in Chengdu on {event_date}?",
+            "city": "Chengdu",
+            "event_end_utc": f"{event_date}T12:00:00Z",
+            "distribution": [{"outcome": "29°C", "q_round": 1.0}],
+        }
+        insert_ui_date_fact(
+            conn,
+            run_date=event_date,
+            slug=slug,
+            event_date=event_date,
+            fact_as_of=f"{event_date}T10:00:00+00:00",
+            payload=payload,
+        )
+    conn.execute(
+        "INSERT INTO event_runs VALUES (?, ?, ?, ?)",
+        ("2026-06-23", "2026-06-23T12:00:00Z", None, 0),
+    )
+    conn.commit()
+
+    old_today = server._chengdu_today_date_key
+    old_now = server._ui_now_utc
+    try:
+        server._chengdu_today_date_key = lambda: "2026-06-23"
+        server._ui_now_utc = lambda: datetime(2026, 6, 23, 13, tzinfo=timezone.utc)
+        assert server.latest_ui_default_run_date(conn, max_scan=10) == "2026-06-24"
+    finally:
+        server._chengdu_today_date_key = old_today
+        server._ui_now_utc = old_now
 
 
 def test_ui_snapshot_upcoming_rows_filter_past_run_date_events() -> None:
@@ -7003,6 +7322,46 @@ def test_frontend_ui_snapshot_summary_requests_scope_to_chengdu() -> None:
     assert "limit=12${cityParam}" in model_block
 
 
+def test_frontend_event_tabs_default_to_effective_ssot_date_and_remember_manual_choice() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+
+    assert "const effectiveEventDate = String(window.__effectiveDate || '').split('T')[0];" in text
+    assert "[hashEventDate, rememberedEventDate]" in text
+    assert "|| nonExpiredEventDate" in text
+    assert "window.__activeEventDate = activeEventDate;" in text
+    assert "window.__activeEventDate = date;" in text
+    assert "过期/过峰事件不参与默认日期优先级，但仍保留完整只读卡片" in text
+    assert "物理最高温 X 后验、轨迹和报文证据" in text
+
+
+def test_frontend_active_date_does_not_pin_to_utc_yesterday() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    init_start = text.index("async function init()")
+    init_end = text.index("let autoRefreshTimer", init_start)
+    init_block = text[init_start:init_end]
+    latest_start = text.index("async function refreshLatestDateInBackground")
+    latest_end = text.index("function startLatestDateRefreshTicker", latest_start)
+    latest_block = text[latest_start:latest_end]
+    load_start = text.index("async function load(")
+    load_end = text.index("function renderFromCache", load_start)
+    load_block = text[load_start:load_end]
+
+    assert "function uiDateInTimeZone(timeZone, referenceValue)" in text
+    assert "function dashboardDefaultDate()" in text
+    assert "const today = dashboardDefaultDate();" in init_block
+    assert "const preserveManualDate = !requestedDate" in init_block
+    assert "window.__manualDateSelection = Boolean(requestedDate) || preserveManualDate;" in init_block
+    assert "let date = requestedDate || (preserveManualDate ? existingDate : today);" in init_block
+    assert "date = normalizeRunDate(latest && latest.date) || date;" in init_block
+    assert "date = window.__effectiveDate || window.__latestDate || date;" not in init_block
+    assert "const userStillOnSeed = window.__manualDateSelection !== true" in latest_block
+    assert "const useLatest = window.__manualDateSelection !== true" in load_block
+    assert "window.__refreshChinaAirportBoard === 'function'" in latest_block
+    assert "window.__refreshChinaAirportLineageHealth === 'function'" in latest_block
+    assert "window.__refreshChengduIntradayDecisionBoardStandalone === 'function'" in latest_block
+    assert "new Date().toISOString().slice(0, 10)" not in text
+
+
 def test_frontend_regular_polling_does_not_force_summary_rebuild_or_reset_viewport() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     summary_start = text.index("async function fetchUiSnapshotSummaryRunsPage")
@@ -8079,6 +8438,13 @@ def test_source_peak_model_cards_read_member_cache_snapshot_fallback() -> None:
     assert "return { label: String(ruleTop.label || ''), q: ruleQ, mode: 'model_member_cache_rule_bucket' };" in bucket_block
     assert "const memberMean = sourcePeakModelMemberMeanC(item, modelKey);" in value_block
     assert "if (Number.isFinite(memberMean)) return memberMean;" in value_block
+
+
+def test_model_peak_cards_prefer_display_only_model_peak_sources() -> None:
+    text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+    assert "item.model_peak_sources" in text
+    assert "peakSource['value_c']" in text or "peakSource[key]" in text
+    assert "display_only_model_peak_not_state_space_temperature_likelihood" in server.load_html() or "model_peak_sources" in text
 
 
 def test_source_peak_field_dependencies_are_ui_snapshot_contract_keys() -> None:
@@ -10146,6 +10512,9 @@ def test_ui_snapshot_summary_merge_fills_model_members_from_cache() -> None:
     conn.close()
 
     assert slim["model_member_cache_snapshot"]["models"]["gfs_seamless"]["member_count"] == 3
+    assert slim["model_peak_sources"]["gfs_seamless"]["value_c"] == pytest.approx(31.2)
+    assert slim["model_peak_sources"]["gfs_seamless"]["value_semantics"] == "cached_member_peak"
+    assert slim["model_peak_sources"]["gfs_seamless"]["likelihood_eligible"] is False
     assert slim["model_members_decimal_raw"]["icon_seamless"] == [29.8, 30.4, 30.6]
     comparison = slim["distribution"][0]["q_ensemble_qm_meta"]["model_bucket_rule_comparison"]
     assert comparison["per_model"]["gfs_seamless"]["rules"]["round"]["raw"]["label"] == "31°C"
@@ -15434,6 +15803,11 @@ def test_market_discovery_placeholders_only_add_chengdu_pending_model_events() -
     assert placeholder["market_discovery"]["source"] == "weather_market_discovery"
     assert placeholder["mean_bucket_na_reason"] == "model_not_materialized_yet"
     assert placeholder["distribution"][0]["q_na_reason"] == "model_not_materialized_yet"
+    assert placeholder["market_state"] == "published"
+    assert placeholder["market_state_label"] == "市场已发布"
+    assert placeholder["posterior_state"] == "not_materialized"
+    assert placeholder["posterior_state_label"] == "待接入生产后验"
+    assert placeholder["production_consumer_eligible"] is False
 
 
 def test_snapshot_key_rows_include_tokenized_chengdu_discovery_for_materialization() -> None:
@@ -15915,3 +16289,116 @@ def test_ui_realtime_cache_defaults_are_endpoint_specific() -> None:
     assert server.FACTS_PAGE_CACHE_SEC <= 1
     assert server.CHENGDU_INTRADAY_SUMMARY_CACHE_SEC <= 1
     assert server.DATA_SOURCE_HEALTH_CACHE_SEC >= 30
+
+
+def test_v6_ui_snapshot_materialization_reads_state_space_p0_and_consumed_list() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE posterior_checkpoints (
+            posterior_checkpoint_id TEXT, target_identity TEXT,
+            previous_checkpoint_id TEXT, prior_context_id TEXT,
+            forecast_evidence_snapshot_id TEXT, last_canonical_event_id TEXT,
+            last_strong_update_id TEXT, checkpoint_kind TEXT,
+            joint_posterior_json TEXT, reported_physical_x_distribution_json TEXT,
+            physical_state_posterior_sha256 TEXT, state_space_schema TEXT,
+            physical_state_posterior_schema TEXT, physical_state_model_artifact_sha256 TEXT,
+            physical_observation_artifact_sha256 TEXT, physical_reporting_operator_sha256 TEXT,
+            physical_driver_generation_sha256 TEXT, committed_at TEXT, state TEXT,
+            consumed_event_ids_json TEXT, reported_x_lower_bound_c INTEGER
+        );
+        CREATE TABLE production_initial_posterior_lineage (
+            posterior_checkpoint_id TEXT, target_identity TEXT, prior_context_id TEXT,
+            prior_artifact_sha256 TEXT, forecast_evidence_snapshot_id TEXT,
+            weak_likelihood_sha256 TEXT, created_at TEXT
+        );
+        CREATE TABLE weak_forecast_evidence_snapshots (
+            forecast_evidence_snapshot_id TEXT, weak_likelihood_sha256 TEXT,
+            likelihood_by_x_json TEXT, source_set_key TEXT,
+            source_revision_ids_json TEXT, created_at TEXT,
+            source_revisions_json TEXT, forecast_peak_timing_prior_json TEXT,
+            forecast_background_context_json TEXT, source_expert_trace_json TEXT,
+            forecast_multimodality_trace_json TEXT, weak_model_diagnostics_json TEXT,
+            prior_context_audit_json TEXT
+        );
+        CREATE TABLE strong_observation_updates (
+            strong_observation_update_id TEXT, state TEXT,
+            canonical_observation_event_id TEXT,
+            physical_current_event_consumption_count INTEGER,
+            physical_observation_likelihood_sha256 TEXT,
+            physical_pre_event_state_sha256 TEXT,
+            physical_post_event_state_sha256 TEXT,
+            started_at TEXT, completed_at TEXT
+        );
+        """
+    )
+    p0_id = "p0-state-space"
+    current_id = "checkpoint-current"
+    conn.execute(
+        "INSERT INTO posterior_checkpoints VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            p0_id, "physical_weather_day_v1:ZUUU:2026-07-21", "", "prior-1", "weak-1",
+            "", "", "initial", json.dumps({"components": []}),
+            json.dumps({"36": 0.7, "37": 0.3}), "p0-state-hash", "v6", "v6",
+            "transition-hash", "observation-artifact", "operator-hash", "forcing-hash",
+            "2026-07-21T02:00:00Z", "committed", "[]", 0,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO posterior_checkpoints VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            current_id, "physical_weather_day_v1:ZUUU:2026-07-21", p0_id, "prior-1", "weak-2",
+            "canobs-current", "strong-current", "incremental", json.dumps({"components": []}),
+            json.dumps({"36": 0.2, "37": 0.8}), "current-state-hash", "v6", "v6",
+            "transition-hash", "observation-artifact", "operator-hash", "forcing-hash",
+            "2026-07-21T04:30:42Z", "committed", json.dumps(["canobs-current"]), 36,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO production_initial_posterior_lineage VALUES (?,?,?,?,?,?,?)",
+        (p0_id, "physical_weather_day_v1:ZUUU:2026-07-21", "prior-1", "prior-artifact", "weak-1", "weak-hash", "2026-07-21T02:00:00Z"),
+    )
+    conn.execute(
+        "INSERT INTO weak_forecast_evidence_snapshots VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("weak-1", "weak-hash", json.dumps({"36": 1.0}), "official", "[]", "2026-07-21T02:00:00Z", "{}", "{}", "{}", "[]", "{}", "{}", "{}"),
+    )
+    conn.execute(
+        "INSERT INTO strong_observation_updates VALUES (?,?,?,?,?,?,?,?,?)",
+        ("strong-current", "applied", "canobs-current", 1, "likelihood-hash", "pre-hash", "post-hash", "2026-07-21T04:30:41Z", "2026-07-21T04:30:42Z"),
+    )
+    conn.commit()
+
+    payload = {
+        "posterior_ssot_fact": {
+            "schema": "sequential_temperature_posterior_ssot_v4_reported_x",
+            "posterior_checkpoint_id": current_id,
+            "last_canonical_event_id": "canobs-current",
+            "last_strong_update_id": "strong-current",
+            "probability_runtime_identity": {"target_identity": "physical_weather_day_v1:ZUUU:2026-07-21"},
+            "physical_state_posterior_sha256": "current-state-hash",
+        }
+    }
+    server._attach_v6_frozen_probability_layers_for_ui_snapshot(
+        conn, payload, event_date="2026-07-21"
+    )
+
+    assert payload["prior_distribution"]["36°C"] == pytest.approx(0.7)
+    assert payload["prior_meta"]["source_kind"] == "persisted_state_space_p0"
+    assert payload["observation_update_materialization"]["state"] == "materialized"
+    assert payload["observation_update_materialization"]["consumption_count"] == 1
+    server._attach_v6_probability_audit_for_ui_snapshot(
+        conn, payload, event_date="2026-07-21"
+    )
+    assert payload["state_space_lineage"]["observation_update"]["consumed"] is True
+    assert payload["probability_audit"]["observation_update_materialization"]["materialized"] is True
+
+    section = server._build_ui_snapshot_observation_strong_section(
+        {
+            "observation_update_materialization": payload["observation_update_materialization"],
+            "source_observations": [{"source_lane": "amsc", "source_id": "zuuu_metar_raw_amsc"}],
+        }
+    )
+    assert section["materialization_state"] == "state_space_observation_update"
+    assert section["materialization_label"] == "官方报文与状态空间观测更新已物化"
+    conn.close()

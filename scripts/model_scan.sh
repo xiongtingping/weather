@@ -1108,7 +1108,11 @@ if [ "${GUARDED_SCAN_CONTEXT}" = "1" ]; then
     export PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="${PM_MODEL_SCAN_NEW_MARKET_MAX_EVENTS_PER_RUN}"
   fi
   # Keep runs short to avoid the 900s watchdog.
-  export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 2)"
+  if [ "${PM_MODEL_SCAN_DEPENDENCY_BATCH:-0}" = "1" ]; then
+    export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 80)"
+  else
+    export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 2)"
+  fi
   export PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_MATCHED_PER_RUN:-${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}}" "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}")"
   # While auto-trade is active, avoid diagnostic CLOB fan-out and repeated
   # timeout retries; otherwise model_scan can monopolize the DB writer window
@@ -1436,7 +1440,7 @@ fi
 # Prevent overlapping scans; clear stale lock if no scan-weather process is running.
 LOCK_DIR="$ROOT/data/model_scan.lock"
 LOCK_PID_FILE="$LOCK_DIR/pid"
-DB_LOCK_DIR="$ROOT/data/db_writer.lock"
+DB_LOCK_DIR="$ROOT/data/db_writer.user.lock"
 DB_LOCK_PID_FILE="$DB_LOCK_DIR/pid"
 DB_LOCK_OWNER_FILE="$DB_LOCK_DIR/owner"
 _scan_pid_running() {
@@ -1569,7 +1573,11 @@ if [ "${PM_LOW_LATENCY_MODE}" = "1" ]; then
   export PM_SCAN_FULL_DAYS_AHEAD="${PM_SCAN_FULL_DAYS_AHEAD:-0}"
   export PM_SCAN_FULL_INTERVAL_MINUTES="${PM_SCAN_FULL_INTERVAL_MINUTES:-0}"
   # Model scan wrapper uses PM_MODEL_SCAN_*; set those directly.
-  export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 2)"
+  if [ "${PM_MODEL_SCAN_DEPENDENCY_BATCH:-0}" = "1" ]; then
+    export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 80)"
+  else
+    export PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 2)"
+  fi
   export PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_MATCHED_PER_RUN:-${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}}" "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}")"
   # Rules-first: only fetch event detail when cached/list metadata lacks the settlement contract.
   export PM_SCAN_FETCH_EVENT_DETAIL="0"
@@ -1794,15 +1802,27 @@ fi
 export PM_MODEL_SCAN_COMPOSE_MARKET_BOOTSTRAP="${PM_MODEL_SCAN_COMPOSE_MARKET_BOOTSTRAP:-${PM_MARKET_SCAN_COMPOSE_MARKET_BOOTSTRAP:-0}}"
 export PM_MARKET_SCAN_COMPOSE_MARKET_BOOTSTRAP="${PM_MARKET_SCAN_COMPOSE_MARKET_BOOTSTRAP:-${PM_MODEL_SCAN_COMPOSE_MARKET_BOOTSTRAP}}"
 export PM_ARCHIVE_WRITE_SCOPE="${PM_ARCHIVE_WRITE_SCOPE:-chengdu_zuuu}"
-PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 2)"
+if [ "${PM_MODEL_SCAN_DEPENDENCY_BATCH:-0}" = "1" ]; then
+  PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN:-${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}}" 2 80)"
+  if [[ "${PM_MODEL_SCAN_DEPENDENCY_DAYS_AHEAD:-}" =~ ^[0-9]+$ ]]; then
+    export PM_SCAN_FAST_DAYS_AHEAD="${PM_MODEL_SCAN_DEPENDENCY_DAYS_AHEAD}"
+    export PM_SCAN_FULL_DAYS_AHEAD="${PM_MODEL_SCAN_DEPENDENCY_DAYS_AHEAD}"
+  fi
+else
+  PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN:-2}" 2 2)"
+fi
 PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_MAX_MATCHED_PER_RUN:-${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}}" "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}")"
 if [ "${MODEL_REFRESH_MODE:-cache}" = "refresh" ]; then
-  PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN:-2}" 2 3)"
-  if [ "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" -gt "${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN}" ]; then
-    PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN}"
-  fi
-  if [ "${PM_MODEL_SCAN_MAX_MATCHED_PER_RUN}" -gt "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" ]; then
-    PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}"
+  if [ "${PM_MODEL_SCAN_DEPENDENCY_BATCH:-0}" = "1" ]; then
+    PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN:-${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}}" 2 80)"
+  else
+    PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN="$(normalize_positive_int_max "${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN:-2}" 2 3)"
+    if [ "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" -gt "${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN}" ]; then
+      PM_MODEL_SCAN_MAX_EVENTS_PER_RUN="${PM_MODEL_SCAN_REFRESH_MAX_EVENTS_PER_RUN}"
+    fi
+    if [ "${PM_MODEL_SCAN_MAX_MATCHED_PER_RUN}" -gt "${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}" ]; then
+      PM_MODEL_SCAN_MAX_MATCHED_PER_RUN="${PM_MODEL_SCAN_MAX_EVENTS_PER_RUN}"
+    fi
   fi
 fi
 PM_SCAN_MODEL_SCAN_TIMEOUT_SEC="$(normalize_positive_int_max "${PM_SCAN_MODEL_SCAN_TIMEOUT_SEC:-300}" 300 900)"

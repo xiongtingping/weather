@@ -38,6 +38,8 @@ ENDPOINT = "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/m
 AIRPORT = "ZUUU"
 REPORT_TYPES = {"METAR", "SPECI", "TAF"}
 QUERY_TT = "SA,SP,FC,FT,"
+MAX_AMSC_RESPONSE_BYTES = 4 * 1024 * 1024
+AMSC_RESPONSE_CHUNK_BYTES = 64 * 1024
 PARSER_VERSION = "amsc_zuuu_metar_taf_fetcher_v1"
 AMSC_LATEST_REPOINT_BLOCK_REASON = "source_acquisition_fact_cannot_repoint_posterior_ssot_latest"
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -219,6 +221,8 @@ def fetch_with_curl(token: str, count: int, timeout: int) -> dict[str, Any]:
         str(connect_timeout),
         "--max-time",
         str(timeout),
+        "--max-filesize",
+        str(MAX_AMSC_RESPONSE_BYTES),
         "--retry",
         "0",
         "-G",
@@ -235,7 +239,29 @@ def fetch_with_curl(token: str, count: int, timeout: int) -> dict[str, Any]:
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or f"curl exited with {result.returncode}")
+    if len(result.stdout.encode("utf-8", "replace")) > MAX_AMSC_RESPONSE_BYTES:
+        raise RuntimeError("amsc_response_too_large")
     return json.loads(result.stdout)
+
+
+def _read_bounded_response(response: Any) -> str:
+    try:
+        declared = int(str(response.headers.get("Content-Length") or "0"))
+    except (AttributeError, TypeError, ValueError):
+        declared = 0
+    if declared > MAX_AMSC_RESPONSE_BYTES:
+        raise RuntimeError("amsc_response_too_large")
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = response.read(min(AMSC_RESPONSE_CHUNK_BYTES, MAX_AMSC_RESPONSE_BYTES - total + 1))
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_AMSC_RESPONSE_BYTES:
+            raise RuntimeError("amsc_response_too_large")
+        chunks.append(chunk)
+    return b"".join(chunks).decode("utf-8", "replace")
 
 
 def fetch_reports(token: str, count: int, timeout: int) -> dict[str, Any]:
@@ -260,7 +286,7 @@ def fetch_reports_with_transport(token: str, count: int, timeout: int) -> tuple[
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             response_started_at = utc_now_iso()
-            raw = resp.read().decode("utf-8", "replace")
+            raw = _read_bounded_response(resp)
         return json.loads(raw), {
             "response_started_at": response_started_at,
             "response_headers_observed": True,
@@ -557,6 +583,19 @@ def _build_taf_source_payload(row: dict[str, Any], *, fetched_at: str, duration_
         "valid_time_local": _local_iso(peak_dt),
         "forecast_peak_c": float(peak["temperature_c"]),
         "forecast_peak_valid_time": _iso_z(peak_dt),
+        "forecast_weather_regime": str(peak.get("forecast_weather_regime") or "unknown_forecast_regime"),
+        "source_modes_schema": "forecast_source_modes_v1",
+        "source_modes": [{
+            "mode_id": "taf_tx_primary",
+            "mode_probability": 1.0,
+            "forecast_peak_c": float(peak["temperature_c"]),
+            "forecast_sigma_c": None,
+            "forecast_peak_valid_time": _iso_z(peak_dt),
+            "hourly_curve": [],
+            "physical_regime": {},
+            "forecast_weather_regime": str(peak.get("forecast_weather_regime") or "unknown_forecast_regime"),
+            "mode_origin": "taf_declared_tx_for_target_day",
+        }],
         "raw_ref": content,
         "raw_text": content,
         "report_type": "TAF",

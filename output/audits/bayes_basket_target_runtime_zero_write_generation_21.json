@@ -1,0 +1,111 @@
+{
+  "schema": "bayes_basket_target_runtime_zero_write_receipt_v1",
+  "status": "PASS",
+  "observed_from_utc": "2026-07-28T09:46:30Z",
+  "observed_until_utc": "2026-07-28T09:48:55Z",
+  "sample_count": 10,
+  "sample_interval_seconds": 16,
+  "station_id": "RKPK",
+  "event_date": "2026-07-28",
+  "settlement_timezone": "Asia/Seoul",
+  "reported_trajectory_activation": {
+    "generation": 21,
+    "activation_sha256": "633578f82d28e226d8c30e3572545c3e3f7ec391c0a9aa4fd8b58cd76848ca95",
+    "config_sha256": "91da381fc69b3a6c472466cc6863d0e599e075fdb0ea6dcc10a6bab89a100e8b",
+    "production_no_live": true,
+    "live_pause_retained": true
+  },
+  "processes": {
+    "reported_trajectory_no": {
+      "pid": 97722,
+      "pid_stable": true,
+      "rss_kb_min": 29984,
+      "rss_kb_max": 67008,
+      "rss_kb_final": 60176
+    },
+    "market_ws": {
+      "pid": 98056,
+      "pid_stable": true,
+      "rss_kb_min": 52896,
+      "rss_kb_max": 71632,
+      "rss_kb_final": 63952
+    },
+    "clob_order_service": {
+      "pid": 95880,
+      "pid_stable": true,
+      "rss_kb_min": 1744,
+      "rss_kb_max": 32832,
+      "rss_kb_final": 6192
+    }
+  },
+  "target_ssot": {
+    "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "quick_check": "ok",
+    "db_bytes_initial": 133251072,
+    "db_bytes_final": 133304320,
+    "db_bytes_delta": 53248,
+    "minimum_observed_free_kb": 17165120
+  },
+  "counts": {
+    "basket_official_ws_snapshot": {
+      "initial": 504,
+      "final": 510,
+      "delta": 6,
+      "classification": "REAL_ECONOMIC_BOOK_CHANGES"
+    },
+    "basket_target_execution_cycles": {
+      "initial": 434,
+      "final": 434,
+      "delta": 0
+    },
+    "auto_trade_decisions": {
+      "initial": 434,
+      "final": 434,
+      "delta": 0
+    },
+    "basket_policy_training_fact": {
+      "initial": 422,
+      "final": 422,
+      "delta": 0
+    },
+    "basket_target_order_intents": {
+      "initial": 0,
+      "final": 0,
+      "delta": 0
+    },
+    "basket_target_order_events": {
+      "initial": 0,
+      "final": 0,
+      "delta": 0
+    },
+    "basket_target_order_reconciliations": {
+      "initial": 0,
+      "final": 0,
+      "delta": 0
+    },
+    "will_order_true": {
+      "initial": 0,
+      "final": 0,
+      "delta": 0
+    }
+  },
+  "economic_quote_evidence": {
+    "quote_version_changed": true,
+    "per_bucket_book_observed_at_changed": true,
+    "price_or_depth_changed": true,
+    "stream_keepalive_only_classification": false,
+    "stable_quote_rounds_observed": 3,
+    "stable_quote_rounds_new_snapshot_count": 0
+  },
+  "runtime": {
+    "live_paused_flag_present_all_samples": true,
+    "reported_trajectory_stdout_bytes": 0,
+    "reported_trajectory_stderr_bytes": 0,
+    "latest_cycle_state": "prepared",
+    "scope_cycle_guard_result": "PASS",
+    "orders_submitted": 0,
+    "calls_order_gateway": false,
+    "live_submit_authorized": false
+  },
+  "conclusion": "Generation 21 is running the authority-scope zero-write guard. Real economic book changes may append official WS snapshots, while unchanged decision authority appends no cycle, decision, or training fact. No order or gateway write occurred."
+}

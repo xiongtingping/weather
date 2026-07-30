@@ -1,0 +1,158 @@
+{
+  "schema": "bayes_basket_target_station_regional_model_pool_v1",
+  "global_model_pool": [
+    "ECMWF",
+    "GFS",
+    "ICON",
+    "GEM",
+    "CMA"
+  ],
+  "selection_contract": {
+    "minimum_selected_models": 2,
+    "historical_oos_only": true,
+    "future_targets_for_training_forbidden": true,
+    "online_weight_updates_forbidden": true,
+    "regional_model_automatic_preference_forbidden": true,
+    "regional_pool_is_station_scoped": true,
+    "p0_initial_lead_bucket": "d2",
+    "p0_regional_refresh_lead_bucket": "d1"
+  },
+  "global_aggregator_capture_models": {
+    "ICON": {
+      "provider_id": "icon_global_open_meteo",
+      "model_parameter": "dwd_icon_global",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "CMA": {
+      "provider_id": "cma_grapes_global_open_meteo",
+      "model_parameter": "cma_grapes_global",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    }
+  },
+  "regional_models": {
+    "HRRR": {
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "model_parameter": "ncep_hrrr_conus",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "NBM": {
+      "provider_id": "ncep_nbm_conus_open_meteo",
+      "model_parameter": "ncep_nbm_conus",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "NAM": {
+      "provider_id": "ncep_nam_conus_open_meteo",
+      "model_parameter": "ncep_nam_conus",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "ICON-D2": {
+      "provider_id": "icon_d2_open_meteo",
+      "model_parameter": "icon_d2",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "AROME-FR": {
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "model_parameter": "meteofrance_arome_france0025",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "UKMO-2KM": {
+      "provider_id": "ukmo_uk_deterministic_2km_open_meteo",
+      "model_parameter": "ukmo_uk_deterministic_2km",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "HARMONIE-NL": {
+      "provider_id": "knmi_harmonie_arome_netherlands_open_meteo",
+      "model_parameter": "knmi_harmonie_arome_netherlands",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "HARMONIE-EU": {
+      "provider_id": "knmi_harmonie_arome_europe_open_meteo",
+      "model_parameter": "knmi_harmonie_arome_europe",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    },
+    "JMA-MSM": {
+      "provider_id": "jma_msm_open_meteo",
+      "model_parameter": "jma_msm",
+      "source_class": "aggregator_republisher",
+      "run_cycle": "12Z",
+      "run_day_offset": 1
+    }
+  },
+  "station_regional_pool": {
+    "CYYZ": ["HRRR", "NBM", "NAM"],
+    "EDDM": ["ICON-D2", "AROME-FR", "HARMONIE-EU"],
+    "EFHK": ["HARMONIE-EU"],
+    "EGLC": ["ICON-D2", "AROME-FR", "HARMONIE-NL", "HARMONIE-EU"],
+    "EHAM": ["ICON-D2", "AROME-FR", "UKMO-2KM", "HARMONIE-NL", "HARMONIE-EU"],
+    "EPWA": ["HARMONIE-EU"],
+    "FACT": [],
+    "KATL": ["HRRR", "NBM", "NAM"],
+    "KAUS": ["HRRR", "NBM", "NAM"],
+    "KBKF": ["HRRR", "NBM", "NAM"],
+    "KDAL": ["HRRR", "NBM", "NAM"],
+    "KHOU": ["HRRR", "NBM", "NAM"],
+    "KLAX": ["HRRR", "NBM", "NAM"],
+    "KLGA": ["HRRR", "NBM", "NAM"],
+    "KMIA": ["HRRR", "NBM", "NAM"],
+    "KORD": ["HRRR", "NBM", "NAM"],
+    "KSEA": ["HRRR", "NBM", "NAM"],
+    "KSFO": ["HRRR", "NBM", "NAM"],
+    "LEMD": ["AROME-FR"],
+    "LFPB": ["ICON-D2", "AROME-FR", "UKMO-2KM", "HARMONIE-EU"],
+    "LIMC": ["ICON-D2", "AROME-FR", "HARMONIE-EU"],
+    "LTAC": [],
+    "MMMX": [],
+    "MPMG": [],
+    "NZWN": [],
+    "OEJN": [],
+    "OPKC": [],
+    "RCSS": ["JMA-MSM"],
+    "RJTT": ["JMA-MSM"],
+    "RKPK": ["JMA-MSM"],
+    "RKSI": ["JMA-MSM"],
+    "RPLL": [],
+    "SAEZ": [],
+    "SBGR": [],
+    "VILK": [],
+    "WMKK": [],
+    "WSSS": [],
+    "ZBAA": [],
+    "ZGGG": [],
+    "ZGSZ": [],
+    "ZHHH": [],
+    "ZSPD": ["JMA-MSM"],
+    "ZSQD": ["JMA-MSM"],
+    "ZUCK": [],
+    "ZUUU": []
+  },
+  "excluded_after_probe": {
+    "KMA-LDPS": "historical exact 2026-07-01T12:00Z run unavailable",
+    "GEM-HRDPS": "single-runs exact-run model parameter unavailable"
+  },
+  "coverage_probe": {
+    "endpoint": "https://single-runs-api.open-meteo.com/v1/forecast",
+    "run_initialization_utc": "2026-07-01T12:00:00Z",
+    "probed_at_utc": "2026-07-29T10:00:00Z",
+    "future_data_used": false
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schema": "open_meteo_aux_nwp_capture_config_v1",
+  "state": "enabled_auxiliary_no_live_capture",
+  "enabled": true,
+  "scope": "canonical_45_station",
+  "providers": {
+    "gem_global_open_meteo": {
+      "endpoint": "https://api.open-meteo.com/v1/gem",
+      "model": "gem_global",
+      "model_role": "GEM",
+      "native_resolution_km": 15,
+      "native_temporal_resolution_hours": 3,
+      "native_update_frequency_hours": 12
+    },
+    "cma_grapes_global_open_meteo": {
+      "endpoint": "https://api.open-meteo.com/v1/cma",
+      "model": "cma_grapes_global",
+      "model_role": "CMA",
+      "native_resolution_km": 15,
+      "native_temporal_resolution_hours": 3,
+      "native_update_frequency_hours": 6
+    }
+  },
+  "forecast_days": 7,
+  "batch_size": 15,
+  "retention_count_per_provider": 4,
+  "resource_budget": {
+    "max_response_bytes": 8388608,
+    "max_capture_bytes": 33554432,
+    "min_free_bytes": 536870912
+  },
+  "authority": {
+    "source_class": "aggregator_republisher",
+    "calibration_candidate_eligible": true,
+    "native_arrival_index_eligible": false,
+    "native_exact_join_eligible": false,
+    "hard_no_eligible": false,
+    "formal_calibration_eligible": false,
+    "production_activation_eligible": false,
+    "requires_separate_forward_oos_artifact": true
+  },
+  "boundary": {
+    "writes_target_database": false,
+    "writes_production_database": false,
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "live_submit_authorized": false
+  }
+}

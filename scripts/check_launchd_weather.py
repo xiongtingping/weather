@@ -22,10 +22,10 @@ LAUNCH_AGENTS = HOME / "Library" / "LaunchAgents"
 LAUNCH_DAEMONS = Path("/Library/LaunchDaemons")
 MONITOR_DAEMON_LABEL = os.environ.get("PM_WEATHER_MONITOR_LABEL", "com.weather.monitor.daemon").strip()
 MONITOR_DAEMON_DOMAIN_LABEL = (
-    MONITOR_DAEMON_LABEL if MONITOR_DAEMON_LABEL.startswith("system/") else f"system/{MONITOR_DAEMON_LABEL}"
+    MONITOR_DAEMON_LABEL if MONITOR_DAEMON_LABEL.startswith("gui/") else f"gui/{os.getuid()}/{MONITOR_DAEMON_LABEL}"
 )
 MONITOR_DAEMON_NAME = MONITOR_DAEMON_DOMAIN_LABEL.rsplit("/", 1)[-1]
-MONITOR_DAEMON_PLIST = LAUNCH_DAEMONS / f"{MONITOR_DAEMON_NAME}.plist"
+MONITOR_DAEMON_PLIST = LAUNCH_AGENTS / f"{MONITOR_DAEMON_NAME}.plist"
 SOURCE_MONITOR_DAEMON_PLIST = ROOT / "launchd" / f"{MONITOR_DAEMON_NAME}.plist"
 AWC_SOURCE_HEALTH_AUDIT = ROOT / "scripts" / "awc_source_health_audit.py"
 POSTERIOR_TARGET_LIVE_JOB_AUDIT = ROOT / "scripts" / "posterior_target_live_job_audit.py"
@@ -42,7 +42,7 @@ WEATHER_REQUIRED = {
 
 WEATHER_MONITOR_REQUIRED = {
     MONITOR_DAEMON_DOMAIN_LABEL: (
-        "scripts/polymarket_monitor_daemon.sh",
+        "scripts/weather_monitor_launchagent_entrypoint.sh",
         "scripts/auto_trade_watcher.py",
     ),
 }
@@ -1432,8 +1432,8 @@ def main() -> int:
         if not ok:
             blockers.append(f"{domain_label}_not_loaded")
             details[f"{domain_label}_repair_command"] = (
-                "sudo bash scripts/install_monitor_launchdaemon.sh && "
-                f"sudo launchctl kickstart -k {MONITOR_DAEMON_DOMAIN_LABEL}"
+                "bash scripts/install_monitor_launchdaemon.sh && "
+                f"launchctl kickstart -k {MONITOR_DAEMON_DOMAIN_LABEL}"
             )
             continue
         if row.get("status") != "running":

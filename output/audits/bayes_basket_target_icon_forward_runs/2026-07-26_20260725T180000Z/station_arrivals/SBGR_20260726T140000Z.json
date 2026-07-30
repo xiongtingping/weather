@@ -1,0 +1,45 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-9a61daf2a1e52c814218f016",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "d70509310dd2c4053f2e77a3622fa0906c7122b30bc9479fad9dc1509b263eee",
+    "decision_at_utc": "2026-07-26T11:23:51Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ICON",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "icon_global_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-25T20:48:08Z",
+    "raw_payload_sha256s": [
+      "9e23c40f7099ea7ca8c8bafacda644a20d5734e7245f5d669af87ef106b074ae"
+    ],
+    "receipt_sha256": "1bab5d72faf6c5f0d84bd00313f3778cffbdee4637df9893a7e1b43d3e836d3b",
+    "received_at_utc": "2026-07-26T11:23:51Z",
+    "run_initialization_utc": "2026-07-25T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_020_T_2M.grib2.bz2",
+    "station_id": "SBGR",
+    "target_local_date": "2026-07-26",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-07-26T14:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "p0_station_lineage_only": true,
+    "p1_probability_input_authorized": false,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "formal_consumed_at_utc": "2026-07-26T11:25:18.390Z",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/d2ff91e07a00a1ac8b4b042cdb2cdd1dd7ffb05899d9c9a9e645ef46cdeb1d08.json"
+}

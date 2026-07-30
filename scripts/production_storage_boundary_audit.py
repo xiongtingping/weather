@@ -12,6 +12,16 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "production_storage_boundary_audit_v1"
+RETIRED_EXTERNAL_CUTOVERS = (
+    "scripts/refresh_reported_x_runtime_manifest_epoch.sh",
+    "scripts/cutover_physical_state_bayes_v6_production.sh",
+    "scripts/cutover_reported_x_probability_epoch.sh",
+    "scripts/cutover_cumulative_strong_likelihood_v5.sh",
+    "scripts/cutover_state_aware_strong_lr_probability_epoch.sh",
+    "scripts/cutover_amsc_slot_complete_v6_and_trade_caps.sh",
+    "scripts/cutover_dynamic_position_market_alpha_schema.sh",
+)
+RETIREMENT_TOKEN = "RETIRED_EXTERNAL_DISK_PRODUCTION_CUTOVER_FORBIDDEN"
 
 
 def audit(root: Path, *, archive_db: Path, cutover_script: Path) -> dict[str, Any]:
@@ -52,6 +62,25 @@ def audit(root: Path, *, archive_db: Path, cutover_script: Path) -> dict[str, An
     cow_clone = '/bin/cp -c data/archive.db "$LOCAL_STAGE"' in text
     if not cow_clone:
         blockers.append("local_apfs_cow_rollback_clone_missing")
+    retired_cutovers: dict[str, bool] = {}
+    for relative in RETIRED_EXTERNAL_CUTOVERS:
+        retired_path = root / relative
+        retired_present = retired_path.is_file()
+        retired_text = retired_path.read_text(encoding="utf-8") if retired_present else ""
+        guard_at = retired_text.find(RETIREMENT_TOKEN)
+        exit_at = retired_text.find("exit 2", guard_at)
+        external_at = retired_text.find("/Volumes/")
+        guarded = (
+            not retired_present
+            or (
+                guard_at >= 0
+                and exit_at > guard_at
+                and (external_at < 0 or exit_at < external_at)
+            )
+        )
+        retired_cutovers[relative] = guarded
+        if not guarded:
+            blockers.append(f"retired_external_cutover_not_fail_closed:{relative}")
     return {
         "schema": SCHEMA_VERSION,
         "ok": not blockers,
@@ -65,6 +94,11 @@ def audit(root: Path, *, archive_db: Path, cutover_script: Path) -> dict[str, An
         "external_disk_probed": False,
         "external_disk_required": False,
         "external_disk_role": "discardable_rebuildable_cold_archive_only",
+        "external_disk_may_contain_production_database": False,
+        "external_disk_may_supply_backup_or_rollback": False,
+        "external_disk_may_affect_readiness_or_runtime": False,
+        "external_archive_failure_effect": "none",
+        "retired_external_cutovers_fail_closed_before_probe": retired_cutovers,
         "blocks_amsc_or_ssot": False,
         "read_only": True,
         "writes_archive_db": False,

@@ -1,0 +1,39 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "production_mode": "production_no_live",
+    "writes_production_db": false
+  },
+  "content_sha256": "67c0cc27e4422f5f6caa423fdd5c3b92c262dd6e34fd2da7f4db6ced44e991ab",
+  "counts": {
+    "auto_trade_decisions": 1,
+    "basket_target_bound_facts": 1,
+    "basket_target_capital_reservations": 1,
+    "basket_target_execution_cycles": 1,
+    "basket_target_observation_facts": 1,
+    "basket_target_order_events": 0,
+    "basket_target_order_intents": 0
+  },
+  "decision": {
+    "calls_order_gateway": false,
+    "candidate_will_order": false,
+    "cycle_id": "cycle_4b96e4069a46392897285c802a896d4dd1cd435d",
+    "decision_id": "decision_f778d740c0f99c8e61e6cc855dda51b3f2f43c9b",
+    "idempotent": true,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "reservation_id": "reserve_a309fcba91ccb08326507c4d6b5443b944974a52",
+    "schema": "bayes_basket_target_production_candidate_atomic_identity_v1",
+    "state": "committed_idempotent"
+  },
+  "reconcile_required_count": 0,
+  "reserved_amount_usdc": 0.0,
+  "schema": "bayes_basket_p1_no_live_reconcile_receipt_v1",
+  "scratch_db": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/p1_no_live_reconcile_scratch.db",
+  "state": "NO_ORDER_RECONCILED",
+  "will_order_sum": 0
+}

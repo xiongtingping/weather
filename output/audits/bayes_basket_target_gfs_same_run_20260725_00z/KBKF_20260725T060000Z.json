@@ -1,0 +1,44 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-ea936625126d16a90ff2cf78",
+    "capture_mode": "prospective",
+    "content_sha256": "88dc84837495d5eb07140376e28b143a1dee9a1e3d66f06c9815285c32011e5c",
+    "decision_at_utc": "2026-07-25T08:30:00Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "GFS",
+    "open_meteo": false,
+    "production_authority": false,
+    "provider_id": "gfs_0p25_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-25T03:36:34Z",
+    "raw_payload_sha256s": [
+      "169e14bada5155f4356cd0954ed4c6ffdc1d38bca71560ae14d18e4814ed7064"
+    ],
+    "receipt_sha256": "4b99ec7764170ecb6679602344a49af6defa7dd3c5e13b4e915d7ef317a1e0ba",
+    "received_at_utc": "2026-07-25T07:20:56Z",
+    "run_initialization_utc": "2026-07-25T00:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl?file=gfs.t00z.pgrb2.0p25.f006&lev_2_m_above_ground=on&lev_850_mb=on&lev_700_mb=on&lev_500_mb=on&var_TMP=on&var_RH=on&var_HGT=on&var_UGRD=on&var_VGRD=on&subregion=&leftlon=-105.26&rightlon=-104.26&toplat=40.21&bottomlat=39.21&dir=%2Fgfs.20260725%2F00%2Fatmos",
+    "station_id": "KBKF",
+    "target_local_date": "2026-07-25",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-07-25T06:00:00Z"
+  },
+  "boundary": {
+    "orders_submitted": 0,
+    "places_orders": false,
+    "request_byte_range": null,
+    "resource_budget": {
+      "captured_response_bytes": 3347,
+      "max_capture_bytes": 536870912,
+      "max_response_bytes": 268435456,
+      "min_free_bytes": 536870912
+    },
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/gfs_0p25_official/receipts/ea936625126d16a90ff2cf78e151b3f593ae7cc350687e9e286b35a920df2371.json"
+}

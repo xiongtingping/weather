@@ -31,7 +31,7 @@ REPORT_DIR = ROOT / "data" / "reports"
 LOG_DIR = ROOT / "data" / "logs"
 LOCK_PATH = ROOT / "data" / ".archive_db_auto_guard.lock"
 STATE_PATH = ROOT / "data" / "archive_db_auto_guard_state.json"
-SYSTEM_MONITOR_DAEMON = "system/com.weather.monitor.daemon"
+SYSTEM_MONITOR_DAEMON = f"gui/{os.getuid()}/com.weather.monitor.daemon"
 
 USER_LABELS = [
     "com.weather.task_queue_worker",

@@ -29,11 +29,11 @@ sudo -v
 bash scripts/cutover_state_aware_strong_lr_probability_epoch.sh  # RETIRED; DO NOT RUN
 ```
 
-`cutover_state_aware_strong_lr_probability_epoch.sh` 是旧纪元入口，现已退役；旧 `cutover_sequential_bayes_production.sh` 已删除，不存在兼容入口。Runbook 不复制第二份易漂移 shell。其固定阶段为：验证只读全日回放；先用最近一份已验证外盘备份运行 orderless Transaction-B preflight；停止 launchd 写者并回收 target-realization 子进程；只读确认 writer quiescence；在本机同一 APFS 文件系统创建精确 clone；先以该 clone 追加默认关闭的 position/continuation/market-alpha schema；再原子发布 state-aware Strong-LR successor activation；提交当前 activation 唯一 P0 并按顺序回放 canonical AMSC METAR/SPECI；运行 readiness；恢复服务；依次运行 cutover acceptance、`production_sequential_bayes_chain_audit.py`、状态判别审计与 SSOT alignment；最后从冻结的本机 clone 异步复制外盘备份。默认关闭 schema 必须位于 P0 之前，否则 P0 的 append-only 写入会令切换前备份与当前库页几何必然不同。若 successor epoch 与 schema 已存在，脚本退化为同一组只读验收，不跳过 SSOT 检查。
+`cutover_state_aware_strong_lr_probability_epoch.sh` 是旧纪元入口，现已退役；旧 `cutover_sequential_bayes_production.sh` 已删除，不存在兼容入口。本文历史上关于“外盘生产备份、外盘 preflight、外盘耐久副本”的描述全部撤销且不得执行。外置盘只允许保存可丢弃、可重建的非关键冷归档，不能保存或提供 `archive.db`、回滚副本、activation 或验收证据，也不能影响 readiness、服务启停、SSOT 或交易。
 
 writer quiescence 采用最多三次、每次间隔 250ms 的同口径复核；`lsof` 中的 PID 还必须在随后 `ps` 复核时存活，否则视为已消失的 TOCTOU 样本。任一真实写者或 write-capable FD 持续存在仍立即 fail closed，不允许通过重试掩盖活跃 writer。
 
-维护脚本还必须等待 `system/com.weather.monitor.daemon` 及 hard-source、METAR、SPECI、P10 子进程全树退出，再实际领取 `archive_db_write_queue`；仅证明“当前没有 DB FD”不足以排除已持 queue、尚未开库的竞态。外盘为 ExFAT 时禁止 SQLite page-wise `.backup`：writer-quiescent 后先 `wal_checkpoint(TRUNCATE)`，再顺序复制到 `.partial`、核验大小与 SQLite page/schema 可读性后原子改名。脚本每 45 秒刷新已由操作员取得的 sudo timestamp，避免长备份/P0 后在恢复服务阶段再次交互停顿。
+维护脚本还必须等待 `system/com.weather.monitor.daemon` 及 hard-source、METAR、SPECI、P10 子进程全树退出，再实际领取 `archive_db_write_queue`；仅证明“当前没有 DB FD”不足以排除已持 queue、尚未开库的竞态。任何回滚副本只能在本机同一 APFS 卷以短生命周期 CoW 方式创建；外置盘不得进入维护脚本。
 
 quiescence 通过后、复制大备份之前，脚本必须实际获取并释放一次 `archive_db_write_queue`。锁 owner 同时持久化 PID 与进程启动身份，防止旧 owner 已死但数字 PID 被复用时形成永久假活锁；PID 存活但启动身份漂移时只回收该旧锁，身份无法核验时仍 fail closed。该 writer-queue 文件属于 production probability runtime manifest，锁协议变化必须触发 successor activation，不能在已授权 epoch 内静默热换。
 
@@ -78,7 +78,7 @@ AMSC SourceObservation/canonical 与 probability Transaction-B 的关键写连�
 
 物理日 rollover 不得依赖市场先出现。午夜后的首条 AMSC 观测若发现当前 activation 尚无当日 `production_initial_posterior_lineage`，fast lane 必须在同一 writer-queue claim 内先幂等创建 `prior × one joint weak` P0，再顺序消费已经独立落库的 canonical event。P0 public key 由 ZUUU 日期确定性生成，market discovery、finality、bridge、训练样本与 OOS 均不得成为该步骤的 live gate；重复调用不得追加第二个同 activation P0。
 
-维护窗口备份顺序固定为：停写并完成 WAL checkpoint 后，在与 `archive.db` 同一文件系统的真实本机目录 `data/local_cutover_backups`（不得是符号链接）以 `cp -c` 形成精确、不可变的切换前快照；切换、P0 重放与 AMSC 服务恢复后，再把该冻结快照顺序复制到外部磁盘并验收尺寸与 SQLite schema。`data/backups` 当前指向外盘，禁止把它当作本机 clone 目录；同时禁止把 13GB 级 ExFAT 复制留在观测停机窗口内，也禁止服务恢复后直接复制已再次变化的 `archive.db` 冒充切换前备份。外盘必须在维护窗口开始时可写；若它在本机 clone 已验收、probability epoch 已提交且服务恢复后意外掉盘，核心切换保持 accepted，脚本必须在 `data/local_cutover_backups/external_backup_deferred.<stamp>.json` 留下精确源文件、目标路径与失败码，不得把已提交 epoch 误报为概率切换失败。外盘复制仍是待补的耐久性任务，但不允许回滚或停住实时 SSOT。
+历史外盘备份流程已撤销。若某次受管切换确需回滚副本，只能在停写后于与 `archive.db` 相同的本机 APFS 文件系统创建短生命周期 CoW 副本，并在验收后删除。`data/backups`、`/Volumes` 与任何外置设备均不得出现在生产切换、回滚、readiness 或服务恢复路径中；外置盘只归档可丢弃、可重建的非关键数据，任何失败都不生成生产 blocker。
 
 `scripts/weatherctl.sh stop` 是 GUI 域写进程的维护边界，而不只是 LaunchAgent bootout 请求。它必须在返回前验证并回收由旧 wrapper 遗留的仓库内子进程，包括 market refresh/WS、model scan、task worker、strategy batch、target-realization worker 与 UI；先有界等待，再 TERM/KILL，并以仓库绝对路径或 UI 进程 cwd 证明所有权。任何残留写进程都必须使停机失败，禁止放宽 writer-quiescence 审计绕过。
 

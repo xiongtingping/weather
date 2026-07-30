@@ -203,6 +203,102 @@ def test_integer_report_bound_keeps_continuous_mass_inside_report_interval() -> 
     assert post.observed_reported_regular_max_c == 35
 
 
+def test_final_locked_cells_must_match_observed_reported_x_without_masking_other_states() -> None:
+    previous = (
+        JointCell(37.75, "final_locked", 0.3),
+        JointCell(39.25, "final_locked", 0.4),
+        JointCell(39.25, "warming", 0.3),
+    )
+    forcing = tuple(
+        CandidateForcingSlice(
+            y_c,
+            (ScenarioTransition(f"scenario-{y_c}", 1.0, _identity()),),
+        )
+        for y_c in (37.75, 39.25)
+    )
+    prediction = predict_to_event(
+        previous_joint=previous,
+        previous_checkpoint_sha256="checkpoint-locked",
+        previous_reported_regular_max_c=38,
+        previous_y_lower_bound_c=37.5,
+        duration_clocks_before=DurationClocks(),
+        event_id="speci-after-lock",
+        event_valid_at="2026-07-16T15:30:00Z",
+        delta_minutes=30.0,
+        forcing_generation_sha256="forcing-a",
+        transition_artifact_sha256="transition-a",
+        candidate_forcing=forcing,
+    )
+    post = update_with_observation(
+        prediction=prediction,
+        emission=CanonicalObservationEmission(
+            event_id=prediction.event_id,
+            pre_event_prediction_sha256=pre_event_prediction_sha256(prediction),
+            event_valid_at=prediction.event_valid_at,
+            is_regular_metar=False,
+            reported_temperature_c=29.0,
+            cloud_suppressed=False,
+            precipitation_present=False,
+            cb_present=True,
+            log_emission_by_cell={(row.y_c, row.state): 0.0 for row in prediction.joint},
+            observation_artifact_sha256="emission-a",
+        ),
+    )
+
+    assert {(row.y_c, row.state) for row in post.joint} == {
+        (37.75, "final_locked"),
+        (39.25, "warming"),
+    }
+    assert project_reported_x(post) == pytest.approx({38: 0.5, 39: 0.5})
+    assert post.invariant_report[
+        "final_locked_reported_x_compatibility_applied_before_normalization"
+    ] is True
+
+
+def test_all_final_locked_mass_collapses_to_observed_reported_x() -> None:
+    previous = (
+        JointCell(37.75, "final_locked", 0.3),
+        JointCell(39.25, "final_locked", 0.7),
+    )
+    forcing = tuple(
+        CandidateForcingSlice(
+            y_c,
+            (ScenarioTransition(f"scenario-{y_c}", 1.0, _identity()),),
+        )
+        for y_c in (37.75, 39.25)
+    )
+    prediction = predict_to_event(
+        previous_joint=previous,
+        previous_checkpoint_sha256="checkpoint-locked",
+        previous_reported_regular_max_c=38,
+        previous_y_lower_bound_c=37.5,
+        duration_clocks_before=DurationClocks(),
+        event_id="metar-after-lock",
+        event_valid_at="2026-07-16T15:30:00Z",
+        delta_minutes=30.0,
+        forcing_generation_sha256="forcing-a",
+        transition_artifact_sha256="transition-a",
+        candidate_forcing=forcing,
+    )
+    post = update_with_observation(
+        prediction=prediction,
+        emission=CanonicalObservationEmission(
+            event_id=prediction.event_id,
+            pre_event_prediction_sha256=pre_event_prediction_sha256(prediction),
+            event_valid_at=prediction.event_valid_at,
+            is_regular_metar=True,
+            reported_temperature_c=29.0,
+            cloud_suppressed=False,
+            precipitation_present=False,
+            cb_present=True,
+            log_emission_by_cell={(row.y_c, row.state): 0.0 for row in prediction.joint},
+            observation_artifact_sha256="emission-a",
+        ),
+    )
+
+    assert project_reported_x(post) == pytest.approx({38: 1.0})
+
+
 def test_predict_advances_only_previously_active_duration_clocks() -> None:
     previous, _ = _prediction()
     forcing = tuple(

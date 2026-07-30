@@ -1,0 +1,20 @@
+{
+  "approval_id": "ADR-XSB-OPERATIONAL-SOFT-PROJECTION-0001",
+  "approval_receipt_sha256": "150e3e6f92f89d7cbbe917d569a34e536315bfb636f840f554bbe5ece385e59c",
+  "approved_at": "2026-07-16T10:24:22Z",
+  "candidate_artifact_sha256": "fd55693193cb85a9a41eee8bc7b46d91ed6622e74ff5954cd8b922dc1838e5b4",
+  "hard_exclusion_disabled_review_accepted": true,
+  "operational_baseline_review_accepted": true,
+  "probabilistic_residual_support_review_accepted": true,
+  "review_conclusions": {
+    "hard_no_certificate_forbidden": true,
+    "physical_x_nonblocking": true,
+    "residual_support_is_not_hard_envelope": true,
+    "soft_p_b_allowed": true,
+    "zero_sample_immutable": true
+  },
+  "reviewer": "sol_multi_agent_adversarial_review",
+  "sample_or_oos_live_gate": false,
+  "schema": "resolution_bridge_promotion_approval_v1",
+  "state": "accepted"
+}

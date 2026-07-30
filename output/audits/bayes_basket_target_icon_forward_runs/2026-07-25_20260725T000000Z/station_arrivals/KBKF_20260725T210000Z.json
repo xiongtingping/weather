@@ -1,0 +1,39 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-ea60f3c0f75824223975f894",
+    "capture_mode": "prospective",
+    "content_sha256": "afcb45fdad7ab605cb912342d5f1afdaceb615e18fba90309c6b0bd0a03b625e",
+    "decision_at_utc": "2026-07-25T13:18:33Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ICON",
+    "open_meteo": false,
+    "production_authority": false,
+    "provider_id": "icon_global_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-25T02:48:38Z",
+    "raw_payload_sha256s": [
+      "53140d2922981c6a9b9bb0a53db6a01420d74b2db1272ae7f1b8047d0bc3de0b"
+    ],
+    "receipt_sha256": "adccacc8322315a7834dbffe7916fb0a97b5b4fe82d2de62011519279e8f2f30",
+    "received_at_utc": "2026-07-25T05:18:46Z",
+    "run_initialization_utc": "2026-07-25T00:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072500_021_T_2M.grib2.bz2",
+    "station_id": "KBKF",
+    "target_local_date": "2026-07-25",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-07-25T21:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/0a933de1545c5379221588028366bfd5a80d3ffdd4dea0dbcec1b1bf6c2abfd1.json"
+}

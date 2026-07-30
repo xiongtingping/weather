@@ -30,6 +30,18 @@ def test_run_candidates_are_newest_first_and_bounded() -> None:
     assert candidates == ["2026-07-12T06:00:00Z", "2026-07-12T00:00:00Z"]
 
 
+def test_same_day_candidates_include_the_newly_published_intraday_run() -> None:
+    candidates = select_plannable_run_candidates(
+        curve_contract=CURVE,
+        provider_id="ecmwf",
+        target_event_date="2026-07-22",
+        now_utc=datetime(2026, 7, 22, 13, 0, tzinfo=timezone.utc),
+        limit=2,
+        minimum_run_age_sec=3600,
+    )
+    assert candidates == ["2026-07-22T12:00:00Z", "2026-07-22T06:00:00Z"]
+
+
 def test_monitor_job_plans_only_and_isolated_from_fast_lane(tmp_path: Path) -> None:
     result = build_official_nwp_daily_curve_monitor_job(job_contract=JOB, curve_contract=CURVE, now_utc=datetime(2026, 7, 12, 10, 30, tzinfo=timezone.utc), execute=False, curve_source_root=tmp_path / "curve", catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json")
     assert result["state"] == "planned"
@@ -80,3 +92,36 @@ def test_monitor_retries_one_older_complete_run_when_latest_transport_is_unavail
     assert calls[-1] == "2026-07-12T00:00:00Z"
     assert item["fallback_run_used"] is True
     assert item["attempted_run_at_utc"] == ["2026-07-12T06:00:00Z", "2026-07-12T00:00:00Z"]
+
+
+def test_monitor_rotates_future_three_day_slots_without_cross_day_completion_skip(tmp_path: Path, monkeypatch) -> None:
+    job = deepcopy(JOB)
+    job["providers"] = ["gfs"]
+    job["target_day_offsets"] = [1, 2, 3]
+    job["target_day_rotation_interval_sec"] = 10800
+    collector = lambda **_: {"ok": True, "state": "collected"}
+    monkeypatch.setattr(monitor_runtime, "_persist_complete_daily_peak_revision", lambda **_: {"ok": True, "state": "persisted"})
+    first = build_official_nwp_daily_curve_monitor_job(
+        job_contract=job,
+        curve_contract=CURVE,
+        now_utc=datetime(2026, 7, 20, 6, 30, tzinfo=timezone.utc),
+        execute=True,
+        curve_source_root=tmp_path / "curve",
+        catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json",
+        collectors={"gfs": collector},
+    )
+    assert first["target_day_offset"] == 1
+    assert "gfs|2026-07-21" in first["completed_provider_target_runs"]
+    second = build_official_nwp_daily_curve_monitor_job(
+        job_contract=job,
+        curve_contract=CURVE,
+        now_utc=datetime(2026, 7, 20, 9, 30, tzinfo=timezone.utc),
+        execute=True,
+        curve_source_root=tmp_path / "curve",
+        catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json",
+        completed_provider_runs=first["completed_provider_runs"],
+        completed_provider_target_runs=first["completed_provider_target_runs"],
+        collectors={"gfs": collector},
+    )
+    assert second["target_day_offset"] == 2
+    assert second["provider_results"][0]["state"] == "collected"

@@ -1,0 +1,22 @@
+{
+  "authority": "OFFICIAL_METAR_SPECI_REPORTED_TEMPERATURE_ONLY",
+  "bayes_probability_consumed": false,
+  "files_scanned": [
+    "reported_trajectory_no_runtime.py",
+    "reported_trajectory_no_engine.py",
+    "reported_trajectory_sources.py",
+    "reported_trajectory_country_sources.py"
+  ],
+  "forbidden_call_hits": [],
+  "forbidden_import_hits": [],
+  "hard_bound_source_only": "official_metar_speci_main_temperature",
+  "isolated": true,
+  "lane": "reported_trajectory_no",
+  "missing_files": [],
+  "nwp_consumed": false,
+  "receipt_sha256": "c94ecbd04bd8178d326ceeff879f8e47a4c240b16d0df299cb0bfa7e58386d1b",
+  "regime_consumed": false,
+  "schema": "reported_trajectory_no_dependency_audit_v1",
+  "syntax_hits": [],
+  "taf_consumed": false
+}

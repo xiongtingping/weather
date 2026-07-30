@@ -1,0 +1,242 @@
+{
+  "allocation": {
+    "main_bucket": "largest_source_buy_usdc",
+    "mode": "source_buy_usdc_ratio_as_preference",
+    "secondary_bucket": "second_largest_source_buy_usdc",
+    "source_ratio_is_not_floor_override": true
+  },
+  "city_budget_overrides_usdc": {
+    "milan": 100.0
+  },
+  "city_cap_usdc": 30.0,
+  "city_selection": {
+    "enabled": true,
+    "max_cities": 5,
+    "minimum_initial_value_usdc": 5.0,
+    "mode": "top_recent_7d_roi",
+    "pinned_cities": [
+      "chengdu"
+    ],
+    "refresh_sec": 300.0,
+    "roi_definition": "(cashPnl + realizedPnl) / initialValue from current open positions",
+    "selected_at": "2026-07-22T04:21:50Z",
+    "selected_cities": [
+      "guangzhou",
+      "qingdao",
+      "tokyo",
+      "busan",
+      "london",
+      "chengdu"
+    ],
+    "selected_events": [
+      "highest-temperature-in-guangzhou-on-july-22-2026",
+      "highest-temperature-in-qingdao-on-july-22-2026",
+      "highest-temperature-in-tokyo-on-july-23-2026",
+      "highest-temperature-in-busan-on-july-22-2026",
+      "highest-temperature-in-london-on-july-22-2026",
+      "highest-temperature-in-chengdu-on-july-22-2026"
+    ],
+    "selection_source": "polymarket_public_trades_plus_positions",
+    "window_days": 7
+  },
+  "execution": {
+    "active_building_max_age_sec": 900,
+    "all_legs_required": false,
+    "allow_reductions": false,
+    "buy_ladder": {
+      "allocation_weights": [
+        0.5,
+        0.3,
+        0.2
+      ],
+      "enabled": true,
+      "max_levels": 3,
+      "reprice_on_quote_change": true,
+      "source": "official_ws_bid_levels"
+    },
+    "buy_price_mode": "best_bid",
+    "copy_weight_mode": "source_capital_scale_and_share_ratio",
+    "enforce_city_cap": false,
+    "exit_liquidity": {
+      "enabled": true,
+      "order_type": "GTC",
+      "price": 0.997
+    },
+    "heavy_bucket_best_bid_fallback": {
+      "action": "cancel_stale_ladder_then_buy_remaining_delta_at_best_bid",
+      "after_sec": 6.0,
+      "bucket_role": "main_bucket",
+      "enabled": true
+    },
+    "initial_entry_order_type": "FAK",
+    "initial_entry_price_mode": "market",
+    "live_submit_authorized": true,
+    "local_entry_cutoff_hour": 18.0,
+    "main_bucket_min_source_notional_usdc": 5.0,
+    "main_bucket_min_source_share": 0.35,
+    "max_parallel_order_submits": 4,
+    "max_quote_age_sec": 5.0,
+    "maximum_all_in_ask_sum": 1.0,
+    "maximum_buy_price": 0.99,
+    "minimum_order_shares": 5.0,
+    "minimum_rebalance_notional_usdc": 0.25,
+    "order_type": "GTC",
+    "partial_or_unknown_fill": "reconcile_required_stop_new_plan",
+    "safety_floor_usdc": 0.01,
+    "sell_price_mode": "best_bid",
+    "settlement_floor_hard_gate": false,
+    "strict_share_gap": 0.0,
+    "target_quote_timeout_sec": 4.0
+  },
+  "forecast": {
+    "amsc_taf": {
+      "count": 12,
+      "display_only": true,
+      "enabled": true,
+      "timeout_sec": 8.0
+    },
+    "awc_taf": {
+      "api_url": "https://aviationweather.gov/api/data/taf",
+      "display_only": true,
+      "enabled": true,
+      "timeout_sec": 8.0
+    },
+    "open_meteo": {
+      "api_url": "https://api.open-meteo.com/v1/forecast",
+      "display_only": true,
+      "ecmwf_model": "ecmwf_ifs025",
+      "enabled": true,
+      "station_coordinates": {
+        "CYYZ": {
+          "latitude": 43.6777,
+          "longitude": -79.6248,
+          "timezone": "America/Toronto"
+        },
+        "EDDM": {
+          "latitude": 48.3538,
+          "longitude": 11.7861,
+          "timezone": "Europe/Berlin"
+        },
+        "EFHK": {
+          "latitude": 60.3172,
+          "longitude": 24.9633,
+          "timezone": "Europe/Helsinki"
+        },
+        "EGLC": {
+          "latitude": 51.5053,
+          "longitude": 0.0553,
+          "timezone": "Europe/London"
+        },
+        "EPWA": {
+          "latitude": 52.1657,
+          "longitude": 20.9671,
+          "timezone": "Europe/Warsaw"
+        },
+        "FACT": {
+          "latitude": -33.9648,
+          "longitude": 18.6017,
+          "timezone": "Africa/Johannesburg"
+        },
+        "KAUS": {
+          "latitude": 30.1945,
+          "longitude": -97.6699,
+          "timezone": "America/Chicago"
+        },
+        "KORD": {
+          "latitude": 41.9602,
+          "longitude": -87.909,
+          "timezone": "America/Chicago"
+        },
+        "KSFO": {
+          "latitude": 37.6213,
+          "longitude": -122.379,
+          "timezone": "America/Los_Angeles"
+        },
+        "LIMC": {
+          "latitude": 45.6306,
+          "longitude": 8.7281,
+          "timezone": "Europe/Rome"
+        },
+        "MMMX": {
+          "latitude": 19.4361,
+          "longitude": -99.0719,
+          "timezone": "America/Mexico_City"
+        },
+        "MPMG": {
+          "latitude": 9.0714,
+          "longitude": -79.3835,
+          "timezone": "America/Panama"
+        },
+        "OPKC": {
+          "latitude": 24.9065,
+          "longitude": 67.1608,
+          "timezone": "Asia/Karachi"
+        },
+        "RKSI": {
+          "latitude": 37.4691,
+          "longitude": 126.4505,
+          "timezone": "Asia/Seoul"
+        },
+        "SAEZ": {
+          "latitude": -34.8222,
+          "longitude": -58.5358,
+          "timezone": "America/Argentina/Buenos_Aires"
+        },
+        "WMKK": {
+          "latitude": 2.7456,
+          "longitude": 101.7099,
+          "timezone": "Asia/Kuala_Lumpur"
+        },
+        "ZBAA": {
+          "latitude": 40.0801,
+          "longitude": 116.5846,
+          "timezone": "Asia/Shanghai"
+        },
+        "ZGGG": {
+          "latitude": 23.3924,
+          "longitude": 113.2988,
+          "timezone": "Asia/Shanghai"
+        },
+        "ZGSZ": {
+          "latitude": 22.6393,
+          "longitude": 113.8107,
+          "timezone": "Asia/Shanghai"
+        },
+        "ZSPD": {
+          "latitude": 31.1443,
+          "longitude": 121.8083,
+          "timezone": "Asia/Shanghai"
+        },
+        "ZUCK": {
+          "latitude": 29.7192,
+          "longitude": 106.6419,
+          "timezone": "Asia/Shanghai"
+        }
+      },
+      "timeout_sec": 4.0
+    }
+  },
+  "lookahead_days": 2,
+  "notifications": {
+    "channel": "codex_thread",
+    "enabled": true,
+    "event_file": "data/copy_follow_codex_notifications.jsonl"
+  },
+  "required_bucket_count": 4,
+  "schema": "weather_copy_follow_config_v1",
+  "source": {
+    "max_pages": 10,
+    "page_size": 500,
+    "positions_max_pages": 2,
+    "positions_timeout_sec": 6.0,
+    "positions_url": "https://data-api.polymarket.com/positions",
+    "timeout_sec": 10.0,
+    "trades_max_pages": 20,
+    "trades_page_size": 500,
+    "trades_timeout_sec": 10.0,
+    "trades_url": "https://data-api.polymarket.com/trades",
+    "user": "0x8fbd7cf5f806f563080864694415829f7229a959"
+  },
+  "state": "disabled",
+  "strategy_id": "weather_copy_follow_v1"
+}

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import json
+from pathlib import Path
 
 from posterior_market_projection_runtime import build_posterior_market_projection
 from resolution_bridge_artifact_runtime import artifact_sha256
 from resolution_bridge_calibration_runtime import fit_resolution_bridge_candidate
+from operational_bridge_release_runtime import build_operational_bridge_release
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _pairs() -> list[dict]:
@@ -99,3 +105,24 @@ def test_approved_bridge_maps_x_to_b_without_market_price_inputs() -> None:
     assert result["state"] == "market_projection_available"
     assert result["reported_x_unchanged"] is True
     assert sum(result["market_bucket_probabilities"].values()) == 1.0
+
+
+def test_sample_free_soft_bridge_keeps_edge_buckets_nonzero_without_hard_certificate() -> None:
+    source = json.loads(
+        (ROOT / "config/resolution_authorities/zuuu_amsc_wunderground_daily_high_v4.json").read_text()
+    )
+    artifact = build_operational_bridge_release(
+        source_authority_contract=source,
+        approved_at="2026-07-16T12:00:00Z",
+    )["production_artifact"]
+    target = _target()
+    target["authority_contract_sha256"] = artifact["authority_contract_sha256"]
+    result = build_posterior_market_projection(
+        reported_physical_x_distribution={"38": 0.6, "39": 0.4},
+        physical_resolution_contract=_physical(),
+        market_target_contract=target,
+        bridge_artifact=artifact,
+    )
+    assert result["ok"] is True
+    assert all(probability > 0.0 for probability in result["market_bucket_probabilities"].values())
+    assert result["hard_exclusion_certificates_authorized"] is False

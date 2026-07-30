@@ -1,0 +1,476 @@
+"""Fail-closed resource bounds for the isolated target lane.
+
+The target lane is a no-live deployment, but its offline packets and SQLite
+state are still inputs to a long-running workflow.  Keep parsing bounded and
+reject growth before it can consume the host's memory or disk.  The shared
+resident database is deliberately rejected; this module is target-only.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import resource as _resource
+import shutil
+import sqlite3
+import sys
+from pathlib import Path
+from typing import Any
+
+
+class ResourceBoundError(ValueError):
+    """Raised when a target input or target store exceeds its hard budget."""
+
+
+MIB = 1024 * 1024
+MAX_JSON_INPUT_BYTES = 16 * MIB
+MAX_JSON_OUTPUT_BYTES = 16 * MIB
+MAX_JSON_DEPTH = 32
+# A canonical observation packet carries a bounded, fixed-width lineage
+# record per observation.  The 16 MiB byte cap remains the primary bound, but
+# the former 200k node cap rejected a legitimate 14k-row historical packet
+# after observation_id/event_date/qc/evidence-role fields were added.  Keep a
+# separate structural ceiling that is still comfortably bounded by the
+# process-RSS and input/output byte limits.
+MAX_JSON_NODES = 500_000
+MAX_TARGET_DB_BYTES = 256 * MIB
+MAX_TARGET_WAL_BYTES = 64 * MIB
+MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * MIB
+MIN_TARGET_FREE_BYTES = 512 * MIB
+# Keep the runtime hard stop identical to the declared no-live performance
+# budget.  A looser code-level ceiling would let the process cross the
+# operator-visible 512 MiB limit before failing closed.
+MAX_TARGET_PROCESS_RSS_BYTES = 512 * MIB
+MAX_INPUT_FILES_PER_BATCH = 4096
+MAX_WS_EVIDENCE_CACHE_SCOPES = 512
+MAX_WS_EVIDENCE_CACHE_ROW_BYTES = 512 * 1024
+
+
+def _process_rss_bytes() -> int:
+    """Return this process' conservative peak RSS in bytes.
+
+    ``ru_maxrss`` is reported in bytes on macOS and KiB on Linux.  Using the
+    peak rather than a potentially unavailable instantaneous probe is
+    intentional: once a target process has crossed the budget it must fail
+    closed instead of continuing to allocate more memory.
+    """
+
+    try:
+        peak = int(_resource.getrusage(_resource.RUSAGE_SELF).ru_maxrss)
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        raise ResourceBoundError("target_process_memory_probe_unavailable") from exc
+    if peak < 0:
+        raise ResourceBoundError("target_process_memory_probe_invalid")
+    return peak if sys.platform == "darwin" else peak * 1024
+
+
+def assert_process_memory_budget(
+    *,
+    projected_bytes: int = 0,
+    limit: int = MAX_TARGET_PROCESS_RSS_BYTES,
+) -> int:
+    """Fail closed before/after a bounded operation can grow process RSS."""
+
+    current = _process_rss_bytes()
+    if current + max(0, int(projected_bytes)) > int(limit):
+        raise ResourceBoundError("target_process_memory_budget_exceeded")
+    return current
+
+
+def _bounded_bytes(path: Path, *, limit: int) -> bytes:
+    path = Path(path).expanduser().resolve()
+    try:
+        size = int(path.stat().st_size)
+    except OSError as exc:
+        raise ResourceBoundError("target_input_stat_failed") from exc
+    if size > int(limit):
+        raise ResourceBoundError("target_input_bytes_exceeded")
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise ResourceBoundError("target_input_read_failed") from exc
+    if len(data) > int(limit):
+        raise ResourceBoundError("target_input_bytes_exceeded")
+    return data
+
+
+def _check_json_shape(value: Any, *, depth: int = 0, nodes: list[int] | None = None) -> None:
+    if nodes is None:
+        nodes = [0]
+    nodes[0] += 1
+    if nodes[0] > MAX_JSON_NODES:
+        raise ResourceBoundError("target_json_nodes_exceeded")
+    if depth > MAX_JSON_DEPTH:
+        raise ResourceBoundError("target_json_depth_exceeded")
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise ResourceBoundError("target_json_key_invalid")
+            _check_json_shape(child, depth=depth + 1, nodes=nodes)
+    elif isinstance(value, list):
+        for child in value:
+            _check_json_shape(child, depth=depth + 1, nodes=nodes)
+
+
+def load_bounded_json(path: Path | str, *, limit: int = MAX_JSON_INPUT_BYTES) -> Any:
+    """Load a JSON input only after size and structural limits pass."""
+
+    try:
+        raw = _bounded_bytes(Path(path), limit=limit)
+        assert_process_memory_budget(projected_bytes=min(int(limit) * 4, 64 * MIB))
+        value = json.loads(raw.decode("utf-8"))
+    except ResourceBoundError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise ResourceBoundError("target_json_invalid") from exc
+    _check_json_shape(value)
+    assert_process_memory_budget()
+    return value
+
+
+def bounded_json_bytes(value: Any, *, limit: int = MAX_JSON_OUTPUT_BYTES) -> bytes:
+    """Serialize JSON and reject an oversized evidence/output packet."""
+
+    try:
+        raw = (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ResourceBoundError("target_json_output_invalid") from exc
+    if len(raw) > int(limit):
+        raise ResourceBoundError("target_json_output_bytes_exceeded")
+    _check_json_shape(value)
+    assert_process_memory_budget(projected_bytes=len(raw))
+    return raw
+
+
+def write_bounded_json(path: Path | str, value: Any, *, limit: int = MAX_JSON_OUTPUT_BYTES) -> None:
+    """Atomically write a bounded JSON artifact without retaining duplicates."""
+
+    destination = Path(path).expanduser().resolve()
+    raw = bounded_json_bytes(value, limit=limit)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.tmp.{os.getpid()}")
+    try:
+        temporary.write_bytes(raw)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_bounded_json_if_changed(
+    path: Path | str,
+    value: Any,
+    *,
+    limit: int = MAX_JSON_OUTPUT_BYTES,
+) -> bool:
+    """Atomically write JSON only when its canonical bytes changed.
+
+    Resident producers call this on every bounded poll.  Avoiding an
+    ``os.replace`` for identical evidence is part of the zero-write contract:
+    unchanged provider data must not churn SSD blocks, mtimes, downstream
+    watchers, or lineage.
+    """
+
+    destination = Path(path).expanduser().resolve()
+    raw = bounded_json_bytes(value, limit=limit)
+    if destination.is_file():
+        try:
+            if int(destination.stat().st_size) == len(raw) and destination.read_bytes() == raw:
+                return False
+        except OSError as exc:
+            raise ResourceBoundError("target_existing_json_read_failed") from exc
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.tmp.{os.getpid()}")
+    try:
+        temporary.write_bytes(raw)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return True
+
+
+def _database_path_from_connection(conn: sqlite3.Connection) -> Path | None:
+    try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+    except sqlite3.Error:
+        return None
+    if not row or not row[2] or str(row[2]) == ":memory:":
+        return None
+    return Path(str(row[2])).expanduser().resolve()
+
+
+def _filesystem_free_bytes(path: Path) -> int:
+    candidate = path
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    return int(shutil.disk_usage(candidate).free)
+
+
+def assert_target_db_capacity(
+    db_path: Path | str,
+    *,
+    projected_bytes: int = 0,
+    min_free_bytes: int = MIN_TARGET_FREE_BYTES,
+) -> Path:
+    """Reject shared-live paths and target DB/WAL growth beyond hard limits."""
+
+    candidate = Path(db_path).expanduser()
+    if candidate.name == ":memory:":
+        return candidate
+    resolved = candidate.resolve()
+    # Import lazily to avoid a module cycle with the database boundary.
+    from .database import SHARED_LIVE_DB
+
+    if resolved == SHARED_LIVE_DB:
+        raise ResourceBoundError("target_resource_guard_shared_live_database")
+    size = int(resolved.stat().st_size) if resolved.is_file() else 0
+    wal = resolved.with_name(resolved.name + "-wal")
+    shm = resolved.with_name(resolved.name + "-shm")
+    wal_size = int(wal.stat().st_size) if wal.is_file() else 0
+    shm_size = int(shm.stat().st_size) if shm.is_file() else 0
+    if size + max(0, int(projected_bytes)) > MAX_TARGET_DB_BYTES:
+        raise ResourceBoundError("target_database_bytes_exceeded")
+    if wal_size > MAX_TARGET_WAL_BYTES:
+        raise ResourceBoundError("target_database_wal_bytes_exceeded")
+    if _filesystem_free_bytes(resolved.parent) < max(0, int(min_free_bytes)) + max(0, int(projected_bytes)):
+        raise ResourceBoundError("target_database_min_free_space_guard")
+    return resolved
+
+
+def checkpoint_target_wal_once_if_oversized(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = MAX_TARGET_WAL_BYTES,
+) -> dict[str, Any]:
+    """Boundedly reclaim an oversized isolated-target WAL exactly once.
+
+    This is deliberately a connection preflight rather than a path-level
+    cleanup.  SQLite itself must confirm that no reader/writer prevents a
+    truncating checkpoint; the WAL is never unlinked or bypassed.  Any busy,
+    locked, active-transaction, or still-oversized result remains fail closed.
+    """
+
+    path = _database_path_from_connection(conn)
+    if path is None:
+        return {
+            "state": "not_file_backed",
+            "attempted": False,
+            "wal_bytes_before": 0,
+            "wal_bytes_after": 0,
+        }
+    from .database import SHARED_LIVE_DB
+
+    if path == SHARED_LIVE_DB:
+        raise ResourceBoundError("target_resource_guard_shared_live_database")
+    wal = path.with_name(path.name + "-wal")
+    before = int(wal.stat().st_size) if wal.is_file() else 0
+    if before <= int(limit):
+        return {
+            "state": "within_budget",
+            "attempted": False,
+            "wal_bytes_before": before,
+            "wal_bytes_after": before,
+        }
+    if conn.in_transaction:
+        raise ResourceBoundError("target_database_wal_checkpoint_transaction_active")
+    try:
+        query_only = int(conn.execute("PRAGMA query_only").fetchone()[0] or 0)
+        journal_mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0] or "").strip().lower()
+    except sqlite3.Error as exc:
+        raise ResourceBoundError("target_database_wal_checkpoint_probe_failed") from exc
+    if query_only != 0:
+        raise ResourceBoundError("target_database_wal_bytes_exceeded")
+    if journal_mode != "wal":
+        raise ResourceBoundError("target_database_wal_checkpoint_mode_invalid")
+
+    previous_busy_timeout = 0
+    try:
+        previous_busy_timeout = int(conn.execute("PRAGMA busy_timeout").fetchone()[0] or 0)
+        conn.execute("PRAGMA busy_timeout=0")
+        row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    except sqlite3.Error as exc:
+        message = str(exc).lower()
+        reason = (
+            "target_database_wal_checkpoint_busy"
+            if "busy" in message or "locked" in message
+            else "target_database_wal_checkpoint_failed"
+        )
+        raise ResourceBoundError(reason) from exc
+    finally:
+        try:
+            conn.execute(f"PRAGMA busy_timeout={max(0, previous_busy_timeout)}")
+        except sqlite3.Error:
+            pass
+
+    if not row or len(row) < 3:
+        raise ResourceBoundError("target_database_wal_checkpoint_result_invalid")
+    busy, log_frames, checkpointed_frames = (int(row[0]), int(row[1]), int(row[2]))
+    if busy != 0:
+        raise ResourceBoundError("target_database_wal_checkpoint_busy")
+    after = int(wal.stat().st_size) if wal.is_file() else 0
+    if after > int(limit):
+        raise ResourceBoundError("target_database_wal_bytes_exceeded_after_checkpoint")
+    return {
+        "state": "checkpointed",
+        "attempted": True,
+        "wal_bytes_before": before,
+        "wal_bytes_after": after,
+        "log_frames": log_frames,
+        "checkpointed_frames": checkpointed_frames,
+    }
+
+
+def assert_target_raw_retention_budget(
+    output_root: Path | str,
+    *,
+    bytes_needed: int = 0,
+    limit: int = MAX_TARGET_RESEARCH_RAW_BYTES,
+    min_free_bytes: int = MIN_TARGET_FREE_BYTES,
+) -> int:
+    """Reject aggregate raw growth or insufficient free space before writes."""
+
+    root = Path(output_root).expanduser().resolve()
+    retained = 0
+    for path in root.glob("*/raw/*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            retained += int(path.stat().st_size)
+        except OSError as exc:
+            raise ResourceBoundError("target_raw_retention_stat_failed") from exc
+    if retained + max(0, int(bytes_needed)) > int(limit):
+        raise ResourceBoundError("target_raw_aggregate_retention_budget_exceeded")
+    if _filesystem_free_bytes(root) < max(0, int(min_free_bytes)) + max(0, int(bytes_needed)):
+        raise ResourceBoundError("target_raw_min_free_space_guard")
+    return retained
+
+
+def inspect_target_resource_budget(
+    db_path: Path | str,
+    *,
+    raw_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Return a read-only resource snapshot for the isolated target lane.
+
+    This function deliberately does not clean, compact, or mutate anything.
+    It gives readiness a single bounded view of the target database, WAL,
+    research raw corpus, and filesystem headroom so a report cannot confuse
+    target growth with the protected resident production database.
+    """
+
+    candidate = Path(db_path).expanduser()
+    resolved = candidate.resolve() if candidate.name != ":memory:" else candidate
+    violations: list[str] = []
+    db_bytes = int(resolved.stat().st_size) if resolved.is_file() else 0
+    wal = resolved.with_name(resolved.name + "-wal") if resolved.name != ":memory:" else resolved
+    shm = resolved.with_name(resolved.name + "-shm") if resolved.name != ":memory:" else resolved
+    wal_bytes = int(wal.stat().st_size) if wal.is_file() else 0
+    shm_bytes = int(shm.stat().st_size) if shm.is_file() else 0
+    if db_bytes > MAX_TARGET_DB_BYTES:
+        violations.append("target_database_bytes_exceeded")
+    if wal_bytes > MAX_TARGET_WAL_BYTES:
+        violations.append("target_database_wal_bytes_exceeded")
+
+    raw_resolved: Path | None = None
+    raw_bytes = 0
+    raw_file_count = 0
+    if raw_root is not None:
+        raw_resolved = Path(raw_root).expanduser().resolve()
+        if raw_resolved.exists() and not raw_resolved.is_dir():
+            violations.append("target_raw_root_not_directory")
+        elif raw_resolved.is_dir():
+            for root, _dirs, files in os.walk(raw_resolved, followlinks=False):
+                for name in files:
+                    path = Path(root) / name
+                    if path.is_symlink():
+                        continue
+                    try:
+                        raw_bytes += int(path.stat().st_size)
+                        raw_file_count += 1
+                    except OSError:
+                        violations.append("target_raw_retention_stat_failed")
+            if raw_bytes > MAX_TARGET_RESEARCH_RAW_BYTES:
+                violations.append("target_aggregate_raw_bytes_exceeded")
+
+    free_bytes = _filesystem_free_bytes(resolved.parent if resolved.name != ":memory:" else Path.cwd())
+    if free_bytes < MIN_TARGET_FREE_BYTES:
+        violations.append("target_database_min_free_space_guard")
+    try:
+        process_rss_bytes = _process_rss_bytes()
+        memory_probe_available = True
+    except ResourceBoundError:
+        process_rss_bytes = None
+        memory_probe_available = False
+        violations.append("target_process_memory_probe_unavailable")
+    if process_rss_bytes is not None and process_rss_bytes > MAX_TARGET_PROCESS_RSS_BYTES:
+        violations.append("target_process_memory_budget_exceeded")
+    return {
+        "state": "within_budget" if not violations else "over_budget",
+        "ok": not violations,
+        "violations": sorted(set(violations)),
+        "database_path": str(resolved),
+        "database_bytes": db_bytes,
+        "wal_bytes": wal_bytes,
+        "shm_bytes": shm_bytes,
+        "raw_root": str(raw_resolved) if raw_resolved is not None else None,
+        "raw_bytes": raw_bytes,
+        "raw_file_count": raw_file_count,
+        "free_bytes": free_bytes,
+        "process_rss_bytes": process_rss_bytes,
+        "memory_probe_available": memory_probe_available,
+        "limits": {
+            "max_database_bytes": MAX_TARGET_DB_BYTES,
+            "max_wal_bytes": MAX_TARGET_WAL_BYTES,
+            "max_research_raw_bytes": MAX_TARGET_RESEARCH_RAW_BYTES,
+            "min_free_bytes": MIN_TARGET_FREE_BYTES,
+            "max_process_rss_bytes": MAX_TARGET_PROCESS_RSS_BYTES,
+        },
+    }
+
+
+def assert_connection_target_capacity(
+    conn: sqlite3.Connection,
+    *,
+    recover_oversized_wal: bool = False,
+) -> Path | None:
+    """Apply target guards; WAL recovery requires an explicit writer context."""
+
+    path = _database_path_from_connection(conn)
+    if path is None:
+        return None
+    if recover_oversized_wal:
+        checkpoint_target_wal_once_if_oversized(
+            conn,
+            limit=MAX_TARGET_WAL_BYTES,
+        )
+    resolved = assert_target_db_capacity(path)
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0] or 4096)
+    max_pages = max(1, MAX_TARGET_DB_BYTES // page_size)
+    conn.execute(f"PRAGMA max_page_count={max_pages}")
+    conn.execute("PRAGMA wal_autocheckpoint=1000")
+    return resolved
+
+
+__all__ = [
+    "MAX_INPUT_FILES_PER_BATCH",
+    "MAX_JSON_DEPTH",
+    "MAX_JSON_INPUT_BYTES",
+    "MAX_JSON_NODES",
+    "MAX_JSON_OUTPUT_BYTES",
+    "MAX_TARGET_DB_BYTES",
+    "MAX_TARGET_PROCESS_RSS_BYTES",
+    "MAX_TARGET_RESEARCH_RAW_BYTES",
+    "MAX_TARGET_WAL_BYTES",
+    "MIN_TARGET_FREE_BYTES",
+    "MAX_WS_EVIDENCE_CACHE_ROW_BYTES",
+    "MAX_WS_EVIDENCE_CACHE_SCOPES",
+    "ResourceBoundError",
+    "assert_process_memory_budget",
+    "checkpoint_target_wal_once_if_oversized",
+    "assert_connection_target_capacity",
+    "assert_target_db_capacity",
+    "assert_target_raw_retention_budget",
+    "bounded_json_bytes",
+    "inspect_target_resource_budget",
+    "load_bounded_json",
+    "write_bounded_json",
+]

@@ -1,0 +1,281 @@
+{
+  "approved_at": "2026-07-16T12:14:31Z",
+  "cold_start_t1_to_t5_policy": {
+    "hard_deadline_ms": 3000,
+    "historical_samples_block_initial_live": false,
+    "late_post_forbidden": true
+  },
+  "cutover_artifact_sha256": "5a9bc71c4961f914940a5f5842b48e33aa9831d5149b328db009d1b1768a5a73",
+  "external_disk_required": false,
+  "places_orders": false,
+  "required_bridge_activation_sha256": "d3001e0ec6013e79445c1105e70a131383617a9c8c3a8daf35308e96a93d89d6",
+  "required_market_context_activation_sha256": "38b3008b75d5cb6cf01ee1d89afcfdeb0076409dc501d566bc87e92da001c8d8",
+  "required_probability_activation_contract_sha256": "ad4f15a4b55756abdc7634daec49a44613d0b2c866d33a1c835c9a2036446342",
+  "schema": "dynamic_three_leg_cutover_artifact_v1",
+  "signal_to_order_safety_audit": {
+    "blockers": [],
+    "cap_results": {
+      "adjacent_bucket_exposure_cap": {
+        "expected_reason": "bucket_exposure_cap",
+        "hard_reason_ok": true,
+        "normalized_reason": "bucket_exposure_cap",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "bucket_exposure_cap": {
+        "expected_reason": "bucket_exposure_cap",
+        "hard_reason_ok": true,
+        "normalized_reason": "bucket_exposure_cap",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "event_exposure_cap": {
+        "expected_reason": "event_exposure_cap",
+        "hard_reason_ok": true,
+        "normalized_reason": "event_exposure_cap",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "event_position_cap": {
+        "expected_reason": "event_exposure_cap",
+        "hard_reason_ok": true,
+        "normalized_reason": "event_exposure_cap",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      }
+    },
+    "checks": {
+      "duplicate_order_blocks": true,
+      "idempotency_contract_present": true,
+      "orderbook_missing_blocks": true,
+      "orderbook_refresh_segments_recorded": true,
+      "pre_submit_refresh_and_cap_static_contract_present": true,
+      "risk_cap_blocks": true,
+      "risk_guard_segments_recorded": true,
+      "stale_decision_blocks": true,
+      "stale_orderbook_blocks": true,
+      "stale_posterior_blocks": true,
+      "stale_terminal_does_not_submit": true
+    },
+    "duplicate_results": {
+      "duplicate_open_order": {
+        "hard_reason_ok": true,
+        "normalized_reason": "duplicate_open_order",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "entry_submit_dedup_blocked": {
+        "hard_reason_ok": true,
+        "normalized_reason": "duplicate_open_order",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "open_order_pending": {
+        "hard_reason_ok": true,
+        "normalized_reason": "duplicate_open_order",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "same_outcome_open_order": {
+        "hard_reason_ok": true,
+        "normalized_reason": "duplicate_open_order",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      }
+    },
+    "execution_mode": "signal_to_order_safety_contract_audit_read_only",
+    "execution_segment_contract": {
+      "exchange_ack_at": "2026-07-03T09:05:39.700Z",
+      "idempotency_checked_at": "2026-07-03T09:05:39.000Z",
+      "idempotency_key": "clobsvc:contract-segments",
+      "order_submitted_at": "2026-07-03T09:05:40Z",
+      "orderbook_check_result": "pass",
+      "orderbook_check_source": "contract_orderbook_refresh",
+      "orderbook_checked_at": "2026-07-03T09:05:38.300Z",
+      "orderbook_refresh_started_at": "2026-07-03T09:05:38.050Z",
+      "orderbook_refreshed_at": "2026-07-03T09:05:38.250Z",
+      "orderbook_to_risk_check_ms": 600.0,
+      "risk_check_result": "pass",
+      "risk_check_source": "contract_risk_guard",
+      "risk_check_to_submit_ms": 200.0,
+      "risk_checked_at": "2026-07-03T09:05:38.900Z",
+      "signal_to_orderbook_ms": 300.0,
+      "submit_request_to_exchange_ack_ms": 600.0,
+      "submit_requested_at": "2026-07-03T09:05:39.100Z"
+    },
+    "guards": {
+      "changes_parameters": false,
+      "fetches_external_weather_sources": false,
+      "fetches_orderbook": false,
+      "historical_backfill": false,
+      "places_orders": false,
+      "restarts_launchd": false,
+      "writes_archive_db": false,
+      "writes_auto_orders": false,
+      "writes_auto_trade_decisions": false,
+      "writes_auto_trade_jobs": false,
+      "writes_signal_to_order_timing": false
+    },
+    "next_boundary": "signal_to_order_safety_contract_ready",
+    "ok": true,
+    "orderbook_results": {
+      "book_missing": {
+        "hard_reason_ok": true,
+        "normalized_reason": "orderbook_missing",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "entry_orderbook_missing": {
+        "hard_reason_ok": true,
+        "normalized_reason": "orderbook_missing",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "orderbook_missing": {
+        "hard_reason_ok": true,
+        "normalized_reason": "orderbook_missing",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      },
+      "orderbook_unavailable": {
+        "hard_reason_ok": true,
+        "normalized_reason": "orderbook_missing",
+        "ok": true,
+        "terminal_ok": true,
+        "terminal_state": "blocked"
+      }
+    },
+    "read_only": true,
+    "schema": "signal_to_order_safety_contract_audit_v1",
+    "stale_results": {
+      "stale_decision": {
+        "expected_terminal_state": "stale",
+        "ok": true,
+        "reason_code": "decision_stale",
+        "reason_text": "decision freshness expired",
+        "terminal_state": "stale"
+      },
+      "stale_orderbook": {
+        "expected_terminal_state": "stale",
+        "ok": true,
+        "reason_code": "orderbook_expired",
+        "reason_text": "orderbook stale before submit",
+        "terminal_state": "stale"
+      },
+      "stale_posterior": {
+        "expected_terminal_state": "stale",
+        "ok": true,
+        "reason_code": "posterior_expired",
+        "reason_text": "posterior freshness expired",
+        "terminal_state": "stale"
+      }
+    },
+    "static_contract": {
+      "classifier_has_duplicate_markers": true,
+      "classifier_has_stale_markers": true,
+      "clob_service_exposes_order_status": true,
+      "clob_service_has_idempotent_replay": true,
+      "clob_service_has_inflight_guard": true,
+      "execution_segments_preserve_orderbook_refresh": true,
+      "primary_fast_path_checks_orderbook_before_submit": true,
+      "primary_fast_path_persists_decision_before_submit": true,
+      "primary_fast_path_runs_risk_guards_before_submit": true,
+      "python_idempotency_key_excludes_audit_metadata": true,
+      "run_node_order_applies_buy_notional_cap": true
+    },
+    "timing_contract": {
+      "guards": {
+        "bypasses_auto_trade_decisions": false,
+        "bypasses_orderbook_or_risk": false,
+        "pre_signal_bypasses_awc_acceptance": false,
+        "pre_signal_places_orders": false,
+        "recomputes_weather_probability": false
+      },
+      "order_submitted_at": "",
+      "signal_to_order_slo_met": false,
+      "signal_to_order_slo_violation_reason": "posterior_expired",
+      "terminal_reason": "posterior_expired",
+      "terminal_state": "stale"
+    },
+    "warnings": []
+  },
+  "state": "accepted_for_production_activation",
+  "strategy_artifact_sha256": "f571ea9d25fa49e2b6c66dec0fa241427d4b0a1e79917b3fb06d7f8bd0fa99ad",
+  "strategy_contract_audit": {
+    "blockers": [],
+    "checks": {
+      "current_top_exit_is_dynamic_and_uses_090_wave_target": true,
+      "legacy_ev_edge_lcb_and_retired_no_paths_are_non_executable": true,
+      "malformed_second_yes_five_usdc_plan_fails_closed": true,
+      "posterior_rank_and_joint_physical_exclusion_select_exact_three_legs": true,
+      "promoted_second_lot_tops_up_to_current_top_20": true,
+      "second_yes_entry_closes_immediately_when_predicted_peak_is_reached": true,
+      "second_yes_entry_is_only_in_final_30_minutes_before_predicted_peak": true,
+      "top_and_second_roles_reselect_without_promoted_lot_churn": true
+    },
+    "limits_usdc": {
+      "second_yes": 4.99,
+      "strongly_excluded_no": 100.0,
+      "top_yes_wave": 20.0
+    },
+    "ok": true,
+    "places_orders": false,
+    "read_only": true,
+    "schema": "production_dynamic_three_leg_strategy_contract_audit_v1",
+    "state": "strategy_contract_aligned",
+    "writes_archive_db": false
+  },
+  "test_receipt": {
+    "ok": true,
+    "places_orders": false,
+    "returncode": 0,
+    "stderr_tail": "",
+    "stdout_tail": ".......................................................................  [100%]\n71 passed in 24.19s\n",
+    "test_files": [
+      "tests/test_dynamic_three_leg_transition_runtime.py",
+      "tests/test_strong_posterior_three_leg_strategy.py",
+      "tests/test_production_dynamic_three_leg_decision_writer.py",
+      "tests/test_production_market_alpha_take_profit_coordinator.py",
+      "tests/test_production_market_alpha_take_profit_writer.py",
+      "tests/test_production_dynamic_three_leg_strategy_contract_audit.py",
+      "tests/test_signal_to_order_safety_contract_audit.py"
+    ]
+  },
+  "trade_gate_zero_audit": {
+    "blockers": [],
+    "checks": {
+      "buy_submit_calls_have_policy_guard": true,
+      "entry_size_has_no_usable_edge_scale": true,
+      "entry_submit_policy_has_no_edge_gate": true,
+      "exit_classifier_has_no_prefix_authority": true,
+      "market_alpha_runtime_default_deny": true,
+      "physical_report_to_market_bucket_direct_mapping_retired": true,
+      "retired_recycle_and_profit_lock_paths_absent": true,
+      "retired_remote_and_trajectory_no_generators_absent": true,
+      "strategy_has_no_fair_value_or_unapproved_sell_reason": true,
+      "target_entry_has_no_buy_price_cap_gate": true,
+      "target_entry_has_no_posterior_price_value_gate": true,
+      "yes_budget_does_not_use_expected_no_profit": true
+    },
+    "guards": {
+      "changes_parameters": false,
+      "places_orders": false,
+      "restarts_services": false,
+      "writes_archive_db": false
+    },
+    "ok": true,
+    "read_only": true,
+    "schema": "production_trade_gate_zero_audit_v1"
+  }
+}

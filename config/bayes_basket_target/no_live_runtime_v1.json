@@ -1,0 +1,13 @@
+{
+  "schema": "bayes_basket_target_no_live_runtime_v1",
+  "state": "ENABLED_FOR_PRODUCTION_NO_LIVE",
+  "execution_mode": "production_no_live",
+  "target_only": true,
+  "capital_scope": "target_owned_only",
+  "target_remaining_budget_usdc": 20.0,
+  "live_submit_authorized": false,
+  "places_orders": false,
+  "writes_production_db": false,
+  "calls_order_gateway": false,
+  "reads_shared_live_capital": false
+}

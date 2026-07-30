@@ -1,0 +1,337 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "changes_activation": false,
+    "places_orders": false,
+    "read_only": true,
+    "reads_shared_live_database": false,
+    "restarts_services": false,
+    "writes_shared_live_database": false,
+    "writes_target_database": false
+  },
+  "captured_at_utc": "2026-07-24T23:12:36Z",
+  "checks": {
+    "market_ws_evidence_only_boundary": true,
+    "protected_files_unchanged_during_audit": true,
+    "protected_live_line_untouched_boundary": true,
+    "reported_trajectory_no_no_live_boundary": true,
+    "runtime_closure_complete": true,
+    "settlement_floor_calculation_only_boundary": true,
+    "target_activation_boundary": true,
+    "target_database_exists_and_stable": true,
+    "three_protected_processes_present": true
+  },
+  "facts_sha256": "4f3016f6c528ff3bb519dd6133dcad0269e602d7b65aeb52d513767b212c4cc9",
+  "ok": true,
+  "process_snapshot": {
+    "clob_order_service": {
+      "command_sha256": "9d455a019f0246276594aff42bd92dde810e1a119cf35a6d02c5e330cb92742b",
+      "pid_count": 1,
+      "pids": [
+        21171
+      ],
+      "present": true
+    },
+    "market_ws": {
+      "command_sha256": "0aaf49a759c6e2d9e6d6484c757228601e684faac9ed6c3a0d1aa4cdc8047916",
+      "pid_count": 1,
+      "pids": [
+        67868
+      ],
+      "present": true
+    },
+    "reported_trajectory_no": {
+      "command_sha256": "c39f4c2f7d4b253e16852d3205828ab1d29c0718622fcdac34d81abafe9b2a53",
+      "pid_count": 1,
+      "pids": [
+        80859
+      ],
+      "present": true
+    }
+  },
+  "protected_boundary": {
+    "market_ws": {
+      "checks": {
+        "authorizes_order_false": true,
+        "connected": true,
+        "evidence_only": true
+      },
+      "schema": "clob_ws_latest_quote_snapshot_v1",
+      "state": "connected"
+    },
+    "protected_live_line": {
+      "activation_contract_sha256": "42f42354ba96e0cd5c0928c5f365e7e16c438e06eeaf0525da4a7e639a4b3302",
+      "activation_schema": "basket_plus_hard_no_production_activation_v1",
+      "checks": {
+        "guard_name_preserved": true,
+        "resident_calls_gateway_true": true,
+        "resident_enabled": true,
+        "resident_live_submit_true": true,
+        "resident_places_orders_true": true,
+        "resident_production_live": true
+      },
+      "guard_name": "basket_activation_not_live_enabled",
+      "strategy_id": "weather_basket_plus_hard_no_v2"
+    },
+    "reported_trajectory_no": {
+      "checks": {
+        "calls_order_gateway_false": true,
+        "live_submit_authorized_false": true,
+        "places_orders_false": true,
+        "production_no_live": true
+      },
+      "execution_mode": "production_no_live",
+      "schema": "reported_trajectory_no_daemon_v1"
+    },
+    "settlement_floor": {
+      "checks": {
+        "calculation_only": true,
+        "does_not_read_weather_or_probability": true,
+        "submits_orders_false": true
+      },
+      "schema": "settlement_floor_biased_basket_policy_v1",
+      "state": "prepared"
+    },
+    "target_activation": {
+      "activation_contract_sha256": "f05a682dfe69e5a77d4042be9c7e5cf69aad83aa010661f7b8e4e062be5af209",
+      "checks": {
+        "calls_order_gateway_false": true,
+        "execution_mode_production_no_live": true,
+        "live_submit_authorized_false": true,
+        "places_orders_false": true,
+        "target_only": true,
+        "writes_production_db_false": true
+      },
+      "schema": "bayes_basket_target_production_no_live_activation_v1",
+      "state": "production_no_live"
+    }
+  },
+  "protected_file_facts_after": [
+    {
+      "exists": true,
+      "path": "config/trading/basket_plus_hard_no_v1.json",
+      "sha256": "619aeab254fc42cdc3340198c88e971342c4c52c5bbd4f87efed83b486e24a8d",
+      "size_bytes": 1638
+    },
+    {
+      "exists": true,
+      "path": "data/reported_trajectory_no_status.json",
+      "volatile_runtime_payload": true
+    },
+    {
+      "exists": true,
+      "path": "data/market_ws_latest_quotes.json",
+      "volatile_runtime_payload": true
+    },
+    {
+      "exists": true,
+      "path": "config/trading/settlement_floor_basket_policy_v1.json",
+      "sha256": "bee77bd4581e83dc59d63cda926873d1a7ec86a5ea2d974d50e4d3c17d27014f",
+      "size_bytes": 2881
+    }
+  ],
+  "protected_file_facts_before": [
+    {
+      "exists": true,
+      "path": "config/trading/basket_plus_hard_no_v1.json",
+      "sha256": "619aeab254fc42cdc3340198c88e971342c4c52c5bbd4f87efed83b486e24a8d",
+      "size_bytes": 1638
+    },
+    {
+      "exists": true,
+      "path": "data/reported_trajectory_no_status.json",
+      "volatile_runtime_payload": true
+    },
+    {
+      "exists": true,
+      "path": "data/market_ws_latest_quotes.json",
+      "volatile_runtime_payload": true
+    },
+    {
+      "exists": true,
+      "path": "config/trading/settlement_floor_basket_policy_v1.json",
+      "sha256": "bee77bd4581e83dc59d63cda926873d1a7ec86a5ea2d974d50e4d3c17d27014f",
+      "size_bytes": 2881
+    }
+  ],
+  "protected_files_after": [
+    {
+      "exists": true,
+      "path": "config/trading/basket_plus_hard_no_v1.json",
+      "sha256": "619aeab254fc42cdc3340198c88e971342c4c52c5bbd4f87efed83b486e24a8d",
+      "size_bytes": 1638
+    },
+    {
+      "exists": true,
+      "path": "data/reported_trajectory_no_status.json",
+      "sha256": "48539f48db6a570308f3bc88a5f24f70ba60c6a22c6ef948447d571e0ef8adff",
+      "size_bytes": 6255
+    },
+    {
+      "exists": true,
+      "path": "data/market_ws_latest_quotes.json",
+      "sha256": "c57857b68f13245f7f2e784e1e4f87f9694cdaf639a497584f20e7ab2af531cc",
+      "size_bytes": 2097
+    },
+    {
+      "exists": true,
+      "path": "config/trading/settlement_floor_basket_policy_v1.json",
+      "sha256": "bee77bd4581e83dc59d63cda926873d1a7ec86a5ea2d974d50e4d3c17d27014f",
+      "size_bytes": 2881
+    }
+  ],
+  "protected_files_before": [
+    {
+      "exists": true,
+      "path": "config/trading/basket_plus_hard_no_v1.json",
+      "sha256": "619aeab254fc42cdc3340198c88e971342c4c52c5bbd4f87efed83b486e24a8d",
+      "size_bytes": 1638
+    },
+    {
+      "exists": true,
+      "path": "data/reported_trajectory_no_status.json",
+      "sha256": "48539f48db6a570308f3bc88a5f24f70ba60c6a22c6ef948447d571e0ef8adff",
+      "size_bytes": 6255
+    },
+    {
+      "exists": true,
+      "path": "data/market_ws_latest_quotes.json",
+      "sha256": "16759b2d432256d7ab6cfff2197736fe1c9c8f19eeb84ca300d8bd22888f85d6",
+      "size_bytes": 2097
+    },
+    {
+      "exists": true,
+      "path": "config/trading/settlement_floor_basket_policy_v1.json",
+      "sha256": "bee77bd4581e83dc59d63cda926873d1a7ec86a5ea2d974d50e4d3c17d27014f",
+      "size_bytes": 2881
+    }
+  ],
+  "receipt_sha256": "5ecc530729b2a17769b5feaee24211b1474fa5b933568238d6ac97b534e09438",
+  "runtime_closure": [
+    {
+      "exists": true,
+      "path": "bayes_basket_target/production_worker.py",
+      "sha256": "1514c74d88f233094f93f5cbfc6820be8350643739e0ecfb04d662bf25d6cb80",
+      "size_bytes": 32895
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/runtime.py",
+      "sha256": "d75cf4f3b97ebc7bdb5a09aa69c146e75ea51d61323fa4242fba7810365e0bb6",
+      "size_bytes": 14973
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/ssot.py",
+      "sha256": "e6e787b987d932c178c2c0061f044f2f8a37cb15e8e87846ac47a26d8db3a5c4",
+      "size_bytes": 37963
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/activation.py",
+      "sha256": "81265faa81533606a8ec1fa587ad2e2d63be249753b8be0d13bc95d08196e395",
+      "size_bytes": 4454
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/market_ingress.py",
+      "sha256": "f03e056e3c0bb976d0f689593f5b77ff24afe72231d4f749b11ceeea7260d83e",
+      "size_bytes": 32513
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/resource_bounds.py",
+      "sha256": "71cee0250dc452782d77b27efd4bb188ffb6e6aed8560d0a61d96537cee53e79",
+      "size_bytes": 13449
+    },
+    {
+      "exists": true,
+      "path": "scripts/reported_trajectory_no_daemon.py",
+      "sha256": "51c3ca2cec6b3dddbf0b2aac39f4aae20af2fe338cc005ee2bb9a7084aec27df",
+      "size_bytes": 35825
+    },
+    {
+      "exists": true,
+      "path": "scripts/market_ws_listener.py",
+      "sha256": "bb598efc23c5fb0c2cfdffc682c75ecb3394180809606c70b9210b6f862d6d3e",
+      "size_bytes": 82537
+    },
+    {
+      "exists": true,
+      "path": "scripts/clob_order_service.mjs",
+      "sha256": "e73a9af5478097d73da61bfe627ab0b829a8a2562b653756312220ba1354e532",
+      "size_bytes": 114045
+    },
+    {
+      "exists": true,
+      "path": "scripts/cutover_basket_plus_hard_no_production.py",
+      "sha256": "10a587b08304b466613522c8d0a639f3f72c6fc694b62874020ea2dcbd3ecc68",
+      "size_bytes": 6440
+    },
+    {
+      "exists": true,
+      "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "sha256": "75136ab31822c4a8cd7ae2364bd6e1409932280334feecbaf7f6818dbf01b34e",
+      "size_bytes": 1387
+    }
+  ],
+  "schema": "bayes_basket_target_production_facts_baseline_v1",
+  "target": {
+    "activation": {
+      "activation_contract_sha256": "f05a682dfe69e5a77d4042be9c7e5cf69aad83aa010661f7b8e4e062be5af209",
+      "checks": {
+        "calls_order_gateway_false": true,
+        "execution_mode_production_no_live": true,
+        "live_submit_authorized_false": true,
+        "places_orders_false": true,
+        "target_only": true,
+        "writes_production_db_false": true
+      },
+      "schema": "bayes_basket_target_production_no_live_activation_v1",
+      "state": "production_no_live"
+    },
+    "database": {
+      "exists": true,
+      "path": "data/bayes_basket_target_ssot.db",
+      "sha256": "73ed0bb3bfb9cdd248f31b8f59b205b09daf8dfca9f7de987206c109d76da709",
+      "size_bytes": 21553152,
+      "stable_during_read": true,
+      "table_counts": {
+        "auto_trade_decisions": 163,
+        "basket_cash_phase_policy_artifact": 0,
+        "basket_confirmed_inventory_snapshot": 0,
+        "basket_global_prior_artifact": 0,
+        "basket_official_ws_evidence_cache": 4,
+        "basket_official_ws_snapshot": 0,
+        "basket_order_state_snapshot": 0,
+        "basket_policy_activation": 0,
+        "basket_policy_promotion": 0,
+        "basket_policy_training_fact": 0,
+        "basket_probability_envelope": 0,
+        "basket_station_policy_artifact": 0,
+        "basket_strategy_activation_state": 1,
+        "basket_target_bound_facts": 0,
+        "basket_target_capital_pool": 1,
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_cycles": 163,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_market_registry": 5214,
+        "basket_target_market_registry_snapshot": 1,
+        "basket_target_observation_facts": 20504,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0,
+        "basket_target_writer_lock_wait_telemetry": 1,
+        "calibration_activation": 0,
+        "calibration_artifact_promotion": 0,
+        "calibration_ensemble_artifact": 0,
+        "calibration_historical_asof_model_run": 0,
+        "calibration_model_artifact": 0,
+        "calibration_model_station_residual": 0,
+        "calibration_station_daily_high_truth": 0,
+        "calibration_station_registry": 0
+      },
+      "user_version": 0
+    }
+  }
+}

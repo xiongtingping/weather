@@ -1,0 +1,205 @@
+{
+  "baseline_oos_metrics": null,
+  "boundary": {
+    "binds_artifact": false,
+    "calls_order_gateway": false,
+    "current_live_prediction_reused_as_historical_label": false,
+    "places_orders": false,
+    "strict_time_split": true,
+    "writes_configuration": false,
+    "writes_database": false
+  },
+  "content_sha256": "9e53ea5b66a88595b3c8ede48226fa33c957caedce53d398e2f111a965eecf6b",
+  "crossfit_prediction_artifact_sha256": "69a18f6f951c85f3f7901a370e87b043210ae56c428e6d5c721ebebd6ec4ad30",
+  "crps_not_worse": false,
+  "effective_sample_n": 0.0,
+  "evaluated_rows": [],
+  "evidence": null,
+  "excluded_rows": [
+    {
+      "event_date": "2026-07-01",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-06",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-08",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-09",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-10",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-11",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-12",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-13",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-14",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-15",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-16",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-18",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-19",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-20",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-21",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-22",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-23",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-24",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-25",
+      "reason": "truth_not_strictly_after_live_and_taf_training_cutoff",
+      "station_id": "RKPK"
+    }
+  ],
+  "gaps": [
+    {
+      "actual_sample_n": 0,
+      "code": "transport_oos_post_training_sample_n_insufficient",
+      "knowledge_cutoff_utc": "2026-07-25T15:00:00Z",
+      "missing_sample_n": 24,
+      "required_data": "truth-closed RKPK rows strictly after cutoff with matching TAF, historical ECMWF/GFS raw daily maxima, and exact scope",
+      "required_sample_n": 24
+    }
+  ],
+  "knowledge_cutoff_utc": "2026-07-25T15:00:00Z",
+  "lead_bucket": "d2_fallback",
+  "live_fingerprint": {
+    "available_model_set_hash": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+    "available_models": [
+      "ECMWF",
+      "GFS"
+    ],
+    "ensemble_artifact_content_sha256": "b4d8591d7e922dd2546ac22aa777edcd775c15b2e50d5afff045a554fbb6ab39",
+    "ensemble_artifact_id": "ens-candidate-RKPK-summer-9c4f1014d5f1-a8d8536e4c8a",
+    "ensemble_selection_evidence_sha256": "e75ccfac2c9f6ba61d6c714b8d80e00133bcabf15ed0c0c30706ead4a3678cd2",
+    "ensemble_weight_method": "rolling_origin_probability_stack_v3_min2",
+    "fingerprint_sha256": "fecbe97e37e8674252f2a734a8b90257e7075ee3a940a975a94a2d41ebb0c442",
+    "lead_bucket": "d2_fallback",
+    "model_calibration_artifacts": {
+      "ECMWF": {
+        "calibration_artifact_content_sha256": "f310421d1c23471f4cff8c5a687ad82de09e80ca735aa936b6679914fa9b7f27",
+        "calibration_artifact_id": "cal-candidate-RKPK-ECMWF-summer-9c4f1014d5f1"
+      },
+      "GFS": {
+        "calibration_artifact_content_sha256": "b7b1c2bcc36f1e5174c79e47e35c405f28c4b91f68a8b9ae488b7eb97ec1374e",
+        "calibration_artifact_id": "cal-candidate-RKPK-GFS-summer-9c4f1014d5f1"
+      }
+    },
+    "resolved_weights": {
+      "ECMWF": 0.8,
+      "GFS": 0.2
+    },
+    "run_cycle": "18Z",
+    "schema": "bayes_basket_taf_nwp_live_compatibility_fingerprint_v1",
+    "season_bin": "summer",
+    "settlement_definition": "official_daily_tmax_c",
+    "station_id": "RKPK"
+  },
+  "minimum_sample_n": 24,
+  "nll_not_worse": false,
+  "resource_bounds": {
+    "actual_total_input_bytes": 152595,
+    "max_reference_files": 64,
+    "max_rows": 366,
+    "max_total_input_bytes": 67108864,
+    "reference_file_count": 0
+  },
+  "run_cycle": "18Z",
+  "sample_n": 0,
+  "schema": "bayes_basket_taf_nwp_transport_oos_report_v1",
+  "season_bin": "summer",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Seoul",
+  "state": "NA",
+  "station_id": "RKPK",
+  "taf_artifact_content_sha256": "77fa8525fc69201d5db46278f8ebbefe5869be9aa456faf49a2f1729d775095f",
+  "taf_artifact_id": "taf-rkpk-summer-d2-fallback-18z-v2",
+  "transport_oos_metrics": null,
+  "validated": false
+}

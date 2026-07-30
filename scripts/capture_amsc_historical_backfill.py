@@ -69,6 +69,13 @@ def _curl_tls_verified_payload(*, url: str, token: str, timeout: int) -> dict:
 
     config = "\n".join([
         f"url = {quoted(url)}",
+        # AMSC is the formal China-station truth source and is reachable by
+        # direct TLS from this host.  The shared NWP proxy intermittently
+        # refuses this endpoint; routing historical backfill through it turns
+        # an available official response into a false data gap.  Keep this
+        # isolated historical transport direct so the resident/production
+        # source client and its process boundary are untouched.
+        'noproxy = "*"',
         f"header = {quoted(f'sessionId: {token}')}",
         'header = "app: AMS"',
         'header = "Content-Type: application/json"',

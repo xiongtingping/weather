@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HELPER="/usr/local/libexec/weather-service-control"
 
 usage() {
   echo "用法：bash scripts/weather_service_control.sh restart {monitor|bot}" >&2
@@ -14,7 +13,13 @@ if [ "$#" -ne 2 ] || [ "$1" != "restart" ]; then
 fi
 
 case "$2" in
-  monitor) action="restart-monitor" ;;
+  monitor)
+    uid="$(id -u)"
+    monitor_service="gui/${uid}/com.weather.monitor.daemon"
+    bash "$ROOT/scripts/install_monitor_launchdaemon.sh"
+    echo "已重启用户域 monitor 守护进程。"
+    exit 0
+    ;;
   bot)
     uid="$(id -u)"
     bot_service="gui/${uid}/com.weather.trade_engine"
@@ -29,20 +34,3 @@ case "$2" in
     ;;
   *) usage; exit 64 ;;
 esac
-
-if [ ! -x "$HELPER" ]; then
-  echo "免密控制入口尚未安装。请执行一次：" >&2
-  echo "cd '$ROOT' && sudo bash scripts/install_passwordless_service_control.sh" >&2
-  exit 1
-fi
-
-# -n is intentional: daily control must fail closed instead of prompting for a
-# password when the sudoers rule is missing or does not match exactly.
-if /usr/bin/sudo -n "$HELPER" "$action"; then
-  echo "已重启 monitor 守护进程。"
-else
-  rc=$?
-  echo "monitor 免密重启失败；不会回退到交互式 sudo。请重新执行一次安装命令：" >&2
-  echo "cd '$ROOT' && sudo bash scripts/install_passwordless_service_control.sh" >&2
-  exit "$rc"
-fi

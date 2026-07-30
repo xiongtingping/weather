@@ -70,6 +70,9 @@ def build_contract(*, provider: str, run_at_utc: str, target_event_date: str, cu
     )
     history_dir = curve_root / provider / "history"
     rows, unreadable = _load_rows(history_dir) if history_dir.is_dir() else ([], [str(history_dir)])
+    # The history directory contains overlapping valid times from many model
+    # runs. A daily revision must be built from exactly the requested run.
+    rows = [row for row in rows if str(row.get("run_at_utc") or "") == str(run_at_utc or "")]
     revision = build_official_nwp_daily_peak_revision(
         provider_id=provider,
         point_snapshots=rows,

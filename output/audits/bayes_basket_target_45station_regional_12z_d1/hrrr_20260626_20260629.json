@@ -1,0 +1,5695 @@
+{
+  "as_of_utc": "2026-07-29T10:30:00Z",
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_database": false
+  },
+  "checks": {
+    "all_expected_station_dates_complete": true,
+    "future_data_used": false,
+    "historical_closed_targets_only": true,
+    "native_arrival_not_claimed": true,
+    "native_publication_not_claimed": true,
+    "online_weight_update": false
+  },
+  "content_sha256": "f23c261f402a9f29b96baf8c595ae3879786d4991e31c6b2b818629940f7903b",
+  "end_date": "2026-06-29",
+  "inputs": [
+    {
+      "event_date": "2026-06-26",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C33.62972%2C30.1831%2C39.713%2C32.83836%2C29.64582%2C33.93817%2C40.77945%2C25.78806%2C41.96017%2C47.44467%2C37.61961&longitude=-79.629%2C-84.44223%2C-97.68063%2C-104.758%2C-96.83584%2C-95.28214%2C-118.3866%2C-73.88027%2C-80.31692%2C-87.93161%2C-122.31442%2C-122.36561&hourly=temperature_2m&models=ncep_hrrr_conus&timezone=UTC&run=2026-06-25T12%3A00&forecast_days=4",
+      "run_initialization_utc": "2026-06-25T12:00:00Z"
+    },
+    {
+      "event_date": "2026-06-27",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C33.62972%2C30.1831%2C39.713%2C32.83836%2C29.64582%2C33.93817%2C40.77945%2C25.78806%2C41.96017%2C47.44467%2C37.61961&longitude=-79.629%2C-84.44223%2C-97.68063%2C-104.758%2C-96.83584%2C-95.28214%2C-118.3866%2C-73.88027%2C-80.31692%2C-87.93161%2C-122.31442%2C-122.36561&hourly=temperature_2m&models=ncep_hrrr_conus&timezone=UTC&run=2026-06-26T12%3A00&forecast_days=4",
+      "run_initialization_utc": "2026-06-26T12:00:00Z"
+    },
+    {
+      "event_date": "2026-06-28",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C33.62972%2C30.1831%2C39.713%2C32.83836%2C29.64582%2C33.93817%2C40.77945%2C25.78806%2C41.96017%2C47.44467%2C37.61961&longitude=-79.629%2C-84.44223%2C-97.68063%2C-104.758%2C-96.83584%2C-95.28214%2C-118.3866%2C-73.88027%2C-80.31692%2C-87.93161%2C-122.31442%2C-122.36561&hourly=temperature_2m&models=ncep_hrrr_conus&timezone=UTC&run=2026-06-27T12%3A00&forecast_days=4",
+      "run_initialization_utc": "2026-06-27T12:00:00Z"
+    },
+    {
+      "event_date": "2026-06-29",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C33.62972%2C30.1831%2C39.713%2C32.83836%2C29.64582%2C33.93817%2C40.77945%2C25.78806%2C41.96017%2C47.44467%2C37.61961&longitude=-79.629%2C-84.44223%2C-97.68063%2C-104.758%2C-96.83584%2C-95.28214%2C-118.3866%2C-73.88027%2C-80.31692%2C-87.93161%2C-122.31442%2C-122.36561&hourly=temperature_2m&models=ncep_hrrr_conus&timezone=UTC&run=2026-06-28T12%3A00&forecast_days=4",
+      "run_initialization_utc": "2026-06-28T12:00:00Z"
+    }
+  ],
+  "model_id": "HRRR",
+  "model_rows": [
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 24.9,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-26T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.9,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.7,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.4,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.3,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.1,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.6,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "9af20c8c466d20ff5ef03c4664f49572a5887550c981dafd93333302ceb57065",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "CYYZ",
+      "target_timezone": "America/Toronto"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 29.3,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-26T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.6,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.7,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.2,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.7,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.2,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.8,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.8,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.9,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.0,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.2,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.2,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.5,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "12169a57a05849b7728c871ad6a88ffaf90b7e56ef184e643734246290a6bff1",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KATL",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 33.2,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.3,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.2,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.7,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.2,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.5,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.4,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "35b651a3dbce6d007c98a370170c3cc520213ebb5d91bbe25b36613bbbc68851",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KAUS",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 31.7,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.8,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.1,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.9,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.0,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.8,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.3,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.2,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.3,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.4,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.7,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "8a55e154d1687c4626ee02eea8b7e82090397e35022e6aad962f6de2e54046d2",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KBKF",
+      "target_timezone": "America/Denver"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 30.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.4,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.7,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.2,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "4985eda74bd634d6e9f279a3877733062953ed6a9b7571063567a439a9ff7f22",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KDAL",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 33.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.6,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.2,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.8,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.7,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.6,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.6,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "9e881ced08a72f8a3dea59e3586eb23e16953f791332ce4094c26cd2ebe44fc7",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KHOU",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 20.2,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.7,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.0,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.5,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.5,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.3,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.6,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.8,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.4,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.5,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "bd283315c4d7e6019cd4f9c0bdad5b128de0800aca76d8c9d779949882fc1f07",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLAX",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 30.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 20.8,
+          "valid_time_utc": "2026-06-26T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.9,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.1,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.1,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.7,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.7,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.9,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.2,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.4,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.6,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.3,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "20d056334864ca5f07e89025eb83e773f4bd8bce5c61022e6cf8a811ea541658",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLGA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 29.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 24.8,
+          "valid_time_utc": "2026-06-26T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.4,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.0,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.0,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.7,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "d420fefecc6a57532371e469ad3d30cc1293ec5c36d411bad77420b86eb7d433",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KMIA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 20.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 16.9,
+          "valid_time_utc": "2026-06-26T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-26T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.9,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.2,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.5,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.0,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.7,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.6,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.8,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.0,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.0,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "486736f7492f69509485270b1cfdc021b97f7fa292d813a522d655bf9005d4f0",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KORD",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 16.4,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 14.3,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.0,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.0,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.6,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.6,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.0,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.5,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.3,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.2,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.3,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.5,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.5,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.7,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.4,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "819f03479ef6b1e322ca84770619e3bf77447e8d96acf7df373647f8a3d8ea66",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSEA",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-26",
+      "forecast_daily_max_c": 17.9,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-25T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 13.0,
+          "valid_time_utc": "2026-06-26T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.9,
+          "valid_time_utc": "2026-06-26T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.8,
+          "valid_time_utc": "2026-06-26T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.9,
+          "valid_time_utc": "2026-06-26T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.1,
+          "valid_time_utc": "2026-06-26T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.1,
+          "valid_time_utc": "2026-06-26T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.1,
+          "valid_time_utc": "2026-06-26T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-26T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.3,
+          "valid_time_utc": "2026-06-26T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-26T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-26T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-26T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-26T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-06-26T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-26T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-26T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.8,
+          "valid_time_utc": "2026-06-26T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-06-27T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.8,
+          "valid_time_utc": "2026-06-27T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.9,
+          "valid_time_utc": "2026-06-27T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.3,
+          "valid_time_utc": "2026-06-27T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.8,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.5,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/9a53a5e88f1e6f7f54a81ccbdc366f01b2472ec5900ebcac6e595e421f4903e0.json",
+      "receipt_sha256": "93e89f9d8b1b90f98a2f76c4fa226868951b84db199bad8068f76b884ab24ea2",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSFO",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 25.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.5,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.8,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.2,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.2,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.0,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.9,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.8,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.4,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.4,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "399b09ddcd316c02c50b5ae2b1e315c80648340bdc52103bb11eb54f08c04128",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "CYYZ",
+      "target_timezone": "America/Toronto"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 32.8,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.7,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.2,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.3,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.6,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.6,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.8,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.5,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.7,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "05d550b62d5db2709bd35ae267956f5b703b3b20f3beb2606cf135946c9774db",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KATL",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 33.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.3,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.6,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.0,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.9,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.5,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.7,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.3,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.0,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.3,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "730fa9a37768bfd9547ae258e25222b00b298c4a0c3af64ec5c3c8052ee75eb0",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KAUS",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 33.8,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 19.6,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.0,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.6,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.3,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.2,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.7,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.1,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.0,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.7,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.8,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.5,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.5,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.1,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "521567065c878e3892606681357b14161b620ffdc1ce6a482ada3797ad341f5a",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KBKF",
+      "target_timezone": "America/Denver"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 31.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.6,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.3,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.0,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.8,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.1,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.1,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "332597374469dc2e69790e4fe4f014a95f2bdbd6fbb8a6402eff7b17b861ea79",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KDAL",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 33.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.3,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.4,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.3,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.5,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.5,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.4,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.3,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.0,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "692cce52541b1b4a5d3458e563d09dc3c397d803647c6227ab9f3cc4b0944da8",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KHOU",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 21.7,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 16.5,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.6,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.9,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.8,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.6,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.9,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.8,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.0,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.6,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.0,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.7,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.3,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.8,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.7,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.4,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "dead4545e4fc18ad2035b343f9b4d5515c6fdb5b4c75c5624f92b37b625c0b3b",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLAX",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 25.2,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.5,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.7,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.1,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.3,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.1,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.9,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.0,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.2,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.6,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.8,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.6,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "2fae38b4c01ae168d053bfff907f18f851f3559a5d388e596faeffa89e657cf2",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLGA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 31.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-06-27T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.7,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.4,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.6,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.0,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.8,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "004dc9f375dc92f6c91baff0b01cf636112c84a1bf893a1f8fa6a2c4713f2f77",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KMIA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 25.7,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-27T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.3,
+          "valid_time_utc": "2026-06-27T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.3,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.9,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.6,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.0,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.1,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.6,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.5,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.6,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.3,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "e7199bf7a761a675bc339c2d30ed86300712103f212856f4fe4973a7c7c71e0e",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KORD",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 18.4,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 12.6,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.4,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.7,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 10.9,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 10.4,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 10.5,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.6,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.1,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.8,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.8,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.1,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.8,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.2,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.7,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.4,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.8,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.7,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.1,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "376ae233f159cb7d6da363699cf0346a3c6208f3db2dd7584428a3598ab0d0ff",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSEA",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-27",
+      "forecast_daily_max_c": 17.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-26T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-27T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.1,
+          "valid_time_utc": "2026-06-27T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-27T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.7,
+          "valid_time_utc": "2026-06-27T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.5,
+          "valid_time_utc": "2026-06-27T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-27T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.1,
+          "valid_time_utc": "2026-06-27T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.4,
+          "valid_time_utc": "2026-06-27T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.5,
+          "valid_time_utc": "2026-06-27T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.9,
+          "valid_time_utc": "2026-06-27T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-27T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-27T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-27T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.2,
+          "valid_time_utc": "2026-06-27T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-27T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-06-27T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.3,
+          "valid_time_utc": "2026-06-27T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.8,
+          "valid_time_utc": "2026-06-28T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.2,
+          "valid_time_utc": "2026-06-28T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.3,
+          "valid_time_utc": "2026-06-28T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.3,
+          "valid_time_utc": "2026-06-28T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.4,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.0,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.8,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/d27e9eee458560dd64f89583090007e6998a07d5262aa39ef0f3d4345033c9fe.json",
+      "receipt_sha256": "dade4eff892b4b22713af5a033ab89b034cb9e1df7c9886a8bf203bfbc157e45",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSFO",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 26.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.6,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.6,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.7,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.7,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.2,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.9,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.5,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.6,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "410a030a939be10d0431962059e1d2075f4a7e6b9d5ee2160fe0e919e0fecad8",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "CYYZ",
+      "target_timezone": "America/Toronto"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 34.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.6,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.1,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.4,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.7,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.1,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.6,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.0,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.8,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.5,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.2,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.7,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.6,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "dc04ff94e3dfd17e3527acb57a8692feeaaa9bbf6594165f5ccf107f16732b06",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KATL",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 33.4,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.4,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.8,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.1,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.0,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.9,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.2,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.4,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.0,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "ecac6c4635ec0524368f2fa63b6aa05bd8fb277720f4160a8368bc366ae43dbc",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KAUS",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 35.4,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.5,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.9,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.3,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.9,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.6,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.1,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.3,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.1,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.1,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.4,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.7,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.7,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.0,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.8,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "e5780e7a98f35c188eb46eac4f61859ea541d9ba8ac0163f6fbb259133a3dc39",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KBKF",
+      "target_timezone": "America/Denver"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 32.1,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.2,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.3,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.8,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.0,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.1,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.8,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.7,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "b71297a3fc8467b2ad7e3987a64b03a589a4f43f580117b688f436f2da9b54a0",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KDAL",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 33.8,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.2,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.7,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.7,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.6,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.8,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.7,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.5,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.7,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.8,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.0,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "cd4165857124377312c8245835a0c3321e819ba830b00bfdfe95850f59471030",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KHOU",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 23.1,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 14.9,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.7,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.2,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.0,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.8,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.1,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.1,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.3,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.2,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.6,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.7,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "f2b4d66cd8e39ddf285bcae39aad35be40e503936d7473fb2337e700b620b31c",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLAX",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 25.1,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.4,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.0,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.1,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.0,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.2,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.9,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.7,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.5,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.0,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "fd10460a3ac7fc627533b11872ffd6ad8c0bd0d4747146a7adde6cb6d1e5b7e5",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLGA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 32.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-28T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.9,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.4,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.5,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.0,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.8,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.2,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "7103e09847bda14cc9a2580cb29a6dad014eaf0de15b1d8430bc6e1212bc5c75",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KMIA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 30.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-06-28T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.9,
+          "valid_time_utc": "2026-06-28T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.6,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.0,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.4,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.3,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.6,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.0,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.7,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.2,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "78997a5efd8388394ab5d7c8092ffd336cf013e73080ec2a8b5e1b9576509452",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KORD",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 18.8,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 12.8,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.2,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.0,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.3,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.0,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.1,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.0,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.4,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.9,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.5,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.7,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.9,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.7,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.4,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.8,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.3,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.9,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.4,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.7,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.4,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.3,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "a4462c7b252a4707c246e1610543daf2ae4471f828e3ea099a98086b24b3c5f2",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSEA",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-28",
+      "forecast_daily_max_c": 23.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-27T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 13.3,
+          "valid_time_utc": "2026-06-28T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.0,
+          "valid_time_utc": "2026-06-28T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.7,
+          "valid_time_utc": "2026-06-28T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.6,
+          "valid_time_utc": "2026-06-28T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.1,
+          "valid_time_utc": "2026-06-28T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.6,
+          "valid_time_utc": "2026-06-28T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.0,
+          "valid_time_utc": "2026-06-28T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.0,
+          "valid_time_utc": "2026-06-28T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-28T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-06-28T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-28T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.0,
+          "valid_time_utc": "2026-06-28T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-06-28T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-06-28T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.0,
+          "valid_time_utc": "2026-06-28T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-06-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.1,
+          "valid_time_utc": "2026-06-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.8,
+          "valid_time_utc": "2026-06-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.0,
+          "valid_time_utc": "2026-06-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-06-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.2,
+          "valid_time_utc": "2026-06-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.6,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.1,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/714f383c48fe07f8e068d7933fbb312f5ebed39585edf8a76a76d3e2f8e2ff98.json",
+      "receipt_sha256": "0a9fbfb8511e6ed4be8678c31841793992fa9cedd71590f4bb7a6861e05ac3d7",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSFO",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 29.3,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 19.7,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.5,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.1,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.5,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.8,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.7,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.8,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "4bb9c72f31965aaeea114bbac024ea35e4d432bb59a7b63d36b7008141a13a5d",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "CYYZ",
+      "target_timezone": "America/Toronto"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 35.9,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.1,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.1,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.8,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.9,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.7,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.7,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.2,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.8,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.9,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.9,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.4,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.2,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.2,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.1,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "9bf99376c252aacba6889234a5f7b303a1db70f72f7f3f19fa6ed893d8b15632",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KATL",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 34.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.2,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.5,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.4,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.5,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.5,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.2,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.5,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.1,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.0,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.6,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "309a75142fd77184bdfefcf4e408252e7518915097d9f8e528f525a21056e0c6",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KAUS",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 30.5,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 20.7,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.2,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.6,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.6,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.7,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.3,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.3,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.2,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.3,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.3,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.4,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.0,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.6,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.1,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.8,
+          "valid_time_utc": "2026-06-30T05:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "9b5ce5880fe73124824a2f703b65396607c5af8f034025903ceb426bff9c419c",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KBKF",
+      "target_timezone": "America/Denver"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 34.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.8,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.5,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.1,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.4,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.4,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.6,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.4,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.2,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.2,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "5070e5806a139ed3156f5d3f28f02ba736e96164667f13b7ab4bc05b559e01b0",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KDAL",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 34.7,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.5,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.4,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.9,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.6,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.0,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.4,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.5,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.7,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.8,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.0,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.1,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.9,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.2,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "f6cf3d83b995eeba9067abf6366fbd9a07a218c6dfb93e9dc0320ccacf2039c4",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KHOU",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 24.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 14.6,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.1,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.7,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.7,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.4,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.7,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.5,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.0,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.3,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.9,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.9,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.3,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.2,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.5,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-06-30T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-06-30T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "e03aa4c5af707ecfc1cd1ae7156771defef47754c727ee888a9cd68ef04abd96",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLAX",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 31.8,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 20.3,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.5,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.0,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.8,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.9,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.0,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.3,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.7,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.3,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.7,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.8,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.5,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.2,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.1,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.2,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.2,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "1e553d93e2860557b0d4ebf525de215dbb26f7c5137b17cd46b255f73380e979",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KLGA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 33.7,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 27.2,
+          "valid_time_utc": "2026-06-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.7,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.3,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.8,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.3,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.0,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.5,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.9,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.5,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.7,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.4,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.3,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.4,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.5,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.0,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "9d433d0a596df6114574cabd56baf0a0e47c76b6e65801ba27f54964165fc428",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KMIA",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 35.7,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.9,
+          "valid_time_utc": "2026-06-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.2,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.5,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.7,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.1,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.9,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.7,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.4,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.7,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.4,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.3,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.6,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.4,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.6,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.5,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.9,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "cef0b7314adaeba38ae269624b556fc69d741428a195ba386a60829b6669a0db",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KORD",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 20.0,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 12.3,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.8,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.8,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.1,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.9,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.7,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.7,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.0,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.6,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.7,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.9,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.5,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.6,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.7,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.0,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.0,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.0,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.6,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.1,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-30T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.0,
+          "valid_time_utc": "2026-06-30T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "6809840aaa281ba55d0599094e00917fddc665a1efbea97769cc2d2883450572",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSEA",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-06-29",
+      "forecast_daily_max_c": 26.6,
+      "future_data_used": false,
+      "model_id": "HRRR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-06-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 14.6,
+          "valid_time_utc": "2026-06-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.2,
+          "valid_time_utc": "2026-06-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.5,
+          "valid_time_utc": "2026-06-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.0,
+          "valid_time_utc": "2026-06-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.9,
+          "valid_time_utc": "2026-06-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.2,
+          "valid_time_utc": "2026-06-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 13.9,
+          "valid_time_utc": "2026-06-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.2,
+          "valid_time_utc": "2026-06-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-06-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.5,
+          "valid_time_utc": "2026-06-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-06-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.6,
+          "valid_time_utc": "2026-06-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.7,
+          "valid_time_utc": "2026-06-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.9,
+          "valid_time_utc": "2026-06-29T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.0,
+          "valid_time_utc": "2026-06-29T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.1,
+          "valid_time_utc": "2026-06-30T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.9,
+          "valid_time_utc": "2026-06-30T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.0,
+          "valid_time_utc": "2026-06-30T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-06-30T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.8,
+          "valid_time_utc": "2026-06-30T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-06-30T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.3,
+          "valid_time_utc": "2026-06-30T06:00:00Z"
+        }
+      ],
+      "provider_id": "ncep_hrrr_conus_open_meteo",
+      "raw_message_sha256": "01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/hrrr/raw/01a4ed529f8ba93b802670b3adb901ec58aa750074d8a4435168e798bacaabd6.json",
+      "receipt_sha256": "38b8cb14df2e29a7aa39a2653a96a57b00e7292c9c3385472665454d35605853",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "KSFO",
+      "target_timezone": "America/Los_Angeles"
+    }
+  ],
+  "provider_id": "ncep_hrrr_conus_open_meteo",
+  "schema": "bayes_basket_target_historical_regional_exact_run_evidence_v1",
+  "source": {
+    "model_parameter": "ncep_hrrr_conus",
+    "native_publication_time_available": false,
+    "run_cycle": "12Z",
+    "run_day_offset": 1,
+    "single_run_parameter_explicit": true,
+    "source_class": "aggregator_republisher",
+    "source_url": "https://single-runs-api.open-meteo.com/v1/forecast"
+  },
+  "start_date": "2026-06-26",
+  "station_ids": [
+    "CYYZ",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO"
+  ]
+}

@@ -110,7 +110,7 @@ def _desired() -> dict:
         },
         "candidates": [
             {"candidate_id": "top", "strategy_leg": "top_yes_wave", "bucket": "33C", "side": "YES", "notional": 20.0},
-            {"candidate_id": "second", "strategy_leg": "second_yes", "bucket": "34C", "side": "YES", "notional": 5.0},
+            {"candidate_id": "second", "strategy_leg": "second_yes", "bucket": "34C", "side": "YES", "notional": 4.99},
             {"candidate_id": "no", "strategy_leg": "strongly_excluded_no", "bucket": "31C", "side": "NO", "notional": 5.0},
         ],
     }
@@ -252,7 +252,7 @@ def test_closed_second_yes_window_records_authoritative_no_order_decision(monkey
 def test_role_swap_is_a_dynamic_reallocation_not_a_bucket_level_hold() -> None:
     rows = [
         {
-            **_position("33C", "YES", notional=5.0, size=10.0, cost=0.5),
+            **_position("33C", "YES", notional=4.99, size=9.98, cost=0.5),
             "position_lot_id": "lot-33-second",
             "strategy_leg": "second_yes",
         },
@@ -267,10 +267,15 @@ def test_role_swap_is_a_dynamic_reallocation_not_a_bucket_level_hold() -> None:
     )
 
     assert transition["phase"] == "SELL_OLD"
-    assert {(row["position_lot_id"], row["reason_code"]) for row in transition["sell_intents"]} == {
-        ("lot-33-second", "target_realization_second_yes_invalidated"),
-        ("lot-34-top", "target_realization_top_yes_invalidated"),
-    }
+    # Roles follow the latest posterior. The former second-YES lot is now the
+    # current top bucket, so it remains in place instead of being sold and
+    # repurchased. The former top is only trimmed to the strict second cap.
+    assert [(row["position_lot_id"], row["reason_code"]) for row in transition["sell_intents"]] == [
+        ("lot-34-top", "target_realization_top_yes_invalidated")
+    ]
+    sell = transition["sell_intents"][0]
+    assert sell["full_exit"] is False
+    assert sell["target_notional_after_fill_usdc"] == 4.99
 
 
 def test_multiple_lots_have_deterministic_sell_order_and_cascading_expected_balance() -> None:

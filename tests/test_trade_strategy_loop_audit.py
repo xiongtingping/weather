@@ -8,7 +8,8 @@ def _probability(ok=True):
 def _market(ready=True):
     return {
         "ok": True,
-        "state": "ready" if ready else "safe_fail_closed_accumulating",
+        "state": "production_ready" if ready else "safe_fail_closed_accumulating",
+        "production_market_projection_ready": ready,
         "promotion_blockers": [] if ready else ["bridge_coverage_below_minimum"],
         "safety_blockers": [],
         "warnings": [],
@@ -65,6 +66,14 @@ def test_trade_strategy_loop_reports_live_ready_only_when_all_current_gates_clos
     assert report["live_ready"] is True
     assert report["checks"]["runtime_policy_has_no_ev_edge_gate"] is True
     assert report["guards"]["places_orders"] is False
+
+
+def test_trade_loop_consumes_readiness_boolean_not_nonexistent_ready_state():
+    market = _market(True)
+    market["state"] = "production_ready"
+    report = _build(market_report=market)
+    assert report["live_ready"] is True
+    assert report["checks"]["market_projection_ready"] is True
 
 
 def test_bridge_accumulation_is_safe_fail_closed_not_architecture_failure():

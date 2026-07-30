@@ -1,0 +1,1658 @@
+{
+  "baseline_oos_metrics": {
+    "brier_score": 0.25129865729026424,
+    "crps": 0.16416155195679846,
+    "nll": 0.489583633490104
+  },
+  "boundary": {
+    "binds_artifact": false,
+    "calls_order_gateway": false,
+    "current_live_prediction_reused_as_historical_label": false,
+    "final_live_weights_replayed_on_historical_labels": false,
+    "places_orders": false,
+    "strict_time_split": true,
+    "writes_configuration": false,
+    "writes_database": false
+  },
+  "content_sha256": "d8e3940c1df7157e844865f6a42e8afa5eb44483482fb159877fdc60f1aef0ec",
+  "crossfit_prediction_artifact_sha256": "69a18f6f951c85f3f7901a370e87b043210ae56c428e6d5c721ebebd6ec4ad30",
+  "crps_not_worse": false,
+  "effective_sample_n": 13.92482609532317,
+  "evaluated_rows": [
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9999999999509018,
+        "34°C": 4.9018344938644987e-11,
+        "35°C": 7.982503547054876e-14,
+        "36°C": 0.0,
+        "37°C": 0.0,
+        "38°C": 0.0,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 26.383786839401555,
+      "crossfit_base_mean_c": 24.265596428571428,
+      "crossfit_decision_at_utc": "2026-07-03T00:27:08Z",
+      "event_date": "2026-07-04",
+      "historical_model_forecasts_c": {
+        "ECMWF": 25.019,
+        "GFS": 22.966
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.6896388263875697
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.3180822156727279
+        }
+      },
+      "nested_train_end_date": "2026-07-03",
+      "nested_train_n": 3,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.05,
+        "GFS": 0.95
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 23.068649999999998,
+      "transport_probabilities": {
+        "33°C or below": 0.9999999999993265,
+        "34°C": 6.727951529228449e-13,
+        "35°C": 6.661338147750939e-16,
+        "36°C": 0.0,
+        "37°C": 0.0,
+        "38°C": 0.0,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 25.70214506041611,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-04T15:00:00Z",
+      "truth_tmax_c": 28.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9999999999672878,
+        "34°C": 3.266176218374994e-11,
+        "35°C": 5.040412531798211e-14,
+        "36°C": 0.0,
+        "37°C": 0.0,
+        "38°C": 0.0,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 26.316596300909595,
+      "crossfit_base_mean_c": 24.94093,
+      "crossfit_decision_at_utc": "2026-07-04T00:27:10Z",
+      "event_date": "2026-07-05",
+      "historical_model_forecasts_c": {
+        "ECMWF": 24.947,
+        "GFS": 23.162
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.7008541236684587
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.5579717138353673
+        }
+      },
+      "nested_train_end_date": "2026-07-04",
+      "nested_train_n": 4,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.25,
+        "GFS": 0.75
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 23.608249999999998,
+      "transport_probabilities": {
+        "33°C or below": 0.9999999999997415,
+        "34°C": 2.582378755278114e-13,
+        "35°C": 2.220446049250313e-16,
+        "36°C": 0.0,
+        "37°C": 0.0,
+        "38°C": 0.0,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 25.55765643164366,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-05T15:00:00Z",
+      "truth_tmax_c": 26.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9999962743308525,
+        "34°C": 3.6903462131698817e-06,
+        "35°C": 3.517282931575494e-08,
+        "36°C": 1.4982082241488115e-10,
+        "37°C": 2.8399504969911504e-13,
+        "38°C": 2.220446049250313e-16,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 28.571909839616772,
+      "crossfit_base_mean_c": 28.14628125,
+      "crossfit_decision_at_utc": "2026-07-05T00:27:08Z",
+      "event_date": "2026-07-06",
+      "historical_model_forecasts_c": {
+        "ECMWF": 27.193,
+        "GFS": 28.111
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.6112885670027721
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4798340213582166
+        }
+      },
+      "nested_train_end_date": "2026-07-05",
+      "nested_train_n": 5,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 27.697900000000004,
+      "transport_probabilities": {
+        "33°C or below": 0.9999987766319031,
+        "34°C": 1.213911989039751e-06,
+        "35°C": 9.423402169694839e-09,
+        "36°C": 3.265532289020712e-11,
+        "37°C": 5.040412531798211e-14,
+        "38°C": 0.0,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 28.316563914671327,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-06T15:00:00Z",
+      "truth_tmax_c": 30.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9999740593103753,
+        "34°C": 2.5581144073028028e-05,
+        "35°C": 3.573037419268843e-07,
+        "36°C": 2.2355650663996585e-09,
+        "37°C": 6.236899885436742e-12,
+        "38°C": 7.771561172376096e-15,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 29.048602826988798,
+      "crossfit_base_mean_c": 28.232852941176475,
+      "crossfit_decision_at_utc": "2026-07-07T00:27:08Z",
+      "event_date": "2026-07-08",
+      "historical_model_forecasts_c": {
+        "ECMWF": 27.427,
+        "GFS": 27.47
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.5912819854264852
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4313431254794018
+        }
+      },
+      "nested_train_end_date": "2026-07-06",
+      "nested_train_n": 6,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.65,
+        "GFS": 0.35
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 27.44205,
+      "transport_probabilities": {
+        "33°C or below": 0.9999958330347285,
+        "34°C": 4.12661840354378e-06,
+        "35°C": 4.0171736048755236e-08,
+        "36°C": 1.747930689077748e-10,
+        "37°C": 3.3861802251067274e-13,
+        "38°C": 2.220446049250313e-16,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 28.598253245099983,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-08T15:00:00Z",
+      "truth_tmax_c": 29.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9996183943233317,
+        "34°C": 0.00037204678639812805,
+        "35°C": 9.450361415197506e-06,
+        "36°C": 1.0797565641595952e-07,
+        "37°C": 5.519404933096439e-10,
+        "38°C": 1.2567724638756772e-12,
+        "39°C": 1.3322676295501878e-15,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 29.797855364847894,
+      "crossfit_base_mean_c": 29.54852222222222,
+      "crossfit_decision_at_utc": "2026-07-08T00:28:05Z",
+      "event_date": "2026-07-09",
+      "historical_model_forecasts_c": {
+        "ECMWF": 28.496,
+        "GFS": 29.122
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.5268091418234158
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4007015702457424
+        }
+      },
+      "nested_train_end_date": "2026-07-08",
+      "nested_train_n": 7,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.6,
+        "GFS": 0.4
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 28.7464,
+      "transport_probabilities": {
+        "33°C or below": 0.9999219311727516,
+        "34°C": 7.670445954510718e-05,
+        "35°C": 1.3536128308233586e-06,
+        "36°C": 1.0716932008492108e-08,
+        "37°C": 3.788080960021034e-11,
+        "38°C": 5.96189764223709e-14,
+        "39°C": 0.0,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 29.34105963408835,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-09T15:00:00Z",
+      "truth_tmax_c": 30.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9849363185615376,
+        "34°C": 0.014020172414871523,
+        "35°C": 0.0010100112524108473,
+        "36°C": 3.300838899966685e-05,
+        "37°C": 4.861640754416641e-07,
+        "38°C": 3.2086472367964802e-09,
+        "39°C": 9.445333404300982e-12,
+        "40°C": 1.2323475573339238e-14,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 31.114900845331412,
+      "crossfit_base_mean_c": 29.693534210526316,
+      "crossfit_decision_at_utc": "2026-07-09T00:27:08Z",
+      "event_date": "2026-07-10",
+      "historical_model_forecasts_c": {
+        "ECMWF": 28.157,
+        "GFS": 30.098
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4710170922576955
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.403792401725717
+        }
+      },
+      "nested_train_end_date": "2026-07-09",
+      "nested_train_n": 8,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 29.22455,
+      "transport_probabilities": {
+        "33°C or below": 0.9920505168898133,
+        "34°C": 0.007500001994162453,
+        "35°C": 0.0004377718929737817,
+        "36°C": 1.1570882071154642e-05,
+        "37°C": 1.376069074243702e-07,
+        "38°C": 7.323336381759304e-10,
+        "39°C": 1.7364998328162073e-12,
+        "40°C": 1.7763568394002505e-15,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 30.84782186506261,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-10T15:00:00Z",
+      "truth_tmax_c": 32.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.4607585550197109,
+        "34°C": 0.330451405210255,
+        "35°C": 0.1660534810510368,
+        "36°C": 0.0384538068676713,
+        "37°C": 0.004081224391061511,
+        "38°C": 0.00019717812444630667,
+        "39°C": 4.3068816184543834e-06,
+        "40°C": 4.2268412991930404e-08,
+        "41°C": 1.8542434254698037e-10,
+        "42°C": 3.6204372833026355e-13,
+        "43°C or higher": 3.3306690738754696e-16
+      },
+      "baseline_taf_mean_c": 33.608368167687196,
+      "crossfit_base_mean_c": 33.3538025,
+      "crossfit_decision_at_utc": "2026-07-10T00:27:08Z",
+      "event_date": "2026-07-11",
+      "historical_model_forecasts_c": {
+        "ECMWF": 32.39,
+        "GFS": 32.385
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.5278740853186283
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.35942319082937
+        }
+      },
+      "nested_train_end_date": "2026-07-10",
+      "nested_train_n": 9,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.25,
+        "GFS": 0.75
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 32.386250000000004,
+      "transport_probabilities": {
+        "33°C or below": 0.6563138658777202,
+        "34°C": 0.24885404753538476,
+        "35°C": 0.08164721528516372,
+        "36°C": 0.012310459953516761,
+        "37°C": 0.000847574075578339,
+        "38°C": 2.6462703207053018e-05,
+        "39°C": 3.7221746340687645e-07,
+        "40°C": 2.345367677847321e-09,
+        "41°C": 6.589839784965079e-12,
+        "42°C": 8.215650382226158e-15,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 33.05736254904062,
+      "truth_bucket": "34°C",
+      "truth_closed_at_utc": "2026-07-11T15:00:00Z",
+      "truth_tmax_c": 34.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.830928368515288,
+        "34°C": 0.1381201347320773,
+        "35°C": 0.028201066775815575,
+        "36°C": 0.0026362083758031396,
+        "37°C": 0.00011205202222852595,
+        "38°C": 2.150971879055774e-06,
+        "39°C": 1.8535443846445787e-08,
+        "40°C": 7.134237645090025e-11,
+        "41°C": 1.2212453270876722e-13,
+        "42°C": 1.1102230246251565e-16,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 32.446443587393595,
+      "crossfit_base_mean_c": 32.06672380952381,
+      "crossfit_decision_at_utc": "2026-07-11T00:27:08Z",
+      "event_date": "2026-07-12",
+      "historical_model_forecasts_c": {
+        "ECMWF": 30.178,
+        "GFS": 32.16
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4804338474052832
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.3243472769166489
+        }
+      },
+      "nested_train_end_date": "2026-07-11",
+      "nested_train_n": 10,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.3,
+        "GFS": 0.7
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 31.565399999999997,
+      "transport_probabilities": {
+        "33°C or below": 0.8882737409764775,
+        "34°C": 0.09499744615926631,
+        "35°C": 0.015528914663320403,
+        "36°C": 0.0011599728145542665,
+        "37°C": 3.932039883058902e-05,
+        "38°C": 6.008595514472859e-07,
+        "39°C": 4.1154079033489666e-09,
+        "40°C": 1.2574496999206985e-11,
+        "41°C": 1.709743457922741e-14,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 32.16094772457589,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-12T15:00:00Z",
+      "truth_tmax_c": 33.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.7525461681276147,
+        "34°C": 0.19172479869860304,
+        "35°C": 0.04953378157563504,
+        "36°C": 0.005870404722252864,
+        "37°C": 0.00031701432808650676,
+        "38°C": 7.746996917856741e-06,
+        "39°C": 8.51315317129675e-08,
+        "40°C": 4.1844139264668456e-10,
+        "41°C": 9.160450176182167e-13,
+        "42°C": 8.881784197001252e-16,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 32.749272029292925,
+      "crossfit_base_mean_c": 31.799245454545456,
+      "crossfit_decision_at_utc": "2026-07-12T00:27:09Z",
+      "event_date": "2026-07-13",
+      "historical_model_forecasts_c": {
+        "ECMWF": 30.058,
+        "GFS": 31.618
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4569960083751268
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.319525309384122
+        }
+      },
+      "nested_train_end_date": "2026-07-12",
+      "nested_train_n": 11,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.2,
+        "GFS": 0.8
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 31.306,
+      "transport_probabilities": {
+        "33°C or below": 0.8258520774396095,
+        "34°C": 0.1417779386330288,
+        "35°C": 0.02944611412792497,
+        "36°C": 0.002800368865908398,
+        "37°C": 0.00012111412005899602,
+        "38°C": 2.365981273455553e-06,
+        "39°C": 2.0750756779541746e-08,
+        "40°C": 8.129730222350418e-11,
+        "41°C": 1.4166445794216997e-13,
+        "42°C": 1.1102230246251565e-16,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 32.4683766599704,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-13T15:00:00Z",
+      "truth_tmax_c": 31.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9160460714868027,
+        "34°C": 0.07288828535545366,
+        "35°C": 0.010371936041941643,
+        "36°C": 0.00067361399049648,
+        "37°C": 1.9828723424653028e-05,
+        "38°C": 2.628375918023451e-07,
+        "39°C": 1.5601558933653337e-09,
+        "40°C": 4.128253294766182e-12,
+        "41°C": 4.884981308350689e-15,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 31.983244622320527,
+      "crossfit_base_mean_c": 31.210095652173912,
+      "crossfit_decision_at_utc": "2026-07-13T00:27:09Z",
+      "event_date": "2026-07-14",
+      "historical_model_forecasts_c": {
+        "ECMWF": 29.824,
+        "GFS": 30.672
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4319451027440706
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.411503123688296
+        }
+      },
+      "nested_train_end_date": "2026-07-13",
+      "nested_train_n": 12,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.2,
+        "GFS": 0.8
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 30.5024,
+      "transport_probabilities": {
+        "33°C or below": 0.9595392498312576,
+        "34°C": 0.03648960981650595,
+        "35°C": 0.003788282853559477,
+        "36°C": 0.00017899763228268473,
+        "37°C": 3.823027325600137e-06,
+        "38°C": 3.668146875135392e-08,
+        "39°C": 1.5729950675336113e-10,
+        "40°C": 3.0020430585864233e-13,
+        "41°C": 2.220446049250313e-16,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 31.5802233075706,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-14T15:00:00Z",
+      "truth_tmax_c": 30.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.6438693498559176,
+        "34°C": 0.25550071352034165,
+        "35°C": 0.08626305210025831,
+        "36°C": 0.013387023784586893,
+        "37°C": 0.000948906927687565,
+        "38°C": 3.0508920515259774e-05,
+        "39°C": 4.4201306392821493e-07,
+        "40°C": 2.8693112330557824e-09,
+        "41°C": 8.306910714850346e-12,
+        "42°C": 1.0658141036401503e-14,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 33.094323298799644,
+      "crossfit_base_mean_c": 32.3793,
+      "crossfit_decision_at_utc": "2026-07-14T00:27:07Z",
+      "event_date": "2026-07-15",
+      "historical_model_forecasts_c": {
+        "ECMWF": 32.043,
+        "GFS": 30.469
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4386050424817676
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4759519500072344
+        }
+      },
+      "nested_train_end_date": "2026-07-14",
+      "nested_train_n": 13,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.2,
+        "GFS": 0.8
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 30.783800000000003,
+      "transport_probabilities": {
+        "33°C or below": 0.883933956163713,
+        "34°C": 0.09837831438293454,
+        "35°C": 0.01639511812177974,
+        "36°C": 0.0012487635672626674,
+        "37°C": 4.3170165260564275e-05,
+        "38°C": 6.728828715329982e-07,
+        "39°C": 4.701501632453642e-09,
+        "40°C": 1.465605414807669e-11,
+        "41°C": 2.0317081350640365e-14,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 32.18571165803532,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-15T15:00:00Z",
+      "truth_tmax_c": 33.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.7694397659447654,
+        "34°C": 0.18069406819734968,
+        "35°C": 0.044561384348952404,
+        "36°C": 0.005039124847377563,
+        "37°C": 0.0002595459891568952,
+        "38°C": 6.047043230594795e-06,
+        "39°C": 6.333195212704368e-08,
+        "40°C": 2.965963030732155e-10,
+        "41°C": 6.185052470186747e-13,
+        "42°C": 5.551115123125783e-16,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 32.68934890809672,
+      "crossfit_base_mean_c": 33.941128,
+      "crossfit_decision_at_utc": "2026-07-15T00:27:08Z",
+      "event_date": "2026-07-16",
+      "historical_model_forecasts_c": {
+        "ECMWF": 31.884,
+        "GFS": 34.55
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4112503854205498
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4530820536175697
+        }
+      },
+      "nested_train_end_date": "2026-07-15",
+      "nested_train_n": 14,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.4,
+        "GFS": 0.6
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 33.483599999999996,
+      "transport_probabilities": {
+        "33°C or below": 0.8349435328980203,
+        "34°C": 0.13520872229162129,
+        "35°C": 0.027230078717834116,
+        "36°C": 0.002510432102797111,
+        "37°C": 0.00010522533383694466,
+        "38°C": 1.9916705950029368e-06,
+        "39°C": 1.69209808387194e-08,
+        "40°C": 6.42059738709122e-11,
+        "41°C": 1.0835776720341528e-13,
+        "42°C": 1.1102230246251565e-16,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 32.42879405583999,
+      "truth_bucket": "35°C",
+      "truth_closed_at_utc": "2026-07-16T15:00:00Z",
+      "truth_tmax_c": 35.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9568053475400082,
+        "34°C": 0.038848304767288844,
+        "35°C": 0.004140957128023537,
+        "36°C": 0.00020093855082692347,
+        "37°C": 4.408365521513247e-06,
+        "38°C": 4.3456467646585395e-08,
+        "39°C": 1.914873815067608e-10,
+        "40°C": 3.7558844923069046e-13,
+        "41°C": 3.3306690738754696e-16,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 31.61388611160481,
+      "crossfit_base_mean_c": 33.45363846153846,
+      "crossfit_decision_at_utc": "2026-07-16T00:27:09Z",
+      "event_date": "2026-07-17",
+      "historical_model_forecasts_c": {
+        "ECMWF": 30.844,
+        "GFS": 34.38
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4131539809635196
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4413753719045286
+        }
+      },
+      "nested_train_end_date": "2026-07-16",
+      "nested_train_n": 15,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.3,
+        "GFS": 0.7
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 33.319199999999995,
+      "transport_probabilities": {
+        "33°C or below": 0.9628177821351414,
+        "34°C": 0.033647061131171885,
+        "35°C": 0.003377670315650172,
+        "36°C": 0.00015427263094691668,
+        "37°C": 3.1841476603178265e-06,
+        "38°C": 2.9516938115925484e-08,
+        "39°C": 1.2226564205519708e-10,
+        "40°C": 2.2537527399890678e-13,
+        "41°C": 2.220446049250313e-16,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 31.53732556561904,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-17T15:00:00Z",
+      "truth_tmax_c": 31.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9173133780381847,
+        "34°C": 0.07185937773324202,
+        "35°C": 0.01015315994009558,
+        "36°C": 0.0006546978931696312,
+        "37°C": 1.9133130732651438e-05,
+        "38°C": 2.5177708284918054e-07,
+        "39°C": 1.4835911388288991e-09,
+        "40°C": 3.8968828164342995e-12,
+        "41°C": 4.551914400963142e-15,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 31.97415124907882,
+      "crossfit_base_mean_c": 31.852607407407405,
+      "crossfit_decision_at_utc": "2026-07-17T00:27:08Z",
+      "event_date": "2026-07-18",
+      "historical_model_forecasts_c": {
+        "ECMWF": 31.247,
+        "GFS": 29.983
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.4177956873651123
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.7356175942105836
+        }
+      },
+      "nested_train_end_date": "2026-07-17",
+      "nested_train_n": 16,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 30.5518,
+      "transport_probabilities": {
+        "33°C or below": 0.9803347707207355,
+        "34°C": 0.018175562763241615,
+        "35°C": 0.0014372256889477741,
+        "36°C": 5.1599245800004745e-05,
+        "37°C": 8.354956848588557e-07,
+        "38°C": 6.065909330388308e-09,
+        "39°C": 1.965261287040221e-11,
+        "40°C": 2.8310687127941492e-14,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 31.23336230971008,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-18T15:00:00Z",
+      "truth_tmax_c": 30.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.995605884310383,
+        "34°C": 0.004185811930948247,
+        "35°C": 0.00020377400655691158,
+        "36°C": 4.485196099968114e-06,
+        "37°C": 4.4359511286451436e-08,
+        "38°C": 1.9611423596188615e-10,
+        "39°C": 3.8602454566216693e-13,
+        "40°C": 3.3306690738754696e-16,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 30.617983483266517,
+      "crossfit_base_mean_c": 30.96465,
+      "crossfit_decision_at_utc": "2026-07-18T00:27:08Z",
+      "event_date": "2026-07-19",
+      "historical_model_forecasts_c": {
+        "ECMWF": 30.409,
+        "GFS": 29.418
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.501218674943794
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.7165676057178756
+        }
+      },
+      "nested_train_end_date": "2026-07-18",
+      "nested_train_n": 17,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.5,
+        "GFS": 0.5
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 29.9135,
+      "transport_probabilities": {
+        "33°C or below": 0.9992230191279594,
+        "34°C": 0.0007538311582091506,
+        "35°C": 2.283621769749722e-05,
+        "36°C": 3.115867892589108e-07,
+        "37°C": 1.904150281895056e-09,
+        "38°C": 5.188183216375819e-12,
+        "39°C": 6.217248937900877e-15,
+        "40°C": 0.0,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 30.019370430186346,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-19T15:00:00Z",
+      "truth_tmax_c": 29.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9832490916963109,
+        "34°C": 0.015548895248999384,
+        "35°C": 0.0011619990974887084,
+        "36°C": 3.9407346593689496e-05,
+        "37°C": 6.024695937689728e-07,
+        "38°C": 4.1283763074773105e-09,
+        "39°C": 1.262012716551908e-11,
+        "40°C": 1.709743457922741e-14,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 31.161531837750353,
+      "crossfit_base_mean_c": 31.934875862068967,
+      "crossfit_decision_at_utc": "2026-07-19T00:27:09Z",
+      "event_date": "2026-07-20",
+      "historical_model_forecasts_c": {
+        "ECMWF": 31.29,
+        "GFS": 30.85
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.573665766832766
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.710723990712175
+        }
+      },
+      "nested_train_end_date": "2026-07-19",
+      "nested_train_n": 18,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 31.048000000000002,
+      "transport_probabilities": {
+        "33°C or below": 0.9951337867503982,
+        "34°C": 0.0046285986001125545,
+        "35°C": 0.0002322885629503224,
+        "36°C": 5.272063117511827e-06,
+        "37°C": 5.3777667430310316e-08,
+        "38°C": 2.4525548258935714e-10,
+        "39°C": 4.980460488468452e-13,
+        "40°C": 4.440892098500626e-16,
+        "41°C": 0.0,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 30.656470269471594,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-20T15:00:00Z",
+      "truth_tmax_c": 32.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.9245266763473932,
+        "34°C": 0.06596859158497659,
+        "35°C": 0.008936761063724097,
+        "36°C": 0.0005523106193175975,
+        "37°C": 1.5464376229346044e-05,
+        "38°C": 1.9490590619231085e-07,
+        "39°C": 1.0996847876754146e-09,
+        "40°C": 2.765121465131415e-12,
+        "41°C": 3.1086244689504383e-15,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "baseline_taf_mean_c": 31.920286610421048,
+      "crossfit_base_mean_c": 31.002046666666665,
+      "crossfit_decision_at_utc": "2026-07-20T00:27:07Z",
+      "event_date": "2026-07-21",
+      "historical_model_forecasts_c": {
+        "ECMWF": 29.915,
+        "GFS": 30.575
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.546590604504756
+        },
+        "GFS": {
+          "bias_c": 0.0,
+          "residual_scale_c": 1.6767834679391105
+        }
+      },
+      "nested_train_end_date": "2026-07-20",
+      "nested_train_n": 19,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 30.278,
+      "transport_probabilities": {
+        "33°C or below": 0.9649348432540075,
+        "34°C": 0.03180320879742715,
+        "35°C": 0.003119889538899079,
+        "36°C": 0.00013922584550130068,
+        "37°C": 2.8070466795426796e-06,
+        "38°C": 2.5414496174214207e-08,
+        "39°C": 1.0280409856733286e-10,
+        "40°C": 1.850741782050136e-13,
+        "41°C": 1.1102230246251565e-16,
+        "42°C": 0.0,
+        "43°C or higher": 0.0
+      },
+      "transport_taf_mean_c": 31.507953655366244,
+      "truth_bucket": "33°C or below",
+      "truth_closed_at_utc": "2026-07-21T15:00:00Z",
+      "truth_tmax_c": 32.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.4317585878027512,
+        "34°C": 0.33775651396205275,
+        "35°C": 0.18064422835156047,
+        "36°C": 0.04453966387338115,
+        "37°C": 0.0050355939786638215,
+        "38°C": 0.0002593082946895642,
+        "39°C": 6.040193769152324e-06,
+        "40°C": 6.324638357479984e-08,
+        "41°C": 2.961303424697803e-10,
+        "42°C": 6.173950239940496e-13,
+        "43°C or higher": 5.551115123125783e-16
+      },
+      "baseline_taf_mean_c": 33.68907635920863,
+      "crossfit_base_mean_c": 33.49963870967742,
+      "crossfit_decision_at_utc": "2026-07-21T00:27:07Z",
+      "event_date": "2026-07-22",
+      "historical_model_forecasts_c": {
+        "ECMWF": 32.948,
+        "GFS": 32.189
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.9303214285714286,
+          "residual_scale_c": 1.5251692245563553
+        },
+        "GFS": {
+          "bias_c": 0.8057142857142859,
+          "residual_scale_c": 1.6458887034244298
+        }
+      },
+      "nested_train_end_date": "2026-07-21",
+      "nested_train_n": 20,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 33.392337500000004,
+      "transport_probabilities": {
+        "33°C or below": 0.4536899935675938,
+        "34°C": 0.3323644780916865,
+        "35°C": 0.16956364826139403,
+        "36°C": 0.039869368578354325,
+        "37°C": 0.004296944952558279,
+        "38°C": 0.0002108418541797441,
+        "39°C": 4.677848709055965e-06,
+        "40°C": 4.66372579444041e-08,
+        "41°C": 2.0785351217966763e-10,
+        "42°C": 4.1244785364824565e-13,
+        "43°C or higher": 3.3306690738754696e-16
+      },
+      "transport_taf_mean_c": 33.62797004257999,
+      "truth_bucket": "34°C",
+      "truth_closed_at_utc": "2026-07-22T15:00:00Z",
+      "truth_tmax_c": 34.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.2957857127616866,
+        "34°C": 0.3494872363323214,
+        "35°C": 0.2547599274532245,
+        "36°C": 0.08573719212721986,
+        "37°C": 0.013262452457436957,
+        "38°C": 0.0009370148733894856,
+        "39°C": 3.0027582421987553e-05,
+        "40°C": 4.335988839088145e-07,
+        "41°C": 2.8053105394221234e-09,
+        "42°C": 8.094303005634629e-12,
+        "43°C or higher": 1.0436096431476471e-14
+      },
+      "baseline_taf_mean_c": 34.090178162612986,
+      "crossfit_base_mean_c": 33.366075,
+      "crossfit_decision_at_utc": "2026-07-22T00:27:08Z",
+      "event_date": "2026-07-23",
+      "historical_model_forecasts_c": {
+        "ECMWF": 33.002,
+        "GFS": 31.735
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.9345172413793105,
+          "residual_scale_c": 1.4980084238518268
+        },
+        "GFS": {
+          "bias_c": 0.8403793103448277,
+          "residual_scale_c": 1.6206900616287092
+        }
+      },
+      "nested_train_end_date": "2026-07-22",
+      "nested_train_n": 21,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 33.187891379310344,
+      "transport_probabilities": {
+        "33°C or below": 0.3284105549079945,
+        "34°C": 0.35056757821881807,
+        "35°C": 0.23629990698833137,
+        "36°C": 0.07351096801950197,
+        "37°C": 0.010505248900193664,
+        "38°C": 0.0006852137503181588,
+        "39°C": 2.025789930271138e-05,
+        "40°C": 2.6970329114472946e-07,
+        "41°C": 1.6079697573445628e-09,
+        "42°C": 4.273581488689615e-12,
+        "43°C or higher": 5.10702591327572e-15
+      },
+      "transport_taf_mean_c": 33.98870545064046,
+      "truth_bucket": "34°C",
+      "truth_closed_at_utc": "2026-07-23T15:00:00Z",
+      "truth_tmax_c": 34.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.045275056051789164,
+        "34°C": 0.17143474778603573,
+        "35°C": 0.33334355665640814,
+        "36°C": 0.2995995125125692,
+        "37°C": 0.12440514749701814,
+        "38°C": 0.023778216504169114,
+        "39°C": 0.002079615822216385,
+        "40°C": 8.26524497615777e-05,
+        "41°C": 1.4827419656526786e-06,
+        "42°C": 1.1935104016203013e-08,
+        "43°C or higher": 4.2962855495431995e-11
+      },
+      "baseline_taf_mean_c": 35.361633149294974,
+      "crossfit_base_mean_c": 34.92328484848485,
+      "crossfit_decision_at_utc": "2026-07-23T00:27:09Z",
+      "event_date": "2026-07-24",
+      "historical_model_forecasts_c": {
+        "ECMWF": 34.422,
+        "GFS": 33.45
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.9366333333333332,
+          "residual_scale_c": 1.4725903238527551
+        },
+        "GFS": {
+          "bias_c": 0.8878666666666669,
+          "residual_scale_c": 1.6047887642234344
+        }
+      },
+      "nested_train_end_date": "2026-07-23",
+      "nested_train_n": 22,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 34.79721166666667,
+      "transport_probabilities": {
+        "33°C or below": 0.05184422637157826,
+        "34°C": 0.18450990450955684,
+        "35°C": 0.33941051702850966,
+        "36°C": 0.28861713273856504,
+        "37°C": 0.11336922255154569,
+        "38°C": 0.02049050333521929,
+        "39°C": 0.0016938120142244717,
+        "40°C": 6.359595053995193e-05,
+        "41°C": 1.0772875167486262e-06,
+        "42°C": 8.1849449440341e-09,
+        "43°C or higher": 2.779909635819422e-11
+      },
+      "transport_taf_mean_c": 35.28983649583951,
+      "truth_bucket": "35°C",
+      "truth_closed_at_utc": "2026-07-24T15:00:00Z",
+      "truth_tmax_c": 35.0
+    },
+    {
+      "baseline_probabilities": {
+        "33°C or below": 0.007431667905203221,
+        "34°C": 0.056005753080913656,
+        "35°C": 0.20505040824152604,
+        "36°C": 0.34627586486187845,
+        "37°C": 0.2703425361270668,
+        "38°C": 0.09746699916039026,
+        "39°C": 0.016159577710981976,
+        "40°C": 0.0012244284727944699,
+        "41°C": 4.210704258511555e-05,
+        "42°C": 6.528453286858138e-07,
+        "43°C or higher": 4.551331311830609e-09
+      },
+      "baseline_taf_mean_c": 36.179088277814714,
+      "crossfit_base_mean_c": 35.61234117647059,
+      "crossfit_decision_at_utc": "2026-07-24T00:27:00Z",
+      "event_date": "2026-07-25",
+      "historical_model_forecasts_c": {
+        "ECMWF": 35.566,
+        "GFS": 33.451
+      },
+      "nested_calibration_parameters": {
+        "ECMWF": {
+          "bias_c": 0.9250645161290324,
+          "residual_scale_c": 1.4529987254597587
+        },
+        "GFS": {
+          "bias_c": 0.909225806451613,
+          "residual_scale_c": 1.5786179792274557
+        }
+      },
+      "nested_train_end_date": "2026-07-24",
+      "nested_train_n": 23,
+      "nested_train_start_date": "2026-07-01",
+      "nested_weights": {
+        "ECMWF": 0.45,
+        "GFS": 0.55
+      },
+      "ordered_buckets": [
+        "33°C or below",
+        "34°C",
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C",
+        "40°C",
+        "41°C",
+        "42°C",
+        "43°C or higher"
+      ],
+      "station_id": "RKPK",
+      "transport_live_base_mean_c": 35.31910322580646,
+      "transport_probabilities": {
+        "33°C or below": 0.011189610795346416,
+        "34°C": 0.07341958728225051,
+        "35°C": 0.23615245683623665,
+        "36°C": 0.3505650508344501,
+        "37°C": 0.24060220378762343,
+        "38°C": 0.07621864116549215,
+        "39°C": 0.011092947511356366,
+        "40°C": 0.000737001158633066,
+        "41°C": 2.2197679227953238e-05,
+        "42°C": 3.0111502280494307e-07,
+        "43°C or higher": 1.8343605523440942e-09
+      },
+      "transport_taf_mean_c": 36.01209397164905,
+      "truth_bucket": "35°C",
+      "truth_closed_at_utc": "2026-07-25T15:00:00Z",
+      "truth_tmax_c": 35.0
+    }
+  ],
+  "evidence": {
+    "baseline_oos_metrics": {
+      "brier_score": 0.25129865729026424,
+      "crps": 0.16416155195679846,
+      "nll": 0.489583633490104
+    },
+    "content_sha256": "06364a378e6103eefbcb507c34a282c25e961f129e036c172a8bdb7d01ce1cde",
+    "crossfit_prediction_artifact_sha256": "69a18f6f951c85f3f7901a370e87b043210ae56c428e6d5c721ebebd6ec4ad30",
+    "crps_not_worse": false,
+    "effective_sample_n": 13.92482609532317,
+    "evidence_id": "taf-nwp-transport-7ba98e49086a5b070c755239c8321783",
+    "lead_bucket": "d2_fallback",
+    "live_fingerprint_sha256": "fecbe97e37e8674252f2a734a8b90257e7075ee3a940a975a94a2d41ebb0c442",
+    "nll_not_worse": false,
+    "oos_transport_validated": false,
+    "run_cycle": "18Z",
+    "sample_n": 21,
+    "schema": "bayes_basket_taf_nwp_transport_oos_evidence_v1",
+    "season_bin": "summer",
+    "settlement_definition": "official_daily_tmax_c",
+    "station_id": "RKPK",
+    "transport_oos_metrics": {
+      "brier_score": 0.2565184140689768,
+      "crps": 0.1645117474907063,
+      "nll": 0.4880726781961255
+    }
+  },
+  "excluded_rows": [
+    {
+      "event_date": "2026-07-01",
+      "reason": "nested_rolling_origin_burn_in",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "nested_rolling_origin_burn_in",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "nested_rolling_origin_burn_in",
+      "station_id": "RKPK"
+    }
+  ],
+  "gaps": [
+    {
+      "actual_sample_n": 21,
+      "code": "transport_oos_post_training_sample_n_insufficient",
+      "missing_sample_n": 3,
+      "required_data": "additional closed exact-scope outer OOS rows after nested rolling-origin burn-in, with matching TAF, truth and historical ECMWF/GFS raw daily maxima",
+      "required_sample_n": 24
+    }
+  ],
+  "lead_bucket": "d2_fallback",
+  "live_fingerprint": {
+    "available_model_set_hash": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+    "available_models": [
+      "ECMWF",
+      "GFS"
+    ],
+    "ensemble_artifact_content_sha256": "b4d8591d7e922dd2546ac22aa777edcd775c15b2e50d5afff045a554fbb6ab39",
+    "ensemble_artifact_id": "ens-candidate-RKPK-summer-9c4f1014d5f1-a8d8536e4c8a",
+    "ensemble_selection_evidence_sha256": "e75ccfac2c9f6ba61d6c714b8d80e00133bcabf15ed0c0c30706ead4a3678cd2",
+    "ensemble_weight_method": "rolling_origin_probability_stack_v3_min2",
+    "fingerprint_sha256": "fecbe97e37e8674252f2a734a8b90257e7075ee3a940a975a94a2d41ebb0c442",
+    "lead_bucket": "d2_fallback",
+    "model_calibration_artifacts": {
+      "ECMWF": {
+        "calibration_artifact_content_sha256": "f310421d1c23471f4cff8c5a687ad82de09e80ca735aa936b6679914fa9b7f27",
+        "calibration_artifact_id": "cal-candidate-RKPK-ECMWF-summer-9c4f1014d5f1"
+      },
+      "GFS": {
+        "calibration_artifact_content_sha256": "b7b1c2bcc36f1e5174c79e47e35c405f28c4b91f68a8b9ae488b7eb97ec1374e",
+        "calibration_artifact_id": "cal-candidate-RKPK-GFS-summer-9c4f1014d5f1"
+      }
+    },
+    "resolved_weights": {
+      "ECMWF": 0.8,
+      "GFS": 0.2
+    },
+    "run_cycle": "18Z",
+    "schema": "bayes_basket_taf_nwp_live_compatibility_fingerprint_v1",
+    "season_bin": "summer",
+    "settlement_definition": "official_daily_tmax_c",
+    "station_id": "RKPK"
+  },
+  "minimum_sample_n": 24,
+  "nll_not_worse": false,
+  "resource_bounds": {
+    "actual_total_input_bytes": 1630410,
+    "max_reference_files": 64,
+    "max_rows": 366,
+    "max_total_input_bytes": 67108864,
+    "reference_file_count": 5
+  },
+  "run_cycle": "18Z",
+  "sample_n": 21,
+  "schema": "bayes_basket_taf_nwp_transport_oos_report_v1",
+  "season_bin": "summer",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Seoul",
+  "state": "NA",
+  "station_id": "RKPK",
+  "taf_artifact_content_sha256": "77fa8525fc69201d5db46278f8ebbefe5869be9aa456faf49a2f1729d775095f",
+  "taf_artifact_id": "taf-rkpk-summer-d2-fallback-18z-v2",
+  "training_procedure": {
+    "final_resolved_weights_not_replayed_on_outer_labels": true,
+    "max_weight_delta": 0.2,
+    "method_version": "rolling_origin_probability_stack_v3_min2",
+    "minimum_inner_train_days": 3,
+    "model_mask": [
+      "ECMWF",
+      "GFS"
+    ],
+    "split": "nested_rolling_origin"
+  },
+  "transport_oos_metrics": {
+    "brier_score": 0.2565184140689768,
+    "crps": 0.1645117474907063,
+    "nll": 0.4880726781961255
+  },
+  "validated": false,
+  "validated_object": "training_procedure_plus_final_artifact_scope"
+}

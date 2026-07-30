@@ -3,8 +3,10 @@
 The final physical X label must be complete against the station's actual
 routine reporting schedule, not an assumed 48 half-hour grid.  Observed AMSC
 coverage for 2026-07-10/11 is hourly from 00:00 through 03:00 local and
-half-hourly from 04:00 through 23:30 local: 44 regular METAR slots.
+half-hourly from 04:00 through 23:30 local: 44 acquisition slots.
 
+Half-hour slots are acquisition/reference slots only.  Settlement facts for
+the physical hard boundary are restricted to the 24 whole-hour (:00) slots.
 This module intentionally excludes SPECI.  SPECI remains strong evidence but
 cannot fill, replace, or create a scheduled regular-METAR slot for X.
 """
@@ -22,6 +24,7 @@ STATION_ID = "ZUUU"
 LOCAL_TIMEZONE = "Asia/Shanghai"
 STATION_TZ = ZoneInfo(LOCAL_TIMEZONE)
 EXPECTED_REGULAR_SLOT_COUNT = 44
+EXPECTED_SETTLEMENT_SLOT_COUNT = 24
 
 
 def _text(value: Any) -> str:
@@ -40,7 +43,7 @@ def _iso_utc(value: datetime) -> str:
 
 
 def expected_regular_metar_slots_utc(event_date: str) -> list[str]:
-    """Return the authoritative UTC slots for one Asia/Shanghai station day."""
+    """Return acquisition slots for one Asia/Shanghai station day."""
 
     local_day = _parse_event_date(event_date)
     if local_day is None:
@@ -54,6 +57,24 @@ def expected_regular_metar_slots_utc(event_date: str) -> list[str]:
     return slots
 
 
+def expected_settlement_metar_slots_utc(event_date: str) -> list[str]:
+    """Return whole-hour AMSC slots allowed to advance the settlement fact."""
+
+    local_day = _parse_event_date(event_date)
+    if local_day is None:
+        return []
+    return [
+        _iso_utc(datetime.combine(local_day, time(hour=hour, minute=0), tzinfo=STATION_TZ))
+        for hour in range(24)
+    ]
+
+
+def is_settlement_metar_slot_utc(event_date: str, valid_time_utc: Any) -> bool:
+    """Whether a valid time is a whole-hour settlement/fact slot."""
+
+    return _text(valid_time_utc) in set(expected_settlement_metar_slots_utc(event_date))
+
+
 def build_zuuu_primary_metar_schedule_contract(event_date: str) -> dict[str, Any]:
     slots = expected_regular_metar_slots_utc(event_date)
     return {
@@ -65,6 +86,10 @@ def build_zuuu_primary_metar_schedule_contract(event_date: str) -> dict[str, Any
         "regular_metar_slot_rule": "00:00-03:00 local hourly; 04:00-23:30 local every 30 minutes",
         "expected_regular_metar_slots_utc": slots,
         "expected_regular_metar_slot_count": len(slots),
+        "settlement_metar_slot_rule": "all local whole hours (:00) only; half-hour slots are reference-only",
+        "expected_settlement_metar_slots_utc": expected_settlement_metar_slots_utc(event_date),
+        "expected_settlement_metar_slot_count": EXPECTED_SETTLEMENT_SLOT_COUNT,
+        "half_hour_is_reference_only": True,
         "specli_can_fill_regular_slot": False,
         "read_only": True,
     }
@@ -97,11 +122,14 @@ def validate_regular_metar_slot_coverage(
 
 __all__ = [
     "EXPECTED_REGULAR_SLOT_COUNT",
+    "EXPECTED_SETTLEMENT_SLOT_COUNT",
     "LOCAL_TIMEZONE",
     "SCHEDULE_ID",
     "SCHEDULE_SCHEMA",
     "STATION_ID",
     "build_zuuu_primary_metar_schedule_contract",
     "expected_regular_metar_slots_utc",
+    "expected_settlement_metar_slots_utc",
+    "is_settlement_metar_slot_utc",
     "validate_regular_metar_slot_coverage",
 ]

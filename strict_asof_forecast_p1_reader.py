@@ -14,11 +14,14 @@ import math
 import sqlite3
 from typing import Any, Mapping
 
-from sequential_bayes_schema_contract import verify_schema
+from sequential_bayes_schema_contract import verify_additive_schema_compatibility
 from weak_likelihood_source_set_runtime import SOURCE_UNIVERSE
 
 
 _WEAK_SOURCE_BY_PROVIDER_SOURCE = {
+    "ecmwf_model_peak": "ecmwf",
+    "gfs_model_peak": "gfs",
+    "icon_model_peak": "icon",
     "zuuu_taf_forecast_amsc": "taf",
     "wu_forecast_high": "wu",
     "weather_com_forecast_peak": "twc",
@@ -156,7 +159,10 @@ def load_strict_forecast_p1_source_observations(
 ) -> dict[str, Any]:
     """Load only contract-bound Tier-A forecast rows for one target day."""
 
-    p1_schema = verify_schema(conn)
+    # Runtime readers and writers must share the same P1 compatibility
+    # boundary. Later production generations may add columns, but every base
+    # P1 column, type, constraint, index and trigger remains mandatory.
+    p1_schema = verify_additive_schema_compatibility(conn)
     columns = _table_columns(conn)
     required_columns = {"source_class", "event_date", "parser_version", "observation_json"}
     if p1_schema.get("ok") is not True or not required_columns.issubset(columns):

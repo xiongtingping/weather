@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from local_runtime_pointer import resolve_repo_relative_regular_file
 from resolution_target_contract_runtime import (
     validate_market_resolution_target_contract_proposal,
 )
@@ -17,6 +18,10 @@ ACTIVATION_SCHEMA = "production_probability_v6_market_context_activation_v1"
 DEFAULT_ACTIVATION_PATH = (
     Path(__file__).resolve().parent
     / "config/trading/production_probability_v6_market_context_activation.json"
+)
+DATE_INDEX_ACTIVATION_DIR = (
+    Path(__file__).resolve().parent
+    / "config/trading/market_context_activation_by_date"
 )
 
 
@@ -165,9 +170,9 @@ def load_active_v6_market_context(
         if root is not None
         else Path(__file__).resolve().parent
     )
-    context_path = Path(_text(activation.get("context_path")))
-    if not context_path.is_absolute():
-        context_path = base / context_path
+    context_path = resolve_repo_relative_regular_file(
+        base, _text(activation.get("context_path"))
+    )
     context = validate_v6_market_context(
         json.loads(context_path.read_text(encoding="utf-8"))
     )
@@ -202,9 +207,22 @@ def resolve_active_v6_market_context(
 
     Invalid or stale market configuration is an explicit market-projection
     failure, not an exception that may escape into the AMSC physical ingress.
+    Date-indexed activations are preferred so current and next-day contexts
+    can coexist during the daily rollover.
     """
 
     try:
+        # Daily materialization keeps current and next-day contexts side by
+        # side.  Prefer the date-indexed activation when present so the
+        # current-day probability cycle is not invalidated by preparing
+        # tomorrow's market contract.
+        date_activation = DATE_INDEX_ACTIVATION_DIR / f"{_text(event_date)[:10]}.json"
+        if date_activation.is_file():
+            return load_active_v6_market_context(
+                activation_path=date_activation,
+                root=root,
+                event_date=event_date,
+            )
         return load_active_v6_market_context(
             activation_path=activation_path,
             root=root,
@@ -226,6 +244,7 @@ def resolve_active_v6_market_context(
 
 __all__ = [
     "ACTIVATION_SCHEMA",
+    "DATE_INDEX_ACTIVATION_DIR",
     "DEFAULT_ACTIVATION_PATH",
     "SCHEMA_VERSION",
     "activation_sha256",

@@ -212,6 +212,25 @@ PY
   return 0
 }
 
+_kick_market_dependency_refresh() {
+  if [ "${PM_MARKET_DEPENDENCY_AUTO_REFRESH_ENABLED:-1}" != "1" ]; then
+    return 0
+  fi
+  local discovery_signal="${PM_WEATHER_DISCOVERY_SIGNAL_PATH:-$ROOT/data/weather_discovery_new_market_signal.json}"
+  if [ ! -s "$discovery_signal" ]; then
+    return 0
+  fi
+  mkdir -p "$ROOT/data/runtime/market_dependency_refresh" "$ROOT/data/logs"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [market_refresh] submit market_dependency_refresh signal=$discovery_signal" >> "$ROOT/data/market_refresh.log"
+  nohup env PYTHONUNBUFFERED=1 \
+    "$PY" "$ROOT/scripts/market_dependency_refresh.py" \
+    --signal "$discovery_signal" \
+    --status "$ROOT/data/runtime/market_dependency_refresh/status_latest.json" \
+    --state "$ROOT/data/runtime/market_dependency_refresh/state_latest.json" \
+    >> "$ROOT/data/logs/market_dependency_refresh.out.log" \
+    2>> "$ROOT/data/logs/market_dependency_refresh.err.log" &
+}
+
 # Auto-trade running: do NOT stop market refresh. Instead, focus refresh on Top OK candidates
 # (priority-only mode) to keep quotes fresh for execution with minimal fan-out.
 AUTO_LOCK_DIR="$ROOT/data/auto_trade_runtime.lock"
@@ -461,7 +480,7 @@ fi
 # Avoid overlapping market refreshes or racing the main scan.
 LOCK_DIR="$ROOT/data/market_refresh.lock"
 LOCK_PID_FILE="$LOCK_DIR/pid"
-DB_LOCK_DIR="$ROOT/data/db_writer.lock"
+DB_LOCK_DIR="$ROOT/data/db_writer.user.lock"
 DB_LOCK_PID_FILE="$DB_LOCK_DIR/pid"
 DB_LOCK_OWNER_FILE="$DB_LOCK_DIR/owner"
 _scan_pid_running() {
@@ -1387,6 +1406,7 @@ if weather_refresh_facts_materialize_allowed "market_refresh" "$LOG" "market_ref
 fi
 
 _kick_model_scan_if_new_market_signal
+_kick_market_dependency_refresh
 
 : "${PM_MARKET_REFRESH_STRICT_EXIT:=0}"
 if [ "${scan_rc}" -ne 0 ] && [ "${PM_MARKET_REFRESH_STRICT_EXIT}" = "1" ]; then

@@ -1,8 +1,8 @@
-"""Forecast-only background context owned by one weak evidence snapshot.
+"""Forecast-only regime context owned by one weak evidence snapshot.
 
-The context is auditable input provenance, not an independent likelihood and
-not an active transition bias.  Promotion into a transition artifact requires
-separate calibration and evidence that it does not duplicate hourly forcing.
+The vector never votes as an independent likelihood and never changes P0 or
+source weights.  An approved observation artifact may use it only to interpret
+the persistence of physical evidence that has actually been observed.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import math
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "forecast_background_context_v1"
+SCHEMA_VERSION = "forecast_background_context_v2"
 REGIMES = (
     "clear_dry",
     "cloudy_stable",
@@ -98,11 +98,12 @@ def build_forecast_background_context(
         "source_contributions": contributions,
         "missing_source_ids": sorted({_text(value) for value in missing_source_ids if _text(value)}),
         "forecast_only": True,
-        "physical_weather_regime_consumed": False,
+        "observed_weather_used_to_build_context": False,
         "transition_control_active": False,
-        "changes_probability": False,
+        "changes_p0_temperature_likelihood": False,
         "changes_source_weights": False,
-        "requires_new_calibrated_transition_artifact_for_activation": True,
+        "observation_conditioning_eligible": True,
+        "independent_likelihood": False,
     }
     if not core["forecast_evidence_snapshot_id"] or not core["effective_at"]:
         raise ValueError("forecast_background_context_identity_missing")
@@ -124,9 +125,12 @@ def validate_forecast_background_context(value: Mapping[str, Any]) -> dict[str, 
         raise ValueError("forecast_background_context_not_normalized")
     if (
         context.get("forecast_only") is not True
-        or context.get("physical_weather_regime_consumed") is not False
+        or context.get("observed_weather_used_to_build_context") is not False
         or context.get("transition_control_active") is not False
-        or context.get("changes_probability") is not False
+        or context.get("changes_p0_temperature_likelihood") is not False
+        or context.get("changes_source_weights") is not False
+        or context.get("observation_conditioning_eligible") is not True
+        or context.get("independent_likelihood") is not False
     ):
         raise ValueError("forecast_background_context_boundary_invalid")
     expected = _sha({key: child for key, child in context.items() if key != "forecast_background_context_sha256"})

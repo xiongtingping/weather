@@ -28,6 +28,32 @@ from .contracts import (
 _TOL = 1e-9
 
 
+def _report_integer_c(y_c: float) -> int:
+    """Frozen positive-Celsius half-up report operator for the v6 contract."""
+
+    return int(math.floor(y_c + 0.5))
+
+
+def final_locked_reported_x_compatible(
+    *,
+    y_c: float,
+    state: str,
+    observed_reported_regular_max_c: int | None,
+) -> bool:
+    """Keep final-locked cells only on the already observed reported-X.
+
+    This is a structural compatibility condition inside the joint state, not
+    a current-temperature ceiling.  Non-final states remain eligible to carry
+    soft probability for a future higher daily maximum.
+    """
+
+    return (
+        observed_reported_regular_max_c is None
+        or state != "final_locked"
+        or _report_integer_c(y_c) == observed_reported_regular_max_c
+    )
+
+
 def _sha(value: object) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -180,9 +206,19 @@ def advance_duration_clocks_to_event(
             delta_minutes,
         ),
         cb_minutes=_advance_clock(previous.cb_minutes, previous.cb_active, delta_minutes),
+        tcu_minutes=_advance_clock(previous.tcu_minutes, previous.tcu_active, delta_minutes),
         cloud_suppression_active=previous.cloud_suppression_active,
         precipitation_active=previous.precipitation_active,
         cb_active=previous.cb_active,
+        tcu_active=previous.tcu_active,
+        canonical_event_count=previous.canonical_event_count,
+        physical_event_cluster_signature=previous.physical_event_cluster_signature,
+        physical_event_cluster_minutes=_advance_clock(
+            previous.physical_event_cluster_minutes,
+            bool(previous.physical_event_cluster_signature),
+            delta_minutes,
+        ),
+        physical_event_cluster_information_spent=previous.physical_event_cluster_information_spent,
     )
 
 
@@ -224,7 +260,14 @@ def update_with_observation(
     max_score = max(scores)
     weights = [
         cell.probability * math.exp(score - max_score)
-        if y_lower_bound is None or cell.y_c + _TOL >= y_lower_bound
+        if (
+            (y_lower_bound is None or cell.y_c + _TOL >= y_lower_bound)
+            and final_locked_reported_x_compatible(
+                y_c=cell.y_c,
+                state=cell.state,
+                observed_reported_regular_max_c=reported_max,
+            )
+        )
         else 0.0
         for cell, score in zip(prediction.joint, scores)
     ]
@@ -238,6 +281,12 @@ def update_with_observation(
     )
     _validate_joint(joint)
     clocks = prediction.duration_clocks_before
+    cluster_change = emission.physical_event_cluster_change_point or clocks.canonical_event_count == 0
+    cluster_spent = (
+        emission.event_information_weight
+        if cluster_change
+        else clocks.physical_event_cluster_information_spent + emission.event_information_weight
+    )
     after = DurationClocks(
         cloud_suppression_minutes=(
             clocks.cloud_suppression_minutes
@@ -252,9 +301,19 @@ def update_with_observation(
         cb_minutes=(
             clocks.cb_minutes if emission.cb_present and clocks.cb_active else 0.0
         ),
+        tcu_minutes=(
+            clocks.tcu_minutes if emission.tcu_present and clocks.tcu_active else 0.0
+        ),
         cloud_suppression_active=emission.cloud_suppressed,
         precipitation_active=emission.precipitation_present,
         cb_active=emission.cb_present,
+        tcu_active=emission.tcu_present,
+        canonical_event_count=clocks.canonical_event_count + 1,
+        physical_event_cluster_signature=emission.physical_event_cluster_signature,
+        physical_event_cluster_minutes=(
+            0.0 if cluster_change else clocks.physical_event_cluster_minutes
+        ),
+        physical_event_cluster_information_spent=cluster_spent,
     )
     return PostEventState(
         schema=SCHEMA_VERSION,
@@ -271,15 +330,10 @@ def update_with_observation(
             "current_event_consumed_only_in_emission": True,
             "no_post_emission_state_transition": True,
             "hard_bound_applied_before_normalization": True,
+            "final_locked_reported_x_compatibility_applied_before_normalization": True,
             "joint_normalized": True,
         },
     )
-
-
-def _report_integer_c(y_c: float) -> int:
-    """Frozen positive-Celsius half-up report operator for the v6 contract."""
-
-    return int(math.floor(y_c + 0.5))
 
 
 def project_reported_x(post_event: PostEventState) -> dict[int, float]:
@@ -296,6 +350,7 @@ def project_reported_x(post_event: PostEventState) -> dict[int, float]:
 
 __all__ = [
     "advance_duration_clocks_to_event",
+    "final_locked_reported_x_compatible",
     "predict_to_event",
     "pre_event_prediction_sha256",
     "project_reported_x",

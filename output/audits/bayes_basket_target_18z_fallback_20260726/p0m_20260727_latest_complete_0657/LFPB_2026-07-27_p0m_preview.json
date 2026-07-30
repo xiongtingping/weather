@@ -1,0 +1,47 @@
+{
+  "bridge_sha256": "1547575f08784345d57c894d0930468dd321d241af418256386bfdb3288173f8",
+  "bucket_ordinals": {
+    "24°C or below": 0,
+    "25°C": 1,
+    "26°C": 2,
+    "27°C": 3,
+    "28°C": 4,
+    "29°C": 5,
+    "30°C": 6,
+    "31°C": 7,
+    "32°C": 8,
+    "33°C": 9,
+    "34°C or higher": 10
+  },
+  "checkpoint_id": "p0m_5271594c755d9890804161e79344c79e",
+  "decision_at_utc": "2026-07-26T06:57:00Z",
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T08:00:00Z",
+  "lineage": {
+    "activation_ids": "no-live-cal-716a2f8eda2621c412d3319e543c1435,no-live-cal-89e77a6fc003690e84a4d20b6525027e,no-live-cal-d7218ca57e5e126250424e45a3556fff,no-live-ens-959389810f1a0ec63bedd905ff69de9f",
+    "available_model_set_hash": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+    "calibration_artifact_ids": "cal-candidate-LFPB-ECMWF-summer-9c4f1014d5f1,cal-candidate-LFPB-GFS-summer-9c4f1014d5f1,cal-candidate-LFPB-ICON-summer-9c4f1014d5f1",
+    "ensemble_artifact_id": "ens-candidate-LFPB-summer-9c4f1014d5f1",
+    "model_bundle_ready_at_utc": "2026-07-26T04:32:06Z",
+    "model_run_ids": "current-055733bbbc1f42a41cb5b79ffba0c737,current-5ce58417316fc7c651973927ef818d23,current-ec3c6d3c4f76f65ac09820c75b0ffd8b",
+    "model_run_initialization_utc": "2026-07-25T18:00:00Z"
+  },
+  "posterior_sha256": "5271594c755d9890804161e79344c79e4dcad2cb92d8b7820cc7c6b12f16e1f0",
+  "posterior_version": "p0m_ensemble_v1",
+  "probabilities": {
+    "24°C or below": 0.05339100928752235,
+    "25°C": 0.15355916203594944,
+    "26°C": 0.28514369882636675,
+    "27°C": 0.2896059990502365,
+    "28°C": 0.1607940746397753,
+    "29°C": 0.048717656412768706,
+    "30°C": 0.008033816367760167,
+    "31°C": 0.0007188685470708313,
+    "32°C": 3.479355348724962e-05,
+    "33°C": 9.081522744387623e-07,
+    "34°C or higher": 1.3126788227871632e-08
+  },
+  "schema": "bayes_basket_probability_envelope_v1",
+  "stage": "P0-M",
+  "station_id": "LFPB"
+}

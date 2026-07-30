@@ -1,0 +1,54 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-0ae0e3d4993127825ad974ae",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "cd3141e837225504ce29e53ccb7339ca31046947bf3d0d7f5433abad0170329b",
+    "decision_at_utc": "2026-07-26T15:44:20Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "GFS",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "gfs_0p25_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-25T21:43:29Z",
+    "raw_payload_sha256s": [
+      "6fd9145c72c3c4a829b1510321be4bb4fb48bd7328a3d052423907c525627da9"
+    ],
+    "receipt_sha256": "4ed33385255c1ccfdc98028e3cfff2d4de0d26f0e43424b784018562bc94c917",
+    "received_at_utc": "2026-07-26T15:44:20Z",
+    "run_initialization_utc": "2026-07-25T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260725/18/atmos/gfs.t18z.pgrb2.0p25.f027",
+    "station_id": "RKPK",
+    "target_local_date": "2026-07-27",
+    "target_timezone": "Asia/Seoul",
+    "valid_time_utc": "2026-07-26T21:00:00Z"
+  },
+  "boundary": {
+    "capture_phase": "prospective_open_event",
+    "orders_submitted": 0,
+    "p0_consumption_authorized": true,
+    "p1_consumption_authorized": true,
+    "places_orders": false,
+    "raw_capture_only": true,
+    "request_byte_range": {
+      "end": 414592158,
+      "start": 414068731
+    },
+    "resource_budget": {
+      "captured_response_bytes": 523428,
+      "max_capture_bytes": 268435456,
+      "max_response_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals_rkpk_settlement_aligned/gfs_0p25_official/receipts/0ae0e3d4993127825ad974ae0152474b7c731bcbd51a49150b8e012697a20e32.json"
+}

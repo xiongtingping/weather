@@ -71,7 +71,7 @@ bash scripts/cutover_reported_x_probability_epoch.sh
 7. 重建 P0，并全量重放当日 canonical METAR/SPECI。
 8. 验收 v3 SSOT、整数概率支持、SPECI 边界和零订单副作用。
 9. 恢复 launchd 服务，并再次验收。
-10. 将不可变的切换前备份复制到外置硬盘。
+10. 删除已经完成验收的本机瞬时回滚副本；外置盘不参与本切换。
 
 ## 自动回滚
 
@@ -123,9 +123,9 @@ sudo -v
 bash scripts/cutover_cumulative_strong_likelihood_v5.sh
 ```
 
-脚本先运行 `scripts/probability_document_authority_audit.py`，任何 L0、目标架构、强似然合同或唯一 Runbook 回退都会在停服务前失败。随后脚本停写、建立精确回滚备份、应用冻结 patch、生成新 activation/P0、全量 replay canonical events、验证逐格条件创新和零 decision/intent/outbox 增量、恢复服务，并将切换前备份复制到外置盘。成功必须原子生成 `data/logs/cumulative_strong_likelihood_v5_live_acceptance.json` 与 `data/logs/cumulative_strong_likelihood_v5_live_readiness.json`；失败时在 writer-quiescent 边界恢复数据库、源码和 activation。
+脚本先运行 `scripts/probability_document_authority_audit.py`，任何 L0、目标架构、强似然合同或唯一 Runbook 回退都会在停服务前失败。随后脚本停写、在本机同一 APFS 卷建立短生命周期精确回滚副本、应用冻结 patch、生成新 activation/P0、全量 replay canonical events、验证逐格条件创新和零 decision/intent/outbox 增量、恢复服务。成功必须原子生成 `data/logs/cumulative_strong_likelihood_v5_live_acceptance.json` 与 `data/logs/cumulative_strong_likelihood_v5_live_readiness.json`；失败时仅在 writer-quiescent 边界使用该本机副本恢复数据库、源码和 activation。
 
-外置盘复制位于核心 v5 acceptance、readiness 和服务恢复之后。若此时外盘掉线或复制校验失败，禁止回滚已验收的概率纪元或再次停住实况入口；脚本必须保留本机精确备份，并原子写入 `data/local_cutover_backups/external_backup_deferred.<stamp>.json`，绑定 source、destination、return code、activation 和 runtime manifest，最终完成行明确报告 `external_backup_status=deferred`。该收据只表示耐久副本待补，不得解释为概率切换失败。
+外置盘永久位于生产边界之外：只允许由独立、低优先级、可失败的任务归档可丢弃且可重建的非关键数据。禁止向外置盘复制 `archive.db`、本机回滚副本、activation、运行凭据或唯一验收证据；禁止探测其挂载、容量、速度或哈希并据此改变 readiness、维护窗口、服务启停、AMSC/METAR/SPECI、SSOT 或交易。外置盘拔出、盘满、损坏或归档失败的生产影响固定为零。
 
 ## 生产验收记录（2026-07-15）
 

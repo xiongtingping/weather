@@ -1,0 +1,26 @@
+{
+  "boundary": {
+    "binds_artifact": false,
+    "calls_order_gateway": false,
+    "current_live_prediction_reused_as_historical_label": false,
+    "places_orders": false,
+    "strict_time_split": true,
+    "writes_configuration": false,
+    "writes_database": false
+  },
+  "content_sha256": "2e49dfca0716a8545063fdbb74ccc0652ff7f3825f5654dad00f4048d3229293",
+  "evidence": null,
+  "gaps": [
+    {
+      "code": "transport_oos_contract_blocker",
+      "reason": "KeyError:'start_utc'"
+    }
+  ],
+  "lead_bucket": "d2_fallback",
+  "run_cycle": "18Z",
+  "schema": "bayes_basket_taf_nwp_transport_oos_report_v1",
+  "season_bin": "summer",
+  "state": "BLOCKED",
+  "station_id": "RKPK",
+  "validated": false
+}

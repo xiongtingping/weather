@@ -419,12 +419,73 @@ def _write_new_market_signal(payload: Mapping[str, Any]) -> None:
         pass
 
 
+def _market_dependency_records(events: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """Emit the dependency identity the downstream refresh worker consumes.
+
+    Discovery is the authority for *what* needs coverage.  It must not fetch
+    model/NWP payloads itself, and the dependency worker must never infer a
+    market from log text.  Keep this record deliberately small and stable so
+    repeated Gamma scans produce the same generation.
+    """
+    models = ["gfs_seamless", "icon_seamless", "ecmwf_ifs025", "nws_forecast"]
+    records: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for ev in events:
+        if not isinstance(ev, Mapping):
+            continue
+        slug = str(ev.get("slug") or "").strip()
+        event_date_text = _event_date(ev)
+        if not slug or not event_date_text or (slug, event_date_text) in seen:
+            continue
+        seen.add((slug, event_date_text))
+        lower_slug = slug.lower()
+        city = ""
+        if "-in-" in lower_slug and "-on-" in lower_slug:
+            city = lower_slug.split("-in-", 1)[1].split("-on-", 1)[0].strip("-")
+        station_id = "ZUUU" if city == "chengdu" else ""
+        sources = ["gfs", "icon", "ecmwf", "nws", "awc"]
+        if station_id == "ZUUU":
+            sources.append("amsc")
+            sources.remove("awc")
+        records.append(
+            {
+                "slug": slug,
+                "event_date": event_date_text,
+                "city": city,
+                "station_id": station_id,
+                "market_type": "temperature",
+                "required_models": models,
+                "required_sources": sorted(sources),
+            }
+        )
+    records.sort(key=lambda item: (str(item.get("event_date") or ""), str(item.get("slug") or "")))
+    return records
+
+
+def _write_discovery_signal(
+    *,
+    payload: Mapping[str, Any],
+    events: Iterable[Mapping[str, Any]],
+) -> None:
+    signal = dict(payload)
+    signal["signal_schema"] = "weather_market_dependency_signal_v1"
+    signal["trigger"] = "new_market" if list(signal.get("new_slugs") or []) else "market_scan"
+    signal["markets"] = _market_dependency_records(events)
+    _write_new_market_signal(signal)
+
+
 def main() -> None:
     args = _parse_args()
     start, end = _window_dates(args.tz, args.days_ahead)
     cached_events = swm._dedupe_weather_events(
         list(swm._load_weather_events_cache(allow_stale=True) or [])
         + list(swm._load_weather_events_good_cache() or [])
+    )
+    cached_window_events = _iter_window_events(
+        cached_events,
+        start=start,
+        end=end,
+        max_events=max(0, int(args.max_events)),
     )
     # Do this before the network fetch.  The launcher has a short timeout by
     # design, so a slow Gamma response must not prevent known future markets
@@ -440,8 +501,8 @@ def main() -> None:
         # The live Gamma refresh below is intentionally best-effort and may
         # exceed the fast launch budget.  Emit the discovery signal as soon as
         # the cached token-bearing events have reached archive SSOT.
-        _write_new_market_signal(
-            {
+        _write_discovery_signal(
+            payload={
                 "ok": True,
                 "updated_at": swm.utc_now_iso(),
                 "window": {"start": start.isoformat(), "end": end.isoformat()},
@@ -459,22 +520,26 @@ def main() -> None:
                 "refreshed_slugs": [],
                 "warnings": ["gamma_refresh_pending"],
                 "dry_run": False,
-            }
+            },
+            events=cached_window_events,
         )
     if args.cache_only:
+        cache_only_payload = {
+            "ok": True,
+            "mode": "cache_only",
+            "updated_at": swm.utc_now_iso(),
+            "window": {"start": start.isoformat(), "end": end.isoformat()},
+            "cached_events": len(cached_events),
+            "cached_events_selected": cached_selected,
+            "cached_tokenized": cache_tokenized,
+            "new_slugs": cached_new_slugs[:20],
+            "dry_run": bool(args.dry_run),
+        }
+        if not args.dry_run:
+            _write_discovery_signal(payload=cache_only_payload, events=cached_window_events)
         print(
             json.dumps(
-                {
-                    "ok": True,
-                    "mode": "cache_only",
-                    "updated_at": swm.utc_now_iso(),
-                    "window": {"start": start.isoformat(), "end": end.isoformat()},
-                    "cached_events": len(cached_events),
-                    "cached_events_selected": cached_selected,
-                    "cached_tokenized": cache_tokenized,
-                    "new_slugs": cached_new_slugs[:20],
-                    "dry_run": bool(args.dry_run),
-                },
+                cache_only_payload,
                 ensure_ascii=True,
                 sort_keys=True,
             )
@@ -487,6 +552,13 @@ def main() -> None:
         end=end,
         max_events=max(0, int(args.max_events)),
     )
+    # A Gamma timeout/empty page must not erase the cache-backed dependency
+    # signal emitted above.  The cache contains token-bearing future events
+    # that are already persisted in archive.db; keep using that bounded,
+    # explicit snapshot until a live Gamma result replaces it.
+    if not selected and cached_window_events:
+        selected = list(cached_window_events)
+        warnings = [*warnings, "gamma_empty_using_cached_future_events"]
     cache_count = 0 if args.dry_run else _merge_weather_cache(events)
     token_state = _load_token_state(
         (str(ev.get("slug") or ""), str(_event_date(ev) or "")) for ev in selected
@@ -564,8 +636,8 @@ def main() -> None:
         "warnings": warnings[:5],
         "dry_run": bool(args.dry_run),
     }
-    if new_slugs and not args.dry_run:
-        _write_new_market_signal(payload)
+    if not args.dry_run:
+        _write_discovery_signal(payload=payload, events=selected)
     print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
 
 

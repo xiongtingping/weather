@@ -1,4 +1,5 @@
 import json
+import hashlib
 
 from production_probability_v6_strong_physical_projection_runtime import (
     build_v6_strong_physical_evidence_projection,
@@ -77,7 +78,29 @@ def _base(*, termination=0.8, latent_terminal=0.7, path="cooling", weather=False
     return event, update, checkpoint, policy
 
 
-def test_v6_projection_requires_joint_physics_for_soft_unattainable_no():
+def _certificate(bucket):
+    core = {
+        "state": "valid",
+        "reason": "full_authority_hard_support_excludes_bucket",
+        "bucket": bucket,
+        "resolution_contract_id": "resolution-1",
+        "bridge_artifact_sha256": "a" * 64,
+        "target_contract_sha256": "b" * 64,
+        "physical_distribution_sha256": "c" * 64,
+        "posterior_checkpoint_id": "checkpoint-1",
+        "physical_hard_support_sha256": "d" * 64,
+        "hard_residual_support_authority_sha256": "e" * 64,
+        "physical_hard_support_c": [37.0],
+        "hard_residual_support_c": [0.0],
+        "bucket_bounds": {"lower_inclusive": None, "upper_exclusive": 36.5},
+        "settlement_support_witness_c": [37.0],
+        "full_support_exclusion_verified": True,
+    }
+    raw = json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return {**core, "certificate_sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest()}
+
+
+def test_v6_projection_keeps_soft_unattainability_as_diagnostic_not_no():
     event, update, checkpoint, policy = _base()
     result = build_v6_strong_physical_evidence_projection(
         previous_market_bucket_probabilities={"37C": 0.5, "40C": 0.5},
@@ -91,11 +114,9 @@ def test_v6_projection_requires_joint_physics_for_soft_unattainable_no():
     )
 
     assert result["ok"] is True
-    exclusion = result["bucket_exclusions"][0]
-    assert exclusion["bucket"] == "40C"
-    assert exclusion["kind"] == "remaining_warming_unattainable"
-    assert exclusion["physical_support"]["termination_risk"] is True
-    assert exclusion["physical_support"]["terminal_latent_state_mass"] is True
+    assert result["bucket_exclusions"] == []
+    assert result["bucket_evidence"]["40C"]["soft_unreachability_diagnostic"] is True
+    assert result["boundary"]["soft_unreachability_never_authorizes_no"] is True
 
 
 def test_v6_projection_does_not_call_low_probability_alone_a_physical_exclusion():
@@ -127,7 +148,7 @@ def test_v6_projection_requires_closed_bridge_certificate_for_hard_market_no():
         posterior_market_bucket_probabilities={"36C or below": 0.0, "37C": 1.0},
         bucket_contract={"36C or below": {}, "37C": {}},
         settlement_exclusion_certificates={
-            "36C or below": {"state": "valid"},
+            "36C or below": _certificate("36C or below"),
         },
         canonical_observation_event=event,
         strong_observation_update=update,
@@ -137,4 +158,5 @@ def test_v6_projection_requires_closed_bridge_certificate_for_hard_market_no():
 
     assert result["bucket_exclusions"][0]["kind"] == "observed_daily_high_exceeded"
     assert result["bucket_exclusions"][0]["settlement_exclusion_certificate_state"] == "valid"
+    assert result["bucket_exclusions"][0]["full_support_exclusion_verified"] is True
     assert result["boundary"]["physical_x_not_compared_directly_to_market_bucket_b"] is True

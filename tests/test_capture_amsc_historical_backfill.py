@@ -78,5 +78,6 @@ def test_historical_fetch_uses_system_trust_curl_only_for_python_certificate_fai
     assert seen["command"] == ["/usr/bin/curl", "--config", "-"]
     config = str(seen["config"])
     assert "ephemeral-token" in config
+    assert 'noproxy = "*"' in config
     assert "--insecure" not in config
     assert "insecure" not in config.lower()

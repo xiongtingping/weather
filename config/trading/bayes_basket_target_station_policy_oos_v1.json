@@ -1,0 +1,49 @@
+{
+  "schema": "bayes_basket_target_station_policy_oos_config_v1",
+  "authority": "target_only",
+  "production_no_live": true,
+  "live_order_authorized": false,
+  "writes_production_db": false,
+  "calls_order_gateway": false,
+  "max_rows": 100000,
+  "max_stations": 45,
+  "required_families": ["target", "reserve", "cadence"],
+  "required_windows_days": [3, 7, 15, 30],
+  "min_station_sample_n": 4,
+  "min_window_n_eff": 2.0,
+  "min_cross_seasons": 4,
+  "min_leave_one_station_n_eff": 2.0,
+  "parameter_change_limit": 0.25,
+  "non_degradation_tolerance": 0.000000001,
+  "station_scope_source": "config/trading/bayes_basket_target_station_lane_map_v1.json",
+  "settlement_timezone_source": "market_registry.settlement_timezone",
+  "fit_contract": {
+    "station_independent": true,
+    "strict_train_test_time_split": true,
+    "leave_one_station_out": true,
+    "cross_season": true,
+    "truth_must_be_frozen": true,
+    "future_feature_leakage_fails_closed": true,
+    "duplicate_conflict_fails_closed": true,
+    "online_training": false,
+    "global_top1_substitution": false,
+    "global_fallback_without_promotion": false
+  },
+  "families": {
+    "target": {
+      "artifact_schema": "station_target_policy_artifact_v2",
+      "primary_metric": "precision_or_probability_score",
+      "protected_metrics": ["outside_loss", "support_width", "direction_flip"]
+    },
+    "reserve": {
+      "artifact_schema": "station_reserve_price_artifact_v2",
+      "primary_metric": "execution_score_or_interval_likelihood",
+      "protected_metrics": ["b14_breakthroughs", "queue_cost", "opportunity_cost"]
+    },
+    "cadence": {
+      "artifact_schema": "station_cadence_artifact_v2",
+      "primary_metric": "wait_or_reassessment_score",
+      "protected_metrics": ["duplicate_rate", "unknown_state_rate", "overtrade_rate"]
+    }
+  }
+}

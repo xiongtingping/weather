@@ -1,8 +1,9 @@
 ---
-status: accepted
+status: superseded
 authority: L1
 owner: weather-system
 effective_from: 2026-07-13
+superseded_by: TARGET_REALIZATION_V4.md
 market_alpha_take_profit_state: implemented-default-off-schema-ready
 runtime_conformance_state: implementation-complete-activation-pending
 supersedes: [THREE_EVENT_TARGET_REALIZATION_TRADING_PLAN.md, TARGET_REALIZATION_EDGE_MIGRATION_PLAN.md]
@@ -254,7 +255,7 @@ live_ready
   + reported-X runtime 身份一致且无 pending canonical
   + X→S→B market projection 已批准
   + dynamic three-leg live activation 已批准
-  + gateway-attested T1→T5 证据通过
+  + 每笔 T1+3 秒硬截止已启用；gateway-attested T1→T5 在首笔真实 POST 后持续验收
 ```
 
 因此 `ok=true, state=safe_fail_closed, live_ready=false` 是合法且必要的生产状态：它证明系统没有旧 EV/Edge gate、重复订单或绕过 SSOT 的可执行路径，同时明确禁止真实下单。`ok=true` 永远不得单独解释为 live 授权。

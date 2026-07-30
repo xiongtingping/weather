@@ -8,6 +8,8 @@ signal.
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 from typing import Any, Mapping, Sequence
 
 SCHEMA_VERSION = "strong_posterior_three_leg_strategy_v2"
@@ -29,6 +31,37 @@ def _finite(value: Any) -> float | None:
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _certificate_valid(raw: Mapping[str, Any], *, bucket: str) -> bool:
+    certificate = raw.get("settlement_exclusion_certificate")
+    cert = certificate if isinstance(certificate, Mapping) else {}
+    unsigned = {key: value for key, value in cert.items() if key != "certificate_sha256"}
+    calculated = hashlib.sha256(
+        json.dumps(unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    required_hashes = (
+        "bridge_artifact_sha256",
+        "target_contract_sha256",
+        "physical_distribution_sha256",
+        "physical_hard_support_sha256",
+        "hard_residual_support_authority_sha256",
+    )
+    return bool(
+        _text(raw.get("settlement_exclusion_certificate_state")) == "valid"
+        and raw.get("full_support_exclusion_verified") is True
+        and _text(cert.get("state")) == "valid"
+        and cert.get("full_support_exclusion_verified") is True
+        and _text(cert.get("bucket")) == bucket
+        and _text(cert.get("resolution_contract_id"))
+        and _text(cert.get("posterior_checkpoint_id"))
+        and all(len(_text(cert.get(field))) == 64 for field in required_hashes)
+        and bool(cert.get("physical_hard_support_c"))
+        and bool(cert.get("hard_residual_support_c"))
+        and bool(cert.get("settlement_support_witness_c"))
+        and len(_text(cert.get("certificate_sha256"))) == 64
+        and _text(cert.get("certificate_sha256")) == calculated
+    )
 
 
 def _normalise(rows: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
@@ -73,10 +106,7 @@ def _strongly_excluded_no_candidate(
                 continue
             if raw.get("composer_joint_strong_model") is not True:
                 continue
-            if (
-                kind == "observed_daily_high_exceeded"
-                and _text(raw.get("settlement_exclusion_certificate_state")) != "valid"
-            ):
+            if not _certificate_valid(raw, bucket=bucket):
                 continue
             confidence = _finite(raw.get("confidence"))
             if confidence is None or confidence < 0.0 or confidence > 1.0:
@@ -84,9 +114,7 @@ def _strongly_excluded_no_candidate(
             selected = dict(row)
             selected["physical_exclusion_kind"] = kind
             selected["physical_exclusion_evidence"] = (
-                "closed_bridge_certified_observed_daily_high_exceeded"
-                if kind == "observed_daily_high_exceeded"
-                else "composer_joint_momentum_trajectory_cloud_rain"
+                "closed_bridge_full_support_exclusion_certificate"
             )
             selected["physical_exclusion_confidence"] = confidence
             candidates.append(((2.0 if kind == "observed_daily_high_exceeded" else 1.0, confidence, 1.0 - selected["probability"], selected["bucket"]), selected))

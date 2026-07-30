@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Any
 from urllib.parse import urlsplit
 from urllib.error import HTTPError, URLError
@@ -36,7 +37,8 @@ from official_nwp_source_catalog_runtime import (  # noqa: E402
     load_official_nwp_catalog,
     validate_official_nwp_catalog,
 )
-from official_nwp_https_transport import open_official_https  # noqa: E402
+from official_nwp_https_transport import open_official_https, read_official_response  # noqa: E402
+from official_nwp_request_control import record_provider_response, request_control_path as shared_request_control_path, reserve_request_slot  # noqa: E402
 
 
 def _now() -> str:
@@ -103,21 +105,69 @@ def collect(
         return {"ok": False, "state": "blocked", "blockers": ["official_nwp_raw_request_host_not_allowlisted"]}
     receipts: list[dict[str, str]] = []
     raw_paths: list[Path] = []
+    request_control_path = shared_request_control_path(source_root, provider_id)
+    try:
+        min_request_interval_sec = max(0.5, float(os.environ.get(f"PM_{provider_id.upper()}_MIN_REQUEST_INTERVAL_SEC") or 1.5))
+    except (TypeError, ValueError):
+        min_request_interval_sec = 1.5
     for safe_url in safe_urls:
-        requested_at = _now()
-        try:
-            request = Request(safe_url, headers={"User-Agent": "weather-official-nwp-collector/1"})
-            with open_official_https(request, timeout_sec=timeout_sec) as response:
-                response_started_at = _now()
-                body = response.read()
-            response_completed_at = _now()
-        except Exception as exc:
-            return {
-                "ok": False,
-                "state": "blocked",
-                "blockers": [f"official_nwp_direct_fetch_failed:{_fetch_failure_reason(exc)}"],
-                "requested_at": requested_at,
-            }
+        body = b""
+        response_started_at = ""
+        response_completed_at = ""
+        last_control: dict[str, Any] = {}
+        for attempt in range(3):
+            slot = reserve_request_slot(
+                path=request_control_path,
+                provider_id=provider_id,
+                min_interval_sec=min_request_interval_sec,
+            )
+            requested_at = _now()
+            try:
+                request = Request(safe_url, headers={"User-Agent": "weather-official-nwp-collector/1"})
+                with open_official_https(request, timeout_sec=timeout_sec) as response:
+                    response_started_at = _now()
+                    body = read_official_response(response, timeout_sec=timeout_sec)
+                    status_code = int(getattr(response, "status", 200) or 200)
+                    response_headers = dict(response.headers.items())
+                response_completed_at = _now()
+                last_control = record_provider_response(
+                    path=request_control_path,
+                    provider_id=provider_id,
+                    status_code=status_code,
+                    headers=response_headers,
+                )
+                break
+            except Exception as exc:
+                status_code = int(exc.code) if isinstance(exc, HTTPError) else None
+                response_headers = dict(getattr(exc, "headers", {}) or {})
+                last_control = record_provider_response(
+                    path=request_control_path,
+                    provider_id=provider_id,
+                    status_code=status_code,
+                    headers=response_headers,
+                    error=_fetch_failure_reason(exc),
+                )
+                if status_code is not None and status_code not in {408, 425, 429, 500, 502, 503, 504}:
+                    return {
+                        "ok": False,
+                        "state": "blocked",
+                        "blockers": [f"official_nwp_direct_fetch_failed:{_fetch_failure_reason(exc)}"],
+                        "requested_at": requested_at,
+                        "request_control_path": str(request_control_path),
+                    }
+                if attempt >= 2:
+                    return {
+                        "ok": False,
+                        "state": "blocked",
+                        "blockers": [f"official_nwp_direct_fetch_failed:{_fetch_failure_reason(exc)}"],
+                        "requested_at": requested_at,
+                        "request_control_path": str(request_control_path),
+                    }
+                reserve_request_slot(
+                    path=request_control_path,
+                    provider_id=provider_id,
+                    min_interval_sec=max(min_request_interval_sec, float(last_control.get("cooldown_sec") or (2**attempt))),
+                )
         if not body:
             return {"ok": False, "state": "blocked", "blockers": ["official_nwp_direct_fetch_empty_body"], "requested_at": requested_at}
         digest = hashlib.sha256(body).hexdigest()
@@ -127,7 +177,7 @@ def collect(
         if not raw_path.is_file():
             _atomic_bytes(raw_path, body)
         raw_paths.append(raw_path)
-        receipts.append({"raw_request_url": safe_url, "raw_object_ref": str(raw_path.resolve()), "raw_sha256": digest, "requested_at": requested_at, "response_started_at": response_started_at, "response_completed_at": response_completed_at, "response_headers_observed": True})
+        receipts.append({"raw_request_url": safe_url, "raw_object_ref": str(raw_path.resolve()), "raw_sha256": digest, "requested_at": requested_at, "response_started_at": response_started_at, "response_completed_at": response_completed_at, "response_headers_observed": True, "provider_slot_wait_sec": float(slot.get("wait_sec") or 0.0), "provider_retry_after_sec": last_control.get("retry_after_sec")})
     manifest = {"schema": "official_nwp_raw_receipt_manifest_v1", "provider_id": provider_id, "run_at_utc": run_at_utc, "valid_time_utc": valid_time_utc, "raw_receipts": receipts, "aggregator_or_republisher": False, "open_meteo": False}
     manifest_digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     manifest_path = source_root / provider_id / "receipts" / f"{manifest_digest}.json"
@@ -135,7 +185,7 @@ def collect(
         _atomic_json(manifest_path, manifest)
     decode_path, temporary_decode_path = assemble_grib2_payload(raw_paths)
     try:
-        decoded = decode_grib2_nearest_point(decode_path)
+        decoded = decode_grib2_nearest_point(decode_path, provider_id=provider_id)
     finally:
         temporary_decode_path.unlink(missing_ok=True)
     response_completed_at = max(receipt["response_completed_at"] for receipt in receipts)
@@ -164,6 +214,7 @@ def collect(
         "raw_object_ref": str(manifest_path),
         "raw_sha256": manifest_digest,
         "raw_receipts": receipts,
+        "request_control_path": str(request_control_path),
         "boundary": {"writes_archive_db": False, "writes_posterior": False, "writes_task_queue": False, "places_orders": False},
     }
 

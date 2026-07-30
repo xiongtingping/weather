@@ -1,0 +1,233 @@
+{
+  "cleanup_performed": false,
+  "external_archive_dependency": false,
+  "invalid_receipt_or_stat_errors": [],
+  "production_dependency": false,
+  "provider_rows": [
+    {
+      "provider": "ecmwf_ifs025_official",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    },
+    {
+      "provider": "gfs_0p25_official",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    },
+    {
+      "provider": "icon_global_official",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 72446392,
+      "unreferenced_count": 24
+    },
+    {
+      "provider": "icon_global_open_meteo",
+      "stale_temporary_bytes": 0,
+      "stale_temporary_count": 0,
+      "unreferenced_bytes": 0,
+      "unreferenced_count": 0
+    }
+  ],
+  "receipt_reference_count": 40398,
+  "resource_budget": {
+    "database_bytes": 59547648,
+    "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "free_bytes": 38692327424,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_research_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 194314240,
+    "raw_bytes": 761857347,
+    "raw_file_count": 3698,
+    "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+    "shm_bytes": 0,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 0
+  },
+  "root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+  "schema": "bayes_basket_target_resource_audit_v1",
+  "stale_temporary_files": [],
+  "state": "AUDIT_ONLY",
+  "unreferenced_raw": [
+    {
+      "age_sec": 55649.20101213455,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/09979a8388ec97c33f640b975733b8bab9ab31b0a006e51fddae1b2d4c33eb4d.bz2",
+      "provider": "icon_global_official",
+      "sha256": "09979a8388ec97c33f640b975733b8bab9ab31b0a006e51fddae1b2d4c33eb4d",
+      "size_bytes": 2981440
+    },
+    {
+      "age_sec": 55574.82237839699,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/16860aa3bcb41a78fe679f15431e42d075806b798527fc947814714bf1977000.bz2",
+      "provider": "icon_global_official",
+      "sha256": "16860aa3bcb41a78fe679f15431e42d075806b798527fc947814714bf1977000",
+      "size_bytes": 2993584
+    },
+    {
+      "age_sec": 55581.33113241196,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/1b67e8233e7ef6001a3cbefff1021a7ae6be1dfdc6a6ca9bac105e0c00a25fa4.bz2",
+      "provider": "icon_global_official",
+      "sha256": "1b67e8233e7ef6001a3cbefff1021a7ae6be1dfdc6a6ca9bac105e0c00a25fa4",
+      "size_bytes": 2993082
+    },
+    {
+      "age_sec": 55535.823680877686,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/1cb771562a0910e7b5e69a31e4ecba25c38973a5e49b09fd71f8e4a61dddd751.bz2",
+      "provider": "icon_global_official",
+      "sha256": "1cb771562a0910e7b5e69a31e4ecba25c38973a5e49b09fd71f8e4a61dddd751",
+      "size_bytes": 2985615
+    },
+    {
+      "age_sec": 55696.27463889122,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/1d2a6b7456af00b4d5c0b2fdb877ac47e9f5c58d2297da871538a6412555eafc.bz2",
+      "provider": "icon_global_official",
+      "sha256": "1d2a6b7456af00b4d5c0b2fdb877ac47e9f5c58d2297da871538a6412555eafc",
+      "size_bytes": 3352592
+    },
+    {
+      "age_sec": 55522.70325231552,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/1f4ade8d578823cc8a3b69b015dd4e87b48abe00bfe83298fbb75d431d27b708.bz2",
+      "provider": "icon_global_official",
+      "sha256": "1f4ade8d578823cc8a3b69b015dd4e87b48abe00bfe83298fbb75d431d27b708",
+      "size_bytes": 2984591
+    },
+    {
+      "age_sec": 55542.3318965435,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/471de378f2c95a7efc1278dd85947022df201b63bd3def694aecdb76424acbca.bz2",
+      "provider": "icon_global_official",
+      "sha256": "471de378f2c95a7efc1278dd85947022df201b63bd3def694aecdb76424acbca",
+      "size_bytes": 2988764
+    },
+    {
+      "age_sec": 55771.30293297768,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/532754ee66961571fb5afde786bdda6f50f4167b8885b29bede8ebc64737a607.bz2",
+      "provider": "icon_global_official",
+      "sha256": "532754ee66961571fb5afde786bdda6f50f4167b8885b29bede8ebc64737a607",
+      "size_bytes": 2984798
+    },
+    {
+      "age_sec": 55627.69971847534,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/533f1e64ce21a44d599a54c584931c5639b2cb90e3760a701074458324772f1d.bz2",
+      "provider": "icon_global_official",
+      "sha256": "533f1e64ce21a44d599a54c584931c5639b2cb90e3760a701074458324772f1d",
+      "size_bytes": 2990306
+    },
+    {
+      "age_sec": 55549.03689789772,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/62fabac7467d90ff638532e079114237b703701f54d3ac787da899f61b717586.bz2",
+      "provider": "icon_global_official",
+      "sha256": "62fabac7467d90ff638532e079114237b703701f54d3ac787da899f61b717586",
+      "size_bytes": 2992881
+    },
+    {
+      "age_sec": 55587.800593853,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/676f0cf10e7dfce4ac92bdcb6fee9385021c6908b3547dbd8a77bb0448442de3.bz2",
+      "provider": "icon_global_official",
+      "sha256": "676f0cf10e7dfce4ac92bdcb6fee9385021c6908b3547dbd8a77bb0448442de3",
+      "size_bytes": 2989601
+    },
+    {
+      "age_sec": 55594.625940322876,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/925a6cf867c7e311535ec9eb9f67c8b87e672f715577a67518dcd2ffce8c5fe2.bz2",
+      "provider": "icon_global_official",
+      "sha256": "925a6cf867c7e311535ec9eb9f67c8b87e672f715577a67518dcd2ffce8c5fe2",
+      "size_bytes": 2985959
+    },
+    {
+      "age_sec": 55641.45824456215,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/9422ed2bb27c632f3504c0c9bd49887ee19e083adf91848713eb1a43b2a15384.bz2",
+      "provider": "icon_global_official",
+      "sha256": "9422ed2bb27c632f3504c0c9bd49887ee19e083adf91848713eb1a43b2a15384",
+      "size_bytes": 2983664
+    },
+    {
+      "age_sec": 55561.9262547493,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/9fdee969f282c653f176fe5e5fbbdf0c21893cd8d878b755834bc57787d670d5.bz2",
+      "provider": "icon_global_official",
+      "sha256": "9fdee969f282c653f176fe5e5fbbdf0c21893cd8d878b755834bc57787d670d5",
+      "size_bytes": 2994721
+    },
+    {
+      "age_sec": 55620.9350028038,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/a74ea6afad619b6cb12ce3c05d16e20fb02a158eef077339562c90e24e6bcdb8.bz2",
+      "provider": "icon_global_official",
+      "sha256": "a74ea6afad619b6cb12ce3c05d16e20fb02a158eef077339562c90e24e6bcdb8",
+      "size_bytes": 2990734
+    },
+    {
+      "age_sec": 55529.30041003227,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/ad9f35fee87769469ad14f0b6175cd3f43f4a2eb24b692a2a2b237ffbd1a0162.bz2",
+      "provider": "icon_global_official",
+      "sha256": "ad9f35fee87769469ad14f0b6175cd3f43f4a2eb24b692a2a2b237ffbd1a0162",
+      "size_bytes": 2983598
+    },
+    {
+      "age_sec": 55601.14997601509,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/b12ae641d2304addd7e93c013d79cbf28b5e38104f9d5a5f248be9cc586cea0c.bz2",
+      "provider": "icon_global_official",
+      "sha256": "b12ae641d2304addd7e93c013d79cbf28b5e38104f9d5a5f248be9cc586cea0c",
+      "size_bytes": 2984020
+    },
+    {
+      "age_sec": 55607.65250015259,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/cac763a71a31187e9b69c307906d38654079bd6a2ac4c2804efbb74c6af2f839.bz2",
+      "provider": "icon_global_official",
+      "sha256": "cac763a71a31187e9b69c307906d38654079bd6a2ac4c2804efbb74c6af2f839",
+      "size_bytes": 2984030
+    },
+    {
+      "age_sec": 55516.078382492065,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/ce19f59e47d611ea2a594f97bee350ec76a2b0a5eeb3a4d4cdd69600b8d34e3a.bz2",
+      "provider": "icon_global_official",
+      "sha256": "ce19f59e47d611ea2a594f97bee350ec76a2b0a5eeb3a4d4cdd69600b8d34e3a",
+      "size_bytes": 2985150
+    },
+    {
+      "age_sec": 55614.25267267227,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/d6c873535782447f8bc8c50551b5fd0f595af92cd9655f5769b82eaa8b895a09.bz2",
+      "provider": "icon_global_official",
+      "sha256": "d6c873535782447f8bc8c50551b5fd0f595af92cd9655f5769b82eaa8b895a09",
+      "size_bytes": 2986807
+    },
+    {
+      "age_sec": 55634.97512483597,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/dd095f6cc7910b4e288f1bbad1fba843f61687b604023bb5c4cfb2b334b49be6.bz2",
+      "provider": "icon_global_official",
+      "sha256": "dd095f6cc7910b4e288f1bbad1fba843f61687b604023bb5c4cfb2b334b49be6",
+      "size_bytes": 2987251
+    },
+    {
+      "age_sec": 55555.501811504364,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/e02d259f0f56f221bbe77b50dcafd9c0537ef13dcf06b5abcbb61f24cff726ee.bz2",
+      "provider": "icon_global_official",
+      "sha256": "e02d259f0f56f221bbe77b50dcafd9c0537ef13dcf06b5abcbb61f24cff726ee",
+      "size_bytes": 2994814
+    },
+    {
+      "age_sec": 55706.265500068665,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/e63e476bcd14ae27281e8d4299d5e549b1bb5e0985a6f54fc50091b9b01284b6.bz2",
+      "provider": "icon_global_official",
+      "sha256": "e63e476bcd14ae27281e8d4299d5e549b1bb5e0985a6f54fc50091b9b01284b6",
+      "size_bytes": 3353395
+    },
+    {
+      "age_sec": 55568.3902721405,
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/raw/ef8c00a7f345c12d19cd6b9e080ebc90b9b99f40a3cd573ae9e4bf8d54fb47bc.bz2",
+      "provider": "icon_global_official",
+      "sha256": "ef8c00a7f345c12d19cd6b9e080ebc90b9b99f40a3cd573ae9e4bf8d54fb47bc",
+      "size_bytes": 2994995
+    }
+  ]
+}

@@ -15,6 +15,7 @@ V6_COMPOSER = "physical_state_bayes_v6_pre_event_predict_update"
 V6_CUTOVER = "scripts/cutover_physical_state_bayes_v6_production.sh"
 RETIRED_V5_CUTOVER = "scripts/cutover_cumulative_strong_likelihood_v5.sh"
 RETIRED_STATE_AWARE_CUTOVER = "scripts/cutover_state_aware_strong_lr_probability_epoch.sh"
+CURRENT_V6_MARKET_CUTOVER = "scripts/cutover_v6_probability_and_soft_market_projection.sh"
 
 
 def _frontmatter(text: str) -> dict[str, str]:
@@ -122,7 +123,9 @@ def audit_probability_document_authority(root: Path | str) -> dict[str, Any]:
         "execution_schema_runbook_decouples_probability": (
             "概率切换与执行账本 schema 切换必须解耦" in execution_schema_runbook
             and "旧合并入口" in execution_schema_runbook
-            and "已退役" in execution_schema_runbook
+            and "均已硬退役" in execution_schema_runbook
+            and f"当前唯一概率切换入口是 `{CURRENT_V6_MARKET_CUTOVER}`" in execution_schema_runbook
+            and "不得探测或依赖外置盘" in execution_schema_runbook
         ),
         "no_retired_cutover_claims_current_authority": (
             f"{RETIRED_V5_CUTOVER}` 是唯一" not in "\n".join(texts.values())

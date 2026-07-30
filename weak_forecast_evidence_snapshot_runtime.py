@@ -90,6 +90,27 @@ def build_weak_forecast_evidence_snapshot_row(
         "likelihood_by_x": likelihood_by_x,
         "forecast_peak_timing_prior": dict(_mapping(weak.get("forecast_peak_timing_prior"))),
         "forecast_background_context": dict(_mapping(weak.get("forecast_background_context"))),
+        "source_expert_trace": [
+            dict(row) for row in weak.get("source_expert_trace") or [] if isinstance(row, Mapping)
+        ],
+        "forecast_multimodality_trace": dict(_mapping(weak.get("forecast_multimodality_trace"))),
+        "weak_model_diagnostics": {
+            key: weak.get(key)
+            for key in (
+                "formula",
+                "context_key",
+                "correlation_discount",
+                "joint_information_scale",
+                "applied_information_scale",
+                "weak_information_confidence",
+                "weak_evidence_state",
+                "mode_formation_policy",
+                "force_multimodality",
+                "force_unimodality",
+                "source_weight_attribution",
+            )
+            if weak.get(key) not in (None, "", [], {})
+        },
         "forecast_only": True,
         "hard_observation_eligible": False,
     }
@@ -109,6 +130,9 @@ def build_weak_forecast_evidence_snapshot_row(
         "likelihood_by_x_json": _json(likelihood_by_x),
         "forecast_peak_timing_prior_json": _json(snapshot["forecast_peak_timing_prior"]),
         "forecast_background_context_json": _json(snapshot["forecast_background_context"]),
+        "source_expert_trace_json": _json(snapshot["source_expert_trace"]),
+        "forecast_multimodality_trace_json": _json(snapshot["forecast_multimodality_trace"]),
+        "weak_model_diagnostics_json": _json(snapshot["weak_model_diagnostics"]),
         "snapshot_json": _json(snapshot),
         "snapshot_sha256": _sha(snapshot),
         "state": state,

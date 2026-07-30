@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""Capture one bounded official AWC TAF revision for P0-M materialization."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+import urllib.parse
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
+from scripts.capture_bayes_basket_target_awc_taf_calibration import (  # noqa: E402
+    TAF_ENDPOINT,
+    _event_window,
+    _fetch_json,
+    _iso,
+    _parse_utc,
+    _taf_row,
+)
+
+
+SCHEMA = "bayes_basket_awc_taf_revision_capture_v1"
+FORWARD_SCHEMA = "bayes_basket_target_forward_taf_capture_v1"
+INBOX_SCHEMA = "bayes_basket_target_taf_revision_inbox_v1"
+
+
+def capture_forward_awc_taf(
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    timeout_sec: int = 12,
+) -> dict[str, object]:
+    """Capture the currently visible official TAF with a local receipt clock."""
+
+    station = station_id.strip().upper()
+    start, end = _event_window(event_date, settlement_timezone)
+    url = TAF_ENDPOINT + "?" + urllib.parse.urlencode({
+        "ids": station,
+        "format": "json",
+    })
+    rows, response_sha, response_bytes = _fetch_json(
+        url, timeout_sec=timeout_sec
+    )
+    received_at = datetime.now(timezone.utc)
+    taf, raw = _taf_row(
+        rows,
+        station_id=station,
+        start=start,
+        end=end,
+        event_date=event_date,
+        timezone_name=settlement_timezone,
+    )
+    issued_at = _parse_utc(taf["issue_time_utc"])
+    if issued_at > received_at:
+        raise ContractError("awc_forward_taf_issue_after_local_receipt")
+    valid_from = _parse_utc(raw.get("validTimeFrom"))
+    valid_until = _parse_utc(raw.get("validTimeTo"))
+    local_received = _iso(received_at)
+    raw_sha = taf["raw_taf_sha256"]
+    revision_identity = {
+        "schema": "bayes_basket_forecast_revision_v1",
+        "station_id": station,
+        "event_date": event_date,
+        "revision_kind": "TAF",
+        "sequence": 1,
+        "issued_at_utc": taf["issue_time_utc"],
+        "received_at_utc": local_received,
+        "valid_from_utc": _iso(valid_from),
+        "valid_until_utc": _iso(valid_until),
+        "source_object_sha256": raw_sha,
+        "supersedes_revision_id": None,
+    }
+    revision_id = "taf-revision-" + content_sha256(revision_identity)[:32]
+    identity = {
+        "schema": FORWARD_SCHEMA,
+        "source_class": "official_forward_native_receipt",
+        "provider": "NOAA Aviation Weather Center",
+        "station_id": station,
+        "event_date": event_date,
+        "settlement_timezone": settlement_timezone,
+        "source_url": url,
+        "response_sha256": response_sha,
+        "response_bytes": response_bytes,
+        "provider_available_at_utc": taf["available_time_utc"],
+        "local_received_at_utc": local_received,
+        "forecast_revision": {
+            "revision_id": revision_id,
+            **revision_identity,
+        },
+        "taf_fields": {
+            "tx_c": taf["tx_c"],
+            "cloud_cover_fraction": taf["cloud_cover_fraction"],
+            "precipitation_probability": taf["precipitation_probability"],
+            "wind_speed_mps": taf["wind_speed_mps"],
+        },
+        "raw_taf": taf["raw_taf"],
+        "raw_taf_sha256": raw_sha,
+        "boundary": {
+            "native_local_receipt": True,
+            "retrospective_replay_only": False,
+            "writes_production_db": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def refresh_forward_taf_inbox(
+    *,
+    captures: list[dict[str, object]],
+    inbox_path: Path,
+) -> dict[str, object]:
+    """Append unique forward captures and retain only the bounded active tail."""
+
+    existing: list[dict[str, object]] = []
+    path = inbox_path.expanduser().resolve()
+    if path.is_file():
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict) or raw.get("schema") != INBOX_SCHEMA:
+            raise ContractError("forward_taf_inbox_schema_invalid")
+        existing = [
+            dict(item)
+            for item in raw.get("captures", [])
+            if isinstance(item, dict)
+        ]
+    retained = list(existing)
+    source_keys = {
+        (
+            str(item.get("station_id") or ""),
+            str(item.get("event_date") or ""),
+            str((item.get("forecast_revision") or {}).get(
+                "source_object_sha256"
+            ) or ""),
+        )
+        for item in existing
+        if isinstance(item.get("forecast_revision"), dict)
+    }
+    for capture in sorted(
+        captures,
+        key=lambda item: str(item.get("local_received_at_utc") or ""),
+    ):
+        revision = capture.get("forecast_revision")
+        if not isinstance(revision, dict):
+            raise ContractError("forward_taf_capture_revision_missing")
+        scope = (
+            str(capture.get("station_id") or ""),
+            str(capture.get("event_date") or ""),
+        )
+        source_sha = str(revision.get("source_object_sha256") or "")
+        if (*scope, source_sha) in source_keys:
+            continue
+        predecessors = [
+            item
+            for item in retained
+            if (
+                str(item.get("station_id") or ""),
+                str(item.get("event_date") or ""),
+            ) == scope
+            and isinstance(item.get("forecast_revision"), dict)
+        ]
+        predecessors.sort(
+            key=lambda item: int(
+                item["forecast_revision"].get("sequence") or 0
+            )
+        )
+        sequence = len(predecessors) + 1
+        previous_id = (
+            str(predecessors[-1]["forecast_revision"]["revision_id"])
+            if predecessors else None
+        )
+        raw_taf = str(capture.get("raw_taf") or "").upper()
+        kind = (
+            "COR" if " TAF COR " in f" {raw_taf} "
+            else "AMD" if " TAF AMD " in f" {raw_taf} "
+            else "TAF"
+        )
+        normalized_revision = {
+            **revision,
+            "revision_id": "taf-revision-" + content_sha256({
+                "station_id": scope[0],
+                "event_date": scope[1],
+                "source_object_sha256": source_sha,
+            })[:32],
+            "revision_kind": kind,
+            "sequence": sequence,
+            "supersedes_revision_id": previous_id,
+        }
+        normalized_identity = {
+            key: value
+            for key, value in capture.items()
+            if key != "content_sha256"
+        }
+        normalized_identity["forecast_revision"] = normalized_revision
+        retained.append({
+            **normalized_identity,
+            "content_sha256": content_sha256(normalized_identity),
+        })
+        source_keys.add((*scope, source_sha))
+    retained = sorted(
+        retained,
+        key=lambda item: str(item.get("local_received_at_utc") or ""),
+    )[-256:]
+    identity = {
+        "schema": INBOX_SCHEMA,
+        "capture_count": len(retained),
+        "captures": retained,
+        "boundary": {
+            "forward_only": True,
+            "max_captures": 256,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+    result = {**identity, "content_sha256": content_sha256(identity)}
+    write_bounded_json(path, result)
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--station-id", required=True)
+    parser.add_argument("--event-date", required=True)
+    parser.add_argument("--settlement-timezone", required=True)
+    parser.add_argument("--decision-at-utc", required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    station = args.station_id.strip().upper()
+    decision_at = _parse_utc(args.decision_at_utc)
+    start, end = _event_window(args.event_date, args.settlement_timezone)
+    url = TAF_ENDPOINT + "?" + urllib.parse.urlencode({
+        "ids": station,
+        "format": "json",
+        "time": "issue",
+        "date": _iso(decision_at),
+    })
+    rows, response_sha, response_bytes = _fetch_json(url, timeout_sec=30)
+    taf, raw = _taf_row(
+        rows,
+        station_id=station,
+        start=start,
+        end=end,
+        event_date=args.event_date,
+        timezone_name=args.settlement_timezone,
+    )
+    if _parse_utc(taf["available_time_utc"]) > decision_at:
+        raise ContractError("awc_taf_revision_not_available_asof")
+    valid_from = _parse_utc(raw.get("validTimeFrom"))
+    valid_until = _parse_utc(raw.get("validTimeTo"))
+    raw_sha = taf["raw_taf_sha256"]
+    revision_identity = {
+        "schema": "bayes_basket_forecast_revision_v1",
+        "station_id": station,
+        "event_date": args.event_date,
+        "revision_kind": "TAF",
+        "sequence": 1,
+        "issued_at_utc": taf["issue_time_utc"],
+        "received_at_utc": taf["available_time_utc"],
+        "valid_from_utc": _iso(valid_from),
+        "valid_until_utc": _iso(valid_until),
+        "source_object_sha256": raw_sha,
+        "supersedes_revision_id": None,
+    }
+    revision_id = "taf-revision-" + content_sha256(revision_identity)[:32]
+    revision = {"revision_id": revision_id, **revision_identity}
+    identity = {
+        "schema": SCHEMA,
+        "provider": "NOAA Aviation Weather Center",
+        "source_class": "official_date_addressed_retrospective_capture",
+        "station_id": station,
+        "event_date": args.event_date,
+        "settlement_timezone": args.settlement_timezone,
+        "decision_at_utc": _iso(decision_at),
+        "source_url": url,
+        "response_sha256": response_sha,
+        "response_bytes": response_bytes,
+        "forecast_revision": revision,
+        "taf_fields": {
+            "tx_c": taf["tx_c"],
+            "cloud_cover_fraction": taf["cloud_cover_fraction"],
+            "precipitation_probability": taf["precipitation_probability"],
+            "wind_speed_mps": taf["wind_speed_mps"],
+        },
+        "raw_taf": taf["raw_taf"],
+        "raw_taf_sha256": hashlib.sha256(
+            taf["raw_taf"].encode("utf-8")
+        ).hexdigest(),
+        "boundary": {
+            "native_local_receipt": False,
+            "official_awc_db_population_time_preserved": True,
+            "retrospective_replay_only": True,
+            "writes_production_db": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+    result = {**identity, "content_sha256": content_sha256(identity)}
+    write_bounded_json(args.output.expanduser().resolve(), result)
+    print(json.dumps({
+        "revision_id": revision_id,
+        "issued_at_utc": taf["issue_time_utc"],
+        "available_time_utc": taf["available_time_utc"],
+        "taf_fields": identity["taf_fields"],
+        "output": str(args.output.expanduser().resolve()),
+    }, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -26,9 +26,9 @@ from joint_weak_bias_calibration_runtime import (
 from weak_likelihood_source_set_runtime import SOURCE_UNIVERSE, SURFACE_SCHEMA_VERSION, source_set_key
 
 
-DATASET_SCHEMA_VERSION = "joint_forecast_weak_likelihood_training_dataset_v1"
-TRAINING_REPORT_SCHEMA_VERSION = "joint_forecast_weak_likelihood_training_report_v1"
-TRAINING_POLICY = "strict_asof_forecast_to_closed_physical_x_v1"
+DATASET_SCHEMA_VERSION = "joint_forecast_weak_likelihood_training_dataset_v2"
+TRAINING_REPORT_SCHEMA_VERSION = "joint_forecast_weak_likelihood_training_report_v2"
+TRAINING_POLICY = "strict_asof_forecast_to_closed_exact_x_or_settlement_interval_v2"
 _CONTEXT_FIELDS = ("season", "weather_regime", "lead_bucket")
 _FORBIDDEN_FORECAST_TOKENS = ("market", "price", "order", "position", "pnl", "edge", "lcb", "metar", "observation", "current_")
 _PROVENANCE_ONLY_KEYS = frozenset({"boundary", "raw_object_refs", "raw_sha256s", "snapshot_sha256s", "decoder_field_trace"})
@@ -106,7 +106,20 @@ def _valid_revision(row: Mapping[str, Any], *, as_of: datetime) -> tuple[dict[st
         return None, "source_id_not_in_unique_weak_universe"
     if _text(value.get("source_class")) != "forecast_weak_source":
         return None, "source_class_not_forecast_weak_source"
-    if value.get("strict_asof_tier_a") is not True or value.get("response_headers_observed") is not True:
+    tier_a = value.get("strict_asof_tier_a") is True and value.get("response_headers_observed") is True
+    archive_replay = value.get("strict_asof_archive_replay") is True
+    if archive_replay:
+        captured_at = _time(value.get("capture_created_at"))
+        official_at = _time(value.get("official_updated_at"))
+        if (
+            _text(value.get("archive_replay_kind")) != "model_member_cache_observed_before_cutoff"
+            or captured_at is None
+            or official_at is None
+            or captured_at > as_of
+            or official_at > as_of
+        ):
+            return None, "strict_asof_archive_replay_provenance_invalid"
+    elif not tier_a:
         return None, "strict_asof_tier_a_transport_evidence_missing"
     if not _text(value.get("raw_sha256")) or not _text(value.get("source_revision_id")):
         return None, "forecast_revision_raw_or_identity_missing"
@@ -119,10 +132,53 @@ def _valid_revision(row: Mapping[str, Any], *, as_of: datetime) -> tuple[dict[st
     return {
         "source_id": source_id,
         "source_revision_id": _text(value.get("source_revision_id")),
+        "source_class": "forecast_weak_source",
         "forecast_peak_c": peak,
         "available_at": available_at.isoformat().replace("+00:00", "Z"),
         "raw_sha256": _text(value.get("raw_sha256")),
+        "asof_evidence_tier": "tier_a_transport" if tier_a else "observed_archive_replay",
     }, ""
+
+
+def _training_label(event: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    physical = _mapping(event.get("physical_x_final"))
+    exact = _finite(physical.get("temperature_c"))
+    if (
+        physical.get("label_kind") == "physical_x_final"
+        and physical.get("final") is True
+        and _text(physical.get("raw_sha256"))
+        and exact is not None
+    ):
+        return {
+            "label_kind": "physical_x_exact",
+            "target_lower_c": exact,
+            "target_upper_c": exact,
+            "physical_x_final_c": exact,
+            "label_raw_sha256": _text(physical.get("raw_sha256")),
+        }, ""
+    settlement = _mapping(event.get("settlement_bucket_final"))
+    lower = _finite(settlement.get("lower_c"))
+    upper = _finite(settlement.get("upper_c"))
+    bucket = _finite(settlement.get("bucket_c"))
+    if (
+        settlement.get("label_kind") == "settlement_bucket_interval"
+        and settlement.get("final") is True
+        and _text(settlement.get("raw_sha256"))
+        and lower is not None
+        and upper is not None
+        and bucket is not None
+        and lower < upper
+        and lower <= bucket <= upper
+    ):
+        return {
+            "label_kind": "settlement_bucket_interval",
+            "target_lower_c": lower,
+            "target_upper_c": upper,
+            "settlement_bucket_c": bucket,
+            "label_raw_sha256": _text(settlement.get("raw_sha256")),
+            "rounding_rule": _text(settlement.get("rounding_rule")) or "whole_degrees",
+        }, ""
+    return None, "closed_exact_x_or_settlement_interval_label_missing_or_invalid"
 
 
 def build_joint_weak_training_dataset(
@@ -141,22 +197,15 @@ def build_joint_weak_training_dataset(
         training_identity = _text(event.get("training_identity")) or _text(event.get("target_identity")) or f"legacy_event:{event_id}"
         context = _mapping(event.get("forecast_context"))
         cutoff = _time(event.get("decision_as_of"))
-        label = _mapping(event.get("physical_x_final"))
-        target_peak = _finite(label.get("temperature_c"))
-        label_ok = (
-            label.get("label_kind") == "physical_x_final"
-            and label.get("final") is True
-            and _text(label.get("raw_sha256"))
-            and target_peak is not None
-        )
+        label, label_reason = _training_label(event)
         if not event_id or not event_date or cutoff is None:
             excluded["event_identity_or_cutoff_missing"] += 1
             continue
         if any(not _text(context.get(field)) for field in _CONTEXT_FIELDS):
             excluded["forecast_context_missing"] += 1
             continue
-        if not label_ok:
-            excluded["closed_physical_x_label_missing_or_invalid"] += 1
+        if label is None:
+            excluded[label_reason] += 1
             continue
         selected: dict[str, tuple[datetime, dict[str, Any]]] = {}
         invalid_reasons: list[str] = []
@@ -166,6 +215,7 @@ def build_joint_weak_training_dataset(
             if revision is None:
                 invalid_reasons.append(reason)
                 continue
+            revision["event_date"] = event_date
             visible_at = _time(revision["available_at"])
             assert visible_at is not None
             old = selected.get(revision["source_id"])
@@ -182,7 +232,7 @@ def build_joint_weak_training_dataset(
             excluded["source_catalog_provider_family_missing"] += 1
             continue
         lineage.update(row["raw_sha256"] for row in rows)
-        lineage.add(_text(label.get("raw_sha256")))
+        lineage.add(_text(label.get("label_raw_sha256")))
         accepted.append(
             {
                 "event_id": event_id,
@@ -192,8 +242,7 @@ def build_joint_weak_training_dataset(
                 "decision_as_of": cutoff.isoformat().replace("+00:00", "Z"),
                 "context_key": _context_key(context),
                 "forecast_context": {field: _text(context.get(field)) for field in _CONTEXT_FIELDS},
-                "physical_x_final_c": target_peak,
-                "physical_x_label_raw_sha256": _text(label.get("raw_sha256")),
+                **label,
                 "available_source_ids": available,
                 "missing_source_ids": missing,
                 "source_set_key": source_set_key(available),
@@ -213,7 +262,7 @@ def build_joint_weak_training_dataset(
         "excluded_counts": dict(sorted(excluded.items())),
     }
     manifest["dataset_sha256"] = _sha256({"samples": accepted, "manifest": manifest})
-    return {"schema": DATASET_SCHEMA_VERSION, "ok": bool(accepted), "state": "available" if accepted else "blocked", "samples": accepted, "manifest": manifest, "source_catalog": catalog, "boundary": {"strict_asof_training_only": True, "uses_closed_physical_x_not_market": True, "writes_posterior": False, "places_orders": False}}
+    return {"schema": DATASET_SCHEMA_VERSION, "ok": bool(accepted), "state": "available" if accepted else "blocked", "samples": accepted, "manifest": manifest, "source_catalog": catalog, "boundary": {"strict_asof_training_only": True, "supports_exact_physical_x": True, "supports_interval_censored_settlement_bucket": True, "settlement_bucket_never_coerced_to_exact_physical_x": True, "writes_posterior": False, "places_orders": False}}
 
 
 def _correlation(left: Sequence[float], right: Sequence[float]) -> float:
@@ -223,6 +272,35 @@ def _correlation(left: Sequence[float], right: Sequence[float]) -> float:
     numerator = sum((a - left_mean) * (b - right_mean) for a, b in zip(left, right))
     denominator = math.sqrt(sum((a - left_mean) ** 2 for a in left) * sum((b - right_mean) ** 2 for b in right))
     return max(-0.99, min(0.99, numerator / denominator)) if denominator > 0.0 else 0.0
+
+
+def _target_bounds(sample: Mapping[str, Any]) -> tuple[float, float]:
+    lower = _finite(sample.get("target_lower_c"))
+    upper = _finite(sample.get("target_upper_c"))
+    if lower is None or upper is None or lower > upper:
+        exact = _finite(sample.get("physical_x_final_c"))
+        if exact is None:
+            raise ValueError("training_target_interval_missing")
+        return exact, exact
+    return lower, upper
+
+
+def _corrected_interval_residual(
+    *, forecast_peak_c: float, target_lower_c: float, target_upper_c: float, bias_c: float
+) -> float:
+    """Minimum signed error allowed by the label interval after correction.
+
+    Zero means the corrected forecast lies inside the settled bucket.  This is
+    an interval loss residual; it never substitutes the bucket centre for X.
+    """
+
+    lower = float(forecast_peak_c) - float(target_upper_c) - float(bias_c)
+    upper = float(forecast_peak_c) - float(target_lower_c) - float(bias_c)
+    if lower > 0.0:
+        return lower
+    if upper < 0.0:
+        return upper
+    return 0.0
 
 
 def train_joint_weak_source_set_artifact(
@@ -254,7 +332,7 @@ def train_joint_weak_source_set_artifact(
         residuals: dict[str, list[float]] = {source: [] for source in available}
         paired: dict[tuple[str, str], tuple[list[float], list[float]]] = {}
         for row in rows:
-            target = float(row["physical_x_final_c"])
+            target_lower, target_upper = _target_bounds(row)
             context = _mapping(row.get("forecast_context"))
             # Fit the exact source-set surface on the same corrected error
             # live inference produces. Raw residuals would overstate sigma
@@ -262,7 +340,6 @@ def train_joint_weak_source_set_artifact(
             values: dict[str, float] = {}
             for revision in row["source_revisions"]:
                 source = _text(revision.get("source_id"))
-                raw_residual = float(revision["forecast_peak_c"]) - target
                 bias_state = select_joint_weak_bias_state(
                     calibration=bias_correction,
                     source_id=source,
@@ -271,7 +348,12 @@ def train_joint_weak_source_set_artifact(
                     lead_bucket=_text(context.get("lead_bucket")),
                     decision_as_of=_text(row.get("decision_as_of")),
                 )
-                values[source] = raw_residual - float(bias_state["bias_c"])
+                values[source] = _corrected_interval_residual(
+                    forecast_peak_c=float(revision["forecast_peak_c"]),
+                    target_lower_c=target_lower,
+                    target_upper_c=target_upper,
+                    bias_c=float(bias_state["bias_c"]),
+                )
             for source in available:
                 residuals[source].append(values[source])
             for index, left in enumerate(available):
@@ -284,8 +366,23 @@ def train_joint_weak_source_set_artifact(
             continue
         calibration = {}
         errors = {}
+        exact_surface_labels = all(_target_bounds(row)[0] == _target_bounds(row)[1] for row in rows)
         for source, values in residuals.items():
-            sigma = robust_scale(values)
+            state_sigmas = []
+            for row in rows:
+                context = _mapping(row.get("forecast_context"))
+                state = select_joint_weak_bias_state(
+                    calibration=bias_correction,
+                    source_id=source,
+                    season=_text(context.get("season")),
+                    weather_regime=_text(context.get("weather_regime")),
+                    lead_bucket=_text(context.get("lead_bucket")),
+                    decision_as_of=_text(row.get("decision_as_of")),
+                )
+                state_sigma = _finite(state.get("bias_error_sigma_c"))
+                if state_sigma is not None:
+                    state_sigmas.append(state_sigma)
+            sigma = max(robust_scale(values), fmean(state_sigmas) if state_sigmas else 0.0)
             # bias_c is resolved at runtime from the frozen top-level
             # hierarchy using the live forecast-only context.  Keeping this
             # surface field neutral prevents a context/surface mean from
@@ -298,13 +395,17 @@ def train_joint_weak_source_set_artifact(
                     "family": "robust_gaussian_after_hierarchical_bias",
                     "location_c": 0.0,
                     "scale_c": sigma,
-                    "learned_from_closed_physical_x": True,
+                    "learned_from_closed_exact_x_or_settlement_interval": True,
                     "state": "fitted_condition_residual_distribution",
                     "fit_context_key": context_key,
                 },
                 "sample_count": len({row["event_date"] for row in rows}),
                 "bias_mode": "artifact_hierarchical_state",
-                "error_residual_definition": "forecast_peak_c_minus_selected_hierarchical_bias_c_minus_physical_x_final_c",
+                "error_residual_definition": (
+                    "forecast_peak_c_minus_selected_hierarchical_bias_c_minus_physical_x_final_c"
+                    if exact_surface_labels
+                    else "minimum_signed_corrected_error_to_closed_exact_x_or_settlement_interval"
+                ),
             }
             errors[source] = sigma
         correlation = {source: {other: 1.0 if source == other else 0.0 for other in available} for source in available}
@@ -321,7 +422,7 @@ def train_joint_weak_source_set_artifact(
         empirical_pool_errors: list[float] = []
         for row in rows:
             context = _mapping(row.get("forecast_context"))
-            target = float(row["physical_x_final_c"])
+            target_lower, target_upper = _target_bounds(row)
             pooled_error = 0.0
             for revision in row["source_revisions"]:
                 source = _text(revision.get("source_id"))
@@ -333,13 +434,22 @@ def train_joint_weak_source_set_artifact(
                     lead_bucket=_text(context.get("lead_bucket")),
                     decision_as_of=_text(row.get("decision_as_of")),
                 )
-                corrected_error = float(revision["forecast_peak_c"]) - float(bias_state["bias_c"]) - target
+                corrected_error = _corrected_interval_residual(
+                    forecast_peak_c=float(revision["forecast_peak_c"]),
+                    target_lower_c=target_lower,
+                    target_upper_c=target_upper,
+                    bias_c=float(bias_state["bias_c"]),
+                )
                 pooled_error += weights[source] * corrected_error
             empirical_pool_errors.append(pooled_error)
         empirical_variance = fmean([(item - fmean(empirical_pool_errors)) ** 2 for item in empirical_pool_errors]) if len(empirical_pool_errors) > 1 else expected_variance
         information_scale = max(0.05, min(1.0, expected_variance / max(expected_variance, empirical_variance)))
         confidence = min(1.0, len(days) / max(float(minimum_event_days_per_surface) * 3.0, 1.0))
-        surfaces_by_context[context_key][source_key] = {"schema": SURFACE_SCHEMA_VERSION, "available_source_ids": available, "missing_source_ids": list(rows[0]["missing_source_ids"]), "source_base_weights": weights, "source_error_calibration": calibration, "source_correlation": correlation, "joint_information_scale": information_scale, "information_confidence": confidence, "mode_formation_policy": "emergent_from_bias_corrected_distance_residual_overlap_and_source_correlation", "force_multimodality": False, "force_unimodality": False, "training_event_day_count": len(days), "training_sample_count": len(rows)}
+        family_caps = {
+            _text(_mapping(catalog.get(source)).get("provider_family")): 1.0
+            for source in available
+        }
+        surfaces_by_context[context_key][source_key] = {"schema": SURFACE_SCHEMA_VERSION, "available_source_ids": available, "missing_source_ids": list(rows[0]["missing_source_ids"]), "source_base_weights": weights, "source_error_calibration": calibration, "source_correlation": correlation, "family_information_caps": family_caps, "joint_information_scale": information_scale, "information_confidence": confidence, "mode_formation_policy": "emergent_from_bias_corrected_distance_residual_overlap_and_source_correlation", "force_multimodality": False, "force_unimodality": False, "training_event_day_count": len(days), "training_sample_count": len(rows)}
     # Empty is a mathematical identity surface, not an inferred weather model.
     for context_key in sorted({row[0] for row in by_surface}):
         surfaces_by_context[context_key]["empty"] = {"schema": SURFACE_SCHEMA_VERSION, "available_source_ids": [], "missing_source_ids": list(SOURCE_UNIVERSE), "source_base_weights": {}, "source_error_calibration": {}, "source_correlation": {}, "joint_information_scale": 0.0, "information_confidence": 0.0, "training_event_day_count": 0, "training_sample_count": 0}

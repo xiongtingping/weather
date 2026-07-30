@@ -1,0 +1,76 @@
+{
+  "calls_order_gateway": false,
+  "counts": {
+    "calls_order_gateway": false,
+    "counts": {
+      "calibration_activations": 0,
+      "calibration_artifacts": 0,
+      "calibration_promotions": 0,
+      "cash_phase_authority_manifests": 0,
+      "cash_phase_policies": 0,
+      "ensemble_artifacts": 0,
+      "ensemble_selection_evidence": 0,
+      "global_priors": 1,
+      "policy_activations": 6,
+      "policy_artifacts": 0,
+      "policy_promotions": 0
+    },
+    "places_orders": false,
+    "schema": "bayes_basket_target_artifact_ingress_v1",
+    "state": "COMMITTED"
+  },
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "resolved_scope_count": 6,
+  "resolved_scopes": [
+    {
+      "activation_id": "target-v2-rkpk-no-live-p0-d1-v1",
+      "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+      "maturity_bin": "d1",
+      "policy_sha256": "80d14e6b636e8fda2cab08c3a228a21a63a579ffd624c2a69284281877d5cd01",
+      "stage": "P0"
+    },
+    {
+      "activation_id": "target-v2-rkpk-no-live-p0-d2-v1",
+      "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+      "maturity_bin": "d2",
+      "policy_sha256": "97a7199a3f603ce6f6de56aa650da2385baa1ebc04263117b96b8b2c475ed740",
+      "stage": "P0"
+    },
+    {
+      "activation_id": "target-v2-rkpk-no-live-p0-d2_fallback-v1",
+      "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+      "maturity_bin": "d2_fallback",
+      "policy_sha256": "17a8f747e073673d384aa7dc1171f99b9133f63e81c89dab5ed601459b982b63",
+      "stage": "P0"
+    },
+    {
+      "activation_id": "target-v2-rkpk-no-live-p1-d1-v1",
+      "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+      "maturity_bin": "d1",
+      "policy_sha256": "1e311de5cf7c88b9feff0161bac7ddb2844f34847d81acb96cc2441e6b8c3cfe",
+      "stage": "P1"
+    },
+    {
+      "activation_id": "target-v2-rkpk-no-live-p1-d2-v1",
+      "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+      "maturity_bin": "d2",
+      "policy_sha256": "c3bf56a73b382f0a3c2e034b1bcfb860ef4c4b7f6bc970ae1591a832cdcde89e",
+      "stage": "P1"
+    },
+    {
+      "activation_id": "target-v2-rkpk-no-live-p1-d2_fallback-v1",
+      "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+      "maturity_bin": "d2_fallback",
+      "policy_sha256": "1973762acbf32c88206a6b9918f8eba1b2b464f28f49e115ac92efc355275bf5",
+      "stage": "P1"
+    }
+  ],
+  "rows_written": 7,
+  "schema": "bayes_basket_target_target_v2_station_policy_no_live_receipt_v1",
+  "state": "COMMITTED",
+  "strategy_version": "target-v2"
+}

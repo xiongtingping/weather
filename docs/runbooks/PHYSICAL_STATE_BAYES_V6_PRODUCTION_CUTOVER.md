@@ -15,7 +15,7 @@ depends_on:
 
 > **后续运维覆盖（2026-07-16）**：本文所记外置盘复制、挂载和 SHA 校验只描述首次切换的历史过程，不再具备后续生产运维授权。所有 successor v6 runtime 切换以 `PHYSICAL_STATE_BAYES_V6_RUNTIME_HOTFIX_CUTOVER.md` 为准：外置盘只用于可丢弃、可重建的无用数据异步冷归档，绝不能进入数据库备份、回滚、readiness、维护窗口或服务启停边界。
 
-> v6 按唯一生产继任推进，不建立 shadow live。维护前 readiness 必须且只能剩下 `schema`、live route、active activation 三项窗口内阻断；脚本在停写、外置备份和可回滚边界内一次性解除三项阻断。
+> 以下首次切换序列仅是已经完成的历史记录，不再授权任何操作。当前及后续维护只允许使用本机 APFS 瞬时 CoW 回滚边界；外置盘不属于生产系统。
 
 事件日边界固定使用 `America/New_York`（ET），与系统结算口径一致；不得用中国午夜切换到尚未开始的下一 station day。
 

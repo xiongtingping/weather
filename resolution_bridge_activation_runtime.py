@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from local_runtime_pointer import resolve_repo_relative_regular_file
 from resolution_bridge_artifact_runtime import validate_resolution_bridge_artifact
 
 
@@ -54,7 +55,9 @@ def validate_resolution_bridge_activation(value: Mapping[str, Any]) -> dict[str,
         if not _text(activation.get("approval_id")) or len(_text(activation.get("approval_receipt_sha256"))) != 64:
             issues.append("enabled_resolution_bridge_approval_lineage_invalid")
     supplied = _text(activation.get("activation_sha256"))
-    if supplied and supplied != activation_sha256(activation):
+    if state == "production_enabled" and not supplied:
+        issues.append("enabled_resolution_bridge_activation_sha256_missing")
+    elif supplied and supplied != activation_sha256(activation):
         issues.append("resolution_bridge_activation_sha256_invalid")
     if issues:
         raise ResolutionBridgeActivationError(
@@ -84,8 +87,9 @@ def load_active_resolution_bridge_artifact(
     if _text(activation.get("state")) == "disabled":
         return activation, None
     base = Path(root).expanduser().resolve() if root is not None else Path(__file__).resolve().parent
-    artifact_path = Path(_text(activation.get("artifact_path")))
-    artifact_path = artifact_path if artifact_path.is_absolute() else base / artifact_path
+    artifact_path = resolve_repo_relative_regular_file(
+        base, _text(activation.get("artifact_path"))
+    )
     try:
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:

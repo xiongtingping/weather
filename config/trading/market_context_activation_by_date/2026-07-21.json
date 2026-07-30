@@ -1,0 +1,11 @@
+{
+  "activation_sha256": "4819c8cf93c726631092b0a25d5660136f4e3b123deec93514854ca52b66039d",
+  "authorizes_clob": false,
+  "blocks_physical_x": false,
+  "bridge_artifact_sha256": "9ddddbcf3e8ca847d88e62367ec62a6fe7d052ea5cc907d0a0064f02fb402efd",
+  "context_path": "config/artifacts/market_context/2026-07-21.75c277d9ed104562f2cc5966e84dd5c4b958ed77ace47390b24983b342e773c4.json",
+  "market_context_sha256": "75c277d9ed104562f2cc5966e84dd5c4b958ed77ace47390b24983b342e773c4",
+  "places_orders": false,
+  "schema": "production_probability_v6_market_context_activation_v1",
+  "state": "production_enabled"
+}

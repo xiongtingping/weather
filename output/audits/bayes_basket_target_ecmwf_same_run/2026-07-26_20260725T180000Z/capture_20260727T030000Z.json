@@ -1,0 +1,27 @@
+{
+  "forecast_hour": 33,
+  "index_last_modified": "Sun, 26 Jul 2026 00:27:08 GMT",
+  "index_sha256": "113504b6045c5916218f9db07c8f61f3711e212e2806fe89bd35a19cd0741a98",
+  "reason_codes": [],
+  "request_byte_range": {
+    "end": 18771527,
+    "start": 18112414
+  },
+  "selected_index_row": {
+    "_length": 659114,
+    "_offset": 18112414,
+    "class": "od",
+    "date": "20260725",
+    "domain": "g",
+    "expver": "0001",
+    "levtype": "sfc",
+    "param": "2t",
+    "step": "33",
+    "stream": "oper",
+    "time": "1800",
+    "type": "fc"
+  },
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/6e8d1abe3ce9a0a1bac1790906d0b6778c10af168022e29cd51b4842c5ca8225.json",
+  "valid_time_utc": "2026-07-27T03:00:00Z"
+}

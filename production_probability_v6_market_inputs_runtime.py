@@ -38,7 +38,13 @@ def prewarm_v6_market_inputs(
     realization_policy_path: Path | str = DEFAULT_REALIZATION_POLICY,
     resolution_authority_path: Path | str = DEFAULT_RESOLUTION_AUTHORITY,
     root: Path | str | None = None,
+    strategy_projection_role: str = "legacy_realization",
 ) -> dict[str, Any]:
+    if strategy_projection_role not in {
+        "legacy_realization",
+        "basket_probability_only",
+    }:
+        raise ValueError("v6_market_inputs_strategy_projection_role_invalid")
     context = resolve_active_v6_market_context(
         activation_path=market_context_activation_path,
         root=root,
@@ -67,7 +73,11 @@ def prewarm_v6_market_inputs(
         )
         if bridge_artifact is None:
             raise ValueError("v6_market_inputs_bridge_disabled")
-        policy = load_v6_realization_policy(realization_policy_path)
+        policy = (
+            load_v6_realization_policy(realization_policy_path)
+            if strategy_projection_role == "legacy_realization"
+            else None
+        )
         physical = build_physical_only_resolution_contract(
             resolution_authority_path,
             event_date=event_date,
@@ -107,6 +117,7 @@ def prewarm_v6_market_inputs(
         "bridge_artifact": bridge_artifact,
         "physical_resolution_contract": physical,
         "realization_policy": policy,
+        "strategy_projection_role": strategy_projection_role,
         "blocks_physical_x": False,
         "places_orders": False,
     }

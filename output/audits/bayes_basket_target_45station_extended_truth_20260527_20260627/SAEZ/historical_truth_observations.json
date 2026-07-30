@@ -1,0 +1,16 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "canonical_ingress": true,
+  "evidence_sha256": "0d7aa53ab54a8b5bec945861a8dd6f787ae33dc796c60c3763696b24616da792",
+  "generated_at_utc": "2026-07-29T03:54:50Z",
+  "historical_only": true,
+  "observation_count": 0,
+  "observations": [],
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "target_timezone": "America/Argentina/Buenos_Aires"
+}

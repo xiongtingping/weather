@@ -1,0 +1,39 @@
+{
+  "schema": "amsc_frozen_reporting_operator_v1",
+  "artifact_sha256": "2be3a92a804d03f840a394ea9b7deba39987480841a7428826d7ff260d81a570",
+  "state": "candidate",
+  "production_runtime_eligible": false,
+  "shadow_only": true,
+  "calibration_state": "structural_operator_only",
+  "temperature_encoding": "positive_celsius_half_up_integer",
+  "path_merge_key": "scenario_regime_parameter_quantile",
+  "timezone": "Asia/Shanghai",
+  "reporting_schedule_id": "zuuu_primary_metar_local_44_slot_2026_07_v1",
+  "path_quantiles": [
+    {"z": -1.2815515655, "weight": 0.1},
+    {"z": -0.5244005127, "weight": 0.2},
+    {"z": 0.0, "weight": 0.4},
+    {"z": 0.5244005127, "weight": 0.2},
+    {"z": 1.2815515655, "weight": 0.1}
+  ],
+  "max_path_branches": 4096,
+  "minimum_path_weight": 1e-12,
+  "continuous_support_completion": {
+    "schema": "bounded_continuous_quadrature_support_completion_v1",
+    "kernel": "bounded_student_t_on_integer_reported_x",
+    "total_mass": 1e-6,
+    "degrees_of_freedom": 5.0,
+    "minimum_scale_c": 1.0,
+    "apply_only_with_future_contract_slots": true
+  },
+  "slot_policy": {
+    "default": {
+      "is_contract_slot": true,
+      "encoding_step_c": 1.0,
+      "report_probability": 1.0,
+      "quality_acceptance_probability": 1.0,
+      "missing_reason": ""
+    }
+  },
+  "speci_can_fill_contract_slot": false
+}

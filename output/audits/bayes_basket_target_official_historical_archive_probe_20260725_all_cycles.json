@@ -1,0 +1,4295 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "offline_research_only": true,
+    "places_orders": false,
+    "promotion_allowed": false,
+    "raw_payload_bytes_retained": 0,
+    "raw_payload_downloaded": false,
+    "reads_market_state": false,
+    "reads_probability_state": false,
+    "writes_target_database": false
+  },
+  "date_probes": [
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260712/00z/ifs/0p25/oper/20260712000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 550161365,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 03:39:19 GMT",
+        "provider_publication_at_utc": "2026-07-12T03:39:19Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 03:39:56 GMT",
+        "provider_publication_at_utc": "2026-07-12T03:39:56Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-12"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260712/06z/ifs/0p25/oper/20260712060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549243758,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 09:51:36 GMT",
+        "provider_publication_at_utc": "2026-07-12T09:51:36Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 09:52:06 GMT",
+        "provider_publication_at_utc": "2026-07-12T09:52:06Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-12"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260712/12z/ifs/0p25/oper/20260712120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549514792,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 15:38:49 GMT",
+        "provider_publication_at_utc": "2026-07-12T15:38:49Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 15:39:17 GMT",
+        "provider_publication_at_utc": "2026-07-12T15:39:17Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-12"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260712/18z/ifs/0p25/oper/20260712180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 547043409,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 21:39:54 GMT",
+        "provider_publication_at_utc": "2026-07-12T21:39:54Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 12 Jul 2026 21:40:26 GMT",
+        "provider_publication_at_utc": "2026-07-12T21:40:26Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260712/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-12"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260713/00z/ifs/0p25/oper/20260713000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 546706863,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 03:38:53 GMT",
+        "provider_publication_at_utc": "2026-07-13T03:38:53Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 03:39:21 GMT",
+        "provider_publication_at_utc": "2026-07-13T03:39:21Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-13"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260713/06z/ifs/0p25/oper/20260713060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 544947801,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 09:37:09 GMT",
+        "provider_publication_at_utc": "2026-07-13T09:37:09Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 09:37:44 GMT",
+        "provider_publication_at_utc": "2026-07-13T09:37:44Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-13"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260713/12z/ifs/0p25/oper/20260713120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 544406438,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 15:37:47 GMT",
+        "provider_publication_at_utc": "2026-07-13T15:37:47Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 15:38:28 GMT",
+        "provider_publication_at_utc": "2026-07-13T15:38:28Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-13"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260713/18z/ifs/0p25/oper/20260713180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 540804816,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 21:40:09 GMT",
+        "provider_publication_at_utc": "2026-07-13T21:40:09Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 13 Jul 2026 21:40:34 GMT",
+        "provider_publication_at_utc": "2026-07-13T21:40:34Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260713/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-13"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260714/00z/ifs/0p25/oper/20260714000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 539382893,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 03:39:00 GMT",
+        "provider_publication_at_utc": "2026-07-14T03:39:00Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41259,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 03:39:21 GMT",
+        "provider_publication_at_utc": "2026-07-14T03:39:21Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-14"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260714/06z/ifs/0p25/oper/20260714060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 544099071,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 09:36:54 GMT",
+        "provider_publication_at_utc": "2026-07-14T09:36:54Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41259,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 09:37:32 GMT",
+        "provider_publication_at_utc": "2026-07-14T09:37:32Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-14"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260714/12z/ifs/0p25/oper/20260714120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 542767552,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 15:52:11 GMT",
+        "provider_publication_at_utc": "2026-07-14T15:52:11Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 15:52:39 GMT",
+        "provider_publication_at_utc": "2026-07-14T15:52:39Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-14"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260714/18z/ifs/0p25/oper/20260714180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 541006266,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 21:40:06 GMT",
+        "provider_publication_at_utc": "2026-07-14T21:40:06Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 14 Jul 2026 21:40:32 GMT",
+        "provider_publication_at_utc": "2026-07-14T21:40:32Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260714/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-14"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260715/00z/ifs/0p25/oper/20260715000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 544626362,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 03:38:33 GMT",
+        "provider_publication_at_utc": "2026-07-15T03:38:33Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 03:39:22 GMT",
+        "provider_publication_at_utc": "2026-07-15T03:39:22Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-15"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260715/06z/ifs/0p25/oper/20260715060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 541887641,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 09:36:13 GMT",
+        "provider_publication_at_utc": "2026-07-15T09:36:13Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 09:36:36 GMT",
+        "provider_publication_at_utc": "2026-07-15T09:36:36Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-15"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260715/12z/ifs/0p25/oper/20260715120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 541178134,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 15:36:42 GMT",
+        "provider_publication_at_utc": "2026-07-15T15:36:42Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41259,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 15:37:12 GMT",
+        "provider_publication_at_utc": "2026-07-15T15:37:12Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-15"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260715/18z/ifs/0p25/oper/20260715180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 538447110,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 21:52:56 GMT",
+        "provider_publication_at_utc": "2026-07-15T21:52:56Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41258,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 15 Jul 2026 21:53:21 GMT",
+        "provider_publication_at_utc": "2026-07-15T21:53:21Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260715/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-15"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260716/00z/ifs/0p25/oper/20260716000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 543917075,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 03:37:06 GMT",
+        "provider_publication_at_utc": "2026-07-16T03:37:06Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 03:37:38 GMT",
+        "provider_publication_at_utc": "2026-07-16T03:37:38Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-16"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260716/06z/ifs/0p25/oper/20260716060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 543346176,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 09:35:48 GMT",
+        "provider_publication_at_utc": "2026-07-16T09:35:48Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 09:36:14 GMT",
+        "provider_publication_at_utc": "2026-07-16T09:36:14Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-16"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260716/12z/ifs/0p25/oper/20260716120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 540235599,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 15:36:25 GMT",
+        "provider_publication_at_utc": "2026-07-16T15:36:25Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41259,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 15:36:54 GMT",
+        "provider_publication_at_utc": "2026-07-16T15:36:54Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-16"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260716/18z/ifs/0p25/oper/20260716180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 537266228,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 21:38:16 GMT",
+        "provider_publication_at_utc": "2026-07-16T21:38:16Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 16 Jul 2026 21:38:56 GMT",
+        "provider_publication_at_utc": "2026-07-16T21:38:56Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260716/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-16"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260717/00z/ifs/0p25/oper/20260717000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 541064805,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 03:39:11 GMT",
+        "provider_publication_at_utc": "2026-07-17T03:39:11Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 03:39:36 GMT",
+        "provider_publication_at_utc": "2026-07-17T03:39:36Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-17"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260717/06z/ifs/0p25/oper/20260717060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 543631986,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 09:37:06 GMT",
+        "provider_publication_at_utc": "2026-07-17T09:37:06Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 09:37:35 GMT",
+        "provider_publication_at_utc": "2026-07-17T09:37:35Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-17"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260717/12z/ifs/0p25/oper/20260717120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 539983277,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 15:37:08 GMT",
+        "provider_publication_at_utc": "2026-07-17T15:37:08Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 15:37:30 GMT",
+        "provider_publication_at_utc": "2026-07-17T15:37:30Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-17"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260717/18z/ifs/0p25/oper/20260717180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 542141681,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 21:40:44 GMT",
+        "provider_publication_at_utc": "2026-07-17T21:40:44Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Fri, 17 Jul 2026 21:41:10 GMT",
+        "provider_publication_at_utc": "2026-07-17T21:41:10Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260717/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-17"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260718/00z/ifs/0p25/oper/20260718000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 547209708,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 03:53:43 GMT",
+        "provider_publication_at_utc": "2026-07-18T03:53:43Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 03:54:34 GMT",
+        "provider_publication_at_utc": "2026-07-18T03:54:34Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-18"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260718/06z/ifs/0p25/oper/20260718060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 550682830,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 09:37:07 GMT",
+        "provider_publication_at_utc": "2026-07-18T09:37:07Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 09:37:31 GMT",
+        "provider_publication_at_utc": "2026-07-18T09:37:31Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-18"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260718/12z/ifs/0p25/oper/20260718120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 551491318,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 15:37:14 GMT",
+        "provider_publication_at_utc": "2026-07-18T15:37:14Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41263,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 15:37:40 GMT",
+        "provider_publication_at_utc": "2026-07-18T15:37:40Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-18"
+    },
+    {
+      "ecmwf": {
+        "method": "HEAD",
+        "reason": "URLError",
+        "status": "ERROR",
+        "url": "https://data.ecmwf.int/forecasts/20260718/18z/ifs/0p25/oper/20260718180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 548611809,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 21:39:51 GMT",
+        "provider_publication_at_utc": "2026-07-18T21:39:51Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41259,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sat, 18 Jul 2026 21:40:20 GMT",
+        "provider_publication_at_utc": "2026-07-18T21:40:20Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260718/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-18"
+    },
+    {
+      "ecmwf": {
+        "method": "HEAD",
+        "reason": "URLError",
+        "status": "ERROR",
+        "url": "https://data.ecmwf.int/forecasts/20260719/00z/ifs/0p25/oper/20260719000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 552210210,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 03:38:50 GMT",
+        "provider_publication_at_utc": "2026-07-19T03:38:50Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 03:39:16 GMT",
+        "provider_publication_at_utc": "2026-07-19T03:39:16Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-19"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260719/06z/ifs/0p25/oper/20260719060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 552371097,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 09:36:23 GMT",
+        "provider_publication_at_utc": "2026-07-19T09:36:23Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 09:36:56 GMT",
+        "provider_publication_at_utc": "2026-07-19T09:36:56Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-19"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260719/12z/ifs/0p25/oper/20260719120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549626129,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 15:37:54 GMT",
+        "provider_publication_at_utc": "2026-07-19T15:37:54Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 15:38:44 GMT",
+        "provider_publication_at_utc": "2026-07-19T15:38:44Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-19"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260719/18z/ifs/0p25/oper/20260719180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549233695,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 21:53:40 GMT",
+        "provider_publication_at_utc": "2026-07-19T21:53:40Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Sun, 19 Jul 2026 21:54:09 GMT",
+        "provider_publication_at_utc": "2026-07-19T21:54:09Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260719/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-19"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260720/00z/ifs/0p25/oper/20260720000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 552728368,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 03:39:30 GMT",
+        "provider_publication_at_utc": "2026-07-20T03:39:30Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 03:39:56 GMT",
+        "provider_publication_at_utc": "2026-07-20T03:39:56Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-20"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260720/06z/ifs/0p25/oper/20260720060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549930640,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 09:37:27 GMT",
+        "provider_publication_at_utc": "2026-07-20T09:37:27Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 09:38:02 GMT",
+        "provider_publication_at_utc": "2026-07-20T09:38:02Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-20"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260720/12z/ifs/0p25/oper/20260720120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549582107,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 15:38:27 GMT",
+        "provider_publication_at_utc": "2026-07-20T15:38:27Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 15:39:11 GMT",
+        "provider_publication_at_utc": "2026-07-20T15:39:11Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-20"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260720/18z/ifs/0p25/oper/20260720180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 546493447,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 21:38:24 GMT",
+        "provider_publication_at_utc": "2026-07-20T21:38:24Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Mon, 20 Jul 2026 21:38:56 GMT",
+        "provider_publication_at_utc": "2026-07-20T21:38:56Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260720/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-20"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260721/00z/ifs/0p25/oper/20260721000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549201755,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 03:39:01 GMT",
+        "provider_publication_at_utc": "2026-07-21T03:39:01Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 03:39:31 GMT",
+        "provider_publication_at_utc": "2026-07-21T03:39:31Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-21"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260721/06z/ifs/0p25/oper/20260721060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 548665550,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 09:37:24 GMT",
+        "provider_publication_at_utc": "2026-07-21T09:37:24Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 09:37:52 GMT",
+        "provider_publication_at_utc": "2026-07-21T09:37:52Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-21"
+    },
+    {
+      "ecmwf": {
+        "http_status": 404,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260721/12z/ifs/0p25/oper/20260721120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 550467302,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 15:38:05 GMT",
+        "provider_publication_at_utc": "2026-07-21T15:38:05Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 15:39:04 GMT",
+        "provider_publication_at_utc": "2026-07-21T15:39:04Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-21"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260721/18z/ifs/0p25/oper/20260721180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 546688966,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 21:40:12 GMT",
+        "provider_publication_at_utc": "2026-07-21T21:40:12Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Tue, 21 Jul 2026 21:40:38 GMT",
+        "provider_publication_at_utc": "2026-07-21T21:40:38Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260721/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-21"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260722/00z/ifs/0p25/oper/20260722000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 548933130,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 03:40:44 GMT",
+        "provider_publication_at_utc": "2026-07-22T03:40:44Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 03:41:12 GMT",
+        "provider_publication_at_utc": "2026-07-22T03:41:12Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-22"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260722/06z/ifs/0p25/oper/20260722060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 547306594,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 09:52:10 GMT",
+        "provider_publication_at_utc": "2026-07-22T09:52:10Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41258,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 09:52:37 GMT",
+        "provider_publication_at_utc": "2026-07-22T09:52:37Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-22"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260722/12z/ifs/0p25/oper/20260722120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 547402878,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 15:39:05 GMT",
+        "provider_publication_at_utc": "2026-07-22T15:39:05Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41259,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 15:39:41 GMT",
+        "provider_publication_at_utc": "2026-07-22T15:39:41Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-22"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260722/18z/ifs/0p25/oper/20260722180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 543017522,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 21:40:51 GMT",
+        "provider_publication_at_utc": "2026-07-22T21:40:51Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41255,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Wed, 22 Jul 2026 21:41:44 GMT",
+        "provider_publication_at_utc": "2026-07-22T21:41:44Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260722/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-22"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260723/00z/ifs/0p25/oper/20260723000000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 551166511,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 03:40:23 GMT",
+        "provider_publication_at_utc": "2026-07-23T03:40:23Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/00/atmos/gfs.t00z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41261,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 03:40:59 GMT",
+        "provider_publication_at_utc": "2026-07-23T03:40:59Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/00/atmos/gfs.t00z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-23"
+    },
+    {
+      "ecmwf": {
+        "content_length_bytes": 144266451,
+        "content_type": "application/grib",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 12:27:00 GMT",
+        "provider_publication_at_utc": "2026-07-23T12:27:00Z",
+        "status": "AVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260723/06z/ifs/0p25/oper/20260723060000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 551889603,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 09:37:40 GMT",
+        "provider_publication_at_utc": "2026-07-23T09:37:40Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/06/atmos/gfs.t06z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41262,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 09:38:07 GMT",
+        "provider_publication_at_utc": "2026-07-23T09:38:07Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/06/atmos/gfs.t06z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-23"
+    },
+    {
+      "ecmwf": {
+        "content_length_bytes": 144483992,
+        "content_type": "application/grib",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 19:34:00 GMT",
+        "provider_publication_at_utc": "2026-07-23T19:34:00Z",
+        "status": "AVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260723/12z/ifs/0p25/oper/20260723120000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 549870097,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 15:54:15 GMT",
+        "provider_publication_at_utc": "2026-07-23T15:54:15Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/12/atmos/gfs.t12z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41260,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 15:54:41 GMT",
+        "provider_publication_at_utc": "2026-07-23T15:54:41Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/12/atmos/gfs.t12z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-23"
+    },
+    {
+      "ecmwf": {
+        "http_status": 429,
+        "method": "HEAD",
+        "reason": "http_error",
+        "status": "UNAVAILABLE",
+        "url": "https://data.ecmwf.int/forecasts/20260723/18z/ifs/0p25/oper/20260723180000-18h-oper-fc.grib2"
+      },
+      "gfs_grib": {
+        "content_length_bytes": 548492549,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 21:42:12 GMT",
+        "provider_publication_at_utc": "2026-07-23T21:42:12Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/18/atmos/gfs.t18z.pgrb2.0p25.f018"
+      },
+      "gfs_index": {
+        "content_length_bytes": 41258,
+        "content_type": "binary/octet-stream",
+        "method": "HEAD",
+        "provider_last_modified": "Thu, 23 Jul 2026 21:42:45 GMT",
+        "provider_publication_at_utc": "2026-07-23T21:42:45Z",
+        "status": "AVAILABLE",
+        "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260723/18/atmos/gfs.t18z.pgrb2.0p25.f018.idx"
+      },
+      "gfs_range_extraction_possible": true,
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-23"
+    }
+  ],
+  "icon_current_listing": {
+    "content_length_bytes": null,
+    "content_type": "text/html",
+    "listing_entries": [
+      "../",
+      "alb_rad/",
+      "alb_seaice/",
+      "alhfl_s/",
+      "ashfl_s/",
+      "asob_s/",
+      "asob_s_cs/",
+      "asob_t/",
+      "aswdifd_s/",
+      "aswdifu_s/",
+      "aswdir_s/",
+      "athb_s/",
+      "athb_t/",
+      "aumfl_s/",
+      "avmfl_s/",
+      "c_t_lk/",
+      "cape_con/",
+      "cape_ml/",
+      "clat/",
+      "clc/",
+      "clch/",
+      "clcl/",
+      "clcm/",
+      "clct/",
+      "clct_mod/",
+      "cldepth/",
+      "clon/",
+      "depth_lk/",
+      "elat/",
+      "elon/",
+      "evap_pl/",
+      "fi/",
+      "fr_ice/",
+      "fr_lake/",
+      "fr_land/",
+      "freshsnw/",
+      "h_ice/",
+      "h_ml_lk/",
+      "h_snow/",
+      "hbas_con/",
+      "hhl/",
+      "hsnow_max/",
+      "hsurf/",
+      "htop_con/",
+      "htop_dc/",
+      "hzerocl/",
+      "lai/",
+      "ndviratio/",
+      "p/",
+      "plcov/",
+      "pmsl/",
+      "ps/",
+      "qc/",
+      "qi/",
+      "qv/",
+      "qv_s/",
+      "rain_con/",
+      "rain_gsp/",
+      "relhum/",
+      "relhum_2m/",
+      "rho_snow/",
+      "rootdp/",
+      "runoff_g/",
+      "runoff_s/"
+    ],
+    "listing_entry_count": 64,
+    "method": "GET",
+    "provider_last_modified": "",
+    "provider_publication_at_utc": "",
+    "status": "AVAILABLE",
+    "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/"
+  },
+  "icon_current_listings": {
+    "00": {
+      "content_length_bytes": null,
+      "content_type": "text/html",
+      "listing_entries": [
+        "../",
+        "alb_rad/",
+        "alb_seaice/",
+        "alhfl_s/",
+        "ashfl_s/",
+        "asob_s/",
+        "asob_s_cs/",
+        "asob_t/",
+        "aswdifd_s/",
+        "aswdifu_s/",
+        "aswdir_s/",
+        "athb_s/",
+        "athb_t/",
+        "aumfl_s/",
+        "avmfl_s/",
+        "c_t_lk/",
+        "cape_con/",
+        "cape_ml/",
+        "clat/",
+        "clc/",
+        "clch/",
+        "clcl/",
+        "clcm/",
+        "clct/",
+        "clct_mod/",
+        "cldepth/",
+        "clon/",
+        "depth_lk/",
+        "elat/",
+        "elon/",
+        "evap_pl/",
+        "fi/",
+        "fr_ice/",
+        "fr_lake/",
+        "fr_land/",
+        "freshsnw/",
+        "h_ice/",
+        "h_ml_lk/",
+        "h_snow/",
+        "hbas_con/",
+        "hhl/",
+        "hsnow_max/",
+        "hsurf/",
+        "htop_con/",
+        "htop_dc/",
+        "hzerocl/",
+        "lai/",
+        "ndviratio/",
+        "p/",
+        "plcov/",
+        "pmsl/",
+        "ps/",
+        "qc/",
+        "qi/",
+        "qv/",
+        "qv_s/",
+        "rain_con/",
+        "rain_gsp/",
+        "relhum/",
+        "relhum_2m/",
+        "rho_snow/",
+        "rootdp/",
+        "runoff_g/",
+        "runoff_s/"
+      ],
+      "listing_entry_count": 64,
+      "method": "GET",
+      "provider_last_modified": "",
+      "provider_publication_at_utc": "",
+      "status": "AVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/"
+    },
+    "06": {
+      "content_length_bytes": null,
+      "content_type": "text/html",
+      "listing_entries": [
+        "../",
+        "alb_rad/",
+        "alb_seaice/",
+        "alhfl_s/",
+        "ashfl_s/",
+        "asob_s/",
+        "asob_s_cs/",
+        "asob_t/",
+        "aswdifd_s/",
+        "aswdifu_s/",
+        "aswdir_s/",
+        "athb_s/",
+        "athb_t/",
+        "aumfl_s/",
+        "avmfl_s/",
+        "c_t_lk/",
+        "cape_con/",
+        "cape_ml/",
+        "clat/",
+        "clc/",
+        "clch/",
+        "clcl/",
+        "clcm/",
+        "clct/",
+        "clct_mod/",
+        "cldepth/",
+        "clon/",
+        "depth_lk/",
+        "elat/",
+        "elon/",
+        "evap_pl/",
+        "fi/",
+        "fr_ice/",
+        "fr_lake/",
+        "fr_land/",
+        "freshsnw/",
+        "h_ice/",
+        "h_ml_lk/",
+        "h_snow/",
+        "hbas_con/",
+        "hhl/",
+        "hsnow_max/",
+        "hsurf/",
+        "htop_con/",
+        "htop_dc/",
+        "hzerocl/",
+        "lai/",
+        "ndviratio/",
+        "p/",
+        "plcov/",
+        "pmsl/",
+        "ps/",
+        "qc/",
+        "qi/",
+        "qv/",
+        "qv_s/",
+        "rain_con/",
+        "rain_gsp/",
+        "relhum/",
+        "relhum_2m/",
+        "rho_snow/",
+        "rootdp/",
+        "runoff_g/",
+        "runoff_s/"
+      ],
+      "listing_entry_count": 64,
+      "method": "GET",
+      "provider_last_modified": "",
+      "provider_publication_at_utc": "",
+      "status": "AVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/"
+    },
+    "12": {
+      "content_length_bytes": null,
+      "content_type": "text/html",
+      "listing_entries": [
+        "../",
+        "alb_rad/",
+        "alb_seaice/",
+        "alhfl_s/",
+        "ashfl_s/",
+        "asob_s/",
+        "asob_s_cs/",
+        "asob_t/",
+        "aswdifd_s/",
+        "aswdifu_s/",
+        "aswdir_s/",
+        "athb_s/",
+        "athb_t/",
+        "aumfl_s/",
+        "avmfl_s/",
+        "c_t_lk/",
+        "cape_con/",
+        "cape_ml/",
+        "clat/",
+        "clc/",
+        "clch/",
+        "clcl/",
+        "clcm/",
+        "clct/",
+        "clct_mod/",
+        "cldepth/",
+        "clon/",
+        "depth_lk/",
+        "elat/",
+        "elon/",
+        "evap_pl/",
+        "fi/",
+        "fr_ice/",
+        "fr_lake/",
+        "fr_land/",
+        "freshsnw/",
+        "h_ice/",
+        "h_ml_lk/",
+        "h_snow/",
+        "hbas_con/",
+        "hhl/",
+        "hsnow_max/",
+        "hsurf/",
+        "htop_con/",
+        "htop_dc/",
+        "hzerocl/",
+        "lai/",
+        "ndviratio/",
+        "p/",
+        "plcov/",
+        "pmsl/",
+        "ps/",
+        "qc/",
+        "qi/",
+        "qv/",
+        "qv_s/",
+        "rain_con/",
+        "rain_gsp/",
+        "relhum/",
+        "relhum_2m/",
+        "rho_snow/",
+        "rootdp/",
+        "runoff_g/",
+        "runoff_s/"
+      ],
+      "listing_entry_count": 64,
+      "method": "GET",
+      "provider_last_modified": "",
+      "provider_publication_at_utc": "",
+      "status": "AVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/"
+    },
+    "18": {
+      "content_length_bytes": null,
+      "content_type": "text/html",
+      "listing_entries": [
+        "../",
+        "alb_rad/",
+        "alb_seaice/",
+        "alhfl_s/",
+        "ashfl_s/",
+        "asob_s/",
+        "asob_s_cs/",
+        "asob_t/",
+        "aswdifd_s/",
+        "aswdifu_s/",
+        "aswdir_s/",
+        "athb_s/",
+        "athb_t/",
+        "aumfl_s/",
+        "avmfl_s/",
+        "c_t_lk/",
+        "cape_con/",
+        "cape_ml/",
+        "clat/",
+        "clc/",
+        "clch/",
+        "clcl/",
+        "clcm/",
+        "clct/",
+        "clct_mod/",
+        "cldepth/",
+        "clon/",
+        "depth_lk/",
+        "elat/",
+        "elon/",
+        "evap_pl/",
+        "fi/",
+        "fr_ice/",
+        "fr_lake/",
+        "fr_land/",
+        "freshsnw/",
+        "h_ice/",
+        "h_ml_lk/",
+        "h_snow/",
+        "hbas_con/",
+        "hhl/",
+        "hsnow_max/",
+        "hsurf/",
+        "htop_con/",
+        "htop_dc/",
+        "hzerocl/",
+        "lai/",
+        "ndviratio/",
+        "p/",
+        "plcov/",
+        "pmsl/",
+        "ps/",
+        "qc/",
+        "qi/",
+        "qv/",
+        "qv_s/",
+        "rain_con/",
+        "rain_gsp/",
+        "relhum/",
+        "relhum_2m/",
+        "rho_snow/",
+        "rootdp/",
+        "runoff_g/",
+        "runoff_s/"
+      ],
+      "listing_entry_count": 64,
+      "method": "GET",
+      "provider_last_modified": "",
+      "provider_publication_at_utc": "",
+      "status": "AVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/"
+    }
+  },
+  "icon_exact_file_probes": [
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071200_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071200_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071200_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071200_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071200_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071206_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071206_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071206_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071206_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071206_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071212_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071212_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071212_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071212_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071212_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071218_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071218_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071218_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071218_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-12",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071218_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071300_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071300_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071300_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071300_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071300_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071306_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071306_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071306_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071306_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071306_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071312_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071312_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071312_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071312_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071312_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071318_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071318_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071318_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071318_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-13",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071318_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071400_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071400_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071400_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071400_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071400_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071406_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071406_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071406_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071406_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071406_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071412_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071412_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071412_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071412_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071412_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071418_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071418_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071418_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071418_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-14",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071418_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071500_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071500_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071500_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071500_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071500_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071506_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071506_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071506_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071506_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071506_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071512_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071512_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071512_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071512_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071512_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071518_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071518_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071518_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071518_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-15",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071518_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071600_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071600_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071600_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071600_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071600_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071606_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071606_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071606_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071606_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071606_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071612_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071612_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071612_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071612_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071612_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071618_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071618_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071618_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071618_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-16",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071618_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071700_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071700_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071700_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071700_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071700_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071706_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071706_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071706_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071706_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071706_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071712_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071712_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071712_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071712_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071712_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071718_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071718_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071718_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071718_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-17",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071718_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071800_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071800_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071800_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071800_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071800_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071806_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071806_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071806_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071806_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071806_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071812_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071812_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071812_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071812_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071812_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071818_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071818_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071818_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071818_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-18",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071818_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071900_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071900_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071900_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071900_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026071900_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071906_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071906_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071906_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071906_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026071906_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071912_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071912_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071912_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071912_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026071912_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071918_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071918_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071918_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071918_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-19",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026071918_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072000_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072000_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072000_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072000_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072000_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072006_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072006_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072006_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072006_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072006_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072012_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072012_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072012_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072012_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072012_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072018_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072018_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072018_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072018_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-20",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072018_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072100_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072100_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072100_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072100_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072100_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072106_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072106_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072106_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072106_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072106_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072112_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072112_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072112_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072112_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072112_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072118_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072118_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072118_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072118_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-21",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072118_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072200_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072200_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072200_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072200_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072200_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072206_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072206_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072206_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072206_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072206_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072212_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072212_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072212_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072212_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072212_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072218_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072218_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072218_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072218_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-22",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072218_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072300_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072300_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072300_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072300_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "00",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026072300_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072306_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072306_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072306_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072306_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "06",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/06/t_2m/icon_global_icosahedral_single-level_2026072306_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072312_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072312_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072312_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072312_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "12",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072312_048_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 0,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072318_000_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 6,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072318_006_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 12,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072318_012_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 24,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072318_024_T_2M.grib2.bz2"
+    },
+    {
+      "forecast_hour": 48,
+      "http_status": 404,
+      "method": "HEAD",
+      "reason": "http_error",
+      "run_cycle_utc": "18",
+      "run_date": "2026-07-23",
+      "status": "UNAVAILABLE",
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072318_048_T_2M.grib2.bz2"
+    }
+  ],
+  "probed_at_utc": "2026-07-25T13:18:48Z",
+  "receipt_sha256": "f43376c649a5d41424198befb0add03f573eb353865ef38f9180b2ded44d94fc",
+  "requested_run_cycles_utc": [
+    "00",
+    "06",
+    "12",
+    "18"
+  ],
+  "requested_run_dates": [
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23"
+  ],
+  "schema": "bayes_basket_target_official_historical_archive_probe_v1",
+  "sources": {
+    "ecmwf_ifs025_official": {
+      "archive_kind": "date_addressable_open_data",
+      "historical_rows_with_native_metadata": 2,
+      "requested_dates": 12,
+      "requested_run_cycles": 4
+    },
+    "gfs_0p25_official": {
+      "archive_kind": "date_addressable_s3_pds_with_idx",
+      "historical_rows_with_native_metadata": 48,
+      "range_only_evidence": true,
+      "requested_dates": 12,
+      "requested_run_cycles": 4
+    },
+    "icon_global_official": {
+      "archive_kind": "current_run_directory_only",
+      "date_addressable_historical_archive": false,
+      "exact_file_probe_available_count": 0,
+      "exact_file_probe_count": 240,
+      "exact_file_probe_error_count": 0,
+      "exact_file_probe_unavailable_count": 240,
+      "exact_file_probe_urls_are_date_stamped": true,
+      "listing_status": "AVAILABLE",
+      "listing_status_by_cycle": {
+        "00": "AVAILABLE",
+        "06": "AVAILABLE",
+        "12": "AVAILABLE",
+        "18": "AVAILABLE"
+      }
+    }
+  }
+}

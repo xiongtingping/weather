@@ -1,0 +1,131 @@
+{
+  "artifact_parameters": {
+    "activation_id": "metar-trajectory-RKPK-night-v1",
+    "base_strength": 0.8,
+    "expected_interval_minutes": 60,
+    "feature_definitions": {
+      "remaining_warming_c": "final official tmax minus running high, nearest 1C",
+      "running_high_c": "max canonical AWC METAR/SPECI temperature available at local bucket start"
+    },
+    "hard_exclusion_baseline_distribution": {
+      "0": 0.07692307692307693,
+      "1": 0.07692307692307693,
+      "10": 0.07692307692307693,
+      "11": 0.07692307692307693,
+      "12": 0.07692307692307693,
+      "2": 0.07692307692307693,
+      "3": 0.07692307692307693,
+      "4": 0.07692307692307693,
+      "5": 0.07692307692307693,
+      "6": 0.07692307692307693,
+      "7": 0.07692307692307693,
+      "8": 0.07692307692307693,
+      "9": 0.07692307692307693
+    },
+    "likelihood_ratio_ceiling": 4.0,
+    "likelihood_ratio_floor": 0.25,
+    "local_time_bucket": "NIGHT",
+    "long_interval_minutes": 90,
+    "long_interval_strength_factor": 0.5,
+    "maturity_bin": "D0",
+    "maturity_strength": 0.75,
+    "max_missing_intervals": 4,
+    "missing_interval_strength_factor": 0.8,
+    "missing_observation_policy": "DEGRADE_STRENGTH",
+    "season_bin": "JJA",
+    "settlement_definition": "official_daily_tmax_c",
+    "settlement_timezone": "Asia/Seoul",
+    "source_lane": "awc",
+    "station_id": "RKPK",
+    "trained_through_utc": "2026-07-30T00:00:00.000Z",
+    "valid_from_utc": "2026-07-30T00:00:00Z",
+    "valid_until_utc": "2027-07-30T00:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "writes_production_database": false
+  },
+  "content_sha256": "b607482e74ae70e2cfef6d2f87eea00f053cb34ab761c978cc923d2895daf81d",
+  "decided_at_utc": "2026-07-30T00:00:00Z",
+  "folds": [],
+  "generation": 1,
+  "minimum_effective_sample_n": 20.0,
+  "minimum_training_folds": 2,
+  "schema": "bayes_basket_metar_trajectory_training_packet_v1",
+  "smoothing_candidates": [
+    0.1,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0
+  ],
+  "source_manifest": {
+    "content_sha256": "97500d3801e46670c1befd82375952787485d76b1875930cb175d3d8a0b62772",
+    "eligible_fold_count": 0,
+    "excluded": [
+      {
+        "event_date": "2026-07-14",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-15",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-16",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-17",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-18",
+        "reason": "correction_suspected"
+      },
+      {
+        "event_date": "2026-07-19",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-20",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-21",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-22",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-23",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-24",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-28",
+        "reason": "correction_suspected"
+      },
+      {
+        "event_date": "2026-07-29",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      }
+    ],
+    "local_time_bucket": "NIGHT",
+    "observation_row_count": 205,
+    "probability_root_row_count": 101,
+    "schema": "bayes_basket_metar_trajectory_fold_source_v1",
+    "settlement_timezone": "Asia/Seoul",
+    "station_id": "RKPK",
+    "truth_row_count": 13
+  }
+}

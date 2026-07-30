@@ -27,6 +27,7 @@ SCHEMA_VERSION = "joint_forecast_weak_likelihood_v1"
 ARTIFACT_SCHEMA_VERSION = "joint_forecast_weak_likelihood_artifact_v3"
 EXPERT_SURFACE_SCHEMA_VERSION = "source_expert_continuous_mixture_v1"
 MULTIMODALITY_SCHEMA_VERSION = "forecast_multimodality_trace_v1"
+SOURCE_MODES_SCHEMA_VERSION = "forecast_source_modes_v1"
 EPSILON = 1e-300
 
 
@@ -85,6 +86,54 @@ def _normal_grid_distribution(grid: Sequence[float], *, mean: float, sigma: floa
     return _normalize(values)
 
 
+def _source_modes(row: Mapping[str, Any], *, peak: float, forecast_sigma: float | None) -> list[dict[str, Any]]:
+    """Validate source-native modes without inventing meteorological branches.
+
+    Older immutable revisions contain only one peak.  They map losslessly to a
+    singleton mode; this is a schema normalization, not a model fallback or an
+    artificial multimodal split.
+    """
+
+    raw_modes = row.get("source_modes") if isinstance(row.get("source_modes"), list) else []
+    if not raw_modes:
+        return [{
+            "mode_id": "primary",
+            "mode_probability": 1.0,
+            "forecast_peak_c": peak,
+            "forecast_sigma_c": forecast_sigma,
+            "forecast_peak_valid_time": _text(row.get("forecast_peak_valid_time")),
+            "hourly_curve": [dict(point) for point in row.get("hourly_curve") or [] if isinstance(point, Mapping)],
+            "physical_regime": dict(_mapping(row.get("physical_regime"))),
+            "forecast_weather_regime": _text(row.get("forecast_weather_regime")),
+            "mode_origin": "singleton_from_immutable_peak_revision",
+        }]
+    modes: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(raw_modes):
+        mode = _mapping(raw)
+        mode_id = _text(mode.get("mode_id"))
+        mode_peak = _finite(mode.get("forecast_peak_c"))
+        probability = _finite(mode.get("mode_probability"))
+        if not mode_id or mode_id in seen or mode_peak is None or probability is None or probability <= 0.0:
+            raise ValueError(f"forecast_source_mode_invalid:{index}")
+        seen.add(mode_id)
+        modes.append({
+            "mode_id": mode_id,
+            "mode_probability": float(probability),
+            "forecast_peak_c": float(mode_peak),
+            "forecast_sigma_c": _finite(mode.get("forecast_sigma_c")),
+            "forecast_peak_valid_time": _text(mode.get("forecast_peak_valid_time")),
+            "hourly_curve": [dict(point) for point in mode.get("hourly_curve") or [] if isinstance(point, Mapping)],
+            "physical_regime": dict(_mapping(mode.get("physical_regime"))),
+            "forecast_weather_regime": _text(mode.get("forecast_weather_regime")),
+            "mode_origin": _text(mode.get("mode_origin")) or "source_declared",
+        })
+    normalized = _normalize([float(mode["mode_probability"]) for mode in modes])
+    for mode, probability in zip(modes, normalized):
+        mode["mode_probability"] = probability
+    return modes
+
+
 def _context_key(context: Mapping[str, Any]) -> str:
     return "|".join(
         f"{key}={_text(context.get(key))}"
@@ -124,9 +173,12 @@ def validate_joint_forecast_weak_artifact(artifact: Mapping[str, Any] | None) ->
     if _text(value.get("source_data_policy")) != "forecast_only_asof":
         issues.append("joint_weak_artifact_source_data_policy_invalid")
     bias_correction = _mapping(value.get("bias_correction"))
-    if bias_correction.get("schema") != BIAS_CALIBRATION_SCHEMA_VERSION:
+    if bias_correction.get("schema") not in {BIAS_CALIBRATION_SCHEMA_VERSION, "joint_weak_bias_calibration_v1"}:
         issues.append("joint_weak_artifact_bias_correction_missing_or_invalid")
-    elif _text(bias_correction.get("residual_definition")) != "forecast_peak_c_minus_physical_x_final_c":
+    elif _text(bias_correction.get("residual_definition")) not in {
+        "forecast_peak_c_minus_physical_x_final_c",
+        "interval_censored_forecast_error_against_exact_x_or_settlement_bucket",
+    }:
         issues.append("joint_weak_artifact_bias_residual_definition_invalid")
     bias_training_days = int(_finite(bias_correction.get("training_event_day_count")) or 0)
     if bias_training_days > 0:
@@ -296,12 +348,21 @@ def _latest_visible_experts(
             continue
         entry["trace"]["included"] = True
         hourly_curve = row.get("hourly_curve") if isinstance(row.get("hourly_curve"), list) else []
+        try:
+            source_modes = _source_modes(row, peak=peak, forecast_sigma=forecast_sigma)
+        except ValueError:
+            entry["trace"]["included"] = False
+            entry["trace"]["exclusion_reason"] = "forecast_source_modes_invalid"
+            issues.append("forecast_source_modes_invalid")
+            continue
         experts.append({
             "source_id": source_id,
             "source_revision_id": entry["source_revision_id"],
             "forecast_peak_c": peak,
             "forecast_sigma_c": forecast_sigma,
             "hourly_curve": [dict(point) for point in hourly_curve if isinstance(point, Mapping)],
+            "source_modes_schema": SOURCE_MODES_SCHEMA_VERSION,
+            "source_modes": source_modes,
             "trace": entry["trace"],
         })
     return experts, trace, issues
@@ -458,6 +519,133 @@ def _multimodality_trace(
     }
 
 
+def _reported_integer_c(temperature_c: float) -> int:
+    return int(math.floor(float(temperature_c) + 0.5))
+
+
+def _source_weight_attribution(
+    *,
+    grid: Sequence[float],
+    likelihood: Sequence[float],
+    source_distributions: Mapping[str, Sequence[float]],
+    source_mode_distributions: Mapping[str, Mapping[str, Any]],
+    weights: Mapping[str, float],
+    source_catalog: Mapping[str, Any],
+    parameters: Mapping[str, Any],
+    family_trace: Mapping[str, Any],
+    correlation_discount: float,
+    joint_information_scale: float,
+) -> dict[str, Any]:
+    """Freeze the exact source-weight chain and integer-X local ownership.
+
+    Correlation discount is a property of the complete source set in the
+    approved surface, not an independently fitted per-source multiplier.  A
+    source's final information index therefore allocates that joint tempered
+    information by its normalized family-capped mixture share.
+    """
+
+    base_weights = _mapping(parameters.get("source_base_weights"))
+    total_capped = sum(float(value) for value in weights.values())
+    normalized = {
+        source_id: float(weight) / total_capped
+        for source_id, weight in weights.items()
+    }
+    applied_scale = float(correlation_discount) * float(joint_information_scale)
+    source_rows: list[dict[str, Any]] = []
+    for source_id in sorted(weights):
+        family = _text(_mapping(source_catalog.get(source_id)).get("provider_family"))
+        family_row = _mapping(family_trace.get(family))
+        raw_family = float(_finite(family_row.get("raw_information_weight")) or 0.0)
+        effective_family = float(_finite(family_row.get("effective_information_weight")) or 0.0)
+        source_rows.append(
+            {
+                "source_id": source_id,
+                "provider_family": family,
+                "base_information_weight": float(base_weights[source_id]),
+                "family_information_cap": float(family_row.get("cap")),
+                "family_raw_information_weight": raw_family,
+                "family_cap_scale": effective_family / raw_family if raw_family > 0.0 else 0.0,
+                "family_capped_information_weight": float(weights[source_id]),
+                "normalized_information_share": normalized[source_id],
+                "correlation_discount": float(correlation_discount),
+                "joint_information_scale": float(joint_information_scale),
+                "final_information_index": normalized[source_id] * applied_scale,
+            }
+        )
+
+    buckets: dict[int, dict[str, Any]] = {}
+    for index, temperature in enumerate(grid):
+        bucket = _reported_integer_c(temperature)
+        row = buckets.setdefault(
+            bucket,
+            {
+                "reported_x_c": bucket,
+                "weak_mixture_mass": 0.0,
+                "weak_likelihood_mass": 0.0,
+                "source_contribution_mass": {source_id: 0.0 for source_id in sorted(weights)},
+                "mode_contribution_mass": {scenario_id: 0.0 for scenario_id in sorted(source_mode_distributions)},
+            },
+        )
+        row["weak_likelihood_mass"] += float(likelihood[index])
+        for source_id, distribution in source_distributions.items():
+            contribution = normalized[source_id] * float(distribution[index])
+            row["source_contribution_mass"][source_id] += contribution
+            row["weak_mixture_mass"] += contribution
+        for scenario_id, mode in source_mode_distributions.items():
+            source_id = _text(mode.get("source_id"))
+            distribution = mode.get("distribution") or []
+            if source_id in normalized and index < len(distribution):
+                row["mode_contribution_mass"][scenario_id] += (
+                    normalized[source_id]
+                    * float(mode.get("mode_probability") or 0.0)
+                    * float(distribution[index])
+                )
+    bucket_rows: list[dict[str, Any]] = []
+    for bucket in sorted(buckets):
+        row = buckets[bucket]
+        total = float(row["weak_mixture_mass"])
+        responsibilities = {
+            source_id: float(value) / total
+            for source_id, value in row["source_contribution_mass"].items()
+            if total > 0.0
+        }
+        dominant = max(responsibilities, key=responsibilities.get) if responsibilities else ""
+        mode_responsibilities = {
+            scenario_id: float(value) / total
+            for scenario_id, value in row["mode_contribution_mass"].items()
+            if total > 0.0 and float(value) > 0.0
+        }
+        bucket_rows.append(
+            {
+                "reported_x_c": bucket,
+                "weak_mixture_mass": total,
+                "weak_likelihood_mass": float(row["weak_likelihood_mass"]),
+                "local_responsibility_by_source": responsibilities,
+                "local_responsibility_by_mode": mode_responsibilities,
+                "dominant_source_id": dominant,
+                "dominant_scenario_id": (
+                    max(mode_responsibilities, key=mode_responsibilities.get)
+                    if mode_responsibilities else ""
+                ),
+            }
+        )
+    return {
+        "schema": "weak_source_weight_attribution_v1",
+        "source_rows": source_rows,
+        "bucket_rows": bucket_rows,
+        "base_information_weight_total": sum(float(base_weights[source_id]) for source_id in weights),
+        "family_capped_information_weight_total": total_capped,
+        "normalized_information_share_total": sum(normalized.values()),
+        "correlation_discount": float(correlation_discount),
+        "joint_information_scale": float(joint_information_scale),
+        "applied_information_scale": applied_scale,
+        "final_information_index_total": sum(row["final_information_index"] for row in source_rows),
+        "correlation_discount_scope": "joint_source_set_global",
+        "local_responsibility_semantics": "integer_reported_x_integral_of_same_calibrated_source_mixture",
+        "frontend_recompute_allowed": False,
+    }
+
+
 def build_joint_forecast_weak_likelihood(
     *,
     temperature_grid_c: Sequence[Any],
@@ -574,6 +762,7 @@ def build_joint_forecast_weak_likelihood(
     mixture = [0.0 for _temperature in grid]
     mixture_total_weight = sum(weights.values())
     source_distributions: dict[str, list[float]] = {}
+    source_mode_distributions: dict[str, dict[str, Any]] = {}
     for expert in experts:
         source_id = _text(expert.get("source_id"))
         if source_id not in weights:
@@ -625,10 +814,46 @@ def build_joint_forecast_weak_likelihood(
                 "observation_data_consumed": False,
             }
         raw_sigma = _finite(expert.get("forecast_sigma_c"))
-        sigma = math.sqrt((raw_sigma or 0.0) ** 2 + error_sigma_c**2)
-        # b=E(forecast-X): subtract positive hot bias, raise negative cold bias.
-        mean = float(expert["forecast_peak_c"]) - bias_c
-        distribution = _normal_grid_distribution(grid, mean=mean, sigma=sigma)
+        calibrated_modes: list[dict[str, Any]] = []
+        distribution = [0.0 for _temperature in grid]
+        for mode in expert.get("source_modes") or []:
+            mode_probability = float(mode["mode_probability"])
+            mode_raw_sigma = _finite(mode.get("forecast_sigma_c"))
+            effective_raw_sigma = mode_raw_sigma if mode_raw_sigma is not None else raw_sigma
+            mode_sigma = math.sqrt((effective_raw_sigma or 0.0) ** 2 + error_sigma_c**2)
+            # b=E(forecast-X): subtract positive hot bias, raise negative cold bias.
+            mode_mean = float(mode["forecast_peak_c"]) - bias_c
+            mode_distribution = _normal_grid_distribution(grid, mean=mode_mean, sigma=mode_sigma)
+            for index, probability in enumerate(mode_distribution):
+                distribution[index] += mode_probability * probability
+            mode_id = _text(mode.get("mode_id"))
+            calibrated_modes.append({
+                "mode_id": mode_id,
+                "scenario_id": f"{_text(expert.get('source_revision_id'))}#{mode_id}",
+                "mode_probability": mode_probability,
+                "mode_origin": _text(mode.get("mode_origin")),
+                "forecast_peak_c": float(mode["forecast_peak_c"]),
+                "forecast_peak_valid_time": _text(mode.get("forecast_peak_valid_time")),
+                "forecast_sigma_c": effective_raw_sigma,
+                "calibration_bias_c": bias_c,
+                "calibrated_mean_c": mode_mean,
+                "calibrated_sigma_c": mode_sigma,
+                "forecast_weather_regime": _text(mode.get("forecast_weather_regime")),
+                "physical_regime": dict(_mapping(mode.get("physical_regime"))),
+                "hourly_curve": [dict(point) for point in mode.get("hourly_curve") or [] if isinstance(point, Mapping)],
+                "continuous_distribution": [
+                    {"temperature_c": temperature, "probability": probability}
+                    for temperature, probability in zip(grid, mode_distribution)
+                ],
+            })
+            source_mode_distributions[f"{_text(expert.get('source_revision_id'))}#{mode_id}"] = {
+                "source_id": source_id,
+                "source_revision_id": _text(expert.get("source_revision_id")),
+                "source_mode_id": mode_id,
+                "mode_probability": mode_probability,
+                "distribution": mode_distribution,
+            }
+        distribution = _normalize(distribution)
         source_distributions[source_id] = distribution
         information_weight = float(weights[source_id])
         for index, probability in enumerate(distribution):
@@ -644,7 +869,10 @@ def build_joint_forecast_weak_likelihood(
                 "bias_level": _text(bias_state.get("bias_level")),
                 "bias_sample_count": int(bias_state.get("bias_sample_count") or 0),
                 "bias_fallback": bias_state.get("bias_fallback"),
-                "calibrated_mean_c": mean,
+                "calibrated_mean_c": sum(
+                    float(mode["mode_probability"]) * float(mode["calibrated_mean_c"])
+                    for mode in calibrated_modes
+                ),
                 "forecast_sigma_c": raw_sigma,
                 "error_sigma_c": error_sigma_c,
                 "residual_distribution": residual_distribution or {
@@ -654,7 +882,20 @@ def build_joint_forecast_weak_likelihood(
                     "scale_c": error_sigma_c,
                     "learned_from_closed_physical_x": bool(source_calibration.get("sample_count")),
                 },
-                "calibrated_sigma_c": sigma,
+                "calibrated_sigma_c": math.sqrt(max(0.0, sum(
+                    float(mode["mode_probability"])
+                    * (
+                        float(mode["calibrated_sigma_c"]) ** 2
+                        + float(mode["calibrated_mean_c"]) ** 2
+                    )
+                    for mode in calibrated_modes
+                ) - sum(
+                    float(mode["mode_probability"]) * float(mode["calibrated_mean_c"])
+                    for mode in calibrated_modes
+                ) ** 2)),
+                "source_modes_schema": SOURCE_MODES_SCHEMA_VERSION,
+                "source_mode_count": len(calibrated_modes),
+                "source_modes": calibrated_modes,
                 "information_weight": information_weight,
                 "hourly_curve_sha256": _sha256(expert.get("hourly_curve") or []),
                 "future_forcing_available": bool(expert.get("hourly_curve")),
@@ -682,35 +923,74 @@ def build_joint_forecast_weak_likelihood(
         source_catalog=catalog,
         source_distributions=source_distributions,
     )
+    source_weight_attribution = _source_weight_attribution(
+        grid=grid,
+        likelihood=likelihood,
+        source_distributions=source_distributions,
+        source_mode_distributions=source_mode_distributions,
+        weights=weights,
+        source_catalog=catalog,
+        parameters=parameters,
+        family_trace=family_trace,
+        correlation_discount=float(correlation_discount),
+        joint_information_scale=float(information_scale),
+    ) if not empty_source_set else {
+        "schema": "weak_source_weight_attribution_v1",
+        "source_rows": [],
+        "bucket_rows": [],
+        "correlation_discount": 1.0,
+        "joint_information_scale": float(information_scale),
+        "applied_information_scale": 0.0,
+        "final_information_index_total": 0.0,
+        "correlation_discount_scope": "joint_source_set_global",
+        "frontend_recompute_allowed": False,
+        "na_reason": "neutral_empty_source_set",
+    }
+    attribution_by_source = {
+        row["source_id"]: row for row in source_weight_attribution["source_rows"]
+    }
+    for row in expert_rows:
+        chain = attribution_by_source.get(_text(row.get("source_id")), {})
+        row.update({key: value for key, value in chain.items() if key not in {"source_id", "provider_family"}})
     scenario_paths = [
         {
-            "scenario_id": _text(row.get("source_revision_id")),
+            "scenario_id": _text(mode.get("scenario_id")),
             "source_id": _text(row.get("source_id")),
             "source_revision_id": _text(row.get("source_revision_id")),
-            "hourly_curve": list(
-                next(
-                    (
-                        expert.get("hourly_curve") or []
-                        for expert in experts
-                        if _text(expert.get("source_id")) == _text(row.get("source_id"))
-                        and _text(expert.get("source_revision_id")) == _text(row.get("source_revision_id"))
-                    ),
-                    [],
-                )
-            ),
-            "hourly_curve_sha256": _text(row.get("hourly_curve_sha256")),
-            "future_forcing_available": bool(row.get("future_forcing_available")),
+            "source_mode_id": _text(mode.get("mode_id")),
+            "source_mode_probability": float(mode.get("mode_probability") or 0.0),
+            "mode_origin": _text(mode.get("mode_origin")),
+            "forecast_weather_regime": _text(mode.get("forecast_weather_regime")),
+            "physical_regime": dict(_mapping(mode.get("physical_regime"))),
+            "hourly_curve": list(mode.get("hourly_curve") or []),
+            "hourly_curve_sha256": _sha256(mode.get("hourly_curve") or []),
+            "future_forcing_available": bool(mode.get("hourly_curve")),
         }
         for row in expert_rows
+        for mode in row.get("source_modes") or []
     ]
     candidate_responsibilities: list[dict[str, Any]] = []
     if not empty_source_set:
         for index, temperature in enumerate(grid):
-            numerators = {
-                source_id: max(0.0, float(weights[source_id]))
-                * max(0.0, float(source_distributions[source_id][index]))
-                for source_id in source_distributions
-            }
+            numerators: dict[str, float] = {}
+            scenario_rows: list[tuple[Mapping[str, Any], Mapping[str, Any], float]] = []
+            for row in expert_rows:
+                source_id = _text(row.get("source_id"))
+                for mode in row.get("source_modes") or []:
+                    continuous = mode.get("continuous_distribution") or []
+                    mode_mass = (
+                        float(_mapping(continuous[index]).get("probability") or 0.0)
+                        if index < len(continuous)
+                        else 0.0
+                    )
+                    numerator = (
+                        max(0.0, float(weights[source_id]))
+                        * max(0.0, float(mode.get("mode_probability") or 0.0))
+                        * max(0.0, mode_mass)
+                    )
+                    scenario_id = _text(mode.get("scenario_id"))
+                    numerators[scenario_id] = numerator
+                    scenario_rows.append((row, mode, numerator))
             denominator = sum(numerators.values())
             if denominator <= 0.0:
                 continue
@@ -719,14 +999,13 @@ def build_joint_forecast_weak_likelihood(
                     "continuous_y_c": temperature,
                     "scenarios": [
                         {
-                            "scenario_id": _text(row.get("source_revision_id")),
-                            "source_id": source_id,
+                            "scenario_id": _text(mode.get("scenario_id")),
+                            "source_id": _text(row.get("source_id")),
                             "source_revision_id": _text(row.get("source_revision_id")),
-                            "responsibility": numerators[source_id] / denominator,
+                            "source_mode_id": _text(mode.get("mode_id")),
+                            "responsibility": numerator / denominator,
                         }
-                        for row in expert_rows
-                        for source_id in [_text(row.get("source_id"))]
-                        if source_id in numerators
+                        for row, mode, numerator in scenario_rows
                     ],
                 }
             )
@@ -760,6 +1039,7 @@ def build_joint_forecast_weak_likelihood(
             "changes_source_weights": False,
         },
         "forecast_multimodality_trace": trace,
+        "source_weight_attribution": source_weight_attribution,
         "source_expert_trace": expert_rows,
         "forecast_scenario_paths": {
             "schema": "weak_forecast_scenario_paths_v1",

@@ -14,12 +14,13 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -366,10 +367,11 @@ def capture_current_forward_sources(
     latitude: float = 30.5728,
     longitude: float = 104.0668,
     allow_research_write: bool = False,
+    capture_open_meteo_models: bool = True,
 ) -> dict[str, Any]:
     observed_at = _utc_now()
     results: dict[str, Any] = {}
-    for source_id, model in OPEN_METEO_MODELS:
+    for source_id, model in OPEN_METEO_MODELS if capture_open_meteo_models else ():
         metrics = _fetch_open_meteo_model_curve(
             source_id=source_id,
             model=model,
@@ -509,22 +511,34 @@ def capture_current_forward_sources(
 
 
 def main() -> int:
+    if (ROOT / "data" / "reported_trajectory_core_only.enabled").exists():
+        return 0
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--event-date", required=True)
+    date_group = parser.add_mutually_exclusive_group(required=True)
+    date_group.add_argument("--event-date")
+    date_group.add_argument("--day-offset", type=int)
     parser.add_argument("--station-id", default="ZUUU")
     parser.add_argument("--resolution-source", default="https://www.wunderground.com/history/daily/cn/chengdu/ZUUU")
     parser.add_argument("--latitude", type=float, default=30.5728)
     parser.add_argument("--longitude", type=float, default=104.0668)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--allow-research-write", action="store_true")
+    parser.add_argument("--independent-only", action="store_true")
     args = parser.parse_args()
+    event_date = args.event_date
+    if event_date is None:
+        event_date = (
+            datetime.now(ZoneInfo("Asia/Shanghai")).date()
+            + timedelta(days=int(args.day_offset))
+        ).isoformat()
     report = capture_current_forward_sources(
-        event_date=args.event_date,
+        event_date=event_date,
         station_id=args.station_id,
         resolution_source=args.resolution_source,
         latitude=args.latitude,
         longitude=args.longitude,
         allow_research_write=args.allow_research_write,
+        capture_open_meteo_models=not args.independent_only,
     )
     if args.output:
         if not args.allow_research_write:

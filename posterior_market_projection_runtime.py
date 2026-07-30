@@ -85,6 +85,22 @@ def build_posterior_market_projection(
             "market_bucket_probabilities_na_reason": "x_to_s_to_b_projection_failed",
             "places_orders": False,
         }
+    baseline = _mapping(_mapping(bridge_artifact).get("operational_baseline"))
+    probabilities = _mapping(bridge.get("market_bucket_probabilities"))
+    if (
+        baseline.get("soft_projection_exact_zero_forbidden_without_hard_certificate") is True
+        and any(float(probability) <= 0.0 for probability in probabilities.values())
+    ):
+        return {
+            "schema": SCHEMA_VERSION,
+            "ok": False,
+            "state": "market_projection_blocked",
+            "block_reasons": ["soft_operational_projection_contains_false_exact_zero"],
+            "reported_x_unchanged": True,
+            "market_bucket_probabilities": {},
+            "market_bucket_probabilities_na_reason": "x_to_s_to_b_soft_tail_contract_violated",
+            "places_orders": False,
+        }
     return {
         **bridge,
         "schema": SCHEMA_VERSION,

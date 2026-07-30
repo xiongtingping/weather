@@ -1,0 +1,881 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-05-27",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-05-28",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-05-29",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-05-30",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-05-31",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-01",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-02",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-03",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-04",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-05",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-06",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-07",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-08",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-09",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-10",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-11",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-12",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-13",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-14",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-15",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-16",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-17",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    },
+    {
+      "event_date": "2026-06-18",
+      "reason": "batch_budget_exceeded",
+      "source_lane": "awc",
+      "stations": "RKSI"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-05-27",
+    "2026-05-28",
+    "2026-05-29",
+    "2026-05-30",
+    "2026-05-31",
+    "2026-06-01",
+    "2026-06-02",
+    "2026-06-03",
+    "2026-06-04",
+    "2026-06-05",
+    "2026-06-06",
+    "2026-06-07",
+    "2026-06-08",
+    "2026-06-09",
+    "2026-06-10",
+    "2026-06-11",
+    "2026-06-12",
+    "2026-06-13",
+    "2026-06-14",
+    "2026-06-15",
+    "2026-06-16",
+    "2026-06-17",
+    "2026-06-18",
+    "2026-06-19",
+    "2026-06-20",
+    "2026-06-21",
+    "2026-06-22",
+    "2026-06-23",
+    "2026-06-24",
+    "2026-06-25",
+    "2026-06-26",
+    "2026-06-27"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-05-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-27T15:00:00Z",
+      "target_day_start_utc": "2026-05-26T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-05-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-28T15:00:00Z",
+      "target_day_start_utc": "2026-05-27T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-05-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-29T15:00:00Z",
+      "target_day_start_utc": "2026-05-28T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-05-30",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-30T15:00:00Z",
+      "target_day_start_utc": "2026-05-29T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-05-31",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-31T15:00:00Z",
+      "target_day_start_utc": "2026-05-30T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-01T15:00:00Z",
+      "target_day_start_utc": "2026-05-31T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-02T15:00:00Z",
+      "target_day_start_utc": "2026-06-01T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-03T15:00:00Z",
+      "target_day_start_utc": "2026-06-02T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-04T15:00:00Z",
+      "target_day_start_utc": "2026-06-03T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-05T15:00:00Z",
+      "target_day_start_utc": "2026-06-04T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-06T15:00:00Z",
+      "target_day_start_utc": "2026-06-05T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-07T15:00:00Z",
+      "target_day_start_utc": "2026-06-06T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-08T15:00:00Z",
+      "target_day_start_utc": "2026-06-07T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-09T15:00:00Z",
+      "target_day_start_utc": "2026-06-08T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-10T15:00:00Z",
+      "target_day_start_utc": "2026-06-09T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-11T15:00:00Z",
+      "target_day_start_utc": "2026-06-10T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-12T15:00:00Z",
+      "target_day_start_utc": "2026-06-11T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-13T15:00:00Z",
+      "target_day_start_utc": "2026-06-12T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-14T15:00:00Z",
+      "target_day_start_utc": "2026-06-13T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-15T15:00:00Z",
+      "target_day_start_utc": "2026-06-14T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-16T15:00:00Z",
+      "target_day_start_utc": "2026-06-15T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-17T15:00:00Z",
+      "target_day_start_utc": "2026-06-16T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-18T15:00:00Z",
+      "target_day_start_utc": "2026-06-17T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-19T15:00:00Z",
+      "target_day_start_utc": "2026-06-18T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-20T15:00:00Z",
+      "target_day_start_utc": "2026-06-19T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-21T15:00:00Z",
+      "target_day_start_utc": "2026-06-20T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-22T15:00:00Z",
+      "target_day_start_utc": "2026-06-21T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-23T15:00:00Z",
+      "target_day_start_utc": "2026-06-22T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-24T15:00:00Z",
+      "target_day_start_utc": "2026-06-23T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-25T15:00:00Z",
+      "target_day_start_utc": "2026-06-24T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-26T15:00:00Z",
+      "target_day_start_utc": "2026-06-25T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:54:46Z",
+      "event_date": "2026-06-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-27T15:00:00Z",
+      "target_day_start_utc": "2026-06-26T15:00:00Z",
+      "target_timezone": "Asia/Seoul"
+    }
+  ],
+  "evidence_sha256": "b4e8ba232c59f1d5a25cd675e0f7f3fa7682b482fcee01551023186208bb5005",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-05-27",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260527_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-28",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260528_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-29",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260529_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-30",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260530_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-31",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260531_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-01",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260601_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-02",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260602_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-03",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260603_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-04",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260604_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-05",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260605_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-06",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260606_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-07",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260607_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-08",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260608_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-09",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260609_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-10",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260610_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-11",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260611_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-12",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260612_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-13",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260613_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-14",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260614_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-15",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260615_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-16",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260616_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-17",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&date=20260617_1500&hours=24",
+          "stations": [
+            "RKSI"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-05-27",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-05-28",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-05-29",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-05-30",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-05-31",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-01",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-02",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-03",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-04",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-05",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-06",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-07",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-08",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-09",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-10",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-11",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-12",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-13",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-14",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-15",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-16",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-17",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "RKSI"
+        },
+        {
+          "event_date": "2026-06-18",
+          "reason": "batch_budget_exceeded",
+          "stations": "RKSI"
+        }
+      ],
+      "query_count": 22,
+      "reference_only": false,
+      "returned": 0,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "bounded_doh_connect_to",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": true,
+        "connect_to": [
+          "aviationweather.gov:443:150.171.109.146:443"
+        ],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-29T03:54:46Z",
+  "observation_count": 0,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_extended_truth_20260527_20260627/RKSI/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/five_model_45station_truth_raw",
+  "receipt_sha256": "b143ac70f23ce200339246b147d12eedf7a9874381ac0995da9a365e7e8031a5",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_extended_truth_20260527_20260627/RKSI/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 0
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 0,
+  "station_day_keys": [],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "Asia/Seoul"
+}

@@ -9,11 +9,26 @@ from typing import Any, Mapping
 
 from physical_state_bayes_v6.contracts import DurationClocks, JointCell, PostEventState
 from physical_state_bayes_v6.core import project_reported_x
+from physical_state_bayes_v6.scenario_joint import (
+    SCENARIO_JOINT_SCHEMA,
+    initialize_scenario_joint,
+    scenario_joint_sha256,
+)
 from production_probability_v6_activation_contract import CHECKPOINT_SCHEMA, validate_v6_activation
+from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
+)
+from production_probability_physical_state_composer import (
+    COMPOSER_SCHEMA as PHYSICAL_COMPOSER_SCHEMA,
+    compile_physical_weak_revision_extension,
+)
 
 
 SCHEMA_VERSION = "production_probability_v6_weak_revision_candidate_v1"
 UPDATE_SCHEMA = "weak_forecast_revision_update_v2_physical_state_bayes_v6"
+IDENTIFIABLE_PHYSICAL_UPDATE_SCHEMA = (
+    "weak_forecast_revision_update_v3_identifiable_physical_driver_replacement"
+)
 
 
 def _text(value: Any) -> str:
@@ -78,6 +93,10 @@ def compile_v6_weak_revision_candidate(
     trigger_source_revision_id: str,
     revision_kind: str,
     decision_as_of: str,
+    previous_weak_likelihood: Mapping[str, Any] | None = None,
+    revised_weak_likelihood: Mapping[str, Any] | None = None,
+    physical_state_model_artifact: Mapping[str, Any] | None = None,
+    physical_reporting_operator_artifact: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Replace weak evidence at the current checkpoint without replaying past transitions."""
 
@@ -87,6 +106,37 @@ def compile_v6_weak_revision_candidate(
     new = dict(revised_snapshot)
     if _text(previous.get("checkpoint_probability_schema")) != CHECKPOINT_SCHEMA:
         raise ValueError("v6_weak_revision_checkpoint_schema_invalid")
+    if _text(authorized.get("composer_schema")) == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA:
+        physical_inputs = (
+            previous_weak_likelihood,
+            revised_weak_likelihood,
+            physical_state_model_artifact,
+            physical_reporting_operator_artifact,
+        )
+        if not all(isinstance(item, Mapping) for item in physical_inputs):
+            raise ValueError("physical_weak_revision_input_bundle_missing")
+        return _compile_identifiable_physical_weak_revision_candidate(
+            authorized=authorized,
+            previous=previous,
+            old=old,
+            new=new,
+            trigger_source_id=trigger_source_id,
+            trigger_source_revision_id=trigger_source_revision_id,
+            revision_kind=revision_kind,
+            decision_as_of=decision_as_of,
+            previous_weak_likelihood=dict(previous_weak_likelihood or {}),
+            revised_weak_likelihood=dict(revised_weak_likelihood or {}),
+            state_model_artifact=dict(physical_state_model_artifact or {}),
+            reporting_operator_artifact=dict(
+                physical_reporting_operator_artifact or {}
+            ),
+        )
+    if _text(previous.get("scenario_joint_schema")) != SCENARIO_JOINT_SCHEMA:
+        raise ValueError("v6_weak_revision_scenario_joint_checkpoint_missing")
+    if scenario_joint_sha256(previous.get("scenario_joint_posterior_json")) != _text(
+        previous.get("scenario_joint_posterior_sha256")
+    ):
+        raise ValueError("v6_weak_revision_scenario_joint_checkpoint_hash_mismatch")
     if revision_kind not in {"original", "amendment", "correction"}:
         raise ValueError("v6_weak_revision_kind_invalid")
     target = _text(previous.get("target_identity"))
@@ -136,6 +186,13 @@ def compile_v6_weak_revision_candidate(
         {**row, "probability": weight / normalizer}
         for row, weight in zip(rows, weights, strict=True)
     ]
+    revised_responsibilities = _parse(new.get("candidate_scenario_responsibilities_json"), dict)
+    scenario_joint = initialize_scenario_joint(
+        tuple(JointCell(r["continuous_y_c"], r["state"], r["probability"]) for r in posterior),
+        revised_responsibilities,
+    )
+    scenario_joint_payload = list(scenario_joint)
+    scenario_joint_sha = scenario_joint_sha256(scenario_joint)
     # The replacement ratio depends only on Y, so P(Z|Y) is preserved exactly.
     joint_sha = _sha(posterior)
     x_distribution = project_reported_x(
@@ -189,6 +246,10 @@ def compile_v6_weak_revision_candidate(
             "reported_x_projection_sha256": _sha(x_distribution),
             "forcing_generation_sha256": forcing_sha,
             "scenario_control_lineage_sha256": responsibility_sha,
+            "scenario_joint_posterior_json": _json(scenario_joint_payload),
+            "scenario_joint_posterior_sha256": scenario_joint_sha,
+            "scenario_joint_schema": SCENARIO_JOINT_SCHEMA,
+            "scenario_joint_forcing_generation_sha256": forcing_sha,
             "state": "production_successor_ready",
             "created_at": _text(decision_as_of),
             "committed_at": _text(decision_as_of),
@@ -221,6 +282,8 @@ def compile_v6_weak_revision_candidate(
                 "replacement_not_independent_multiplication": True,
                 "past_state_transitions_replayed": False,
                 "current_observation_consumed": False,
+                "scenario_joint_rebound_to_revised_source_modes": True,
+                "superseded_scenario_ids_retained": False,
             }
         ),
         "block_reasons_json": "[]",
@@ -245,4 +308,275 @@ def compile_v6_weak_revision_candidate(
     }
 
 
-__all__ = ["SCHEMA_VERSION", "UPDATE_SCHEMA", "compile_v6_weak_revision_candidate"]
+def _compile_identifiable_physical_weak_revision_candidate(
+    *,
+    authorized: Mapping[str, Any],
+    previous: Mapping[str, Any],
+    old: Mapping[str, Any],
+    new: Mapping[str, Any],
+    trigger_source_id: str,
+    trigger_source_revision_id: str,
+    revision_kind: str,
+    decision_as_of: str,
+    previous_weak_likelihood: Mapping[str, Any],
+    revised_weak_likelihood: Mapping[str, Any],
+    state_model_artifact: Mapping[str, Any],
+    reporting_operator_artifact: Mapping[str, Any],
+) -> dict[str, Any]:
+    from identifiable_physical_state_bayes.contracts import (
+        SCHEMA_VERSION as IDENTIFIABLE_PHYSICAL_STATE_SCHEMA,
+    )
+
+    if revision_kind not in {"original", "amendment", "correction"}:
+        raise ValueError("physical_weak_revision_kind_invalid")
+    if _text(previous.get("physical_composer_schema")) != PHYSICAL_COMPOSER_SCHEMA:
+        raise ValueError("physical_weak_revision_checkpoint_composer_invalid")
+    target = _text(previous.get("target_identity"))
+    old_id = _text(old.get("forecast_evidence_snapshot_id"))
+    new_id = _text(new.get("forecast_evidence_snapshot_id"))
+    if (
+        not target
+        or _text(previous.get("forecast_evidence_snapshot_id")) != old_id
+        or _text(old.get("target_identity")) != target
+        or _text(new.get("target_identity")) != target
+        or not new_id
+        or new_id == old_id
+    ):
+        raise ValueError("physical_weak_revision_lineage_mismatch")
+    artifact = _text(new.get("weak_likelihood_artifact_sha256"))
+    if (
+        artifact != _text(authorized.get("weak_likelihood_artifact_sha256"))
+        or artifact != _text(old.get("weak_likelihood_artifact_sha256"))
+    ):
+        raise ValueError("physical_weak_revision_artifact_mismatch")
+    artifact_bindings = (
+        (
+            state_model_artifact,
+            authorized.get("physical_state_model_artifact_sha256"),
+            "state_model",
+        ),
+        (
+            reporting_operator_artifact,
+            authorized.get("physical_reporting_operator_sha256"),
+            "reporting_operator",
+        ),
+    )
+    for value, expected_sha, label in artifact_bindings:
+        if _text(value.get("artifact_sha256")) != _text(expected_sha):
+            raise ValueError(f"physical_weak_revision_{label}_artifact_activation_mismatch")
+        if (
+            _text(value.get("state")) != "approved"
+            or value.get("production_runtime_eligible") is not True
+            or value.get("shadow_only") is not False
+        ):
+            raise ValueError(f"physical_weak_revision_{label}_artifact_not_production_approved")
+    old_generation = _text(old.get("forecast_scenario_paths_sha256"))
+    new_generation = _text(new.get("forecast_scenario_paths_sha256"))
+    if (
+        len(old_generation) != 64
+        or len(new_generation) != 64
+        or old_generation == new_generation
+        or old_generation != _text(previous.get("physical_driver_generation_sha256"))
+    ):
+        raise ValueError("physical_weak_revision_driver_generation_lineage_invalid")
+    extension = compile_physical_weak_revision_extension(
+        previous_checkpoint=previous,
+        previous_weak_likelihood=previous_weak_likelihood,
+        revised_weak_likelihood=revised_weak_likelihood,
+        decision_as_of=_text(decision_as_of),
+        state_model_artifact=state_model_artifact,
+        reporting_operator_artifact=reporting_operator_artifact,
+    )
+    if _text(extension.get("physical_driver_generation_sha256")) != new_generation:
+        raise ValueError("physical_weak_revision_extension_generation_mismatch")
+    reported = {
+        str(int(key)): float(value)
+        for key, value in dict(
+            extension.get("reported_physical_x_distribution") or {}
+        ).items()
+    }
+    if not reported or abs(sum(reported.values()) - 1.0) > 1e-9:
+        raise ValueError("physical_weak_revision_reported_x_invalid")
+    lower = extension.get("reported_x_lower_bound_c")
+    if lower is not None and any(int(key) < int(lower) for key in reported):
+        raise ValueError("physical_weak_revision_hard_bound_violation")
+    state_payload = _text(extension.get("physical_state_posterior_json"))
+    state_sha = _text(extension.get("physical_state_posterior_sha256"))
+    projection = _parse(extension.get("physical_path_projection_json"), dict)
+    if not state_payload or len(state_sha) != 64 or not projection:
+        raise ValueError("physical_weak_revision_state_or_projection_missing")
+    identity = {
+        "previous_checkpoint_id": _text(previous.get("posterior_checkpoint_id")),
+        "revised_forecast_evidence_snapshot_id": new_id,
+        "trigger_source_revision_id": _text(trigger_source_revision_id),
+        "physical_state_posterior_sha256": state_sha,
+        "physical_forcing_rebind_sha256": _text(
+            extension.get("physical_forcing_rebind_sha256")
+        ),
+    }
+    update_id = "weak-physical-" + _sha(identity)
+    run_id = "posterior-physical-weak-" + _sha(
+        {**identity, "weak_forecast_revision_update_id": update_id}
+    )
+    checkpoint_id = "checkpoint-physical-weak-" + _sha(
+        {
+            "posterior_run_id": run_id,
+            "previous_checkpoint_id": _text(previous.get("posterior_checkpoint_id")),
+        }
+    )
+    termination = {
+        "schema": "termination_risk_marginal_v3_physical_state_bayes_v6",
+        "state": "available" if lower is not None else "na",
+        "probability_no_material_new_daily_high": (
+            sum(value for key, value in reported.items() if int(key) <= int(lower))
+            if lower is not None
+            else None
+        ),
+        "updates_posterior": False,
+        "canonical_observation_event_id": _text(
+            previous.get("last_canonical_event_id")
+        ),
+    }
+    checkpoint = dict(previous)
+    checkpoint.update(
+        {
+            "posterior_checkpoint_id": checkpoint_id,
+            "posterior_run_id": run_id,
+            "previous_checkpoint_id": _text(previous.get("posterior_checkpoint_id")),
+            "checkpoint_kind": "incremental",
+            "forecast_evidence_snapshot_id": new_id,
+            "joint_posterior_json": state_payload,
+            "joint_posterior_sha256": state_sha,
+            "physical_high_distribution_json": _json(
+                projection.get("latent_continuous_peak_distribution") or {}
+            ),
+            "latent_scheduled_slot_high_distribution_json": _json(
+                projection.get("latent_continuous_peak_distribution") or {}
+            ),
+            "latent_post_state_json": state_payload,
+            "temperature_grid_id": _sha(sorted(reported, key=float)),
+            "reported_physical_x_distribution_json": _json(reported),
+            "reported_x_projection_sha256": _sha(reported),
+            "reported_x_termination_json": _json(termination),
+            "forcing_generation_sha256": new_generation,
+            "scenario_control_lineage_sha256": _text(
+                extension.get("physical_scenario_control_lineage_sha256")
+            ),
+            "physical_state_posterior_schema": IDENTIFIABLE_PHYSICAL_STATE_SCHEMA,
+            "physical_state_posterior_json": state_payload,
+            "physical_state_posterior_sha256": state_sha,
+            "physical_path_projection_json": _text(
+                extension.get("physical_path_projection_json")
+            ),
+            "physical_path_projection_sha256": _text(
+                extension.get("physical_path_projection_sha256")
+            ),
+            "physical_state_model_artifact_sha256": _text(
+                extension.get("physical_state_model_artifact_sha256")
+            ),
+            "physical_reporting_operator_sha256": _text(
+                extension.get("physical_reporting_operator_sha256")
+            ),
+            "physical_driver_generation_sha256": new_generation,
+            "physical_state_reference_valid_at": _text(
+                extension.get("physical_state_reference_valid_at")
+            ),
+            "physical_last_weak_advance_json": _text(
+                extension.get("physical_weak_advance_json")
+            ),
+            "physical_last_weak_advance_sha256": _text(
+                extension.get("physical_weak_advance_sha256")
+            ),
+            "physical_forcing_rebind_json": _text(
+                extension.get("physical_forcing_rebind_json")
+            ),
+            "physical_forcing_rebind_sha256": _text(
+                extension.get("physical_forcing_rebind_sha256")
+            ),
+            "state": "production_successor_ready",
+            "created_at": _text(decision_as_of),
+            "committed_at": _text(decision_as_of),
+        }
+    )
+    posterior_delta = {
+        "schema": "identifiable_physical_weak_forcing_replacement_delta_v1",
+        "previous_physical_state_posterior_sha256": _text(
+            previous.get("physical_state_posterior_sha256")
+        ),
+        "advanced_with_previous_forcing_sha256": _text(
+            extension.get("physical_weak_advance_sha256")
+        ),
+        "rebound_physical_state_posterior_sha256": state_sha,
+        "physical_forcing_rebind_sha256": _text(
+            extension.get("physical_forcing_rebind_sha256")
+        ),
+        "forecast_revision_used_as_likelihood": False,
+        "current_observation_consumed": False,
+    }
+    quality = {
+        "forecast_only": True,
+        "replacement_not_independent_multiplication": True,
+        "forecast_revision_used_as_likelihood": False,
+        "past_state_transitions_replayed": False,
+        "state_advanced_with_superseded_driver_to_effective_time": True,
+        "future_forcing_replaced_at_effective_time": True,
+        "current_observation_consumed": False,
+        "canonical_sequence_unchanged": True,
+        "reported_x_hard_lower_bound_preserved": True,
+        "dynamic_three_leg_consumed": False,
+    }
+    update = {
+        "weak_forecast_revision_update_id": update_id,
+        "target_identity": target,
+        "previous_posterior_run_id": _text(previous.get("posterior_run_id")),
+        "previous_posterior_sha256": _text(previous.get("joint_posterior_sha256")),
+        "previous_checkpoint_id": _text(previous.get("posterior_checkpoint_id")),
+        "successor_checkpoint_id": checkpoint_id,
+        "previous_forecast_evidence_snapshot_id": old_id,
+        "revised_forecast_evidence_snapshot_id": new_id,
+        "trigger_source_id": _text(trigger_source_id),
+        "trigger_source_revision_id": _text(trigger_source_revision_id),
+        "revision_kind": revision_kind,
+        "weak_likelihood_artifact_sha256": artifact,
+        "decision_as_of": _text(decision_as_of),
+        "replacement_log_lr_by_x_json": "{}",
+        "replacement_log_lr_sha256": _sha({}),
+        "previous_weak_likelihood_sha256": _text(old.get("weak_likelihood_sha256")),
+        "revised_weak_likelihood_sha256": _text(new.get("weak_likelihood_sha256")),
+        "posterior_delta_json": _json(posterior_delta),
+        "posterior_delta_sha256": _sha(posterior_delta),
+        "state": "applied",
+        "quality_json": _json(quality),
+        "block_reasons_json": "[]",
+        "created_at": _text(decision_as_of),
+        "probability_update_schema": IDENTIFIABLE_PHYSICAL_UPDATE_SCHEMA,
+        "previous_forcing_generation_sha256": old_generation,
+        "revised_forcing_generation_sha256": new_generation,
+        "scenario_control_lineage_sha256": _text(
+            extension.get("physical_scenario_control_lineage_sha256")
+        ),
+        "no_retroactive_state_transition": 1,
+    }
+    return {
+        "schema": SCHEMA_VERSION,
+        "ok": True,
+        "state": "production_successor_weak_revision_candidate_ready",
+        "candidate_mode": "identifiable_physical_state",
+        "snapshot_row": dict(new),
+        "update_row": update,
+        "checkpoint_row": checkpoint,
+        "reported_physical_x_distribution": reported,
+        "past_state_transitions_replayed": False,
+        "future_forcing_replaced": True,
+        "forecast_revision_used_as_likelihood": False,
+        "current_observation_consumed": False,
+        "places_orders": False,
+    }
+
+
+__all__ = [
+    "IDENTIFIABLE_PHYSICAL_UPDATE_SCHEMA",
+    "SCHEMA_VERSION",
+    "UPDATE_SCHEMA",
+    "compile_v6_weak_revision_candidate",
+]

@@ -141,3 +141,70 @@ def test_materializer_apply_merge_fills_observed_only(tmp_path):
     assert rows[0]["basin_regime_source"] == "unit_test_climo"
     assert rows[1]["official_updated_source"] == "open_meteo_historical_forecast"
     assert rows[1]["basin_regime"] is None
+
+
+def test_materializer_strict_asof_fills_from_official_curve_physical_regime(tmp_path):
+    conn = _make_db(tmp_path / "archive.db")
+    conn.execute("DELETE FROM event_fact_latest")
+    conn.execute("DELETE FROM event_fact_history")
+    conn.execute("DELETE FROM model_member_cache")
+    for created_at in ("2026-07-02T23:00:00Z", "2026-07-03T01:00:00Z"):
+        conn.execute(
+            """
+            INSERT INTO model_member_cache(
+                model,loc_key,event_date,market_var,market_unit,members_json,
+                created_at,official_updated_source
+            ) VALUES('gfs_seamless',?,'2026-07-03','temperature_2m_max','C','[30]',?,'observed')
+            """,
+            (materializer.DEFAULT_LOC_KEY, created_at),
+        )
+    conn.commit()
+    revision_dir = tmp_path / "curves" / "gfs" / "daily_peak_revisions"
+    revision_dir.mkdir(parents=True)
+    (revision_dir / "nwprev_test.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "state": "available",
+                "source_revision_id": "nwprev_test",
+                "event_date": "2026-07-03",
+                "available_at": "2026-07-03T00:00:00Z",
+                "physical_regime": {
+                    "schema": "official_nwp_daily_physical_regime_v1",
+                    "basin_regime": "well_ventilated",
+                    "basin_regime_confidence": 0.74,
+                    "known_point_share": 1.0,
+                    "boundary": {
+                        "temperature_fields_consumed": False,
+                        "temperature_curve_weather_type_inference_forbidden": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        result = materializer.materialize(
+            conn,
+            start_date="2026-07-03",
+            end_date="2026-07-03",
+            loc_key=materializer.DEFAULT_LOC_KEY,
+            station_id="ZUUU",
+            market_var="temperature_2m_max",
+            market_unit="C",
+            official_curve_root=tmp_path / "curves",
+            apply=True,
+        )
+        rows = conn.execute(
+            "SELECT created_at,basin_regime,basin_regime_features_json FROM model_member_cache ORDER BY id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert result["official_curve_regime"]["candidate_rows"] == 1
+    assert result["official_curve_regime"]["rows_changed"] == 1
+    assert rows[0]["basin_regime"] is None
+    assert rows[1]["basin_regime"] == "well_ventilated"
+    features = json.loads(rows[1]["basin_regime_features_json"])
+    assert features["source_revision_id"] == "nwprev_test"
+    assert features["boundary"]["temperature_fields_consumed"] is False

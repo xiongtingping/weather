@@ -1,0 +1,46 @@
+{
+  "schema": "bayes_basket_target_model_arrival_capture_v1",
+  "state": "enabled_for_target_no_live_forward_capture",
+  "enabled": true,
+  "target_only": true,
+  "scope": "canonical_45_station",
+  "station_source": "bayes_basket_target.station_registry",
+  "station_count": 45,
+  "providers": [
+    "ecmwf_ifs025_official",
+    "gfs_0p25_official",
+    "icon_global_official",
+    "gem_gdps_official",
+    "cma_grapes_global_open_meteo"
+  ],
+  "run_binding": "bayes_basket_target_model_run_contract_v1",
+  "exact_join_key": [
+    "station_id",
+    "target_local_date",
+    "run_initialization_utc",
+    "valid_time_utc",
+    "provider_id"
+  ],
+  "historical_policy": {
+    "retrospective_download_as_arrival": false,
+    "official_date_addressable_archive_required": true,
+    "missing_archive_action": "fail_closed_and_retain_blocker"
+  },
+  "resource_budget": {
+    "max_process_rss_bytes": 536870912,
+    "max_raw_bytes": 1073741824,
+    "min_free_bytes": 536870912,
+    "max_response_bytes": 67108864,
+    "max_capture_bytes": 268435456
+  },
+  "boundary": {
+    "writes_target_database": false,
+    "writes_production_database": false,
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "live_order_authorized": false,
+    "protected_production_line_touched": false,
+    "resident_capture_config_or_environment_mutated": false,
+    "requires_et_close_for_historical_promotion": true
+  }
+}

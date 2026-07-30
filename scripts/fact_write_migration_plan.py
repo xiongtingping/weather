@@ -222,6 +222,8 @@ def _classify_lane(path: str) -> str:
         return "hard_source_realtime"
     if rel == "scripts/apply_amsc_zuuu_fact_snapshot_plan.py":
         return "source_acquisition_archive_apply"
+    if rel == "prospective_physical_evidence_capture.py":
+        return "source_acquisition_archive_apply"
     if rel == "scripts/materialize_amsc_posterior_task.py":
         return "posterior_materialization_worker"
     if rel == "scan_weather_market.py":
@@ -265,6 +267,7 @@ def _classify_lane(path: str) -> str:
         "production_probability_runtime_manifest.py",
         "scripts/retired_model_taf_conflict_audit.py",
         "scripts/source_acquisition_contract_audit.py",
+        "scripts/install_v6_market_transaction_branch_runtime.py",
     }:
         return "read_only_contract_surface"
     if rel == "sequential_bayes_public_ssot_shadow_writer.py":
@@ -272,6 +275,7 @@ def _classify_lane(path: str) -> str:
     if rel in {
         "production_probability_v6_amsc_archive_ingress.py",
         "production_probability_v6_initial_writer.py",
+        "production_probability_v6_market_transaction_writer.py",
         "production_probability_v6_public_ssot_writer.py",
         "production_probability_v6_weak_revision_writer.py",
     }:
@@ -809,6 +813,12 @@ def _build_file_entry(
                 and _file_contains(Path(root), path, "_assert_boundary")
                 and _file_contains(Path(root), path, "BEGIN IMMEDIATE")
             )
+            or (
+                path == "production_probability_v6_market_transaction_writer.py"
+                and _file_contains(Path(root), path, "_assert_boundary")
+                and _file_contains(Path(root), path, "validate_resolution_bridge_activation")
+                and _file_contains(Path(root), path, "BEGIN IMMEDIATE")
+            )
         )
     )
     initial_production_candidate = bool(
@@ -863,6 +873,25 @@ def _build_file_entry(
             )
         )
     )
+    prospective_physical_evidence_boundary = bool(
+        lane == "source_acquisition_archive_apply"
+        and path == "prospective_physical_evidence_capture.py"
+        and not table_matches
+        and _file_contains(Path(root), path, "persist_source_observations_for_payload")
+        and _file_contains(Path(root), path, '"writes_posterior": False')
+        and _file_contains(Path(root), path, '"writes_ssot": False')
+        and _file_contains(Path(root), path, '"places_orders": False')
+        and _file_contains(Path(root), path, '"hard_no_lane_consumes_capture": False')
+    )
+    installer_preview_boundary = bool(
+        lane == "read_only_contract_surface"
+        and path == "scripts/install_v6_market_transaction_branch_runtime.py"
+        and not table_matches
+        and _file_contains(Path(root), path, "Preview is read-only")
+        and _file_contains(Path(root), path, "--apply")
+        and _file_contains(Path(root), path, "CONFIRMATION")
+        and _file_contains(Path(root), path, "transform_drain")
+    )
     production_writer_boundary_present = bool(
         incremental_production_candidate
         or initial_production_candidate
@@ -912,6 +941,8 @@ def _build_file_entry(
         status = "controlled_identity_repair_apply_boundary_present"
     if read_only_contract_surface_present:
         status = "read_only_contract_surface_no_apply_boundary_present"
+    if installer_preview_boundary:
+        status = "read_only_contract_surface_no_apply_boundary_present"
     if isolated_shadow_ssot_writer_boundary_present:
         status = "isolated_shadow_ssot_writer_manifest_boundary_present"
     if production_transaction_b_cutover_candidate_present:
@@ -941,6 +972,8 @@ def _build_file_entry(
     elif hard_source_writer_apply_path_present:
         status = "hard_source_realtime_writer_apply_path_present_pending_default_switch"
     if source_acquisition_archive_apply_writer_boundary_present:
+        status = "source_acquisition_archive_apply_writer_boundary_present"
+    if prospective_physical_evidence_boundary:
         status = "source_acquisition_archive_apply_writer_boundary_present"
     if posterior_materialization_worker_boundary_present:
         status = "posterior_materialization_worker_boundary_present"
@@ -1041,6 +1074,8 @@ def _build_file_entry(
         "hard_source_writer_apply_path_present": hard_source_writer_apply_path_present,
         "hard_source_writer_apply_default_enabled": hard_source_writer_apply_default_enabled,
         "source_acquisition_archive_apply_writer_boundary_present": source_acquisition_archive_apply_writer_boundary_present,
+        "prospective_physical_evidence_boundary_present": prospective_physical_evidence_boundary,
+        "installer_preview_boundary_present": installer_preview_boundary,
         "posterior_materialization_worker_boundary_present": posterior_materialization_worker_boundary_present,
         "scanner_writer_apply_path_present": scanner_writer_apply_path_present,
         "scanner_historical_guard_present": scanner_historical_guard_present,

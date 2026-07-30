@@ -63,6 +63,7 @@ def test_scheduled_exact_metar_remains_strong_candidate() -> None:
     )
     assert result["scheduled_regular_metar_slot"] is True
     assert result["strong_observation_candidate"] is True
+    assert result["settlement_metar_slot"] is True
     assert result["state"] == "strong_observation"
 
 
@@ -73,8 +74,10 @@ def test_daytime_half_hour_exact_metar_triggers_strong_candidate() -> None:
     )
     assert result["trigger_slot_at"] == "2026-07-15T06:30:00Z"
     assert result["scheduled_regular_metar_slot"] is True
-    assert result["strong_observation_candidate"] is True
-    assert result["state"] == "strong_observation"
+    assert result["settlement_metar_slot"] is False
+    assert result["strong_observation_candidate"] is False
+    assert result["strong_observation_na_reason"] == "half_hour_reference_only"
+    assert result["state"] == "no_new_event"
 
 
 def test_delayed_local_fetch_still_triggers_taf_revision() -> None:

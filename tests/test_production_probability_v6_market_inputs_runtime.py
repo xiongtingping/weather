@@ -138,3 +138,75 @@ def test_enabled_market_inputs_require_exact_context_bridge_and_policy_binding(t
     assert result["bridge_artifact"]["artifact_sha256"] == bridge["artifact_sha256"]
     assert result["physical_resolution_contract"]["resolution_local_date"] == "2026-07-03"
     assert result["blocks_physical_x"] is False
+
+
+def test_basket_probability_inputs_do_not_depend_on_retired_realization_policy(tmp_path):
+    target = _proposal()
+    bridge = _bridge(target["authority_contract_sha256"])
+    bridge_path = tmp_path / "bridge.json"
+    bridge_path.write_text(json.dumps(bridge))
+    bridge_activation_core = {
+        "schema": "resolution_bridge_production_activation_v1",
+        "state": "production_enabled",
+        "artifact_path": "bridge.json",
+        "artifact_sha256": bridge["artifact_sha256"],
+        "approval_id": bridge["approval_id"],
+        "approval_receipt_sha256": bridge["approval_receipt_sha256"],
+        "places_orders": False,
+        "authorizes_clob": False,
+    }
+    bridge_activation = {
+        **bridge_activation_core,
+        "activation_sha256": bridge_activation_sha256(bridge_activation_core),
+    }
+    bridge_activation_path = tmp_path / "bridge-activation.json"
+    bridge_activation_path.write_text(json.dumps(bridge_activation))
+    context_core = {
+        "schema": "production_probability_v6_market_context_v1",
+        "state": "production_approved",
+        "event_date": "2026-07-03",
+        "target_identity": "physical_weather_day_v1:ZUUU:2026-07-03",
+        "slug": target["public_slug"],
+        "market_target_contract": target,
+        "target_contract_sha256": target["target_contract_sha256"],
+        "bridge_artifact_sha256": bridge["artifact_sha256"],
+        "places_orders": False,
+        "authorizes_clob": False,
+        "blocks_physical_x": False,
+    }
+    context = {
+        **context_core,
+        "market_context_sha256": market_context_sha256(context_core),
+    }
+    (tmp_path / "context.json").write_text(json.dumps(context))
+    context_activation_core = {
+        "schema": "production_probability_v6_market_context_activation_v1",
+        "state": "production_enabled",
+        "context_path": "context.json",
+        "market_context_sha256": context["market_context_sha256"],
+        "bridge_artifact_sha256": bridge["artifact_sha256"],
+        "places_orders": False,
+        "authorizes_clob": False,
+        "blocks_physical_x": False,
+    }
+    context_activation = {
+        **context_activation_core,
+        "activation_sha256": context_activation_sha256(context_activation_core),
+    }
+    context_activation_path = tmp_path / "context-activation.json"
+    context_activation_path.write_text(json.dumps(context_activation))
+    result = prewarm_v6_market_inputs(
+        event_date="2026-07-03",
+        market_context_activation_path=context_activation_path,
+        bridge_activation_path=bridge_activation_path,
+        realization_policy_path=tmp_path / "retired-policy-does-not-exist.json",
+        resolution_authority_path=(
+            ROOT
+            / "config/resolution_authorities/zuuu_amsc_wunderground_daily_high_v4.json"
+        ),
+        root=tmp_path,
+        strategy_projection_role="basket_probability_only",
+    )
+    assert result["state"] == "market_inputs_ready"
+    assert result["strategy_projection_role"] == "basket_probability_only"
+    assert result["realization_policy"] is None

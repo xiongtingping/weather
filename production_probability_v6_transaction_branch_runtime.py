@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from production_probability_v6_market_bundle_runtime import (
+    build_v6_basket_market_projection_bundle,
     build_v6_market_transaction_bundle,
 )
 from production_probability_v6_path_auxiliary_runtime import (
@@ -20,6 +21,9 @@ from production_probability_v6_public_ssot_writer import (
 )
 from resolution_bridge_activation_runtime import (
     validate_resolution_bridge_activation,
+)
+from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
 )
 
 
@@ -57,10 +61,11 @@ def _physical_bundle(
         correlation_id=correlation_id,
         market_bucket_probabilities_na_reason=na_reason,
     )
-    public = inject_v6_peak_timing_into_public_fact(
-        public_fact_row=public,
-        candidate=candidate,
-    )
+    if _text(activation.get("composer_schema")) != IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA:
+        public = inject_v6_peak_timing_into_public_fact(
+            public_fact_row=public,
+            candidate=candidate,
+        )
     return {
         "schema": SCHEMA_VERSION,
         "ok": True,
@@ -135,23 +140,41 @@ def build_v6_transaction_branch_bundle(
             != _text(context.get("target_contract_sha256"))
         ):
             raise ValueError("v6_market_branch_content_binding_mismatch")
-        bundle = build_v6_market_transaction_bundle(
-            activation=activation,
-            previous_checkpoint=previous_checkpoint,
-            candidate=candidate,
-            physical_resolution_contract=physical_resolution_contract or {},
-            market_target_contract=_mapping(context.get("market_target_contract")),
-            bridge_artifact=artifact,
-            canonical_observation_event=canonical_observation_event,
-            realization_policy=realization_policy or {},
-            fact_snapshot_id=fact_snapshot_id,
-            slug=_text(context.get("slug")) or slug,
-            event_date=event_date,
-            fact_as_of=fact_as_of,
-            correlation_id=correlation_id,
-            outbox_event_id=outbox_event_id,
-            inference_decision_deadline_at=inference_decision_deadline_at,
+        identifiable_physical = (
+            _text(activation.get("composer_schema"))
+            == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
         )
+        if identifiable_physical:
+            bundle = build_v6_basket_market_projection_bundle(
+                activation=activation,
+                candidate=candidate,
+                physical_resolution_contract=physical_resolution_contract or {},
+                market_target_contract=_mapping(context.get("market_target_contract")),
+                bridge_artifact=artifact,
+                fact_snapshot_id=fact_snapshot_id,
+                slug=_text(context.get("slug")) or slug,
+                event_date=event_date,
+                fact_as_of=fact_as_of,
+                correlation_id=correlation_id,
+            )
+        else:
+            bundle = build_v6_market_transaction_bundle(
+                activation=activation,
+                previous_checkpoint=previous_checkpoint,
+                candidate=candidate,
+                physical_resolution_contract=physical_resolution_contract or {},
+                market_target_contract=_mapping(context.get("market_target_contract")),
+                bridge_artifact=artifact,
+                canonical_observation_event=canonical_observation_event,
+                realization_policy=realization_policy or {},
+                fact_snapshot_id=fact_snapshot_id,
+                slug=_text(context.get("slug")) or slug,
+                event_date=event_date,
+                fact_as_of=fact_as_of,
+                correlation_id=correlation_id,
+                outbox_event_id=outbox_event_id,
+                inference_decision_deadline_at=inference_decision_deadline_at,
+            )
     except (KeyError, TypeError, ValueError) as exc:
         return _physical_bundle(
             activation=activation,
@@ -164,15 +187,25 @@ def build_v6_transaction_branch_bundle(
             na_reason=f"market_projection_branch_blocked:{type(exc).__name__}",
             market_block_reasons=[_text(exc) or type(exc).__name__],
         )
+    writer_route = (
+        "basket_probability_transaction_b"
+        if _text(activation.get("composer_schema"))
+        == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+        else "market_transaction_b"
+    )
     return {
         **bundle,
         "schema": SCHEMA_VERSION,
-        "state": "market_transaction_bundle_ready",
-        "writer_route": "market_transaction_b",
+        "state": (
+            "basket_probability_transaction_bundle_ready"
+            if writer_route == "basket_probability_transaction_b"
+            else "market_transaction_bundle_ready"
+        ),
+        "writer_route": writer_route,
         "market_projection_available": True,
         "market_projection_na_reason": "",
         "blocks_physical_x": False,
-        "creates_outbox": True,
+        "creates_outbox": writer_route == "market_transaction_b",
         "places_orders": False,
         "clob": False,
     }

@@ -21,6 +21,7 @@ import legacy_additive_test_contract_audit
 import phase0_schema_probe
 import phase0_ssot_inventory
 from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
     SCHEMA_VERSION as V6_ACTIVATION_SCHEMA,
     validate_v6_activation,
 )
@@ -28,6 +29,7 @@ from production_probability_v6_runtime_manifest import (
     audit_v6_runtime_manifest_dependency_closure,
     v6_runtime_manifest_sha256,
 )
+from bayes_basket_target.activation import load_target_activation
 
 
 SCHEMA_VERSION = "production_chain_uniqueness_audit_v1"
@@ -167,6 +169,50 @@ def _entrypoint_by_id(inventory: Mapping[str, Any]) -> dict[str, Mapping[str, An
 
 
 def _probability_runtime_identity_gate(root: Path) -> dict[str, Any]:
+    # The target basket lane is the current production decision authority.  A
+    # legacy v6 probability activation may still exist as an offline release
+    # receipt, but it must not remain a production gate once the resident
+    # target route is explicitly enabled in production_no_live mode.  This
+    # branch intentionally performs no activation/database mutation.
+    target_activation_path = root / "config" / "trading" / "bayes_basket_target_production_no_live_activation_v1.json"
+    if target_activation_path.exists():
+        try:
+            from production_probability_v6_live_route_contract import audit_v6_live_routes
+
+            target_activation = load_target_activation(target_activation_path)
+            target_blockers: list[dict[str, Any]] = []
+            if target_activation.get("state") not in {"enabled", "production_no_live"}:
+                target_blockers.append(_blocker("target_basket_activation_not_enabled"))
+            if target_activation.get("execution_mode") != "production_no_live":
+                target_blockers.append(_blocker("target_basket_activation_not_no_live"))
+            if target_activation.get("live_submit_authorized") is not False:
+                target_blockers.append(_blocker("target_basket_live_submit_authorized"))
+            if target_activation.get("places_orders") is not False:
+                target_blockers.append(_blocker("target_basket_places_orders_enabled"))
+            if target_activation.get("calls_order_gateway") is not False:
+                target_blockers.append(_blocker("target_basket_gateway_call_enabled"))
+            route = audit_v6_live_routes(root)
+            target_blockers.extend(
+                _blocker(str(item)) for item in route.get("blockers") or []
+            )
+            return {
+                "ok": not target_blockers,
+                "blockers": target_blockers,
+                "warnings": [],
+                "activation_schema": target_activation.get("schema"),
+                "target_activation_contract_sha256": target_activation.get("activation_contract_sha256"),
+                "resident_route": route,
+                "legacy_probability_activation_not_authoritative": True,
+                "legacy_v6_manifest_checked": False,
+                "read_only": True,
+            }
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            return {
+                "ok": False,
+                "blockers": [_blocker("target_production_identity_invalid", details={"error": str(exc)})],
+                "warnings": [],
+                "read_only": True,
+            }
     path = root / "config" / "production_probability_runtime_activation.json"
     if not path.exists():
         return {
@@ -431,50 +477,7 @@ def _posterior_entrypoint_gate(root: Path, inventory: Mapping[str, Any]) -> dict
     event_text = _read_text(root / "production_probability_v6_event_runtime.py")
     candidate_text = _read_text(root / "production_probability_v6_candidate_compiler.py")
     core_text = _read_text(root / "physical_state_bayes_v6" / "core.py")
-
-    required_by_file = {
-        "production_probability_v6_activation_contract.py": (
-            "p0_weak_conditioned_continuous_y_x_8_state_then_pre_event_controlled_predict_",
-            'COMPOSER_SCHEMA = "physical_state_bayes_v6_pre_event_predict_update"',
-            'PUBLIC_SSOT_SCHEMA = "sequential_temperature_posterior_ssot_v4_reported_x"',
-            'CHECKPOINT_SCHEMA = "posterior_checkpoint_v4_physical_state_bayes_v6"',
-        ),
-        "production_probability_v6_amsc_archive_ingress.py": (
-            "apply_v6_amsc_archive_probability_ingress",
-            "drain_v6_canonical_events",
-            '"canonical_fact_commits_before_probability": True',
-            '"v5_fallback_forbidden": True',
-        ),
-        "production_probability_v6_canonical_event_drain_runtime.py": (
-            "pending_v6_canonical_event_ids",
-            "commit_v6_public_physical_transaction",
-        ),
-        "production_probability_v6_weak_revision_event_runtime.py": (
-            "apply_v6_taf_revision_from_source_observations",
-            "commit_v6_weak_revision_transaction",
-        ),
-        "production_probability_v6_public_ssot_writer.py": (
-            "commit_v6_public_physical_transaction",
-            "validate_v6_activation",
-            "BEGIN IMMEDIATE",
-        ),
-        "production_probability_v6_event_runtime.py": (
-            "predict_to_event",
-            "build_joint_observation_emission",
-            "build_v6_transaction_b_candidate",
-        ),
-        "production_probability_v6_candidate_compiler.py": (
-            "update_with_observation",
-            "project_reported_x",
-            '"no_post_emission_state_transition": True',
-        ),
-        "physical_state_bayes_v6/core.py": (
-            "def predict_to_event(",
-            "def update_with_observation(",
-            '"no_post_emission_state_transition": True',
-        ),
-    }
-    text_by_file = {
+    base_text_by_file = {
         "production_probability_v6_activation_contract.py": activation_text,
         "production_probability_v6_amsc_archive_ingress.py": ingress_text,
         "production_probability_v6_canonical_event_drain_runtime.py": drain_text,
@@ -484,6 +487,137 @@ def _posterior_entrypoint_gate(root: Path, inventory: Mapping[str, Any]) -> dict
         "production_probability_v6_candidate_compiler.py": candidate_text,
         "physical_state_bayes_v6/core.py": core_text,
     }
+    physical_composer = False
+    try:
+        active_activation = json.loads(
+            (root / "config/production_probability_runtime_activation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        physical_composer = (
+            str(active_activation.get("composer_schema") or "")
+            == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+
+    if physical_composer:
+        physical_composer_text = _read_text(
+            root / "production_probability_physical_state_composer.py"
+        )
+        physical_core_text = _read_text(
+            root / "identifiable_physical_state_bayes" / "core.py"
+        )
+        text_by_file = {
+            **base_text_by_file,
+            "production_probability_physical_state_composer.py": physical_composer_text,
+            "identifiable_physical_state_bayes/core.py": physical_core_text,
+        }
+        required_by_file = {
+            "production_probability_v6_activation_contract.py": (
+                "IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA",
+                "IDENTIFIABLE_PHYSICAL_FORMULA_ID",
+                "physical_state_vector",
+                "frozen_reporting_operator_enabled",
+            ),
+            "production_probability_v6_amsc_archive_ingress.py": (
+                "apply_v6_amsc_archive_probability_ingress",
+                "drain_v6_canonical_events",
+                "prewarm_v6_market_inputs",
+                '"canonical_fact_commits_before_probability": True',
+                '"v5_fallback_forbidden": True',
+            ),
+            "production_probability_v6_canonical_event_drain_runtime.py": (
+                "pending_v6_canonical_event_ids",
+                "commit_v6_candidate_transaction",
+                "IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA",
+            ),
+            "production_probability_v6_weak_revision_event_runtime.py": (
+                "apply_v6_taf_revision_from_source_observations",
+                "commit_v6_weak_revision_transaction",
+            ),
+            "production_probability_v6_public_ssot_writer.py": (
+                "commit_v6_public_physical_transaction",
+                "validate_v6_activation",
+                "BEGIN IMMEDIATE",
+            ),
+            "production_probability_v6_event_runtime.py": (
+                "compose_physical_canonical_event_extension",
+                "build_identifiable_physical_transaction_b_candidate",
+                "IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA",
+            ),
+            "production_probability_v6_candidate_compiler.py": (
+                "build_identifiable_physical_transaction_b_candidate",
+                "physical_candidate_reported_x_hard_bound_violation",
+                "no_post_emission_transition",
+            ),
+            "production_probability_physical_state_composer.py": (
+                "compose_physical_canonical_event_extension",
+                "predict_to_event",
+                "build_joint_observation_likelihood",
+                "condition_pre_event_state",
+            ),
+            "identifiable_physical_state_bayes/core.py": (
+                "def predict_to_event(",
+                "def condition_pre_event_state(",
+                "no_post_emission_transition",
+            ),
+        }
+        text_by_file.update(
+            {
+                "production_probability_v6_activation_contract.py": activation_text,
+                "production_probability_v6_amsc_archive_ingress.py": ingress_text,
+                "production_probability_v6_canonical_event_drain_runtime.py": drain_text,
+                "production_probability_v6_weak_revision_event_runtime.py": weak_revision_text,
+                "production_probability_v6_public_ssot_writer.py": public_writer_text,
+                "production_probability_v6_event_runtime.py": event_text,
+                "production_probability_v6_candidate_compiler.py": candidate_text,
+            }
+        )
+    else:
+        required_by_file = {
+            "production_probability_v6_activation_contract.py": (
+                "p0_weak_conditioned_continuous_y_x_8_state_then_pre_event_controlled_predict_",
+                'COMPOSER_SCHEMA = "physical_state_bayes_v6_pre_event_predict_update"',
+                'PUBLIC_SSOT_SCHEMA = "sequential_temperature_posterior_ssot_v4_reported_x"',
+                'CHECKPOINT_SCHEMA = "posterior_checkpoint_v4_physical_state_bayes_v6"',
+            ),
+            "production_probability_v6_amsc_archive_ingress.py": (
+                "apply_v6_amsc_archive_probability_ingress",
+                "drain_v6_canonical_events",
+                '"canonical_fact_commits_before_probability": True',
+                '"v5_fallback_forbidden": True',
+            ),
+            "production_probability_v6_canonical_event_drain_runtime.py": (
+                "pending_v6_canonical_event_ids",
+                "commit_v6_public_physical_transaction",
+            ),
+            "production_probability_v6_weak_revision_event_runtime.py": (
+                "apply_v6_taf_revision_from_source_observations",
+                "commit_v6_weak_revision_transaction",
+            ),
+            "production_probability_v6_public_ssot_writer.py": (
+                "commit_v6_public_physical_transaction",
+                "validate_v6_activation",
+                "BEGIN IMMEDIATE",
+            ),
+            "production_probability_v6_event_runtime.py": (
+                "predict_to_event",
+                "build_joint_observation_emission",
+                "build_v6_transaction_b_candidate",
+            ),
+            "production_probability_v6_candidate_compiler.py": (
+                "update_with_observation",
+                "project_reported_x",
+                '"no_post_emission_state_transition": True',
+            ),
+            "physical_state_bayes_v6/core.py": (
+                "def predict_to_event(",
+                "def update_with_observation(",
+                '"no_post_emission_state_transition": True',
+            ),
+        }
+        text_by_file = base_text_by_file
     missing_contract: dict[str, list[str]] = {}
     for filename, required_tokens in required_by_file.items():
         missing = [token for token in required_tokens if token not in text_by_file[filename]]
@@ -531,6 +665,9 @@ def _posterior_entrypoint_gate(root: Path, inventory: Mapping[str, Any]) -> dict
         "blockers": blockers,
         "warnings": [],
         "mainline_contract_complete": not missing_contract,
+        "active_composer": (
+            IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA if physical_composer else "legacy_v6"
+        ),
         "retired_successor_imports_absent": not fallback_hits,
         "required_by_file": {key: list(value) for key, value in required_by_file.items()},
     }
@@ -614,10 +751,9 @@ def _monitor_signal_gate(root: Path) -> dict[str, Any]:
                 )
             )
     required_retirement_tokens = (
-        "system/com.weather.target_rule_shadow_capture",
-        "system/com.weather.market_finality_shadow_capture",
-        "system/com.weather.physical_final_source_shadow_capture",
-        "system/com.weather.settlement_final_source_shadow_capture",
+        "Library/LaunchAgents",
+        "gui/${UID_VALUE}",
+        "monitor_user_domain_migration.enabled",
     )
     if installer.exists():
         installer_text = _read_text(installer)
@@ -625,7 +761,7 @@ def _monitor_signal_gate(root: Path) -> dict[str, Any]:
         if missing_retirement_tokens:
             blockers.append(
                 _blocker(
-                    "monitor_installer_resolution_capture_retirement_missing",
+                    "monitor_user_domain_single_owner_contract_missing",
                     details={"missing": missing_retirement_tokens},
                 )
             )

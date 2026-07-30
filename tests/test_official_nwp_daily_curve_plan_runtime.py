@@ -31,5 +31,21 @@ def test_icon_hourly_and_jma_unconfigured_are_explicit() -> None:
     assert "official_nwp_daily_curve_authorized_provider_not_configured" in jma["blockers"]
 
     late = build_official_nwp_daily_curve_plan(contract=CONTRACT, provider_id="icon", run_at_utc="2026-07-11T18:00:00Z", target_event_date="2026-07-12")
-    assert late["ok"] is False
-    assert late["blockers"] == ["official_nwp_daily_curve_run_after_target_window_start"]
+    assert late["ok"] is True
+    assert late["expected_valid_times_utc"][0] == "2026-07-11T18:00:00Z"
+
+
+def test_same_day_06z_run_is_eligible_for_remaining_local_day() -> None:
+    plan = build_official_nwp_daily_curve_plan(
+        contract=CONTRACT,
+        provider_id="ecmwf",
+        run_at_utc="2026-07-22T06:00:00Z",
+        target_event_date="2026-07-22",
+    )
+    assert plan["ok"] is True
+    assert plan["expected_valid_times_utc"] == [
+        "2026-07-22T06:00:00Z",
+        "2026-07-22T09:00:00Z",
+        "2026-07-22T12:00:00Z",
+        "2026-07-22T15:00:00Z",
+    ]

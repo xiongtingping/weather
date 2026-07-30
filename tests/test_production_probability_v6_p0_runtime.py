@@ -27,7 +27,7 @@ def _activation():
         "v5_fallback_forbidden": True,
         "pre_event_predict_does_not_consume_current_observation": True,
         "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
+        "nwp_hourly_curve_not_reapplied_as_independent_likelihood": True,
         "runtime_manifest_sha256": "b" * 64,
         "transition_artifact_sha256": "c" * 64,
         "observation_artifact_sha256": "d" * 64,
@@ -59,6 +59,10 @@ def test_p0_compiles_one_continuous_joint_and_reported_x_projection() -> None:
             JointCell(34.6, "warming", 0.2),
             JointCell(38.2, "warming", 0.5),
         ),
+        candidate_scenario_responsibilities={"rows": [
+            {"continuous_y_c": y, "scenarios": [{"scenario_id": "test", "responsibility": 1.0}]}
+            for y in (34.4, 34.6, 38.2)
+        ]},
         replay_generation=2,
         supersedes_checkpoint_id="checkpoint-v5-last",
     )
@@ -90,6 +94,10 @@ def test_v6_p0_prunes_only_within_frozen_numeric_error_budget() -> None:
             JointCell(60.0, "warming", 5e-11),
             JointCell(20.0, "warming", 0.0),
         ),
+        candidate_scenario_responsibilities={"rows": [
+            {"continuous_y_c": y, "scenarios": [{"scenario_id": "test", "responsibility": 1.0}]}
+            for y in (20.0, 34.0, 60.0)
+        ]},
         replay_generation=0,
     )
     checkpoint = result["checkpoint_row"]

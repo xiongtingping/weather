@@ -203,6 +203,7 @@ def build_resolution_bridge(
     *,
     physical_high_distribution: Any,
     resolution_contract: Mapping[str, Any],
+    hard_exclusion_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Map p(X) through an explicit p(S|X) kernel and explicit bucket contract."""
 
@@ -251,14 +252,89 @@ def build_resolution_bridge(
         return _blocked("market_bucket_distribution_not_normalized")
 
     closed = bool(contract.get("bridge_closed") is True and contract.get("validated") is True)
-    certificates = {
-        label: {
-            "state": "valid" if closed and probability <= EPSILON else "na",
-            "reason": "physical_support_zero_under_closed_resolution_bridge" if closed and probability <= EPSILON else "resolution_bridge_not_closed_or_bucket_not_zero",
-            "resolution_contract_id": contract_id,
-        }
-        for label, probability in bucket_mass.items()
+    hard_context = _mapping(hard_exclusion_context)
+    hard_certificates_authorized = bool(
+        contract.get("hard_exclusion_certificates_authorized") is True
+    )
+    physical_distribution_sha = _sha256(physical_rows)
+    settlement_support = sorted(
+        value for value, probability in settlement_mass.items() if probability > EPSILON
+    )
+    bucket_bounds = {
+        label: {"lower_inclusive": lower, "upper_exclusive": upper}
+        for label, lower, upper in bucket_rows
     }
+    hard_physical_support: list[float] = []
+    hard_residual_support: list[float] = []
+    for raw in hard_context.get("physical_hard_support_c") or []:
+        parsed = _finite(raw)
+        if parsed is not None:
+            hard_physical_support.append(parsed)
+    for raw in hard_context.get("hard_residual_support_c") or []:
+        parsed = _finite(raw)
+        if parsed is not None:
+            hard_residual_support.append(parsed)
+    hard_physical_support = sorted(set(hard_physical_support))
+    hard_residual_support = sorted(set(hard_residual_support))
+    physical_hard_support_sha = _sha256(hard_physical_support)
+    hard_authority_sha = _text(
+        hard_context.get("hard_residual_support_authority_sha256")
+    )
+    hard_context_valid = bool(
+        hard_certificates_authorized
+        and _text(hard_context.get("posterior_checkpoint_id"))
+        and _text(hard_context.get("physical_distribution_sha256"))
+        == physical_distribution_sha
+        and hard_physical_support
+        and hard_residual_support
+        and _text(hard_context.get("physical_hard_support_sha256"))
+        == physical_hard_support_sha
+        and _is_sha256(hard_authority_sha)
+        and hard_authority_sha
+        == _text(contract.get("hard_residual_support_authority_sha256"))
+    )
+    hard_settlement_support = sorted(
+        {x_value + residual for x_value in hard_physical_support for residual in hard_residual_support}
+    ) if hard_context_valid else []
+    certificates = {}
+    for label, _probability in bucket_mass.items():
+        bounds = bucket_bounds[label]
+        lower = float("-inf") if bounds["lower_inclusive"] is None else float(bounds["lower_inclusive"])
+        upper = float("inf") if bounds["upper_exclusive"] is None else float(bounds["upper_exclusive"])
+        exact_full_support_exclusion = bool(
+            closed
+            and hard_context_valid
+            and all(not (value >= lower and value < upper) for value in hard_settlement_support)
+        )
+        core = {
+            "state": "valid" if exact_full_support_exclusion else "na",
+            "reason": (
+                "full_authority_hard_support_excludes_bucket"
+                if exact_full_support_exclusion
+                else "authority_hard_residual_envelope_not_approved"
+                if closed and not hard_context_valid
+                else "full_hard_support_intersects_bucket"
+                if closed
+                else "resolution_bridge_not_closed"
+            ),
+            "bucket": label,
+            "resolution_contract_id": contract_id,
+            "bridge_artifact_sha256": _text(contract.get("bridge_artifact_sha256")),
+            "target_contract_sha256": _text(contract.get("target_contract_sha256")),
+            "physical_distribution_sha256": physical_distribution_sha,
+            "posterior_checkpoint_id": _text(hard_context.get("posterior_checkpoint_id")),
+            "physical_hard_support_sha256": physical_hard_support_sha if hard_context_valid else "",
+            "hard_residual_support_authority_sha256": hard_authority_sha if hard_context_valid else "",
+            "physical_hard_support_c": hard_physical_support if hard_context_valid else [],
+            "hard_residual_support_c": hard_residual_support if hard_context_valid else [],
+            "bucket_bounds": bucket_bounds[label],
+            "settlement_support_witness_c": hard_settlement_support if exact_full_support_exclusion else [],
+            "full_support_exclusion_verified": exact_full_support_exclusion,
+        }
+        certificates[label] = {
+            **core,
+            "certificate_sha256": _sha256(core),
+        }
     return {
         "schema": SCHEMA_VERSION,
         "ok": True,
@@ -268,7 +344,7 @@ def build_resolution_bridge(
         "resolution_contract_id": contract_id,
         "resolution_source_id": _text(contract.get("resolution_source_id")),
         "resolution_local_date": _text(contract.get("resolution_local_date")),
-        "physical_distribution_sha256": _sha256(physical_rows),
+        "physical_distribution_sha256": physical_distribution_sha,
         "settlement_scalar_distribution": [
             {"settlement_value_c": value, "probability": probability}
             for value, probability in sorted(settlement_mass.items())
@@ -276,6 +352,7 @@ def build_resolution_bridge(
         "market_bucket_probabilities": bucket_mass,
         "settlement_exclusion_certificates": certificates,
         "bridge_closed": closed,
+        "hard_exclusion_certificates_authorized": hard_certificates_authorized,
         "contract_sha256": _sha256(contract),
     }
 

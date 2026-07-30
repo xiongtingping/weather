@@ -1,0 +1,646 @@
+{
+  "calibration_activations": [
+    {
+      "activated_at_utc": "2026-07-26T16:00:00Z",
+      "activation_id": "no-live-cal-a783d45b595783ba7729aa640441b96d",
+      "artifact_id": "cal-candidate-RKPK-ECMWF-summer-561cbaaf82d4",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "f57183b8f8daf0da6c97f90d31b29f2daacf742e20b0a619541e5b089537596b",
+      "generation": 3,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "valid_from_utc": "2026-07-26T16:00:00Z",
+      "valid_until_utc": "2026-08-25T16:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T16:00:00Z",
+      "activation_id": "no-live-cal-40cf3216909c2b9dd27cd1234ac99299",
+      "artifact_id": "cal-candidate-RKPK-GFS-summer-561cbaaf82d4",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "cc09d51bae25c0b9f1c8867ce4f80a5deb3f4466dccdad22d312b48d071eab11",
+      "generation": 3,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "valid_from_utc": "2026-07-26T16:00:00Z",
+      "valid_until_utc": "2026-08-25T16:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T16:00:00Z",
+      "activation_id": "no-live-ens-2e5f9276d355928cab3144e54dec461f",
+      "artifact_id": "ens-candidate-RKPK-summer-561cbaaf82d4-89533e2a6252",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+      "content_sha256": "fcecaf4061cb3624be79f8e0084ff0b5797a53d183b8b55205e78fa0a3fdf1da",
+      "generation": 4,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "valid_from_utc": "2026-07-26T16:00:00Z",
+      "valid_until_utc": "2026-08-25T16:00:00Z"
+    }
+  ],
+  "calibration_artifacts": [
+    {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-RKPK-ECMWF-summer-561cbaaf82d4",
+      "content_sha256": "32fed0dbc0002fa381dc7312e1dd2c333490262c1e197b8255f432ce45f7b0be",
+      "effective_sample_n": 7.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "promoted": false,
+      "residual_scale_c": 1.5730593264223838,
+      "run_cycle": "18Z",
+      "sample_n": 7,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-22T00:00:00Z",
+      "valid_from_utc": "2026-07-26T16:00:00Z",
+      "valid_until_utc": "2026-08-25T16:00:00Z"
+    },
+    {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-RKPK-GFS-summer-561cbaaf82d4",
+      "content_sha256": "7d7a00613403e5435515fc08922dda2633afd655700efe1d18d7d78933d6a5c1",
+      "effective_sample_n": 7.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.619088522732604,
+      "run_cycle": "18Z",
+      "sample_n": 7,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-22T00:00:00Z",
+      "valid_from_utc": "2026-07-26T16:00:00Z",
+      "valid_until_utc": "2026-08-25T16:00:00Z"
+    }
+  ],
+  "calibration_authority_receipt": {
+    "activation_count": 3,
+    "artifact_count": 2,
+    "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+    "ensemble_count": 1,
+    "evidence_sha256": "c46366145b64b3792c16d2054fe24b18f0fc1b0de57fc525fe442880040c5808",
+    "formal_promotion_created": false,
+    "live_order_authorized": false,
+    "oos_evidence_sha256": "a39b93aef302219878d211f3cfbcc9cb6dc6c3ba326c16de3dfcae21f0b56a7f",
+    "rejected_ensemble_scope_count": 0,
+    "schema": "bayes_basket_target_no_live_calibration_authority_v1"
+  },
+  "calibration_promotions": [],
+  "calibration_source_packet_sha256": "6bf4ecdb1b668020b7cdb7f6aa2f5115be93deb524b2dbf897475494dc96cc59",
+  "calls_order_gateway": false,
+  "candidate_bundle_sha256": "c709b49c4581bddad80f96d5b9650a1dfe3c3ebca73d028b27bdeec6253131b5",
+  "cash_phase_authority_manifests": [
+    {
+      "artifact_sha256": "b1b41ca2b25d8593fc35a5e6d7f43e96c3f97f92f63f002fa3e33456b6c09775",
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "manifest_sha256": "4e885141f9a1eef76e27bff7e8eec4bf34038a8d6924d67e3c41d033a2259829",
+      "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RKPK",
+      "schema": "basket_cash_phase_authority_manifest_v1",
+      "station_id": "RKPK",
+      "station_timezone": "Asia/Seoul",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "cash_phase_boundary": {
+    "changes_probability": false,
+    "changes_support_set": false,
+    "changes_target_shares": false,
+    "controls_clip_ceiling_only": true,
+    "source_wallet_parameters_used": false
+  },
+  "cash_phase_policies": [
+    {
+      "cash_by_phase": {
+        "STANDARD": 10.77,
+        "TAIL": 0.25
+      },
+      "content_sha256": "b1b41ca2b25d8593fc35a5e6d7f43e96c3f97f92f63f002fa3e33456b6c09775",
+      "evidence_status": "DESIGN_CANDIDATE",
+      "heavy_to_standard_local_time": "19:54",
+      "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RKPK",
+      "promoted": false,
+      "schema": "basket_cash_phase_policy_artifact_v1",
+      "standard_to_tail_local_time": "09:58",
+      "station_id": "RKPK",
+      "station_timezone": "Asia/Seoul",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "ensemble_artifacts": [
+    {
+      "candidate_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "content_sha256": "2fa8df3a71b7d89c282d7d7a0c60d4db9bfbc9c0efdc085180c64a2d30d16a93",
+      "correlation_penalty": 0.08962977394954198,
+      "effective_sample_n": 4.571428571428571,
+      "ensemble_artifact_id": "ens-candidate-RKPK-summer-561cbaaf82d4-89533e2a6252",
+      "holdout_end_date": "2026-07-24",
+      "holdout_start_date": "2026-07-23",
+      "lead_bucket": "d2_fallback",
+      "max_weight_delta": 0.2,
+      "oos_metrics": {
+        "brier_score": 0.8386163015594894,
+        "crps": 0.8659312430212969,
+        "n": 2,
+        "nll": 1.827203506103341
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-22",
+      "recent_start_date": "2026-07-20",
+      "residual_covariance": {
+        "ECMWF": {
+          "ECMWF": 2.7311049523809516,
+          "GFS": 1.0771403571428595
+        },
+        "GFS": {
+          "ECMWF": 1.0771403571428595,
+          "GFS": 3.045959238095241
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "a93c4bdfe3eea86a2de657305d12bd7c509505bf163dbf19367060b9fdff9a27",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "supported_masks": {
+        "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5": {
+          "ECMWF": 0.4,
+          "GFS": 0.6
+        }
+      },
+      "train_end_date": "2026-07-22",
+      "train_start_date": "2026-07-16",
+      "valid_from_utc": "2026-07-26T16:00:00Z",
+      "valid_until_utc": "2026-08-25T16:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v3_min2"
+    }
+  ],
+  "ensemble_selection_evidence": [
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 0.8215421984177572,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 0.7979925593632929,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": false,
+          "models": [
+            "ECMWF"
+          ],
+          "n": 5,
+          "nll": 1.7822161335358213,
+          "objective": 1.0830299991921295,
+          "recent_brier_score": 0.8229630270582088,
+          "recent_crps": 0.8121763304943848,
+          "recent_n": 3,
+          "recent_nll": 1.799872537179282,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "ECMWF": 1.0
+          }
+        },
+        {
+          "brier_score": 0.7939085322428523,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 0.6860708946202003,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 5,
+          "nll": 1.6942524654976752,
+          "objective": 1.0484474700510849,
+          "recent_brier_score": 0.8464494823922525,
+          "recent_crps": 0.870348838869938,
+          "recent_n": 3,
+          "recent_nll": 1.8209969493258444,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.9581559420347698,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.5556436768193571,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 5,
+          "nll": 2.675184101942702,
+          "objective": 1.6932715686036572,
+          "recent_brier_score": 1.0990265341281011,
+          "recent_crps": 2.222794794437427,
+          "recent_n": 3,
+          "recent_nll": 3.4396003637069543,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.7999501225435328,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.08962977394954198,
+          "crps": 0.7006923039997509,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": true,
+          "models": [
+            "ECMWF",
+            "GFS"
+          ],
+          "n": 5,
+          "nll": 1.7179918364876066,
+          "objective": 1.0567222838265655,
+          "recent_brier_score": 0.8340145077258391,
+          "recent_crps": 0.8303074491175407,
+          "recent_n": 3,
+          "recent_nll": 1.7987743630126563,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "ECMWF": 0.4,
+            "GFS": 0.6
+          }
+        },
+        {
+          "brier_score": 0.8229526450703277,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.0412036659278263,
+          "crps": 0.8023742325916633,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": true,
+          "models": [
+            "ECMWF",
+            "ICON"
+          ],
+          "n": 5,
+          "nll": 1.7978097628510952,
+          "objective": 1.1220576873291916,
+          "recent_brier_score": 0.831782706658435,
+          "recent_crps": 0.851507430362298,
+          "recent_n": 3,
+          "recent_nll": 1.8352373366740304,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "ECMWF": 0.95,
+            "ICON": 0.05
+          }
+        },
+        {
+          "brier_score": 0.7991022001265508,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.017052098683946013,
+          "crps": 0.7129911193690053,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 5,
+          "nll": 1.7174607048928727,
+          "objective": 1.0931944755778666,
+          "recent_brier_score": 0.8551518425949194,
+          "recent_crps": 0.9163683030431624,
+          "recent_n": 3,
+          "recent_nll": 1.8592288710033202,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "GFS": 0.95,
+            "ICON": 0.05
+          }
+        },
+        {
+          "brier_score": 0.8045502729126076,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.10938180574915121,
+          "crps": 0.7229911292689789,
+          "effective_sample_n": 4.571428571428571,
+          "eligible": true,
+          "formal_selection_eligible": true,
+          "models": [
+            "ECMWF",
+            "GFS",
+            "ICON"
+          ],
+          "n": 5,
+          "nll": 1.7402749199376317,
+          "objective": 1.0815149151874064,
+          "recent_brier_score": 0.8425251799227301,
+          "recent_crps": 0.8736837743787135,
+          "recent_n": 3,
+          "recent_nll": 1.835543040760829,
+          "rolling_origin_fold_count": 5,
+          "shrinkage_strength": 0.6363636363636364,
+          "weights": {
+            "ECMWF": 0.4,
+            "GFS": 0.55,
+            "ICON": 0.05
+          }
+        }
+      ],
+      "content_sha256": "a93c4bdfe3eea86a2de657305d12bd7c509505bf163dbf19367060b9fdff9a27",
+      "effective_sample_n": 4.571428571428571,
+      "holdout_end_date": "2026-07-24",
+      "holdout_start_date": "2026-07-23",
+      "lead_bucket": "d2_fallback",
+      "max_weight_delta": 0.2,
+      "method_version": "rolling_origin_probability_stack_v3_min2",
+      "oos_metrics": {
+        "brier_score": 0.8386163015594894,
+        "crps": 0.8659312430212969,
+        "n": 2,
+        "nll": 1.827203506103341
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-22",
+      "recent_start_date": "2026-07-20",
+      "residual_correlation": {
+        "ECMWF": {
+          "ECMWF": 1.0,
+          "GFS": 0.3734573914564249
+        },
+        "GFS": {
+          "ECMWF": 0.3734573914564249,
+          "GFS": 1.0
+        }
+      },
+      "residual_covariance": {
+        "ECMWF": {
+          "ECMWF": 2.7311049523809516,
+          "GFS": 1.0771403571428595
+        },
+        "GFS": {
+          "ECMWF": 1.0771403571428595,
+          "GFS": 3.045959238095241
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selected_weights": {
+        "ECMWF": 0.4,
+        "GFS": 0.6
+      },
+      "selection_evidence_id": "ens-selection-RKPK-summer-561cbaaf82d4-b3e4df198d84",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-22",
+      "train_start_date": "2026-07-16"
+    }
+  ],
+  "execution_mode": "production_no_live",
+  "global_priors": [
+    {
+      "content_sha256": "555bd13cd4365d060d1d7a1aeed1c3bf27e05e15d69e79e12829e70c23ec4f96",
+      "default_policy": {
+        "basket_concentration_lambda_usdc": 0.25,
+        "basket_directional_coverage_lambda_usdc": 0.05,
+        "basket_downside_lambda_per_usdc": 0.02,
+        "basket_optimizer_max_iterations": 4000,
+        "basket_optimizer_tolerance": 1e-08,
+        "clip_max_notional_usdc": 3.0,
+        "clip_min_notional_usdc": 1.0,
+        "disagreement_concentration_gain_per_layer": 0.5,
+        "maximum_bucket_budget_fraction": 0.75,
+        "total_budget_usdc": 12.0
+      },
+      "family_parameters": {
+        "cadence": {},
+        "reserve": {},
+        "target": {}
+      },
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "promoted": false,
+      "schema": "global_basket_prior_artifact_v1",
+      "strategy_version": "target-v1",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "live_order_authorized": false,
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "packet_sha256": "77a3c39f368e0c29ad1dd937518368daa522d276632078819c8652f78d24765a",
+  "places_orders": false,
+  "policy_activations": [
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "station-formula-v1-RKPK-activation-no-live-v3",
+      "cadence_artifact_id": "station-formula-v1-RKPK-cadence",
+      "content_sha256": "f268adac50ef97a8cfacba3583c4d04224242726685b89b2f42022864cea44e1",
+      "fallback_families": [],
+      "generation": 4,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": "station-formula-v1-RKPK-reserve",
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": "station-formula-v1-RKPK-target",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-global-fallback-v4-RKPK-P0-d1",
+      "cadence_artifact_id": null,
+      "content_sha256": "5b93bd87b1b478b61cafb823e3691230a0cfe6e43eb0f2b024e246ded1ea5519",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 2,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P0",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-global-fallback-v4-RKPK-P1-d1",
+      "cadence_artifact_id": null,
+      "content_sha256": "eb17f46c3d499d3fa8690e21a3b778d34d65571c36f3b6a01db74d1135277df4",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 2,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P1",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_artifacts": [
+    {
+      "artifact_id": "station-formula-v1-RKPK-target",
+      "content_sha256": "a187557c01e4c6dbf7875e98b34e76a756a9097d1b224a1d5bc9165b450bdca5",
+      "effective_sample_n": 3.0,
+      "family": "target",
+      "kappa": 8.0,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "abs_bucket_offset_from_proxy_c": 0.9064045773962864,
+        "bucket_offset_from_proxy_c": 0.40982284989518625,
+        "edge": 0.4786474851896284,
+        "kelly_fraction": 0.1386981003621672,
+        "model_spread_c": -0.06851961384773578,
+        "proxy_probability": -0.21856580969030295,
+        "reference_price": -0.7054375126872742,
+        "roi_edge": 0.10911448180074239
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "artifact_id": "station-formula-v1-RKPK-reserve",
+      "content_sha256": "67906515a62963a74e046c094229819be653e171cbcf1afeecfb865c7b3b4412",
+      "effective_sample_n": 44.0,
+      "family": "reserve",
+      "kappa": 99.99999999999999,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "price_margin": 0.008444654622123876
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "artifact_id": "station-formula-v1-RKPK-cadence",
+      "content_sha256": "3330a98dc6fa8a9c91baa5b1c7d3c5e6942bd9890bc1cf1d325e5d5ee986a29b",
+      "effective_sample_n": 73.0,
+      "family": "cadence",
+      "kappa": 99.99999999999999,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "gate_seconds_intercept": 5.7991099495572955
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "policy_promotions": [],
+  "producer_schema": "bayes_basket_target_no_live_candidate_artifacts_v1",
+  "promoted": false,
+  "research_parameter_boundary": {
+    "research_coefficients_promoted": false,
+    "self_owned_baseline_prior": "target-no-live-global-prior-design-v3",
+    "source_candidate_bundle_retained_as_lineage": true,
+    "unsupported_cadence_coefficients_not_executed": true,
+    "unsupported_target_coefficients_not_executed": true
+  },
+  "schema": "bayes_basket_target_artifact_ingress_v1",
+  "station_ids": [
+    "RKPK"
+  ],
+  "vertical_slice": {
+    "batch_expansion_authorized": false,
+    "mode": "single_station_exact_scope",
+    "station_id": "RKPK"
+  }
+}

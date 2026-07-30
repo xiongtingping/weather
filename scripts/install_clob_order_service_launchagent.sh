@@ -7,6 +7,16 @@ DST="$HOME/Library/LaunchAgents/com.weather.clob_order_service.plist"
 LABEL="com.weather.clob_order_service"
 UID_NUM="$(id -u)"
 
+# Production may already own this singleton in the system launchd domain.
+# Never create a second listener in the user domain when that authority exists.
+if launchctl print "system/${LABEL}" >/dev/null 2>&1 && [ ! -f "$ROOT/data/reported_trajectory_core_only.enabled" ]; then
+  launchctl bootout "gui/${UID_NUM}/${LABEL}" >/dev/null 2>&1 || true
+  launchctl disable "gui/${UID_NUM}/${LABEL}" >/dev/null 2>&1 || true
+  rm -f "$DST"
+  echo "System launchd already owns ${LABEL}; user LaunchAgent removed."
+  exit 0
+fi
+
 if [ ! -f "$SRC" ]; then
   echo "Missing plist: $SRC" >&2
   exit 1
@@ -51,7 +61,7 @@ PY
 chmod 644 "$DST"
 launchctl bootout "gui/${UID_NUM}/${LABEL}" >/dev/null 2>&1 || true
 launchctl bootout "gui/${UID_NUM}" "$DST" >/dev/null 2>&1 || true
-launchctl bootstrap "gui/${UID_NUM}" "$DST"
 launchctl enable "gui/${UID_NUM}/${LABEL}" || true
+launchctl bootstrap "gui/${UID_NUM}" "$DST"
 launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" || true
 echo "Installed and started ${LABEL} from ${DST}."

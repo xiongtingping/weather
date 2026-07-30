@@ -1,0 +1,3091 @@
+{
+  "as_of_utc": "2026-07-26T20:52:30Z",
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "history_only": true,
+    "offline_research_only": true,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false,
+    "writes_target_db": false
+  },
+  "checks": {
+    "all_joined_model_sets_exact_three": true,
+    "calls_order_gateway": false,
+    "historical_coverage_gaps_nonfatal": true,
+    "history_only_mode": true,
+    "model_input_nonempty": true,
+    "model_rows_et_compatible": true,
+    "open_event_days_pending_not_blocking_history": true,
+    "promotion_allowed": false,
+    "registry_settlement_timezones_bound": true,
+    "three_model_join_positive": true,
+    "truth_input_nonempty": true,
+    "truth_quarantine_isolated": true,
+    "truth_rows_canonical_et_compatible": true,
+    "writes_production_db": false,
+    "writes_target_db": false
+  },
+  "coverage_gaps": [],
+  "event_day_windows": {
+    "by_station_event_date": {
+      "RKPK|2026-07-16": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-16",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-16T15:00:00Z",
+        "target_day_start_utc": "2026-07-15T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-17": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-17",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-17T15:00:00Z",
+        "target_day_start_utc": "2026-07-16T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-18": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-18",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-18T15:00:00Z",
+        "target_day_start_utc": "2026-07-17T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-19": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-19",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-19T15:00:00Z",
+        "target_day_start_utc": "2026-07-18T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-20": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-20",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-20T15:00:00Z",
+        "target_day_start_utc": "2026-07-19T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-21": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-21",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-21T15:00:00Z",
+        "target_day_start_utc": "2026-07-20T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-22": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-22",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-22T15:00:00Z",
+        "target_day_start_utc": "2026-07-21T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-23": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-23",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-23T15:00:00Z",
+        "target_day_start_utc": "2026-07-22T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-24": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-24",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-24T15:00:00Z",
+        "target_day_start_utc": "2026-07-23T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-25": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-25",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-25T15:00:00Z",
+        "target_day_start_utc": "2026-07-24T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKPK|2026-07-26": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-26",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-26T15:00:00Z",
+        "target_day_start_utc": "2026-07-25T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-16": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-16",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-16T15:00:00Z",
+        "target_day_start_utc": "2026-07-15T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-17": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-17",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-17T15:00:00Z",
+        "target_day_start_utc": "2026-07-16T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-18": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-18",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-18T15:00:00Z",
+        "target_day_start_utc": "2026-07-17T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-19": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-19",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-19T15:00:00Z",
+        "target_day_start_utc": "2026-07-18T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-20": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-20",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-20T15:00:00Z",
+        "target_day_start_utc": "2026-07-19T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-21": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-21",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-21T15:00:00Z",
+        "target_day_start_utc": "2026-07-20T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-22": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-22",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-22T15:00:00Z",
+        "target_day_start_utc": "2026-07-21T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-23": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-23",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-23T15:00:00Z",
+        "target_day_start_utc": "2026-07-22T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-24": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-24",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-24T15:00:00Z",
+        "target_day_start_utc": "2026-07-23T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-25": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-25",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-25T15:00:00Z",
+        "target_day_start_utc": "2026-07-24T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      },
+      "RKSI|2026-07-26": {
+        "as_of_utc": "2026-07-26T20:52:30Z",
+        "event_date": "2026-07-26",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-26T15:00:00Z",
+        "target_day_start_utc": "2026-07-25T15:00:00Z",
+        "target_timezone": "Asia/Seoul"
+      }
+    },
+    "target_timezone": "MARKET_REGISTRY_SCOPED"
+  },
+  "historical_rebuild_boundary": {
+    "as_of_utc": "2026-07-26T20:52:30Z",
+    "closed_settlement_days_only": true,
+    "excluded_non_closed_event_dates": []
+  },
+  "input_counts": {
+    "accepted_model_rows": 66,
+    "blocked_model_rows": 0,
+    "coverage_gap_count": 0,
+    "fatal_truth_rows": 0,
+    "joined_station_days": 22,
+    "model_rows": 66,
+    "pending_event_days": 0,
+    "quarantined_truth_rows": 0,
+    "truth_day_rows": 22,
+    "truth_observation_rows": 822
+  },
+  "joined_station_days": [
+    {
+      "event_date": "2026-07-16",
+      "forecasts": {
+        "ecmwf_ifs025_official": 31.884,
+        "gfs_0p25_official": 34.55,
+        "icon_global_open_meteo": 30.8
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "d9936543590d88e1f34aeef4d84dae3a0c103bdf793d403d383ece42a499a9d6",
+        "gfs_0p25_official": "e2c48548a9d4ebf601c4bdbbe6a8381d4b19744965069278d37217ad760b1ca5",
+        "icon_global_open_meteo": "8ef691490ab235bbadea5eb000e3eeff2ddf51e6b1421203dcc8c2cbbf7c36e0"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "0ef1d3139562883a13bad12ed60b52d7c64b67ad83ceb23c6f4e31e31024a053"
+        ],
+        "gfs_0p25_official": [
+          "ea24017e0a94696d07fe3e1be2a0156a8dd631ff856c162d354cbc39ad423bdb"
+        ],
+        "icon_global_open_meteo": [
+          "02b3513d67dec3a453d1d7b55b3f7a41398f3b38e22f63e1e011d64ae4dc7580"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "bd297ade6f72c868bbc487ee3bc4dec12282590909cb19ba5125dfeda82942e1"
+        ],
+        "gfs_0p25_official": [
+          "5b71dbc5def7e8e6279167a0048b1de50d5c8074f6f96f1526e41cac7f614531"
+        ],
+        "icon_global_open_meteo": [
+          "d4764878ef8e6bdcc72c4121f3f97ce40c7bced7b749bc4000a2bfe1745c37c6"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 35.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-14T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-3d583b26f5d7b5af925d29b82c019a96"
+    },
+    {
+      "event_date": "2026-07-17",
+      "forecasts": {
+        "ecmwf_ifs025_official": 30.844,
+        "gfs_0p25_official": 34.38,
+        "icon_global_open_meteo": 28.7
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "1bcf35a78f3628728a38e558504235347abfb85ea9ee6db84d10bbebec2c1df9",
+        "gfs_0p25_official": "4512a6373d382e05795570c62a12d9e542ace430aa3bac86183796d7fd89c0b5",
+        "icon_global_open_meteo": "6dfb5a57b91a9b2348956ff1e40b892ea86865d88619978e71eebda63d87823a"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "bb99f2b7da34367e5e6d8f9b26db94662f0aa1dd6092a417273bc1ee600bb5bc"
+        ],
+        "gfs_0p25_official": [
+          "ec7b8d93bdf4646c93a3a67fde2f5dd7343ef42ad668035e32a2fd66e89e314c"
+        ],
+        "icon_global_open_meteo": [
+          "de4e1502ad7e92018396345bd26c17ab40f435cc3f4f4b4890aeb9e81a5bd2a5"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "7d11a65cc5627469b91b8f9e02bb3fa707954ec92c8b6830881c05cc09c7d128"
+        ],
+        "gfs_0p25_official": [
+          "fbb3c766ce0ca76a0a6380e2cb64879d7726dd769aadfd0bee1b653ea00b2b33"
+        ],
+        "icon_global_open_meteo": [
+          "5514a9847add5685a56b35fcfb4d6272a64d65732800f23170ca89b4fc7ad3ad"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 31.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-15T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-63574ac21bc1aeb97b8bb34cab1effe6"
+    },
+    {
+      "event_date": "2026-07-18",
+      "forecasts": {
+        "ecmwf_ifs025_official": 31.247,
+        "gfs_0p25_official": 29.983,
+        "icon_global_open_meteo": 28.7
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "83b6f873721c78d57ef4bce5b812be8d3046207194d3f85249072f3516ed0cd8",
+        "gfs_0p25_official": "2a4e649c8c71dec240eaf76431b2408235e39bef31c6ceb866ea1a643f80657a",
+        "icon_global_open_meteo": "f32ceea7aa424e1ff8f0520c100e3c0294d70c7044a1689ae9c1816eaaf2addf"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "9ca68a29933932679089159903b8aa02ee2883ce98481e4297db01b771029bb0"
+        ],
+        "gfs_0p25_official": [
+          "3be65c648b8233170a36290fd27fdd22f0edf3dd28a1a3b66cad65ba7b67a485"
+        ],
+        "icon_global_open_meteo": [
+          "1ed4fa9327fa1f3787d9ef0d28cc02fec639a564feba3ce83a1f9d8b2714d58e"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "9944eadade03a9a7b8a06de46931f15c225563fa3d627ffffbfa234ecaccccaf"
+        ],
+        "gfs_0p25_official": [
+          "4618638c0ed33db2d7673b57984d1eeedac60ef6d7a7eedd95adfb53ade56665"
+        ],
+        "icon_global_open_meteo": [
+          "ff9b244f8d2b40cc0dbe8f76fca18278e251b8f70fdcfe3309b1e875a32590b7"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 30.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-16T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-692de48bff8da66cde39df1fd5e7c01d"
+    },
+    {
+      "event_date": "2026-07-19",
+      "forecasts": {
+        "ecmwf_ifs025_official": 30.409,
+        "gfs_0p25_official": 29.418,
+        "icon_global_open_meteo": 28.7
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "f6a50f493671398e8e06ca6e280c1a96c54c384071c774ad016b2a8282d5148c",
+        "gfs_0p25_official": "0f4a6aa2b21ff19088f8179ce3f70cf29ff983733dbb88d7b1b2628dee5eb098",
+        "icon_global_open_meteo": "7b4bde500354afbf65aabf49d28cfb8aededf76c7d9af51449217e43245aa937"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "c4edc1f9a33a0fa96b3b9aa6ffbf10e0cf8d65b5e64546ad694eda10a466caa0"
+        ],
+        "gfs_0p25_official": [
+          "a82a410ed832fea21f1a35f134dc16d1fcfc4e71839ca0e8d048c6859ba3ce9a"
+        ],
+        "icon_global_open_meteo": [
+          "bbbf1f09bd09b1c7afe73ccbd3d528356b64bbced04e20af938eaf80d948beba"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "2847f48a65f7b742e39b18e8c917d2c0d4350207e25aeb8e6f81bdac28153fee"
+        ],
+        "gfs_0p25_official": [
+          "cf8731b2c08b27c7054586ee34edc9098bf9092cbbca00ed36a32a81e96359aa"
+        ],
+        "icon_global_open_meteo": [
+          "a26affd087da05dcf15d0967f43a26f63c8abff4cc205169c6e4cdc21e1fb772"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 29.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-17T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-cb626bc848ee163a877c848e571bb742"
+    },
+    {
+      "event_date": "2026-07-20",
+      "forecasts": {
+        "ecmwf_ifs025_official": 31.29,
+        "gfs_0p25_official": 30.85,
+        "icon_global_open_meteo": 29.2
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "341bf16b56fe06d7d40a9a69bee6b6463aea1ae6337b4f2db813e015de310807",
+        "gfs_0p25_official": "fcc1bde769223c2f026c3fd7ef8316098d76f264e97d89347edf4f1e756fcf34",
+        "icon_global_open_meteo": "d72f984a751bdfcf2f305b95892b37d794ff3defc40f6b5e9486e7f5d1814673"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "98696ba2e4f5694b02bbf1f4165d95c6e5d66cb45b9d5925527387614329fff0"
+        ],
+        "gfs_0p25_official": [
+          "4836fbf4345aedd5bde4c224536aa576002bd389941bfe9b23f5b63401b5904b"
+        ],
+        "icon_global_open_meteo": [
+          "df8411fb20bc1db12a338984239f2390f763d5ecbabc6ca416db9265cafc717f"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "056077e6c25c5e88ab89be85354245e7f953afe98f9a81024c6d55aba59d16ef"
+        ],
+        "gfs_0p25_official": [
+          "fefceab1bb45aa442e633ce7ccb504d9531008b8e892d4adb862509be7d4b8e9"
+        ],
+        "icon_global_open_meteo": [
+          "ebe062e6d08fdcb43edae4607e98d700a61756e545a40042cce1e1cb42a0eeba"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 32.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-18T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-42ac5fc1e60868cd9c017c5d20bbb6c5"
+    },
+    {
+      "event_date": "2026-07-21",
+      "forecasts": {
+        "ecmwf_ifs025_official": 29.915,
+        "gfs_0p25_official": 30.575,
+        "icon_global_open_meteo": 29.5
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "2a05fb88dc5d73073c055da844500c943511045197b28996b8ff968e050cc78b",
+        "gfs_0p25_official": "f2f346d471e994124686c925e54e2f8efc0e92019543ecba6e9a872a4bd41389",
+        "icon_global_open_meteo": "4d09be791e2aa1cc0f65ca429d0290bc1067895d32cc0aa32076a5fb883403ad"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "cac5eaff8fab029a5a1536f0ed61250958ca9cb9b1b322d8bb6c3737f1d95768"
+        ],
+        "gfs_0p25_official": [
+          "1d5cfcc2e191a6b09edb063eae82fedd556898acd47039072702d01fb28d729e"
+        ],
+        "icon_global_open_meteo": [
+          "bc4269e4a1446696592bc85a35f2e6028de1923bdc08df87cf76d512c306e858"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "8a4b095e6d6e478c6c5844aec6acfa1dc11b14960c5df9ee2619a57d2ebc6c5d"
+        ],
+        "gfs_0p25_official": [
+          "e799b9021d58f7d039cc008017736333b5fb12863ceff2228d37bb213515c291"
+        ],
+        "icon_global_open_meteo": [
+          "08ca45db71bdc3c1c35e45146c006f0704e7599fcdda8e365c6991e8063115e8"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 32.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-19T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-3cfe9e570b3d2619905158ad1ee7da45"
+    },
+    {
+      "event_date": "2026-07-22",
+      "forecasts": {
+        "ecmwf_ifs025_official": 32.948,
+        "gfs_0p25_official": 32.189,
+        "icon_global_open_meteo": 30.2
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "64d21b19918294a68deefd8c6c5c49be82a47fbfe198b839d671e9b404c6bf8b",
+        "gfs_0p25_official": "aa2ce8c9d137d12fd6d92e59a02313a4fb158e163cedcd79da54dff862dbfff8",
+        "icon_global_open_meteo": "04659d357c15b83dc7d6c58d80b3d39f07d1105a5d5120adc82a1b006430b606"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "25833e4946c2d48ffa827b7c284f796976fa2d994d1467137e74c5927f3fea9f"
+        ],
+        "gfs_0p25_official": [
+          "d01f1314bcc818b782388af897b33118659fa7a54918cf1a71d2bac609cfcca9"
+        ],
+        "icon_global_open_meteo": [
+          "754e9cc55f78bb2fe1490ecced0035da3192981c1d0528802400b49d47092ac2"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "52083895974f265177e3d58f57e06081b196e2a79f277fe3078721a4d8695c33"
+        ],
+        "gfs_0p25_official": [
+          "0e076c4492a5b16c95646ad869aa5b744d9618fdfedac0778ed375e7232247ba"
+        ],
+        "icon_global_open_meteo": [
+          "093361551824c5633ec9d35e1dce04cf056b3977bd7f8cd59a188d4717f9ecee"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 34.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-20T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-4d7168a6b61904875bf4f7af4bf147f0"
+    },
+    {
+      "event_date": "2026-07-23",
+      "forecasts": {
+        "ecmwf_ifs025_official": 33.002,
+        "gfs_0p25_official": 31.735,
+        "icon_global_open_meteo": 30.0
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "f28b7e3bfbf34ab7127b2a8a66484a2217019d43f9c9f717a459b6415227fa24",
+        "gfs_0p25_official": "f15c8154afc8b8396f3338eeed9dc9440d274df272110ae87d32e8728d6aa60f",
+        "icon_global_open_meteo": "a6bdd6a0a050c95872b522085eca5f1a4f16ae20ae7fe3cf43080b5c36b80630"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "33a3fe02d0cfeef4b9b5e28a69d16583c4fe3f6655529b6a456b1ed38ab2ad2f"
+        ],
+        "gfs_0p25_official": [
+          "5093460968f5e51368b96e74dec0fdd22a5874f2337829ed68a60ec7d0a2f6cb"
+        ],
+        "icon_global_open_meteo": [
+          "007255d5244e83d8faf7622fae9764a6b1a52ae5a54a0f69adb7e871c0e38aa0"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "d3726a93fe15d726bcd0ea94cd5d621acac1cd428a66c4c40103b9a574a60ec8"
+        ],
+        "gfs_0p25_official": [
+          "700eb3a27933b70ac3c7c8c75971f537359b9ad8e008e5aad4581a999e41825a"
+        ],
+        "icon_global_open_meteo": [
+          "731f377935d86c05169c867943b582a2029f9b9b8d59f003f3de76c09cf92039"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 34.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-21T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-9578bbedc08b8cb93f54f868d0aa7982"
+    },
+    {
+      "event_date": "2026-07-24",
+      "forecasts": {
+        "ecmwf_ifs025_official": 34.422,
+        "gfs_0p25_official": 33.45,
+        "icon_global_open_meteo": 31.3
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "4a97a3a095546967cd330a1ec5365862dca7835ed1dea7755128b4ffe3511066",
+        "gfs_0p25_official": "b1a68eaa579ec9895d49bddeb7594f772f90f457743b91e880e61c687db14d69",
+        "icon_global_open_meteo": "4d1ac3cef19c21f30b41000595ede1042c7735ca57ebf92147084d772a75e526"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "7a81960081cac4355460497e477b32dd0f7605dec3b68c659ac3bb5f2c593df1"
+        ],
+        "gfs_0p25_official": [
+          "119d95c80101e16591d79c20b1a00b43d6848d85ea367479115279106c097181"
+        ],
+        "icon_global_open_meteo": [
+          "9b7370296bbf8476707a2a4df551c81aca267e61861871b5d5dffc8cc7174612"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "95c728db850b70ba7502e0252141e6d902c2edb1502b1771bf07612469aa71c2"
+        ],
+        "gfs_0p25_official": [
+          "fe7a902ec92f8376588862a04d7ddc467fb6f9edffc07787aae1a6bfd0896b91"
+        ],
+        "icon_global_open_meteo": [
+          "142c18888e8c6da17bf40579829e680eeb0f3b6020bf9029c53c8b6b02eacbd9"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 35.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-22T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-650529119f495e87a7c202c45213faa7"
+    },
+    {
+      "event_date": "2026-07-25",
+      "forecasts": {
+        "ecmwf_ifs025_official": 35.566,
+        "gfs_0p25_official": 33.451,
+        "icon_global_open_meteo": 30.7
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "50b044bc16265c896d94661ce316104186b97358185e9204ec3b0b76eb19e70e",
+        "gfs_0p25_official": "83143a8286a817a5c2f7e35ddddf44553423d685d3abc7bd221da2f748b42deb",
+        "icon_global_open_meteo": "68c70e2f5e61061c610d13240f07bb1499e8d4777663f02dcb947be5d644c3f1"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "b65236f5ec01d9e69e20bd83e05be90004172d78758a623ec4e5c1d1a9c98233"
+        ],
+        "gfs_0p25_official": [
+          "d3611e64caa2fb6d6ee303354020dda47d902c872185d127ee89762f8858fdcf"
+        ],
+        "icon_global_open_meteo": [
+          "6413317e180ad9083021216b97ffd86671e6d9ec48198ebe14ccc9f547b3d380"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "6372aaa030cff9991c821067cfbf17295d0bbb77d2c022cacb3e52b95916ecc0"
+        ],
+        "gfs_0p25_official": [
+          "59adb845a4e8311a52a3617676c072c52d65faeea29579f9f99d4c1e40facb70"
+        ],
+        "icon_global_open_meteo": [
+          "ab8466baebf5b170138f9c0c6a925f8150ba84a0b430df5f233113a3804e5673"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 35.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-23T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-64101163fa86eee225a90752a9d69b94"
+    },
+    {
+      "event_date": "2026-07-26",
+      "forecasts": {
+        "ecmwf_ifs025_official": 35.589,
+        "gfs_0p25_official": 36.568,
+        "icon_global_open_meteo": 34.4
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "3f9ae60f9bb3de21dee5d3605ab17086bf8fe507e4efd01304b35df1adf1dba1",
+        "gfs_0p25_official": "144c2fb8536d758c42a828d9547cc549cd67474ee2de21c491e57e67e5af5659",
+        "icon_global_open_meteo": "77bbe80ec43968b37144bd91247556351ac93f32f24c083bbecafd444f1038e5"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "0b876c988e3c8e4a24d21e55dac319b8c8864a80f0ac53dfe2787be8b59094d9"
+        ],
+        "gfs_0p25_official": [
+          "3056be6df76b3044a1bf3f9b12c90ebd8ce9d18ddd035c5389a4edfd11806d08"
+        ],
+        "icon_global_open_meteo": [
+          "78ce543ba96af3d7a43adbfd9422fd9e9252a1464cb1d628845082ec85413dfe"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "3ed8361d0288835803163be81bdd2bbb6534e249f2e8077261206fa469e26ea5"
+        ],
+        "gfs_0p25_official": [
+          "91439ee040c09050aa8078b1d0300612da71c001e5c484b2649f683710b856ba"
+        ],
+        "icon_global_open_meteo": [
+          "9caf4de0cb0636fe0dd74e9aa2599c5d7de27d4946b8bef51f8d24682a83ac8e"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 37.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-24T18:00:00Z",
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-ee5109ea58453f57041fb37ce7aecb82"
+    },
+    {
+      "event_date": "2026-07-16",
+      "forecasts": {
+        "ecmwf_ifs025_official": 25.399,
+        "gfs_0p25_official": 24.173,
+        "icon_global_open_meteo": 28.1
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "908d9ba31e49941c5897596f8996cf1a217458666278fe7dec75e8d00accff1a",
+        "gfs_0p25_official": "a602381ac291b2f56fdf0b906a64c7e5c788bad43be43928c2e6367c9062568a",
+        "icon_global_open_meteo": "0bc8b42be15594f59509edd4cc1a0e6e355ef89bf6727fe496b1e8d2755b354d"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "0ef1d3139562883a13bad12ed60b52d7c64b67ad83ceb23c6f4e31e31024a053"
+        ],
+        "gfs_0p25_official": [
+          "ea24017e0a94696d07fe3e1be2a0156a8dd631ff856c162d354cbc39ad423bdb"
+        ],
+        "icon_global_open_meteo": [
+          "08b9d84b050ab08827950ef4e92b7576a7ed69789d96bc7f6dc78132215f372e"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "bd297ade6f72c868bbc487ee3bc4dec12282590909cb19ba5125dfeda82942e1"
+        ],
+        "gfs_0p25_official": [
+          "5b71dbc5def7e8e6279167a0048b1de50d5c8074f6f96f1526e41cac7f614531"
+        ],
+        "icon_global_open_meteo": [
+          "e6ea44bf3b79e8b22c21c712bca2b0e49232c073350905ec466c556a5e0571ea"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 28.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-14T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-2ed35a06a4d14a7dddef80bf3b882f3e"
+    },
+    {
+      "event_date": "2026-07-17",
+      "forecasts": {
+        "ecmwf_ifs025_official": 29.5,
+        "gfs_0p25_official": 24.08,
+        "icon_global_open_meteo": 29.7
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "ff69f6f8540523a41cdc98ff4e9a50b4a6f88bdaa0023db68e2eaf6c1e6bcb99",
+        "gfs_0p25_official": "a109c076579cfc13263903f3931454eed4764be4793504b250a5be9815d3bcfd",
+        "icon_global_open_meteo": "23da2d888044f1453cfb5784de8f3d619dcbdfd40511c2be433e78ae4035a05b"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "bb99f2b7da34367e5e6d8f9b26db94662f0aa1dd6092a417273bc1ee600bb5bc"
+        ],
+        "gfs_0p25_official": [
+          "ec7b8d93bdf4646c93a3a67fde2f5dd7343ef42ad668035e32a2fd66e89e314c"
+        ],
+        "icon_global_open_meteo": [
+          "fae28ea4b4ec47256dc6671e2df99b9eb4a4a09f1b5290cc7bb8eb69de3e5e1e"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "7d11a65cc5627469b91b8f9e02bb3fa707954ec92c8b6830881c05cc09c7d128"
+        ],
+        "gfs_0p25_official": [
+          "fbb3c766ce0ca76a0a6380e2cb64879d7726dd769aadfd0bee1b653ea00b2b33"
+        ],
+        "icon_global_open_meteo": [
+          "6108c13563e5a70fbc2341450682d1f60735d77678a22ab7906ac6586648f43f"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 31.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-15T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-e6c786777c45abd272892455323405a9"
+    },
+    {
+      "event_date": "2026-07-18",
+      "forecasts": {
+        "ecmwf_ifs025_official": 25.17,
+        "gfs_0p25_official": 24.805,
+        "icon_global_open_meteo": 24.8
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "585fbd4321213b0f1c4638bdd774e673007021cfc9bc78d1411c89344b3a06df",
+        "gfs_0p25_official": "ee0f0a6d9cd88563ceb9bfcdb26324bd78351b5d4f15bce20924d53a5b04c202",
+        "icon_global_open_meteo": "10fb4748668ecd7425ea4fa4a0c8db68f0978588544a7e1acbd94ffbb886558a"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "9ca68a29933932679089159903b8aa02ee2883ce98481e4297db01b771029bb0"
+        ],
+        "gfs_0p25_official": [
+          "3be65c648b8233170a36290fd27fdd22f0edf3dd28a1a3b66cad65ba7b67a485"
+        ],
+        "icon_global_open_meteo": [
+          "fc2313a302807bf02018e4c6f6db216bd1028d468b6a1cca3cd9fd8a21a2a73a"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "9944eadade03a9a7b8a06de46931f15c225563fa3d627ffffbfa234ecaccccaf"
+        ],
+        "gfs_0p25_official": [
+          "4618638c0ed33db2d7673b57984d1eeedac60ef6d7a7eedd95adfb53ade56665"
+        ],
+        "icon_global_open_meteo": [
+          "9b0e47cc182058edee77e439393de80e8d41aee48a84c7d7da10d5600a30e7d4"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 26.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-16T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-6c26d1925058bef78591fadce83a42f0"
+    },
+    {
+      "event_date": "2026-07-19",
+      "forecasts": {
+        "ecmwf_ifs025_official": 25.065,
+        "gfs_0p25_official": 23.004,
+        "icon_global_open_meteo": 27.0
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "f9b6840229ca325226c5c5618b397b3f7b39e496e70d15090d31c3b8fbb52de0",
+        "gfs_0p25_official": "42743959fb40f6c2f978b0ce2588befb1003cded4b431bc8ae4524ef6f700cee",
+        "icon_global_open_meteo": "2f4e842e161f1bba065b0ccaeb712c3f96f2ebc6d9f780adaba1dd824181d7cd"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "c4edc1f9a33a0fa96b3b9aa6ffbf10e0cf8d65b5e64546ad694eda10a466caa0"
+        ],
+        "gfs_0p25_official": [
+          "a82a410ed832fea21f1a35f134dc16d1fcfc4e71839ca0e8d048c6859ba3ce9a"
+        ],
+        "icon_global_open_meteo": [
+          "9e06cd6bf5edc002e281ad4f80f590b6ae4d54ae123167596b2edaa98282bc95"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "2847f48a65f7b742e39b18e8c917d2c0d4350207e25aeb8e6f81bdac28153fee"
+        ],
+        "gfs_0p25_official": [
+          "cf8731b2c08b27c7054586ee34edc9098bf9092cbbca00ed36a32a81e96359aa"
+        ],
+        "icon_global_open_meteo": [
+          "a397d000740be5933fcbe7e5883fd7924760e4a98bbae487faa666be775bde6b"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 27.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-17T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-5a50ac6135997160aa53125a47a6bdbb"
+    },
+    {
+      "event_date": "2026-07-20",
+      "forecasts": {
+        "ecmwf_ifs025_official": 25.728,
+        "gfs_0p25_official": 23.85,
+        "icon_global_open_meteo": 25.5
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "36bd4722cb1f90f532766e8a76b0c1067c0f6f2de5c64a292b8401d24fa78762",
+        "gfs_0p25_official": "babd15f71d895b104afeeb94365d1003dae5fdde6f6c0ff1158f2ace799db9e2",
+        "icon_global_open_meteo": "8aad2615b7b9edd62f4363397a3c1e4f62bff1a556872104aae922e39e58be16"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "98696ba2e4f5694b02bbf1f4165d95c6e5d66cb45b9d5925527387614329fff0"
+        ],
+        "gfs_0p25_official": [
+          "4836fbf4345aedd5bde4c224536aa576002bd389941bfe9b23f5b63401b5904b"
+        ],
+        "icon_global_open_meteo": [
+          "82499e3e00d16cbb7284611786cde948062a32e1c6f149f11501dda15cfb7d57"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "056077e6c25c5e88ab89be85354245e7f953afe98f9a81024c6d55aba59d16ef"
+        ],
+        "gfs_0p25_official": [
+          "fefceab1bb45aa442e633ce7ccb504d9531008b8e892d4adb862509be7d4b8e9"
+        ],
+        "icon_global_open_meteo": [
+          "692b87aed7a7d2a95cae39e4449e45774598ab30d9be6ad3d4b9f84f1c52bf2a"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 27.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-18T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-5ff2362a8f9b24c6ddd50fb105df1064"
+    },
+    {
+      "event_date": "2026-07-21",
+      "forecasts": {
+        "ecmwf_ifs025_official": 25.007,
+        "gfs_0p25_official": 23.471,
+        "icon_global_open_meteo": 25.5
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "a998b2f56cd2a6087ea19b64ae2226b4f4dddff6fbe4a0fe87263055786b2bb8",
+        "gfs_0p25_official": "5563343cde2e6ef73954b9e0740ef6f81cd920c3958260f573918f37101acd71",
+        "icon_global_open_meteo": "98123ed78b0b61ae31103312a91b0e32d34d241352d2ef2775081e00efabfb0e"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "cac5eaff8fab029a5a1536f0ed61250958ca9cb9b1b322d8bb6c3737f1d95768"
+        ],
+        "gfs_0p25_official": [
+          "1d5cfcc2e191a6b09edb063eae82fedd556898acd47039072702d01fb28d729e"
+        ],
+        "icon_global_open_meteo": [
+          "3df85aea67bdee1bc2e157d40a2395fb79cfc9dcc718eb7e72922bd0e8fae82c"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "8a4b095e6d6e478c6c5844aec6acfa1dc11b14960c5df9ee2619a57d2ebc6c5d"
+        ],
+        "gfs_0p25_official": [
+          "e799b9021d58f7d039cc008017736333b5fb12863ceff2228d37bb213515c291"
+        ],
+        "icon_global_open_meteo": [
+          "fdec95533bd344ef9487a10549cf3cc5c2c8550f76b4e1e61aa42ff9744f3f8d"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 27.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-19T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-4b389b553dbf59289f116fa7d55438c5"
+    },
+    {
+      "event_date": "2026-07-22",
+      "forecasts": {
+        "ecmwf_ifs025_official": 26.355,
+        "gfs_0p25_official": 23.898,
+        "icon_global_open_meteo": 27.4
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "75574d035d8e9cd2e2e7f6cdd80ac042e8c61586ab673a41e3dfb175c8dfa5c1",
+        "gfs_0p25_official": "a248e110948d8e3c0f5548142367ae1007e7aa88a726bf1e99e16331ada3696e",
+        "icon_global_open_meteo": "48c55de27b2a88b5b9ea8276f158ea07ba8c8de99170f97e16fa179b9ba76d02"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "25833e4946c2d48ffa827b7c284f796976fa2d994d1467137e74c5927f3fea9f"
+        ],
+        "gfs_0p25_official": [
+          "d01f1314bcc818b782388af897b33118659fa7a54918cf1a71d2bac609cfcca9"
+        ],
+        "icon_global_open_meteo": [
+          "94a30d6f17b458a1941f178ceddcb8d871e0ddba4e202e26e0592098a40330e1"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "52083895974f265177e3d58f57e06081b196e2a79f277fe3078721a4d8695c33"
+        ],
+        "gfs_0p25_official": [
+          "0e076c4492a5b16c95646ad869aa5b744d9618fdfedac0778ed375e7232247ba"
+        ],
+        "icon_global_open_meteo": [
+          "41a59fd53dd02c7800da358286f6e36b7017fbb639734831f482d30d53f40270"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 27.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-20T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-efb23fc4482fc46f9ef3a60f8851f735"
+    },
+    {
+      "event_date": "2026-07-23",
+      "forecasts": {
+        "ecmwf_ifs025_official": 25.281,
+        "gfs_0p25_official": 24.478,
+        "icon_global_open_meteo": 26.6
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "b875bb67aad4c2991fc495b5bb847e4c9cfafe44b19b2fd310b78542e7dfae6a",
+        "gfs_0p25_official": "c2a2c30eb2eafe0112ae0ece7fb917e39ea4bbc12b93770b8d679e12a282d368",
+        "icon_global_open_meteo": "8f5c0f97033d7665e96740114404930e9588039a6e5c908a1e351d5a89062af8"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "33a3fe02d0cfeef4b9b5e28a69d16583c4fe3f6655529b6a456b1ed38ab2ad2f"
+        ],
+        "gfs_0p25_official": [
+          "5093460968f5e51368b96e74dec0fdd22a5874f2337829ed68a60ec7d0a2f6cb"
+        ],
+        "icon_global_open_meteo": [
+          "987ca1a90f2936d5f836f291276e3caef408d7ea2897992250a25ace90eda2e7"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "d3726a93fe15d726bcd0ea94cd5d621acac1cd428a66c4c40103b9a574a60ec8"
+        ],
+        "gfs_0p25_official": [
+          "700eb3a27933b70ac3c7c8c75971f537359b9ad8e008e5aad4581a999e41825a"
+        ],
+        "icon_global_open_meteo": [
+          "a748582a2df015bdbd34c4fe80c6b1788c938cbaed7595d3049259ba2d1daf45"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 30.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-21T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-c49ebd5fe72468ed5dd444bf13e120c6"
+    },
+    {
+      "event_date": "2026-07-24",
+      "forecasts": {
+        "ecmwf_ifs025_official": 27.39,
+        "gfs_0p25_official": 24.65,
+        "icon_global_open_meteo": 27.7
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "5a149c27969539bdf77eba65d0fa521c06568b2f3821cb4b0a9cee9ad825e07f",
+        "gfs_0p25_official": "f44056d9b62acf31c4ade80829f87666220190530ffeb6cab49155b5d35e0f50",
+        "icon_global_open_meteo": "22b22035a0793737117032575f0d5c692df96b076da8f25c6dd607d91a675ee8"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "7a81960081cac4355460497e477b32dd0f7605dec3b68c659ac3bb5f2c593df1"
+        ],
+        "gfs_0p25_official": [
+          "119d95c80101e16591d79c20b1a00b43d6848d85ea367479115279106c097181"
+        ],
+        "icon_global_open_meteo": [
+          "0af7dbfb9fad3480646a2bbd0a764e748591d2d1df8a604ee75faf2d9c911571"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "95c728db850b70ba7502e0252141e6d902c2edb1502b1771bf07612469aa71c2"
+        ],
+        "gfs_0p25_official": [
+          "fe7a902ec92f8376588862a04d7ddc467fb6f9edffc07787aae1a6bfd0896b91"
+        ],
+        "icon_global_open_meteo": [
+          "789567127129d6555267e2573ef55bafcb80861bd8e5f46e744e6ef98cadd803"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 31.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-22T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-3293b9d298196c96d13e67b05842e904"
+    },
+    {
+      "event_date": "2026-07-25",
+      "forecasts": {
+        "ecmwf_ifs025_official": 27.222,
+        "gfs_0p25_official": 24.85,
+        "icon_global_open_meteo": 28.5
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "ed9aa6f985ff34c3e9c6cd73d9fbedad0c42afe3277acbddcdd9a317c0238776",
+        "gfs_0p25_official": "50e30cb4e4d1049c0f0a28f503500e6b178accb019a06b92873f3526b197e15e",
+        "icon_global_open_meteo": "a980f07bfb6cb1d4cad19e9173286418ee8725d9287299cdc025337fd5ca5e42"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "b65236f5ec01d9e69e20bd83e05be90004172d78758a623ec4e5c1d1a9c98233"
+        ],
+        "gfs_0p25_official": [
+          "d3611e64caa2fb6d6ee303354020dda47d902c872185d127ee89762f8858fdcf"
+        ],
+        "icon_global_open_meteo": [
+          "9b940ea3fc98cd751d56e4bc75a967095eefa629a3457d7d5fed5c3c778268de"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "6372aaa030cff9991c821067cfbf17295d0bbb77d2c022cacb3e52b95916ecc0"
+        ],
+        "gfs_0p25_official": [
+          "59adb845a4e8311a52a3617676c072c52d65faeea29579f9f99d4c1e40facb70"
+        ],
+        "icon_global_open_meteo": [
+          "e33a65a9a5fcb627c12160e5f1a7e05747bd7d45fa552c8857f55630822336d3"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 31.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-23T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-1c6d916f663fde174a20736dd1ace778"
+    },
+    {
+      "event_date": "2026-07-26",
+      "forecasts": {
+        "ecmwf_ifs025_official": 27.871,
+        "gfs_0p25_official": 25.374,
+        "icon_global_open_meteo": 28.6
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "3fe6c4f5c4cf2bcbac03c1e3d632a7a80482e4fc18bba89d7c4879288427bf2b",
+        "gfs_0p25_official": "838cdd318f164dbe5c03767d0b32b5a121ec6fddf4b1cc513a6deffbea7f701a",
+        "icon_global_open_meteo": "e497c60553f3f2023f0c98e5a9b8f3c0534509a59af474d5764bc5da4b025553"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "0b876c988e3c8e4a24d21e55dac319b8c8864a80f0ac53dfe2787be8b59094d9"
+        ],
+        "gfs_0p25_official": [
+          "3056be6df76b3044a1bf3f9b12c90ebd8ce9d18ddd035c5389a4edfd11806d08"
+        ],
+        "icon_global_open_meteo": [
+          "61ac60228e9dd0684f282b38f6fb647470cc2e21b7dc68ca1b22cb3d41f18d9f"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "3ed8361d0288835803163be81bdd2bbb6534e249f2e8077261206fa469e26ea5"
+        ],
+        "gfs_0p25_official": [
+          "91439ee040c09050aa8078b1d0300612da71c001e5c484b2649f683710b856ba"
+        ],
+        "icon_global_open_meteo": [
+          "88dc80325c85207c376e21015726db8ac636dc0ae02047803e84caee8456e81d"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 31.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-24T18:00:00Z",
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-01d34c4b0e39ef76e1ef8b6277d1eb8c"
+    }
+  ],
+  "pending_event_days": [],
+  "quarantine": {
+    "excluded_from_truth": true,
+    "reason_counts": {},
+    "row_count": 0
+  },
+  "receipt_sha256": "fab52a1d52e3a779caeb2cfa039e854fedfe09c1443fc784441e348fe7890934",
+  "reference_only": {
+    "excluded_from_truth": true,
+    "reason_counts": {},
+    "row_count": 0
+  },
+  "schema": "bayes_basket_target_et_history_evidence_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "amsc"
+    ],
+    "excluded_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "included_station_ids": [
+      "RKPK",
+      "RKSI"
+    ],
+    "mode": "allowlist"
+  },
+  "state": "READY_FOR_STRICT_ASOF",
+  "target_timezone": "MARKET_REGISTRY_SCOPED",
+  "truth_rows": [
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:11:08Z",
+      "canonical_ingress": true,
+      "content_sha256": "3d583b26f5d7b5af925d29b82c019a967fccb2b1fa233c9f6bf7ad4e26f7b59b",
+      "event_date": "2026-07-16",
+      "official_tmax_c": 35.0,
+      "raw_sha256": [
+        "104d994d894c644b477277f5482255e419b7f7629f4c38556c55c5398b6b6cc3",
+        "1527ddd01c083d858cc08e185d123534fe467300c7a81930c0617a740cba5a7d",
+        "20ffc1e718e5e8eb8b69c367c1c5518598ff25eed6b5f28568cdbb59186bf41b",
+        "231df22bb39c7cc05c0426b049cf8b85a20893ccde3ec4d90c157d6d1f048ff8",
+        "2a185a22dbd87db394f11c5faea17d0b403853896d7da1f9d93638eedd0ad588",
+        "454a57b2a66e986938ff87c59a2b4ce5566dee99b408f46751d175cd86caee91",
+        "4df7232d40999517db6c320a55f11088f2864fe091490b645b918cea4cb43c33",
+        "5534f8a357f1a256bfa2a8662fdeaff62d0d3a5c051a7737863d5a7353ff8b6c",
+        "5ce0e840823445f9a6a880988235a23aad1bb664833582676411484338609c9a",
+        "645c0f28e0c71baad8a8fc76e12c1e4abc03cf1393b18d43642739eb5f559c40",
+        "7bda99d58cd70bd1354ba37ea170c1ca711090101addc26b7c93d05fb69a07a1",
+        "998c878f9fa8aa82837bfc17642c16ce17006d93d9e0cb88524a4725a198bbda",
+        "9fcea13aabc37cc8db8966fe925ebe136433f22812fde6dc333506e605d5c1bc",
+        "aaffc6b3363507856e8df33b27293821b2767df8c9deba5945e063ce3aab6d4a",
+        "abce8b3a25a37e7febc9a1120df66da07f204f01884547074bc06f78354178a4",
+        "ae1481cd8faa1ee926a377c741bebdb6959cb9de20f4a33cccd9769dde13230f",
+        "bce9f95c57b304fd196adc48e0b60e16353cd9974f488f886083438d1f1063c7",
+        "bd6187dbd19f9b8f10934b4ba1f263043799bae92f97bba2ba71f975f17ee22c",
+        "cbcb046263a42c490b5ae48bede3fed8949427832aacf730c4353ac20fd24ccc",
+        "d4bbcebfbb8687de9e109619a46a9a336d8b52d504650f7eabd498a71d01616e",
+        "d95dd967f36d3397dcd9895e0cabe8bf74c1a2a26ae1385a461d01693a35a925",
+        "daf849a20fce051f4e1ece210006d31af09a8cfddca701c5d0769fdaf6611fe5",
+        "eed60d05b7f6cb1670ea8105bae9c5657265a4570842fa8ecc0a1f8da6dc1c98",
+        "f6794de0cf87c8eac89c64a864d6950c8a12f3cf4a24617cd39c1514287de31c",
+        "f6a1372083305b9f2b8aa48c38127a018ff1f29ead8834170ee40be745f7c23e",
+        "f88dab6d6677882e5fa97c9d8a7ae9027300d1f23ddacad9797f68faf5313772",
+        "fbd180dedd10b53186b7bbf9947fff67b4495ae4d3c3d1bba9e8a9ad25dffa0b"
+      ],
+      "received_at_utc": "2026-07-24T05:11:08Z",
+      "report_count": 27,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-62facdc3adb002e655a2db66f23b5ad8750a92bdf3b56e425dcf2b1adffc79c3",
+        "awc-historical-e83a4dc17f7e1bd56350f0baf619e57f53c35805c87b899a3c9e6cf27b762a5b"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-3d583b26f5d7b5af925d29b82c019a96"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:16:25Z",
+      "canonical_ingress": true,
+      "content_sha256": "63574ac21bc1aeb97b8bb34cab1effe65b5c293aed9acca95589d19914e5cdc8",
+      "event_date": "2026-07-17",
+      "official_tmax_c": 31.0,
+      "raw_sha256": [
+        "028755b4c02eeda83a9a8bf017023530cee168c70ed1059adad35182185db8f8",
+        "118aa67ad897ee2081de1268043c521e33541ffce06db4e90bb968a71e604d75",
+        "19ccbe1bae1594c601ee70d0ce5647e21c6d02df30664d6d6be64587fb8fa285",
+        "2d35e48b559b99a050a635eff8fc96530555acca188fe2771d19ee976db3aae3",
+        "52d8e1e68fabb7d2ad13da5390f36dc66beca6f17a3780e1819331d45c625805",
+        "73b6e05706604dcc4faaf7a2a2c932e700a345322caf139d2005f852dc570c5f",
+        "78635d6b4231197a55c6a407fcb2c889628c66924dcd2a476c33dae92953dbb1",
+        "7c8f35f3eb88584ccb435b6613f84e6300673c5973cb47b020968da85fb3bfc2",
+        "7fdb144588164e685ecacb5cbe59083dae901d9e82c6b8850175959d113c4636",
+        "92a5b50e3cb7b160cc0c8ca9145f75f46c5a26b4674e85e2a73605f6694ae8f1",
+        "a3e3bc171782c0d7eab407cafe22af4a918479af9dce1cc076a406999b10dffb",
+        "a6a8c6d96389f2ee9221e94016afc253a3467f4be7223531077652f7ce088ac2",
+        "af02558880b00a3041f3da47ee84163d6b30c37c46df0c493a1bd401363038ec",
+        "b123c9d4cea78da80e647d7f431f7dd9834974af69e86deee3de148e1f1e4b05",
+        "b40e5472c11dd337bf35b2325ab6c2e1f4f957f131e6833993a11312b0e5761a",
+        "bbb915f08cb3ea5706ed9e38a4668f2db52e1c8e631bc7652c597997533d935e",
+        "be88ef7830d4096ff057a0c984d91e9967992e5a86b92db69ed813824acfed49",
+        "d1ae892351096955a9139e591bb54339e4799f0aca10339f276b32a049cedfa0",
+        "d52fb8138d957236adf2fc916806673925ecc4affd655623d9544e6cfda4a6c0",
+        "e33f0892f0a1172fe2ebb2c9ab925b54ff8951fa5adb5f750453967415a55e22",
+        "e5d85cc9d45dbf41f2c401841b760ed5ae144854de040a361224774de48242a2",
+        "e87460c0ed435bb20a59165e55a1d38c019e44a03674f0264b483e5da65887bf",
+        "f16eb3b00fbb65af2c15873d7d28501004ec44cfe63654654a3dcdf37ef13e75",
+        "f570e6791becbed7316d018693a1e7522491834d363750c77b2e457fc7dad809",
+        "fdc5b949b4515a8c971adb80f5cb12024758f060131cc26031d83c25c11cdddf"
+      ],
+      "received_at_utc": "2026-07-24T05:16:25Z",
+      "report_count": 25,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-50bd65bfbf543ffc68a190bcbf7f9a66c9f0271f609d0e2ea8990909d550b429",
+        "awc-historical-62facdc3adb002e655a2db66f23b5ad8750a92bdf3b56e425dcf2b1adffc79c3"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-63574ac21bc1aeb97b8bb34cab1effe6"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:17:54Z",
+      "canonical_ingress": true,
+      "content_sha256": "692de48bff8da66cde39df1fd5e7c01d7c861bb40ab03de90b041e4c2059c484",
+      "event_date": "2026-07-18",
+      "official_tmax_c": 30.0,
+      "raw_sha256": [
+        "03f8d936717e79484e32cfef2245ef4996e0acd3d30fbac6f3ec5aa7520d4078",
+        "0c6a6760ca12b86916601f1eff1e9f666e4f2ce58172d0e09d1b427a3473008d",
+        "0d5751386df30c604f968ec5287298dc52c1466282f802867c6b673d297a5dc7",
+        "14cec5720dd3a61fba76114592e6820abeb8d7115489757420dc206fda88c246",
+        "1a21b3769ea55423ba839c19ad33ffcb104dc496ea6145b4eb1837c623f1dd34",
+        "24bd1cddd06fe77703b0a2c90aa368c66bf83f49d5a929443490ebac4457ec9c",
+        "251d6d2711cfe9f48f78f48984aa9687f1ff87f2655f16b949e9a1f967bd04f7",
+        "2cd5e67ebfb0ddd63d77d473987d9b67c486ceccbcbbd99f7b6a72e94f66c4e4",
+        "2f5594d90f465ca04706d261dea503b8b5ad02e039c1b1f5640149c0089b4b21",
+        "330a7d048bb1867a395710e142855a4d3d2c3483ec9d68accc7fcc6fd64be919",
+        "384edb42fae492e2ef02ae46f46713fc3c9111ccf1b853d7f144c24ecc728c46",
+        "4059a547f34f9fb29253a80fd54b84ab7e3f81fc16d206b2201b2e5cea7c88ac",
+        "4c4f4fe8c8c37458638907359aa25d0e3d23e5c35b8eed1cb509e4d02a5c60a0",
+        "631b1d977a92adeb0d4e16f420149b9ce159baa74a708e125384f34c880400b6",
+        "633bd039561cf2f3596b49acba42752bd1c3a0b075cc40d39b2ee6be61122f4e",
+        "7b26898e326fcaa7fd5af8dfccfa0d518d03743613d8c888759704523b0f07f6",
+        "8002354bd17db4e14b7f40f11175ec4147b469418edfee6f0a6d4b2f177dda42",
+        "9be16c2210953570986c7f17ef53520dede580d6b1576037ef0cba8eb85fc37a",
+        "9f79d884a38895987022d60faa03fdb1820ec09202e1fffa63c04c452f2560fe",
+        "a147cfed7728f13198d6b2c35d728a00be436ff9265de86a6a2cb5526f58183d",
+        "ac82e2e999adae7e44edeaafb26f7939866fe0b6d329df21ed7c98aaad534a59",
+        "b083906818a84dc90d3e75fa3a5c809eb77562d07b2718a18b6ad6a039d2b291",
+        "b0dafa24d4ab76ca3b225e5dfb99a7e5e2202b838fd62cc6356a266c4433e5ba",
+        "bb5541660a7da5aa56fd142ab7a0a1506e4d144fdf18a71006630ca4b1081904",
+        "bdb7b2f33215f611e729136c64d7f761db011aaa9d695c3e915aaa8299a844eb",
+        "c448e595e68bcbe26e56b0682be03831d16987a3bc758d00d82febb6af5ebeee",
+        "cd3b7e49f2716250d7eb41dfbf4c9f58d84b8492b2e66f4ac2593bcc0d2417b4",
+        "db06679f2eed1064026998b0181eee377964d8d233c41312fac09057f04b1df6",
+        "f5c0abe42127416bbdd39ba9f50fab315fc29eb5b83493d6d11deb36133004cd"
+      ],
+      "received_at_utc": "2026-07-24T05:17:54Z",
+      "report_count": 29,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-50bd65bfbf543ffc68a190bcbf7f9a66c9f0271f609d0e2ea8990909d550b429",
+        "awc-historical-8e8cf11d199154fbc19c795436036e7ba56c706c9e275984fb857fb4ea29f273"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-692de48bff8da66cde39df1fd5e7c01d"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:20:10Z",
+      "canonical_ingress": true,
+      "content_sha256": "cb626bc848ee163a877c848e571bb74213d10160ba4bbe17bae7b7db7ed0f4e3",
+      "event_date": "2026-07-19",
+      "official_tmax_c": 29.0,
+      "raw_sha256": [
+        "0131e75b418ab48db8958678e6df253eea814a8b38574bdd5d4977c53a705462",
+        "0f4a35efaabfce026f483460c8cf897d357fc0a9c62de376de38dc6250b30712",
+        "27e964e5a7874251cf1a01d16faa69b3d84d2b1549802e4c63d1d111e865f119",
+        "2e7886fe82ce00550624924fb2dc9aa0316f1717f7640b4552b7e03c432555ce",
+        "352741c067675a750b86f8c004cb6da12061410d8635e97654d547fe110361e9",
+        "358ce195c9599a525ca32c717dc3f9a815830e8691c240f7a8388991c7b64a87",
+        "406fe443b7fe8a02122a85b09aa795bcd316b71534c73db21649afad0c62dfab",
+        "42764cd4a16ea1399bb86c195a8cab85bdf2a45ee3edfcfcc270a45c13d41507",
+        "42dc780e9b1bbca314a5898becbcee5c1cf1fbe476c1790e0aa4e73798697bee",
+        "47ca6fb4b0092bdf4132e210071036c2875f5a847a29b76564a22ae1a2efa982",
+        "5e6eda8d41e9a68cec002f2c6b60a25b556dca85f484c2b665fa87285f0cef17",
+        "63d3c53789d7546246839a9673f557fc8d5a3083489cd88d747124c6b5a01ea2",
+        "6f99b03f0a9d0386a7e774bbac9efedf271b0cd0f4046c82da152467b38d8436",
+        "8ad797bc50fd94b42eae835e49e45ce53c7fa09032723098dfc3bb2687fecbad",
+        "8caa92526352c8364c40b2de003bbf58ad761b5556afaf9dbc8b5cc2d0b89168",
+        "97a4aa391822d3d7f3430055ca0e945dff00a1aff13bd777b062fd161fe9c9ef",
+        "a17ab17fac7de233b2b2bbf9d5079d52447363e6e14e7e4a97fdcc6a303ce92c",
+        "a81969cb069c89b5598a497a7b58e92586e163476a8d1a4dc6a73d1fe7a3db81",
+        "ae4b49fdfaefe99498d62eb5fbac8318ac845a8a19b68fa09443443d2058d82f",
+        "b122eccded18b8a3e4dfc1a579a139666fe037ee94db6ce53c224a27ed8eb310",
+        "bcef4aa89e052616521d0e3b1d9d5811fd1b8437b6eaace7593a49ffc9984742",
+        "ce02e80fa8a0f3695db127f067bc256b182f3922d2e9792e1509d9f2d3136f3c",
+        "d2ce5d772c54d6e8be6a2ff00d433b0c33b29daaf54edb1f22fca7077edf28e2",
+        "d985bbe43efcfb7ff25e20c708f2a5757a8d4dc79598fa39945df34644518370",
+        "de0d5d324e2ecd8a1604faa9eec95b1946a36ba95389e9cfe590fbe3b9d903b9",
+        "f77a8fb479c0a2a68bdb0992cb59201bf5a5a56d470f0342fe5c1fa62ccf8caa"
+      ],
+      "received_at_utc": "2026-07-24T05:20:10Z",
+      "report_count": 26,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-78d1df06adecf822aad202657d5b41b02c3c5aed94eea867e300c42c52444423",
+        "awc-historical-8e8cf11d199154fbc19c795436036e7ba56c706c9e275984fb857fb4ea29f273"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-cb626bc848ee163a877c848e571bb742"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:22:35Z",
+      "canonical_ingress": true,
+      "content_sha256": "42ac5fc1e60868cd9c017c5d20bbb6c548ff91b693d62b2768a36c6e23a15f85",
+      "event_date": "2026-07-20",
+      "official_tmax_c": 32.0,
+      "raw_sha256": [
+        "048a0fd8ea2e5c3ab9aa6ea75dd5e2695679da24298e2cb5e9695633d7ba91b0",
+        "0a76bb3a4816940ca270a3b5d5060b6a7afc80faf9e74d48dd30049755e48bae",
+        "13cbce1b83e929e85321b753b52e8989b852bf52849c9d46554dd4843c3539c1",
+        "145871ba24a5b5e0e580dc9806dedae485e553b4cd81a6ab2c476a862b07f74d",
+        "2539d01349f0ecbd9cb77f76f5b6de47a70d28c171cd23796eb838cfe3135870",
+        "272e2bc059587185ce25acc5681719f71d608e0180920ad5c96baa13a7fe3998",
+        "3558ef3de05171c3dff4a243bbf36a8972454d31c196faa3837cb259549eea5d",
+        "3c67d664fc4675c343d261c403a20b60469b6f26991ebbcc15ef7a59d7013b51",
+        "4396785325140f032dbc25ad7408e7f66a285d42e4daa04b73101f270c5a8c73",
+        "5a129fe7f91d9893d7a433e1de7ea6c9164c8a9a2998cfa814849dad8f3ac078",
+        "6766386cdf23ed640a2c0348e8afbaee517fb449ab4c809887f2294eedb2a7b5",
+        "6bba1f5dff18bf8fd30fd376ae5c5fd8a43ca31e3e5f4f39502716811eea5432",
+        "74271dd4faab37a593c2405c9e86ff22290c039ac4d3b8e00716ceed6661dda2",
+        "759eed926aa109fb502f5be3975b444860ce82f4caa86aba8bc4f0e6b96915e6",
+        "7808eca9c0e4338be041169acc88761833a2d7b4460320acc67069c1b5b3870e",
+        "7d021ccbac44db80e8638dcb654af3aa2fe16c3004e567c449cfb0e68cbb00c1",
+        "870d5f3119b336b9f57b880524559492c50f03d0b686b64da3e01291ef9afe78",
+        "ad3d3c654bf448fc3d7ab31795aa4ada46118e5c092303abd52cca112d9e95e8",
+        "aeb86605e18b7c66de66af51ff00bf421c53bb3b772a07f3344128bb433244a9",
+        "b2268541ed67dc66642de5f7a81286110cde27b66148bb4034872e7ef20bebbf",
+        "bd71b0246f2dddbe5bf98d93e533f657aab19b54ce7319c8a104b4f01f424eed",
+        "c6bc009040b7b60bd2a95e5faeeb56b04641ca06b44a3a2a3e1b91ba22d631be",
+        "c82b7a4c30dbc39ff87ad8fc52ec5075eaf545c11a8f5ef631799a5da71ec654",
+        "dbbf3a5fbadc62edcae914536ff0d5377dc266478d6038d657e16a5442fb6abd",
+        "e3d0967bf080345e53de3143b2db204878d5f4be8308b75396b6652f09f80b5c",
+        "e5219d8df852a26c3d16baf346e12a68665a64f9447084ae005adda09a550ec2",
+        "e76cc849676296020974d3f263ab21a2807125d69bef7cf82decf2ff156a4a93",
+        "e83a6adc464eb514a82aef4980f049217b1ed07bd3013c98a0c97586a6e84ddf",
+        "ecde221e491a6431574cd669f83e08e65698e09c58e14b9848c490d83ef86b9f",
+        "ed089d594374e8420a878a60446ec7eda8694b272dcb950ca21fc5c0f1ab9d46",
+        "f48e3ea8a7bf815ef6e0bc64680ad9b73fc9c582166c8585ede79e8d7846f6e3",
+        "fe8b883288645056d9b4d4e910b6248b67a67d09d603cfa09ce4c0cfb004371c"
+      ],
+      "received_at_utc": "2026-07-24T05:22:35Z",
+      "report_count": 32,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-77b5326f0f79504ce8ce0559638623aa60dc07d369c4f775fad982107eb92bc8",
+        "awc-historical-78d1df06adecf822aad202657d5b41b02c3c5aed94eea867e300c42c52444423"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-42ac5fc1e60868cd9c017c5d20bbb6c5"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:25:05Z",
+      "canonical_ingress": true,
+      "content_sha256": "3cfe9e570b3d2619905158ad1ee7da45fd2797b49a8a5c48e842e58ed6221f40",
+      "event_date": "2026-07-21",
+      "official_tmax_c": 32.0,
+      "raw_sha256": [
+        "003111b530f10fa2a065f42e599132a7898a288b8b2e32a6cda3415f4c26ddb2",
+        "0a5e8c7fb6040e870d25b3efa7c0e14bc66f62e41379d7c9c20b918571d1fdb7",
+        "0df9502bdc75911f2955de7e7a5854e9b7cea3be7818d0a310564a4ae1ab23e0",
+        "134bb71698852a63f46f19c6661a5b56509e4287fefbb31b2faa965a914c15c2",
+        "147b35ae6f6701505692a87f9a53e911750d50b3fe4fbfe61b1d9ae698efef2e",
+        "14c3d1bf2cb573ca7fc93f7de76fa815828820fd42d2fbe0a296a6df38fecb68",
+        "296b0ab80cecbdb53d4cb3ddd41a70c7a2f8e0c8b7009749aafa4f4d0d5dcb48",
+        "2c8fd7a9dcdfc48be9bdcdb00aace6d55272ee06d2a915f4729af7b5796ab2ff",
+        "2ddc488df4812df632502e81df09a2923624fd91f1eed5865781644c2e470c62",
+        "2e2549e599ec596ae17f4e22ad4d871d1eadf9366152fb036cdd7ca53efbfd8f",
+        "41d988fff8c97233ef44a388387fd431c61193bdc92e8360d49d508a5baf792e",
+        "51cf79e81cdc0c6b5d9348810031ef1ce107a3500851d6826fb7615dbf22d5ea",
+        "553a09ec91682aa1b924ed0a32033697994ef4ecd8da46107f3496c8fed0ce3b",
+        "6052a694524b8a46d5478d206cda58007cf35552ae9dfa4689ef3a836529d29c",
+        "6763a1b2dfa2304ef7fd0b186095f31ffb9c526c3434e56a628eded75f6b30af",
+        "7ad80dfea2cd6ee7150aece3144ed37fc596fcb6e6a4d80361128fe085a70635",
+        "86ca2dad4ad7b2fec67bb5f7c59d153bc22e4beeb5cf2687ee4220641c658755",
+        "8caee4a411fb34fad5961d9c22e90869ffbcdb22b570748568286af67e95fe86",
+        "8f4044d7318361757f172e42c26e21ffd5ab39ffb480015626de0a8a60d8ee0f",
+        "97ae48e08cc0007dd1cd45fedb5a3cde5437b452b6255279b2b5140576309731",
+        "9a031eebab5f97b03f3a009166809255d7cbbcfb2fbc71aee6e1dfd7490d98b9",
+        "a19c095ba9c0824ef726da652a35873391b4a9a901bb16b213abf7e4c2eb7cbd",
+        "a1b8729a7e90a79f74e411168e051135b01e558ba2e39c390215983d527ff88f",
+        "a1c853670674128c1d781a80696173b7a26d3198c81c0d3c9f398805fcad0d7c",
+        "a38bfc413291214408dda9c73ec4fa06208d357e441e0b4f6a4fa10ee67220ae",
+        "a3c2cfaab6bcf650c818af6f04b3a0d1aea10f00e83c1c4c867653209dfec5ab",
+        "a5097a0f53449d5708d58646d2f60e5ae900f17f82d1ce598290c0ed89f5fd90",
+        "cb33f602e58750772515fc6ff24f97b6511b5079ab838f65cbad3a749aab42f1",
+        "d1bc108f616bbec6f451323938e36434c8bf024af604f22a6546af19329bc2bc",
+        "d6a3e41363ca9dcd2c8cc62b9e69457e76d976186d97c62856dcaf20e859349d",
+        "ee51dbbb09c50af97245efe072df5f04c057352eecaec395eeec2e2c8cbc7e15"
+      ],
+      "received_at_utc": "2026-07-24T05:25:05Z",
+      "report_count": 31,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-670f0995a3a27e2b48d57e16d87aa63e64f7c5f346f7846669523fccf6d17e3c",
+        "awc-historical-77b5326f0f79504ce8ce0559638623aa60dc07d369c4f775fad982107eb92bc8"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-3cfe9e570b3d2619905158ad1ee7da45"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:25:05Z",
+      "canonical_ingress": true,
+      "content_sha256": "4d7168a6b61904875bf4f7af4bf147f0032e11fff7105b6724559e55429a0576",
+      "event_date": "2026-07-22",
+      "official_tmax_c": 34.0,
+      "raw_sha256": [
+        "0fd15ad8825eef02be9e4b55e4f35bfcda561394bc2325d502307f235164dcda",
+        "21173bcecbaba41482b1ae2722ce32403a34aa58fe907ee7c49fa07925d3f4d8",
+        "2c13998b87c38290edecca48d8b7b16a534005485ec5c72d18fd6c8c650b844c",
+        "2c2cbf7ea0cbeb5cab671b50086b49e705bc6f22233b0d33b08bd6fa81e7a2c7",
+        "5746bc37cec98c00f80739fac1c8ad4ae854486451583ef20e9d93b1f63929e6",
+        "6324a0ac52e0a08a190e5d352b0ddbf7ca35c9a40b905f4429c52c9eb88eda68",
+        "6b4d2ceb5ed2adcb6110befafbf67b48a28ad30eebd2fb65a4a2a38f07c6141c",
+        "84095b950e6abb2e8182abeee223219c7d492eadb0a883fbbde7780f5040c53d",
+        "943fbd37282925a96f96c1f0b9acb1cd5870918da4ed340d32f12e4d322d4da9",
+        "a70ea85f97fbc2fb8537039794a2cd2684cea62192d065895faa9cfee85ffcc4",
+        "aeb80a290a50a330f68d1886fe14ff556dcc2c9870825a070892e7e695eb57b8",
+        "b293facfb849bedaecdde8afc498d0d68c02d542f41275f258a25b7362bde004",
+        "be72ad422d90cb954a7f8b1720dc1d5260b43a78092aced950732b2a390d3176",
+        "d83fb5bb75450267ff4fa7f8922a94d24806c08644ddbee55aea7c323866c420",
+        "da85db572e4ca7604ab9cb01d44a5b7c5e5c1588abb1733b7f5cc96f47ff28bc",
+        "dc237e82b8fce5d31cd18c5a45066facea351290f4f99116aae323acc61e3f52",
+        "deb93b8e460626ca6d7dc62177abbcccfdfb0a51186aeff2e622d463e1c14db3",
+        "ead5178105a937c5be889e1c195dbbded3020babf4c9236d3dd2e242ad74e4e4",
+        "ef2423985a27f0ed2327cce5f94305844282dd17789b46b128e245ff60777544",
+        "f6a5a6276a125e5922a624766c0c2981509bc48a6983f1ddb95962efbd4130ec"
+      ],
+      "received_at_utc": "2026-07-24T05:25:05Z",
+      "report_count": 20,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-6610f74d35185289376621ec9e277f2ea6c16c7feb12f3473775b9d3e2f4afac",
+        "awc-historical-670f0995a3a27e2b48d57e16d87aa63e64f7c5f346f7846669523fccf6d17e3c"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-4d7168a6b61904875bf4f7af4bf147f0"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:27:54Z",
+      "canonical_ingress": true,
+      "content_sha256": "9578bbedc08b8cb93f54f868d0aa7982fcbb13916ddfe37f49738dc309934f54",
+      "event_date": "2026-07-23",
+      "official_tmax_c": 34.0,
+      "raw_sha256": [
+        "181609e8d50709056ae676caf05218c6d7a1afdac6b51ec2a5aa166d5cb57890",
+        "2516c42fc616fe6c674101e786134704a5ccf801b4243c5a3b4b8a2454d0eb65",
+        "3869f390bb2e389c75b75a2b308d1645a4c3eeb65915dbe3e938e8b59de20b2c",
+        "4334c741490071b1717366957f54cf60ae84f6e6b7c260c492884e43c7c654ce",
+        "4a29f743150e8c3400419ede2c000063fe9fe2bcd09a4e6aa6ecbea6bb97f9ae",
+        "4ecee9288e37a77fc9cb4e49ef1502c5f38b09e3484b26a84fe65e61111ea321",
+        "5b1d7bd1335a328a10fcf49347ab405060b0ae6ea05495199220edb69b70b4ed",
+        "6dc8040fb3e0effbb7067797de2bc1b723b7b8a2d72faab443017d92aedbb6ee",
+        "6de52728f56db709c2eb14409cbfaa2abdc04ee6911c4c0e6bf7a2be32d22f03",
+        "88bc2fb65cd0980c0eb2d5fcec31b052250a8561a894f2ad35eadd4fc57c73ce",
+        "a8cd1ceac2f8bdbcc5589d4559f9f0dd2cbee64523364d786b002f3edfaed501",
+        "af0b55082c41b2e5b9ad12d79fc3a0e4021b57f75c5d20178922307ea75e0855",
+        "b18a602d19e0c129f9027992e9b46bfac24569a633364a50923d10aaf938dcf9",
+        "c4780b7820b3296e8dc699f6656133a5df1167a4fc66bdbe74628f6aabad24e6",
+        "c55f54a3098161e00687595169e6228c6d3f69c40b724a89444d8d276f1be123",
+        "c609c878ce98de8c16b09931aa7341d908c5c6c4c5fa0acae9ac66812c3725ba",
+        "d1f5f755758717d6c16a6bdceba5c3faa3da687adbab435d9428772e70f69f80",
+        "dc5a3df1d999fbb5398dbe650b7d385220e7122ef97fcc999b4384fc70cb7c6b",
+        "e327532f3304ec321cfd74f908cc0241e744f9ee642e6d5a8b803865abe4cf44",
+        "ea065e3cd13c66eb6753aed96b924a5feefb9fa6434c396c6c34ea0fe36d48b6",
+        "ee98c352600e9325ea0b585f536aae2f49b88357323d154d7e3f5970d1673a11",
+        "f0703fc87d1b698e45d8512c2d289c6306e0bb60adcde6427839c07d4cedc773",
+        "f3ae0318e3fd863623fce2ca5eff0ea2cb1c41a52a070af41f7fe7da7c5a536a",
+        "f4f2cac154819861839feeb1388d10471fbc0a0136bcd63b9c924b70d9e1c769",
+        "f51c7bb5ef93c29688629929916d6e423872b99ad8a151172febf61b8cd1be71",
+        "f8aac948df102cfa58e2a71d95329af4a96be0fe0010e5eefaaaded88608a430",
+        "fbc19c09b01322885d846476a599a09993c5b33aaa3a88429c412e96274060e8"
+      ],
+      "received_at_utc": "2026-07-24T05:27:54Z",
+      "report_count": 27,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-6610f74d35185289376621ec9e277f2ea6c16c7feb12f3473775b9d3e2f4afac",
+        "awc-historical-ee2a492babe751ca83f7095d934995dad8949be3cf60ac70c2e6fb44e4196f8e"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-9578bbedc08b8cb93f54f868d0aa7982"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T14:11:47Z",
+      "canonical_ingress": true,
+      "content_sha256": "650529119f495e87a7c202c45213faa7fb3fff7e58e342715ee8523dba890c8d",
+      "event_date": "2026-07-24",
+      "official_tmax_c": 35.0,
+      "raw_sha256": [
+        "0efcf7903fde0f9cb42662a9f6600b2c7d895e18b9ff2dfda73215ada992fae3",
+        "0fedd50f177c14a63f6daf995bb9c35a5a917088c33e51c8cba9409024779a97",
+        "1796c9309ce6e4afc0cdf0b4a8f4eb15d9d8b3b3c0335d14c5c9231660d98cb1",
+        "2aac4cc7f0c1931b375497852def00cf60c8a6121cddeb4081af666dd8473bdd",
+        "3f65b55c8416a84a83e33c79305423029266cd9ee9a28b6cc6e86e1d14ffac40",
+        "4319bbcae1c14dd21733ab69416bc6b899763fd9e751d169a9cc908efb2b0ff2",
+        "4bb04dbe458b43b89feb09b8fc6392216e4b9c95b64ee1d973a8b5d2ac7740bd",
+        "5ccf6f20a0eca1a728ca3666c3e6c95a88a37d6abc0002ac98d6fe6d8e0089fc",
+        "5d3c1f3b15709feb497f90f5545e43be7a83c29f08909db5d542ef76a4ed9093",
+        "5d598d77f497ea4c05bbc19bdc69bbcbf2c1c527839c1aede78d9f2d112c6278",
+        "65d92a321976fff837aa87722aaf6c3c6f5fd7ecf75df82e84b874703a1a0d4b",
+        "70a14c140192d620f5dfa2841b18f34564089be4c3dafb9dbbe5ed0b1be73c90",
+        "78b9baa05c7ec80abeade2ce7c45eb3bf3a47148e4dce5049bb81f839fc50497",
+        "7b88872d82b2ad50ce5f909a8ff460bbe1533d4c4fc5642c12b10a062290f50a",
+        "8e076287a89d6c32764de486b8a47a22888e1a449517fc09f2b6ea81d363050a",
+        "9039cf531a5a07eaf0eb55ad6c01100090217059df0693aa5faf76bd69d1e5a3",
+        "94ef5b7eeb1dafb71ada8ba281851a80f10f6fedc0fb2a23f01883362dd15da0",
+        "981e69c00cb463dfc66ec47ed29cf3e2d1d629a11b92276e2bb28497d2044411",
+        "9cea9c7ce65896d58701b837b6bfe22bc6b319287245e3bd4fdfddcb3148575f",
+        "9fb87f05c19aec227b9145c64773a95cf285578e25a113472e24c50fbb11a8ce",
+        "b5f50a07521baebbadf9147fd9fc015db796c9cb0e2ca31dd2019a54f710ce7c",
+        "bdecc4892a8dc0bfb111b608dbfe8f790390fc09f31bb815d10f7f93bde1df2f",
+        "d50072ae9dcfdea42beca3de3c7b133ac74a19cb54e02b294bf947d2c88ff5b8",
+        "defb5a1ca2f474ff8bbde20206c8aab0d0499cb1d3ad611f2570cbeb923ef091",
+        "e80fc3bb8565645dc6db0ba8cc09b550906f04d887a1b6e1e916b3632c359ff0",
+        "fe364fea7628a5e1d4c101288198edb452723ed9be4345aaf67161c2e0a092f6"
+      ],
+      "received_at_utc": "2026-07-24T14:11:47Z",
+      "report_count": 26,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-4210f2dc310e0e3a5f5dfb4f021ac3c04de20b4ac4438e4995338c6f9f2ee67a",
+        "awc-historical-98ac2d6127c16ce06e1d41b4e21103b8d6c7caa9985966b53ede88f6a1bd8c71",
+        "awc-historical-bd28ecb4149f3a6db55968f36949b0b93902156dba680e71240c7931920c4875",
+        "awc-historical-ee2a492babe751ca83f7095d934995dad8949be3cf60ac70c2e6fb44e4196f8e"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-650529119f495e87a7c202c45213faa7"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-26T00:02:14Z",
+      "canonical_ingress": true,
+      "content_sha256": "64101163fa86eee225a90752a9d69b9437d371fc7c03c8921fd410f7163d97e6",
+      "event_date": "2026-07-25",
+      "official_tmax_c": 35.0,
+      "raw_sha256": [
+        "112ddd7055d17800efaebf2b887201bba9434435d64cf684063dcc74fb2e1de5",
+        "1671df36e2cdb8546115f25c096d9f18969b3285b2e5484674eab803f5b18424",
+        "20936e3f00bd189273c223e1d745defe4dd76a6d7a4591f579fe3504f786b7bf",
+        "2971ff4f25d59fbb5b8e1d05ed7b80cb56d46afde6b79bd238992ee8b7a61eaa",
+        "2cd46d06a10d4a03eeb024bdc6fb8f1deb9e6fb92a894453b1626d15c1a0ff58",
+        "2d9afb7e18b89cd96442c82571546f4a1840c5072b1be533f859413263a15216",
+        "358b680f5edf4c0c41784f2cbbd6446c70af5af8cb9900a99d9a11080857a703",
+        "36e7f2b17261b7cfe3ed0415ff7fe587cbb13f691200a28b68490a77bb36dfda",
+        "3871c54f093c960c602b23a083da54ae0ed95f084e5b4731aeeb099927d775f8",
+        "4a590dcc8852226f8754c5dfad21dbe4210db4f759b105ffd0fcc39b7193ae64",
+        "6c8b098208250cbd507d46500efaea734407b5f10bcbce31d95da05e4e9920c1",
+        "6d683026dc22868824c843614b0cedfcbadd3a51c43589517ffaa139f4b3de65",
+        "7461a336ad284a39d8b2154fc624b88f5c983e67779f1a4212d24d283bb6fa07",
+        "8d03c0e328661a5577247bc59ed178ece538c3e500a4b8b2c59b622e9f4e7a5b",
+        "91d25575fe6413fd1beaad42ac8de172a5797d24f2a66e746185e20d7cda7b42",
+        "ca553779c6ec9d73d6fa7dd62ee8b8cf173580911c6535314823c1b525a2db7b",
+        "cadba8ae3a133be2211ed4206df8c19ecec097d1b63f486d101a15adfde4a1c1",
+        "da1099bdc376d95c64310ea36bcea6907e61573d22014fdfd9e9308993c6c093",
+        "e07ce2209c45771507f3603b86d56b027a01fe62e4deed1f588cd0176fc533ea",
+        "e13965ffaee87772849110f95ec04859cb1e07a7eef1b377177d0be97a25a2a4",
+        "e46b78eacf31086ec417e856d9e6cd682df67e0d05bfbad8ff211cdb37233e6a",
+        "e73a2e7c394cd2a7c04b8fd250c0e696fff5dce1ae46babc67e2bbc109d46b3c",
+        "f1f2a3b1ce74bacb3b0c8f5102095f8ca2208c474fc7899deb550345426d82f8",
+        "f541bc166362139fc2edd973918328b4baef8ec80aab7257526b228dd4283a8f",
+        "faad3fbd22f1882347f032cd0bba056a004ba34620207f37140025a8aebb640e"
+      ],
+      "received_at_utc": "2026-07-26T00:02:14Z",
+      "report_count": 25,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-95cd601c037fc0a98342a1581c272bb4fb8e85a7af58d4350d8219d317df2e49",
+        "awc-historical-e13d4fe9db579977e3d33809be44b8eb8c66593df72f424946754087ca485d61"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-64101163fa86eee225a90752a9d69b94"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-26T20:20:48Z",
+      "canonical_ingress": true,
+      "content_sha256": "ee5109ea58453f57041fb37ce7aecb8296ba708a6948a9d149e584f73f0bde66",
+      "event_date": "2026-07-26",
+      "official_tmax_c": 37.0,
+      "raw_sha256": [
+        "0e3b432898a578c07f3c9ccd9213e489cef7ebf145025ce901d4e14cfd88dcd4",
+        "0fc739dffb6e365ef6b16eb1cbfce4bafdc3ca4122122fc8864fc860c1986d67",
+        "1c833f1f74313647ebcb3e57c40eee924868fdd4e8db70822869c637ba5be8e5",
+        "28f4d010a6b3b98df3fc9e7eafacdbc53b5467c676596638a9ebf5510b7e86cb",
+        "2c39a3833c5f51ac16218b6610f573785750935e72a460dac45c2223aee57fd2",
+        "31ab9e8da9b959eeb03b54445b1c3b49ff26a27cc82944a93618b94eb1bc5f4d",
+        "3496cf94285f191c4db981ffb8443513d22d1cc6460dd65b06865d0b51d2bc69",
+        "3ecf573b0a0546bd8922519ca38154fa0ca5ea8bddf907fc84d48b17dfcfec63",
+        "4c0d8ef1b494562d9b6ac679b5424844351d6d57e5ea5694f895556f0e310711",
+        "4cf9ac9e95030c675e52985b42ad09b3019dae9421198a79eb26f17faef9d9a6",
+        "67867326edc40afe98e7d3cf36f0c473d770ebb94a48150cd081ba758a5da97b",
+        "698c6a9480d9e1cdd24651e2f3ab033a970396a7201c65d7b0f5244c732577c0",
+        "6a55af71cd247e8d2e426b5f4c8693243dcce09f15159b0cdd6867b393629b75",
+        "6af2ad8a5bfc78ed4824bcdf598c6ec605ef8b540cb272fce9c9863b6e7c9d15",
+        "8a6dd1491c7661eca49b8b3243e4013b0bc8975d37e2b6f836f14b2b6a960a75",
+        "9d3a5c80c6fd7002cbde441680cd68eae49a81d3300344ecc9a7c1055e67a87a",
+        "9f4e58b577de6ff49169f4f0120755ce07d1f83c514f0a6a863e016e10967b51",
+        "ae52042e4fed5fa317ba04077d26ee80268bccd339fd9cad1141a96aaf383edf",
+        "aea22b99602a242ac724f998a0297f77da78f80d0814cbb6eeec30c80d182801",
+        "c33c9d5d40254ab579913fe32e5a651902e43b6dd48cad1bbe47d95a3554046b",
+        "d915f9d8d53851dab87e8194b850de8fcdf47b776c28d0df6f9c14363c8cc40e",
+        "dac25a97b3dbc6273d6be71593c53c3d49b540220b76bb84f23d488bd9990799",
+        "dbdeca5244df3d2feda381461dc504426e15eec838c1247db69f28e9e90392d3",
+        "de08631d7f85acb6183d058ea2a8801ceb1aa609ad83504f2360021cdf9d229f",
+        "e03f5be59582d0505938b248310f4516cd06d9ff421eb0e6ae1f0f3c7784b9ab",
+        "e74591133ecb0e870841a3154ca62dc045c3b081c4581f47303d2021eacc712a"
+      ],
+      "received_at_utc": "2026-07-26T20:20:48Z",
+      "report_count": 26,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-0d37597d6725935e8d864a2365c362721d69c5bf6a84b9814ca61f86a43215d0",
+        "awc-historical-0d9e8541961469a393c4619be0c4a05daee5a83dba0ddaacc0c2e309777ae496",
+        "awc-historical-95cd601c037fc0a98342a1581c272bb4fb8e85a7af58d4350d8219d317df2e49"
+      ],
+      "station_id": "RKPK",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-ee5109ea58453f57041fb37ce7aecb82"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:11:08Z",
+      "canonical_ingress": true,
+      "content_sha256": "2ed35a06a4d14a7dddef80bf3b882f3e9afdadaa30b9fe9cc115296da8419707",
+      "event_date": "2026-07-16",
+      "official_tmax_c": 28.0,
+      "raw_sha256": [
+        "054f0e2e84e0981504914deb0e832ef2723ab98cdfe61e0cef0ca39ce24305f7",
+        "08f9dc66cd40ad7257918bfafeeff4ff0a7a54e9579b107e465059e2f679e39e",
+        "08fec0aff681eb0c7bb3f803e89c93e894da6d99f9f811c313520fd752e74866",
+        "0e6f321c02eedef7bd5f7f3f0c54a173778d411422582ead54d8a7e073224dbe",
+        "11207f606a4f4ee92ac959f3f15ea80aba1574883a00618a7234e6f62c599bf3",
+        "120562dba90764a5a6ee88211e0ea50129d70b6e5658280008e256ee3fe9ef75",
+        "1461162945758ae1323e57ba45eaa827ec2bf4a5099663931e5e00695d3ee832",
+        "1f0b6c3492f6531e4a30fda7a8b74996b9456977ec3566daf2c7fb3840501559",
+        "21522400f0eda5c594eed86778a20a8d1f55af25a806c94e81ea824fd8b1bf55",
+        "21634c3aed74c9463c7f19d7893f71c661d25380b821818a24c015b5e2648d73",
+        "2352389e97f18591b59e3b09be55f9de02dd0345ec8c191c161d5cc388e9b4d5",
+        "295453b024d4bb34a62a755ae9033a199225366dcaf2bdf5afe4025e78217ca5",
+        "2a396e97bca8db3436c0ebe2921e57857e21ee479754096977eb62c91e7857a9",
+        "327374c6b36f7609ea4bf15dd20d8de3c296627e57c1b81a4cf79b1205d9dfc7",
+        "37ff2be0a0b7d389db6243412348cffd9426b921a0a4c0869d178140828ea332",
+        "396df7569c0157ccd64dcc1127198572e8bff7f24a2f27e052b215375f81e629",
+        "48b8cff97b48e7b444ee8b7a05179e1f36851450a809d37e9136b83f3731686f",
+        "48f09ca3440c1220a5c10ff2d901453909891813a4cf3d553e3202d1a0be5d93",
+        "58ecf8aae9e12cdf5b5dad68468d9689993c43c26ba24b48c48253104440d9c9",
+        "5a9df755386e2bba060cdcd5f4c8f9cbd73bbf375dcc6ba17e5e1aa6b5dabece",
+        "5e14a8229d61d9ff3f443fdb258fa444c2645f5dee48c699fbbf95204d95d873",
+        "634d82499ce00706e4cf64758a0fe0ca35d410362c21cb28de08bec5508236e7",
+        "6885866d2706a57eecc25a99f1f64d9e88d25499505bc7bf006303c81be9422d",
+        "68f787b6fe24bdd3313107ddea70387222de2ecc5321d95ca2f10c9f92481438",
+        "69d3fe4eff3d1907cf7b5c2ce11089011a08c4a259aa1ea285cb4f3531bc272f",
+        "706b5bc0168b4993a997a637fc43f0f1b4d6c4783a076dd0c70139e0a55e720a",
+        "729509be476dad6e81813b430bd909cb80d0391e6fbe6c8f1ead77e26a0c8058",
+        "730ded48fa9e8b0fcedfbf8e7746cd170b82994785aa46c3028212612c80d932",
+        "7b39ddcc2378f6e0a5d57d151ce43db83a5c6e01f590212fbd0d11f00b5385dd",
+        "8382e3e85e727f0b2b072517759dbdad7ffe5040593a05ecd109035d017c875b",
+        "88f6b3673e255da8ee24e735b29c092e13613f264a15aed001c609f64cd0f883",
+        "89812f547e91313d420c41082b2babc0913d0c74d849643a4094a4ac96b87002",
+        "8f133a0a7569dd5b5db5a670cb518c1403e5ab278ce95222199663febfa469be",
+        "901d898ce25661dffffe3910fac949cde4e3831b04c2bc33e6f673e6549a2bb9",
+        "949a0e3896b2db31893d192441c576d7176578e4c37e2776854216ab2638ee9a",
+        "98773d1f94a4626886711c02251b1d91881e134a04b613baae6dc92e550d8395",
+        "a78bc643984291753acfdbb8e08d46488e79e1c472f638b6f342d3932a6117dd",
+        "acea995908785fed68ca1e213a686f7535af7d81b86308a567bd3d91b59794bb",
+        "ad3b76dc94d93c9fb6af02d45d6e3678c1a53ba4f9dd5fedb189d825b89b5c71",
+        "b1024b5007972d1d2ac9c6f57e4810795e4a6321bfe79e6f9e80b74e26af8807",
+        "b151d0d61f6f132d94453bbb9c73827213b78c105ffe9e7e4cde2df8fa47bafc",
+        "b7e73721d35a2eb4da365edc20a8441abd261ff413e3fc93170cca965dfec063",
+        "b86b3a96f924bd827fca81a8e92fde7a91c488678968e3d29ee75cdf2c353c68",
+        "c50d70d963bc48afd9022e4a5742809d405c5959ed68d665df95e54076e17699",
+        "cd3b971d6c70e083eaa60ea663d10452a748fa6f232108437dfb2a3c921568e8",
+        "d64e336b8b6ef5674f5a76814088e4680de76c663d81825ad25edb7831961889",
+        "de6793a3e3e69fefc35c543a2b4861661bf19c09b36fa575cef9e6fd30c68402",
+        "fda0931e5a9e10d33eab2d67c425d9e473026e062993849f6197ec81f7b62f8f"
+      ],
+      "received_at_utc": "2026-07-24T05:11:08Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-62facdc3adb002e655a2db66f23b5ad8750a92bdf3b56e425dcf2b1adffc79c3",
+        "awc-historical-e83a4dc17f7e1bd56350f0baf619e57f53c35805c87b899a3c9e6cf27b762a5b"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-2ed35a06a4d14a7dddef80bf3b882f3e"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:16:25Z",
+      "canonical_ingress": true,
+      "content_sha256": "e6c786777c45abd272892455323405a97953f5d20a0cf981d0b8c4333002a584",
+      "event_date": "2026-07-17",
+      "official_tmax_c": 31.0,
+      "raw_sha256": [
+        "066272c9ee15877bd21eec18f68dcceaf96df5a1ec144dd32e329b579e1ea94e",
+        "1362667aff9fd59a1f974872d88cc503f2ba4c2dacbc7f42d15f217a8b48d329",
+        "188b82c6e80be2206218e6d154fdbd3c3239561999adab7c984fd18b71a41fd9",
+        "1ef4b8a1c3c5c056d289cef025dc0108345707583c8286782d2a7ffcf5eef40d",
+        "24963013a2189ed29fbe2c4353f1c04ba39cf7a67a5e4c398b7c1d64f2ceaea5",
+        "29e5647f329d327c3fa0c10d2e29de4b9aac18817b3daae3198c437879442c69",
+        "3b8fa20151fdd525aa835399b996299a0febf596e52f18672d754761055c7fa8",
+        "44e06e9b52854a56f754613f42fe5732a5eedb7e27edc1954b527b7872a60b86",
+        "4fb8becac6e4a2387fe30f95f2a07aab406b9fc427867af5d80797c2cac09768",
+        "52181e74300f37dd71ad3f9a1709801493065c4087bc12786a32abf48432eb80",
+        "56d14a2eae2914912c4cd457e88518a976bb4ce5792d5566ff3257294a685f31",
+        "58068a0788b39a49e1e5381457b335f27df0037be01a1f237042199c1de90d1f",
+        "5889a8da9fe004b9eb1bf8ccd9133f8e410763504ee0ece8cca1650a46d52446",
+        "58ddbacc08fe297ad94549b7dd603ff0e61c83b0189be3a16b9deb9982cd1013",
+        "6476a214a1e56e94a91d48ce228c7ea47d65a4a50885b972f0b5081afdcfca20",
+        "69dc3ef31fc5d9dfd4598e44d6c2e567681b506778a8fdc9f59ad8f3fe5ff47b",
+        "6eee26713eae497b51e24da39007fd72ffe0878486d56768b1354ada014c9346",
+        "7a2bbd1240845ced793cf5db884118ee4e570a59926c1d373ac16d67635743bd",
+        "7a8f9e8453afd54e9974e62d1bcd0a584564bf98dc3a95cb76adb1b337941b58",
+        "8596cb8cf54656e1ffc6f6ad41e7cb377f4f1ae7b43717266d60e5548c37b6e3",
+        "8a87da8802494ce657d63eb2020734e16ade40f08e8331220c059dc3f80d04fc",
+        "8efdd9679959490d703e1401d17db318abdf6468e91d4785d4ace1a24de10923",
+        "8fd045e6fcc7ac51d4cc05a7c96171922bcbfea9641a1ae3f1324c09c8e4e4a7",
+        "8ffc79e6fd5bf5cc98c4d486e618419782800f57fce921fee49975164e82e505",
+        "913017972b0b100c0962289f7ca7c71987c213a1ef6b252791a889fac93e9644",
+        "916b5fdce47b6488ac09916cb87cb269b76542ff5e42ef82c0b48426ec1f3dc8",
+        "96dd0a27f0805005b37ad77f343a607d8117fb4738578f28774df6c5b9b8a2b9",
+        "971b29af04a57727ef85c4cd0e7e8a52b8419988040fa4e74308de58401d6b25",
+        "984d1e1addaf7aca8c756292580ad57826182594426b50a692f91a2ba2230a99",
+        "99bb6f174a89c3f818d7fb2b32abb8b0eba32502198f80ba8f7fc8dd9fb74101",
+        "a2d72dcab9fff2bf72b6a0d56e5b13971770af01d8b14b126c5bc886a102d985",
+        "a5ffcae05c9791cde997839d47c4d1e91e958cbb6d92384bfbe46005a7583f4b",
+        "a8590e90e0316293501611f43a0fb0c6dafec3f20107562396e2364f1cf822d6",
+        "b10a06e2d85a12ea777e48e85ff2edc471d908bebd9a6dec148993d43d380b14",
+        "b2127667626b46f047b6b17133732b6624c6e4a942d69763959ed13c08df8521",
+        "c203af643de95d4d9ceb8d22bd917eaa7210cfa490d0b29b69b8d3b2f1dd0656",
+        "c70c90117659a7612fc246171c0999f6dc1cec566e2cc1dbec0ffd742f82d040",
+        "c80210eb24d5b1b8503dc00b3caf7a19d8e20f4e7dc2196cb7b85d19e8c443eb",
+        "d14add4f7583e99c80b1314fd865d2d8118ee015d0cd16c282ccd8b6f8d18564",
+        "d7d4bca88747b029606d5a99dce9bf79eda53c72bc43a0683b99394b7a72895a",
+        "e0cf843df45ab8c089c86229bc2d9a63b596d2acb9e2eeacc6aeef337fa31750",
+        "e3c904c03a3ab90a56dc13cf0c937fe482c03159abf1c0cf14ad5ff9a907fa73",
+        "eb85cfb43217ad835a8579c7b48d32b748cd9e7348aa4fd399ad03109f2cb725",
+        "efaf957c724ea9ebfbcbea1e87ce17c19d5878ce9d93a8a201f9431c1ad95f7b",
+        "f0dcf49e6f4a578e74dec28675c4af4f3fbdc3e7a25d5c368509c9044ad23996",
+        "f16055ce9c7897579e62e3ae7a5799dda365855e8d8c677f8664bd4ba0e63b59",
+        "f7ca711f4d37e3f14f6041e221680839c96a02cf66a735acf6eb4e973cc6cbdc",
+        "f95a4e81aa4779aebdb411d924677e18f58c2d376c0a0cbccb6749c4111e0fda"
+      ],
+      "received_at_utc": "2026-07-24T05:16:25Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-50bd65bfbf543ffc68a190bcbf7f9a66c9f0271f609d0e2ea8990909d550b429",
+        "awc-historical-62facdc3adb002e655a2db66f23b5ad8750a92bdf3b56e425dcf2b1adffc79c3"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-e6c786777c45abd272892455323405a9"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:17:54Z",
+      "canonical_ingress": true,
+      "content_sha256": "6c26d1925058bef78591fadce83a42f00f01d2dc58012b6649eaf6e3b871eba7",
+      "event_date": "2026-07-18",
+      "official_tmax_c": 26.0,
+      "raw_sha256": [
+        "03880c53f95d664bb49c5caad98fda1651df8e9e8dacd1dc5937a6f8ab85181e",
+        "077c96709597871b31b494d6581f707f39041e53549df4b67c31db7aeac7c1b9",
+        "0a198993cc2bf89126e7a916c1d1b27dd04728f2abd7cd27b0716ac5856b8641",
+        "0c5f6960e242f4c939fb56f9b96fd89de48bb520cf0a66baf9ea66e72dc23f53",
+        "0c8240d7f8d2595f6f2b488e2c509d544113dc42258830416b957b19ae8350ff",
+        "26907b9b7c5a2442eafab1480557a6e1e0b330bedceb1ba8ee3e9e50c53be7f4",
+        "341d8e27b9468ab82f423181bb6a240848b6cfce3d047a71957ff04889b540bf",
+        "3a0ed2708f50eb1ff610e4fd317bcf4f8c73c74172cc27d4b7301e792ddea096",
+        "3efad2cdb2c03a9919839719ad74a8c658134066290fec682a177063830a3bad",
+        "41a51500c54ae51c5892f9132d2a2bf9895ab73f4c8656e3874d64320ae5b3c4",
+        "440782f5b4f03f1af6c821dc4bfc36287f824d336e71546d347046d3339080bd",
+        "455ee1efcfc809a066776d19b0446784fdde480029716ec569b40033cc814701",
+        "4970c6dc4336fe44eb1919d5d5b92732d03409d1b17c6a324965a593d0661ff1",
+        "498353ea92aa0ef83f567da1fc7cf9431817891e558f2bfb2c30cd820b9d9196",
+        "4de467f486bc23217c271977d38f4b8898c39f75af35388392f10a2750334952",
+        "54dd28403cac2438a0f4588ba2c72a0f962f98812c826e0338d1c086507d3d8d",
+        "57ed01e43ea3a34a6f8632794c838132ef59244a901f540259f7a2959b61e1bd",
+        "5d0e88c9196f4d4c74e91c6cc8239eb555a953618226e03bdb0b740b7bb137d3",
+        "64ec843c2f9b7ff53e54b71481e5118681d5b525f45c2e6fb5a9aa6da45c5dd3",
+        "674b37c638efef1f77ea101961789fcb9a8d2281786955eddd6980deb0193f24",
+        "6f24aaf32994c6c68d222bf4d17dd2f406354a25accefabf8f8295cb69482c86",
+        "72336fd29b8bce4ee6b86a880d3a7f9ed88ae93351b25346403bfb7ad5c0bc26",
+        "784c59c2f9aa281331a987465cb9db176a7d4ec2b4d6d994108b27a09de764b4",
+        "85bd7d5bf9683f2bc3451b5d5222bfd4db65d7be757ac955e0e73c0843e8bc39",
+        "8b52f8ae62bb23504ee8610887149af4a10b646d9669e217d810bb5736061f4f",
+        "8e266b17d42a49749fb49fd6b537a26873b7abf6a2ca3da8ac39fdafcd9fe9ed",
+        "96772fe5b61b1ca743022f31b23327ac94c41f9241e07de19dbb0beee2bd7b98",
+        "9ffead9d507e87a8f5086f31cd2af56154aea7799658f3d53b4d98b2176b9b50",
+        "a54b9d04097c9f7823ed6bcc895b8c3a5558bcad2ae1c3c89c764995feaacac0",
+        "aa636dff6e35ec2c8c827f4d06838eb2ed2b23107b3bb3e0c10f8c8c5a237d8d",
+        "b19ae860ef9f070ad361d762f97f57aec675a2a92f8abf7c915e95d4f73ce9b0",
+        "b80b9a7a270214df352f17fe95d08d75cb26e2c47bfcbf15987cc5143d79b17d",
+        "b90ed3e673ed4c66c430de1ff9bef04358e740622c1eb057c1aa0586a45ce56c",
+        "b921fef99364cc4643a5483616663c9a2e8029c48d9c8f357570e7cd16a76083",
+        "c0716b34a2ecda28f17d1d3767b76037d168b6ebaad0d2119a942714a0676abe",
+        "c4a5dd9086f07ef63496804c0da70bfa7e65075e445b6ebb3f1e9116338f2bca",
+        "c75a2ff8b89d49b3a9f6d221b8acc855e05680d4f9f520a13206635609ee0984",
+        "ca9f84eb7d2c02a3d6bcbc0f7e49ff5aba7e43fdba1590af8a4d95ab67dc0de8",
+        "cc9a4f38dc7f71d5fcadbd3ca073bc75fceff30b83d927eddf824b82f4da228e",
+        "cdb9c0281d5756103cea654b7f8e969571752dfe1b855a48f97bb6cc52b179ba",
+        "dca8ff41e106580b6378ec9b92f29eee6cf885d48a6b6fa2df71e237fea9ccf3",
+        "dd4c5b6cfb3549fa2a2796c745a894aad1abb639adebdf60bce007913960a787",
+        "e322bc8dc0648b9fb5b2e0fbed8bc490798c3dda54aaa3caea592f7f86333607",
+        "e9b5805ad53afe8624fabca0c35d1b0f6a15d99cb47c53a58d07fce6efe68636",
+        "eb6125ea1b512787899766deab65acda11d5c5d76bc5eca241ed601805ccdfd6",
+        "f16941dd676c75a858f54ab405c7ea12d34b98e8aaa1edf5be83c3d47b0145ce",
+        "f65544b16c594694cd05da85ba080e7cc9dbfc19aa45eb86a3b37c97d949446a",
+        "fa303b3835a4c74ba8ee501ea88dbf1aaea6b9f718e14ad2a063f24f187939fb"
+      ],
+      "received_at_utc": "2026-07-24T05:17:54Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-50bd65bfbf543ffc68a190bcbf7f9a66c9f0271f609d0e2ea8990909d550b429",
+        "awc-historical-8e8cf11d199154fbc19c795436036e7ba56c706c9e275984fb857fb4ea29f273"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-6c26d1925058bef78591fadce83a42f0"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:20:10Z",
+      "canonical_ingress": true,
+      "content_sha256": "5a50ac6135997160aa53125a47a6bdbb8a086953919d2fc96b3d215222770522",
+      "event_date": "2026-07-19",
+      "official_tmax_c": 27.0,
+      "raw_sha256": [
+        "127ef5baf07b5603cb71c6995a47c8c9c02e56281c64ad9f21de7e8d4731a255",
+        "1e694501d873d72594794df40fb06116e3417e44ed9c381752bff895e07e3942",
+        "28188bb26b6b5e5417ee362bd678a447bfdb58f20fa10811b75fa6743ad1d4d0",
+        "38c2880a938a8a9dd8569bfef56fdee4c2884b15496e962fd96f47017ed3cb9c",
+        "3d3285efcf0eafe7b9092cca079666b95f4b3745e9864fcee22420b0db40af4b",
+        "3d5a492c105ba42fe34ea409ead41c777a73b68fff395a76d79c32fcfcc31c90",
+        "41fe404ef4a6a7fc066dd0c8de633faf6e3332b4b32f7cd71d082a60f143edc8",
+        "459d1a6a969183df9c46ad07e68ffdf83c7532445a5eb4fa23b20af58e86d391",
+        "45b61aa3cd36150423d6f96bfb3340a916f1716a7e45bb699ca47619fb341908",
+        "4c9232d96e5d4d02d9518e3285a80f0c9191df808969cbc53173d4dd1f85740b",
+        "4f704a5ec184c4bba203d91fd10476bef3f981e0400db0b2155444dd2e16e5a1",
+        "50ff2c4dba9aa88aba868ddebe5a7bb4db86ebe5c94cdc8f889be73995bc96a4",
+        "56b3d81af743dd2a77b210dcc053cc93f9b3536989de6d6db3685e3a734228e5",
+        "56e453b791a6d263b3ed0a6deadc3bb47530d6b3e6862261d4d599b4533b5f86",
+        "5798f29d9e6017c3d3a8f321c6c944e8198604959ec42656e61604e07ba140cd",
+        "57abac3b8ca9d81f96d8070d8d4ff82ffa4d65fe6895b348f267b550e4929dde",
+        "5a1ad92e354f6425c594e5e7cdca76bb740fe772fbadef70ed14701df9372e8e",
+        "6101be36ec6decbbee1290415d3c3d3921c40f9aafce3ddcadb0947e43ca816b",
+        "699b409c7a38ed9260940341b9eec43c06f6f92226fe51591313d29dcc3b2323",
+        "6cea7dd60c230882377fd7a21fbb5cfa76414a479a2ebe8fe8f084f7f1f27c9d",
+        "710e52984a5c5f3586981a4ecc732528c53f476de0b06d1e2659068760553312",
+        "7759867d98d203b3fa9ebf77bc10d92f85a5b577fbea81acd5e2f8cb62057477",
+        "7bf7ef191cacdfe30a74df204c88eb055319facdfffc98212acbf7f4fdca5477",
+        "822c0a7db1e61aa6d685a81ac5070bc1e5a92412402a85edcc86800d84e18e7f",
+        "82a4ccb611cd59fcad93897d54920717e9ae95f0ef7adeab7e8fb318b0066416",
+        "8d825a0d2e75e6b1378c4c06e701aba75c2fea6b356fc9e540aafc425cc4016a",
+        "8d99f15a6282832b7ee272f181da506e0ad008083f5cd91a7e007626d5172245",
+        "8da3e32492e70be438a6d8532f095707907cf09dfbecb33e18bd68766e846fe2",
+        "94814817b3b0763fbd904d3e984a01cc5626d93b0158593fd58e805646a4f47d",
+        "9af20304f766cc745a67d98c315ee18552149af56dbe2da50a541765a0b602c6",
+        "a00abe04f886eb420e254849bacdefe6db60c99bfb7862ea9af1204fd269b64f",
+        "a120aee6b03d25c61f8b61faf09b72704b25637d69b7f54ec550c039d1b75c86",
+        "aed89b9c912c7996950711d8984f3e62f8d8c80b741729c3f5fe23c4700664e4",
+        "af652965fb65d0d5199c39cfb440b57922da0dfc47a16f83d4190df79c134407",
+        "b44031ad2ab71d3c54cf99c33e89dfab55dd9e264a46043fafab7e4e6adc7d80",
+        "b68c6b783288a6f432d9d5d9f9416e651d2049e3cd388e37fa5633bb1f8389bb",
+        "bd5b480b9648c4519db7bf05669e29b8a04c3d6291ce176f18a24df9d9673a9c",
+        "bf95414c2c0e50c6d2b7e3c80cb4392320319235d86d397b8b00b8ca882252cd",
+        "c45e2b2269c214851e3733d5e6b19b1a0b72f9a8681e0b6a62313f8870276f1b",
+        "c7c3170cb17290c01bf748d9739cc1dbb40d1e60815f86f428ddcf3f9eed510b",
+        "d5569c25cd5d2b10c394bfbf9caa2db643022874d58385f48dd25c05f4e08e5d",
+        "dba33537219edd62117d83d0d0b98bcd5ace1714076056e71db6dfaa25192be5",
+        "e3b5d347169a9bb8235a3b8ccc9c3fb82efab4c7a3674fc935f61ec12a466e32",
+        "e40385551f078e1499af3924a38d10393a34b027644f404403db5c88b7571dc2",
+        "e863f2ba5e88f29465d7117003b14f4c936c658457df400f98a554c925ece4c1",
+        "ec9f5fb1b3189d36149680b2ce11a44bbc1cdb7976b346bcfd49e4edd24b3197",
+        "f23d2a69857c533ae239ff76b111a9e5562455e1f0101a88a712f7fcbf7138d8",
+        "f74f027c2a53a47fc80feb5617994d70bc6c95a43ac2abe873a18852ff624bc3"
+      ],
+      "received_at_utc": "2026-07-24T05:20:10Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-78d1df06adecf822aad202657d5b41b02c3c5aed94eea867e300c42c52444423",
+        "awc-historical-8e8cf11d199154fbc19c795436036e7ba56c706c9e275984fb857fb4ea29f273"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-5a50ac6135997160aa53125a47a6bdbb"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:22:35Z",
+      "canonical_ingress": true,
+      "content_sha256": "5ff2362a8f9b24c6ddd50fb105df10644a5e2ce7d552a5c23c21cb083df5779b",
+      "event_date": "2026-07-20",
+      "official_tmax_c": 27.0,
+      "raw_sha256": [
+        "11de0a6613017aaad621918767935ae1c4684f4c235dd725e96373f95c6b3830",
+        "15c369a60449b30926d838fb128972a50341d62756622fb2938662c132528d17",
+        "1ebb1c5764661b6c83b02ab86631e1baccb6977aa873e057d5b981f837e685e7",
+        "1ee776822c2644995e8a131a09223aaa38fd6bb30948c0abb35ca81b19d4bb84",
+        "2f4236f34d747d7eaae14d50bfb8765ea8f8a85448160274630bae3670f4c291",
+        "3074460ea63ef2e9488ee095d72935d5d0bb742c1becada63882614de084b876",
+        "3cbde11f78531e17552eded214eb58ce6aa9db165f12cfb1dc2d439b1e0c2a5b",
+        "3f07871b4d58b5786bec3ca15cc37b1ce6cc0795acb1150e30776d148e96f942",
+        "4251d7735c843567ec39690954b9f7879d7d152e7385e50a6b0e4205c3a7310a",
+        "433d34b898957cb83e6bf0b6f5648d80e0b6c7faa1e7baf82c9b7d355d225005",
+        "43e63cc85c972055b46a48063eb9ac9525b943a4528ea7655b2372c681df9256",
+        "447b22a58017d6b706701ed50411e341538b30ba35a8f8bcaad7138a15a836a5",
+        "46f11f05f27a5f10fd3423aa7c2acceb6ee86a99d4694e162dba93e6b903592d",
+        "4b574af8dc46f5ea47384d66aebe461da79bea62cd03e38ee6c59482950c2ebe",
+        "4df2cabc981b6c38cb10369b426eea1207f315efba4a2d6b79a93d5a4aaf2eaf",
+        "53bc1a848f5eea4247a28e187134fc2a24f2c0c8b84d40d3bd47bd76c9378155",
+        "56f2e949f9fba6cfb2c7331c6778b21f8e258f166bd9fec1921fd5c353a35d66",
+        "5c712fc775476a700f93c27bdc5a086fe1c9659e74f1faff3ad320fb31a4b900",
+        "6184f7f2c10c9e3159ffdb28819ab2f520d4cca7a35d3c376ea10be01cefbae6",
+        "77576fd517449352499b058189baa975c1c0d31a1d8a4c8d349527c373039be0",
+        "7aeb1549578c141b4a801c7494d7260a93cd1d0817fec889f42e936e8eaa4df2",
+        "8327b97c431d325ec359018d554235fc3996015a691095318b6568b37ef8f9c3",
+        "866b2931c79d9b7e8764a733c19ac7dd531c8805ac6b38a70b2e6f2bb3cc59b3",
+        "8c5bd7885c60d57a271cec1ef8063dbc052a082fcab5941dff24ebe689d8d270",
+        "8eeedf22bde0e3c2a43ba3040a759f3f3b18aabb2388243422a13f633edda792",
+        "931345ed6aeb99f9f7b1801085024e130e4fdc6c981f2800de82cb5ba6cf4099",
+        "94bd469c4613542a28a625914a26801bcdaf58c28d13cd252020d4308abafe84",
+        "983bce95d837c5fe3d5652befbbc0c2a0779aff238c76d520da849c440dfba6a",
+        "98d562c9b4f954667693071a3b4e376e3a49cc61be23fed96eed3a97e60dcd5e",
+        "a41377ac2cb26946cac7f01eeedaad5814cfecefd611738f0d3d93ab20f05c65",
+        "ab4e76e9a50db52b3f503fbfcd28ee1fe8ee23df0a3ec77344580854d559e95b",
+        "ad12eeb1de82324811f688692540ab7b58be869e7ec79f716381bf05160015bf",
+        "aeb56a752dc2f8fd0161d4472afb6ee4b4775b52e27fdf7eec4f72c274101847",
+        "ccde6c545947c0526ce3e77b963d1381e97a174dfad946bae26d25c38335bceb",
+        "cd3f61a17f0f595e298d9efd10bec5353c608a66951db2dbe721fe40e1e15c68",
+        "cfe3d8a162e18d688e71193e24b1e28bfbb7bc4e174c2f6b09703f83a82fe5ae",
+        "d8b3ac8328dc87f60b0151d158234b7b1b72d98508ef6d0fbc82751364c1283e",
+        "dc3d4ad9adf1138143a0fc768aa4e4373662cc98a0868bf5728ef7e4d21bf92d",
+        "e18f1bf8baf4f70461afc9a734ccf7152bb14f33ea5804d78b385fd46e12448a",
+        "e3d2a0a4c916a20159a053a289b407de78e0d59873b911326c778454ca14ef27",
+        "e8889f8be628f795e9f81946a327339cf39583d5f89f62a861678f6b9662d8c4",
+        "ea8c9e935ccbb80b33daf4c64c91fc951db5f4303d78ed7824732c465859b437",
+        "ed9cc1f5b496861e1b20201532986ee69ec34ce757a65a467a31a3065039805c",
+        "ee2318eba926dc5da0cb0e4cdecf583d4f55ae4d6f5e5161409d28808afec517",
+        "f134cf42c707f90855ef848503a63bbcb30280da20d4b44c5bb5c3715aa01f5c",
+        "fd4385d41e204b20649915db3d9d663d6604573f9688bd452427534f0d14e047",
+        "fd9428c44b3f775d069ed3b0ea4a2a8975f84b39880d9c626cdef850d2f12c4d",
+        "febe009030b3deff9bc5477aa1e388a4eb3235b31f2574ab925c354b3a681df7"
+      ],
+      "received_at_utc": "2026-07-24T05:22:35Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-77b5326f0f79504ce8ce0559638623aa60dc07d369c4f775fad982107eb92bc8",
+        "awc-historical-78d1df06adecf822aad202657d5b41b02c3c5aed94eea867e300c42c52444423"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-5ff2362a8f9b24c6ddd50fb105df1064"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:25:05Z",
+      "canonical_ingress": true,
+      "content_sha256": "4b389b553dbf59289f116fa7d55438c5548154632473d486a0161864708b8d82",
+      "event_date": "2026-07-21",
+      "official_tmax_c": 27.0,
+      "raw_sha256": [
+        "06cd2c467c674a5d77d9d3d5646554d196a4e026271cb2961955e4206fc45e5d",
+        "079df3c031842a60f27d9202b9a318bc09634a581580493bb9582e7c19f91c59",
+        "0a49c980de770b9dc919b16472a8a59b8c28b3a59ad6f61bdafcfa9131392dab",
+        "0a6cfbd74111e36a235233367d1b708e7dcaf5d87291a7394fa2f47d4932589a",
+        "0d22a21a375bd012856e61f50d9c7c9b3df3cc02cbb536ec36eecb26b44da6a5",
+        "1c77254ea3de5650f39785b13eda0b8ab3d77eedb71aec67bc4b177a8b73c12b",
+        "2ac2ff3c0f80c62451e362d44c329dd5aa77aaa2ba8b4a4a395f2ac40fdb370d",
+        "2d52e538496cf6309d03b2b9696f0e05aff6cda1196e745a770167aac02aa2f0",
+        "37a52f21178624d35be3cea9da178bc133ca8e6cc05f58b1e93f6bf7b7053a9f",
+        "3c0c9e8b3b237ffd02802c77ad528d6401d9c0c14892dd4ef709e6fd252d5e47",
+        "44e1d71c5dbb86ff94b243227bbf1f17c16c8a1eb0d2aacb6ef1816214bc195e",
+        "454931c5f5a1f69ce50503b6a795f7c0a94b81011757af503dc7196fea7fc1b0",
+        "4712c495a103b0d77e6fec7c58970f7784a6497e9ccbd7ea0b52147e45510447",
+        "501ae18de68195df1ad3a9ad2e5e16d499b4e9498a3c94b2caa07217110032e3",
+        "51d6d76647a1f0538fab64a3ed343c69a999eb21c1826d0a203cb208aa6dc193",
+        "57bad1dad43fbc33b03323a75fa297305dbcf59a78a19076136e4945b7de90f4",
+        "5d17444f760721ba8139f8beba218b891bc4f5f6d19ef2828fb7bf4324553339",
+        "5dc6f56e97a7c86c479899cc9bcde0c3de17b8511c43300ccd33350334e5b40b",
+        "6e86dc1048af8dbb7fb976b132edc1284891cab648d08cc4c832e29e5cb7db15",
+        "6f2a25a79d995889e8ab897612854fd50bad9d1cb92478028dc3846b6cebaf01",
+        "73870a75571b24fd49fd3b23d101913ca863989dc903f19915b4d229539c92a8",
+        "75018586d0a75f68a38c9d2b1fdcdc104a6b68bc804fe780c6a63e134b11ddeb",
+        "772a605ab5deca20bc11ccc53e3ec779ce621237639fc8ad3bc51c592c0f867f",
+        "793b6fabea7c3f997bad19515e00dfc9f3d72d2c441c7d34aafcafafbb14f2b5",
+        "7c6e33267c9b313496e1214baaeca19d3200ee33f9965273cf527800e8516efc",
+        "887f04ef3d5b0b5fb2514e71d7a403acd1d63ca2db48f2cfa0b55c55e82f9613",
+        "88e839b0a2c3634587ac049ed3f5888cb6fc9e2853e0bdf3f00d04aaf408ef1d",
+        "8da9653f712a59b6adba99194fce2d1d5e81cee511e6341b435935ce60fbf0ad",
+        "8ef3341faf1b43a04efb0cd8a89fd43213ceb626aa305eb941ca885ad03bcc6c",
+        "98954f3d8e74b1930e2c8398ec3c64283c8611a6270d394c9735f621ce283598",
+        "9a37aeb330c91e56867b23da20212d45631a47d3d1e2cf59f500465f9ba65bc2",
+        "9fb28bab89af6de5064849ee66430c7a33ea6a6ed9498f7b5de4caf945d5ba33",
+        "a94cd6e7cbb166c6051c8efb2b232b401882e951487d4bc39e9124fbb199f700",
+        "aa97a30be3d9c23c4df1e40c9cc71ed32affd23e5de43d74feb12b75c12f7139",
+        "ad9ce1d3c5cdcba5fdac6e853b8d8dd8c5a99b4f0c7d0f72d6e0545eee3af0b0",
+        "b0279385d878cd62d968b2fe9dfd750a30460264abd9dd51ec86e8e9d890cd0e",
+        "b9607cd0055c0788c9cc8f7cd8922714a13b1dafe2b7fc8ee8dabfe07fbcd18f",
+        "be54deb67218787cf33f256e393f10ed33e833abce8a489a1e2ecc3c11da6f0d",
+        "c441d7669ea027993eb93eefb3422df4824aa1410ce0c8717222e67468d9bcca",
+        "d06c76d78155f5a244ed2d53c14197cdae7e55d8c26a4b79f79424fed10a1947",
+        "d5756611f09beffbb80b7ed3d316d2e1b5e53f0f4236caf9f76f4afc289161cc",
+        "db22458f11fc46b7cde92da60bd42287b58637f8575cca213d354690b3a93151",
+        "e40d9f3c5b56cc079bfd24100c501a0e61b2c18d48b008ea3cc0fb3cf3a61444",
+        "ebcc3fb67502d662638e346acbfca508b4be4573671388621f2d3e79b2f02a10",
+        "edc568c302701ec178b2810da6fa81a22342a2c1448c92575e79c8b81947f9e5",
+        "ef7e9d7021b34c035e1b697dba5ddddcfc411de500a3b49802110241e6c2bec5",
+        "f261b2369c3bbf84e77e3df6f212f14e6bd9bead41f8b28b285b40201937ce0f",
+        "f8187c2d3a79be14e692c0da3083f8b7a84515fec0f2d945916e196b8c0f46f6"
+      ],
+      "received_at_utc": "2026-07-24T05:25:05Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-670f0995a3a27e2b48d57e16d87aa63e64f7c5f346f7846669523fccf6d17e3c",
+        "awc-historical-77b5326f0f79504ce8ce0559638623aa60dc07d369c4f775fad982107eb92bc8"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-4b389b553dbf59289f116fa7d55438c5"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:25:05Z",
+      "canonical_ingress": true,
+      "content_sha256": "efb23fc4482fc46f9ef3a60f8851f735184d51be36782572d481eaaa123579d5",
+      "event_date": "2026-07-22",
+      "official_tmax_c": 27.0,
+      "raw_sha256": [
+        "00b6379fd7b37a08403b0b503f2e2389e40b0b64df68af3f246233fb13536260",
+        "024251996957dfc2464149d8f24bfd05c08f6b8a50b58fdbaca35b45bfa04ab3",
+        "054b973b0ba847123d20e052b2e3488cd1b052cf487e01ede2e184e5c8670e60",
+        "0776baf9a89141ade1ff27d0d21941258efd9c48a7e5575207c10b8ff49c243a",
+        "112afd416a2d24cefe0597e03188e1263733d9b94cd0e45fea173a3dbb964095",
+        "14546a1c3118fe926cd7240adc93d2891624e021723952104642a5d359ad179c",
+        "154af4d2951f4be6ebfb454eb9a6dfb8f092a874ecdb84c8055a32c9408ba465",
+        "1eadbb058cffcdb20d61e05118187ca1e5bdf102f80c5f2552cccd80a134b52c",
+        "3648e05f3520a257e1d05bc3b28592acb6ce0291768a38ddd4ef8543d5d00e20",
+        "49aa047860f63d82aebdaa56b9ce40d739cc1f9619dbdd42dfef945e601efc34",
+        "4d740675a3906abd04e57ddeeaa6311e6fa168fccb4f9eabe785b2026c62c87d",
+        "553c990c5f952fb9dbbcd721262bbc86438198cfc31c91b2d736e788d566760e",
+        "58596361fc939859fe2c46cf0397e2e4c70d611577e028635c583d7184c08da4",
+        "6a934fdc4a079f34a2bd46485e27742c5a902ae57f2ea1f4a9d40b89b2918dad",
+        "6ca9e265e83088311233d59a0f41a711e6ec24b9d495cae0b81dd9516e19d0db",
+        "73da56719b4f4a08864211303044d47097175e11f6528ca22d71978726c04a54",
+        "79d8b49b48215c85770094d8398818c11dbce89c3cfaf7d1dfbbbbed46b00fb9",
+        "7b44320ddc9659e931934ff62be32393dce981d88f3c06cba5c0bc838b864cf7",
+        "7b9baf5ab1adbc4cab55dedf8d5b23fa7da7c5b37f96052b2eaedc54bcab9a5e",
+        "8881b605048fea3dbb937b17da4775e86dc09e90d418e4d915db61d03beabb60",
+        "899a3495dbabbe972e7dd9b1777c0fb5fcc13a5e7714db67a93ee7fb99290d8b",
+        "8bf3b0e7949b46bf996ea1118e96ae0af9295640db9d70f3967b8b9194ef4a5d",
+        "8d206ef073416a76297cdb57cd73d86f30def57552845598a2eb252ac7f968d4",
+        "8f5694df6411712e74eb4e19635e5f1236c70dd054885473e6c08ea5a3e557db",
+        "94b67ff96fed521a92a4f43075cd0c2f76ad1a6f809ae1dc7fb16366543d97ae",
+        "9692045a8067276570504b13e4373483198e934ed922bd6564486a5f09296b0c",
+        "9e2e27cb849767932c3d41ab4fecba5f48cfc2a1ffa7faa2bc0e9701e3597305",
+        "a58ed837c1ab210c4d9a52103d3947cd6828790bec793de3c9228a658c15aaa5",
+        "a82bd65bca35fa701e92feb46234b267cbd7d6c4cc6485aa06d2b42ac54056bb",
+        "af2e599bbcdc62440c805dcb5a62f08b9f21a71b823adf7981b59804aaf47c2d",
+        "afe08eb256cd61a634c50834c6f0e9492a359da9574de090915bdf0fb8accae3",
+        "be0cf512bfc914025188ff1dab02b27f2cd0ca46638f6c09cbcb01ee0e53520c",
+        "c504b471b782eee3c718b6e6e1344abe5e3e8d3e52c6fba418a9505df784e215",
+        "ce6a00b095ec9da799459ea860c3bca51e7edb2a300faed30df821c9228791cf",
+        "d02326bae4e67ff7b586f0c78e5f042ebcdac282cd3fde1f135a63fc86ec3a9c",
+        "d480e0385237fcd8a8a9c7d913f8c5a7994a3da6df343251955c4e1cd75d8946",
+        "d494bb1c5e2a16c175a6a0628a95b937a9242c12e903f25fc0bc1a87cb7aaf30",
+        "da124aa520ea8500ea70a131c5e79facb5b02c0180cffa51e0a670fa1570a893",
+        "df06c2e5f07ee7fa6135e94de5a733003a3b85f298cff53e9a42bceb40404f18",
+        "e488529e49e9a107b0825a154d61b9914df9ceb4fd380b65f0010a847fb8aa00",
+        "e4b9518336726ce8c556285bbc56febf4ec5760b6eca0b1ef8df623e2d23ae65",
+        "e825821b7e393c2c37771a4ff15bc92da6bc942c4917ee70676d52517c2b69a2",
+        "e84526d273433ef0409ae5200bcaa038fff994db6006a7707484abaddde17244",
+        "eda0ef4fdf0409bce8fe6816863e5b672d62ec5c85659c388a33131fbbb4e91e",
+        "f2668182756f3f99ee6da06c948238baf137557086477062603fe870fc7a8082",
+        "f41d7ebabb24dede04ce6e4bf97277c49a493d6456c3735c4a4cc87fe5d35dcd",
+        "f63ff9095fd4a93e31f43e366d93fb3a55b5fd6274351262ed918f1e38ab9326",
+        "feb45d0a54191d4d034bbd6026e1fd09fab9ca949bd1a9ae24fee1c97892fc84"
+      ],
+      "received_at_utc": "2026-07-24T05:25:05Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-6610f74d35185289376621ec9e277f2ea6c16c7feb12f3473775b9d3e2f4afac",
+        "awc-historical-670f0995a3a27e2b48d57e16d87aa63e64f7c5f346f7846669523fccf6d17e3c"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-efb23fc4482fc46f9ef3a60f8851f735"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T05:27:54Z",
+      "canonical_ingress": true,
+      "content_sha256": "c49ebd5fe72468ed5dd444bf13e120c6a920d88a7483c19152c28099c847d0d2",
+      "event_date": "2026-07-23",
+      "official_tmax_c": 30.0,
+      "raw_sha256": [
+        "01f5d340aba351ffc4e23784d341c3995ce79f1d3b2d1165cb625329a6b7da5c",
+        "03668b29e107f2f79e555f3f9892328e274fbfb0093a2b0903e0f01791c8089f",
+        "07ef13494f14b56c73349fd661abdc002e97618680b8621755f7b36b8b3d2a80",
+        "09517fe2311b90580dd31ef86780e4c1fbf9b7dc4ba8a5158ad8196601a86e94",
+        "09698f2a86b9a277bb944ee6cdeccc0efd6d25a098f6c375d09f6b974cf3e216",
+        "0a3ef260f5d289f8a17706986109dd547371619c95278675b9307c4687dd6bbb",
+        "0df674ebbdbd9149f663028abea0f391261ff9f542bab22a064df35fc5c843fc",
+        "12b6490add2cee86beb54131400df20bbb4968772b3ca7d419897c16aa7d3415",
+        "139a3a59153658e56561a4215da468db8ce41206f10969bf480c89fba9e3de9a",
+        "15931d180f7d4748111c9ca260d7fa675f149222571922b413063b8687585929",
+        "16319dcd1fb3249d8b6dea047eaf3ba8e99cfaea7cbd502300d1435ec34ac56d",
+        "18b6000d894cbadf16901e01e1da22c422053a2d227d0b5efcfe2931c2e9d32a",
+        "20497f1c2b4325296a388c4dc0961b32d5bb267a62fbfba2ee33cdd0b10bc206",
+        "23fc96caa70c96137291429a332f54d39fa71a719d71be902ed2444a045367a3",
+        "243578da7ecf21c9f1b36f52a1d0692564e3df4b26cdd2d0edc7ede83acade0d",
+        "327b9d31b3278ada8710cf691354c9577687c55070a4f98f0fe81c398fcc6ff3",
+        "36a42f8da685e5a37ca8853b3e88bf8c06f59a9ce3683a6334620a5258a0b73a",
+        "3e6127921161bac77a58ed095266444b137345ee8de297926d224c84ba8aec27",
+        "3f8b5f05e0378fef9628cdd31a4baf7059ad1b1efba320645458e230ec03d622",
+        "4650372edc6b8b02bdde8d9efcc1a4de0a3762238e796114b36fc8951146333e",
+        "47476a836520bec85d9fcd0c7e7a590633cd02bff16df7d4a0a56e2ace832a3d",
+        "49d822a5370c6a036f8cfc66751586e727f244dede3ed74a2e51300fc90cec6c",
+        "556bd9806a30c775680789ad766d268bcaefb6ef2e7f939594a14f0dd6060077",
+        "56c34375388e6f361d76fe8c6eb080150d9fc3c835c7cbbc0ac004b4a11edd7b",
+        "5c39b2415e23231e4e52692d1f673c263308876a005afa8c9c7b600c7106c786",
+        "5e718b40e05df54dc5f9c322057392705cb959c5661c79dfd5c6eeb2495344f5",
+        "6907db1d93bc6066610dc35c6820f6348235dab0b509df51ade1d5077ddfa104",
+        "6bbb90d29126c32bf10720f036588686a03a2ecf6266fd380a76640884810ae0",
+        "79aa5f50c43dd9b1af1b3f271207a6d3a38f4ebf7d45c9a56b77e1333de94e10",
+        "85db26290c5a82ed9eed1e2b543332f2844539c028c1f7ae59498145b110014d",
+        "9421bbf9629c3fcdc2764a3e3d97c5bc1b6ffd93dbdebd4d4e8dd220b349809b",
+        "98cd6cab76aed21cff85a801ac681876d3608f8978eaec2b599e65e633221b93",
+        "a6863a33f68a69d1e010cbc45708bbda9e2196c145139e11a0b3c81d8ab02dfe",
+        "a6e3bf780fe22d776881a3dd3989ad992128f0e3781908e33da25f89d33e3471",
+        "a7a52d72047ff7b84221ffc82c30492345342416108a25668fcca7e3eed19bda",
+        "b2f8403c6c5a58dcd56987bd42d3edac1a502267a702eda18f057af5f3bcf0f7",
+        "bb522b4026218d37d0dfd9924d4cc29ae66f6cba9ef9511f0ee9f8b9ec5853d9",
+        "bf955ed974a916ac24091cb690e3dafc3fe616151818a33d8ff71f0990ded7bf",
+        "c1f5b18dc49adcf837de8a9678847a770940b01e342d8ae135ed575574374cf1",
+        "c9b3ab2505e6d4bdbf4c637f516f66a2f43552ec79593558fac070f955eff500",
+        "cc1e2b5d1b4809cdb223e9f79a24f6897a4953e0f022f62ef1541c4a51c32213",
+        "cd44d1a5e37b5f0672a2bf2f8f8bb55492023b8ca88b8fc981424bf924937a72",
+        "ce0dbab5d8728eb11c87c57a2b4466d2410a7401caf9a92f92f4535b0c847100",
+        "d01473dc652e162922e77430ee5006cef92f191e2bfe86f5828b275f4a9d30e0",
+        "e35b1f58f54d531d0c36c95e1e978cb0b4fcf5fc665d5b48080382b341bd24f6",
+        "ec89438336bc7e96b5236a6c34dc40bf2c111020b7c6701edcbedc75d462f8ec",
+        "ef0df5bdbc56eea11dfa516e64d1652343b94ee7972842295caabec7722612ba",
+        "f74bc50a8d82474f39f83e856f80f99b69afec397aa0ad0807502567063d7c53"
+      ],
+      "received_at_utc": "2026-07-24T05:27:54Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-6610f74d35185289376621ec9e277f2ea6c16c7feb12f3473775b9d3e2f4afac",
+        "awc-historical-ee2a492babe751ca83f7095d934995dad8949be3cf60ac70c2e6fb44e4196f8e"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-c49ebd5fe72468ed5dd444bf13e120c6"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-25T16:19:17Z",
+      "canonical_ingress": true,
+      "content_sha256": "3293b9d298196c96d13e67b05842e904acf16ee0113d2caf8b97061bd8d9764c",
+      "event_date": "2026-07-24",
+      "official_tmax_c": 31.0,
+      "raw_sha256": [
+        "02c466c9ca774f33dc16af48768c86fce58a51e41628d9e80e6e38b28e04ec90",
+        "02f4354a99fa0664069e6270e1a1dad9315f1122a09f882d86826635e64f7976",
+        "06339ab566d4e51738e14dd40980828e8aeae9695f26349b39039b1c53ad27dd",
+        "0bda2eb5f3b20d272f707e07d865a71fa8418384a37b4d489814292f0cf39870",
+        "0d6cd5ff4beef4faf2580b8887d69472f83305ca20f967e2332e7433c71f442a",
+        "0e013b80580c9667f68bc9823c9ed89c375f07822a05adc0963be2b53f823366",
+        "0e028c0ede31421451e1d31847b1351f00f237cd4954b6403473a9910515ff92",
+        "0fcaf6ba5a94b895cd38b8c1b53626f1f9643f4da357b3fa06c9ab08fbe6cc82",
+        "12e9786e2ba4717dc33a3e6a3c4f169bf514d1a9879b4e2c307f95cdb09f78c4",
+        "1d087efad0c9b101abd4b760569a80c12d59c8f3877d844601273e9f7d0a0213",
+        "1e3dc9cc122239f4190414acde01faa0139cd1dfdb4f42d5d9fe4e32d901d2d3",
+        "20e1bcbb9d81960bf91c0d3fdd373bb124fea04f9d05779344fc805b4dcd73b0",
+        "2a2959d7b4e4a8c5edee162756ef8611a1d7fbe6266404632184fea219920fcb",
+        "2f05d1088974c9e7ff61bd5328b2b9430349a24aada90247d55b513513212d60",
+        "3a7eaee7439b7d9e641af5881283ef3ad0dd07967a46ff8b5357f048e1768313",
+        "447f905804820d0e38e03b0bad0b099976bcc7c6ef5517b5300e0131e8444758",
+        "463806534f8253b310e908f4af750e449c3ac76377f1c006caa39356a28e33af",
+        "5349e09981cb5284f3c8236f54c09dcc1b20e04cba0d65cefd88f2d1e876ed63",
+        "5f6502dd6039a3611f29b80713b20bea47085867876e71a67affe3925e9b4059",
+        "7944ff37ce0b4ff8e122f037417d4d0f47869e690a732ff69d608ec28878e6ef",
+        "7c07c9e1511f477f07f9ef3a214e465e1c15f0da1a026558ca86a9f75779c3bc",
+        "7d72da246d62f6df8d65258a68d47ce470bef67cc6f7ac4b50f644a4eea1eb2d",
+        "7fa3345ac24c753f5d62c5dfd0d4abb5c9948c4fd23b1bdea1af0409a36f6277",
+        "8afdaed5567a40cbf41f10a1e3c99f7ee677883856cf56288da184a065e98db8",
+        "8cf977472b0a76659d3bc837a2d91e37b717356bed6c5d94fce34ba54d2443af",
+        "8f9008e6205323b518bea8866ba54bfed6322b900b27b73a4c5ce13654529c6b",
+        "90740759f92431c55c64bdee79adf9650955d0f4506c01511b1dfcb48f929837",
+        "93b77d31d94b688fd3c8ac4524029b73d5e5a8ca43693cc9a499669537e56560",
+        "a5b8dd1973847899cd7edd760d92e5c63368a3266d156c4e550115b0e6cf6c06",
+        "ac52f682061ae960d96a08dff13c4bffd88a07410306bea8c2bf2cc99c15a9f2",
+        "b056cef3885461f6850a3a35e915d6fd207a9df451ff2da4338e8b452e2f9bc3",
+        "b18b50c027a6cdc08196e22349aeb2c33b5a3642b2df09e63d401a26e1ac2ba5",
+        "b2cae49e1daca6ecd280806fd16d12b4c56b55f3674584e8cc64edd310cdfc43",
+        "b536478981a482924dcb3ff6378adc0d95adc44b27142bc924a972eb0c06a7f2",
+        "bb937b7474f6a70cf28154c1ea35aa6469fa64e082ed4ae99063534bf4372ba9",
+        "cef113b6227de3c4f38ef634689bd04d1923bc8d8707e504410062080f7f5154",
+        "d3a7b47c12639425abadc3b501f8a9627d73e527321bfe37d231bd9ddaac76a8",
+        "d3cd000ca9b5ac03457927ecc1192d8697be5c40680e427adeecc1c1270d278d",
+        "d477b51ca273e90d40259a3f3c924ebfa23db5ad629f0e5c8278712a520994aa",
+        "d5f1ede1dfb17fd2137271674548554327d6ae390f6283f6be34c3f8ee315e20",
+        "d8a0d3c7d34bdc6ac39b01f841302412a0527ab3e848a7b520537e37913fef65",
+        "db6b0f68b03f3057d7eeb365cdea94f360768808d1410b902940c3589ab80910",
+        "e0ed13c8244ed4d085f080f624e8063762e7a3d1c1e0d40a8946b0550da2d7c0",
+        "e14ee604f61676bbc5e5d2842de9a18cad49dee9f250f5f02473d7895a312411",
+        "e70758e112ab07a9943a405df0605c89fe5dc1481c8ff5f00e73654c2adf9d02",
+        "e727c0fdfbfd76fc6831a4f164a0150c20b70450d5f1538014f5c670ac82fc1e",
+        "ea3eff25792d28042db50e46ab579fda8a786c4aac2467749e2a79379b1ff4d5",
+        "fb48a0baa6548c16221c12132b20defe90ae397a291fa1f86eae6575b95778a9"
+      ],
+      "received_at_utc": "2026-07-25T16:19:17Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-4210f2dc310e0e3a5f5dfb4f021ac3c04de20b4ac4438e4995338c6f9f2ee67a",
+        "awc-historical-98ac2d6127c16ce06e1d41b4e21103b8d6c7caa9985966b53ede88f6a1bd8c71",
+        "awc-historical-bd28ecb4149f3a6db55968f36949b0b93902156dba680e71240c7931920c4875",
+        "awc-historical-e13d4fe9db579977e3d33809be44b8eb8c66593df72f424946754087ca485d61",
+        "awc-historical-ee2a492babe751ca83f7095d934995dad8949be3cf60ac70c2e6fb44e4196f8e"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-3293b9d298196c96d13e67b05842e904"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-26T00:02:14Z",
+      "canonical_ingress": true,
+      "content_sha256": "1c6d916f663fde174a20736dd1ace778fc5f6f3157257dc81dbb46b9db46cff3",
+      "event_date": "2026-07-25",
+      "official_tmax_c": 31.0,
+      "raw_sha256": [
+        "00b3e84d96facb3262226f3bf8980f85338de3532632e6e047618ac4aeadb0cc",
+        "06698d5e37a0375aabe8e83581d97a0889073330a89716ecf0ba483e1ed3c3d7",
+        "0da589e6deeb5310e0c54c15ac4e2dd202256210c6fca4dd4de6309ded02f5b1",
+        "0f7a6966ea809f527db533d99d84b47c07cb36d13ce71e0d27b686930088ecf6",
+        "13475790393c5ee0aada15ac9c425c5aedcf0dec9b6f8045bee33de1cfe5cca2",
+        "190406a16365e7bac65a34fe4b9250e92cecb977715dc7acf7986e57caad0545",
+        "26e05fc9bc59f0502d87ba250423c200eff358b3078ae0e56e6bf6dacc59b0d9",
+        "270e804c8629c22023d2ee2edf235d7f468d056c862728449354dd5b79b09247",
+        "274f0a439d66770365adef2b7edad61d37d58859fe69b61a68cfd5b51f3edd59",
+        "2aaa3c65fc980d18c2351f6610325b026b4cf85bbf9dc8aad7dc4b41c4699135",
+        "2e2c352b827ed0739d390aea2109c243be51cbd12317f7553c95c81007ae31bf",
+        "33c0df950bac09cafced56339e7f0b8954fd66e9504c4ebd417bc731775db34e",
+        "34a949a679ae9f73bd7c94d6fece2c93624aa2945b4e692043fd2f8a49fc6787",
+        "36639bf6fb17e2536d776a2cb365664b2513aeef71079257d3383be425cc695e",
+        "40f26d41acf56550e4259f40441549a9276696c47d2d1a824ba4e9da4e8da74c",
+        "444a85f70cd3ea0ba759fd46db04ba09a0ae5fe85855cde600c4279e820211c7",
+        "4576cf7fe0c059b4a297bcb8e152c47368d00bb006ba06d39619ce4e83fe5765",
+        "45df6aa872ee987f6ee5528b3b65f278e9542684e003c6b5dd88ecc963454c59",
+        "4a10f7fd5fb7b0aff12644606d5659cde9f60cd368678f1541c41c2f191e914a",
+        "4c5fe075904b78d5a1979a8468ebc3c0dad61fb1633070305868307a1dc88b1d",
+        "4f66de8d0bd3780db38b1eeedf5fa6bdd4f53719add779e4af6cafe234218109",
+        "524fd13ecea10f5e679a8ebad296d6fd884090819eaf5c37d2949d46301b23b4",
+        "5adcb4486c09e13e03131031b1b241d3cf527f933b1f64fe1773a2f76db107fa",
+        "5c615b306c5b21028f01ee0cf767202f9d5d97d1092fa0e860821e5f3dfea731",
+        "603c26f0e2caec68d9e5a43401ebcf85e8acc1008e26d4c85aa4f8c39932e5b2",
+        "77b729beb9a381a27fcd7a9bf8bb274f67292d8b8e6305b50eef1ed82fcbe5ba",
+        "842c4cc4b877963370c15e9931a11e6b09059eac0ff3a3a4cf7962e5c41f3576",
+        "8664a5a598145d7098311069a9c6698a25f762024de34d736f2cf6f82a71bb7b",
+        "88eeca09e55ede1b5829f1e45d58f7ebf33406d5e277675c91232add942b38c5",
+        "8d8e4daa72a66f37a03a5ee3f9f912c08b98da8a9901a1fb606fbd0383cfe76a",
+        "a035e99aab770e42fc56549b812fe83cb2facc2c6dd93b2b7f0f466ef063013b",
+        "a24ac29cdadec1b0dc2aec9b8db990ca382edebbf5f35a80f2bee03313751acc",
+        "a794c8562b1f1fe52a380498f42ba9943a130d39e5ec9ef2af944c4be60025fd",
+        "bad0970c3eb324ff9e27ccfb6c01d3f2fd2267a1784f4605ee1b660c79b88a2d",
+        "c37da09cfb2c45a7f2f44733643f30adeef77d3667c78c7d31a593054471566e",
+        "c5fe62deaeefba9f046340e83d76875575eb2ebc9c188b0f952a18fdb289a897",
+        "d0941624126fc6de2239fc3396203c9f989c619c94fc020004ac7bb78649d9f8",
+        "d19ee5f0f7ed3e58e08336ce8ac4a5e1195041b8d5dedad6e7af1ae5b0ba2cc4",
+        "d68e32898378b555896bdbf0af6d0ade639519e91378adb499c5060ce53d0d05",
+        "d77698ad0f1a1590f49cde040279b1baff24a01373e217c7d114b7750bc1c0af",
+        "d97631367be9391075d4dd2dcc50774657778a6929911d0e73d2b0e50186fa89",
+        "da5c146333436ca7732da3d45e3b0a310f7e9c32017c1ba024bf125d056b732f",
+        "db90acd42704c67a5b7aacc6020133fd8a71aa741c9c0ec65447245ccbab2bd8",
+        "e006ac2ddccef0c8783dc1c81ac8274a0a541b1b54e42f3e94e5d4136924e584",
+        "e32641e443810f37f83cef89c1609c71a3024e1f9dd74709cd25b651c27fad87",
+        "ea7e58c10ff716d48af3a85641eff26aacf6c4bdc94e8cfdefeb5c145373e548",
+        "f22e59345012407053d0d2c3b25475be12b0848a06a554d45b463c96f09fa202",
+        "f6678976537e311a0f2afb13548407b69de98f5c6b3847d8a3ab6b44abd38885"
+      ],
+      "received_at_utc": "2026-07-26T00:02:14Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-95cd601c037fc0a98342a1581c272bb4fb8e85a7af58d4350d8219d317df2e49",
+        "awc-historical-e13d4fe9db579977e3d33809be44b8eb8c66593df72f424946754087ca485d61"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-1c6d916f663fde174a20736dd1ace778"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-26T20:19:41Z",
+      "canonical_ingress": true,
+      "content_sha256": "01d34c4b0e39ef76e1ef8b6277d1eb8c139cf99335192cd551c3d591c41562d0",
+      "event_date": "2026-07-26",
+      "official_tmax_c": 31.0,
+      "raw_sha256": [
+        "071a57237ea6bf33d3131d05a7f6117fedfdc298e38f944e558e31afb5046f51",
+        "1329947763f2f62c978687fb9653e0fbb7e4b1e8c2d1fda4ac22633d97dbce23",
+        "1a15d06a2acace7a6e0814c441f9076cf1cf73739139106a79178ac4152a1141",
+        "204c49e20342b21a2641f7d4f2b27b63df0ac42372a4f2634e0e06b48fabe7df",
+        "24a23e869b6790fb69e1ae13812d6c061429d8e259b68cc00519301050b4131a",
+        "28540c09cdc45842799b059310e8b656b91020efee274408da904bba3d2bea96",
+        "29ef4dae9864c42f1ce9307e99de3f53f1cef84c32600e5e0e1c0fcbb647ae0f",
+        "327e12910d27bb02ca2a6d9eafb226d2bfcacaaf199704fd32d90dac4851b430",
+        "3361622e571215bf94072c376fe2fcb416b13663864726ccf14fc23a980777fd",
+        "410a4e93d8cb469b956e83df5fa0a3a9b5220cd46659f9c8066bf45a71f60800",
+        "428e9fa9415fa1150544798022c57665e7f2a5e9e65b146d99188b6612065cd1",
+        "43033afae2eea925b939ef0fedf7dcc4adf90651c87eb336c9befb7848e7653b",
+        "44a6555962bf51b238560294ca5fee58518bb00dcef122b0048e0e1a2bb46c3f",
+        "5989b82c4f2626448afcadaad77ad741a2778d2f60e61c147618e68d0ce888f7",
+        "59ac76e0b039f49d5b5cdf4ee3e6c1be193d9d84edb84855a01d2bcafbfbbc93",
+        "6bb2b1f4ea791587a4cbef920ff95ab1056a00c7b10eb726ddbac552c36ac812",
+        "6d3ade7deb81973d172e40e4335b0a69f6ba7c7b2d32e23720cdd5626d3f2ef3",
+        "6e9fa15d9e6ddf2b7d6d3f33f8fc7f4a791c91611ebdd29970eaadf1d66f10af",
+        "71783639d8e088349360e61037a049d6100315692ae7710489af14445fcb9796",
+        "7765f17df5fe230d664ed6eb7cf748b34e1728c1f3c2e4dc0beb4d758e592233",
+        "7adfce386728ffb5ce5926305d41561e28ce7d3903f28e96c995204444302b6f",
+        "7cb348d74c56ffc15b3f4c732de02ef81d6d7516ff3205ec6aeb3c77cbb21878",
+        "7f42b74f66f15bc99c14c4425da5cbb74f1b8b2548de89d118ea2c284b82c740",
+        "8a9205aa35c8557e41b3fa797c9297d4d2bf3eb43ff80d3294ea1c7e7fa0aeac",
+        "8a95d3ad282f5028517081fe0de3d43d682e487abe3a674ade79ccb47dab4544",
+        "8d6a6f00b0a3b53a287e1c98fcaa654d5aef032bc06e7e4e8337a7b7001cecdf",
+        "994114fd9a85894b3a99319fadaaaba76bf931ce986b7dadd01f4805d58d3b12",
+        "a3c5e1b3214f29974b7863607097bb98504ce45c382caecf38fbe5f7e496dbfe",
+        "b84c505069fcf2c1501cc18b6308ae98480cd86dc85f2d902b22a693acf199fb",
+        "b9eff7a3a1b44c531fb60726b9b02070f8e23a3b098ee39e7df3d5509fbeaca7",
+        "c1f46eb3c9336234c5aa5af330ce405f5960dd78217421a821625bfd9083a5d4",
+        "c53f6b3c2c100915f6440e72819fa98e7eec25b5a12147f878868c206e7b8021",
+        "c557436f3b82424d664159766a3993638502ca7c47fea9a27280b8995e9e8337",
+        "cd0a42ae0d2fe224e8d9059e2afb5550e7f2215764106dedb3cd366e8142c40a",
+        "cf9ddb5ab46f66079da632a79088922c9ce6bd01d2783c1582286382a6d83543",
+        "d121b9b6dafb5a15cb1f19a70f57ba86661433467207f36cddf45728880a4dde",
+        "d6324a600861098c95e04bfbe1a753c96f0d0ac6328c1f18c8bbd2b9ff48ba68",
+        "d7a1b6c6c26db1b0390ce1f08adcc185e21d4f27acea49a31384c1f30060306c",
+        "e1a3a4769cd1b0eebc16b20ecc098aa1d2e671dff3940d93bc6bfdbfc5692ef6",
+        "e5eeebf4356ddb94420b1b60602f927e10799561ae6784c45ed5728ea3802a52",
+        "e78186d5b63620922f682936b032c875a10a11796f8b3b2a6d178d6543d777fe",
+        "eac36ae19756c7f37ff154ae34d3cc6b88e933e2abc7fbacbd41a2f5c15785c5",
+        "ebdf90440f3defba9a83b2ea5f7d58b6de1610ef116d427c2c36742bdbfb4dab",
+        "ed8e4d298968632d52bd43c9455e3f0ae8240120d05685cacfc3e2f0f5758463",
+        "f2055e7dcdd6aa62fff5691b29b92b8e317ecf9962e26524a83af8d00ad0babc",
+        "f4d14b22fcbe18eac93a1a6eee9d1f838826052dbb02fefa0a87f8a4d5fdb5c3",
+        "f6084240b795041fac63c7deff666753cfbfc95e6f5a878436be54b9ca8d455e",
+        "f99e04fe1fb62003aefb2ef7c086cc0f7eebaf376b0eb9ebc538ac349651d63e"
+      ],
+      "received_at_utc": "2026-07-26T20:19:41Z",
+      "report_count": 48,
+      "source_lane": "awc",
+      "source_poll_ids": [
+        "awc-historical-0d9e8541961469a393c4619be0c4a05daee5a83dba0ddaacc0c2e309777ae496",
+        "awc-historical-6122694974703a89f96d80602550e3c674ab866ae412e48d76f19b1e7b842934",
+        "awc-historical-95cd601c037fc0a98342a1581c272bb4fb8e85a7af58d4350d8219d317df2e49"
+      ],
+      "station_id": "RKSI",
+      "target_timezone": "Asia/Seoul",
+      "truth_id": "et-truth-01d34c4b0e39ef76e1ef8b6277d1eb8c"
+    }
+  ]
+}

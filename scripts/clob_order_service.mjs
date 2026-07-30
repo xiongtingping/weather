@@ -8,7 +8,7 @@ import { Agent as HttpAgent } from "http";
 import { Agent as HttpsAgent } from "https";
 import axios from "axios";
 import { bootstrap } from "global-agent";
-import { AssetType, ClobClient, Side, OrderType, getContractConfig } from "@polymarket/clob-client-v2";
+import { AssetType, ClobClient, Side, OrderType, createL2Headers, getContractConfig } from "@polymarket/clob-client-v2";
 import { Wallet } from "ethers";
 import { DatabaseSync } from "node:sqlite";
 import { hashTypedData } from "viem";
@@ -16,8 +16,112 @@ import { hashTypedData } from "viem";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = process.env.PM_DATA_DIR || path.join(ROOT, "data");
 const DB_PATH = process.env.PM_ARCHIVE_DB || path.join(DATA_DIR, "archive.db");
+const LIVE_PAUSE_FILE = process.env.PM_LIVE_PAUSE_FILE || path.join(DATA_DIR, "live_paused.flag");
+const HELD_YES_INVENTORY_FILE = process.env.PM_HELD_YES_INVENTORY_FILE
+  || path.join(DATA_DIR, "reported_trajectory_held_yes_tokens.json");
 const SERVICE_NAME = "clob_order_service";
+const RETIRED_STRATEGY_IDS = new Set([
+  "weather_copy_follow_v1",
+]);
 const IDEMPOTENCY_TERMINAL_STATES = new Set(["exchange_accepted", "submit_failed"]);
+const KNOWN_EXCHANGE_ORDER_STATUSES = new Set([
+  "matched", "filled", "executed", "partial", "partially_filled",
+  "live", "open", "submitted", "accepted",
+  "cancelled", "canceled", "expired", "rejected", "failed",
+]);
+const UNCONFIRMED_EXCHANGE_ORDER_STATUSES = new Set([
+  "", "unknown", "submitted_unconfirmed", "pending", "processing",
+]);
+
+function normalizedExchangeOrderStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function unwrapProxyLookupResponse(value) {
+  // requestJsonViaProxy wraps a JSON `null` response as { response: null }.
+  // Preserve that as an empty response so reconciliation cannot mistake the
+  // wrapper itself for an order object.
+  if (
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && Object.keys(value).length === 1
+    && Object.prototype.hasOwnProperty.call(value, "response")
+  ) {
+    return value.response;
+  }
+  return value;
+}
+
+function exchangeOrderNeedsReconciliation(response = {}) {
+  const nested = response?.exchange_response && typeof response.exchange_response === "object"
+    ? response.exchange_response
+    : response;
+  const status = normalizedExchangeOrderStatus(
+    response?.status || nested?.status,
+  );
+  return Boolean(response?.reconcile_required)
+    || UNCONFIRMED_EXCHANGE_ORDER_STATUSES.has(status)
+    || !KNOWN_EXCHANGE_ORDER_STATUSES.has(status);
+}
+
+function hasRecoveredExactExchangeIdentity(response = {}) {
+  const orderID = String(response?.orderID || response?.order_id || "").trim().toLowerCase();
+  const expectedOrderID = String(response?.expected_order_id || "").trim().toLowerCase();
+  return Boolean(orderID)
+    && Boolean(expectedOrderID)
+    && orderID === expectedOrderID
+    && response?.expected_order_id_matches === true
+    && response?.reconciled_from_exchange === true
+    && response?.reconcile_required === false;
+}
+
+function exchangeOrderReconcileKind(order = {}) {
+  const status = normalizedExchangeOrderStatus(order?.status);
+  const matchedRaw = order?.size_matched ?? order?.sizeMatched ?? order?.matched_size;
+  const originalRaw = order?.original_size ?? order?.originalSize;
+  const matched = Number(matchedRaw);
+  const original = Number(originalRaw);
+  const hasMatched = Number.isFinite(matched);
+  const hasOriginal = Number.isFinite(original);
+  const fillStatuses = new Set(["matched", "filled", "executed", "partial", "partially_filled"]);
+  const closedWithoutFillStatuses = new Set(["cancelled", "canceled", "expired", "rejected", "failed"]);
+
+  if (
+    UNCONFIRMED_EXCHANGE_ORDER_STATUSES.has(status)
+    || !KNOWN_EXCHANGE_ORDER_STATUSES.has(status)
+  ) {
+    return { kind: "reconcile_required", status, matchedRaw, originalRaw };
+  }
+  if (fillStatuses.has(status)) {
+    if (!hasMatched && !hasOriginal) {
+      return { kind: "reconcile_required", status, matchedRaw, originalRaw };
+    }
+    if (hasMatched && hasOriginal && matched < original - 1e-9) {
+      return { kind: "reconcile_required", status, matchedRaw, originalRaw };
+    }
+    return { kind: "exchange_accepted", status, matchedRaw, originalRaw };
+  }
+  if (closedWithoutFillStatuses.has(status)) {
+    if (!hasMatched || matched > 1e-9) {
+      return { kind: "reconcile_required", status, matchedRaw, originalRaw };
+    }
+    return { kind: "submit_failed", status, matchedRaw, originalRaw };
+  }
+  // LIVE/OPEN/SUBMITTED/ACCEPTED are known exchange states. They must not be
+  // replayed, even though they are not fills yet; the open-order reconciler
+  // owns the remaining lifecycle.
+  return { kind: "exchange_accepted", status, matchedRaw, originalRaw };
+}
+
+export function livePausePresent(pausePath = LIVE_PAUSE_FILE) {
+  try {
+    return fs.existsSync(pausePath);
+  } catch {
+    // An unreadable pause boundary must fail closed.
+    return true;
+  }
+}
 
 const EIP712_DOMAIN = [
   { name: "name", type: "string" },
@@ -221,6 +325,29 @@ function normalizeTickSize(value, fallback = "0.01") {
   return "0.01";
 }
 
+function alignMarketBuySizeToMakerCents(price, size) {
+  const requested = Number(size);
+  const limit = Number(price);
+  if (!Number.isFinite(requested) || requested <= 0 || !Number.isFinite(limit) || limit <= 0) {
+    return requested;
+  }
+  // Polymarket market BUY orders encode maker amount in USDC cents while the
+  // share/taker amount may use up to four decimals.  A raw size such as
+  // 84.62 at 0.15 creates 12.693 USDC and is rejected before the exchange
+  // POST.  Round only downward to the largest four-decimal share size whose
+  // limit-price maker amount is cent-aligned; this never increases exposure.
+  let candidate = Math.floor((requested + 1e-9) * 10000) / 10000;
+  for (let i = 0; i < 100000; i += 1) {
+    const makerCents = limit * candidate * 100;
+    if (Math.abs(makerCents - Math.round(makerCents)) <= 1e-7) {
+      return Number(candidate.toFixed(4));
+    }
+    candidate = Math.round((candidate - 0.0001) * 10000) / 10000;
+    if (candidate <= 0) break;
+  }
+  throw new Error("market_buy_maker_amount_cent_alignment_unavailable");
+}
+
 function requireEnv(name) {
   const value = env(name);
   if (!value) throw new Error(`missing_env:${name}`);
@@ -282,6 +409,18 @@ function scutilProxyPorts() {
   }
 }
 
+function proxyClobReachable(proxyUrl) {
+  try {
+    execFileSync("/usr/bin/curl", [
+      "-fsS", "--max-time", "4", "--proxy", String(proxyUrl),
+      "https://clob.polymarket.com/time",
+    ], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "ignore", "ignore"] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function configureProxy() {
   const forceProxy = truthy(env("PM_CLOB_FORCE_PROXY", "0"));
   if (truthy(env("PM_CLOB_FORCE_DIRECT", "0")) && !forceProxy) {
@@ -294,7 +433,7 @@ async function configureProxy() {
   if (proxy) {
     const { host, port } = parseProxyHostPort(proxy);
     if (["127.0.0.1", "localhost"].includes(host) && port) {
-      if (!(await proxyReachable(host, port))) {
+      if (!(await proxyReachable(host, port)) || !proxyClobReachable(proxy)) {
         proxy = "";
       }
     }
@@ -303,11 +442,13 @@ async function configureProxy() {
     const ports = [
       ...parsePortList(env("PM_PROXY_PORTS", "")),
       ...scutilProxyPorts(),
-      ...parsePortList(env("PM_PROXY_LOCAL_FALLBACK_PORTS", "7890,7897")),
+      ...parsePortList(env("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897")),
+      7897,
     ].filter((port, idx, arr) => arr.indexOf(port) === idx);
     for (const port of ports) {
-      if (await proxyReachable("127.0.0.1", port)) {
-        proxy = `http://127.0.0.1:${port}`;
+      const candidate = `http://127.0.0.1:${port}`;
+      if (await proxyReachable("127.0.0.1", port) && proxyClobReachable(candidate)) {
+        proxy = candidate;
         break;
       }
     }
@@ -418,30 +559,83 @@ function stableKey(payload) {
   return crypto.createHash("sha256").update(canonicalJson(copy)).digest("hex");
 }
 
-function directEntryHardDeadline(payload, nowMs = Date.now()) {
+function signedOrderPayload(signedOrder, owner, orderType, postOnly = false, deferExec = false) {
+  const order = {
+    salt: parseInt(signedOrder.salt, 10),
+    maker: signedOrder.maker,
+    signer: signedOrder.signer,
+    taker: signedOrder.taker,
+    tokenId: signedOrder.tokenId,
+    makerAmount: signedOrder.makerAmount,
+    takerAmount: signedOrder.takerAmount,
+    side: signedOrder.side,
+    signatureType: signedOrder.signatureType,
+    expiration: signedOrder.expiration,
+    signature: signedOrder.signature,
+  };
+  if (Object.prototype.hasOwnProperty.call(signedOrder, "timestamp")) {
+    order.timestamp = signedOrder.timestamp;
+    order.metadata = signedOrder.metadata;
+    order.builder = signedOrder.builder;
+  } else {
+    order.nonce = signedOrder.nonce;
+    order.feeRateBps = signedOrder.feeRateBps;
+  }
+  return { deferExec, postOnly, order, owner, orderType };
+}
+
+function execFilePromise(file, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function balanceEvidenceValid(value) {
+  if (!value || typeof value !== "object" || value.error) return false;
+  const balance = String(value.balance ?? "");
+  const directAllowance = String(value.allowance ?? "");
+  const allowanceMap = value.allowances && typeof value.allowances === "object"
+    ? Object.values(value.allowances).map((item) => String(item ?? ""))
+    : [];
+  return /^\d+$/.test(balance)
+    && (/^\d+$/.test(directAllowance) || allowanceMap.some((item) => /^\d+$/.test(item)));
+}
+
+function conditionalBalanceIsZero(value) {
+  return balanceEvidenceValid(value) && /^0+$/.test(String(value.balance ?? ""));
+}
+
+export function targetDirectEntryHardDeadline(payload, nowMs = Date.now()) {
+  // Every target-owned direct entry carries one explicit deadline.  It is a
+  // gateway admission fact, not a probability or strategy compatibility
+  // envelope.  Missing or malformed target evidence must fail closed.
   const isDirectEntry = Boolean(payload?.direct_target_order_context)
     && !Boolean(payload?.direct_target_exit_order)
     && String(payload?.side || "BUY").toUpperCase() !== "SELL";
   if (!isDirectEntry) return { required: false, ok: true };
-  const executionContract = payload?.sequential_bayes_execution_contract;
-  const rawDeadline = payload?.observation_to_order_hard_deadline_at
-    || executionContract?.observation_to_order_hard_deadline_at
-    || payload?.signal_to_order_hard_deadline_at
-    || executionContract?.signal_to_order_hard_deadline_at;
+  const rawDeadline = payload?.target_execution_hard_deadline_at;
   const deadlineMs = Date.parse(String(rawDeadline || ""));
   if (!Number.isFinite(deadlineMs)) {
     return {
       required: true,
       ok: false,
-      reason: "direct_entry_hard_deadline_missing_or_invalid",
+      reason: "target_execution_hard_deadline_missing_or_invalid",
       deadline_at: String(rawDeadline || "") || null,
     };
   }
-  if (nowMs > deadlineMs) {
+  if (nowMs >= deadlineMs) {
     return {
       required: true,
       ok: false,
-      reason: "direct_entry_hard_deadline_expired",
+      reason: "target_execution_hard_deadline_expired",
       deadline_at: new Date(deadlineMs).toISOString(),
       overdue_ms: nowMs - deadlineMs,
     };
@@ -539,6 +733,9 @@ export class ClobOrderService {
     this.startedAt = new Date();
     this.proxy = {};
     this.client = null;
+    this.signer = null;
+    this.apiCreds = null;
+    this.signatureType = 0;
     this.metadata = new Map();
     this.prewarmTokenHint = "";
     this.inflight = new Map();
@@ -569,6 +766,21 @@ export class ClobOrderService {
     this.lastPlaceOrderRetryable = null;
     this.signerPrewarmed = false;
     this.signerPrewarmInFlight = false;
+    this.balancePrefetchInflight = 0;
+    this.cachedCollateral = null;
+    this.cachedConditional = new Map();
+    this.registeredPositionTokens = new Set();
+    this.conditionalPrefetchErrors = new Map();
+    this.lastBalancePrefetchError = "";
+    // Congestion guard: CLOB 429s previously opened hundreds of connections
+    // through the shared local VPN proxy and starved Codex. Keep the
+    // dedupe, bounded queue, and cooldown even when tuning for lower latency.
+    this.balanceFetchInflightByToken = new Map();
+    this.balanceFetchActive = 0;
+    this.balanceFetchQueue = [];
+    this.balanceRateLimitUntilMs = 0;
+    this.balanceRateLimitStreak = 0;
+    this.lastBalanceRateLimitAt = null;
     this.startPromise = null;
     this.readyAt = null;
     this.startError = "";
@@ -588,13 +800,28 @@ export class ClobOrderService {
     const keepAliveSockets = Math.max(2, Math.floor(positiveNumber(env("PM_CLOB_ORDER_SERVICE_MAX_SOCKETS", "8"), 8)));
     axios.defaults.httpAgent = new HttpAgent({ keepAlive: true, maxSockets: keepAliveSockets });
     axios.defaults.httpsAgent = new HttpsAgent({ keepAlive: true, maxSockets: keepAliveSockets });
-    axios.defaults.timeout = Math.round(positiveNumber(env("PM_CLOB_TIMEOUT_MS", "5000"), 5000));
+    axios.defaults.timeout = Math.max(
+      5000, Math.round(positiveNumber(env("PM_CLOB_TIMEOUT_MS", "5000"), 5000)),
+    );
     this.client = this.buildClient();
+    // The current CLOB API advertises order schema v2.  Keep the signing hot
+    // path independent from the proxy-sensitive /version read; the exchange
+    // still remains the authority when the signed order is submitted.
+    this.client.cachedVersion = 2;
     this.prewarmMetadataFromDb();
     this.prewarmClobHttp("start").catch(() => {});
     setTimeout(() => this.prewarmClobHttp("start_delayed").catch(() => {}), 1000).unref?.();
     setTimeout(() => this.prewarmOrderSigner("start_delayed").catch(() => {}), 1500).unref?.();
     this.startHeartbeat();
+    this.refreshRegisteredPositionTokensFromInventory();
+    // Do not continuously poll every held YES token.  The CLOB balance
+    // endpoint is authenticated and rate-limited; a background fan-out here
+    // competes with the latency-critical order POST and can make a healthy
+    // gateway time out before exchange_post_started.  SELL/NO safety still
+    // performs one exact-token read at event time when its cache is stale.
+    if (truthy(env("PM_CLOB_BALANCE_PREFETCH_ENABLED", "0"), false)) {
+      this.startBalancePrefetch();
+    }
     this.readyAt = new Date();
   }
 
@@ -608,16 +835,170 @@ export class ClobOrderService {
       passphrase: requireEnv("POLY_API_PASSPHRASE"),
     };
     const builderCode = env("POLY_BUILDER_CODE", env("PM_BUILDER_CODE", "")).trim();
+    this.signer = signer;
+    this.apiCreds = userApiCreds;
+    this.signatureType = Number(env("PM_SIGNATURE_TYPE", env("SIGNATURE_TYPE", "0")));
     return new ClobClient({
       host,
       chain: chainId,
       signer,
       creds: userApiCreds,
-      signatureType: Number(env("PM_SIGNATURE_TYPE", env("SIGNATURE_TYPE", "0"))),
+      signatureType: this.signatureType,
       funderAddress: env("PM_FUNDER_ADDRESS", signer.address),
       builderConfig: builderCode ? { builderCode } : undefined,
       retryOnError: truthy(env("PM_CLOB_PLACE_ORDER_SDK_RETRY_ON_ERROR", "0")),
     });
+  }
+
+  async requestJsonViaProxy(method, requestPath, bodyValue = undefined, query = undefined) {
+    const proxy = String(this.proxy?.proxy || "").trim();
+    if (!proxy) throw new Error("clob_proxy_request_proxy_missing");
+    const hasBody = bodyValue !== undefined;
+    const body = hasBody ? JSON.stringify(bodyValue) : "";
+    const headers = await createL2Headers(this.signer, this.apiCreds, {
+      method: String(method).toUpperCase(),
+      requestPath,
+      ...(hasBody ? { body } : {}),
+    });
+    const host = env("PM_CLOB_HOST", "https://clob.polymarket.com").replace(/\/+$/, "");
+    const url = new URL(`${host}${requestPath}`);
+    for (const [key, value] of Object.entries(query || {})) {
+      if (value !== undefined && value !== null && String(value) !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    }
+    const args = [
+      "--silent",
+      "--show-error",
+      "--http1.1",
+      "--proxy",
+      proxy,
+      "--connect-timeout",
+      "5",
+      "--max-time",
+      String(Math.max(5, Math.ceil(Number(axios.defaults.timeout || 15000) / 1000))),
+      "--request",
+      String(method).toUpperCase(),
+      url.toString(),
+      "--header",
+      "Content-Type: application/json",
+    ];
+    // SakuraCat may leave an authenticated CLOB GET connection open without
+    // returning the response when curl reuses keep-alive through the proxy.
+    // Force a bounded fresh connection for read-only authenticated probes;
+    // order submission has its own path and is intentionally unchanged.
+    if (String(method).toUpperCase() === "GET") args.push("--no-keepalive");
+    for (const [key, value] of Object.entries(headers || {})) {
+      if (value === undefined || value === null || String(value) === "") continue;
+      args.push("--header", `${key}: ${String(value)}`);
+    }
+    if (hasBody) args.push("--data-binary", body);
+    args.push("--write-out", "\n__CLOB_HTTP_STATUS__:%{http_code}");
+    let result;
+    try {
+      result = await execFilePromise("/usr/bin/curl", args, {
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024,
+        timeout: Math.max(5000, Math.ceil(Number(axios.defaults.timeout || 15000)) + 1000),
+      });
+    } catch (err) {
+      const detail = redactErrorText(err?.stderr || err?.message || String(err || ""));
+      throw new Error(`clob_proxy_request_failed:${detail}`);
+    }
+    const marker = "\n__CLOB_HTTP_STATUS__:";
+    const raw = String(result.stdout || "");
+    const markerIndex = raw.lastIndexOf(marker);
+    if (markerIndex < 0) throw new Error("clob_proxy_request_http_status_missing");
+    const responseText = raw.slice(0, markerIndex).trim();
+    const status = Number(raw.slice(markerIndex + marker.length).trim());
+    let response = {};
+    try {
+      response = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      response = { error: responseText };
+    }
+    if (!response || typeof response !== "object" || Array.isArray(response)) {
+      response = { response };
+    }
+    if (Number.isFinite(status) && status >= 400) {
+      const detail = response?.error || response?.errorMsg || `http_${status}`;
+      throw new Error(`clob_proxy_http_${status}:${redactErrorText(detail)}`);
+    }
+    return response;
+  }
+
+  async postOrderViaProxy(signedOrder, orderType, postOnly, deferExec) {
+    const proxy = String(this.proxy?.proxy || "").trim();
+    if (!proxy) throw new Error("clob_proxy_submit_proxy_missing");
+    const orderPayload = signedOrderPayload(
+      signedOrder,
+      this.apiCreds?.key || "",
+      orderType,
+      postOnly,
+      deferExec,
+    );
+    const body = JSON.stringify(orderPayload);
+    const headers = await createL2Headers(this.signer, this.apiCreds, {
+      method: "POST",
+      requestPath: "/order",
+      body,
+    });
+    const args = [
+      "--silent",
+      "--show-error",
+      "--http1.1",
+      "--proxy",
+      proxy,
+      "--connect-timeout",
+      "5",
+      "--max-time",
+      String(Math.max(5, Math.ceil(Number(axios.defaults.timeout || 15000) / 1000))),
+      "--request",
+      "POST",
+      `${env("PM_CLOB_HOST", "https://clob.polymarket.com").replace(/\/+$/, "")}/order`,
+      "--header",
+      "Content-Type: application/json",
+    ];
+    for (const [key, value] of Object.entries(headers || {})) {
+      if (value === undefined || value === null || String(value) === "") continue;
+      args.push("--header", `${key}: ${String(value)}`);
+    }
+    args.push(
+      "--data-binary",
+      body,
+      "--write-out",
+      "\n__CLOB_HTTP_STATUS__:%{http_code}",
+    );
+    let result;
+    try {
+      result = await execFilePromise("/usr/bin/curl", args, {
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024,
+        timeout: Math.max(5000, Math.ceil(Number(axios.defaults.timeout || 15000)) + 1000),
+      });
+    } catch (err) {
+      const detail = redactErrorText(err?.stderr || err?.message || String(err || ""));
+      throw new Error(`clob_proxy_submit_failed:${detail}`);
+    }
+    const marker = "\n__CLOB_HTTP_STATUS__:";
+    const raw = String(result.stdout || "");
+    const markerIndex = raw.lastIndexOf(marker);
+    if (markerIndex < 0) throw new Error("clob_proxy_submit_http_status_missing");
+    const responseText = raw.slice(0, markerIndex).trim();
+    const status = Number(raw.slice(markerIndex + marker.length).trim());
+    let response = {};
+    try {
+      response = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      response = { error: responseText };
+    }
+    if (!response || typeof response !== "object" || Array.isArray(response)) {
+      response = { response };
+    }
+    if (Number.isFinite(status) && status >= 400) {
+      response.status = status;
+    }
+    return response;
   }
 
   loadIdempotency() {
@@ -632,6 +1013,44 @@ export class ClobOrderService {
         state: String(row.state || ""),
         order_intent_id: String(row.order_intent_id || key),
       };
+      // A previous gateway version incorrectly persisted a timeout lookup
+      // with status `submitted_unconfirmed` as exchange_accepted.  Never
+      // restore that state as terminal after restart; keep it visible to the
+      // reconcile gate until an explicit exchange state is observed.
+      const exactRecoveredIdentity = hasRecoveredExactExchangeIdentity(item.response);
+      if (
+        item.state === "exchange_accepted"
+        && exchangeOrderNeedsReconciliation(item.response)
+        && !exactRecoveredIdentity
+      ) {
+        item.state = "reconcile_required";
+        try {
+          this.idemStore.put(key, item.order_intent_id, item.state, item.request, item.response);
+        } catch (err) {
+          this.lastIdempotencyPersistenceError = redactErrorText(err?.message || String(err || ""));
+        }
+      }
+      // Gateway versions before the strict status classifier could first
+      // recover an exact exchange identity, persist `exchange_accepted`, and
+      // then downgrade that same row on a later restart solely because the
+      // copied status remained `submitted_unconfirmed`.  Exact recovered
+      // identity is sufficient for the idempotency boundary: the intent must
+      // never be replayed.  It is deliberately not a fill receipt; downstream
+      // order-state reconciliation continues to own quantity and terminal
+      // lifecycle.
+      if (item.state === "reconcile_required" && exactRecoveredIdentity) {
+        item.state = "exchange_accepted";
+        item.response = {
+          ...item.response,
+          idempotency_terminal_reason: "exact_exchange_identity_recovered",
+          fill_state: "unknown",
+        };
+        try {
+          this.idemStore.put(key, item.order_intent_id, item.state, item.request, item.response);
+        } catch (err) {
+          this.lastIdempotencyPersistenceError = redactErrorText(err?.message || String(err || ""));
+        }
+      }
       if (IDEMPOTENCY_TERMINAL_STATES.has(item.state)) {
         this.idem.set(key, item);
       } else {
@@ -692,6 +1111,288 @@ export class ClobOrderService {
     setInterval(run, Math.round(sec * 1000)).unref?.();
   }
 
+  startBalancePrefetch() {
+    const intervalMs = Math.max(250, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_PREFETCH_INTERVAL_MS", "1000"), 1000,
+    )));
+    const run = async () => {
+      // Balance reads share the selected CLOB transport with order POSTs.
+      // Never let slow/failed background reads pile up and contend with the
+      // latency-critical order path.
+      if (!this.client || this.balancePrefetchInflight > 0) return;
+      this.balancePrefetchInflight += 1;
+      try {
+        await this.prefetchRegisteredPositionBalances();
+      } catch (err) {
+        this.lastBalancePrefetchError = redactErrorText(err?.message || String(err || ""));
+      } finally {
+        this.balancePrefetchInflight = Math.max(0, this.balancePrefetchInflight - 1);
+      }
+    };
+    run().catch(() => {});
+    setInterval(() => run().catch(() => {}), intervalMs).unref?.();
+  }
+
+  async prefetchRegisteredPositionBalances() {
+    this.refreshRegisteredPositionTokensFromInventory();
+    const positionTokens = [...this.registeredPositionTokens];
+    await Promise.all(positionTokens.map(async (tokenID) => {
+      const tokenStarted = Date.now();
+      try {
+        const value = await this.getBalanceAllowanceForPrefetch({
+          asset_type: AssetType.CONDITIONAL, token_id: tokenID,
+        });
+        if (!balanceEvidenceValid(value)) throw new Error("clob_balance_prefetch_evidence_invalid");
+        this.cachedConditional.set(tokenID, {
+          value,
+          observed_at: new Date().toISOString(),
+          latency_ms: Date.now() - tokenStarted,
+        });
+        this.conditionalPrefetchErrors.delete(tokenID);
+      } catch (err) {
+        this.conditionalPrefetchErrors.set(
+          tokenID, redactErrorText(err?.message || String(err || "")),
+        );
+      }
+    }));
+    this.lastBalancePrefetchError = [...this.conditionalPrefetchErrors.entries()]
+      .map(([tokenID, error]) => `${tokenID.slice(-12)}:${error}`)
+      .join(",");
+    return {
+      requested: positionTokens.length,
+      ready: positionTokens.filter((tokenID) => this.cachedConditional.has(tokenID)).length,
+      failed: this.conditionalPrefetchErrors.size,
+    };
+  }
+
+  balanceFetchLimit() {
+    // This controls read-only balance evidence only. Order submit/cancel and
+    // reconciliation intentionally do not wait behind this limiter.
+    return Math.max(1, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_FETCH_MAX_CONCURRENCY", "2"), 2,
+    )));
+  }
+
+  balanceFetchQueueLimit() {
+    // A full queue must fail closed instead of retaining unbounded local work
+    // that would eventually recreate proxy congestion.
+    return Math.max(1, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_FETCH_MAX_QUEUE", "24"), 24,
+    )));
+  }
+
+  balanceRateLimitedError() {
+    const remainingMs = Math.max(0, this.balanceRateLimitUntilMs - Date.now());
+    return new Error(`clob_balance_rate_limited_cooldown_${Math.ceil(remainingMs / 1000)}s`);
+  }
+
+  balanceRateLimitActive() {
+    return this.balanceRateLimitUntilMs > Date.now();
+  }
+
+  recordBalanceRateLimit(err) {
+    const text = String(err?.message || err || "").toLowerCase();
+    if (!text.includes("http_429") && !text.includes("error 1015") && !text.includes("rate limit")) {
+      return false;
+    }
+    const baseMs = Math.max(1000, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_RATE_LIMIT_BACKOFF_SEC", "60"), 60,
+    ) * 1000));
+    const maxMs = Math.max(baseMs, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_RATE_LIMIT_MAX_BACKOFF_SEC", "300"), 300,
+    ) * 1000));
+    // Cloudflare 1015 and HTTP 429 are an upstream back-pressure signal, not
+    // a transient error to fan out or retry immediately.
+    this.balanceRateLimitStreak = Math.min(4, this.balanceRateLimitStreak + 1);
+    const delayMs = Math.min(maxMs, baseMs * (2 ** (this.balanceRateLimitStreak - 1)));
+    this.balanceRateLimitUntilMs = Math.max(this.balanceRateLimitUntilMs, Date.now() + delayMs);
+    this.lastBalanceRateLimitAt = new Date().toISOString();
+    return true;
+  }
+
+  runLimitedBalanceFetch(work) {
+    return new Promise((resolve, reject) => {
+      if (this.balanceFetchQueue.length >= this.balanceFetchQueueLimit()) {
+        reject(new Error("clob_balance_fetch_queue_full"));
+        return;
+      }
+      const run = () => {
+        if (this.balanceRateLimitActive()) {
+          reject(this.balanceRateLimitedError());
+          this.drainBalanceFetchQueue();
+          return;
+        }
+        this.balanceFetchActive += 1;
+        Promise.resolve()
+          .then(work)
+          .then(resolve, reject)
+          .finally(() => {
+            this.balanceFetchActive = Math.max(0, this.balanceFetchActive - 1);
+            this.drainBalanceFetchQueue();
+          });
+      };
+      this.balanceFetchQueue.push(run);
+      this.drainBalanceFetchQueue();
+    });
+  }
+
+  drainBalanceFetchQueue() {
+    while (this.balanceFetchActive < this.balanceFetchLimit() && this.balanceFetchQueue.length > 0) {
+      const next = this.balanceFetchQueue.shift();
+      next();
+    }
+  }
+
+  refreshRegisteredPositionTokensFromInventory() {
+    try {
+      const payload = JSON.parse(fs.readFileSync(HELD_YES_INVENTORY_FILE, "utf8"));
+      if (payload?.schema !== "reported_trajectory_held_yes_inventory_v1"
+          || payload?.complete !== true
+          || !Array.isArray(payload?.active_token_ids)) return 0;
+      const nextTokens = new Set();
+      for (const raw of payload.active_token_ids) {
+        const tokenID = String(raw || "").trim();
+        if (/^\d+$/.test(tokenID)) nextTokens.add(tokenID);
+      }
+      const previousTokens = this.registeredPositionTokens;
+      this.registeredPositionTokens = nextTokens;
+      for (const tokenID of previousTokens) {
+        if (nextTokens.has(tokenID)) continue;
+        this.cachedConditional.delete(tokenID);
+        this.conditionalPrefetchErrors.delete(tokenID);
+      }
+      return nextTokens.size;
+    } catch {
+      // The inventory is an optimization only. Event-time SELL still registers
+      // and fetches the exact token, so an absent refresh cannot authorize or
+      // suppress an order.
+      return 0;
+    }
+  }
+
+  async getBalanceAllowanceForPrefetch(params) {
+    const tokenID = String(params?.token_id || "").trim();
+    const existing = tokenID ? this.balanceFetchInflightByToken.get(tokenID) : null;
+    if (existing) return existing;
+    const request = this.runLimitedBalanceFetch(async () => {
+      try {
+        let response;
+        // Native Node fetch does not honor HTTP(S)_PROXY by itself.  When the
+        // service selected a proxy, reuse the already configured CLOB client
+        // transport instead of letting this read-only prefetch time out directly.
+        if (this.proxy?.mode === "proxy") {
+          response = await this.requestJsonViaProxy("GET", "/balance-allowance", undefined, {
+            ...params,
+            signature_type: this.signatureType,
+          });
+        } else if (!truthy(env("PM_CLOB_BALANCE_PREFETCH_DIRECT", "1"), true)) {
+          response = await this.client.getBalanceAllowance(params);
+        } else {
+          if (!this.signer || !this.apiCreds) throw new Error("clob_balance_prefetch_auth_unavailable");
+          const requestPath = "/balance-allowance";
+          const headers = await createL2Headers(this.signer, this.apiCreds, {
+            method: "GET", requestPath,
+          });
+          const host = env("PM_CLOB_HOST", "https://clob.polymarket.com").replace(/\/+$/, "");
+          const url = new URL(`${host}${requestPath}`);
+          for (const [key, value] of Object.entries({ ...params, signature_type: this.signatureType })) {
+            if (value !== undefined && value !== null && String(value) !== "") url.searchParams.set(key, String(value));
+          }
+          const controller = new AbortController();
+          const timeoutMs = Math.max(1000, Math.floor(positiveNumber(
+            env("PM_CLOB_BALANCE_PREFETCH_TIMEOUT_MS", "5000"), 5000,
+          )));
+          const timeout = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const httpResponse = await fetch(url, {
+              method: "GET", headers, signal: controller.signal, cache: "no-store",
+            });
+            if (!httpResponse.ok) throw new Error(`clob_balance_prefetch_http_${httpResponse.status}`);
+            response = await httpResponse.json();
+          } finally {
+            clearTimeout(timeout);
+          }
+        }
+        this.balanceRateLimitStreak = 0;
+        return response;
+      } catch (err) {
+        this.recordBalanceRateLimit(err);
+        throw err;
+      }
+    });
+    if (tokenID) this.balanceFetchInflightByToken.set(tokenID, request);
+    try {
+      return await request;
+    } finally {
+      if (tokenID && this.balanceFetchInflightByToken.get(tokenID) === request) {
+        this.balanceFetchInflightByToken.delete(tokenID);
+      }
+    }
+  }
+
+  readLatestWsQuoteSnapshot(maxAgeMs, tokenID = "", allowPartialTopology = false, tokenIDs = []) {
+    const snapshotPath = env(
+      "PM_MARKET_WS_LATEST_QUOTES_PATH", path.join(DATA_DIR, "market_ws_latest_quotes.json"),
+    );
+    const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
+    const suppliedHash = String(parsed?.snapshot_sha256 || "");
+    const unsigned = { ...parsed };
+    delete unsigned.snapshot_sha256;
+    const calculatedHash = crypto.createHash("sha256").update(canonicalJson(unsigned)).digest("hex");
+    const observedMs = Date.parse(String(parsed?.connection_observed_at || ""));
+    const ageMs = Number.isFinite(observedMs) ? Date.now() - observedMs : Number.POSITIVE_INFINITY;
+    const activeShards = Array.isArray(parsed?.active_shards) ? parsed.active_shards.length : 0;
+    const expectedShards = Number(parsed?.expected_shards || 0);
+    const requestedTokenID = String(tokenID || "").trim();
+    const requestedTokenIDs = [...new Set([
+      ...(requestedTokenID ? [requestedTokenID] : []),
+      ...(Array.isArray(tokenIDs) ? tokenIDs : []),
+    ].map((value) => String(value || "").trim()).filter(Boolean))];
+    const requireCompleteTopology = !requestedTokenID && allowPartialTopology !== true;
+    if (parsed?.schema !== "clob_ws_latest_quote_snapshot_v1"
+        || parsed?.state !== "connected"
+        || parsed?.source !== "official_polymarket_clob_websocket"
+        || parsed?.evidence_only !== true
+        || parsed?.authorizes_order !== false
+        || !Number.isFinite(expectedShards)
+        || expectedShards < 1
+        || activeShards < 1
+        || activeShards > expectedShards
+        || (requireCompleteTopology && activeShards !== expectedShards)
+        || suppliedHash.length !== 64
+        || suppliedHash !== calculatedHash
+        || ageMs < 0
+        || ageMs > maxAgeMs) {
+      throw new Error("clob_ws_latest_quote_snapshot_invalid_or_stale");
+    }
+    if (requestedTokenIDs.length && parsed?.quote_storage === "sha256_token_shards_v1") {
+      const shardDir = env(
+        "PM_MARKET_WS_QUOTE_SHARD_DIR", path.join(DATA_DIR, "market_ws_quote_shards"),
+      );
+      for (const requested of requestedTokenIDs) {
+        const filename = `${crypto.createHash("sha256").update(requested).digest("hex")}.json`;
+        const tokenSnapshot = JSON.parse(fs.readFileSync(path.join(shardDir, filename), "utf8"));
+        const tokenSuppliedHash = String(tokenSnapshot?.snapshot_sha256 || "");
+        const tokenUnsigned = { ...tokenSnapshot };
+        delete tokenUnsigned.snapshot_sha256;
+        const tokenCalculatedHash = crypto.createHash("sha256")
+          .update(canonicalJson(tokenUnsigned)).digest("hex");
+        if (tokenSnapshot?.schema !== "clob_ws_token_quote_snapshot_v1"
+            || tokenSnapshot?.token_id !== requested
+            || tokenSnapshot?.source !== "official_polymarket_clob_websocket"
+            || tokenSnapshot?.evidence_only !== true
+            || tokenSnapshot?.authorizes_order !== false
+            || tokenSuppliedHash.length !== 64
+            || tokenSuppliedHash !== tokenCalculatedHash
+            || !tokenSnapshot?.quote) {
+          throw new Error("clob_ws_token_quote_snapshot_invalid");
+        }
+        parsed.quotes_by_token[requested] = tokenSnapshot.quote;
+      }
+    }
+    return { parsed, age_ms: ageMs, snapshot_sha256: suppliedHash };
+  }
+
   applyMetadataRows(rows) {
     const tickSize = normalizeTickSize(env("PM_CLOB_DEFAULT_TICK_SIZE", "0.01"));
     const negRisk = truthy(env("PM_CLOB_DEFAULT_NEG_RISK", "1"), true);
@@ -699,17 +1400,56 @@ export class ClobOrderService {
     for (const row of rows || []) {
       const tokenID = String(row?.token_id || "").trim();
       if (!tokenID) continue;
+      const conditionID = String(row?.condition_id || "").trim();
       const previous = this.metadata.get(tokenID) || {};
       this.rememberTokenMetadata(
         tokenID,
         previous.tickSize ? normalizeTickSize(previous.tickSize, tickSize) : tickSize,
         typeof previous.negRisk === "boolean" ? previous.negRisk : negRisk,
-        previous.source || "market_tokens_prewarm"
+        previous.source || "market_tokens_prewarm_db"
       );
+      // The SDK's signing path requires tokenConditionMap before it can
+      // resolve fee/market metadata.  The local registry already contains the
+      // authoritative condition id; use it before falling back to the
+      // proxy-sensitive markets-by-token request.
+      if (conditionID && this.client?.tokenConditionMap) {
+        this.client.tokenConditionMap[tokenID] = conditionID;
+      }
       if (!this.prewarmTokenHint) this.prewarmTokenHint = tokenID;
       count += 1;
     }
     return count;
+  }
+
+  ensureTokenConditionFromDb(tokenID) {
+    const normalizedTokenID = String(tokenID || "").trim();
+    const conditionMap = this.client?.tokenConditionMap;
+    if (!normalizedTokenID || !this.client || !conditionMap || conditionMap[normalizedTokenID]) return "";
+    if (!fs.existsSync(DB_PATH) || !/^[0-9]+$/.test(normalizedTokenID)) return "";
+    const escapedTokenID = normalizedTokenID.replace(/'/g, "''");
+    const sql = `
+      SELECT json_extract(registry_json, '$.condition_id')
+      FROM reported_trajectory_market_registry
+      WHERE market_active=1 AND market_accepting_orders=1
+        AND (yes_token='${escapedTokenID}' OR no_token='${escapedTokenID}')
+        AND COALESCE(json_extract(registry_json, '$.condition_id'),'')<>''
+      ORDER BY refreshed_at DESC
+      LIMIT 1;
+    `;
+    try {
+      const conditionID = String(execFileSync("/usr/bin/sqlite3", ["-noheader", DB_PATH, sql], {
+        encoding: "utf8",
+        timeout: 800,
+      }) || "").trim().split(/\s+/)[0] || "";
+      if (conditionID) {
+        conditionMap[normalizedTokenID] = conditionID;
+        return conditionID;
+      }
+    } catch {
+      // The normal prewarm path remains authoritative; this is a bounded
+      // last-mile repair for a token refreshed after service startup.
+    }
+    return "";
   }
 
   rememberTokenMetadata(tokenID, tickSize, negRisk, source = "runtime") {
@@ -725,10 +1465,19 @@ export class ClobOrderService {
       updated_at: new Date().toISOString(),
       source,
     });
-    if (this.client) {
-      this.client.tickSizes[normalizedTokenID] = normalizedTickSize;
-      this.client.negRisk[normalizedTokenID] = normalizedNegRisk;
-    }
+      if (this.client) {
+        this.client.tickSizes[normalizedTokenID] = normalizedTickSize;
+        this.client.negRisk[normalizedTokenID] = normalizedNegRisk;
+        const configuredFeeRateBps = Number(env("PM_CLOB_DEFAULT_FEE_RATE_BPS", ""));
+        const feeRates = this.client.feeRates;
+        if (Number.isInteger(configuredFeeRateBps) && configuredFeeRateBps >= 0
+          && feeRates && !(normalizedTokenID in feeRates)) {
+          // The configured value is operator-attested from the official CLOB
+          // fee-rate endpoint and only removes a slow duplicate read from the
+          // signed-order hot path.  A missing value keeps SDK discovery intact.
+          feeRates[normalizedTokenID] = configuredFeeRateBps;
+        }
+      }
   }
 
   prewarmToken() {
@@ -747,22 +1496,11 @@ export class ClobOrderService {
   latestPrewarmTokenFromDb() {
     if (!fs.existsSync(DB_PATH)) return "";
     const sql = `
-      WITH token_rows AS (
-        SELECT yes_token AS token_id, updated_at FROM market_tokens
-        WHERE COALESCE(yes_token, '') <> ''
-          AND COALESCE(market_closed, 0) = 0
-          AND COALESCE(market_archived, 0) = 0
-          AND COALESCE(market_active, 1) != 0
-        UNION ALL
-        SELECT no_token AS token_id, updated_at FROM market_tokens
-        WHERE COALESCE(no_token, '') <> ''
-          AND COALESCE(market_closed, 0) = 0
-          AND COALESCE(market_archived, 0) = 0
-          AND COALESCE(market_active, 1) != 0
-      )
-      SELECT token_id
-      FROM token_rows
-      ORDER BY updated_at DESC
+      SELECT no_token
+      FROM reported_trajectory_market_registry
+      WHERE source_eligible=1 AND market_active=1 AND market_accepting_orders=1
+        AND COALESCE(no_token,'')<>''
+      ORDER BY refreshed_at DESC
       LIMIT 1;
     `;
     try {
@@ -780,23 +1518,27 @@ export class ClobOrderService {
     if (!fs.existsSync(DB_PATH)) return 0;
     if (this.metadataPrewarmInFlight) return 0;
     this.metadataPrewarmInFlight = true;
-    const limit = Math.max(8, Math.min(Math.floor(positiveNumber(env("PM_CLOB_ORDER_SERVICE_PREWARM_TOKEN_LIMIT", "256"), 256)), 1000));
+    const limit = Math.max(8, Math.min(
+      Math.floor(positiveNumber(env("PM_CLOB_ORDER_SERVICE_PREWARM_TOKEN_LIMIT", "4000"), 4000)), 5000,
+    ));
     const sql = `
-      WITH token_rows AS (
-        SELECT yes_token AS token_id, updated_at FROM market_tokens
-        WHERE COALESCE(yes_token, '') <> ''
-          AND COALESCE(market_closed, 0) = 0
-          AND COALESCE(market_archived, 0) = 0
-          AND COALESCE(market_active, 1) != 0
+      SELECT token_id, MAX(condition_id) AS condition_id, MAX(updated_at) AS updated_at FROM (
+        SELECT no_token AS token_id,
+               json_extract(registry_json, '$.condition_id') AS condition_id,
+               refreshed_at AS updated_at
+        FROM reported_trajectory_market_registry
+        WHERE source_eligible=1 AND market_active=1 AND market_accepting_orders=1
+          AND COALESCE(no_token,'')<>''
+          AND COALESCE(json_extract(registry_json, '$.condition_id'),'')<>''
         UNION ALL
-        SELECT no_token AS token_id, updated_at FROM market_tokens
-        WHERE COALESCE(no_token, '') <> ''
-          AND COALESCE(market_closed, 0) = 0
-          AND COALESCE(market_archived, 0) = 0
-          AND COALESCE(market_active, 1) != 0
+        SELECT yes_token AS token_id,
+               json_extract(registry_json, '$.condition_id') AS condition_id,
+               refreshed_at AS updated_at
+        FROM reported_trajectory_market_registry
+        WHERE source_eligible=1 AND market_active=1 AND market_accepting_orders=1
+          AND COALESCE(yes_token,'')<>''
+          AND COALESCE(json_extract(registry_json, '$.condition_id'),'')<>''
       )
-      SELECT token_id, MAX(updated_at) AS updated_at
-      FROM token_rows
       GROUP BY token_id
       ORDER BY MAX(updated_at) DESC
       LIMIT ${limit};
@@ -823,9 +1565,70 @@ export class ClobOrderService {
   }
 
   health() {
+    // The held-YES inventory is a read-only safety input. Refresh it before
+    // reporting conditional-balance readiness so a token removed from the
+    // inventory cannot remain registered forever when background prefetch is
+    // disabled. A real active position still remains fail-closed until its
+    // exact-token balance evidence is fresh.
+    this.refreshRegisteredPositionTokensFromInventory();
+    const livePaused = livePausePresent();
+    const marketMaxAgeMs = Math.max(100, Math.floor(positiveNumber(
+      env("PM_CLOB_LOCAL_EVIDENCE_MAX_AGE_MS", "1000"), 1000,
+    )));
+    const balanceMaxAgeMs = Math.max(marketMaxAgeMs, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_CACHE_MAX_AGE_MS", "3000"), 3000,
+    )));
+    let wsSnapshotReady = false;
+    let wsPartialSnapshotReady = false;
+    let wsSnapshotAgeMs = null;
+    let wsActiveShards = 0;
+    let wsExpectedShards = 0;
+    let wsMaterializedTokenCount = 0;
+    let wsSubscribedTokenCount = 0;
+    try {
+      const ws = this.readLatestWsQuoteSnapshot(marketMaxAgeMs);
+      wsSnapshotReady = true;
+      wsSnapshotAgeMs = Math.round(ws.age_ms);
+    } catch {
+      wsSnapshotReady = false;
+    }
+    try {
+      const ws = this.readLatestWsQuoteSnapshot(marketMaxAgeMs, "", true);
+      wsPartialSnapshotReady = true;
+      wsSnapshotAgeMs = Math.round(ws.age_ms);
+      wsActiveShards = Array.isArray(ws.parsed?.active_shards) ? ws.parsed.active_shards.length : 0;
+      wsExpectedShards = Number(ws.parsed?.expected_shards || 0);
+      wsMaterializedTokenCount = Number(ws.parsed?.materialized_token_count || 0);
+      wsSubscribedTokenCount = Number(ws.parsed?.subscribed_token_count || 0);
+    } catch {
+      wsPartialSnapshotReady = false;
+    }
+    const collateralAgeMs = null;
+    const collateralCacheReady = true;
+    const conditionalReadyTokens = [];
+    const conditionalNotReadyTokens = [];
+    for (const tokenID of this.registeredPositionTokens) {
+      const cached = this.cachedConditional.get(tokenID);
+      const cacheAgeMs = cached
+        ? Date.now() - Date.parse(cached.observed_at || "") : Number.POSITIVE_INFINITY;
+      if (cached && cacheAgeMs >= 0 && cacheAgeMs <= balanceMaxAgeMs
+          && balanceEvidenceValid(cached.value)) {
+        conditionalReadyTokens.push(tokenID);
+      } else {
+        conditionalNotReadyTokens.push(tokenID);
+      }
+    }
     return {
       ok: true,
       service: SERVICE_NAME,
+      capabilities: [
+        "execution_guard_snapshot_v1",
+        "place_order_v1",
+        "reconcile_order_v1",
+        "cancel_order_v1",
+        "lookup_exchange_order_v1",
+        "local_prefetched_execution_guard_v1",
+      ],
       ready: Boolean(this.client) && (!truthy(env("PM_CLOB_FORCE_PROXY", "0")) || this.proxy?.mode === "proxy"),
       pid: process.pid,
       started_at: this.startedAt.toISOString(),
@@ -845,6 +1648,40 @@ export class ClobOrderService {
       last_signer_prewarm_at: this.lastSignerPrewarmAt,
       last_signer_prewarm_ms: this.lastSignerPrewarmMs,
       last_signer_prewarm_error: this.lastSignerPrewarmError,
+      balance_prefetch_inflight: this.balancePrefetchInflight,
+      balance_fetch_active: this.balanceFetchActive,
+      balance_fetch_queue_depth: this.balanceFetchQueue.length,
+      balance_fetch_inflight_tokens: this.balanceFetchInflightByToken.size,
+      balance_rate_limited_until: this.balanceRateLimitUntilMs
+        ? new Date(this.balanceRateLimitUntilMs).toISOString() : null,
+      balance_rate_limit_streak: this.balanceRateLimitStreak,
+      last_balance_rate_limit_at: this.lastBalanceRateLimitAt,
+      collateral_cache_observed_at: this.cachedCollateral?.observed_at || null,
+      collateral_cache_age_ms: collateralAgeMs,
+      collateral_cache_latency_ms: this.cachedCollateral?.latency_ms ?? null,
+      conditional_balance_cache_size: this.cachedConditional.size,
+      registered_position_token_count: this.registeredPositionTokens.size,
+      conditional_balance_ready_token_ids: conditionalReadyTokens.sort(),
+      conditional_balance_not_ready_token_ids: conditionalNotReadyTokens.sort(),
+      active_held_yes_balance_ready: conditionalNotReadyTokens.length === 0,
+      last_balance_prefetch_error: this.lastBalancePrefetchError,
+      balance_prefetch_transport: (
+        truthy(env("PM_CLOB_BALANCE_PREFETCH_DIRECT", "1"), true)
+        && this.proxy?.mode !== "proxy"
+      ) ? "direct_read_only_authenticated" : "clob_client_read_only_authenticated",
+      ws_snapshot_ready: wsSnapshotReady,
+      ws_partial_snapshot_ready: wsPartialSnapshotReady,
+      ws_snapshot_age_ms: wsSnapshotAgeMs,
+      ws_active_shards: wsActiveShards,
+      ws_expected_shards: wsExpectedShards,
+      ws_materialized_token_count: wsMaterializedTokenCount,
+      ws_subscribed_token_count: wsSubscribedTokenCount,
+      collateral_cache_ready: collateralCacheReady,
+      collateral_balance_fetch_disabled: true,
+      all_shards_prefetched_evidence_ready: wsSnapshotReady,
+      signer_prewarmed: this.signerPrewarmed,
+      hot_order_path_ready: wsPartialSnapshotReady && this.signerPrewarmed,
+      local_prefetched_evidence_ready: wsPartialSnapshotReady && this.signerPrewarmed,
       last_place_order_error_at: this.lastPlaceOrderErrorAt,
       last_place_order_error_class: this.lastPlaceOrderErrorClass,
       last_place_order_http_status: this.lastPlaceOrderHttpStatus,
@@ -854,6 +1691,9 @@ export class ClobOrderService {
       last_heartbeat_error: this.lastHeartbeatError,
       start_error: this.startError,
       read_only: truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0")),
+      live_pause_file: LIVE_PAUSE_FILE,
+      live_pause_present: livePaused,
+      order_submission_enabled: !livePaused && !truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0")),
     };
   }
 
@@ -943,9 +1783,27 @@ export class ClobOrderService {
       };
     }
     try {
-      const order = await this.client.getOrder(expectedOrderID);
+      // Reconciliation must use the same transport as lookup/cancel.  In
+      // proxy mode the SDK's direct getOrder path can return an incomplete
+      // response (or a response from a different network path), which makes
+      // a valid exact order identity look mismatched and leaves the intent
+      // permanently unresolved.
+      const rawOrder = this.proxy?.mode === "proxy"
+        ? await this.requestJsonViaProxy("GET", `/data/order/${expectedOrderID}`)
+        : await this.client.getOrder(expectedOrderID);
+      const order = unwrapProxyLookupResponse(rawOrder);
+      if (!order || typeof order !== "object" || Array.isArray(order)) {
+        return {
+          ...this.idempotencyStatus(normalized),
+          reconcile_required: true,
+          reconcile_attempted: true,
+          reconcile_reason: "exchange_order_empty_response",
+          expected_order_id: expectedOrderID,
+          status: "unknown",
+        };
+      }
       const recoveredOrderID = String(order?.id || order?.orderID || expectedOrderID).trim();
-      if (!order || recoveredOrderID.toLowerCase() !== expectedOrderID.toLowerCase()) {
+      if (recoveredOrderID.toLowerCase() !== expectedOrderID.toLowerCase()) {
         return {
           ...this.idempotencyStatus(normalized),
           reconcile_attempted: true,
@@ -954,12 +1812,33 @@ export class ClobOrderService {
           exchange_order_id: recoveredOrderID || null,
         };
       }
+      const status = normalizedExchangeOrderStatus(order.status);
+      const matched = order.size_matched ?? order.sizeMatched ?? order.matched_size ?? null;
+      const original = order.original_size ?? order.originalSize ?? null;
+      const reconcileKind = exchangeOrderReconcileKind(order);
+      if (reconcileKind.kind === "reconcile_required") {
+        // An order identity alone is not a fill receipt.  In particular,
+        // FAK timeout responses can be echoed by the CLOB as
+        // submitted_unconfirmed with no quantity fields.  Keep the intent in
+        // unresolved storage so callers cannot submit a duplicate leg.
+        return {
+          ...this.idempotencyStatus(normalized),
+          reconcile_required: true,
+          reconcile_attempted: true,
+          reconcile_reason: "exchange_order_state_not_terminal",
+          expected_order_id: expectedOrderID,
+          orderID: recoveredOrderID,
+          status: status || "unknown",
+          original_size: original,
+          size_matched: matched,
+        };
+      }
       const response = {
         ok: true,
         orderID: recoveredOrderID,
         expected_order_id: expectedOrderID,
         expected_order_id_matches: true,
-        status: String(order.status || "submitted_unconfirmed"),
+        status,
         source: SERVICE_NAME,
         service_pid: process.pid,
         idempotency_key: normalized,
@@ -974,6 +1853,23 @@ export class ClobOrderService {
         size_matched: order.size_matched ?? null,
         price: order.price ?? null,
       };
+      if (reconcileKind.kind === "submit_failed") {
+        response.ok = false;
+        response.accepted = false;
+        response.pending = false;
+        response.error = "exchange_order_not_filled";
+        this.persistIntent(normalized, "submit_failed", request, response);
+        this.unresolved.delete(normalized);
+        this.idem.set(normalized, {
+          created_ms: Number(unresolved.created_ms || Date.now()),
+          request,
+          response,
+          state: "submit_failed",
+          order_intent_id: response.order_intent_id,
+        });
+        this.saveIdempotency();
+        return response;
+      }
       this.persistIntent(normalized, "exchange_accepted", request, response);
       this.unresolved.delete(normalized);
       this.idem.set(normalized, {
@@ -999,53 +1895,6 @@ export class ClobOrderService {
     }
   }
 
-  async dynamicThreeLegSnapshot(rawPayload) {
-    const rawBuckets = Array.isArray(rawPayload?.buckets) ? rawPayload.buckets : [];
-    const rawPositionTokens = Array.isArray(rawPayload?.position_token_ids)
-      ? rawPayload.position_token_ids : [];
-    if (!this.client) throw new Error(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
-    if (rawBuckets.length < 1 || rawBuckets.length > 12) throw new Error("dynamic_three_leg_bucket_count_invalid");
-    const buckets = rawBuckets.map((row) => ({
-      bucket: String(row?.bucket || "").trim(),
-      yes_token_id: String(row?.yes_token_id || "").trim(),
-      no_token_id: String(row?.no_token_id || "").trim(),
-    }));
-    if (buckets.some((row) => !row.bucket || !row.yes_token_id || !row.no_token_id)) {
-      throw new Error("dynamic_three_leg_bucket_token_identity_missing");
-    }
-    const marketTokenIDs = [...new Set(buckets.flatMap((row) => [row.yes_token_id, row.no_token_id]))];
-    const positionTokenIDs = [...new Set(rawPositionTokens.map((value) => String(value || "").trim()).filter(Boolean))];
-    if (marketTokenIDs.length > 24 || positionTokenIDs.length > 24) {
-      throw new Error("dynamic_three_leg_token_count_invalid");
-    }
-    const started = Date.now();
-    const [books, collateral, conditional] = await Promise.all([
-      Promise.all(marketTokenIDs.map(async (tokenID) => [tokenID, await this.client.getOrderBook(tokenID)])),
-      this.client.getBalanceAllowance({ asset_type: AssetType.COLLATERAL }),
-      Promise.all(positionTokenIDs.map(async (tokenID) => [
-        tokenID,
-        await this.client.getBalanceAllowance({ asset_type: AssetType.CONDITIONAL, token_id: tokenID }),
-      ])),
-    ]);
-    const observedAt = new Date().toISOString();
-    return {
-      schema: "clob_dynamic_three_leg_snapshot_v1",
-      ok: true,
-      evidence_only: true,
-      authorizes_order: false,
-      request_id: String(rawPayload?.request_id || "").trim(),
-      observed_at: observedAt,
-      service_latency_ms: Date.now() - started,
-      amount_decimals: 6,
-      buckets,
-      order_books_by_token: Object.fromEntries(books),
-      conditional_balance_allowance_by_token: Object.fromEntries(conditional),
-      collateral_balance_allowance: collateral,
-      source: SERVICE_NAME,
-      service_pid: process.pid,
-    };
-  }
-
   async executionGuardSnapshot(rawPayload) {
     const tokenID = String(rawPayload?.token_id || rawPayload?.tokenID || "").trim();
     const side = String(rawPayload?.side || "").trim().toUpperCase();
@@ -1062,46 +1911,89 @@ export class ClobOrderService {
       throw new Error("execution_guard_buy_notional_invalid");
     }
 
-    // This endpoint returns raw exchange evidence only.  It never decides that
-    // an order is authorized; the Python execution boundary independently
-    // checks depth, price, position, collateral and durable risk reservation.
-    const conditionalPromise = this.client.getBalanceAllowance({
-      asset_type: AssetType.CONDITIONAL,
-      token_id: tokenID,
-    });
-    const collateralPromise = side === "BUY"
-      ? this.client.getBalanceAllowance({ asset_type: AssetType.COLLATERAL })
-      : Promise.resolve(null);
-    const [orderBook, conditional, collateral] = await Promise.all([
-      this.client.getOrderBook(tokenID),
-      conditionalPromise,
-      collateralPromise,
-    ]);
-    const observedAt = new Date().toISOString();
-    const balanceShapeOk = (value) => {
-      if (!value || typeof value !== "object" || value.error) return false;
-      const balance = String(value.balance ?? "");
-      const directAllowance = String(value.allowance ?? "");
-      const allowanceMap = value.allowances && typeof value.allowances === "object"
-        ? Object.values(value.allowances).map((item) => String(item ?? ""))
-        : [];
-      return /^\d+$/.test(balance)
-        && (/^\d+$/.test(directAllowance) || allowanceMap.some((item) => /^\d+$/.test(item)));
-    };
+    // This endpoint is deliberately local-only.  Official WS depth and
+    // continuously prefetched balances are evaluated below; a stale cache
+    // fails closed instead of adding an event-time REST round trip.
+    const maxAgeMs = Math.max(100, Math.floor(positiveNumber(
+      env("PM_CLOB_LOCAL_EVIDENCE_MAX_AGE_MS", "1000"), 1000,
+    )));
+    const balanceMaxAgeMs = Math.max(maxAgeMs, Math.floor(positiveNumber(
+      env("PM_CLOB_BALANCE_CACHE_MAX_AGE_MS", "3000"), 3000,
+    )));
     const evidenceErrors = [];
-    if (!orderBook || orderBook.error || String(orderBook.asset_id || "") !== tokenID
+    let ws = null;
+    let wsReadError = "";
+    try {
+      ws = this.readLatestWsQuoteSnapshot(maxAgeMs, tokenID);
+    } catch (err) {
+      wsReadError = redactErrorText(err?.message || String(err || ""));
+    }
+    const quote = ws?.parsed?.quotes_by_token?.[tokenID] || null;
+    const bids = Array.isArray(quote?.bids) ? quote.bids : [];
+    const asks = Array.isArray(quote?.asks) ? quote.asks : [];
+    // A fully materialized official order book may legitimately have no
+    // liquidity on one side.  Empty asks are market evidence (and the
+    // strategy will classify them as no executable ask), not missing CLOB
+    // evidence.  Fail closed only when the target token never received a
+    // complete book snapshot or its depth arrays are structurally absent.
+    const orderBookMissing = (!quote
+        || !Array.isArray(quote?.bids)
+        || !Array.isArray(quote?.asks)
+        || !String(quote?.book_observed_at || ""));
+    const orderBook = {
+      asset_id: tokenID,
+      timestamp: ws?.parsed?.connection_observed_at || "",
+      bids,
+      asks,
+      quote_value_observed_at: quote?.created_at || "",
+      book_value_observed_at: quote?.book_observed_at || "",
+      continuity_attested_at: ws?.parsed?.connection_observed_at || "",
+    };
+    const collateralAgeMs = Number.POSITIVE_INFINITY;
+    const collateral = null;
+    let conditionalCache = this.cachedConditional.get(tokenID);
+    let conditionalAgeMs = conditionalCache
+      ? Date.now() - Date.parse(conditionalCache.observed_at || "") : Number.POSITIVE_INFINITY;
+    if (side === "SELL" && (!conditionalCache || conditionalAgeMs < 0 || conditionalAgeMs > balanceMaxAgeMs)) {
+      try {
+        const value = await this.getBalanceAllowanceForPrefetch({
+          asset_type: AssetType.CONDITIONAL,
+          token_id: tokenID,
+        });
+        if (!balanceEvidenceValid(value)) throw new Error("clob_conditional_balance_evidence_invalid");
+        conditionalCache = { value, observed_at: new Date().toISOString(), latency_ms: Date.now() - started };
+        conditionalAgeMs = 0;
+        this.cachedConditional.set(tokenID, conditionalCache);
+      } catch (err) {
+        evidenceErrors.push(redactErrorText(err?.message || String(err || "")));
+      }
+    }
+    const conditional = side === "SELL" ? conditionalCache?.value || null : null;
+    if (side === "SELL" && balanceEvidenceValid(conditional) && !conditionalBalanceIsZero(conditional)) {
+      this.registeredPositionTokens.add(tokenID);
+    }
+    const zeroSellPosition = side === "SELL" && conditionalBalanceIsZero(conditional);
+    if (side === "SELL" && (!conditionalCache || conditionalAgeMs < 0 || conditionalAgeMs > balanceMaxAgeMs)) {
+      evidenceErrors.push("clob_conditional_balance_prefetch_missing_or_stale");
+    }
+    const observedAt = new Date().toISOString();
+    if (wsReadError && !zeroSellPosition) evidenceErrors.push(wsReadError);
+    if (orderBookMissing && !zeroSellPosition) {
+      evidenceErrors.push("clob_ws_order_book_depth_missing");
+    }
+    if ((!orderBook || orderBook.error || String(orderBook.asset_id || "") !== tokenID
         || !Array.isArray(orderBook.bids) || !Array.isArray(orderBook.asks)
-        || !String(orderBook.timestamp || "")) {
+        || !String(orderBook.timestamp || "")) && !zeroSellPosition) {
       evidenceErrors.push("clob_order_book_evidence_unavailable_or_invalid");
     }
-    if (!balanceShapeOk(conditional)) evidenceErrors.push("clob_conditional_balance_evidence_unavailable_or_invalid");
-    if (side === "BUY" && !balanceShapeOk(collateral)) evidenceErrors.push("clob_collateral_balance_evidence_unavailable_or_invalid");
+    if (side === "SELL" && !balanceEvidenceValid(conditional)) evidenceErrors.push("clob_conditional_balance_evidence_unavailable_or_invalid");
+    const tokenMetadata = this.metadata.get(tokenID) || {};
     return {
       schema: "clob_execution_guard_snapshot_v1",
       ok: evidenceErrors.length === 0,
       evidence_only: true,
       authorizes_order: false,
-      evidence_errors: evidenceErrors,
+      evidence_errors: [...new Set(evidenceErrors)].sort(),
       token_id: tokenID,
       side,
       limit_price: limitPrice,
@@ -1113,7 +2005,13 @@ export class ClobOrderService {
       order_book: orderBook,
       conditional_balance_allowance: conditional,
       collateral_balance_allowance: collateral,
+      token_metadata: {
+        tick_size: tokenMetadata.tickSize || null,
+        neg_risk: typeof tokenMetadata.negRisk === "boolean" ? tokenMetadata.negRisk : null,
+        source: tokenMetadata.source || "",
+      },
       source: SERVICE_NAME,
+      evidence_source: "local_prefetched_clob_evidence",
       service_pid: process.pid,
     };
   }
@@ -1190,10 +2088,32 @@ export class ClobOrderService {
   }
 
   async placeOrderWithIdempotency(payload) {
+    const strategyId = String(payload?.strategy_id || "");
+    if (RETIRED_STRATEGY_IDS.has(strategyId)) {
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: "retired_strategy_forbidden",
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        strategy_id: strategyId,
+        source: SERVICE_NAME,
+      };
+    }
     if (truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0"))) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
         error: "clob_order_service_read_only",
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        source: SERVICE_NAME,
+      };
+    }
+    if (livePausePresent()) {
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: "clob_order_service_live_paused",
         exchange_post_started: false,
         idempotency_key: String(payload?.idempotency_key || ""),
         order_intent_id: String(payload?.order_intent_id || ""),
@@ -1235,7 +2155,7 @@ export class ClobOrderService {
     if (this.unresolved.has(key)) {
       return this.idempotencyStatus(key);
     }
-    const deadlineAdmission = directEntryHardDeadline(payload);
+    const deadlineAdmission = targetDirectEntryHardDeadline(payload);
     if (!deadlineAdmission.ok) {
       return {
         ok: false,
@@ -1290,8 +2210,15 @@ export class ClobOrderService {
     const acceptedAt = new Date().toISOString();
     const acceptedMs = Date.now();
     const priorityEntry = this.isPriorityDirectEntry(payload);
-    const lane = priorityEntry ? "direct_target_primary_entry_priority" : "default_serial";
-    const base = priorityEntry ? Promise.resolve() : this.submitChain;
+    const isSell = String(payload.side || "BUY").toUpperCase() === "SELL";
+    const lane = isSell
+      ? "sell_parallel"
+      : priorityEntry
+        ? "direct_target_primary_entry_parallel"
+        : "default_serial";
+    // Signal-coupled YES SELL and NO BUY are independent FAK orders. Once
+    // each identity is durable they may build, sign and POST concurrently.
+    const base = (isSell || priorityEntry) ? Promise.resolve() : this.submitChain;
     const promise = base
       .then(() => this.placeOrder(payload, key, { acceptedMs, lane }))
       .then((response) => {
@@ -1353,6 +2280,11 @@ export class ClobOrderService {
           service_submit_ms: Number.isFinite(Number(meta.service_submit_ms)) ? Number(meta.service_submit_ms) : null,
           service_total_ms: Number.isFinite(Number(meta.service_total_ms)) ? Number(meta.service_total_ms) : Math.max(0, Date.now() - acceptedMs),
           submit_call_ms: Number.isFinite(Number(meta.submit_call_ms)) ? Number(meta.submit_call_ms) : null,
+          order_build_ms: Number.isFinite(Number(meta.order_build_ms)) ? Number(meta.order_build_ms) : null,
+          signed_persist_ms: Number.isFinite(Number(meta.signed_persist_ms)) ? Number(meta.signed_persist_ms) : null,
+          pre_post_deadline_check_ms: Number.isFinite(Number(meta.pre_post_deadline_check_ms))
+            ? Number(meta.pre_post_deadline_check_ms)
+            : null,
           expected_order_id: String(meta.expected_order_id || "") || null,
           signed_order_prepared: Boolean(meta.signed_order_prepared),
           exchange_post_started: Boolean(meta.exchange_post_started),
@@ -1401,7 +2333,7 @@ export class ClobOrderService {
       .finally(() => {
         this.inflight.delete(key);
       });
-    if (!priorityEntry) {
+    if (!isSell && !priorityEntry && !parallelCopyFollow) {
       this.submitChain = promise.catch(() => {});
     }
     this.inflight.set(key, { promise, started_ms: acceptedMs, accepted_at: acceptedAt, lane });
@@ -1442,13 +2374,29 @@ export class ClobOrderService {
     };
     const tokenID = String(rawPayload.token_id || rawPayload.tokenID || rawPayload.token || "").trim();
     const price = Number(rawPayload.price);
-    const size = Number(rawPayload.size);
+    let size = Number(rawPayload.size);
     const amount = Number(rawPayload.amount);
     const sideRaw = String(rawPayload.side || "BUY").toUpperCase();
     const side = sideRaw === "SELL" ? Side.SELL : Side.BUY;
     const orderTypeRaw = String(rawPayload.order_type || rawPayload.orderType || "GTC").toUpperCase();
     const orderType = OrderType[orderTypeRaw] || OrderType.GTC;
     const isMarket = ["FOK", "FAK"].includes(orderTypeRaw);
+    const explicitMarketableLimit = isMarket
+      && Number.isFinite(price)
+      && Number.isFinite(size)
+      && truthy(env("PM_CLOB_EXPLICIT_FAK_LIMIT_ORDER", "1"), true);
+    // A controlled basket reduction is a price-protected limit FAK, not a
+    // naked market order.  Permit this one explicit SELL shape through the
+    // gateway's limit-only boundary while keeping ordinary FAK/FOK callers
+    // behind the existing allow_market gate.
+    const controlledRebalanceSellFak = (
+      side === Side.SELL
+      && orderTypeRaw === "FAK"
+      && explicitMarketableLimit
+      && rawPayload.allow_market === false
+      && String(rawPayload.order_execution_domain || "") === "settlement_floor_basket"
+      && String(rawPayload.order_intent_action || "") === "controlled_rebalance"
+    );
     const postOnly = truthy(
       rawPayload.post_only ?? rawPayload.postOnly ?? env("PM_CLOB_POST_ONLY", "0")
     );
@@ -1460,10 +2408,11 @@ export class ClobOrderService {
     if (!this.client) {
       throw errorWithMeta(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
     }
+    this.ensureTokenConditionFromDb(tokenID);
     if (truthy(env("PM_CLOB_FORCE_PROXY", "0")) && this.proxy?.mode !== "proxy") {
       throw errorWithMeta(`proxy_required_unavailable:${this.proxy?.mode || "unknown"}`);
     }
-    if (isMarket && !allowMarket) {
+    if (isMarket && !allowMarket && !controlledRebalanceSellFak) {
       throw errorWithMeta(`limit_only_order_type:${orderTypeRaw}`);
     }
     if (postOnly && isMarket) {
@@ -1482,19 +2431,16 @@ export class ClobOrderService {
     this.rememberTokenMetadata(tokenID, tickSize, negRisk, "place_order_payload");
 
     const builderCode = env("POLY_BUILDER_CODE", env("PM_BUILDER_CODE", "")).trim();
-    const sellMarketableLimit = isMarket
-      && side === Side.SELL
-      && Number.isFinite(price)
-      && Number.isFinite(size)
-      && truthy(env("PM_CLOB_SELL_MARKETABLE_LIMIT_ORDER", "1"), true);
-
     let response;
     let signedOrder;
     let expectedOrderID = "";
     let exchangePostStarted = false;
     let exchangePostStartedAt = "";
-    const assertDirectEntryDeadline = () => {
-      const status = directEntryHardDeadline(rawPayload);
+    let orderBuildMs = null;
+    let signedPersistMs = null;
+    let prePostDeadlineCheckMs = null;
+    const assertTargetDirectEntryDeadline = () => {
+      const status = targetDirectEntryHardDeadline(rawPayload);
       if (!status.ok) {
         throw errorWithMeta(status.reason, {
           hard_deadline_at: status.deadline_at || null,
@@ -1528,7 +2474,7 @@ export class ClobOrderService {
         response: prepared,
       });
     };
-    if (isMarket && !sellMarketableLimit) {
+    if (isMarket && !explicitMarketableLimit) {
       let finalAmount = Number.isFinite(amount) ? amount : NaN;
       if (side === Side.SELL && Number.isFinite(size)) finalAmount = size;
       if (side !== Side.SELL && !Number.isFinite(finalAmount) && Number.isFinite(size) && Number.isFinite(price)) {
@@ -1538,6 +2484,7 @@ export class ClobOrderService {
       if (!Number.isFinite(finalAmount) || finalAmount <= 0) throw errorWithMeta("missing_args:amount");
       const submitStarted = Date.now();
       try {
+        const buildStarted = Date.now();
         signedOrder = await this.client.createMarketOrder({
           tokenID,
           side,
@@ -1545,16 +2492,26 @@ export class ClobOrderService {
           ...(Number.isFinite(price) ? { price } : {}),
           ...(builderCode ? { builderCode } : {}),
         }, { tickSize, negRisk });
+        orderBuildMs = Date.now() - buildStarted;
+        const persistStarted = Date.now();
         persistSignedPrepared();
-        assertDirectEntryDeadline();
+        signedPersistMs = Date.now() - persistStarted;
+        const deadlineCheckStarted = Date.now();
+        assertTargetDirectEntryDeadline();
+        prePostDeadlineCheckMs = Date.now() - deadlineCheckStarted;
         exchangePostStartedAt = new Date().toISOString();
         exchangePostStarted = true;
-        response = await this.client.postOrder(signedOrder, orderType, false, deferExec);
+        response = this.proxy?.mode === "proxy"
+          ? await this.postOrderViaProxy(signedOrder, orderType, false, deferExec)
+          : await this.client.postOrder(signedOrder, orderType, false, deferExec);
       } catch (err) {
         err.serviceMeta = metaNow({
           submit_call_ms: Date.now() - submitStarted,
           expected_order_id: expectedOrderID || null,
           signed_order_prepared: Boolean(expectedOrderID),
+          order_build_ms: orderBuildMs,
+          signed_persist_ms: signedPersistMs,
+          pre_post_deadline_check_ms: prePostDeadlineCheckMs,
           exchange_post_started: exchangePostStarted,
           exchange_post_started_at: exchangePostStartedAt || null,
         });
@@ -1563,6 +2520,16 @@ export class ClobOrderService {
     } else {
       const submitStarted = Date.now();
       try {
+        // Protected BUY FAK/FOK orders must have a cent-aligned maker amount.
+        // The exchange permits up to four decimal taker shares, but the
+        // maker USDC amount is cent precision.  Round only downward so a
+        // protected FAK never increases exposure; the caller's residual
+        // reconciliation path will place any remainder separately.
+        if (explicitMarketableLimit && ["FAK", "FOK"].includes(orderTypeRaw) && side === Side.BUY) {
+          size = alignMarketBuySizeToMakerCents(price, size);
+          if (!Number.isFinite(size) || size <= 0) throw errorWithMeta("market_buy_size_nonpositive_after_precision_alignment");
+        }
+        const buildStarted = Date.now();
         signedOrder = await this.client.createOrder({
           tokenID,
           price,
@@ -1570,16 +2537,26 @@ export class ClobOrderService {
           side,
           ...(builderCode ? { builderCode } : {}),
         }, { tickSize, negRisk });
+        orderBuildMs = Date.now() - buildStarted;
+        const persistStarted = Date.now();
         persistSignedPrepared();
-        assertDirectEntryDeadline();
+        signedPersistMs = Date.now() - persistStarted;
+        const deadlineCheckStarted = Date.now();
+        assertTargetDirectEntryDeadline();
+        prePostDeadlineCheckMs = Date.now() - deadlineCheckStarted;
         exchangePostStartedAt = new Date().toISOString();
         exchangePostStarted = true;
-        response = await this.client.postOrder(signedOrder, orderType, postOnly, deferExec);
+        response = this.proxy?.mode === "proxy"
+          ? await this.postOrderViaProxy(signedOrder, orderType, postOnly, deferExec)
+          : await this.client.postOrder(signedOrder, orderType, postOnly, deferExec);
       } catch (err) {
         err.serviceMeta = metaNow({
           submit_call_ms: Date.now() - submitStarted,
           expected_order_id: expectedOrderID || null,
           signed_order_prepared: Boolean(expectedOrderID),
+          order_build_ms: orderBuildMs,
+          signed_persist_ms: signedPersistMs,
+          pre_post_deadline_check_ms: prePostDeadlineCheckMs,
           exchange_post_started: exchangePostStarted,
           exchange_post_started_at: exchangePostStartedAt || null,
         });
@@ -1593,12 +2570,19 @@ export class ClobOrderService {
     if (!response || !response.orderID) {
       throw errorWithMeta(`missing_order_id:${JSON.stringify(response || {})}`);
     }
+    this.cachedCollateral = null;
+    this.cachedConditional.delete(tokenID);
+    if (side === Side.BUY) this.registeredPositionTokens.add(tokenID);
     return {
       ok: true,
       orderID: response.orderID,
       expected_order_id: expectedOrderID || response.orderID,
       expected_order_id_matches: !expectedOrderID || expectedOrderID === response.orderID,
       status: response.status,
+      original_size: response.original_size ?? response.originalSize ?? (Number.isFinite(size) ? size : null),
+      size_matched: response.size_matched ?? response.sizeMatched ?? response.matched_size
+        ?? response.takingAmount ?? response.taking_amount ?? null,
+      exchange_response: response,
       source: SERVICE_NAME,
       service_pid: process.pid,
       idempotency_key: idempotencyKey,
@@ -1613,9 +2597,164 @@ export class ClobOrderService {
       queue_wait_ms: queueWaitMs,
       service_submit_ms: Date.now() - started,
       service_total_ms: Math.max(0, Date.now() - acceptedMs),
+      order_build_ms: orderBuildMs,
+      signed_persist_ms: signedPersistMs,
+      pre_post_deadline_check_ms: prePostDeadlineCheckMs,
       tick_size: tickSize,
       neg_risk: negRisk,
     };
+  }
+
+  async cancelOrder(rawPayload) {
+    const orderID = String(rawPayload?.order_id || rawPayload?.orderID || "").trim();
+    const idempotencyKey = String(rawPayload?.idempotency_key || "").trim();
+    if (!orderID || !idempotencyKey) throw new Error("cancel_order_identity_missing");
+    if (!this.client) throw new Error(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
+    const startedAt = new Date().toISOString();
+    try {
+      const response = this.proxy?.mode === "proxy"
+        ? await this.requestJsonViaProxy("DELETE", "/order", { orderID })
+        : await this.client.cancelOrder({ orderID });
+      if (response && response.error) {
+        throw new Error(String(response.error));
+      }
+      return {
+        ok: true,
+        cancelled: true,
+        orderID,
+        idempotency_key: idempotencyKey,
+        cancel_post_started: true,
+        cancel_post_started_at: startedAt,
+        response,
+        source: SERVICE_NAME,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        reconcile_required: true,
+        orderID,
+        idempotency_key: idempotencyKey,
+        cancel_post_started: true,
+        cancel_post_started_at: startedAt,
+        error: redactErrorText(err?.message || String(err || "cancel_order_failed")),
+        source: SERVICE_NAME,
+      };
+    }
+  }
+
+  async lookupExchangeOrder(rawPayload) {
+    const orderID = String(rawPayload?.order_id || rawPayload?.orderID || "").trim();
+    if (!orderID) throw new Error("lookup_exchange_order_identity_missing");
+    if (!this.client) throw new Error(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
+    try {
+      const rawResponse = this.proxy?.mode === "proxy"
+        ? await this.requestJsonViaProxy("GET", `/data/order/${orderID}`)
+        : await this.client.getOrder(orderID);
+      const response = unwrapProxyLookupResponse(rawResponse);
+      if (response && response.error) {
+        throw new Error(String(response.error));
+      }
+      // A null/empty response is not evidence that an order is open.  The
+      // CLOB endpoint can return an empty JSON payload during proxy failure or
+      // for an order that is no longer queryable.  Treating that as `open`
+      // previously allowed reconciliation to mark a partial/unknown order as
+      // settled and could cause a duplicate top-up.
+      const recoveredOrderID = String(response?.id || response?.orderID || "").trim();
+      if (!response || typeof response !== "object" || Array.isArray(response)) {
+        return {
+          ok: false,
+          orderID,
+          status: "unknown",
+          error: "clob_order_lookup_empty_response",
+          source: SERVICE_NAME,
+        };
+      }
+      if (!recoveredOrderID || recoveredOrderID.toLowerCase() !== orderID.toLowerCase()) {
+        return {
+          ok: false,
+          orderID,
+          status: "unknown",
+          error: "clob_order_lookup_identity_mismatch",
+          recovered_order_id: recoveredOrderID || null,
+          response,
+          source: SERVICE_NAME,
+        };
+      }
+      return { ok: true, orderID, status: response.status || "unknown", response, source: SERVICE_NAME };
+    } catch (err) {
+      const message = redactErrorText(err?.message || String(err || "lookup_exchange_order_failed"));
+      // The authenticated order endpoint may represent a successfully
+      // cancelled order as not found.  Return explicit evidence; the Python
+      // coordinator still requires the prior cancel POST identity.
+      const notFound = /404|not.?found/i.test(message);
+      return { ok: notFound, orderID, status: notFound ? "cancelled" : "unknown", error: notFound ? "" : message, source: SERVICE_NAME };
+    }
+  }
+
+  async lookupOpenOrders(rawPayload = {}) {
+    if (!this.client) throw new Error(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
+    const maxPagesRaw = Number(rawPayload?.max_pages ?? 3);
+    const maxPages = Number.isFinite(maxPagesRaw) && maxPagesRaw > 0 ? Math.min(10, Math.floor(maxPagesRaw)) : 3;
+    const requestedAsset = String(rawPayload?.asset_id || rawPayload?.token_id || "").trim();
+    const requestedMarket = String(rawPayload?.market || "").trim();
+    const collected = [];
+    let cursor = "MA==";
+    try {
+      for (let page = 0; page < maxPages && cursor !== "LTE="; page += 1) {
+        // The account-wide /data/orders page can become very slow behind a
+        // proxy when the account has a large historical order set.  Preserve
+        // the caller's exact market/asset scope in the upstream request so a
+        // reconciliation probe can stay bounded to the target basket.
+        const query = { next_cursor: cursor };
+        if (requestedMarket) query.market = requestedMarket;
+        if (requestedAsset) query.asset_id = requestedAsset;
+        const response = this.proxy?.mode === "proxy"
+          ? await this.requestJsonViaProxy("GET", "/data/orders", undefined, query)
+          : await this.client.getOpenOrders(undefined, true, cursor);
+        if (Array.isArray(response)) {
+          collected.push(...response);
+          break;
+        }
+        if (!response || typeof response !== "object" || Array.isArray(response)) {
+          return { ok: false, status: "unknown", error: "clob_open_orders_response_invalid", source: SERVICE_NAME };
+        }
+        const rows = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray(response.orders)
+            ? response.orders
+            : Array.isArray(response.open_orders)
+              ? response.open_orders
+              : null;
+        if (!rows) {
+          return { ok: false, status: "unknown", error: "clob_open_orders_response_shape_invalid", response, source: SERVICE_NAME };
+        }
+        collected.push(...rows);
+        const next = String(response.next_cursor || response.nextCursor || "LTE=").trim();
+        if (!next || next === cursor || rows.length === 0) break;
+        cursor = next;
+      }
+      const openOrders = collected.filter((row) => {
+        if (!row || typeof row !== "object") return false;
+        const asset = String(row.asset_id || row.assetId || row.token_id || row.tokenId || "").trim();
+        const market = String(row.market || row.condition_id || row.conditionId || "").trim();
+        return (!requestedAsset || asset === requestedAsset) && (!requestedMarket || market === requestedMarket);
+      });
+      return {
+        ok: true,
+        status: "ok",
+        open_orders: openOrders,
+        total_open_orders: collected.length,
+        pages_checked: maxPages,
+        source: SERVICE_NAME,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        status: "unknown",
+        error: redactErrorText(err?.message || String(err || "lookup_open_orders_failed")),
+        source: SERVICE_NAME,
+      };
+    }
   }
 }
 
@@ -1650,15 +2789,25 @@ async function handle(req, res) {
       sendJson(res, 200, await service.executionGuardSnapshot(payload));
       return;
     }
-    if (req.method === "POST" && parsedUrl.pathname === "/dynamic-three-leg-snapshot") {
-      const payload = await readJsonBody(req);
-      sendJson(res, 200, await service.dynamicThreeLegSnapshot(payload));
-      return;
-    }
     if (req.method === "POST" && parsedUrl.pathname === "/place-order") {
       const payload = await readJsonBody(req);
       const response = await service.placeOrderWithIdempotency(payload);
       sendJson(res, 200, response);
+      return;
+    }
+    if (req.method === "POST" && parsedUrl.pathname === "/cancel-order") {
+      const payload = await readJsonBody(req);
+      sendJson(res, 200, await service.cancelOrder(payload));
+      return;
+    }
+    if (req.method === "POST" && parsedUrl.pathname === "/lookup-exchange-order") {
+      const payload = await readJsonBody(req);
+      sendJson(res, 200, await service.lookupExchangeOrder(payload));
+      return;
+    }
+    if (req.method === "POST" && parsedUrl.pathname === "/lookup-open-orders") {
+      const payload = await readJsonBody(req);
+      sendJson(res, 200, await service.lookupOpenOrders(payload));
       return;
     }
     sendJson(res, 404, { ok: false, error: "not_found" });

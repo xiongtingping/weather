@@ -1,0 +1,12 @@
+{
+  "calls_order_gateway": false,
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "reason": "OperationalError:attempt to write a readonly database",
+  "receipt_sha256": "171b5dd52822446bd1440efe6f3da554b92568d83c745e0235fb466c99888df4",
+  "schema": "bayes_basket_target_post_migration_no_live_run_v1",
+  "stage": "coordinator_exception",
+  "state": "BLOCKED_FAIL_CLOSED"
+}

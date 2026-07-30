@@ -1,0 +1,58 @@
+{
+  "approved_at": "2026-07-16T10:52:01Z",
+  "artifact_sha256": "9035ff2267f41f7092638f85a7f47061df5c2e7a09599d59b5a205ad682e453c",
+  "forbidden_legacy_no": [
+    "remote_no",
+    "trajectory_no_current_report",
+    "current_report_temperature_no"
+  ],
+  "forbidden_runtime_gates": [
+    "EV",
+    "Edge",
+    "LCB",
+    "fair_value",
+    "buy_price_cap"
+  ],
+  "legs": {
+    "second_yes": {
+      "entry_window": "strictly_within_final_30_minutes_before_predicted_peak",
+      "max_notional_usdc": 4.99,
+      "rank": 2,
+      "settlement_behavior": "small_lottery_held_to_settlement",
+      "side": "YES"
+    },
+    "strongly_excluded_no": {
+      "max_notional_usdc": 100.0,
+      "selection": "joint_physical_hard_exclusion_certificate_only",
+      "side": "NO"
+    },
+    "top_yes_wave": {
+      "max_notional_usdc": 20.0,
+      "rank": 1,
+      "settlement_behavior": "wave_only_not_held_to_settlement",
+      "side": "YES",
+      "take_profit_price": 0.9
+    }
+  },
+  "posterior_authority": "unique_v6_market_bucket_posterior_ssot",
+  "role_selection": "dynamic_on_every_committed_posterior",
+  "runtime_sha256": {
+    "dynamic_three_leg_trading_plan_runtime.py": "3b75080ce3baba63d4886f3732719c9e73e0e89142e270f47937e65061a97f16",
+    "dynamic_three_leg_transition_runtime.py": "cdda9154468f6743fda9223852e2780d9041a712a5d15d5ded89a84382e165f1",
+    "dynamic_top_yes_wave_exit_runtime.py": "24de8060d0eedab6f8e8bb5c10425f3e9e0e65c73a2ca6af55f6844f054f931b",
+    "production_dynamic_three_leg_decision_writer.py": "1e70814732124fafd95e9447935b0267e48fe0669e75a84dc9c83225a3190a6b",
+    "production_dynamic_three_leg_input_provider.py": "0a73f8482f5fc1736a008bd4ba2b5aae1f7fef141b91e938f3bef625a79521fa",
+    "production_market_alpha_take_profit_coordinator.py": "4fc05fffe08c99c0f2d27ea97ed8e89d3c7b006438099d9a5dbaa3ff8790caba",
+    "production_market_alpha_take_profit_writer.py": "503367d9dade4aa6cdc84e8989999ce2c9f5c50b6bb451e33faeaccf8aad5a09",
+    "resident_dynamic_three_leg_intent_submitter.py": "27c176a41ed693ff3219b8b84828d9ae573f06b5f902917c3902c4eed3fe532b",
+    "strong_posterior_three_leg_strategy.py": "d1bf6eeae216c8c367aaa5cb3319716ca9f51cd73b029d1c810b8fd99519f041",
+    "trade_exit_reason_contract.py": "e745557edf13864c1beafa559a7dbdd9b0f59ba5cbeb9a5b3c8e821eb1db9e2d"
+  },
+  "schema": "dynamic_three_leg_strategy_artifact_v1",
+  "state": "accepted_for_production",
+  "t1_to_t5": {
+    "hard_deadline_ms": 3000,
+    "historical_samples_block_initial_live": false,
+    "late_post_forbidden": true
+  }
+}

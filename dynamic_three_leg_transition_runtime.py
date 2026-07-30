@@ -22,6 +22,16 @@ TARGET_REALIZATION_REASON_BY_LEG = {
     "second_yes": "target_realization_second_yes_invalidated",
     "strongly_excluded_no": "target_realization_hard_zero_no_invalidated",
 }
+LEG_SIDE = {
+    "top_yes_wave": "YES",
+    "second_yes": "YES",
+    "strongly_excluded_no": "NO",
+}
+LEG_NOTIONAL_CAP_USDC = {
+    "top_yes_wave": 20.0,
+    "second_yes": 4.99,
+    "strongly_excluded_no": 100.0,
+}
 
 
 def _text(value: Any) -> str:
@@ -129,6 +139,12 @@ def build_dynamic_three_leg_transition_plan(
         if not bucket or side not in {"YES", "NO"} or strategy_leg not in TARGET_REALIZATION_REASON_BY_LEG or target is None or target <= 0:
             blockers.append("dynamic_transition_desired_candidate_invalid")
             continue
+        if side != LEG_SIDE[strategy_leg]:
+            blockers.append("dynamic_transition_desired_candidate_side_role_mismatch")
+            continue
+        if target > LEG_NOTIONAL_CAP_USDC[strategy_leg] + 1e-9:
+            blockers.append("dynamic_transition_desired_candidate_notional_cap_exceeded")
+            continue
         key = (strategy_leg, bucket, side)
         if key in desired:
             blockers.append("dynamic_transition_desired_candidate_duplicate")
@@ -192,10 +208,11 @@ def build_dynamic_three_leg_transition_plan(
     allocation_epsilon = 0.01
 
     # Current role comes from the latest desired plan; the lot's strategy_leg
-    # remains immutable entry provenance.  A former top YES may be carried as
-    # the same bucket's current second YES and trimmed to its smaller budget.
-    # The reverse is forbidden: a second-YES entry lot cannot acquire top-wave
-    # market-alpha authority without a sell/re-entry under the top leg.
+    # remains immutable entry provenance.  A YES lot follows its bucket in
+    # both directions: top->second is trimmed to the smaller budget, while
+    # second->top is retained and may be topped up.  Requiring a sell/re-entry
+    # merely to change role would freeze the old posterior and add avoidable
+    # latency, spread and exchange risk.
     allocated_lots: dict[tuple[str, str, str], list[dict[str, Any]]] = {
         key: [] for key in desired
     }
@@ -204,10 +221,16 @@ def build_dynamic_three_leg_transition_plan(
         allocation_key: tuple[str, str, str] | None = None
         if source_key in desired:
             allocation_key = source_key
-        elif source_key[0] == "top_yes_wave" and source_key[2] == "YES":
-            downgrade_key = ("second_yes", source_key[1], source_key[2])
-            if downgrade_key in desired:
-                allocation_key = downgrade_key
+        elif source_key[0] in {"top_yes_wave", "second_yes"} and source_key[2] == "YES":
+            dynamic_role_keys = [
+                key
+                for key in desired
+                if key[1] == source_key[1]
+                and key[2] == "YES"
+                and key[0] in {"top_yes_wave", "second_yes"}
+            ]
+            if len(dynamic_role_keys) == 1:
+                allocation_key = dynamic_role_keys[0]
         if allocation_key is None:
             unassigned_lots.extend(lots)
         else:

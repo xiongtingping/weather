@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "RETIRED_EXTERNAL_DISK_PRODUCTION_CUTOVER_FORBIDDEN: use scripts/cutover_v6_probability_and_soft_market_projection.sh" >&2
+exit 2
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -151,7 +154,7 @@ restore_database() {
 }
 
 reclaim_quiescent_writer_lease() {
-  local lock="$ROOT/data/db_writer.lock"
+  local lock="$ROOT/data/db_writer.user.lock"
   local holder_pid=""
   [ -d "$lock" ] || return 0
   holder_pid="$(cat "$lock/pid" 2>/dev/null || true)"

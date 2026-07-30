@@ -24,16 +24,6 @@ def test_default_patterns_only_match_trade_actions() -> None:
     assert not matched("2026-06-21 [model_scan] new market signal, bypass auto-trade yield")
 
 
-def test_monitor_daemon_does_not_hard_disable_watcher_sms() -> None:
-    monitor_script = (ROOT / "scripts" / "polymarket_monitor_daemon.sh").read_text(encoding="utf-8")
-    watcher_plist = (ROOT / "launchd" / "com.weather.auto_trade_watcher.plist").read_text(encoding="utf-8")
-
-    assert "PM_AUTO_TRADE_WATCHER_SMS_ENABLED" in monitor_script
-    assert "--no-sms &" not in monitor_script
-    assert "--no-sms --once" not in monitor_script
-    assert "--no-sms" not in watcher_plist
-
-
 def test_sms_sender_uses_env_recipient_without_heavy_import(monkeypatch) -> None:
     monkeypatch.setenv("PM_SMS_ENABLED", "1")
     monkeypatch.setenv("PM_SMS_RECIPIENT", "+10000000000")

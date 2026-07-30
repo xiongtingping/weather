@@ -33,7 +33,7 @@ def load_monitor_job_contract(path: Path) -> dict[str, Any]:
 
 
 def select_latest_plannable_run(*, curve_contract: Mapping[str, Any], provider_id: str, target_event_date: str, now_utc: datetime) -> str:
-    """Choose only a completed-or-earlier nominal run; transport still verifies reality."""
+    """Choose the newest nominal run available now; transport verifies reality."""
 
     value = _mapping(curve_contract)
     provider = _mapping(_mapping(value.get("providers")).get(provider_id))
@@ -43,7 +43,9 @@ def select_latest_plannable_run(*, curve_contract: Mapping[str, Any], provider_i
         target_start = datetime.fromisoformat(f"{target_event_date}T00:00:00").replace(tzinfo=zone).astimezone(timezone.utc)
     except Exception:
         return ""
-    ceiling = min(now_utc.astimezone(timezone.utc), target_start)
+    # Do not cap at local target midnight.  A same-day 06Z/12Z/18Z run is a
+    # legitimate revision for the still-open hours of the target day.
+    ceiling = now_utc.astimezone(timezone.utc)
     candidates: list[datetime] = []
     for days_back in range(0, 4):
         day = (ceiling - timedelta(days=days_back)).date()
@@ -55,7 +57,7 @@ def select_latest_plannable_run(*, curve_contract: Mapping[str, Any], provider_i
 
 
 def select_plannable_run_candidates(
-    *, curve_contract: Mapping[str, Any], provider_id: str, target_event_date: str, now_utc: datetime, limit: int
+    *, curve_contract: Mapping[str, Any], provider_id: str, target_event_date: str, now_utc: datetime, limit: int, minimum_run_age_sec: float = 0.0
 ) -> list[str]:
     """Return newest-first declared runs eligible for one transport fallback.
 
@@ -71,7 +73,11 @@ def select_plannable_run_candidates(
         target_start = datetime.fromisoformat(f"{target_event_date}T00:00:00").replace(tzinfo=zone).astimezone(timezone.utc)
     except Exception:
         return []
-    ceiling = min(now_utc.astimezone(timezone.utc), target_start)
+    minimum_age = max(0.0, float(minimum_run_age_sec))
+    age_ceiling = now_utc.astimezone(timezone.utc) - timedelta(seconds=minimum_age)
+    # Run eligibility is publication-time based, not target-midnight based.
+    # The curve planner below keeps only valid points in the target local day.
+    ceiling = age_ceiling
     candidates: list[datetime] = []
     for days_back in range(0, 4):
         day = (ceiling - timedelta(days=days_back)).date()
@@ -104,7 +110,7 @@ def _persist_complete_daily_peak_revision(
 
 
 def build_official_nwp_daily_curve_monitor_job(
-    *, job_contract: Mapping[str, Any], curve_contract: Mapping[str, Any], now_utc: datetime | None = None, execute: bool = False, curve_source_root: Path, catalog_path: Path, completed_provider_runs: Mapping[str, Any] | None = None, collectors: Mapping[str, Collector] | None = None
+    *, job_contract: Mapping[str, Any], curve_contract: Mapping[str, Any], now_utc: datetime | None = None, execute: bool = False, curve_source_root: Path, catalog_path: Path, completed_provider_runs: Mapping[str, Any] | None = None, completed_provider_target_runs: Mapping[str, Any] | None = None, collectors: Mapping[str, Collector] | None = None
 ) -> dict[str, Any]:
     job = _mapping(job_contract)
     curve = _mapping(curve_contract)
@@ -114,9 +120,21 @@ def build_official_nwp_daily_curve_monitor_job(
         blockers.append("official_nwp_curve_monitor_job_contract_invalid")
     try:
         zone = ZoneInfo(_text(curve.get("target_timezone")))
-        target_event_date = (now.astimezone(zone).date() + timedelta(days=int(job.get("target_day_offset") or 1))).isoformat()
+        raw_offsets = job.get("target_day_offsets")
+        if isinstance(raw_offsets, list) and raw_offsets:
+            target_day_offsets = sorted(set(int(item) for item in raw_offsets))
+        else:
+            raw_target_offset = job.get("target_day_offset")
+            target_day_offsets = [int(raw_target_offset) if raw_target_offset is not None else 1]
+        if any(offset < 0 or offset > 3 for offset in target_day_offsets):
+            raise ValueError("target_day_offset_out_of_supported_range")
+        rotation_interval = max(3600, int(job.get("target_day_rotation_interval_sec") or 10800))
+        target_day_offset = target_day_offsets[int(now.timestamp() // rotation_interval) % len(target_day_offsets)]
+        target_event_date = (now.astimezone(zone).date() + timedelta(days=target_day_offset)).isoformat()
     except Exception:
         target_event_date = ""
+        target_day_offsets = []
+        target_day_offset = 0
         blockers.append("official_nwp_curve_monitor_target_timezone_invalid")
     providers = [str(item) for item in job.get("providers") or [] if str(item)]
     if not providers:
@@ -134,6 +152,10 @@ def build_official_nwp_daily_curve_monitor_job(
         max_run_fallbacks = max(1, min(4, int(_mapping(job.get("execution_budget")).get("max_run_fallbacks") or 2)))
     except (TypeError, ValueError):
         max_run_fallbacks = 2
+    try:
+        minimum_run_age_sec = max(0.0, float(_mapping(job.get("execution_budget")).get("minimum_run_age_sec") or 0.0))
+    except (TypeError, ValueError):
+        minimum_run_age_sec = 0.0
     run_candidates = {
         provider: select_plannable_run_candidates(
             curve_contract=curve,
@@ -141,20 +163,26 @@ def build_official_nwp_daily_curve_monitor_job(
             target_event_date=target_event_date,
             now_utc=now,
             limit=max_run_fallbacks,
+            minimum_run_age_sec=minimum_run_age_sec,
         )
         for provider in providers
     }
     runs = {provider: (run_candidates[provider][0] if run_candidates[provider] else "") for provider in providers}
     planned = []
     completed = _mapping(completed_provider_runs)
+    completed_targets = _mapping(completed_provider_target_runs)
+    completion_key = lambda provider: f"{provider}|{target_event_date}"
     for provider in providers:
         candidates = run_candidates[provider]
         run_at_utc = candidates[0] if candidates else ""
         if not run_at_utc:
             planned.append({"provider_id": provider, "state": "blocked", "blockers": ["official_nwp_curve_monitor_plannable_run_missing"]})
             continue
-        if execute and bool(job.get("one_run_per_provider_per_target_day")) and _text(completed.get(provider)) == run_at_utc:
-            planned.append({"provider_id": provider, "run_at_utc": run_at_utc, "ok": True, "state": "already_collected", "execute": False, "blockers": []})
+        completed_run = _text(completed_targets.get(completion_key(provider)))
+        if not completed_run and not completed_targets and len(target_day_offsets) <= 1:
+            completed_run = _text(completed.get(provider))
+        if execute and bool(job.get("one_run_per_provider_per_target_day")) and completed_run == run_at_utc:
+            planned.append({"provider_id": provider, "target_day_offset": target_day_offset, "target_event_date": target_event_date, "run_at_utc": run_at_utc, "ok": True, "state": "already_collected", "execute": False, "blockers": []})
             continue
         attempts: list[dict[str, Any]] = []
         for candidate_run in candidates if execute else candidates[:1]:
@@ -167,6 +195,7 @@ def build_official_nwp_daily_curve_monitor_job(
                 catalog_path=catalog_path,
                 execute=execute,
                 collectors=collectors,
+                now_utc=now,
                 max_point_workers=int(_mapping(job.get("execution_budget")).get("max_parallel_point_collects") or 1),
             )
             attempts.append(attempt)
@@ -179,6 +208,8 @@ def build_official_nwp_daily_curve_monitor_job(
             "blockers": ["official_nwp_curve_monitor_plannable_run_missing"],
         }
         final["attempted_run_at_utc"] = [str(item.get("run_at_utc") or "") for item in attempts]
+        final["target_day_offset"] = target_day_offset
+        final["target_event_date"] = target_event_date
         final["fallback_run_used"] = bool(
             final.get("ok") is True
             and len(attempts) > 1
@@ -200,10 +231,12 @@ def build_official_nwp_daily_curve_monitor_job(
         planned.append(final)
     all_ok = all(item.get("ok") is True for item in planned)
     next_completed = dict(completed)
+    next_completed_targets = dict(completed_targets)
     for item in planned:
         if item.get("ok") is True and item.get("state") in {"collected", "already_collected"} and _text(item.get("provider_id")) and _text(item.get("run_at_utc")):
             next_completed[_text(item.get("provider_id"))] = _text(item.get("run_at_utc"))
-    return {"schema": SCHEMA_VERSION, "ok": all_ok, "state": "executed" if execute and all_ok else "planned" if all_ok else "partial_or_blocked", "target_event_date": target_event_date, "now_utc": now.isoformat().replace("+00:00", "Z"), "execute": bool(execute), "provider_runs": runs, "provider_run_candidates": run_candidates, "provider_results": planned, "completed_provider_runs": next_completed, "boundary": {"low_frequency_monitor_child_only": True, "hot_path_network_acquisition": False, "run_fallback_uses_one_complete_older_official_run_only": True, "writes_archive_db": False, "writes_posterior": False, "places_orders": False}}
+            next_completed_targets[completion_key(_text(item.get("provider_id")))] = _text(item.get("run_at_utc"))
+    return {"schema": SCHEMA_VERSION, "ok": all_ok, "state": "executed" if execute and all_ok else "planned" if all_ok else "partial_or_blocked", "target_event_date": target_event_date, "target_day_offset": target_day_offset, "target_day_offsets": target_day_offsets, "now_utc": now.isoformat().replace("+00:00", "Z"), "execute": bool(execute), "provider_runs": runs, "provider_run_candidates": run_candidates, "provider_run_minimum_age_sec": minimum_run_age_sec, "provider_results": planned, "completed_provider_runs": next_completed, "completed_provider_target_runs": next_completed_targets, "boundary": {"low_frequency_monitor_child_only": True, "hot_path_network_acquisition": False, "run_fallback_uses_one_complete_older_official_run_only": True, "writes_archive_db": False, "writes_posterior": False, "places_orders": False}}
 
 
 __all__ = ["JOB_SCHEMA_VERSION", "SCHEMA_VERSION", "build_official_nwp_daily_curve_monitor_job", "load_monitor_job_contract", "select_latest_plannable_run", "select_plannable_run_candidates"]

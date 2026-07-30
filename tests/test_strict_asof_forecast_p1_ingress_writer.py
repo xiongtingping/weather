@@ -127,6 +127,36 @@ def test_tier_a_ingress_appends_once_and_does_not_create_posterior_or_fact() -> 
     assert conn.execute("SELECT COUNT(*) FROM posterior_commit_outbox").fetchone()[0] == 0
 
 
+def test_tier_a_ingress_accepts_forward_extended_posterior_tables() -> None:
+    conn = sqlite3.connect(":memory:")
+    _initialize_source_observations(conn)
+    apply_forward_schema(conn)
+    conn.execute("ALTER TABLE posterior_checkpoints ADD COLUMN checkpoint_probability_schema TEXT")
+    conn.execute("ALTER TABLE strong_observation_updates ADD COLUMN probability_update_schema TEXT")
+
+    schema = verify_strict_forecast_p1_ingress_schema(conn)
+    result = persist_tier_a_forecast_p1_proposal(conn, _proposal())
+
+    assert schema["ok"] is True
+    assert set(schema["accepted_p1_extension_columns"]) == {"posterior_checkpoints", "strong_observation_updates"}
+    assert result["state"] == "appended"
+
+
+def test_tier_a_ingress_is_idempotent_with_legacy_text_boolean_affinity() -> None:
+    conn = sqlite3.connect(":memory:")
+    _initialize_source_observations(conn)
+    # Mirror production's legacy TEXT affinity without changing identity.
+    conn.execute("ALTER TABLE source_observations RENAME TO source_observations_old")
+    old_sql = conn.execute("SELECT sql FROM sqlite_master WHERE name='source_observations_old'").fetchone()[0]
+    conn.execute(old_sql.replace("source_observations_old", "source_observations").replace("hard_eligible INTEGER", "hard_eligible TEXT"))
+    conn.execute("DROP TABLE source_observations_old")
+    apply_forward_schema(conn)
+    proposal = _proposal()
+    assert persist_tier_a_forecast_p1_proposal(conn, proposal)["state"] == "appended"
+    assert conn.execute("SELECT typeof(hard_eligible) FROM source_observations").fetchone()[0] == "text"
+    assert persist_tier_a_forecast_p1_proposal(conn, proposal)["state"] == "idempotent"
+
+
 def test_tier_a_ingress_rejects_header_claim_loss_and_immutable_drift() -> None:
     conn = sqlite3.connect(":memory:")
     _initialize_source_observations(conn)

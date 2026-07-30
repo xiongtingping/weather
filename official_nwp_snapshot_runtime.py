@@ -18,6 +18,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
 from typing import Any, Mapping
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
@@ -34,30 +35,59 @@ STATION_LATITUDE = 30.576
 STATION_LONGITUDE = 103.950
 _SENSITIVE_QUERY_KEYS = {"api_key", "apikey", "key", "token", "access_token", "signature", "password", "secret"}
 _FIELD_REQUESTS = (
-    ("temperature_2m_c", "2t", "heightAboveGround", "2", True),
-    ("temperature_850_c", "t", "isobaricInhPa", "850", True),
-    ("temperature_700_c", "t", "isobaricInhPa", "700", True),
-    ("relative_humidity_850_pct", "r", "isobaricInhPa", "850", False),
-    ("relative_humidity_700_pct", "r", "isobaricInhPa", "700", False),
-    ("geopotential_height_500_m", "gh", "isobaricInhPa", "500", False),
-    ("geopotential_height_850_m", "gh", "isobaricInhPa", "850", False),
-    ("u_wind_850_mps", "u", "isobaricInhPa", "850", False),
-    ("v_wind_850_mps", "v", "isobaricInhPa", "850", False),
-    ("u_wind_700_mps", "u", "isobaricInhPa", "700", False),
-    ("v_wind_700_mps", "v", "isobaricInhPa", "700", False),
+    ("temperature_2m_c", "shortName=2t,typeOfLevel=heightAboveGround,level=2", "kelvin_to_celsius"),
+    ("temperature_850_c", "shortName=t,typeOfLevel=isobaricInhPa,level=850", "kelvin_to_celsius"),
+    ("temperature_700_c", "shortName=t,typeOfLevel=isobaricInhPa,level=700", "kelvin_to_celsius"),
+    ("relative_humidity_850_pct", "shortName=r,typeOfLevel=isobaricInhPa,level=850", "identity"),
+    ("relative_humidity_700_pct", "shortName=r,typeOfLevel=isobaricInhPa,level=700", "identity"),
+    ("geopotential_height_500_m", "shortName=gh,typeOfLevel=isobaricInhPa,level=500", "identity"),
+    ("geopotential_height_850_m", "shortName=gh,typeOfLevel=isobaricInhPa,level=850", "identity"),
+    ("u_wind_850_mps", "shortName=u,typeOfLevel=isobaricInhPa,level=850", "identity"),
+    ("v_wind_850_mps", "shortName=v,typeOfLevel=isobaricInhPa,level=850", "identity"),
+    ("u_wind_700_mps", "shortName=u,typeOfLevel=isobaricInhPa,level=700", "identity"),
+    ("v_wind_700_mps", "shortName=v,typeOfLevel=isobaricInhPa,level=700", "identity"),
 )
 
 
-def _field_requests_for_provider(provider_id: str) -> tuple[tuple[str, str, str, str, bool, float], ...]:
+def _field_requests_for_provider(provider_id: str) -> tuple[tuple[str, str, str], ...]:
     """Return provider-specific GRIB aliases after any documented remap."""
 
-    rows = [(field, short, level_type, level, kelvin, 1.0) for field, short, level_type, level, kelvin in _FIELD_REQUESTS]
+    rows = list(_FIELD_REQUESTS)
     if provider_id == "icon":
         # DWD ICON's FI becomes GRIB shortName=z and retains geopotential
         # units after CDO remap; convert m²/s² to geometric height in metres.
-        rows = [
-            (field, "z" if field.startswith("geopotential_height_") else short, level_type, level, kelvin, 1.0 / 9.80665 if field.startswith("geopotential_height_") else scale)
-            for field, short, level_type, level, kelvin, scale in rows
+        rows = [(field, selector.replace("shortName=gh,", "shortName=z,"), "geopotential_to_height" if field.startswith("geopotential_height_") else conversion) for field, selector, conversion in rows]
+        rows += [
+            ("total_cloud_cover_pct", "shortName=CLCT,typeOfLevel=surface,level=0", "identity"),
+            ("low_cloud_cover_pct", "shortName=CLCL,level=800", "identity"),
+            ("middle_cloud_cover_pct", "shortName=CLCM,typeOfLevel=isobaricLayer,level=400", "identity"),
+            ("high_cloud_cover_pct", "shortName=CLCH,typeOfLevel=isobaricLayer,level=0", "identity"),
+            ("total_precipitation_mm", "shortName=tp,typeOfLevel=surface,level=0", "identity"),
+            ("convective_available_potential_energy_j_per_kg", "shortName=CAPE_ML,level=0", "identity"),
+            # Preserve DWD local GRIB identities across CDO remap; ecCodes
+            # may rename 6/27 to hcct and leave 6/26 without a shortName.
+            ("convective_cloud_base_msl_m", "discipline=0,parameterCategory=6,parameterNumber=26,level=0", "identity"),
+            ("convective_cloud_top_msl_m", "discipline=0,parameterCategory=6,parameterNumber=27,level=0", "identity"),
+            ("boundary_layer_momentum_transfer_coefficient", "shortName=cd,typeOfLevel=surface,level=0", "identity"),
+        ]
+    elif provider_id == "ecmwf":
+        rows += [
+            ("total_cloud_cover_pct", "shortName=tcc,typeOfLevel=entireAtmosphere,level=0", "fraction_to_pct"),
+            ("total_precipitation_mm", "shortName=tp,typeOfLevel=surface,level=0", "metres_to_mm"),
+            ("convective_available_potential_energy_j_per_kg", "shortName=mucape,typeOfLevel=mostUnstableParcel,level=0", "identity"),
+            ("boundary_layer_gust_mps", "shortName=10fg,typeOfLevel=heightAboveGround,level=10", "identity"),
+            ("eastward_turbulent_surface_stress_n_m2_s", "shortName=ewss,typeOfLevel=surface,level=0", "identity"),
+            ("northward_turbulent_surface_stress_n_m2_s", "shortName=nsss,typeOfLevel=surface,level=0", "identity"),
+        ]
+    elif provider_id == "gfs":
+        rows += [
+            ("total_cloud_cover_pct", "shortName=tcc,typeOfLevel=atmosphere,level=0,stepType=instant", "identity"),
+            ("total_precipitation_mm", "shortName=tp,typeOfLevel=surface,level=0", "identity"),
+            ("convective_precipitation_mm", "shortName=acpcp,typeOfLevel=surface,level=0", "identity"),
+            ("convective_available_potential_energy_j_per_kg", "shortName=cape,typeOfLevel=surface,level=0", "identity"),
+            # NCEP local table 4.2-0-3-196 is HPBL.  Some ecCodes builds do
+            # not assign it a shortName, so bind the official GRIB identity.
+            ("boundary_layer_height_m", "parameterCategory=3,parameterNumber=196,typeOfLevel=surface,level=0", "identity"),
         ]
     return tuple(rows)
 
@@ -76,7 +106,7 @@ def _iso_now() -> str:
 
 def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}")
+    temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}.{threading.get_ident()}")
     try:
         temporary.write_text(json.dumps(dict(value), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(temporary, path)
@@ -163,16 +193,40 @@ def assemble_grib2_payload(raw_paths: list[Path]) -> tuple[Path, Path]:
             temporary.unlink(missing_ok=True)
 
 
-def _parse_nearest_value(stdout: str) -> float | None:
+def _parse_nearest_record(stdout: str) -> tuple[float | None, dict[str, Any]]:
     for line in reversed(str(stdout or "").splitlines()):
         tokens = line.split()
         if not tokens:
             continue
         try:
-            return float(tokens[-1])
+            value = float(tokens[-1])
         except (TypeError, ValueError):
             continue
-    return None
+        metadata: dict[str, Any] = {}
+        if len(tokens) >= 5:
+            try:
+                metadata["start_step"] = int(tokens[0])
+                metadata["end_step"] = int(tokens[1])
+            except ValueError:
+                pass
+            metadata["step_type"] = tokens[2]
+            metadata["units"] = " ".join(tokens[3:-1])
+            if "start_step" in metadata and "end_step" in metadata:
+                metadata["accumulation_hours"] = metadata["end_step"] - metadata["start_step"]
+        return value, metadata
+    return None, {}
+
+
+def _convert_field_value(value: float, conversion: str) -> float:
+    if conversion == "kelvin_to_celsius":
+        return value - 273.15 if value > 150.0 else value
+    if conversion == "geopotential_to_height":
+        return value / 9.80665
+    if conversion == "metres_to_mm":
+        return value * 1000.0
+    if conversion == "fraction_to_pct":
+        return value * 100.0 if abs(value) <= 1.000001 else value
+    return value
 
 
 def decode_grib2_nearest_point(
@@ -196,24 +250,29 @@ def decode_grib2_nearest_point(
         features: dict[str, float] = {}
         traces: dict[str, dict[str, Any]] = {}
         missing: list[str] = []
-        for field, short_name, level_type, level, kelvin_to_celsius, multiplier in _field_requests_for_provider(provider_id):
+        for field, selector, conversion in _field_requests_for_provider(provider_id):
             command = [
                 binary,
                 "-w",
-                f"shortName={short_name},typeOfLevel={level_type},level={level}",
+                selector,
+                "-p",
+                "startStep,endStep,stepType,units",
                 "-l",
                 f"{float(latitude):.6f},{float(longitude):.6f},1",
                 str(grib_path),
             ]
             completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=20)
-            value = _parse_nearest_value(completed.stdout) if completed.returncode == 0 else None
+            value, metadata = _parse_nearest_record(completed.stdout) if completed.returncode == 0 else (None, {})
             if value is None:
                 missing.append(field)
                 continue
-            converted = value - 273.15 if kelvin_to_celsius and value > 150.0 else value
-            converted *= multiplier
+            converted = _convert_field_value(value, conversion)
             features[field] = round(float(converted), 6)
-            traces[field] = {"short_name": short_name, "type_of_level": level_type, "level": int(level), "nearest_latitude": latitude, "nearest_longitude": longitude}
+            traces[field] = {"grib_selector": selector, "conversion": conversion, "nearest_latitude": latitude, "nearest_longitude": longitude, **metadata}
+            if field == "total_precipitation_mm" and metadata.get("step_type") == "accum":
+                features["total_precipitation_accumulation_hours"] = float(metadata.get("accumulation_hours") or 0)
+            if field == "convective_precipitation_mm" and metadata.get("step_type") == "accum":
+                features["convective_precipitation_accumulation_hours"] = float(metadata.get("accumulation_hours") or 0)
     except (OSError, subprocess.SubprocessError, TimeoutError, EOFError) as exc:
         return {"ok": False, "state": "blocked", "blockers": [f"official_nwp_grib_decode_failed:{type(exc).__name__}"]}
     finally:

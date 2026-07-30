@@ -896,7 +896,7 @@ def _preempt_noncritical_refreshes_for_live(*, event_date: str = "", stage: str 
         lane_name = "weather_refresh_lane"
     lock_dirs = [
         ("refresh_lane", ROOT / "data" / f"{lane_name}.lock"),
-        ("db_writer", ROOT / "data" / "db_writer.lock"),
+        ("db_writer", ROOT / "data" / "db_writer.user.lock"),
     ]
     raw_owners = os.environ.get(
         "PM_HARD_SOURCE_PREEMPT_NONCRITICAL_OWNERS",
@@ -10090,7 +10090,7 @@ def _final_daily_max_yield_owner_for_noncritical_refresh(
     payload = _load_latest_fact_payload(db_path, event_date=event_key)
     if not _payload_final_daily_max_locked(payload):
         return ""
-    lock_path = ROOT / "data" / "db_writer.lock" / "owner.json"
+    lock_path = ROOT / "data" / "db_writer.user.lock" / "owner.json"
     try:
         lock_owner = str(json.loads(lock_path.read_text(encoding="utf-8")).get("owner") or "").strip()
     except Exception:

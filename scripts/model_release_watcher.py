@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
 import os
 import re
+import signal
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from queue import Empty
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
@@ -15,6 +18,13 @@ from zoneinfo import ZoneInfo
 import requests
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+from official_nwp_https_transport import (  # noqa: E402
+    configure_official_requests_session,
+    official_nwp_proxy_url,
+)
+
 DATA_DIR = ROOT_DIR / "data"
 DEFAULT_OUTPUT = DATA_DIR / "model_release_watcher_latest.json"
 
@@ -37,6 +47,147 @@ MODEL_MIN_RELEASE_DELAY_SEC = {
 }
 
 PEAK_TZ = ZoneInfo(os.environ.get("PM_MODEL_RELEASE_TARGET_TZ", "Asia/Shanghai") or "Asia/Shanghai")
+
+
+class _ProbeDeadlineExceeded(TimeoutError):
+    pass
+
+
+def _model_probe_deadline_sec(request_timeout_sec: float) -> float:
+    raw = os.environ.get("PM_MODEL_RELEASE_PROBE_DEADLINE_SEC", "")
+    try:
+        configured = float(raw) if raw else max(5.0, float(request_timeout_sec) * 2.0)
+    except (TypeError, ValueError):
+        configured = max(5.0, float(request_timeout_sec) * 2.0)
+    return max(2.0, min(30.0, configured))
+
+
+def _probe_one_model_with_deadline(**kwargs: Any) -> Dict[str, Any]:
+    """Bound one provider probe even when the OS resolver/socket hangs.
+
+    macOS ``getaddrinfo`` can remain inside the system resolver queue after a
+    requests timeout and ignore Python's SIGALRM.  Real network probes run in
+    a disposable child so the parent has a hard kill boundary.  Lightweight
+    fake sessions used by unit tests stay in-process.
+    """
+    supplied_session = kwargs.get("session")
+    if supplied_session is not None and not isinstance(supplied_session, requests.Session):
+        return _probe_one_model_in_process(**kwargs)
+    probe_kwargs = {key: value for key, value in kwargs.items() if key != "session"}
+    deadline = _model_probe_deadline_sec(float(kwargs.get("timeout_sec") or 6.0))
+    context = mp.get_context("spawn")
+    result_queue = context.Queue()
+    process = context.Process(
+        target=_probe_model_child,
+        args=(result_queue, probe_kwargs),
+        name=f"model-release-probe-{kwargs.get('model', 'unknown')}",
+        daemon=True,
+    )
+    try:
+        process.start()
+        process.join(deadline)
+        if process.is_alive():
+            process.terminate()
+            process.join(1.0)
+            return _probe_timeout_payload(kwargs, "official_release_probe_deadline_exceeded")
+        try:
+            result = result_queue.get_nowait()
+        except Empty:
+            return _probe_timeout_payload(
+                kwargs,
+                f"official_release_probe_child_exit_{process.exitcode or 1}",
+            )
+        return result if isinstance(result, dict) else _probe_timeout_payload(kwargs, "official_release_probe_invalid_result")
+    except (OSError, RuntimeError) as exc:
+        # A constrained launchd environment may reject child creation.  Do
+        # not re-enter the potentially unbounded resolver in the parent.
+        return _probe_timeout_payload(
+            kwargs,
+            f"official_release_probe_child_spawn_failed:{type(exc).__name__}:{exc}",
+        )
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _probe_timeout_payload(kwargs: Mapping[str, Any], reason: str) -> Dict[str, Any]:
+    model = str(kwargs.get("model") or "")
+    event_date = kwargs.get("event_date")
+    return {
+        "model": model,
+        "label": MODEL_LABELS.get(model, model),
+        "run_id": "",
+        "cycle_time_utc": "",
+        "expected_due_at": "",
+        "official_source": _model_source(model),
+        "source_role": "official_release_watcher",
+        "event_date": event_date.isoformat() if isinstance(event_date, date) else str(event_date or ""),
+        "required_forecast_hours": [],
+        "available_forecast_hours": [],
+        "missing_forecast_hours": [],
+        "complete_for_chengdu_peak": False,
+        "run_complete": False,
+        "first_seen_at": "",
+        "complete_first_seen_at": "",
+        "latest_file_last_modified": "",
+        "checked_at": _iso(_now_utc()),
+        "status": "probe_timeout",
+        "status_reason": reason,
+        "sample_urls": [],
+        "probe_errors": [reason],
+        "status_codes": {},
+        "probe_metadata": {},
+    }
+
+
+def _probe_model_child(result_queue: Any, kwargs: Mapping[str, Any]) -> None:
+    try:
+        proxy_url = official_nwp_proxy_url()
+        session = requests.Session()
+        configure_official_requests_session(session)
+        result = _watch_model(session=session, **dict(kwargs))
+        # SakuraCat is useful for some official endpoints, but some local
+        # proxy builds reset TLS for public S3/DWD origins. Retry once,
+        # directly and with the same bounded request deadline, only after a
+        # transport error. This is an explicit official-source fallback, not
+        # an inherited-proxy or aggregator fallback.
+        if proxy_url and any(str(error).strip() for error in result.get("probe_errors") or []):
+            direct = requests.Session()
+            configure_official_requests_session(direct, proxy_url="")
+            direct_result = _watch_model(session=direct, **dict(kwargs))
+            if not any(str(error).strip() for error in direct_result.get("probe_errors") or []):
+                direct_result["transport"] = "direct_after_explicit_proxy_error"
+                result = direct_result
+            else:
+                result["transport"] = "explicit_proxy_then_direct_failed"
+        elif proxy_url:
+            result["transport"] = "explicit_proxy"
+        else:
+            result["transport"] = "direct"
+        result_queue.put(result)
+    except Exception as exc:  # pragma: no cover - provider/network boundary
+        result_queue.put(_probe_timeout_payload(kwargs, f"official_release_probe_error:{type(exc).__name__}:{exc}"))
+
+
+def _probe_one_model_in_process(**kwargs: Any) -> Dict[str, Any]:
+    """Compatibility path for test doubles and platforms without child spawn."""
+    if not hasattr(signal, "SIGALRM"):
+        return _watch_model(**kwargs)
+    deadline = _model_probe_deadline_sec(float(kwargs.get("timeout_sec") or 6.0))
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def alarm_handler(_signum: int, _frame: Any) -> None:
+        raise _ProbeDeadlineExceeded("official_release_probe_deadline_exceeded")
+
+    signal.signal(signal.SIGALRM, alarm_handler)
+    signal.setitimer(signal.ITIMER_REAL, deadline)
+    try:
+        return _watch_model(**kwargs)
+    except _ProbeDeadlineExceeded as exc:
+        return _probe_timeout_payload(kwargs, str(exc))
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def _now_utc() -> datetime:
@@ -188,6 +339,13 @@ def _icon_url(cycle: datetime, forecast_hour: int) -> str:
     )
 
 
+def _icon_prefix(cycle: datetime) -> str:
+    return (
+        "https://opendata.dwd.de/weather/nwp/icon/grib/"
+        f"{cycle.strftime('%H')}/t_2m/"
+    )
+
+
 def _ecmwf_ifs_url(cycle: datetime, forecast_hour: int) -> str:
     ymd = cycle.strftime("%Y%m%d")
     hh = cycle.strftime("%H")
@@ -266,6 +424,21 @@ def _list_noaa_gfs_keys(
     return pairs, ""
 
 
+def _list_dwd_icon_keys(
+    session: requests.Session, prefix: str, timeout_sec: float,
+) -> Tuple[List[str], str]:
+    """List one official DWD directory instead of HEADing every lead file."""
+
+    try:
+        resp = session.get(prefix, timeout=timeout_sec)
+    except requests.RequestException as exc:
+        return [], str(exc)
+    if not (200 <= int(resp.status_code) < 300):
+        return [], f"http_{resp.status_code}"
+    names = re.findall(r"""href=["']([^"']+)["']""", resp.text or "", re.IGNORECASE)
+    return [str(name).rsplit("/", 1)[-1] for name in names if str(name).strip()], ""
+
+
 def _load_previous(path: Path) -> Dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as f:
@@ -306,6 +479,18 @@ def _probe_head_model(
         gfs_keys, list_error = _list_noaa_gfs_keys(session, prefix, timeout_sec, max_keys=1000)
         key_names = [str(entry.get("key") or "") for entry in gfs_keys]
         hh = cycle.strftime("%H")
+        required_names = {
+            int(fh): f"gfs.t{hh}z.pgrb2.0p25.f{int(fh):03d}"
+            for fh in required_hours
+        }
+        for fh, name in required_names.items():
+            matches = [entry for entry in gfs_keys if name in str(entry.get("key") or "")]
+            if matches:
+                available.append(fh)
+                if matches[0].get("last_modified"):
+                    last_modified_values.append(str(matches[0]["last_modified"]))
+            else:
+                missing.append(fh)
         metadata.update(
             {
                 "gfs_official_prefix": prefix,
@@ -319,6 +504,42 @@ def _probe_head_model(
                 "gfs_prefix_sample_keys": key_names[:8],
             }
         )
+        sample_urls = [_gfs_url(cycle, fh) for fh in required_hours[:4]]
+        return {
+            "available_forecast_hours": available,
+            "missing_forecast_hours": missing,
+            "sample_urls": sample_urls,
+            "latest_file_last_modified": max(last_modified_values) if last_modified_values else "",
+            "probe_errors": [list_error] if list_error else [],
+            "status_codes": {},
+            **metadata,
+        }
+    if model == "icon_seamless":
+        prefix = _icon_prefix(cycle)
+        icon_names, list_error = _list_dwd_icon_keys(session, prefix, timeout_sec)
+        for fh in required_hours:
+            expected = f"_{int(fh):03d}_T_2M.grib2.bz2"
+            matches = [name for name in icon_names if expected in name]
+            if matches:
+                available.append(fh)
+            else:
+                missing.append(fh)
+        sample_urls = [_icon_url(cycle, fh) for fh in required_hours[:4]]
+        metadata.update({
+            "icon_directory_prefix": prefix,
+            "icon_directory_key_count": len(icon_names),
+            "icon_directory_list_error": list_error,
+            "icon_directory_sample_keys": icon_names[:8],
+        })
+        return {
+            "available_forecast_hours": available,
+            "missing_forecast_hours": missing,
+            "sample_urls": sample_urls,
+            "latest_file_last_modified": "",
+            "probe_errors": [list_error] if list_error else [],
+            "status_codes": {},
+            **metadata,
+        }
     for fh in required_hours:
         url = url_fn(cycle, fh)
         if len(sample_urls) < 4:
@@ -416,6 +637,12 @@ def _watch_model(
     cycles = _cycle_candidates(model, now)
     selected: Optional[datetime] = None
     required: List[int] = []
+    probe: Dict[str, Any] = {}
+    # Probe only the newest two declared cycles: a latest empty prefix can
+    # fall back to one complete older run without multiplying requests across
+    # several days.
+    max_probe_cycles = 3 if model == "ecmwf_ifs025" else 1
+    probed_cycles = 0
     for cycle in cycles:
         req = _required_forecast_hours_for_peak_window(
             model=model,
@@ -424,24 +651,27 @@ def _watch_model(
             peak_start_hour=peak_start_hour,
             peak_end_hour=peak_end_hour,
         )
-        if req:
-            selected = cycle
-            required = req
+        if not req:
+            continue
+        probed_cycles += 1
+        selected = cycle
+        required = req
+        if model == "ecmwf_ifs025":
+            probe = _probe_ecmwf(session=session, cycle=cycle, required_hours=req, timeout_sec=timeout_sec)
+        else:
+            probe = _probe_head_model(
+                session=session,
+                model=model,
+                cycle=cycle,
+                required_hours=req,
+                timeout_sec=timeout_sec,
+            )
+        if probe.get("available_forecast_hours") or probed_cycles >= max_probe_cycles:
             break
     if selected is None:
         selected = cycles[0] if cycles else now.replace(hour=0, minute=0, second=0, microsecond=0)
     run_id = selected.strftime("%Y%m%d%H")
     expected_due_at = selected + timedelta(seconds=MODEL_MIN_RELEASE_DELAY_SEC.get(model, 7200))
-    if model == "ecmwf_ifs025":
-        probe = _probe_ecmwf(session=session, cycle=selected, required_hours=required, timeout_sec=timeout_sec)
-    else:
-        probe = _probe_head_model(
-            session=session,
-            model=model,
-            cycle=selected,
-            required_hours=required,
-            timeout_sec=timeout_sec,
-        )
     available = [int(v) for v in probe.get("available_forecast_hours") or []]
     missing = [int(v) for v in probe.get("missing_forecast_hours") or []]
     complete = bool(required) and len(available) == len(required)
@@ -518,8 +748,13 @@ def build_payload(
     peak_start = _env_int("PM_MODEL_RELEASE_PEAK_START_LOCAL", 12)
     peak_end = _env_int("PM_MODEL_RELEASE_PEAK_END_LOCAL", 18)
     session = requests.Session()
+    # Release probing is an official-source metadata check.  It never
+    # inherits ambient proxy variables; when the operator explicitly sets
+    # PM_OFFICIAL_NWP_PROXY (Clash Verge mixed port 7897 on this host), use that same
+    # bounded tunnel in both the parent and disposable child paths.
+    configure_official_requests_session(session)
     watched = [
-        _watch_model(
+        _probe_one_model_with_deadline(
             session=session,
             model=model,
             event_date=event_date,

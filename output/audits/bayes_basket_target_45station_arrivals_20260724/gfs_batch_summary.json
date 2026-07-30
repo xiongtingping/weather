@@ -1,0 +1,16 @@
+{
+  "calls_order_gateway": false,
+  "counts": {
+    "blocked": 0,
+    "captured": 225,
+    "failed_exception": 0
+  },
+  "live_order_authorized": false,
+  "places_orders": false,
+  "run_initialization_utc": "2026-07-23T00:00:00Z",
+  "schema": "bayes_basket_target_gfs_45station_arrival_batch_v1",
+  "station_count": 45,
+  "target_date": "2026-07-24",
+  "target_only": true,
+  "writes_production_db": false
+}

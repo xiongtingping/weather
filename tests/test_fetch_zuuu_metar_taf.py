@@ -103,6 +103,9 @@ def test_amsc_payloads_parse_metar_speci_and_taf_fact_layer_fields():
     assert taf["valid_time_utc"] == "2026-07-06T07:00:00Z"
     assert taf["valid_time_local"] == "2026-07-06T15:00:00+08:00"
     assert taf["forecast_peak_c"] == 36.0
+    assert taf["source_modes_schema"] == "forecast_source_modes_v1"
+    assert taf["source_modes"][0]["mode_id"] == "taf_tx_primary"
+    assert taf["source_modes"][0]["mode_probability"] == 1.0
     assert taf["raw_ref"].startswith("TAF ZUUU")
 
     speci = sources[2]
@@ -134,6 +137,7 @@ def test_amsc_payloads_capture_taf_amd_as_weak_forecast_revision():
     assert taf["forecast_revision_kind"] == "amendment"
     assert taf["taf_modifier"] == "AMD"
     assert taf["forecast_peak_c"] == 37.0
+    assert taf["forecast_weather_regime"] == "clear_dry"
     assert taf["source_revision_id"].startswith("tafrev_")
     assert taf["first_seen_at"] == "2026-07-15T05:31:00Z"
 

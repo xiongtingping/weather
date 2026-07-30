@@ -28,10 +28,10 @@ from scripts import weather_decision_core_audit
 DEFAULT_DB = ROOT / "data" / "archive.db"
 MONITOR_DAEMON_LABEL = os.environ.get("PM_WEATHER_MONITOR_LABEL", "com.weather.monitor.daemon").strip()
 MONITOR_DAEMON_DOMAIN_LABEL = (
-    MONITOR_DAEMON_LABEL if MONITOR_DAEMON_LABEL.startswith("system/") else f"system/{MONITOR_DAEMON_LABEL}"
+    MONITOR_DAEMON_LABEL if MONITOR_DAEMON_LABEL.startswith("gui/") else f"gui/{os.getuid()}/{MONITOR_DAEMON_LABEL}"
 )
 MONITOR_DAEMON_NAME = MONITOR_DAEMON_DOMAIN_LABEL.rsplit("/", 1)[-1]
-MONITOR_DAEMON_PLIST = Path("/Library/LaunchDaemons") / f"{MONITOR_DAEMON_NAME}.plist"
+MONITOR_DAEMON_PLIST = Path.home() / "Library/LaunchAgents" / f"{MONITOR_DAEMON_NAME}.plist"
 EXPECTED_NEXT_AFTER_ROLLING = "paper_trading_validation"
 IGNORED_READINESS_WARNINGS = {
     "clob_preflight_skipped",
@@ -102,7 +102,7 @@ def _launchd_snapshot() -> dict[str, Any]:
                 "working_directory": working_directory,
                 "program": program_text,
                 "root_ok": str(ROOT) in program_text and working_directory == str(ROOT),
-                "program_ok": "scripts/polymarket_monitor_daemon.sh" in program_text,
+                "program_ok": "scripts/weather_monitor_launchagent_entrypoint.sh" in program_text,
             }
         )
         if not plist_info["root_ok"]:
@@ -145,8 +145,8 @@ def _launchd_snapshot() -> dict[str, Any]:
         "labels": rows,
         "plist": plist_info,
         "repair_command": (
-            "sudo bash scripts/install_monitor_launchdaemon.sh && "
-            f"sudo launchctl kickstart -k {MONITOR_DAEMON_DOMAIN_LABEL}"
+            "bash scripts/install_monitor_launchdaemon.sh && "
+            f"launchctl kickstart -k {MONITOR_DAEMON_DOMAIN_LABEL}"
         )
         if missing or warnings
         else "",

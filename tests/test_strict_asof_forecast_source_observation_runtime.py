@@ -127,3 +127,23 @@ def test_taf_transport_identity_is_preserved_but_uses_the_canonical_taf_weak_sou
     assert observation["source_id"] == "taf"
     assert observation["payload"]["provider_source_id"] == "zuuu_taf_forecast_amsc"
     assert observation["payload"]["weak_source_id"] == "taf"
+
+
+def test_wu_forecast_peak_transport_identity_maps_to_canonical_wu_source() -> None:
+    capture, forecast = _tier_a_capture()
+    capture["source_id"] = "wu_forecast_peak"
+    forecast = {
+        **forecast,
+        "source_id": "wu_forecast_peak",
+        "forecast_snapshot_id": capture["raw_response_sha256"],
+    }
+
+    proposal = build_tier_a_forecast_source_observation_proposal(
+        capture=capture,
+        normalized_forecast=forecast,
+        station_id="ZUUU",
+        raw_ref="research://forecast/wu/immutable.json.gz",
+    )
+
+    assert proposal["ok"] is True
+    assert proposal["source_observation"]["source_id"] == "wu"

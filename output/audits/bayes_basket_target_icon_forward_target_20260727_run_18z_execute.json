@@ -1,0 +1,329 @@
+{
+  "as_of_utc": "2026-07-26T04:08:19Z",
+  "blocked_count": 0,
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_service": false,
+    "execution_mode": "production_no_live",
+    "formal_probability_input_role_eligible": true,
+    "live_order_authorized": false,
+    "live_submit_authorized": false,
+    "p0_consumption_before_event": true,
+    "p0_probability_input_eligible_now": true,
+    "p1_consumption_before_event": false,
+    "p1_probability_input_eligible_now": false,
+    "places_orders": false,
+    "promotion_allowed": false,
+    "prospective_only": true,
+    "raw_capture_may_precede_event": true,
+    "target_only": true,
+    "unrelated_production_line_touched": false,
+    "writes_market_state": false,
+    "writes_probability_state": false,
+    "writes_production_db": false,
+    "writes_target_database": false
+  },
+  "capture_count": 24,
+  "capture_results": [
+    {
+      "forecast_hour": 34,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/8caafb97f72cdcf0c4f23668e80cbf2523c11bcb6bb49086f677056e1c3819e5.json",
+      "valid_time_utc": "2026-07-27T04:00:00Z"
+    },
+    {
+      "forecast_hour": 35,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/abd98f5f4efdad16e5c2dab6122fea6ae4bd17f0ef242f0aa7724a3d5ae65396.json",
+      "valid_time_utc": "2026-07-27T05:00:00Z"
+    },
+    {
+      "forecast_hour": 36,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/bff9f4c706b82beae44fc4b6c257ec9fdddf3ad4bea0f3715fcf8ba0175f6b1c.json",
+      "valid_time_utc": "2026-07-27T06:00:00Z"
+    },
+    {
+      "forecast_hour": 37,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/ab8c19631aa4d62985c4840e6685ddd6ada5cf3806e7e2a97455499599a917fe.json",
+      "valid_time_utc": "2026-07-27T07:00:00Z"
+    },
+    {
+      "forecast_hour": 38,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/fc283d8ef4adabdcc753120f12ddf91e50a56ef644c396b96d2c201704fa9616.json",
+      "valid_time_utc": "2026-07-27T08:00:00Z"
+    },
+    {
+      "forecast_hour": 39,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/5af584fff289893be9d51e6bf50809da9421663a3eb12ebac41baf8603ee3b94.json",
+      "valid_time_utc": "2026-07-27T09:00:00Z"
+    },
+    {
+      "forecast_hour": 40,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/1df3f59f1ad40cbfba45f370b095628ec36595a7a39914185558d73e5a706345.json",
+      "valid_time_utc": "2026-07-27T10:00:00Z"
+    },
+    {
+      "forecast_hour": 41,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/2b0edab0ec68609e591d67d4b847e4451a509023ddfaf017e2e027896857aefb.json",
+      "valid_time_utc": "2026-07-27T11:00:00Z"
+    },
+    {
+      "forecast_hour": 42,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/1d2786d13bc1b2b8a3017a300d32645c7f782abbd4b1a925723d8cceb580dfe0.json",
+      "valid_time_utc": "2026-07-27T12:00:00Z"
+    },
+    {
+      "forecast_hour": 43,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/600b0f408881bd7cc41430e6689ae35cfc4771e12bdd0ec023c59d2943f893e6.json",
+      "valid_time_utc": "2026-07-27T13:00:00Z"
+    },
+    {
+      "forecast_hour": 44,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/071e717b12bba66a3a3b1dd3b31e5a9fa6bb6fb54eee9b49c4c5e454c54bdcd4.json",
+      "valid_time_utc": "2026-07-27T14:00:00Z"
+    },
+    {
+      "forecast_hour": 45,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/fdc09b74a8b3336da2bda4ae6588be3f849bd6d737763b25b7e08fdebfb1679f.json",
+      "valid_time_utc": "2026-07-27T15:00:00Z"
+    },
+    {
+      "forecast_hour": 46,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/392d5e0dc49c64d8b82670e8922ffcbbfd7286c68e1389838e860aefb9d3e9de.json",
+      "valid_time_utc": "2026-07-27T16:00:00Z"
+    },
+    {
+      "forecast_hour": 47,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/326822a645316aa3c919d65624dfaaf8e0f9b0618747a8ac00dd3c24722f81c0.json",
+      "valid_time_utc": "2026-07-27T17:00:00Z"
+    },
+    {
+      "forecast_hour": 48,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/8420e5534c2c2939eea4e81980cf8640a05b9e698edd18dfdb68697dea2f4b31.json",
+      "valid_time_utc": "2026-07-27T18:00:00Z"
+    },
+    {
+      "forecast_hour": 49,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/f6ee7fcf1a50a7c815afdbfa3c4e9c594e52969b358c43a3feb5eaf206be88e4.json",
+      "valid_time_utc": "2026-07-27T19:00:00Z"
+    },
+    {
+      "forecast_hour": 50,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/6050377b81a5ed57aa306bb64dffcd0b0baec59000aab67cbea2db8ec7cae32b.json",
+      "valid_time_utc": "2026-07-27T20:00:00Z"
+    },
+    {
+      "forecast_hour": 51,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/72ad229db753da8371c8a68f08cb1d0fa606ed0bbe420997e61460ff1f9b1467.json",
+      "valid_time_utc": "2026-07-27T21:00:00Z"
+    },
+    {
+      "forecast_hour": 52,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/aff898ee231bbf77d12741f7b343432f7917ee70b1157f2722d3a812673990b0.json",
+      "valid_time_utc": "2026-07-27T22:00:00Z"
+    },
+    {
+      "forecast_hour": 53,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/15a14dfc8d218459efaa4e2636ef6d088cb7e9326a17636dc9778bc670c5a0a6.json",
+      "valid_time_utc": "2026-07-27T23:00:00Z"
+    },
+    {
+      "forecast_hour": 54,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/d2b9e665f5c3714aa1935db67503ecbf698e8df03f9088f268954c1b9f150e9c.json",
+      "valid_time_utc": "2026-07-28T00:00:00Z"
+    },
+    {
+      "forecast_hour": 55,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/7bccc98375695af769448edc1111e3a24e8f9a688f6fca1acedbd90398a71b16.json",
+      "valid_time_utc": "2026-07-28T01:00:00Z"
+    },
+    {
+      "forecast_hour": 56,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/f392d3e0d4245e1210200ac25fcaea6b1c4df024f145bbdff4830df55ddfe965.json",
+      "valid_time_utc": "2026-07-28T02:00:00Z"
+    },
+    {
+      "forecast_hour": 57,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/861944d2faf3aef3c701e60483aa0dd49af89155418a781ff67136d0b244fcbc.json",
+      "valid_time_utc": "2026-07-28T03:00:00Z"
+    }
+  ],
+  "captured_count": 24,
+  "execution_decision_at_utc": "2026-07-26T04:11:19.765Z",
+  "fanout": null,
+  "output_root": "/Users/xiong/weather/output/audits/bayes_basket_target_icon_forward_runs/2026-07-27_20260725T180000Z",
+  "plan_sha256": "afcd92d21313b57879275b718b28e06cf9ee26cd2cb94c18924f984cf1419308",
+  "receipt_sha256": "db1e3f64eed97620e5a91b41a23d25aa1fe61e7e77378970d70ba8e87fbd6886",
+  "reused_count": 0,
+  "run_initialization_utc": "2026-07-25T18:00:00Z",
+  "schema": "bayes_basket_target_icon_forward_capture_scheduler_v1",
+  "target_local_date": "2026-07-27",
+  "valid_hours": [
+    {
+      "forecast_hour": 34,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_034_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T04:00:00Z"
+    },
+    {
+      "forecast_hour": 35,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_035_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T05:00:00Z"
+    },
+    {
+      "forecast_hour": 36,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_036_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T06:00:00Z"
+    },
+    {
+      "forecast_hour": 37,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_037_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T07:00:00Z"
+    },
+    {
+      "forecast_hour": 38,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_038_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T08:00:00Z"
+    },
+    {
+      "forecast_hour": 39,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_039_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T09:00:00Z"
+    },
+    {
+      "forecast_hour": 40,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_040_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T10:00:00Z"
+    },
+    {
+      "forecast_hour": 41,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_041_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T11:00:00Z"
+    },
+    {
+      "forecast_hour": 42,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_042_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T12:00:00Z"
+    },
+    {
+      "forecast_hour": 43,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_043_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T13:00:00Z"
+    },
+    {
+      "forecast_hour": 44,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_044_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T14:00:00Z"
+    },
+    {
+      "forecast_hour": 45,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_045_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T15:00:00Z"
+    },
+    {
+      "forecast_hour": 46,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_046_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T16:00:00Z"
+    },
+    {
+      "forecast_hour": 47,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_047_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T17:00:00Z"
+    },
+    {
+      "forecast_hour": 48,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_048_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T18:00:00Z"
+    },
+    {
+      "forecast_hour": 49,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_049_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T19:00:00Z"
+    },
+    {
+      "forecast_hour": 50,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_050_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T20:00:00Z"
+    },
+    {
+      "forecast_hour": 51,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_051_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T21:00:00Z"
+    },
+    {
+      "forecast_hour": 52,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_052_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T22:00:00Z"
+    },
+    {
+      "forecast_hour": 53,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_053_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-27T23:00:00Z"
+    },
+    {
+      "forecast_hour": 54,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_054_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-28T00:00:00Z"
+    },
+    {
+      "forecast_hour": 55,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_055_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-28T01:00:00Z"
+    },
+    {
+      "forecast_hour": 56,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_056_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-28T02:00:00Z"
+    },
+    {
+      "forecast_hour": 57,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026072518_057_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-28T03:00:00Z"
+    }
+  ]
+}

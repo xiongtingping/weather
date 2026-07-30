@@ -1,0 +1,181 @@
+{
+  "as_of_utc": "2026-07-26T00:00:00Z",
+  "blockers": [
+    "oos_promotion_gate_incomplete",
+    "published_receive_timestamps_incomplete",
+    "formal_p0_p1_not_materialized",
+    "official_ws_scope_not_complete"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "candidate_artifacts": {
+    "basket": null,
+    "calibration": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/calibration.json",
+    "decision_reconcile": null,
+    "p0_p1": null
+  },
+  "order": [
+    "OFFICIAL_FACTS",
+    "THREE_MODEL",
+    "ET_ALIGN",
+    "CALIBRATION_ENSEMBLE",
+    "P0_P1",
+    "OFFICIAL_WS",
+    "BASKET",
+    "DECISION_RECONCILE"
+  ],
+  "protected_production_line": {
+    "boundary_observed_ok": true,
+    "market_ws": {
+      "authorizes_order": false,
+      "evidence_only": true,
+      "state": "connected"
+    },
+    "observation_only": true,
+    "paths": {
+      "market_ws_manifest": "/Users/xiong/weather/data/market_ws_latest_quotes.json",
+      "reported_trajectory_status": "/Users/xiong/weather/data/reported_trajectory_no_status.json",
+      "resident_activation": "/Users/xiong/weather/config/trading/basket_plus_hard_no_v1.json",
+      "settlement_floor_policy": "/Users/xiong/weather/config/trading/settlement_floor_basket_policy_v1.json"
+    },
+    "reported_trajectory": {
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false
+    },
+    "resident_activation": {
+      "state": "enabled",
+      "strategy_id": "weather_basket_plus_hard_no_v2"
+    },
+    "settlement_floor": {
+      "calculation_only": true
+    },
+    "target_dependency": false
+  },
+  "receipt_sha256": "1ec6a35f6005b0e2ea91aa31bcd756c6794a77b3b1eaff7ed5b95ea90aad4db2",
+  "schema": "bayes_basket_target_awc_main_chain_status_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "amsc"
+    ],
+    "excluded_station_ids": [
+      "RCSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "included_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS"
+    ],
+    "mode": "allowlist"
+  },
+  "stages": [
+    {
+      "id": "OFFICIAL_FACTS",
+      "observed": {
+        "awc_truth_station_days": 396
+      },
+      "state": "READY_EVIDENCE"
+    },
+    {
+      "id": "THREE_MODEL",
+      "observed": {
+        "complete_three_model_station_days": 360,
+        "model_set": [
+          "ECMWF",
+          "GFS",
+          "ICON"
+        ]
+      },
+      "state": "READY_EVIDENCE"
+    },
+    {
+      "id": "ET_ALIGN",
+      "observed": {
+        "blockers": 0,
+        "pending_event_days": 0,
+        "target_timezone": "America/New_York"
+      },
+      "state": "READY_FOR_STRICT_ASOF"
+    },
+    {
+      "id": "CALIBRATION_ENSEMBLE",
+      "observed": {
+        "calibration_artifacts": 108,
+        "ensemble_artifacts": 36,
+        "oos_promotion_gate_complete": false,
+        "published_receive_timestamps_complete": false
+      },
+      "state": "CANDIDATE_READY_BLOCKED_PROMOTION"
+    },
+    {
+      "formal_envelopes_materialized": 0,
+      "id": "P0_P1",
+      "reason": "calibration_ensemble_not_promoted",
+      "state": "BLOCKED"
+    },
+    {
+      "id": "OFFICIAL_WS",
+      "reason": "no_awc_scope_complete_target_snapshot_for_formal_consumer",
+      "state": "BLOCKED"
+    },
+    {
+      "candidate_plan_materialized": false,
+      "id": "BASKET",
+      "reason": "P0_P1_or_official_WS_missing",
+      "state": "BLOCKED"
+    },
+    {
+      "decision_candidate_materialized": false,
+      "id": "DECISION_RECONCILE",
+      "reason": "no_formal_probability_or_basket_candidate",
+      "state": "BLOCKED"
+    }
+  ],
+  "state": "BLOCKED_AT_CALIBRATION_ENSEMBLE"
+}

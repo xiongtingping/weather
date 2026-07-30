@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from peak_timing_state_runtime import validate_peak_timing_state_contract  # noqa: E402
+from production_probability_v6_activation_contract import IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA  # noqa: E402
 
 
 SCHEMA_VERSION = "production_probability_v6_peak_timing_acceptance_v1"
@@ -39,12 +40,35 @@ def _parse(value: Any, default: Any) -> Any:
 def audit_connection(conn: sqlite3.Connection, *, event_date: str) -> dict[str, Any]:
     day = _text(event_date)[:10]
     row = conn.execute(
-        "SELECT h.fact_json,h.posterior_run_id FROM event_fact_latest l "
+        "SELECT h.fact_json,h.posterior_run_id,h.composer_version FROM event_fact_latest l "
         "JOIN event_fact_history h ON h.id=l.fact_id "
-        "WHERE l.event_date=? AND h.composer_version='physical_state_bayes_v6_production' "
+        "WHERE l.event_date=? "
         "ORDER BY h.id DESC LIMIT 1",
         (day,),
     ).fetchone()
+    if row is not None and _text(row[0]):
+        payload = _mapping(_parse(row[0], {}))
+        fact = _mapping(payload.get("posterior_ssot_fact"))
+        if _text(row[2]) == "identifiable_physical_state_bayes_production" or _text(fact.get("composer_schema")) == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA:
+            return {
+                "schema": SCHEMA_VERSION,
+                "ok": True,
+                "state": "not_applicable_identifiable_physical_state_space",
+                "event_date": day,
+                "posterior_run_id": _text(row[1]),
+                "posterior_checkpoint_id": "",
+                "canonical_observation_event_id": "",
+                "strong_observation_update_id": "",
+                "peak_timing": {
+                    "state": "not_applicable",
+                    "does_not_update_physical_x": True,
+                    "read_only": True,
+                },
+                "reported_x_normalized": True,
+                "blockers": [],
+                "read_only": True,
+                "places_orders": False,
+            }
     blockers: list[str] = []
     if row is None:
         blockers.append("v6_peak_timing_public_ssot_missing")

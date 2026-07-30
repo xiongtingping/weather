@@ -1,0 +1,581 @@
+"""Bounded registry-scoped scheduler for official ECMWF/GFS/ICON prefetch.
+
+The scheduler runs in an isolated future inside the existing resident system
+service; it is not a service and is not part of the decision critical path.
+Provider HTTP details remain thin boundary adapters, while this module owns
+the shared run key, settlement-timezone scope, mature-run fallback, resource
+caps, and the exact capture set handed to the resident P0 producer.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Callable, Mapping, Sequence
+
+from .calibration import validate_formal_ensemble_artifact
+from .contracts import (
+    CalibrationActivation,
+    ContractError,
+    ModelEnsembleArtifact,
+    content_sha256,
+    model_set_hash,
+    timestamp_in_window,
+    timestamp_lte,
+)
+from .et_history import event_day_window
+from .market_registry import load_market_registry_snapshot
+from .model_run_contract import build_model_run_contract
+from .resource_bounds import (
+    MAX_INPUT_FILES_PER_BATCH,
+    assert_process_memory_budget,
+    write_bounded_json_if_changed,
+)
+from .settlement_time import settlement_day_window
+from .station_registry import station_coordinates
+from .strict_asof_replay import (
+    lead_bucket_for_maturity,
+    maturity_key_for_model_run,
+    season_bin_for_event_date,
+)
+
+
+SCHEMA = "bayes_basket_target_official_nwp_capture_scheduler_v1"
+PROVIDERS = (
+    "ecmwf_ifs025_official",
+    "gfs_0p25_official",
+    "icon_global_official",
+    "gem_gdps_official",
+    "cma_grapes_global_open_meteo",
+    "ncep_hrrr_conus_open_meteo",
+    "ncep_nbm_conus_open_meteo",
+    "ncep_nam_conus_open_meteo",
+    "icon_d2_open_meteo",
+    "meteofrance_arome_france0025_open_meteo",
+    "ukmo_uk_deterministic_2km_open_meteo",
+    "knmi_harmonie_arome_netherlands_open_meteo",
+    "knmi_harmonie_arome_europe_open_meteo",
+    "jma_msm_open_meteo",
+)
+MODEL_PROVIDER_IDS = {
+    "ECMWF": "ecmwf_ifs025_official",
+    "GFS": "gfs_0p25_official",
+    "ICON": "icon_global_official",
+    "GEM": "gem_gdps_official",
+    "CMA": "cma_grapes_global_open_meteo",
+    "HRRR": "ncep_hrrr_conus_open_meteo",
+    "NBM": "ncep_nbm_conus_open_meteo",
+    "NAM": "ncep_nam_conus_open_meteo",
+    "ICON-D2": "icon_d2_open_meteo",
+    "AROME-FR": "meteofrance_arome_france0025_open_meteo",
+    "UKMO-2KM": "ukmo_uk_deterministic_2km_open_meteo",
+    "HARMONIE-NL": "knmi_harmonie_arome_netherlands_open_meteo",
+    "HARMONIE-EU": "knmi_harmonie_arome_europe_open_meteo",
+    "JMA-MSM": "jma_msm_open_meteo",
+}
+AGGREGATOR_MODEL_BY_PROVIDER = {
+    provider: model
+    for model, provider in MODEL_PROVIDER_IDS.items()
+    if provider.endswith("_open_meteo")
+}
+MAX_RUN_FALLBACKS = 4
+MAX_SCOPES_PER_CYCLE = 4
+SETTLEMENT_DEFINITION = "official_daily_tmax_c"
+
+
+def _parse_utc(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise ContractError("official_nwp_scheduler_timestamp_invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ContractError("official_nwp_scheduler_timestamp_timezone_required")
+    return parsed.astimezone(timezone.utc)
+
+
+def _stamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(
+        timespec="seconds"
+    ).replace("+00:00", "Z")
+
+
+def candidate_run_initializations(
+    *,
+    as_of_utc: str,
+    event_date: str,
+    settlement_timezone: str,
+    limit: int = MAX_RUN_FALLBACKS,
+) -> list[str]:
+    """Return newest permissible 6-hour runs, then deterministic fallbacks."""
+
+    now = _parse_utc(as_of_utc)
+    window = settlement_day_window(event_date, settlement_timezone)
+    target_start = _parse_utc(str(window["target_day_start_utc"]))
+    ceiling = min(now, target_start).replace(
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    ceiling = ceiling.replace(hour=(ceiling.hour // 6) * 6)
+    count = max(1, min(int(limit), MAX_RUN_FALLBACKS))
+    return [_stamp(ceiling - timedelta(hours=6 * offset)) for offset in range(count)]
+
+
+def registry_capture_scopes(
+    registry: Mapping[str, Any],
+    *,
+    as_of_utc: str,
+    max_scopes: int = MAX_SCOPES_PER_CYCLE,
+) -> list[dict[str, Any]]:
+    """Resolve bounded open/d2/d1 station-date-timezone scopes."""
+
+    rows = registry.get("rows")
+    if not isinstance(rows, list):
+        raise ContractError("official_nwp_scheduler_registry_rows_missing")
+    grouped: dict[tuple[str, str, str], set[str]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ContractError("official_nwp_scheduler_registry_row_invalid")
+        if (
+            int(row.get("source_eligible") or 0) != 1
+            or int(row.get("market_active") or 0) != 1
+            or int(row.get("market_accepting_orders") or 0) != 1
+        ):
+            continue
+        station = str(row.get("station_id") or "").strip().upper()
+        event_date = str(row.get("event_date") or "").strip()
+        timezone_name = str(row.get("settlement_timezone") or "").strip()
+        outcome = str(row.get("outcome") or "").strip()
+        if not station or not event_date or not timezone_name or not outcome:
+            raise ContractError("official_nwp_scheduler_registry_scope_invalid")
+        grouped.setdefault((event_date, timezone_name, station), set()).add(outcome)
+    scopes: list[dict[str, Any]] = []
+    now = _parse_utc(as_of_utc)
+    for event_date, timezone_name, station in sorted(grouped):
+        state = event_day_window(
+            event_date,
+            as_of_utc=as_of_utc,
+            target_timezone=timezone_name,
+        )
+        if state["state"] == "closed":
+            continue
+        start = _parse_utc(str(state["target_day_start_utc"]))
+        if start - now > timedelta(hours=72):
+            continue
+        scopes.append({
+            "event_date": event_date,
+            "settlement_timezone": timezone_name,
+            "station_ids": [station],
+            "outcome_count": len(grouped[(event_date, timezone_name, station)]),
+            "event_day_state": state["state"],
+        })
+    scopes.sort(
+        key=lambda item: (
+            _parse_utc(
+                settlement_day_window(
+                    item["event_date"],
+                    item["settlement_timezone"],
+                )["target_day_start_utc"]
+            ),
+            item["station_ids"][0],
+        )
+    )
+    return scopes[: max(0, min(int(max_scopes), MAX_SCOPES_PER_CYCLE))]
+
+
+def _capture_paths(result: Mapping[str, Any]) -> list[Path]:
+    rows: list[Any] = []
+    fanout = result.get("fanout")
+    if isinstance(fanout, Mapping):
+        rows.extend(fanout.get("outputs") or [])
+    rows.extend(result.get("records") or [])
+    paths: list[Path] = []
+    for row in rows:
+        if not isinstance(row, Mapping) or row.get("status") not in {
+            "CAPTURED",
+            "REUSED",
+        }:
+            continue
+        raw = str(row.get("path") or "").strip()
+        if raw:
+            path = Path(raw).expanduser().resolve()
+            if path.is_file():
+                paths.append(path)
+    return sorted(set(paths))
+
+
+def _provider_complete(result: Mapping[str, Any], paths: Sequence[Path]) -> bool:
+    return (
+        bool(paths)
+        and int(result.get("blocked_count") or 0) == 0
+        and result.get("early_stopped") is not True
+    )
+
+
+def _default_provider_runner(
+    *,
+    provider_id: str,
+    event_date: str,
+    run_initialization_utc: str,
+    as_of_utc: str,
+    settlement_timezone: str,
+    station_ids: Sequence[str],
+    registry_snapshot_sha256: str,
+    contract_path: Path,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Invoke one bounded provider adapter without creating another service."""
+
+    if provider_id == "ecmwf_ifs025_official":
+        from scripts.capture_bayes_basket_target_ecmwf_same_run import (
+            build_plan,
+            execute_plan,
+        )
+
+        plan = build_plan(
+            target_local_date=event_date,
+            run_initialization_utc=run_initialization_utc,
+            as_of_utc=as_of_utc,
+            contract_path=contract_path,
+        )
+        return execute_plan(plan, output_root=output_dir)
+    if provider_id == "gfs_0p25_official":
+        from scripts.capture_bayes_basket_target_gfs_same_run import capture_run
+
+        return capture_run(
+            target_local_date=event_date,
+            run_initialization_utc=run_initialization_utc,
+            decision_at_utc=as_of_utc,
+            contract_path=contract_path,
+            output_dir=output_dir,
+        )
+    if provider_id == "icon_global_official":
+        from scripts.run_bayes_basket_target_icon_forward_capture import (
+            build_plan,
+            execute_plan,
+        )
+
+        plan = build_plan(
+            event_date=event_date,
+            run_initialization_utc=run_initialization_utc,
+            as_of_utc=as_of_utc,
+            station_ids=list(station_ids),
+            target_timezone=settlement_timezone,
+            market_registry_snapshot_sha256=registry_snapshot_sha256,
+            registry_bound=True,
+            source_station_id=str(station_ids[0]),
+            due_only=False,
+        )
+        return execute_plan(plan, output_root=output_dir)
+    if provider_id == "gem_gdps_official":
+        from scripts.capture_bayes_basket_target_gem_exact_run import capture
+
+        output = output_dir / "gem_exact_run_decode.json"
+        capture(
+            stations=station_ids,
+            event_date=event_date,
+            run_initialization_utc=run_initialization_utc,
+            as_of_utc=as_of_utc,
+            registry_path=(
+                Path(__file__).resolve().parents[1]
+                / "data/bayes_basket_target_market_registry_snapshot.json"
+            ),
+            raw_root=output_dir / "raw",
+            output_path=output,
+            max_workers=2,
+        )
+        return {
+            "records": [{"status": "CAPTURED", "path": str(output)}],
+            "blocked_count": 0,
+        }
+    if provider_id in AGGREGATOR_MODEL_BY_PROVIDER:
+        from scripts.capture_bayes_basket_target_cma_exact_run import capture
+
+        model_id = AGGREGATOR_MODEL_BY_PROVIDER[provider_id]
+        output = output_dir / (
+            model_id.lower().replace("-", "_") + "_exact_run_decode.json"
+        )
+        capture(
+            stations=station_ids,
+            event_date=event_date,
+            run_initialization_utc=run_initialization_utc,
+            as_of_utc=as_of_utc,
+            registry_path=(
+                Path(__file__).resolve().parents[1]
+                / "data/bayes_basket_target_market_registry_snapshot.json"
+            ),
+            raw_root=output_dir / "raw",
+            output_path=output,
+            model_id=model_id,
+        )
+        return {
+            "records": [{"status": "CAPTURED", "path": str(output)}],
+            "blocked_count": 0,
+        }
+    raise ContractError("official_nwp_scheduler_provider_invalid")
+
+
+def capture_scope(
+    *,
+    registry_snapshot_path: Path,
+    scope: Mapping[str, Any],
+    as_of_utc: str,
+    output_root: Path,
+    activation_bindings_by_run: Mapping[str, Mapping[str, Any]],
+    run_initializations: Sequence[str] | None = None,
+    provider_runner: Callable[..., dict[str, Any]] = _default_provider_runner,
+) -> dict[str, Any]:
+    """Prefetch the exact OOS-selected provider mask for one mature run.
+
+    Provider arrival order never chooses a P0 combination.  Each run carries
+    a content-addressed activation/artifact binding; an incomplete selected
+    mask falls back as a whole to the next mature run.
+    """
+
+    registry = load_market_registry_snapshot(registry_snapshot_path)
+    event_date = str(scope.get("event_date") or "")
+    timezone_name = str(scope.get("settlement_timezone") or "")
+    station_ids = [
+        str(value).strip().upper()
+        for value in scope.get("station_ids") or []
+        if str(value).strip()
+    ]
+    if not event_date or not timezone_name or not station_ids:
+        raise ContractError("official_nwp_scheduler_scope_invalid")
+    destination = (
+        output_root.expanduser().resolve()
+        / event_date
+        / timezone_name.replace("/", "_")
+        / "-".join(station_ids)
+    )
+    attempts: list[dict[str, Any]] = []
+    all_paths: list[Path] = []
+    selected_run = ""
+    runs = list(run_initializations or candidate_run_initializations(
+        as_of_utc=as_of_utc,
+        event_date=event_date,
+        settlement_timezone=timezone_name,
+    ))
+    if not runs or len(runs) > MAX_RUN_FALLBACKS:
+        raise ContractError("official_nwp_scheduler_run_candidate_count_invalid")
+    for run in runs:
+        assert_process_memory_budget()
+        raw_binding = activation_bindings_by_run.get(run)
+        if not isinstance(raw_binding, Mapping):
+            raise ContractError(
+                "official_nwp_scheduler_activation_binding_missing"
+            )
+        binding = raw_binding.get("activation_binding")
+        raw_activation = raw_binding.get("ensemble_activation")
+        raw_ensemble = raw_binding.get("ensemble_artifact")
+        if (
+            not isinstance(binding, Mapping)
+            or not isinstance(raw_activation, Mapping)
+            or not isinstance(raw_ensemble, Mapping)
+        ):
+            raise ContractError(
+                "official_nwp_scheduler_activation_binding_invalid"
+            )
+        binding_identity = {
+            str(key): value
+            for key, value in binding.items()
+            if key != "binding_sha256"
+        }
+        if (
+            str(binding.get("binding_sha256") or "")
+            != content_sha256(binding_identity)
+        ):
+            raise ContractError(
+                "official_nwp_scheduler_activation_binding_sha_mismatch"
+            )
+        activation_identity = {
+            str(key): value
+            for key, value in raw_activation.items()
+            if key != "content_sha256"
+        }
+        if (
+            str(raw_activation.get("content_sha256") or "")
+            != content_sha256(activation_identity)
+        ):
+            raise ContractError(
+                "official_nwp_scheduler_activation_sha_mismatch"
+            )
+        activation = CalibrationActivation.from_mapping(raw_activation)
+        ensemble = ModelEnsembleArtifact.from_mapping(raw_ensemble)
+        validate_formal_ensemble_artifact(ensemble)
+        parsed_run = _parse_utc(run)
+        expected_run_cycle = f"{parsed_run.hour:02d}Z"
+        expected_lead_bucket = lead_bucket_for_maturity(
+            maturity_key_for_model_run(
+                run,
+                event_date,
+                target_timezone=timezone_name,
+            )
+        )
+        expected_season_bin = season_bin_for_event_date(
+            event_date,
+            latitude=float(
+                station_coordinates(station_ids[0])["latitude"]
+            ),
+        )
+        models = tuple(sorted({
+            str(model).strip().upper()
+            for model in binding.get("selected_models") or []
+            if str(model).strip()
+        }))
+        if (
+            models != tuple(ensemble.candidate_models)
+            or len(models) < 2
+            or any(model not in MODEL_PROVIDER_IDS for model in models)
+            or activation.artifact_kind != "MODEL_ENSEMBLE"
+            or activation.artifact_id != ensemble.ensemble_artifact_id
+            or activation.available_model_set_hash_or_star
+            != model_set_hash(models)
+            or activation.authority_scope != "PRODUCTION_NO_LIVE_ONLY"
+            or (
+                activation.station_id,
+                activation.season_bin,
+                activation.lead_bucket,
+                activation.run_cycle,
+                activation.settlement_definition,
+            )
+            != (
+                station_ids[0],
+                expected_season_bin,
+                expected_lead_bucket,
+                expected_run_cycle,
+                SETTLEMENT_DEFINITION,
+            )
+            or (
+                ensemble.station_id,
+                ensemble.season_bin,
+                ensemble.lead_bucket,
+                ensemble.run_cycle,
+                ensemble.settlement_definition,
+            )
+            != (
+                station_ids[0],
+                expected_season_bin,
+                expected_lead_bucket,
+                expected_run_cycle,
+                SETTLEMENT_DEFINITION,
+            )
+            or not timestamp_lte(activation.activated_at_utc, as_of_utc)
+            or not timestamp_in_window(
+                as_of_utc,
+                activation.valid_from_utc,
+                activation.valid_until_utc,
+            )
+            or binding.get("ensemble_artifact_id")
+            != ensemble.ensemble_artifact_id
+            or binding.get("ensemble_artifact_sha256")
+            != ensemble.content_sha256
+            or binding.get("selection_evidence_sha256")
+            != ensemble.selection_evidence_sha256
+            or binding.get("activation_id") != activation.activation_id
+            or binding.get("activation_generation") != activation.generation
+            or binding.get("activation_sha256") != activation.content_sha256
+            or binding.get("authority_scope") != activation.authority_scope
+        ):
+            raise ContractError(
+                "official_nwp_scheduler_activation_scope_mismatch"
+            )
+        selected_providers = tuple(
+            MODEL_PROVIDER_IDS[model] for model in models
+        )
+        run_dir = destination / run.replace("-", "").replace(":", "")
+        contract = build_model_run_contract(
+            target_local_date=event_date,
+            run_initialization_utc=run,
+            station_ids=station_ids,
+            target_timezone=timezone_name,
+            market_registry_snapshot_sha256=str(registry["snapshot_sha256"]),
+        )
+        contract_path = run_dir / "model_run_contract.json"
+        write_bounded_json_if_changed(contract_path, contract)
+        provider_rows: list[dict[str, Any]] = []
+        complete_count = 0
+        complete_providers: set[str] = set()
+        for provider in selected_providers:
+            try:
+                result = provider_runner(
+                    provider_id=provider,
+                    event_date=event_date,
+                    run_initialization_utc=run,
+                    as_of_utc=as_of_utc,
+                    settlement_timezone=timezone_name,
+                    station_ids=station_ids,
+                    registry_snapshot_sha256=str(registry["snapshot_sha256"]),
+                    contract_path=contract_path,
+                    output_dir=run_dir / provider,
+                )
+                if not isinstance(result, Mapping):
+                    raise ContractError("official_nwp_scheduler_provider_result_invalid")
+                paths = _capture_paths(result)
+                complete = _provider_complete(result, paths)
+                complete_count += int(complete)
+                if complete:
+                    complete_providers.add(provider)
+                all_paths.extend(paths)
+                provider_rows.append({
+                    "provider_id": provider,
+                    "state": "COMPLETE" if complete else "BLOCKED_OR_PARTIAL",
+                    "capture_path_count": len(paths),
+                    "blocked_count": int(result.get("blocked_count") or 0),
+                })
+            except Exception as exc:
+                provider_rows.append({
+                    "provider_id": provider,
+                    "state": "BLOCKED_FAIL_CLOSED",
+                    "capture_path_count": 0,
+                    "blocked_count": 1,
+                    "reason": f"{type(exc).__name__}:{exc}",
+                })
+            assert_process_memory_budget()
+        selected_ready = set(selected_providers) <= complete_providers
+        attempts.append({
+            "run_initialization_utc": run,
+            "complete_provider_count": complete_count,
+            "selected_models": list(models),
+            "activation_generation": activation.generation,
+            "ensemble_artifact_sha256": ensemble.content_sha256,
+            "selection_evidence_sha256": (
+                ensemble.selection_evidence_sha256
+            ),
+            "selected_mask_ready": selected_ready,
+            "providers": provider_rows,
+        })
+        if selected_ready:
+            selected_run = run
+            break
+    unique_paths = sorted(set(all_paths))
+    if len(unique_paths) > MAX_INPUT_FILES_PER_BATCH:
+        raise ContractError("official_nwp_scheduler_capture_batch_exceeded")
+    return {
+        "schema": SCHEMA,
+        "state": "CAPTURED" if selected_run else "BLOCKED_FAIL_CLOSED",
+        "event_date": event_date,
+        "settlement_timezone": timezone_name,
+        "station_ids": station_ids,
+        "selected_run_initialization_utc": selected_run,
+        "capture_paths": [str(path) for path in unique_paths],
+        "capture_path_count": len(unique_paths),
+        "attempts": attempts,
+        "writes_target_database": False,
+        "calls_order_gateway": False,
+        "places_orders": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+
+
+__all__ = [
+    "MAX_RUN_FALLBACKS",
+    "MAX_SCOPES_PER_CYCLE",
+    "MODEL_PROVIDER_IDS",
+    "PROVIDERS",
+    "SCHEMA",
+    "candidate_run_initializations",
+    "capture_scope",
+    "registry_capture_scopes",
+]

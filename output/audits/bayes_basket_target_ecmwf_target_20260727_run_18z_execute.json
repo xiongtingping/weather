@@ -1,0 +1,172 @@
+{
+  "blocked_count": 0,
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "formal_probability_input_role_eligible": true,
+    "live_order_authorized": false,
+    "live_submit_authorized": false,
+    "p0_consumption_before_event": true,
+    "p0_probability_input_eligible_now": true,
+    "p1_consumption_before_event": false,
+    "p1_probability_input_eligible_now": false,
+    "places_orders": false,
+    "prospective_only": true,
+    "raw_capture_may_precede_event": true,
+    "target_only": true,
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "captured_or_reused_count": 5,
+  "expected_capture_count": 5,
+  "fanout": null,
+  "plan_sha256": "1a73145da95271e65248d8dabb4c91c8af209fedb2f93077fe3edfbb07b86be6",
+  "receipt_sha256": "d4f1d2f767f4963922440df3598dde9226d306104f038adb37757a828f69c60e",
+  "records": [
+    {
+      "forecast_hour": 36,
+      "index_last_modified": "Sun, 26 Jul 2026 00:27:08 GMT",
+      "index_sha256": "71e61f23db932173b631fe59d442ebe7f32f516dc56fc7759702ef388e0ac1fd",
+      "reason_codes": [],
+      "request_byte_range": {
+        "end": 21535782,
+        "start": 20875081
+      },
+      "selected_index_row": {
+        "_length": 660702,
+        "_offset": 20875081,
+        "class": "od",
+        "date": "20260725",
+        "domain": "g",
+        "expver": "0001",
+        "levtype": "sfc",
+        "param": "2t",
+        "step": "36",
+        "stream": "oper",
+        "time": "1800",
+        "type": "fc"
+      },
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/7b19523899b20bfef41f8e09c24d5e83defcfb4cf7e5a68ac247e6f11764b739.json",
+      "valid_time_utc": "2026-07-27T06:00:00Z"
+    },
+    {
+      "forecast_hour": 42,
+      "index_last_modified": "Sun, 26 Jul 2026 00:27:09 GMT",
+      "index_sha256": "879371da0d8fc835fbe366a8cfae70fbc6859147bcd3dec1df606d9f5fe58f6c",
+      "reason_codes": [],
+      "request_byte_range": {
+        "end": 20141049,
+        "start": 19475549
+      },
+      "selected_index_row": {
+        "_length": 665501,
+        "_offset": 19475549,
+        "class": "od",
+        "date": "20260725",
+        "domain": "g",
+        "expver": "0001",
+        "levtype": "sfc",
+        "param": "2t",
+        "step": "42",
+        "stream": "oper",
+        "time": "1800",
+        "type": "fc"
+      },
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/4e5f16fe7eb5523fb0f0d4a7b211700b5c795a9fea3affd1af5441c1f678ab69.json",
+      "valid_time_utc": "2026-07-27T12:00:00Z"
+    },
+    {
+      "forecast_hour": 48,
+      "index_last_modified": "Sun, 26 Jul 2026 00:27:10 GMT",
+      "index_sha256": "c5116357344db1f791125cadfa4dde23147dbe7ab01031b44d544c9476f0bfab",
+      "reason_codes": [],
+      "request_byte_range": {
+        "end": 17496495,
+        "start": 16829944
+      },
+      "selected_index_row": {
+        "_length": 666552,
+        "_offset": 16829944,
+        "class": "od",
+        "date": "20260725",
+        "domain": "g",
+        "expver": "0001",
+        "levtype": "sfc",
+        "param": "2t",
+        "step": "48",
+        "stream": "oper",
+        "time": "1800",
+        "type": "fc"
+      },
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/e6512c30f1d7448f6dba07adda163fb70df0c9b9cf9e0e416cd2b598d7d13207.json",
+      "valid_time_utc": "2026-07-27T18:00:00Z"
+    },
+    {
+      "forecast_hour": 54,
+      "index_last_modified": "Sun, 26 Jul 2026 00:27:10 GMT",
+      "index_sha256": "077104f9022c360d3bf8a6a7f836f41253f583baf5e08077a5d3bcd1dbf23b04",
+      "reason_codes": [],
+      "request_byte_range": {
+        "end": 20946413,
+        "start": 20286678
+      },
+      "selected_index_row": {
+        "_length": 659736,
+        "_offset": 20286678,
+        "class": "od",
+        "date": "20260725",
+        "domain": "g",
+        "expver": "0001",
+        "levtype": "sfc",
+        "param": "2t",
+        "step": "54",
+        "stream": "oper",
+        "time": "1800",
+        "type": "fc"
+      },
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/565a08f3556f7b9943536682e5135648edcd6283edd4c2d81a8a55391d2b6882.json",
+      "valid_time_utc": "2026-07-28T00:00:00Z"
+    },
+    {
+      "forecast_hour": 57,
+      "index_last_modified": "Sun, 26 Jul 2026 00:27:11 GMT",
+      "index_sha256": "0c841248d73b569c800aa1a7f1911e704fbfd881199cd15a0c6ae6b74ee1eb50",
+      "reason_codes": [],
+      "request_byte_range": {
+        "end": 20590538,
+        "start": 19930855
+      },
+      "selected_index_row": {
+        "_length": 659684,
+        "_offset": 19930855,
+        "class": "od",
+        "date": "20260725",
+        "domain": "g",
+        "expver": "0001",
+        "levtype": "sfc",
+        "param": "2t",
+        "step": "57",
+        "stream": "oper",
+        "time": "1800",
+        "type": "fc"
+      },
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_ifs025_official/receipts/94cc45806f2db587710566acdf4782e7a81526b560d679668cbfb4bb676fcb92.json",
+      "valid_time_utc": "2026-07-28T03:00:00Z"
+    }
+  ],
+  "resource_budget": {
+    "max_capture_bytes": 268435456,
+    "max_process_rss_bytes": 536870912,
+    "max_raw_bytes": 1073741824,
+    "max_response_bytes": 67108864,
+    "min_free_bytes": 536870912
+  },
+  "run_initialization_utc": "2026-07-25T18:00:00Z",
+  "schema": "bayes_basket_target_ecmwf_same_run_capture_v1",
+  "target_local_date": "2026-07-27"
+}

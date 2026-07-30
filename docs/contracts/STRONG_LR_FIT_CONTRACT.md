@@ -11,7 +11,7 @@ effective_from: 2026-07-12
 
 强观测的目标是学习 D0 canonical AMSC `METAR/SPECI`、温度轨迹/动量和云雨露点等物理证据对最终物理最高温 `X` 的**增量 log likelihood**，再由独立 `X→S→B` bridge 映射到市场结算桶；它不是另一份 posterior 或交易信号。
 
-当前代码已有 runtime feature owner、严格训练样本/特征/数据集、shadow trainer、OOS 与 artifact promotion gate。`strong_observation_lr_fit_runtime.py`（CLI：`scripts/fit_strong_observation_lr_shadow.py`）只从显式冻结 JSON 输入生成 `shadow_only` candidate；当前仍没有真实 A-class final labels 和 latent replay labels，故不得配置或激活强 LR artifact，也不得把任意手工物理规则、旧 v3.1 权重或 synthetic 结果称为已训练强似然。
+当前代码已有 runtime feature owner、严格训练样本/特征/数据集、shadow trainer、OOS 与 artifact promotion gate。`strong_observation_lr_fit_runtime.py`（CLI：`scripts/fit_strong_observation_lr_shadow.py`）只从显式冻结 JSON 输入生成 `shadow_only` candidate；当前仍没有足以晋级的真实 A-class final labels 和 latent replay labels，因此不得把运营基线称为“已训练强似然”。生产 v6 已激活单独批准、明确披露局限的 operational state-space baseline；它保证 live 不被样本/OOS 阻断，但不能伪装成训练或 OOS 能力，也不得回退到 v5/v3.1。
 
 ## 实时观测、终止风险与日终 X 的不可变边界
 
@@ -70,9 +70,9 @@ latent-state P0 的经验候选构造器为 `physical_latent_state_prior_runtime
 
 `Z_t` 的允许状态空间是 `warming`、`slowing_warming`、`temporary_platform`、`temporary_cooling`、`cooling_then_rebound`、`weather_suppressed`、`terminal_cooling`、`final_locked`。任何 latent label 必须从同一 canonical event 序列的事后 replay 产生，并保留 replay artifact/hash；不能由市场价格、人工交易结果或未来报文直接写入。
 
-## 禁止混淆的两种状态
+## 禁止混淆的两种状态与当前时序
 
-`post_state_transition` **仅**表示物理路径状态 `Z_t^-→Z_t^+`。它不是 forecast source reliability 的更新。
+`post_state_transition` 仅是已退役 v5 纪元中“观测后物理路径状态 `Z_t^-→Z_t^+`”的历史字段，绝不是 forecast source reliability 更新。当前唯一 production v6 禁止观测后的第二次状态转移：它先用 `O_<t`、`Δt`、候选条件化未来强迫和持续时钟执行 `Z_{t-1}^+→Z_t^-` Predict，再由当前 canonical METAR/SPECI 对 `(Y,Z_t^-)` 做一次联合 emission Update。当前报文不得提前进入 Predict，也不得在 Update 后再次改变状态。
 
 `source_reliability.selected_source_state` 仅以 pre-event 状态进入 feature。强 artifact 不得接受、训练或输出调用方提供的 `source_reliability_after`；该状态的任何更新只能由 sequential composer 的受控状态机在同一 posterior transition 中决定。这样同一报文不会先改变自身评分所需的 pre-state。
 
@@ -98,10 +98,10 @@ strict-as-of、OOS 和 ablation 只决定新 artifact 是否能晋级；它们�
 
 在没有合格训练数据时，不得伪称强观测能力已经训练；但样本/OOS也不得阻断 live。旧 `operational_physical_innovation_lr_v1` 只沿 `X` 轴评分、八个 `Z` 状态恒等传播，已列入概率纪元退役项，不能作为 v2 fallback。
 
-唯一生产继任基线为 `strong_observation_lr_operational_state_baseline_v3`，`scoring_kind=operational_physical_state_aware_lr_v3_first_cb_once`。它对每个 `temperature × Z_t^-` cell 生成截至当前 canonical 链的累计强证据评分；composer 用前后两份评分之差形成唯一条件创新 log-LR。首次 CB 直接惩罚只在首次事件消费一次；夜间预热阶段对最终 X 的直接似然中性，08:00–09:00 平滑启用，常规 METAR 硬下界不受该相位控制。事件条件化 `P(Z_t^+ | O_t,X,Z_t^-)` 只重新分配同一 X 内状态质量。hard mask、累计证据替换、中心化、normalizer、posterior delta、termination-risk 边际和 SSOT 均只由 composer 拥有。该基线是获批预校准物理基线，不声称训练/OOS能力；后续 artifact 只能整体替换。
+当前生产 v6 的运营强观测基线沿用 `strong_observation_lr_operational_state_baseline_v3` 的 First-CB、云雨、露点、温度动量与轨迹物理参数，但证据消费时序已由 ADR-0003 接管：冻结参数只生成当前 canonical event 的联合 emission，不能再生成 v5 cumulative-replacement 或 post-event transition。首次 CB 直接证据只在首次事件消费一次；夜间阶段对最终 X 的直接 emission 中性，常规 METAR 的 continuous-Y/reported-X hard condition 不受该相位控制。Predict、emission、hard condition、normalizer、termination-risk 边际和 SSOT 都由唯一 v6 composer 拥有。该基线是获批预校准物理基线，不声称训练/OOS能力；后续 artifact 只能通过完整 successor epoch 整体替换。
 
-每条 v5 strong update 必须在 `path_auxiliary_json.strong_likelihood_update_identity` 持久化当前累计 raw-score SHA、前序累计 raw-score SHA、条件创新 SHA 和 predecessor checkpoint。验收器必须从相邻 update 的 raw score 重新计算 `ΔlogL`，并逐格证明 `posterior_delta=ΔlogL+normalizer`（hard-mask 格严格为 null）；public SSOT 只透出这些紧凑身份，不复制 6MB score surface。任一 SHA、predecessor 或逐格等式不闭合即 fail closed。
+v5 的累计 raw-score、replacement `ΔlogL` 与 `post_state_transition` 仅保留为历史 replay 证据，不得被 v6 writer 读取或恢复。每条 v6 strong update 必须绑定 predecessor checkpoint、canonical event、冻结 forcing snapshot、pre-event Predict identity、current-event emission identity、hard-condition identity与 successor checkpoint；验收器必须逐格重算 `Predict→emission→hard condition→normalize`，并证明 reported-X 投影与公共 SSOT 一致。任一 SHA、前驱、时序或逐格等式不闭合即 fail closed。
 
 该 v3 内容寻址基线已纳入 First-CB 因果时序：`timing.first_cb_local_hour`、首次事件状态、日内相位和相对当时已观测峰值关系属于同一强观测 feature set；首时刻/温度作为 audit lineage 保存，不另建概率源。每个 raw row 必须披露 CB 对该 X 候选的剩余升温 penalty；当 `candidate.remaining_warming_c=0` 时该 penalty 恒为 0。
 
-生产切换必须同时冻结新 artifact SHA、runtime manifest、successor P0、`replay_generation+1` 与全部 canonical replay；禁止热换 artifact、复用旧 P0 或在同一 generation 混用前后纪元。`scripts/cutover_cumulative_strong_likelihood_v5.sh` 是该 successor epoch 的唯一受管入口；它在同一停服窗口完成精确备份、源码切换、P0 重建、全量 replay、逐格增量等式、零订单与 readiness 验收，不得顺带改变任何交易 activation。失败必须恢复数据库、源码和 activation 的精确切换前状态；成功后旧 v4 公式不得恢复为 fallback。
+生产切换必须同时冻结新 artifact SHA、完整递归 runtime dependency closure、successor P0、`replay_generation+1` 与全部 canonical replay；禁止热换 artifact、复用旧 P0 或在同一 generation 混用前后纪元。当前唯一入口是 v6 受管切换 runbook；旧 `scripts/cutover_cumulative_strong_likelihood_v5.sh` 已退役并必须在探测外置盘、停服务或写库之前 fail closed。失败必须恢复本机数据库、源码和 activation 的精确切换前状态；外置盘不是运行或回滚依赖，v5/v4 不得作为 fallback。

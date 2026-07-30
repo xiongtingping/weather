@@ -452,6 +452,8 @@ def run_daily_pipeline(*, max_incremental_requests: int = 12) -> dict[str, Any]:
 
 
 def main() -> int:
+    if (ROOT / "data" / "reported_trajectory_core_only.enabled").exists():
+        return 0
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--max-incremental-requests", type=int, default=12)

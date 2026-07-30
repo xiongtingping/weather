@@ -94,3 +94,15 @@ def test_gfs_no_files_distinguishes_missing_peak_hours_from_empty_prefix():
         "21": False,
         "22": False,
     }
+
+
+def test_configure_release_session_uses_explicit_official_proxy(monkeypatch):
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9999")
+    monkeypatch.setenv("PM_OFFICIAL_NWP_PROXY", "http://127.0.0.1:7890")
+    session = watcher.requests.Session()
+    watcher.configure_official_requests_session(session)
+    assert session.trust_env is False
+    assert session.proxies == {
+        "http": "http://127.0.0.1:7890",
+        "https": "http://127.0.0.1:7890",
+    }

@@ -165,7 +165,7 @@ def build_report(
         not safety_blockers
         and not promotion_blockers
         and probability_report.get("ok") is True
-        and market_report.get("state") == "ready"
+        and market_report.get("production_market_projection_ready") is True
         and execution_report.get("live_activation_ready") is True
     )
     return {
@@ -177,7 +177,7 @@ def build_report(
         "checks": {
             "reported_x_probability_ready": probability_report.get("ok") is True,
             "market_bridge_safety_ok": not bool(market_report.get("safety_blockers")),
-            "market_projection_ready": market_report.get("state") == "ready",
+            "market_projection_ready": market_report.get("production_market_projection_ready") is True,
             "dynamic_three_leg_live_ready": execution_report.get("live_activation_ready") is True,
             "dynamic_three_leg_safe_fail_closed": execution_fail_closed,
             "runtime_policy_has_no_ev_edge_gate": policy_report.get("ok") is True,
@@ -207,7 +207,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument(
         "--event-date",
-        default=datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
+        default=datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
     )
     parser.add_argument("--timeout-sec", type=int, default=240)
     parser.add_argument("--summary", action="store_true")

@@ -1,0 +1,113 @@
+{
+  "schema": "settlement_floor_biased_basket_policy_v1",
+  "policy_id": "weather_settlement_floor_biased_basket_v1",
+  "state": "prepared",
+  "roles": {
+    "M": "主核心资金桶；利润目标第一",
+    "S": "副核心资金桶；利润目标第二",
+    "A": "主核心份额桶；核心利润来源第三",
+    "B": "副核心份额桶",
+    "F": "保本/成本桶；参与结算地板",
+    "L": "彩票桶；动态配仓，参与结算地板",
+    "C": "成本计入桶；计入篮子总成本但不参与结算地板，不追加"
+  },
+  "allocation": {
+    "reference_funding_ratio": {
+      "M": 12,
+      "S": 6,
+      "A": 2,
+      "B": 1
+    },
+    "reference_funding_percent_if_complete": {
+      "M": 0.5714285714,
+      "S": 0.2857142857,
+      "A": 0.0952380952,
+      "B": 0.0476190476
+    },
+    "M_to_S_funding_target": "2:1",
+    "M_to_S_profit_target": "2:1",
+    "A_to_B_share_target": "2:1",
+    "A_to_S_funding_target": "1:3",
+    "ratio_is_hard_gate": false,
+    "missing_role_action": "do_not_allocate_or_reassign"
+  },
+  "role_rebalance": {
+    "enabled": true,
+    "mode": "role_order_or_budget_release",
+    "sellable_roles": ["S", "B", "L", "C"],
+    "protected_roles": ["M", "A", "F"],
+    "minimum_strict_share_gap": 1,
+    "budget_control_sell": true,
+    "budget_control_sell_rule": "资金不足时允许仅卖出S角色（本轮为38°C）的一部分；不得卖出M/A/F，必须按官方YES bid逐档成交后，以实际卖出收益重算净成本、地板和后续买入差额",
+    "sell_quote_source": "official_clob_yes_bid_depth",
+    "proceeds_reduce_net_settlement_cost": true,
+    "floor_recomputed_after_fill": true,
+    "unknown_fill": "reconcile_required_stop",
+    "floor_failure_action": "block",
+    "calculation_entrypoint": "basket_strategy.settlement_floor_allocator.build_role_rebalance_plan"
+  },
+  "settlement_floor": {
+    "hard": true,
+    "formula": "final_shares_by_bucket - settlement_basket_cost >= safety_pad_usdc",
+    "default_safety_pad_usdc": 0.01,
+    "lottery_excluded": false,
+    "lottery_dynamic_allocation": true,
+    "best_ask_sum_must_be_less_than_one": true,
+    "pending_gtc_exception": true,
+    "pending_gtc_exception_scope": "unfilled_GTC_only; recompute_floor_after_fill"
+  },
+  "budget": {
+    "default_usdc": 200,
+    "is_upper_bound": true,
+    "force_full_use": false,
+    "lottery_usdc_per_bucket": null
+  },
+  "inputs": {
+    "required": ["buckets", "roles", "quotes"],
+    "existing_positions_optional": true,
+    "quote_source": "official_clob_yes_ask_depth"
+  },
+  "execution_boundary": {
+    "calculation_only": true,
+    "submits_orders": false,
+    "does_not_read_weather_or_probability": true,
+    "default_manual_execution_mode": "staged_fak_then_gtc",
+    "insufficient_visible_depth_action": "buy_visible_depth_then_place_gtc_remainder",
+    "manual_execution_modes": {
+      "strict": {
+        "order_type": "FAK",
+        "requires_full_visible_depth": true,
+        "pending_orders_allowed": false,
+        "enable_with": "--no-staged"
+      },
+    "staged_fak_then_gtc": {
+        "enabled_by_default": true,
+        "available_with_flag": "--staged",
+        "initial_order_type": "FAK",
+        "remainder_order_type": "GTC",
+        "pending_orders_count_as_floor": false,
+        "best_ask_sum_gate_for_pending_gtc": false,
+        "pending_orders_reserve_budget": true,
+        "recompute_after_fill": true,
+        "known_partial_fill": "place_only_actual_remainder_gtc",
+        "unknown_fill": "reconcile_required_stop",
+        "existing_relevant_gtc": "wait_without_duplicate_order",
+        "full_floor_proof": "required_after_pending_orders_fill"
+      },
+      "controlled_rebalance_sell": {
+        "enabled": true,
+        "enable_with": "--rebalance-sell --execute",
+        "order_side": "SELL",
+        "order_type": "FAK",
+        "price_source": "official_clob_yes_best_bid",
+        "allow_market": false,
+        "gateway": "single_local_clob_gateway",
+        "same_round_buy": false,
+        "open_orders_must_be_empty": true,
+        "full_fill_required": true,
+        "partial_or_unknown_fill": "reconcile_required_stop",
+        "after_full_fill": "rebalance_completed_recompute_required"
+      }
+    }
+  }
+}

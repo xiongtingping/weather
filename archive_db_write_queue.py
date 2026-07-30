@@ -2,7 +2,7 @@
 """Process-local archive.db writer gate.
 
 This module serializes writable archive.db handles through the existing
-``data/db_writer.lock`` directory protocol.  It is intentionally filesystem
+``data/db_writer.user.lock`` directory protocol.  It is intentionally filesystem
 only: no schema changes, no background daemon, and no historical backfill.
 """
 
@@ -24,7 +24,7 @@ from typing import Any, Iterator, Optional
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = ROOT / "data" / "archive.db"
-DEFAULT_LOCK_DIR = ROOT / "data" / "db_writer.lock"
+DEFAULT_LOCK_DIR = ROOT / "data" / "db_writer.user.lock"
 
 _HELD_LOCK_COUNTS: dict[str, int] = {}
 _HELD_LOCK_THREADS: dict[str, int] = {}

@@ -1,0 +1,3311 @@
+{
+  "activation": {
+    "calls_order_gateway": false,
+    "contract_sha256": "2190dfe5fbf4124ed348f8d0433dd1ab49cc26a82f4f80d5855f777ab26736f6",
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+    "places_orders": false,
+    "schema": "bayes_basket_target_production_no_live_activation_v1",
+    "validation_blockers": []
+  },
+  "blockers": [
+    "target_execution_vector_lineage_incomplete",
+    "target_forward_scorecard_incomplete",
+    "target_materialized_inputs_incomplete",
+    "target_production_ssot_schema_not_installed"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "read_only_audit": true,
+    "writes_orders": false
+  },
+  "calibration_evidence": {
+    "blocked_without_candidates": false,
+    "calibration_artifact_count": 108,
+    "calls_order_gateway": false,
+    "candidate_only": true,
+    "checks": {
+      "candidate_artifact_count_positive": true,
+      "model_provider_set_complete": true,
+      "oos_promotion_gate_complete": false,
+      "published_receive_timestamps_complete": false,
+      "strict_asof_replay_pass": true,
+      "three_model_available": true,
+      "truth_lineage_complete": true
+    },
+    "ensemble_artifact_count": 36,
+    "et_history_evidence": {
+      "as_of_utc": "2026-07-26T00:41:05Z",
+      "joined_station_days": 360,
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_et_history_evidence_awc_historical_candidate_20260726.json",
+      "promotion_allowed": false,
+      "receipt_sha256": "77202369d5f7c8d0151ac4e8ae1f3767755fe87ebfbeb44881b7d0c38f5d462c",
+      "scope": {
+        "excluded_source_lanes": [
+          "amsc"
+        ],
+        "excluded_station_ids": [
+          "RCSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ],
+        "included_station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KDAL",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KMIA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MMMX",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RJTT",
+          "RKPK",
+          "RKSI",
+          "RPLL",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS"
+        ],
+        "mode": "allowlist"
+      },
+      "state": "READY_FOR_STRICT_ASOF"
+    },
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence.json",
+    "promotion_allowed": false,
+    "promotion_decision_count": 144,
+    "receipt_sha256": "6dd4d23ae0fd97d70782df7631a6c9770b6a09a6302d0b3a95350df252c25b5e",
+    "rejected_only": true,
+    "state": "VALID_CANDIDATE_EVIDENCE",
+    "writes_production_db": false
+  },
+  "capital_pool": {
+    "balance_usdc": 0.0,
+    "capital_epoch_id_present": true,
+    "pool_id": 1,
+    "ready": true,
+    "reserved_usdc": 0.0,
+    "state": "ready",
+    "version": 0
+  },
+  "controlled_migration_pause_marker": "/Users/xiong/weather/data/bayes_basket_target_migration_paused.flag",
+  "controlled_migration_pause_marker_required": false,
+  "controlled_migration_pause_marker_token": "bayes-basket-target-m5-migration-v1",
+  "controlled_migration_pause_marker_valid": null,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_scope": "isolated_target_no_live",
+  "db_activation_alignment": {
+    "aligned": true,
+    "expected": {
+      "activation_contract_sha256": "2190dfe5fbf4124ed348f8d0433dd1ab49cc26a82f4f80d5855f777ab26736f6",
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false,
+      "places_orders": false
+    },
+    "mismatches": [],
+    "observed": {
+      "activation_contract_sha256": "2190dfe5fbf4124ed348f8d0433dd1ab49cc26a82f4f80d5855f777ab26736f6",
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false,
+      "places_orders": false
+    },
+    "state": "checked"
+  },
+  "forward_scorecard": {
+    "as_of_utc": "2026-07-27T23:05:54.105726Z",
+    "blockers": [
+      "cash_formal_scorecard_missing_or_invalid",
+      "forward_scorecard_cash_not_ready",
+      "forward_scorecard_station_not_ready",
+      "forward_scorecard_station_samples_missing:CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL,KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD,KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG,NZWN,OEJN,OPKC,RCSS,RJTT,RKPK,RKSI,RPLL,SAEZ,SBGR,VILK,WMKK,WSSS,ZBAA,ZGGG,ZGSZ,ZHHH,ZSPD,ZSQD,ZUCK,ZUUU",
+      "forward_scorecard_training_facts_missing",
+      "no_training_facts",
+      "station_allowlist_scope_incomplete",
+      "station_formal_scorecard_missing_or_invalid"
+    ],
+    "calls_order_gateway": false,
+    "missing_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "observed_station_ids": [],
+    "orders_submitted": 0,
+    "production_no_live": true,
+    "read_only": true,
+    "ready": false,
+    "ready_for_cash_scorecard": false,
+    "ready_for_station_scorecard": false,
+    "receipt": {
+      "as_of_utc": "2026-07-27T23:05:54.105726Z",
+      "blockers": [
+        "cash_formal_scorecard_missing_or_invalid",
+        "no_training_facts",
+        "station_allowlist_scope_incomplete",
+        "station_formal_scorecard_missing_or_invalid"
+      ],
+      "calls_order_gateway": false,
+      "cash_phase_evidence": {
+        "blockers": [
+          "cash_formal_scorecard_missing_or_invalid"
+        ],
+        "candidate_content_sha256": [],
+        "candidate_count": 0,
+        "candidate_fill_semantics": "no_live_candidate_fill_simulation_or_receipt",
+        "content_addressed_by_fact_sha256": false,
+        "formal_validator": "validate_cash_phase_forward_scorecard",
+        "real_fill_evidence": 0,
+        "selected": null,
+        "structurally_complete": false
+      },
+      "content_sha256": "4f464565b081b8a13307508e70926e0010d24688262258a751d98f19380f065b",
+      "counts": {
+        "by_phase": {},
+        "by_scope": [],
+        "by_stage": {},
+        "by_station": {},
+        "fact_rows_evaluated": 0,
+        "fact_rows_read": 0,
+        "invalid_label_revisions": 0,
+        "label_rows_read": 0,
+        "labeled_facts": 0,
+        "malformed_feature_facts": 0,
+        "unlabeled_facts": 0,
+        "valid_label_revisions": 0
+      },
+      "exact_vector_coverage": {
+        "coverage_ratio": 0.0,
+        "exact_vector_coverage_ratio": 0.0,
+        "facts_with_exact_vector": 0,
+        "facts_with_feature_json": 0,
+        "facts_with_no_execution_policy": 0,
+        "facts_with_version_evidence": 0,
+        "invalid_vector_count": 0,
+        "required_fields": [
+          "probability_sha256",
+          "official_ws_quote_sha256",
+          "inventory_sha256",
+          "order_state_sha256",
+          "station_policy_sha256",
+          "cash_policy_decision_sha256",
+          "strict_delta_artifact_sha256",
+          "target_price_id",
+          "quote_observed_at",
+          "quote_expires_at",
+          "vector_sha256"
+        ],
+        "valid_vector_count": 0,
+        "vector_count": 0,
+        "version_evidence_coverage_ratio": 0.0
+      },
+      "fact_sha_coverage": {
+        "coverage_ratio": 0.0,
+        "fact_count": 0,
+        "facts_with_valid_content_sha256": 0
+      },
+      "global_blockers": [
+        "no_training_facts"
+      ],
+      "live_order_authorized": false,
+      "max_rows": 256,
+      "no_live_fill_isolation": {
+        "actual_fill_evidence": 0,
+        "external_fill_tables_read": false,
+        "isolated": true,
+        "no_live_boundary_violations": 0,
+        "requested_hypothetical_intents": 0,
+        "source": "basket_policy_training_label.outcome_json"
+      },
+      "orders_submitted": 0,
+      "production_no_live": true,
+      "read_only": true,
+      "ready_for_cash_scorecard": false,
+      "ready_for_station_scorecard": false,
+      "requested_semantics": {
+        "actual_fill_evidence": 0,
+        "blockers": [],
+        "by_label_semantics": {},
+        "label_rows_evaluated": 0,
+        "malformed_outcome_rows": 0,
+        "no_live_boundary_violations": 0,
+        "requested_hypothetical_intents_not_fills": 0,
+        "unknown_semantics": 0
+      },
+      "schema": "bayes_basket_target_forward_scorecard_v1",
+      "station_allowlist": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KDAL",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KMIA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MMMX",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "RPLL",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ],
+      "station_policy_evidence": {
+        "blockers": [
+          "station_allowlist_scope_incomplete",
+          "station_formal_scorecard_missing_or_invalid"
+        ],
+        "candidate_content_sha256": [],
+        "candidate_count": 0,
+        "content_addressed_by_fact_sha256": false,
+        "expected_station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KDAL",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KMIA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MMMX",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RCSS",
+          "RJTT",
+          "RKPK",
+          "RKSI",
+          "RPLL",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ],
+        "formal_validator": "validate_station_policy_forward_scorecard",
+        "observed_station_ids": [],
+        "selected": null,
+        "structurally_complete": false
+      },
+      "writes_production_db": false
+    },
+    "receipt_content_sha256": "4f464565b081b8a13307508e70926e0010d24688262258a751d98f19380f065b",
+    "required_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "schema": "bayes_basket_target_forward_scorecard_gate_v1",
+    "state": "BLOCKED"
+  },
+  "future_day_residue": {
+    "as_of_utc": "2026-07-27T23:05:54.105726Z",
+    "audit_sha256": "2f2378eeedaa06a098fc0c7fe46b5e4d599c4eed4c5e28aa294431de86d51d45",
+    "blockers": [],
+    "checks": {
+      "calls_order_gateway": false,
+      "future_decisions_are_blocked_no_order": true,
+      "future_residue_isolated": true,
+      "no_order_intents_or_capital_downstream": true,
+      "places_orders": false,
+      "started_registry_excludes_future": true,
+      "writes_production_database": false,
+      "writes_target_database": false
+    },
+    "consumer_filter": {
+      "future_scope_excluded": true,
+      "started_registry_future_scope_count": 0,
+      "started_registry_scope_count": 1313
+    },
+    "formal_input_future_partitions": [
+      {
+        "currently_future_settlement": 0,
+        "invalid": 0,
+        "row_count": 12,
+        "started_or_closed_settlement": 12,
+        "state": "checked",
+        "table": "basket_probability_envelope"
+      },
+      {
+        "currently_future_settlement": 0,
+        "invalid": 0,
+        "row_count": 0,
+        "started_or_closed_settlement": 0,
+        "state": "checked",
+        "table": "basket_official_ws_snapshot"
+      },
+      {
+        "currently_future_settlement": 0,
+        "row_count": 0,
+        "state": "missing_or_no_settlement_scope",
+        "table": "basket_confirmed_inventory_snapshot"
+      },
+      {
+        "currently_future_settlement": 0,
+        "row_count": 0,
+        "state": "missing_or_no_settlement_scope",
+        "table": "basket_order_state_snapshot"
+      },
+      {
+        "currently_future_settlement": 0,
+        "row_count": 0,
+        "state": "missing_or_no_settlement_scope",
+        "table": "basket_cash_phase_policy_artifact"
+      }
+    ],
+    "future_residue": {
+      "cycle_count": 0,
+      "cycle_ids_match_decisions": true,
+      "decision_count": 0,
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "non_blocked_decision_count": 0,
+      "non_prepared_cycle_count": 0
+    },
+    "operational": {
+      "auto_trade_decisions": {
+        "created_before_settlement_start_count": 0,
+        "currently_future_settlement_count": 0,
+        "event_dates": [
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 119
+      },
+      "basket_target_execution_cycles": {
+        "created_before_settlement_start_count": 0,
+        "currently_future_settlement_count": 0,
+        "event_dates": [
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 119
+      }
+    },
+    "residue_definition": "created_at_before_registry_settlement_day_start",
+    "schema": "bayes_basket_target_future_day_residue_audit_v1",
+    "target_timezone_authority": "market_registry.settlement_timezone"
+  },
+  "main_chain": {
+    "blocked_at": "OFFICIAL_WS",
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "final_p1_chain": {
+      "blocked_at": "OFFICIAL_WS",
+      "ready": false,
+      "requires_auto_trade_decision": true
+    },
+    "live_submit_authorized": false,
+    "order": [
+      "OFFICIAL_FACTS",
+      "THREE_MODEL",
+      "SETTLEMENT_ALIGN",
+      "CALIBRATION_ENSEMBLE",
+      "P0_P1",
+      "OFFICIAL_WS",
+      "BASKET",
+      "DECISION_RECONCILE"
+    ],
+    "places_orders": false,
+    "preliminary_p0_chain": {
+      "capital_authorized": false,
+      "final_authority": "P1",
+      "intents_written": 0,
+      "orders_submitted": 0,
+      "preselection_plan_count": 0,
+      "ready": false,
+      "reservations_written": 0,
+      "state": "BLOCKED"
+    },
+    "ready": false,
+    "schema": "bayes_basket_target_main_chain_status_v1",
+    "stages": [
+      {
+        "id": "OFFICIAL_FACTS",
+        "label": "官方天气事实",
+        "observed": {
+          "observation_facts": 20686
+        },
+        "ready": true,
+        "state": "READY_EVIDENCE"
+      },
+      {
+        "id": "THREE_MODEL",
+        "label": "ECMWF/GFS/ICON 三模型预测",
+        "observed": {
+          "complete_curve_count": 135,
+          "model_provider_set_complete": true
+        },
+        "ready": true,
+        "state": "READY_EVIDENCE"
+      },
+      {
+        "id": "SETTLEMENT_ALIGN",
+        "label": "market_registry 结算日界 exact join",
+        "observed": {
+          "joined_station_days": 360,
+          "state": "READY_FOR_STRICT_ASOF"
+        },
+        "ready": true,
+        "state": "READY_FOR_STRICT_ASOF"
+      },
+      {
+        "id": "CALIBRATION_ENSEMBLE",
+        "label": "模型校准与组合",
+        "observed": {
+          "calibration_activation": 429,
+          "calibration_ensemble_artifact": 129,
+          "calibration_model_artifact": 252
+        },
+        "ready": true,
+        "state": "ACTIVE_NO_LIVE_ONLY"
+      },
+      {
+        "id": "P0_P1",
+        "label": "P0/P1 温度概率",
+        "observed": {
+          "basket_probability_envelope": 12,
+          "stage_counts": {
+            "P0": 3,
+            "P0-M": 2,
+            "P1": 7
+          },
+          "started_settlement_p1_count": 7
+        },
+        "ready": true,
+        "state": "MATERIALIZED"
+      },
+      {
+        "id": "OFFICIAL_WS",
+        "label": "官方 CLOB WS 盘口快照",
+        "observed": {
+          "basket_official_ws_snapshot": 0,
+          "complete_scope_count": 28,
+          "incomplete_scope_count": 1
+        },
+        "ready": false,
+        "state": "BLOCKED"
+      },
+      {
+        "id": "BASKET",
+        "label": "篮子计算与持有计划",
+        "observed": {
+          "exact_scope_blocked_count": 123,
+          "exact_scope_count": 123,
+          "exact_scope_ready": false,
+          "execution_cycles": 119,
+          "execution_cycles_future_settlement": 0,
+          "execution_cycles_started_settlement": 119
+        },
+        "ready": false,
+        "state": "BLOCKED"
+      },
+      {
+        "id": "DECISION_RECONCILE",
+        "label": "no-live 决策与对账",
+        "observed": {
+          "capital_reservations": 0,
+          "decisions": 119,
+          "decisions_future_settlement": 0,
+          "decisions_started_settlement": 119,
+          "non_blocked_decisions": 0,
+          "order_events": 0,
+          "order_intents": 0,
+          "reconciliations": 0
+        },
+        "ready": true,
+        "state": "NO_RECONCILIATION_REQUIRED"
+      }
+    ]
+  },
+  "migration": {
+    "blocked_execution_vector_lineage": {
+      "blocked_decision_count": 119,
+      "blockers": [
+        "legacy_blocked_execution_vectors_missing"
+      ],
+      "calls_order_gateway": false,
+      "candidate_decision_ids": [
+        "decision_81926e81a1dde88653311795da7fcf924a095934",
+        "decision_1e7fd0a8d72425cb2525aa53dcc6b2f928a11f95",
+        "decision_8f8e406e814b95eb182a6a6080e8a5aec084b6a7",
+        "decision_843778ff20768d509e6d805bab1930af89b48bcb"
+      ],
+      "covered_count": 115,
+      "invalid": [],
+      "invalid_count": 0,
+      "missing_tables": [],
+      "ok": false,
+      "places_orders": false,
+      "repair_candidate_count": 4,
+      "schema": "bayes_basket_target_blocked_execution_vector_repair_v1",
+      "state": "repair_required"
+    },
+    "calls_order_gateway": false,
+    "cash_phase_authority_manifest_schema": {
+      "columns": [
+        [
+          "manifest_sha256",
+          "TEXT",
+          0,
+          1
+        ],
+        [
+          "station_id",
+          "TEXT",
+          1,
+          0
+        ],
+        [
+          "policy_version",
+          "TEXT",
+          1,
+          0
+        ],
+        [
+          "artifact_sha256",
+          "TEXT",
+          1,
+          0
+        ],
+        [
+          "station_timezone",
+          "TEXT",
+          1,
+          0
+        ],
+        [
+          "valid_from_utc",
+          "TEXT",
+          1,
+          0
+        ],
+        [
+          "valid_until_utc",
+          "TEXT",
+          1,
+          0
+        ],
+        [
+          "authority_scope",
+          "TEXT",
+          1,
+          0
+        ]
+      ],
+      "columns_ok": true,
+      "index_columns": [
+        "station_id",
+        "authority_scope",
+        "valid_from_utc",
+        "valid_until_utc"
+      ],
+      "index_ok": true,
+      "missing": [],
+      "ok": true,
+      "table_constraints_ok": true,
+      "table_present": true,
+      "trigger_names": [
+        "basket_cash_phase_authority_no_delete",
+        "basket_cash_phase_authority_no_update"
+      ],
+      "triggers_ok": true
+    },
+    "legacy_decision_row_count": 119,
+    "legacy_decision_table_collision": false,
+    "legacy_decision_table_present": true,
+    "live_submit_authorized": false,
+    "mutation_required": true,
+    "production_ssot_schema": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": []
+      },
+      "ledger_missing_columns": {
+        "auto_trade_decisions": [],
+        "basket_target_order_intents": []
+      },
+      "ledger_schema_ok": true,
+      "maker_grid_oos_missing_tables": [],
+      "maker_grid_oos_schema_ok": true,
+      "missing_tables": [],
+      "ok": false,
+      "policy_training_constraint_ok": true,
+      "policy_training_missing_columns": {
+        "basket_policy_training_fact": [],
+        "basket_policy_training_label": []
+      },
+      "policy_training_schema_ok": true,
+      "probability_stage_contract_ok": true,
+      "quote_freshness_missing_columns": [],
+      "regime_missing_columns": [],
+      "regime_schema_ok": false,
+      "regime_superseded_schema": {
+        "columns_exact": true,
+        "committed_partial_unique_ok": false,
+        "controlled_update_trigger_ok": false,
+        "legacy_no_update_absent": false,
+        "missing_columns": [],
+        "no_delete_trigger_ok": true,
+        "ok": false,
+        "supports_superseded": false,
+        "table_present": true
+      },
+      "schema": "bayes_basket_target_ssot_v4",
+      "settlement_timezone_missing_columns": {},
+      "target_tables_present": true
+    },
+    "schema": "bayes_basket_target_ssot_migration_plan_v1",
+    "target_ledger_schema": {
+      "blocking_authority": "auto_trade_decisions",
+      "calls_order_gateway": false,
+      "forbidden_execution_vector_columns": [],
+      "legacy_execution_vector_policy_present": false,
+      "missing_columns": {},
+      "missing_tables": [],
+      "ok": true,
+      "places_orders": false,
+      "schema": "bayes_basket_target_atomic_ledger_v1"
+    },
+    "writes_orders": false
+  },
+  "native_decode_evidence": {
+    "calls_order_gateway": false,
+    "complete_curve_count": 135,
+    "curve_count": 135,
+    "decoded_point_count": 1530,
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_native_model_arrival_decode_20260724_00z_normalized_20260726.json",
+    "promotion_allowed": false,
+    "receipt_sha256": "f8a0bccbe2be0c2e3b269df1933500d625dac6e6f2c3f20c3a3d68fe11c26efb",
+    "state": "VALID_NATIVE_DECODE_EVIDENCE",
+    "writes_production_db": false
+  },
+  "official_ws_manifest": {
+    "exists": true,
+    "path": "/Users/xiong/weather/data/bayes_basket_target_official_ws_manifest.json"
+  },
+  "official_ws_scope_coverage": {
+    "authorizes_order": false,
+    "complete_scope_count": 28,
+    "complete_scope_token_count": 308,
+    "evidence_only": true,
+    "incomplete_scope_count": 1,
+    "incomplete_scope_sample": [
+      {
+        "missing_token_count": 11,
+        "scope": "EGLC|2026-07-28"
+      }
+    ],
+    "loaded_quote_count": 308,
+    "manifest_state": "connected",
+    "path": "/Users/xiong/weather/data/bayes_basket_target_official_ws_manifest.json",
+    "pending_materialized_token_count": 0,
+    "pending_shards": [],
+    "registry_scope_count": 29,
+    "registry_yes_token_count": 319,
+    "state": "loaded",
+    "station_scope": {
+      "mode": "full_target_registry",
+      "source_lane": "UNSCOPED_TARGET_REGISTRY",
+      "station_ids": []
+    },
+    "unmaterialized_token_count": 0
+  },
+  "ok": false,
+  "resource_budget": {
+    "database_bytes": 77262848,
+    "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "free_bytes": 14162411520,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_research_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 89178112,
+    "raw_bytes": 773704631,
+    "raw_file_count": 3886,
+    "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+    "shm_bytes": 0,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 0
+  },
+  "schema": "bayes_basket_target_production_readiness_v1",
+  "services": {
+    "probe_errors": [],
+    "system": {
+      "com.weather.auto_trade_watcher": false,
+      "com.weather.auto_trade_worker": false,
+      "com.weather.clob_order_service": true,
+      "com.weather.dynamic_three_leg_execution": false,
+      "com.weather.market_ws": true,
+      "com.weather.model_release_watcher": false,
+      "com.weather.monitor.daemon": false,
+      "com.weather.reported_trajectory_no": true,
+      "com.weather.target_realization_worker": false,
+      "com.weather.trade_engine": false,
+      "com.weather.trade_sync_loop": false,
+      "com.xiong.weather.ui": false
+    },
+    "user": {
+      "com.weather.auto_trade_watcher": false,
+      "com.weather.auto_trade_worker": false,
+      "com.weather.clob_order_service": false,
+      "com.weather.dynamic_three_leg_execution": false,
+      "com.weather.market_ws": false,
+      "com.weather.model_release_watcher": false,
+      "com.weather.monitor.daemon": false,
+      "com.weather.reported_trajectory_no": false,
+      "com.weather.target_realization_worker": false,
+      "com.weather.trade_engine": false,
+      "com.weather.trade_sync_loop": false,
+      "com.xiong.weather.ui": false
+    }
+  },
+  "state": "blocked",
+  "station_scope": {
+    "mode": "full_target_registry",
+    "source_lane": "UNSCOPED_TARGET_REGISTRY",
+    "station_ids": []
+  },
+  "target_inputs": {
+    "aggregate_counts_ready": false,
+    "calibration_no_live_active": true,
+    "cash_phase_authorized": false,
+    "cash_phase_promoted": false,
+    "counts": {
+      "basket_cash_phase_authority_manifest": 0,
+      "basket_cash_phase_policy_artifact": 24,
+      "basket_confirmed_inventory_snapshot": 11,
+      "basket_global_prior_artifact": 4,
+      "basket_official_ws_snapshot": 0,
+      "basket_order_state_snapshot": 11,
+      "basket_p0_preselection_plan": 0,
+      "basket_policy_activation": 48,
+      "basket_probability_envelope": 12,
+      "basket_station_policy_artifact": 42,
+      "basket_target_market_registry_snapshot": 8,
+      "calibration_activation": 429,
+      "calibration_artifact_promotion": 0,
+      "calibration_ensemble_artifact": 129,
+      "calibration_model_artifact": 252
+    },
+    "decision_clock_utc": "2026-07-27T23:05:54.105726Z",
+    "exact_scope_readiness": {
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "blocked_scope_count": 123,
+      "boundary": {
+        "calls_order_gateway": false,
+        "execution_mode": "production_no_live",
+        "orders_submitted": 0,
+        "places_orders": false,
+        "read_only": true
+      },
+      "content_sha256": "3c61fa8ad4abb457a178c4df9a2ee155eebfbf813da3c12eec3029a7de700eb2",
+      "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+      "exact_scope_count": 0,
+      "items": [
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "6bcf88aad312ae5d86a576225cae659ac6df2af6a130a0d83eba84501236cadb",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Toronto",
+          "stage": "P1",
+          "station_id": "CYYZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "2d42b1487d61256bd09cee534bec6fcd191067adfd83e5229dae1588b8003659",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Toronto",
+          "stage": "P1",
+          "station_id": "CYYZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "6925e351e0c37892badc1a5e358f3f3d8a008656c14aae5481373b5cac86fbdb",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Berlin",
+          "stage": "P1",
+          "station_id": "EDDM",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "833d850da50fc86b4c7286520cb9e8a00ba435eac206a933978d47efbae2ec96",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Berlin",
+          "stage": "P1",
+          "station_id": "EDDM",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "5eac3144dd0ebc3ce878b5fda5e188e6b254b42822ab5323a3617b3074dfc6c0",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Berlin",
+          "stage": "P1",
+          "station_id": "EDDM",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "72a22bf225c7efa17e8078f3f67e02997b48d78320a421e22cb71856682e6602",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Helsinki",
+          "stage": "P1",
+          "station_id": "EFHK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "59ce366944db0e181cbc218c53c27889604eadf01a28fe0bb0532decb56bfa5b",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Helsinki",
+          "stage": "P1",
+          "station_id": "EFHK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d6708a4bcb4dcbb8c0a4d35ae6060d14936674ee97e5a5412ce58be4b6c953fe",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Helsinki",
+          "stage": "P1",
+          "station_id": "EFHK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "13bf843c08482795483b004bc076437892e3dfc0bae3ddacbd5f43fc5ba2163b",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/London",
+          "stage": "P1",
+          "station_id": "EGLC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "3632a23440a55f53c1a137e46e0274f16142a7f79ef5a54f68b3a54768dc4766",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/London",
+          "stage": "P1",
+          "station_id": "EGLC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "9ff15abf111de06a2da1541ab117ab483d49bbcc9845b4d097330810040037b9",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/London",
+          "stage": "P1",
+          "station_id": "EGLC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d8e6097d5bf4334b8633e3552aa25f55708109fce606f836e6d18d3e0a9eb0ad",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Amsterdam",
+          "stage": "P1",
+          "station_id": "EHAM",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "75d7e32f118f7678bdbda9f54f220231dcdd6c0c6734fe8724909df65aabdf81",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Amsterdam",
+          "stage": "P1",
+          "station_id": "EHAM",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "23f598707672f03557c80c142fdd9af657b487cd7fa525c65b8d1c076f3b13d0",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Amsterdam",
+          "stage": "P1",
+          "station_id": "EHAM",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "6b512cb9973f68ddc1cb0f56c792a5bf4412438000a7fb1a06a03724789893a8",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Warsaw",
+          "stage": "P1",
+          "station_id": "EPWA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "422f8af94473c42791c04b3e05069122ca9a423e00c9e548d271e352ca0eabbd",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Warsaw",
+          "stage": "P1",
+          "station_id": "EPWA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "239587bee82c0be1c8e813e14c658ea8ebfe418db7d6d98d87a500628f5eb666",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Warsaw",
+          "stage": "P1",
+          "station_id": "EPWA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "0a9df2926c3070bc90a682dc97a314e00971b18ed24ab020a9d86cdb4ad2329f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Africa/Johannesburg",
+          "stage": "P1",
+          "station_id": "FACT",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "f3d5d42daeecda9b3ee6a61edd1906b1b94d79700deadc034669fc244ab2f233",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Africa/Johannesburg",
+          "stage": "P1",
+          "station_id": "FACT",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "4fb9a61669aa33884d6ba2541868a65bf0fd814f28a8d0d67df3d490b7b40420",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Africa/Johannesburg",
+          "stage": "P1",
+          "station_id": "FACT",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "243068a9c8fd619f007d921704a9276beaf3bc3b2333bbbaae51e371009235aa",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KATL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "da0968007eb8da90b1a64797c19179430c2bf69b0285e8afe8026281aee17605",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KATL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "4c4180eb7ecc340b21bd552b872f28f2717efa5e8e84d2fd6892116a2d7b2a92",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KAUS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "2d21f95f2d0d4a706ae026774d01bf3e6ec8d61311be5ea37e330673d1fc9ad0",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KAUS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "c94167be9e88704bb150b05ed1f27375bcc0d8a205d27ee73c081b08fd4fb68a",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Denver",
+          "stage": "P1",
+          "station_id": "KBKF",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "1f037a4c308f8326d8f80e3fb5ce0ed1a6a9ee93a1f080ad14bc87584c5ac576",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Denver",
+          "stage": "P1",
+          "station_id": "KBKF",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "0e0e8f8fa1b52ad9b42325840c5a3ddde726d537305a179d649efd800304c81d",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Denver",
+          "stage": "P1",
+          "station_id": "KBKF",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "2f476854d4d69d67b9a43e204d568ac4ee79c69de57455c8db4d3d61c9ca4e9f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KDAL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "8b06477e4964d997c0cf5bf778ad1660cfc963b05fb6968d6e0aed330c442f72",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KDAL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "918c76140ef7ed60c4fb08f7fa7593dcd818b15793a5d71b3986ccb7ed7dc422",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KHOU",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "3b429d8d9b0a2df652218ce9cf2504c8e050bcdeba95f215e5f549f3c5177bc8",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KHOU",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "730156a5c545a683ecd9bd44b70dd3d5bab47e57a6db1fea50ee04acd2846c3d",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KLAX",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "299099059ddb419857643825fea3dc28a9cecadcbd55019280b2fac330dce6ea",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KLAX",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "743cfd59a2d4deb9deb4d0aa7dae200cf1a7d5525f1491b12cc813bf5ce12d70",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KLAX",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "3722629345849efea0d8ab548237a0701016c93e690d0c547a1067b590f2da94",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KLGA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "7b71488d971021b9228441d2695b8ae9e7cd58a7d2d9537069e9a22442c5f636",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KLGA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "0f7e15eacd88ff9d41cba8a62b4553d346d0b5b8db28c33735b5bd10f052ae0f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KMIA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "013ea6b58911425f1318822f3e9533424ce6ff7dd99eafd8dfe722cc115b7aa7",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KMIA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "2ab780d4f38ae4ffd3f20a61104089a86772ee518a2398b5f6d08397ae80a5b8",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/New_York",
+          "stage": "P1",
+          "station_id": "KMIA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "18fe00e03e771cd6307c31b07f5225ea3421e0bb12c4cc2226210e31b82eb28c",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KORD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "b42cd7ccc2da17e834ebb8a011decab9328a4a60ee5d1ea4bcb4a12b9240de0e",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Chicago",
+          "stage": "P1",
+          "station_id": "KORD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "4b0698f13511c36832cfaf2120e6a10ec30b1c94c57099930f822a4b2f32f934",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KSEA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "eeadac6951595c403567e224f0a52a75289a8993fab997d91ac2ef75415e7e43",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KSEA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "7d10f2c19f58954c6a0b9a206bcd9bc8bb7b7627a99d41ed8b9aa181651f4dd8",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KSEA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "f9a8df6fa5b96d92bdc0c701e233dc154736c9e6bd2c38dd78adc422122324d7",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KSFO",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "9a33118270545e2a741bcdc708f4740e5ce40dac1a68a7d9356f6f45a9c5b2cc",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KSFO",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "b2fe935392c1b3c7bc1f015ec14f4938e9d4de43607acefb13af57d06e4e2e74",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Los_Angeles",
+          "stage": "P1",
+          "station_id": "KSFO",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "eb19b2f9d49d046f914c329982ac9b9d7033c9d8677a0d8eefb6e1062a95affa",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Madrid",
+          "stage": "P1",
+          "station_id": "LEMD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "59f5815a2f03f76e3026d3039b41150269b348085f1dedd59912d1b32c9310f0",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Madrid",
+          "stage": "P1",
+          "station_id": "LEMD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "71b8549a088d0a186de2bf36c4dbe9a113fbe029dbd27de86a6df4e6d5abcf1e",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Madrid",
+          "stage": "P1",
+          "station_id": "LEMD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "bd157970ef4a2872a2e16c951b12325b8a0f81f2d5d1048a2ce4f9d24dce980f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Paris",
+          "stage": "P1",
+          "station_id": "LFPB",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "1a401e914bb71b86bb2d0d71ac95ba4ab092b5826764fadfca81f79bb9829dba",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Paris",
+          "stage": "P1",
+          "station_id": "LFPB",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "70a16e52308786949191068d690a7c759edc6b48aac4dafcafcf81b43f0bf053",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Paris",
+          "stage": "P1",
+          "station_id": "LFPB",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "43274cfd8eca826325903823e45600980dcb745dec4554f70cd4a9ce6ba748f9",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Rome",
+          "stage": "P1",
+          "station_id": "LIMC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "ff4695149a295bd238e82479e1b0586c5f75d2b5cf5ae300f5782f5555e2bf96",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Rome",
+          "stage": "P1",
+          "station_id": "LIMC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d1a76e3556411d42073c32a155f0457da638dea2bc85c7784717fddc3828ca07",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Rome",
+          "stage": "P1",
+          "station_id": "LIMC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "e6a1876626cee616c01f2eceb1e7d12a8fbbbfe2d84b9a2a5f8a8608a6a7e14b",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Istanbul",
+          "stage": "P1",
+          "station_id": "LTAC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "53a2061a4ac185824688c78695978e47e309a1e68d83946552a96007c74989cd",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Istanbul",
+          "stage": "P1",
+          "station_id": "LTAC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "9ad68f351d39f9594c39b08edce8d2ea56b81b44d39efdd760d6eef7ed3f313f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Europe/Istanbul",
+          "stage": "P1",
+          "station_id": "LTAC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "77f8db77d7cca6ef3bbcc75b9446e0b82212ebb5ed50baf9d6e8262e495d3797",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Mexico_City",
+          "stage": "P1",
+          "station_id": "MMMX",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "3163053eafabdd2f52d93548bf8cb058c0bebda7d86ca519d259f077064012f2",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Mexico_City",
+          "stage": "P1",
+          "station_id": "MMMX",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d5221bb72a4106c81dde3405bd7fe4307dd7fb36ea445292c38da3f89a929152",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Mexico_City",
+          "stage": "P1",
+          "station_id": "MMMX",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "f26c438bfb39493c4b73298ef30696fb11663aea131e7542a2cf51bc20e7615b",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Panama",
+          "stage": "P1",
+          "station_id": "MPMG",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "5c5182aa36855d763603daf2ba25ac0c9459585e8c1a223888d55961bc345f7e",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-24",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Panama",
+          "stage": "P1",
+          "station_id": "MPMG",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "f39a8e531edf786b074974e57ad153e47ec6d06e61a8390c85b33043acb0ccdd",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Panama",
+          "stage": "P1",
+          "station_id": "MPMG",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "06447106b44d5fd00c5d10332a4db5fc3afaa49674b70a419a1172610ac784db",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Pacific/Auckland",
+          "stage": "P1",
+          "station_id": "NZWN",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "1a269cdc5845b23eaedb8075c4bda16ff679774f786a7cc1b925ea75d088b85e",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Riyadh",
+          "stage": "P1",
+          "station_id": "OEJN",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "2af61ad954e974dc22b442551ba7e6bb6b8220d8ad5d80f6d9793f302f9ae661",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Riyadh",
+          "stage": "P1",
+          "station_id": "OEJN",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "8652eff04ad0c2f01deab1dcf2cec94b210a8760cecdba2a23e15e301eb679fc",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Riyadh",
+          "stage": "P1",
+          "station_id": "OEJN",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "1bc70e089b0f1508a2efe43e8d15e76709339f314144650972707b08351c9e3f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Karachi",
+          "stage": "P1",
+          "station_id": "OPKC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "f9615773ec3ef3525dba16ea55bd6720a4de929cda337c71b128153fed832e9e",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Karachi",
+          "stage": "P1",
+          "station_id": "OPKC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "39cd084df36b927e1add4c5c8bbf4e610f5c098cce281c8a0d0120ee6156789b",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Karachi",
+          "stage": "P1",
+          "station_id": "OPKC",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "7c570cc3931c5f4847ddc22089cb675a004030688d182fb014474112e2875ed0",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Taipei",
+          "stage": "P1",
+          "station_id": "RCSS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "b7d8c79c2b26c43bbbd342b7133c114d5f8629eb41064f7cf9fbbb81d16d949d",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Taipei",
+          "stage": "P1",
+          "station_id": "RCSS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "513c8e3953bb21c6ed3c53a3b0168a3be7e6943ed97723848464ce55a2e01c40",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Taipei",
+          "stage": "P1",
+          "station_id": "RCSS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "a98ae7b65a402b9e473333f3d7895bdf2746a4762f4d7b1de0c7f7b3fd624dbb",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Tokyo",
+          "stage": "P1",
+          "station_id": "RJTT",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "ba225ca9b10bc4309195daa5603c3e4050d53fa1c0047b9eff888321d51616e1",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Tokyo",
+          "stage": "P1",
+          "station_id": "RJTT",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d39c993325d0d0cd7d04855c96ddc32e677b10cbe8b3d04bd0af72bae8d2a437",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Tokyo",
+          "stage": "P1",
+          "station_id": "RJTT",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "e539bef75d026b839343745bd547f89729a5d3e8ff5e6d39a48b6aa7dc2c8ca2",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Seoul",
+          "stage": "P1",
+          "station_id": "RKPK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "019eb2ee2791d13399c08da31280b87feff0469b7239ded21389bc5f632d38d5",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Seoul",
+          "stage": "P1",
+          "station_id": "RKPK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "068549e9919902fd8398dac9e38bdc4eb3ae14a6badc3bbfde63c04fb4633386",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Seoul",
+          "stage": "P1",
+          "station_id": "RKPK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d9af6e0644f91cf4b0a2ca2a7e7f192a0ff6082306f0af16ab0f130595136467",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Seoul",
+          "stage": "P1",
+          "station_id": "RKSI",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "94f1a485cf42783093e5b09c92f1582ff52ed7665c86659f73b948358278adaa",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Seoul",
+          "stage": "P1",
+          "station_id": "RKSI",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "ac3b27c4bf1512ef0ac0c71d4b83948675498f8f112ee96565735c20d53d673c",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Manila",
+          "stage": "P1",
+          "station_id": "RPLL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "3bd00f8f929e9c916ce06e1ba7ccfc50aa51697e7f59992cbf64f1cad81f51aa",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Manila",
+          "stage": "P1",
+          "station_id": "RPLL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "68f4d79a7d845cc3473189b4982c00f9783172cd0bdb20db0c036ef085d7d2a6",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Manila",
+          "stage": "P1",
+          "station_id": "RPLL",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "b8cc022926168f130aa25446c0bf4d43935e71238dcfa9edba81ca68dcce1aef",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Argentina/Buenos_Aires",
+          "stage": "P1",
+          "station_id": "SAEZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d37587deecb4b45c10f3a4d74d0b84959e45e32f7c2109dcbfb937aa56567246",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Argentina/Buenos_Aires",
+          "stage": "P1",
+          "station_id": "SAEZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "c04eb9baac919b0307483cfbb5b1464dbc7c14fd4a3030fd84279534f42807f3",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Sao_Paulo",
+          "stage": "P1",
+          "station_id": "SBGR",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "743c4d31c80ef85792b48607772d577786abbba503b8740222e0bdb643259aae",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "America/Sao_Paulo",
+          "stage": "P1",
+          "station_id": "SBGR",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "7f1216dc1384bf79cf923fe98c77157907ac70b2d4b276613eccef461c2bd1ba",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Kolkata",
+          "stage": "P1",
+          "station_id": "VILK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "c5fe23592e3fe6ab2e8af6ca05887b80a52d40a5895f14b88a8769320a1e76d7",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Kolkata",
+          "stage": "P1",
+          "station_id": "VILK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "b0ae343f477834ee0b4145bf03f6a191628d396a0454cb70373f945925dc3bff",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Kolkata",
+          "stage": "P1",
+          "station_id": "VILK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "0a6ba35876909b91a4d2f483d52a138cffb693131d1e2dbecfd02e29865cd573",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Kuala_Lumpur",
+          "stage": "P1",
+          "station_id": "WMKK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "ac4d298943b892ed52f63889919ce311a5b628883a1318d9d3bd97993e5636de",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Kuala_Lumpur",
+          "stage": "P1",
+          "station_id": "WMKK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "ee8a35f3399f9516ba17c41ec17df2305b7d5684673ac070759f9be94a45d5f6",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Kuala_Lumpur",
+          "stage": "P1",
+          "station_id": "WMKK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "61f9b8d931a96884b6ad832638ac54ffc29ed62cd62159ef5592c2a12d40a046",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Singapore",
+          "stage": "P1",
+          "station_id": "WSSS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "9f81a4bebd304b55a850362cf005c9f832c71dc10642ecdeb5a5f97a87a78dd5",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Singapore",
+          "stage": "P1",
+          "station_id": "WSSS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "7aec2c2a3d05614e47b82ba2d1a17a9e4897f5ac4c2eda2c84b4cce4dde2d647",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Singapore",
+          "stage": "P1",
+          "station_id": "WSSS",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "14ed2d1626ec8a533ce24fc02aeff023a13cfe0408c44e8d2970231cccce82bf",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZBAA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "94f43a7a6f8aefda22c696bbead25fe41932f059e8134d434c6229affc8713ec",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZBAA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d658f9ba2be4cc9ad274375682cf3d665f196cafd50e75c11733814382c01ea5",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZBAA",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "26fdd68b26bd667dcf97f1794b02521609ed83a35407e73f3651faef8850b77c",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZGGG",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "c8d8abe1ea1b68181f9d118fa0889d7fd14a0e87623adb70deace664c8ea6051",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZGGG",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "30da19def6ab9e647ba9c1053743852c14c52c2319fa3e94fe817a42d82b3f5e",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZGGG",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "f9b44fab71e69833fc178ea3ec59d6b5410742b556a43691545821ec990d1801",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZGSZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "b16f97ce0dda689dc4df8678ae7331568b164e4857b73cd71291ff46c668f311",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZGSZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "769cd29846854ba142efae31af1ad92e6a9dcb4c68140f767d8329d85c71559f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZGSZ",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "6d4e93ffa9c9c7e109691721143946c16a84a3d03a9c998b9d6f0a2b9aa6329d",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZHHH",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "73763cd7710fc602ff359b3d6b9d3689f3d8ba83779059800cefd755d281bdfe",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZHHH",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "aed2069829e0e6c66aeb2eb1aa15bee8b9a35f40f84bbf7adb733a737f2bcc4c",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZHHH",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "c06076bb8c51795f1870a9a0f0d741cf5a640e186eeb20d359612077ed3269f5",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZSPD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "5d8f0556ddc1701779651881eb49a97519583a7c8d10a2ba1123c08881428025",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZSPD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "2b1bc9f0d007e153e524c82ecfcd78e28247a43f4f15cd2ca333089bc85fd006",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZSPD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "6cef8b3fb073f2eb731084b3e6dbc2c9548ef204031dee5b161c88e013d3f5b9",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZSQD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "92e5161372b41f93272dd8d1c2b20da102b24f5291e65565ac0ed41447b404ff",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZSQD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "4e7f7c33486b9c824640d933758c39d5f82c2a996d0977a6b885740b5a1bd2cc",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZSQD",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "9925201d21e9f5075320da4c11ce6cc1b1a6a45fc73b136afb3fff03f1079540",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZUCK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "461902a9bcdc801c65457227907f96f9d8043ec07646d688cf371554976684b3",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZUCK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "badcd14a21a9f580fc1e3933596af23ac17315467104eb4389531538b2fc8072",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZUCK",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "9f311744d77902130541cd3ffd1d23562d4eeb3df4d458db0bb0f24f7095ab9f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-21",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZUUU",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "a21c16309e85c0ecaf05bcf83510e4ed22cd989b3f0c09e3b2d3c354d6968f94",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-27",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZUUU",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        },
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "content_sha256": "d645de45cc5ad50a593c3ae54a3ce40634ac94c57bb18ae9a4832f07827c6c2f",
+          "decision_at_utc": "2026-07-27T23:05:54.105726Z",
+          "event_date": "2026-07-28",
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "reason_codes": [
+            "ContractError:production_probability_ssot_table_missing"
+          ],
+          "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+          "season_bin": "summer",
+          "settlement_timezone": "Asia/Shanghai",
+          "stage": "P1",
+          "station_id": "ZUUU",
+          "status": "MISSING",
+          "strategy_version": "target-v1"
+        }
+      ],
+      "ready": false,
+      "schema": "bayes_basket_target_exact_scope_readiness_v1",
+      "scope_count": 123,
+      "station_ids": [],
+      "target_scope": {
+        "liquidity_bin": "liquid",
+        "maturity_bin": "d1",
+        "season_bin": "summer",
+        "strategy_version": "target-v1"
+      }
+    },
+    "market_registry_materialized": true,
+    "missing_tables": [],
+    "official_ws_materialized": false,
+    "operational_counts": {
+      "bound_facts": 0,
+      "capital_reservations": 0,
+      "decisions": 119,
+      "execution_cycles": 119,
+      "non_blocked_decisions": 0,
+      "observation_facts": 20686,
+      "order_events": 0,
+      "order_intents": 0,
+      "reconciliations": 0
+    },
+    "operational_event_day_counts": {
+      "decisions": {
+        "future_settlement": 0,
+        "invalid": 0,
+        "started_settlement": 119,
+        "total": 119
+      },
+      "execution_cycles": {
+        "future_settlement": 0,
+        "invalid": 0,
+        "started_settlement": 119,
+        "total": 119
+      }
+    },
+    "order_state_materialized": true,
+    "p0_preselection_materialized": false,
+    "policy_authority_counts": {
+      "cash_phase": 0,
+      "station_policy": 3
+    },
+    "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+    "probability_materialized": true,
+    "probability_stage_counts": {
+      "P0": 3,
+      "P0-M": 2,
+      "P1": 7
+    },
+    "probability_started_settlement_stage_counts": {
+      "P0": 3,
+      "P0-M": 2,
+      "P1": 7
+    },
+    "promoted_or_activated_counts": {
+      "calibration_no_live_authority": 429,
+      "cash_phase": 0,
+      "station_policy_promotion": 0
+    },
+    "q0_inventory_materialized": true,
+    "ready": false,
+    "station_policy_authorized": true,
+    "station_policy_promoted": false
+  },
+  "unfinished_target_inputs": [
+    {
+      "code": "official_ws_materialization",
+      "evidence": "target_ssot_counts_and_promotion_state",
+      "observed": {
+        "basket_official_ws_snapshot": 0
+      },
+      "required_tables": [
+        "basket_official_ws_snapshot"
+      ],
+      "requirement": "目标 scope 的官方 CLOB WS 逐桶 bid/ask 快照",
+      "state": "missing"
+    },
+    {
+      "code": "cash_phase_authority",
+      "evidence": "target_ssot_counts_and_promotion_state",
+      "observed": {
+        "basket_cash_phase_authority_manifest": 0,
+        "basket_cash_phase_policy_artifact": 24
+      },
+      "required_tables": [
+        "basket_cash_phase_policy_artifact",
+        "basket_cash_phase_authority_manifest"
+      ],
+      "requirement": "当前 policy_authority_scope 下唯一 exact manifest 绑定的 BasketCashPhasePolicyArtifact",
+      "state": "missing"
+    },
+    {
+      "code": "official_ws_scope_coverage",
+      "evidence": "bayes_basket_target_official_ws_manifest.json + target registry",
+      "observed": {
+        "complete_scope_count": 28,
+        "incomplete_scope_count": 1,
+        "pending_shards": []
+      },
+      "required_tables": [
+        "basket_target_market_registry_snapshot"
+      ],
+      "requirement": "target registry scope 全部具备完整官方 WS bid/ask 证据",
+      "state": "partial"
+    }
+  ]
+}

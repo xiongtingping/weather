@@ -32,9 +32,6 @@ labels=(
   "com.weather.market_refresh_1m"
   "com.weather.model_scan"
   "com.weather.model_scan_hourly"
-  "com.weather.auto_trade_entry_1m"
-  "com.weather.trade_engine"
-  "com.weather.target_realization_worker"
   "com.weather.task_queue_worker"
   "com.weather.q_calibrated_writeback_hourly"
   "com.weather.feedback_loop_hourly"
@@ -44,8 +41,11 @@ labels=(
 )
 
 legacy_trade_labels=(
+  "com.weather.auto_trade_entry_1m"
+  "com.weather.trade_engine"
   "com.weather.auto_trade_worker"
   "com.weather.trade_sync_loop"
+  "com.weather.target_realization_worker"
 )
 
 usage() {

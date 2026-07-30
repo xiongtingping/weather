@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from physical_latent_state_contract import LATENT_STATES
 from physical_state_bayes_v6.artifact_contracts import (
     OBSERVATION_ARTIFACT_SCHEMA,
     TRANSITION_ARTIFACT_SCHEMA,
     artifact_sha256,
+    default_time_conditioned_observation_policy,
 )
 from physical_state_bayes_v6.contracts import JointCell
 from production_probability_v6_activation_contract import (
@@ -62,7 +67,18 @@ def _observation_artifact():
         }
         for state in LATENT_STATES
     }
-    return _approved({"schema": OBSERVATION_ARTIFACT_SCHEMA, "state_models": models})
+    return _approved({
+        "schema": OBSERVATION_ARTIFACT_SCHEMA,
+        "quantized_observation_policy": {
+            "schema": "quantized_integer_temperature_robust_likelihood_v1",
+            "temperature_quantization_c": 1.0,
+            "measurement_error_model": "independent_uniform_rounding_moment_matched_gaussian",
+            "huberize_mahalanobis_tail": True,
+            "robust_mahalanobis_radius": 3.0,
+        },
+        "time_conditioned_observation_policy": default_time_conditioned_observation_policy(),
+        "state_models": models,
+    })
 
 
 def _activation(transition, observation):
@@ -79,7 +95,7 @@ def _activation(transition, observation):
         "v5_fallback_forbidden": True,
         "pre_event_predict_does_not_consume_current_observation": True,
         "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
+        "nwp_hourly_curve_not_reapplied_as_independent_likelihood": True,
         "runtime_manifest_sha256": "4" * 64,
         "transition_artifact_sha256": transition["artifact_sha256"],
         "observation_artifact_sha256": observation["artifact_sha256"],
@@ -113,6 +129,10 @@ def test_unique_event_runtime_builds_production_transaction_candidate() -> None:
             JointCell(34.0, "warming", 0.4),
             JointCell(38.0, "warming", 0.6),
         ),
+        candidate_scenario_responsibilities={"rows": [
+            {"continuous_y_c": y, "scenarios": [{"scenario_id": "gfs-r1", "responsibility": 1.0}]}
+            for y in (34.0, 38.0)
+        ]},
         replay_generation=2,
         supersedes_checkpoint_id="v5-last",
     )
@@ -171,6 +191,17 @@ def test_unique_event_runtime_builds_production_transaction_candidate() -> None:
     assert result["nwp_hourly_path_likelihood_reapplied"] is False
     assert result["strong_update_row"]["post_state_transition_json"] == "{}"
     assert result["checkpoint_row"]["reported_x_lower_bound_c"] == 25
+    emission = json.loads(result["strong_update_row"]["observation_emission_json"])
+    evidence = emission["bucket_observation_evidence"]
+    assert evidence["schema"] == "v6_observation_bucket_evidence_v1"
+    assert evidence["frontend_recompute_allowed"] is False
+    assert evidence["hard_lower_bound_after_c"] == 24.5
+    rows = {row["reported_x_c"]: row for row in evidence["rows"]}
+    assert rows[34]["probability_before"] == 0.4
+    assert rows[34]["temperature_momentum_log_lr"] is not None
+    assert rows[34]["physical_fields_log_lr"] is not None
+    assert rows[34]["temporal_adjustment_log_lr"] is not None
+    assert sum(row["probability_after"] for row in rows.values()) == pytest.approx(1.0)
 
 
 def test_frozen_responsibility_grid_may_be_superset_after_hard_bound() -> None:
@@ -190,6 +221,10 @@ def test_frozen_responsibility_grid_may_be_superset_after_hard_bound() -> None:
         resolution_contract_id="resolution-1",
         forcing_generation_sha256="7" * 64,
         initial_joint=(JointCell(24.0, "warming", 0.4), JointCell(38.0, "warming", 0.6)),
+        candidate_scenario_responsibilities={"rows": [
+                {"continuous_y_c": y, "scenarios": [{"scenario_id": "missing", "responsibility": 1.0}]}
+            for y in (24.0, 38.0)
+        ]},
         replay_generation=2,
         supersedes_checkpoint_id="v5-last",
     )

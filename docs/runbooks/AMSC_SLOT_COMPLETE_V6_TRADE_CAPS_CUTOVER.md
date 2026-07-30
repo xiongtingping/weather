@@ -1,6 +1,16 @@
+---
+status: superseded
+authority: L2
+owner: weather-system
+effective_from: 2026-07-16
+superseded_by: ../adr/ADR-0004-DYNAMIC-THREE-LEG-V4-POSTERIOR-NO-STANDING-EXIT.md
+---
+
 # AMSC 槽完成与动态三腿额度受管切换
 
-状态：已于 2026-07-16 完成生产切换。唯一生产 activation 为 `7b94b2a81f77e385d55786f5ca89bf8d24322ea30f7ee6f65083475e35dbc830`，runtime manifest 为 `f0274475d0e53e05fa3bff6ec72ed5eb49d7c05ce25568cc149c14ff392d68a5`，禁止回退旧模型。受管入口保留为 `scripts/cutover_amsc_slot_complete_v6_and_trade_caps.sh`，不得重复执行已完成的切换。
+状态：已于 2026-07-16 完成生产切换。唯一生产 activation 为 `7b94b2a81f77e385d55786f5ca89bf8d24322ea30f7ee6f65083475e35dbc830`，runtime manifest 为 `f0274475d0e53e05fa3bff6ec72ed5eb49d7c05ce25568cc149c14ff392d68a5`，禁止回退旧模型。本文只保留历史验收证据，`scripts/cutover_amsc_slot_complete_v6_and_trade_caps.sh` 不再授权执行。后续唯一运行边界以 `PHYSICAL_STATE_BAYES_V6_RUNTIME_HOTFIX_CUTOVER.md` 为准。
+
+外置盘只允许保存可丢弃、可重建的无用数据冷归档。本文历史序列中曾出现的外置数据库复制不再具备任何生产授权，不能成为备份、回滚、readiness、服务启停、SSOT 或交易的依赖。
 
 ## 目标
 
@@ -21,7 +31,7 @@
 2. writer quiescence 审计通过后，检查 `data/db_writer.lock`；只有记录 PID 已不存在时，才允许用 sudo 回收 root 所有的失效租约，活 PID 或不可归属租约一律阻断；
 3. 安装候选轮询路由，重新生成并冻结绑定当前代码、路由和 artifact 的 candidate activation；
 4. 完成全 canonical replay、零订单演练与当前主机演练；
-5. 在本机生成 SQLite 一致快照，完成 `integrity_check`，复制到外置硬盘并比较两端 SHA-256 后才升格为正式备份；
+5. （历史步骤，现已退役）当时曾复制 SQLite 快照到外置盘；当前禁止向外置盘复制生产数据库或让其状态阻断系统；
 6. 原子安装 activation，创建新 generation P0，重放全部 canonical 事件；
 7. live acceptance 通过后才设置不可回退提交边界并恢复服务。
 
@@ -29,7 +39,7 @@
 
 新 generation 已提交后禁止回退旧概率模型；任何验收失败必须暂停服务、保留新 v6 fail closed，不允许旧模型 fallback。
 
-## 执行
+## 历史命令（禁止执行）
 
 ```bash
 cd /Users/xiong/weather
@@ -56,7 +66,7 @@ bash scripts/cutover_amsc_slot_complete_v6_and_trade_caps.sh
 - 切换后的首个原生 07:30 半点由 monitor 自动触发：AMSC METAR 37℃，T1=`07:30:49Z`，T3=`07:30:51.149Z`，T1→T3=2149ms，fast-lane ingress=743.433ms，reported-X 下界更新为 37℃；
 - `PM_AMSC_ZUUU_POLL_SLOT_COMPENSATION_SEC=1800` 已安装，active/candidate 轮询路由 SHA 均为 `5a5fb1f09a63c993133deb48dc0cbe79f86d7fc104ab0c7829ddae06367658cc`；
 - SSOT、交易零门和 UI 概率一致性审计通过；切换期间没有新增订单、posterior outbox 或 execution contract；
-- 动态三腿保持 `default_off_ready`：概率主线已就绪，live 仍由 activation、市场 bridge 和真实 T1→T5 证据独立阻断。
+- 动态三腿保持 `default_off_ready`：概率主线已就绪，live 仍由 activation 与市场 bridge 独立阻断。历史真实 T1→T5 样本不阻断第一次受控 live；每个 intent 的 `T1+3000ms` 不可延长硬截止负责阻止迟到 POST，首批真实 gateway POST 随后纳入持续验收。
 
 精确槽的长期验收入口：
 

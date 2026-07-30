@@ -24,6 +24,7 @@ def test_gfs_url_is_direct_official_hourly_filter() -> None:
     # retain a full GFS-cell margin, so ecCodes has a valid nearest point.
     assert float(query["leftlon"][0]) < 103.95 < float(query["rightlon"][0])
     assert float(query["bottomlat"][0]) < 30.576 < float(query["toplat"][0])
+    assert {"TCDC", "APCP", "ACPCP", "CAPE", "HPBL"}.issubset({key.removeprefix("var_") for key in query if key.startswith("var_")})
 
 
 def test_default_is_no_network_plan_and_uses_isolated_curve_root(tmp_path: Path) -> None:
@@ -41,7 +42,7 @@ def test_explicit_execution_calls_only_declared_points_and_never_needs_hot_root(
         calls.append(kwargs)
         return {"ok": True, "state": "available"}
 
-    result = collect_official_daily_curve(contract=CONTRACT, provider_id="gfs", run_at_utc="2026-07-11T12:00:00Z", target_event_date="2026-07-12", curve_source_root=tmp_path / "curve", catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json", execute=True, collectors={"gfs": collector})
+    result = collect_official_daily_curve(contract=CONTRACT, provider_id="gfs", run_at_utc="2026-07-11T12:00:00Z", target_event_date="2026-07-12", curve_source_root=tmp_path / "curve", catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json", execute=True, now_utc=datetime(2026, 7, 12, tzinfo=timezone.utc), collectors={"gfs": collector})
 
     assert result["ok"] is True
     assert len(calls) == result["plan"]["expected_point_count"]
@@ -52,9 +53,10 @@ def test_execution_resumes_exact_immutable_history_points_without_refetch(tmp_pa
     run, valid = "2026-07-11T12:00:00Z", "2026-07-11T16:00:00Z"
     history = tmp_path / "curve" / "gfs" / "history"
     history.mkdir(parents=True)
-    (history / "point.json").write_text(json.dumps({"schema": "official_nwp_normalized_snapshot_v1", "provider_id": "gfs", "run_at_utc": run, "valid_time_utc": valid, "raw_sha256": "raw", "snapshot_sha256": "snap"}), encoding="utf-8")
+    required = json.loads((ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json").read_text())["providers"]["gfs"]["required_normalized_fields"]
+    (history / "point.json").write_text(json.dumps({"schema": "official_nwp_normalized_snapshot_v1", "provider_id": "gfs", "run_at_utc": run, "valid_time_utc": valid, "raw_sha256": "raw", "snapshot_sha256": "snap", "requested_at": "2026-07-11T12:00:00Z", "response_started_at": "2026-07-11T12:00:01Z", "response_headers_observed": True, "normalized_features": {field: 1.0 for field in required}}), encoding="utf-8")
     called = []
-    result = collect_official_daily_curve(contract=CONTRACT, provider_id="gfs", run_at_utc=run, target_event_date="2026-07-12", curve_source_root=tmp_path / "curve", catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json", execute=True, collectors={"gfs": lambda **kwargs: called.append(kwargs) or {"ok": True, "state": "available"}})
+    result = collect_official_daily_curve(contract=CONTRACT, provider_id="gfs", run_at_utc=run, target_event_date="2026-07-12", curve_source_root=tmp_path / "curve", catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json", execute=True, now_utc=datetime(2026, 7, 12, tzinfo=timezone.utc), collectors={"gfs": lambda **kwargs: called.append(kwargs) or {"ok": True, "state": "available"}})
     assert result["point_results"][0]["state"] == "already_collected"
     assert len(called) == result["plan"]["expected_point_count"] - 1
 
@@ -75,6 +77,7 @@ def test_execution_can_use_bounded_parallel_workers_without_changing_curve_order
         curve_source_root=tmp_path / "curve",
         catalog_path=ROOT / "config" / "forecast_sources" / "official_nwp_zuuu_v1.json",
         execute=True,
+        now_utc=datetime(2026, 7, 12, tzinfo=timezone.utc),
         max_point_workers=2,
         collectors={"gfs": lambda **kwargs: {"ok": True, "state": "available", "echo": kwargs["valid_time_utc"]}},
     )

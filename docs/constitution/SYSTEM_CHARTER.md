@@ -11,11 +11,16 @@ implementation_symbols:
   - production_probability_v6_event_runtime.py
   - production_probability_v6_public_ssot_writer.py
   - scripts/production_probability_v6_readiness.py
+  - docs/adr/ADR-0005-PRODUCTION-DYNAMIC-THREE-LEG-V5.md
+  - docs/contracts/TARGET_REALIZATION_V5.md
+  - docs/adr/ADR-0006-DYNAMIC-THREE-LEG-V6-SUCCESSOR.md
+  - docs/contracts/TARGET_REALIZATION_V6.md
 verification_gates:
   - python3 scripts/production_probability_v6_readiness.py --db data/archive.db --summary
-  - python3 scripts/production_probability_v6_live_acceptance.py --db data/archive.db --activation config/production_probability_runtime_activation.json --event-date $(TZ=America/New_York date +%F)
+  - python3 scripts/production_probability_v6_live_acceptance.py --db data/archive.db --activation config/production_probability_runtime_activation.json --event-date $(TZ=Asia/Shanghai date +%F)
+  - python3 scripts/target_realization_v6_document_contract_audit.py
   - python3 scripts/production_trade_gate_zero_audit.py
-last_verified_commit: working-tree-2026-07-16-v6-production-cutover
+last_verified_commit: working-tree-2026-07-16-target-realization-v6-generation-2-current
 ---
 
 # 系统宪章
@@ -32,8 +37,8 @@ last_verified_commit: working-tree-2026-07-16-v6-production-cutover
 8. 唯一概率事实是 `posterior_ssot_fact`；UI、决策与执行不得重算概率。
 9. 唯一事实存储是 `data/archive.db` 的 `event_fact_history/event_fact_latest`；前端只读。
 10. 可执行入场仅允许 posterior settlement、SSOT target realization、hard-source direct SSOT target。
-11. 可执行退出只允许两个互斥原因族：天气/结算目标变化使用 `target_realization_*`；以 `top_yes_wave` 成交且该桶在 latest posterior 仍是当前最高概率 YES 时，才可按固定 0.90 limit 使用 `market_alpha_take_profit_*`。后者不是天气目标失效，不得通过改名前缀混淆归因；观察到的更高 bid 只证明 0.90 可执行，不得动态改写限价。当前 top 身份随 posterior 重选，prepared intent 必须绑定 exact bucket/run，角色变化后旧 market-alpha intent 失效并由 target-realization 优先。其 runtime 即使已实现也必须默认关闭，只有 additive schema、不可变部署 manifest 与显式 activation 同时闭合才可 live。Edge/LCB/exec_edge/signal_edge、动态 repricing、stop-loss、trail-stop 仍仅可诊断。
-12. 动态角色与持仓批次必须分离：角色随每个 posterior 重选，lot 以 `(entry_strategy_leg,bucket,side,artifact,intent)` 保留成交来源。`edge_trades` 不得充当新交易环持仓 SSOT；partial/full fill、lot version 与 intent 必须同事务更新。SELL_OLD 完成后必须以独立 continuation 立即重建同一 latest posterior 下的 BUY_NEW；不得等待下一报文，也不得把 continuation 伪装成新天气证据。
+11. 当前 Target Realization v6 的真实 SELL 只允许 v6 精确闭集中的 `target_realization` 或四个 0.999 `market_alpha_take_profit` code；主 YES staged/invalidation SELL 必须先释放并 reconcile standing coverage。v5 的 0.90 code 已原子退役且禁止 fallback。Edge/LCB/exec_edge/signal_edge、repricing、stop-loss、trail-stop 永久不可执行。
+12. 动态角色与持仓批次必须分离：角色随每个 posterior 重选，lot 以 `(entry_strategy_leg,bucket,side,artifact,intent)` 保留成交来源。`edge_trades` 不得充当新交易环持仓 SSOT；partial/full fill、lot version、standing coverage、`main_yes_position_cycle_id`、stage watermark 与 intent 必须同事务更新。水位只在同一持仓周期内单调；exact hard lock，或连续两条 canonical 强观测低风险确认且无 invalidation，完成旧 SELL/coverage reconcile 后才可新建周期再入场。主 YES 降为次 YES 时已有仓位可在窗口外保留至 4.99 USDC，但窗口外不得新增或补仓。任何冲突 SELL/撤单必须 reconcile 后才能按 latest posterior 重建 BUY，不能等待下一报文或把 continuation 伪装成天气证据。
 13. CLI 默认强制 dry-run；Live 必须显式 `--live` 加人工确认短语。
 14. 任何 CLOB POST 前必须持久化 `order_intent_id`、请求和确定性 `expected_order_id`。
 15. 未知提交结果只能按确定性订单 ID reconcile；禁止猜测匹配或直接重试。
@@ -46,7 +51,14 @@ last_verified_commit: working-tree-2026-07-16-v6-production-cutover
 21. 明确退役的代码直接删除，不保留兼容路径；安全阻断不是 fallback。
 22. 默认交付必须完成实现、测试和审计闭环，不以 review-only 作为终点。
 23. `operations_date_et` 只用于交易、统计和值班；物理与结算目标日使用 resolution contract 指定的 `resolution_local_date`，两者不得互相替代。
-24. 固定来源不等于关闭 bridge：在 strict raw-object-backed 的 final `X/S` 标签、`p(S|X,C)` 校准、冻结 bucket contract 和离线 OOS 证明完成前，任何实现不得把该登记提升为可执行 market projection 或产生该 bridge 驱动的订单；v6 reported-X SSOT 是唯一生产概率链。这是 bridge/新 artifact 的 promotion 边界，不是对已批准物理 X 基线、AMSC 入库或日常训练通道的运行时阻断。
+24. 固定 source authority 不等于自动授权 bridge。生产 soft market projection 还必须绑定独立的 operational projection authority、固定零样本 artifact 与冻结 bucket contract；该基线允许未校准 `p(B)` 和经独立策略批准的 YES/trajectory-NO 候选，samples/strict-as-of/OOS 不得成为 live gate。真实 X/S 样本只进入 calibrated successor，验证后原子整体替换 baseline。任何概率 PMF 的有限支持都不是 authority hard envelope：trajectory NO 只能按独立桶 `q_NO=1-p_yes` 的 70/80/90/95/98% 分档获得 10/25/50/75/100 USDC；soft unreachable 与 `q_NO<70%` 不一致时 fail closed。hard-exclusion NO 必须逐组合证明完整 `H_X×H_D` 均落在目标桶外并绑定 exact checkpoint/bridge/target；200 USDC 只是绝对上限，允许统一资本比例缩量，不要求足额、不得因不足 200 阻断该腿；软不可达、低概率或核外截断不能升级为硬证书。
 25. strict-as-of 训练数据、OOS、回放评分与 artifact promotion 只属于离线研究/版本准入面，**不得**成为交易 live 的实时阻断条件。实时执行只检查已提交 posterior SSOT、当前事实与市场/风险/签名/幂等/时限安全；离线证据不足只能禁止新版本 promotion，不能让已激活的交易链因该类条件停摆。
 26. D0 第一条报文前只允许一个 P0：`Normalize[p_prior(X|A) * L_F(F*|X,A) * p_prior(Z_0+|X,A,F*)]`。P0 只能消费连续先验与所有预测源形成的联合弱似然，绝不消费当前报文、轨迹、动量、云雨、市场、策略、订单或当前 joint composer 输出；其持久化必须绑定 immutable prior/weak/strong-artifact lineage 与冻结 resolution contract。未关闭的 `X→S→B` bridge 只能使 P0-B 标为不可用（固定 NA 原因），绝不能阻断 P0-X 的持久化、后续强观测更新或每日物理校正。P0 仅写 append-only initial checkpoint/lineage，不得冒充一次 strong update、不得产生 realization/outbox/decision/order；同 target 的不同 P0 fork 必须 fail closed。
 27. 当前唯一生产概率主线固定为 ADR-0003 的 v6 `pre-event Predict → current-event joint emission → continuous-Y/reported-X hard condition → normalize → clocks/history`。Predict 只能读取 `O_<t`、上一 checkpoint、冻结候选条件化未来强迫、持续时钟和 `Δt`；当前报文不得提前进入 Predict，NWP 小时曲线不得再次形成 likelihood，Update 后不得再执行 event-conditioned state transition。常规 METAR 报 `k℃` 时公共 `X` 下界为 `k`、连续 `Y` 编码下界为 `k-0.5℃`，必须分列保存；SPECI 只做联合 emission。系统不建立第二个 live latest；v5 已退役且禁止 fallback。
+28. 动态三腿当前唯一权威是 ADR-0006/Target Realization v6 generation 2：固定主 YES 四态、`min(risk_target_ratio,time_cap_ratio)`、position-cycle 再入场、trajectory NO≤100、hard NO≤200 可统一资本比例缩量与默认 0.999 standing exit。ADR-0005/v5 只作历史审计；混代、热改、重复 cutover 改写 pause 或任何 v5 fallback 一律 fail closed。
+29. 篮子动态风险必须拆分为 `underreach_risk` 与 `upside_breakthrough_risk`。前者表示 P1 主桶未达成：以 `M=argmax(P1)` 为锚，结合官方已报最高温 `R`、ET 剩余时间、校准后的剩余升温包络、升温速度、模型一致性和证据新鲜度判断；下方桶只能由 bucket contract 的 `predecessor(M)`、`predecessor²(M)` 解析。后者只表示官方实况形成新高后的下一桶突破，使用 `successor(R)`、`successor²(R)`；`P1=30℃、R=25℃` 到 29℃、28℃以及“不是26℃”均为说明性示例，不能硬编码任何绝对温度、桶宽或边界；没有新高事件不得伪造上行突破。
+30. 风险 overlay 绝不得修改 P0/P1、regime、hard-NO 证明、事实下界或 resolution bridge。overlay 只能改变候选桶、排序、预算和组合覆盖价值；官方硬事实先过滤数学排除桶，软不可达、低概率、模型分歧或赔率昂贵均不能升级为 hard NO。
+31. 赔率曲线必须以官方 CLOB WebSocket 逐档 YES 深度计算真实 `all_in_yes_ask`，以篮子级增量目标优化：`BasketScore=P1ExpectedValue+λ_shortfall×ShortfallCoverage+λ_breakthrough×BreakthroughCoverage−λ_depth×SlippageRisk−λ_concentration×ConcentrationRisk−λ_revision×RevisionRisk−TotalCost`。coverage 是情景覆盖价值而非新概率；任何桶只有在边际组合价值为正、证据/深度/预算闭合且立即执行/已成交部分满足 `sum(all_in_yes_ask)<1` 时才可进入阶段篮子；未成交 staged GTC 受独立挂单规则约束，不计入已实现地板。
+32. 动态候选集最多向上下任一方向扩展两层：`BaseSet(P1) ∪ {predecessor(M),predecessor²(M)}(underreach) ∪ {successor(R),successor²(R)}(breakthrough)`，所有桶关系由 bucket contract 解析，禁止硬编码绝对温度或固定桶宽；每次新事实、风险阈值、模型组合或 WS 快照变更后重算。两类风险同时升高时必须降低单桶集中度并收紧门槛；不能以无限扩桶、赔率曲线加权或动态排序绕过 lineage、hard fact、证据新鲜度、预算、逐腿 FOK、成交后重算或 `reconcile_required`。
+33. 双风险层只属于目标篮子编译/决策面，不能成为 hard-NO lane 的输入、不能调用订单 gateway，也不能改变 `production_no_live` 或 `live_submit_authorized=false`。旧任务 `019f7a84-53ec-7183-9c5f-7f9cfa62e1f0` 已退役归档，不再是运行、切换或 readiness 依赖；不得重新启动其独立跟单/结算地板执行线。system 域三个共用服务只承载 target `production_no_live` 主线。
+34. 极端赔率重塑结算曲线只能作为篮子组合优化：对新增 `x` 份、全包价格 `a_b` 的桶 `b`，最终结果命中该桶时增量利润为 `x(1-a_b)`，未命中时为 `-x·a_b`；只有尾部覆盖带来的 `ΔBasketScore>0` 且 P1/lineage、官方 WS 逐档深度、集中度、预算及 production/no-live 立即执行/已成交部分的 `sum(all_in_yes_ask)<1` 门全部闭合时才可纳入。不得按赔率倒数、极端低价或高 payout ratio 单独买入；`reservation_value` 不是概率，不得修改 P0/P1、regime、hard-NO 或事实下界。

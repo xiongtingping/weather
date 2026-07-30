@@ -1,0 +1,921 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-05-27",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-05-28",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-05-29",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-05-30",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-05-31",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-01",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-02",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-03",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-04",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-05",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-06",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-07",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-08",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-09",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-10",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-11",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-12",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-13",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-14",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-15",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-16",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-17",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-18",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-19",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    },
+    {
+      "event_date": "2026-06-20",
+      "reason": "batch_budget_exceeded",
+      "source_lane": "awc",
+      "stations": "MMMX"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-05-27",
+    "2026-05-28",
+    "2026-05-29",
+    "2026-05-30",
+    "2026-05-31",
+    "2026-06-01",
+    "2026-06-02",
+    "2026-06-03",
+    "2026-06-04",
+    "2026-06-05",
+    "2026-06-06",
+    "2026-06-07",
+    "2026-06-08",
+    "2026-06-09",
+    "2026-06-10",
+    "2026-06-11",
+    "2026-06-12",
+    "2026-06-13",
+    "2026-06-14",
+    "2026-06-15",
+    "2026-06-16",
+    "2026-06-17",
+    "2026-06-18",
+    "2026-06-19",
+    "2026-06-20",
+    "2026-06-21",
+    "2026-06-22",
+    "2026-06-23",
+    "2026-06-24",
+    "2026-06-25",
+    "2026-06-26",
+    "2026-06-27"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-05-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-28T06:00:00Z",
+      "target_day_start_utc": "2026-05-27T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-05-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-29T06:00:00Z",
+      "target_day_start_utc": "2026-05-28T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-05-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-30T06:00:00Z",
+      "target_day_start_utc": "2026-05-29T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-05-30",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-05-31T06:00:00Z",
+      "target_day_start_utc": "2026-05-30T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-05-31",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-01T06:00:00Z",
+      "target_day_start_utc": "2026-05-31T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-02T06:00:00Z",
+      "target_day_start_utc": "2026-06-01T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-03T06:00:00Z",
+      "target_day_start_utc": "2026-06-02T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-04T06:00:00Z",
+      "target_day_start_utc": "2026-06-03T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-05T06:00:00Z",
+      "target_day_start_utc": "2026-06-04T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-06T06:00:00Z",
+      "target_day_start_utc": "2026-06-05T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-07T06:00:00Z",
+      "target_day_start_utc": "2026-06-06T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-08T06:00:00Z",
+      "target_day_start_utc": "2026-06-07T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-09T06:00:00Z",
+      "target_day_start_utc": "2026-06-08T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-10T06:00:00Z",
+      "target_day_start_utc": "2026-06-09T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-11T06:00:00Z",
+      "target_day_start_utc": "2026-06-10T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-12T06:00:00Z",
+      "target_day_start_utc": "2026-06-11T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-13T06:00:00Z",
+      "target_day_start_utc": "2026-06-12T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-14T06:00:00Z",
+      "target_day_start_utc": "2026-06-13T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-15T06:00:00Z",
+      "target_day_start_utc": "2026-06-14T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-16T06:00:00Z",
+      "target_day_start_utc": "2026-06-15T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-17T06:00:00Z",
+      "target_day_start_utc": "2026-06-16T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-18T06:00:00Z",
+      "target_day_start_utc": "2026-06-17T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-19T06:00:00Z",
+      "target_day_start_utc": "2026-06-18T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-20T06:00:00Z",
+      "target_day_start_utc": "2026-06-19T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-21T06:00:00Z",
+      "target_day_start_utc": "2026-06-20T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-22T06:00:00Z",
+      "target_day_start_utc": "2026-06-21T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-23T06:00:00Z",
+      "target_day_start_utc": "2026-06-22T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-24T06:00:00Z",
+      "target_day_start_utc": "2026-06-23T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-25T06:00:00Z",
+      "target_day_start_utc": "2026-06-24T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-26T06:00:00Z",
+      "target_day_start_utc": "2026-06-25T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-27T06:00:00Z",
+      "target_day_start_utc": "2026-06-26T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "as_of_utc": "2026-07-29T03:50:47Z",
+      "event_date": "2026-06-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-28T06:00:00Z",
+      "target_day_start_utc": "2026-06-27T06:00:00Z",
+      "target_timezone": "America/Mexico_City"
+    }
+  ],
+  "evidence_sha256": "00fb4436c8566a4d64c48ab040039482cc212500a8142055c18b5fb63864b7e6",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-05-27",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260528_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-28",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260529_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-29",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260530_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-30",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260531_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-05-31",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260601_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-01",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260602_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-02",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260603_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-03",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260604_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-04",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260605_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-05",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260606_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-06",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260607_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-07",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260608_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-08",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260609_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-09",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260610_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-10",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260611_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-11",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260612_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-12",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260613_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-13",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260614_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-14",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260615_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-15",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260616_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-16",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260617_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-17",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260618_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-18",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260619_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-06-19",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&date=20260620_0600&hours=24",
+          "stations": [
+            "MMMX"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-05-27",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-05-28",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-05-29",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-05-30",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-05-31",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-01",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-02",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-03",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-04",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-05",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-06",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-07",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-08",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-09",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-10",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-11",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-12",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-13",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-14",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-15",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-16",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-17",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-18",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-19",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_56",
+          "stations": "MMMX"
+        },
+        {
+          "event_date": "2026-06-20",
+          "reason": "batch_budget_exceeded",
+          "stations": "MMMX"
+        }
+      ],
+      "query_count": 24,
+      "reference_only": false,
+      "returned": 0,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "bounded_doh_connect_to",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": true,
+        "connect_to": [
+          "aviationweather.gov:443:150.171.109.148:443"
+        ],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-29T03:50:47Z",
+  "observation_count": 0,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_extended_truth_20260527_20260627/MMMX/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/five_model_45station_truth_raw",
+  "receipt_sha256": "9756f3f4808883f1bf22ac1cdee38f57d8fb2ae07ee9cc5e15785953477cf21d",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_extended_truth_20260527_20260627/MMMX/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 0
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 0,
+  "station_day_keys": [],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/Mexico_City"
+}

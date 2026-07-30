@@ -1,0 +1,120 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-10",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_35",
+      "source_lane": "awc",
+      "stations": "KATL"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-10"
+  ],
+  "evidence_sha256": "aba4bc21f41b0f8ec4d7da774ed87e7a03f6e366b21599d09f1a3c72ad4659c2",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-07-10",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_35",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KATL&format=json&date=20260711_0400&hours=24",
+          "stations": [
+            "KATL"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-07-10",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_35",
+          "stations": "KATL"
+        }
+      ],
+      "query_count": 1,
+      "reference_only": false,
+      "returned": 0,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "batch_budget_sec": 20.0,
+        "budget_exhausted": false,
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-25T23:19:38Z",
+  "observation_count": 0,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/historical_backfill/awc_single_probe_final_2320/observations.json",
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "793be30f9a6d45846cf368bc6f51d451caaa7ae3ed089da0995ca2ba5a020d7a",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/historical_backfill/awc_single_probe_final_2320/reference.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 0
+  },
+  "station_day_count": 0,
+  "station_day_keys": [],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

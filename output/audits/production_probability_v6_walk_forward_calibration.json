@@ -1,0 +1,48 @@
+{
+  "aggregate_metrics": {
+    "mean_log_score": null,
+    "mean_multiclass_brier": null
+  },
+  "calibration_ready": false,
+  "cutoff_local_hour": 12,
+  "exclusions": [
+    {
+      "event_date": "2026-07-14",
+      "reason": "checkpoint_before_cutoff_missing"
+    },
+    {
+      "event_date": "2026-07-15",
+      "reason": "checkpoint_before_cutoff_missing"
+    },
+    {
+      "event_date": "2026-07-16",
+      "reason": "checkpoint_before_cutoff_missing"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "unique_official_settlement_label_missing"
+    },
+    {
+      "event_date": "2026-07-18",
+      "reason": "unique_official_settlement_label_missing"
+    }
+  ],
+  "final_settlement_role": "label_only_never_feature",
+  "folds": [],
+  "gates": {
+    "folds_grouped_by_day": true,
+    "labels_only_after_checkpoint": true,
+    "no_checkpoint_or_source_as_of_violations": true,
+    "one_sample_per_day": true
+  },
+  "minimum_day_count": 20,
+  "ok": true,
+  "places_orders": false,
+  "required_model_artifact_sha256": "f62acb83716d71ba6661849c4fe6ea2b7cac43373340787e0f49b7d4eac8fe6b",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "production_probability_v6_strict_day_walk_forward_calibration_v1",
+  "state": "framework_valid_samples_accruing",
+  "unit_of_independence": "station_day_not_checkpoint_event",
+  "writes_archive_db": false
+}

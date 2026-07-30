@@ -1,0 +1,1101 @@
+"""Pure bridge from materialized probability envelopes to a target plan.
+
+This module is the single strategy compiler.  It is deliberately independent
+of SQLite and order transport: callers provide already materialized P0/P1,
+station-policy and official-WS evidence, and this function returns one
+content-addressable ``production_no_live`` candidate.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from typing import Any, Callable, Mapping, Sequence
+
+from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .basket_kernel.contracts import (
+    TARGET_BASKET_SNAPSHOT_SCHEMA,
+    TargetBasketPolicy,
+    TargetBasketSnapshot,
+)
+from .cash_phase import (
+    BasketCashPhaseInput,
+    BasketCashPhasePolicyArtifact,
+    OrderSizingDecision,
+    evaluate_cash_phase,
+)
+from .cadence import (
+    CADENCE_GATE_SECONDS_KEY,
+    CadenceDecision,
+    CadenceSnapshot,
+    CadenceThresholds,
+    evaluate_cadence,
+)
+from .policy import (
+    GlobalBasketPriorArtifact,
+    PolicyArtifact,
+    ResolvedStationBasketPolicy,
+    StationBasketPolicyActivation,
+    resolve_station_policy,
+)
+from .stages import select_current_stage
+from .settlement_time import assert_probability_timezone_matches_market
+from .regime_artifact import RegimeArtifact, resolve_regime_artifact
+from .regime_materialization import evaluate_regime_gate
+from .delta_v2_artifact import DeltaV2PolicyArtifact
+from .delta_v2_runtime import compile_delta_v2_runtime_plan
+
+
+DELTA_V2_OPTIMIZER_SCHEMA = "bayes_basket_target_delta_v2_optimizer_v2"
+DELTA_V2_OPTIMIZER_ID = "DeltaBasketScoreV2Optimizer"
+
+
+_DEFAULT_POLICY = {
+    "total_budget_usdc": 30.0,
+    "base_coverage": 0.55,
+    "entropy_coverage_gain": 0.20,
+    "maximum_coverage": 0.92,
+    "direction_skew_deadband": 0.05,
+    "direction_entropy_max": 0.95,
+    "direction_min_side_mass": 0.05,
+    "center_lead_min_probability": 0.01,
+    "edge_max_ask": 0.18,
+    "edge_min_probability": 0.005,
+    "peripheral_model_reliability_min": 0.15,
+    "peripheral_min_coverage_value": 0.01,
+    "max_disagreement_expansion_layers": 2,
+    "dispersion_c_per_expansion_layer": 1.0,
+    "clip_min_notional_usdc": 1.0,
+    "price_tick_size": 0.01,
+    "maximum_limit_price": 0.99,
+    "minimum_expected_edge_per_share": 0.0,
+    "minimum_expected_pnl_after_usdc": -30.0,
+    "fee_rate": 0.0,
+    "maker_queue_cost_per_share": 0.0,
+    "taker_slippage_buffer_per_share": 0.0,
+    "protected_floor_usdc": -30.0,
+    "max_outside_loss_usdc": 30.0,
+    "basket_downside_lambda_per_usdc": 0.02,
+    "basket_directional_coverage_lambda_usdc": 0.05,
+    "basket_concentration_lambda_usdc": 0.25,
+    "disagreement_concentration_gain_per_layer": 0.50,
+    "maximum_bucket_budget_fraction": 0.75,
+    "basket_optimizer_max_iterations": 4000,
+    "basket_optimizer_tolerance": 1e-8,
+}
+
+
+def evaluate_no_live_cadence(
+    *,
+    cadence_theta: Mapping[str, Any],
+    current_snapshot: CadenceSnapshot | Mapping[str, Any] | None,
+    previous_snapshot: CadenceSnapshot | Mapping[str, Any] | None,
+    b13_b14_passed: bool,
+    budget_passed: bool,
+    order_state_known: bool,
+    candidate_present: bool,
+) -> str:
+    """Evaluate cadence after the existing no-live execution gates.
+
+    The caller supplies the immutable cadence/hazard observations and the
+    already-evaluated B13/B14, budget, and order-state results.  This helper
+    never derives a clock, hazard score, version, probability, support, or
+    target share.  It only replaces the two aggregate gate booleans in the
+    current snapshot with the post-gate result and returns one of the three
+    cadence decisions.
+    """
+
+    thresholds = CadenceThresholds.from_station_policy_theta(cadence_theta)
+    if thresholds is None:
+        return CadenceDecision.HOLD.value
+
+    if isinstance(current_snapshot, CadenceSnapshot):
+        current_raw = current_snapshot.to_dict()
+    elif isinstance(current_snapshot, Mapping):
+        current_raw = dict(current_snapshot)
+    else:
+        return CadenceDecision.HOLD.value
+
+    all_post_gates_passed = all(
+        isinstance(value, bool) and value
+        for value in (
+            b13_b14_passed,
+            budget_passed,
+            order_state_known,
+        )
+    )
+    # These are the only fields runtime is allowed to derive: they are the
+    # result of gates that have already run.  Hazard, versions and time must
+    # remain explicit inputs in the supplied snapshot.
+    current_raw["safety_gates_passed"] = all_post_gates_passed
+    current_raw["candidate_present"] = bool(
+        isinstance(candidate_present, bool)
+        and candidate_present
+        and all_post_gates_passed
+    )
+    return evaluate_cadence(
+        current_raw,
+        previous_snapshot,
+        thresholds,
+    )
+
+
+def snapshot_from_probability_envelope(
+    envelope: ProbabilityEnvelope,
+    market_snapshot: Mapping[str, Any],
+    *,
+    checkpoint_changed: bool = True,
+) -> TargetBasketSnapshot:
+    """Build the candidate snapshot using only the envelope's p(B) vector."""
+
+    if str(market_snapshot.get("station_id") or "") != envelope.station_id:
+        raise ContractError("market_snapshot_station_mismatch")
+    if str(market_snapshot.get("event_date") or "") != envelope.event_date:
+        raise ContractError("market_snapshot_event_date_mismatch")
+    assert_probability_timezone_matches_market(
+        probability_timezone=envelope.settlement_timezone,
+        market_timezone=str(market_snapshot.get("settlement_timezone") or ""),
+    )
+    if "forecast_dispersion_c" in market_snapshot:
+        raise ContractError("market_snapshot_model_dispersion_forbidden")
+    try:
+        model_envelope_span_c = float(
+            envelope.lineage.get("model_envelope_span_c", "0")
+        )
+    except (TypeError, ValueError) as exc:
+        raise ContractError("probability_model_envelope_span_invalid") from exc
+    if not math.isfinite(model_envelope_span_c) or model_envelope_span_c < 0.0:
+        raise ContractError("probability_model_envelope_span_invalid")
+    raw_lower_ordinal = envelope.lineage.get("model_envelope_lower_ordinal")
+    raw_upper_ordinal = envelope.lineage.get("model_envelope_upper_ordinal")
+    if (raw_lower_ordinal is None) != (raw_upper_ordinal is None):
+        raise ContractError("probability_model_envelope_boundary_incomplete")
+    model_envelope_lower_ordinal: int | None = None
+    model_envelope_upper_ordinal: int | None = None
+    if raw_lower_ordinal is not None:
+        try:
+            model_envelope_lower_ordinal = int(raw_lower_ordinal)
+            model_envelope_upper_ordinal = int(raw_upper_ordinal)
+        except (TypeError, ValueError) as exc:
+            raise ContractError("probability_model_envelope_boundary_invalid") from exc
+        lower_bucket = str(
+            envelope.lineage.get("model_envelope_lower_bucket") or ""
+        )
+        upper_bucket = str(
+            envelope.lineage.get("model_envelope_upper_bucket") or ""
+        )
+        if (
+            lower_bucket not in envelope.bucket_ordinals
+            or upper_bucket not in envelope.bucket_ordinals
+            or envelope.bucket_ordinals[lower_bucket] != model_envelope_lower_ordinal
+            or envelope.bucket_ordinals[upper_bucket] != model_envelope_upper_ordinal
+            or model_envelope_lower_ordinal > model_envelope_upper_ordinal
+        ):
+            raise ContractError("probability_model_envelope_boundary_invalid")
+    formal_members_json = envelope.lineage.get("formal_model_members_json")
+    raw_formal_lower = envelope.lineage.get(
+        "formal_model_anchor_lower_ordinal"
+    )
+    raw_formal_upper = envelope.lineage.get(
+        "formal_model_anchor_upper_ordinal"
+    )
+    if (raw_formal_lower is None) != (raw_formal_upper is None):
+        raise ContractError("probability_formal_model_anchor_incomplete")
+    if (formal_members_json is None) != (raw_formal_lower is None):
+        raise ContractError("probability_formal_model_anchor_incomplete")
+    if (
+        envelope.posterior_version
+        == "p0_nwp_historical_meta_anchor_v4"
+        and formal_members_json is None
+    ):
+        raise ContractError(
+            "probability_formal_model_anchor_required_for_v4"
+        )
+    formal_lower_ordinal: int | None = None
+    formal_upper_ordinal: int | None = None
+    if formal_members_json is not None:
+        try:
+            formal_members = json.loads(str(formal_members_json))
+            formal_lower_ordinal = int(raw_formal_lower)
+            formal_upper_ordinal = int(raw_formal_upper)
+        except (
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise ContractError(
+                "probability_formal_model_anchor_invalid"
+            ) from exc
+        if (
+            not isinstance(formal_members, list)
+            or len(formal_members) < 2
+            or formal_lower_ordinal > formal_upper_ordinal
+        ):
+            raise ContractError("probability_formal_model_anchor_invalid")
+        member_ordinals: list[int] = []
+        member_ids: set[str] = set()
+        for member in formal_members:
+            if not isinstance(member, Mapping):
+                raise ContractError(
+                    "probability_formal_model_anchor_invalid"
+                )
+            model_id = str(member.get("model_id") or "")
+            bucket = str(member.get("calibrated_center_bucket") or "")
+            try:
+                weight = float(member.get("weight"))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(
+                    "probability_formal_model_anchor_invalid"
+                ) from exc
+            if (
+                not model_id
+                or model_id in member_ids
+                or bucket not in envelope.bucket_ordinals
+                or not math.isfinite(weight)
+                or weight <= 0.0
+            ):
+                raise ContractError(
+                    "probability_formal_model_anchor_invalid"
+                )
+            member_ids.add(model_id)
+            member_ordinals.append(envelope.bucket_ordinals[bucket])
+        if (
+            min(member_ordinals) != formal_lower_ordinal
+            or max(member_ordinals) != formal_upper_ordinal
+        ):
+            raise ContractError(
+                "probability_formal_model_anchor_boundary_mismatch"
+            )
+    reported_high_bucket: str | None = None
+    reported_high_ordinal: int | None = None
+    reported_high_observation_id: str | None = None
+    hard_bound_id: str | None = None
+    reported_high_advanced: bool | None = None
+    risk_lineage_keys = {
+        "reported_high_bucket",
+        "reported_high_ordinal",
+        "canonical_observation_event_id",
+        "hard_bound_id",
+    }
+    present_risk_keys = {
+        key
+        for key in risk_lineage_keys
+        if str(envelope.lineage.get(key) or "").strip()
+    }
+    if envelope.stage == "P1":
+        if present_risk_keys != risk_lineage_keys:
+            raise ContractError(
+                "p1_reported_high_risk_lineage_required"
+            )
+        reported_high_bucket = str(
+            envelope.lineage["reported_high_bucket"]
+        )
+        try:
+            reported_high_ordinal = int(
+                envelope.lineage["reported_high_ordinal"]
+            )
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                "p1_reported_high_ordinal_invalid"
+            ) from exc
+        if (
+            reported_high_bucket not in envelope.bucket_ordinals
+            or envelope.bucket_ordinals[reported_high_bucket]
+            != reported_high_ordinal
+        ):
+            raise ContractError(
+                "p1_reported_high_bucket_ordinal_mismatch"
+            )
+        reported_high_observation_id = str(
+            envelope.lineage["canonical_observation_event_id"]
+        )
+        hard_bound_id = str(envelope.lineage["hard_bound_id"])
+        raw_advanced = envelope.lineage.get("reported_high_advanced")
+        if raw_advanced is None:
+            reported_high_advanced = True
+        elif raw_advanced == "true":
+            reported_high_advanced = True
+        elif raw_advanced == "false":
+            reported_high_advanced = False
+        else:
+            raise ContractError("p1_reported_high_advanced_invalid")
+    elif present_risk_keys:
+        raise ContractError("p0_reported_high_risk_lineage_forbidden")
+    raw_buckets = market_snapshot.get("buckets")
+    if not isinstance(raw_buckets, Sequence) or isinstance(raw_buckets, (str, bytes, bytearray)) or not raw_buckets:
+        raise ContractError("market_snapshot_buckets_missing")
+    seen: set[str] = set()
+    buckets: list[dict[str, Any]] = []
+    raw_reliability = envelope.lineage.get(
+        "peripheral_model_reliability_by_bucket_json",
+        "{}",
+    )
+    try:
+        reliability_by_bucket = json.loads(raw_reliability)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ContractError("probability_peripheral_model_reliability_invalid") from exc
+    if not isinstance(reliability_by_bucket, Mapping):
+        raise ContractError("probability_peripheral_model_reliability_invalid")
+    if set(reliability_by_bucket) - set(envelope.probabilities):
+        raise ContractError("probability_peripheral_model_reliability_support_mismatch")
+    for raw in raw_buckets:
+        if not isinstance(raw, Mapping):
+            raise ContractError("market_snapshot_bucket_invalid")
+        bucket = str(raw.get("bucket") or "")
+        if bucket not in envelope.probabilities or bucket in seen:
+            raise ContractError("market_snapshot_probability_support_mismatch")
+        seen.add(bucket)
+        row = dict(raw)
+        row["probability"] = envelope.probabilities[bucket]
+        row["ordinal"] = envelope.bucket_ordinals[bucket]
+        try:
+            reliability = float(reliability_by_bucket.get(bucket, 0.0))
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                "probability_peripheral_model_reliability_invalid"
+            ) from exc
+        if not math.isfinite(reliability) or not 0.0 <= reliability <= 1.0:
+            raise ContractError("probability_peripheral_model_reliability_invalid")
+        row["peripheral_model_reliability"] = reliability
+        buckets.append(row)
+    if seen != set(envelope.probabilities):
+        raise ContractError("market_snapshot_probability_support_incomplete")
+    observed_at = str(market_snapshot.get("observed_at") or envelope.decision_at_utc)
+    quote_observed_at = str(market_snapshot.get("quote_observed_at") or observed_at)
+    raw = {
+        "schema": TARGET_BASKET_SNAPSHOT_SCHEMA,
+        "snapshot_id": str(market_snapshot.get("snapshot_id") or "target_snapshot_" + envelope.content_sha256[:24]),
+        "sequence": int(market_snapshot.get("sequence", 0)),
+        "observed_at": observed_at,
+        "market_id": str(market_snapshot.get("market_id") or ""),
+        "station_id": envelope.station_id,
+        "event_date": envelope.event_date,
+        "quote_version": str(market_snapshot.get("quote_version") or ""),
+        "quote_observed_at": quote_observed_at,
+        "quote_source": str(market_snapshot.get("quote_source") or "OFFICIAL_CLOB_WS"),
+        "inventory_version": str(market_snapshot.get("inventory_version") or ""),
+        "order_state_version": str(market_snapshot.get("order_state_version") or ""),
+        "evidence": {
+            "probability_stage": envelope.stage,
+            "posterior_version": envelope.posterior_version,
+            "posterior_sha256": envelope.posterior_sha256,
+            "forecast_dispersion_c": model_envelope_span_c,
+            "model_envelope_lower_ordinal": model_envelope_lower_ordinal,
+            "model_envelope_upper_ordinal": model_envelope_upper_ordinal,
+            "formal_model_members_json": formal_members_json,
+            "formal_model_anchor_lower_ordinal": formal_lower_ordinal,
+            "formal_model_anchor_upper_ordinal": formal_upper_ordinal,
+            "reported_high_bucket": reported_high_bucket,
+            "reported_high_ordinal": reported_high_ordinal,
+            "reported_high_observation_id": (
+                reported_high_observation_id
+            ),
+            "hard_bound_id": hard_bound_id,
+            "reported_high_advanced": reported_high_advanced,
+        },
+        "buckets": buckets,
+        "checkpoint_changed": bool(
+            market_snapshot.get(
+                "checkpoint_changed", checkpoint_changed
+            )
+            and (
+                envelope.stage != "P1"
+                or reported_high_advanced is not False
+            )
+        ),
+        "quote_changed": bool(market_snapshot.get("quote_changed", False)),
+        "fill_changed": bool(market_snapshot.get("fill_changed", False)),
+        "time_gate_changed": bool(market_snapshot.get("time_gate_changed", False)),
+        "evidence_fresh": bool(market_snapshot.get("evidence_fresh", True)),
+        "contract_matches": bool(market_snapshot.get("contract_matches", True)),
+        "order_state_known": bool(market_snapshot.get("order_state_known", True)),
+        "risk_inputs_complete": bool(market_snapshot.get("risk_inputs_complete", True)),
+        "terminal": bool(market_snapshot.get("terminal", False)),
+        "time_left_minutes": float(market_snapshot.get("time_left_minutes", 1440.0) or 0.0),
+        "recent_fill_rate": float(market_snapshot.get("recent_fill_rate", 0.0) or 0.0),
+    }
+    return TargetBasketSnapshot.from_mapping(raw)
+
+
+def _compile_target_plan(
+    *,
+    probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
+    market_snapshot: Mapping[str, Any],
+    policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
+    global_priors: Mapping[str, GlobalBasketPriorArtifact] | Sequence[GlobalBasketPriorArtifact],
+    policy_artifacts: Mapping[str, PolicyArtifact] | Sequence[PolicyArtifact],
+    evaluation_at_utc: str,
+    season_bin: str,
+    maturity_bin: str,
+    liquidity_bin: str,
+    strategy_version: str,
+    base_policy: Mapping[str, Any] | None = None,
+    delta_v2_policy: DeltaV2PolicyArtifact | Mapping[str, Any] | None = None,
+    delta_v2_fill_resolver: Callable[..., Mapping[str, Any]] | None = None,
+    cash_phase_policy: BasketCashPhasePolicyArtifact | Mapping[str, Any] | None = None,
+    cash_phase_input: BasketCashPhaseInput | Mapping[str, Any] | None = None,
+    cadence_snapshot: CadenceSnapshot | Mapping[str, Any] | None = None,
+    previous_cadence_snapshot: CadenceSnapshot | Mapping[str, Any] | None = None,
+    delta_v2_owns_cadence: bool = False,
+    resource_probe_ok: bool = False,
+    policy_authority_scope: str = "FORMAL_PROMOTED",
+    regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
+    require_regime_ssot: bool = True,
+) -> dict[str, Any]:
+    """Compile one full stage → policy → v2 delta plan, no-live boundary."""
+
+    def _blocked(
+        *,
+        blockers: Sequence[str],
+        station_policy: dict[str, Any] | None = None,
+        regime_audit: Mapping[str, Any] | None = None,
+        remaining_budget_before: float,
+        extra_plan: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        delta_audit = {
+            "schema": "delta_basket_score_authorization_v2",
+            "authorized": False,
+            "blockers": list(blockers),
+        }
+        return {
+            "schema": "bayes_basket_target_plan_v1",
+            "status": "blocked",
+            "reason_codes": list(blockers),
+            "stage": envelope.stage,
+            "probability_envelope": envelope.to_dict(),
+            "resolved_station_policy": station_policy or {},
+            "plan": dict(extra_plan) if isinstance(extra_plan, Mapping) else None,
+            "delta_v2_audit": delta_audit,
+            "cash_phase_decision": None,
+            "order_sizing_decisions": [],
+            "cadence_decision": CadenceDecision.HOLD.value,
+            "cadence_allows_candidate": False,
+            "remaining_budget_usdc_before": remaining_budget_before,
+            "remaining_budget_usdc_after": remaining_budget_before,
+            "station_reserve_violations": [],
+            "boundary": {
+                "target_only": True,
+                "execution_mode": "production_no_live",
+                "live_order_authorized": False,
+                "places_orders": False,
+                "orders_submitted": 0,
+                "writes_production_db": False,
+                "calls_order_gateway": False,
+                "cadence_decision": CadenceDecision.HOLD.value,
+                "cadence_allows_candidate": False,
+                "cadence_order_authorized": False,
+                "blocked": True,
+            },
+            "regime_audit": (
+                dict(regime_audit)
+                if isinstance(regime_audit, Mapping)
+                else {
+                    "schema": "bayes_basket_regime_gate_v1",
+                    "status": "NOT_APPLIED",
+                    "required": bool(require_regime_ssot),
+                }
+            ),
+        }
+
+    envelope = select_current_stage(probability_envelopes, at_utc=evaluation_at_utc)
+    snapshot = snapshot_from_probability_envelope(envelope, market_snapshot)
+    raw_budget_for_block = market_snapshot.get("remaining_budget_usdc", 0.0)
+    try:
+        remaining_budget_before = (
+            float(raw_budget_for_block)
+            if not isinstance(raw_budget_for_block, bool)
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        remaining_budget_before = 0.0
+    blockers: list[str] = []
+    if delta_v2_policy is None:
+        blockers.append("delta_v2_policy_missing")
+    if not callable(delta_v2_fill_resolver):
+        blockers.append("delta_v2_fill_resolver_missing")
+    if cash_phase_policy is None:
+        blockers.append("cash_phase_policy_missing")
+    if cash_phase_input is None:
+        blockers.append("cash_phase_input_missing")
+    if blockers:
+        return _blocked(
+            blockers=blockers,
+            remaining_budget_before=remaining_budget_before,
+        )
+
+    if require_regime_ssot and regime_artifact is None:
+        return _blocked(
+            blockers=["regime_ssot_missing"],
+            remaining_budget_before=remaining_budget_before,
+            regime_audit={
+                "schema": "bayes_basket_regime_gate_v1",
+                "status": "NOT_APPLIED",
+                "required": True,
+                "blocker": "regime_ssot_missing",
+            },
+        )
+
+    normalized_cash_input = (
+        cash_phase_input
+        if isinstance(cash_phase_input, BasketCashPhaseInput)
+        else BasketCashPhaseInput.from_mapping(cash_phase_input)
+    )
+    cash_phase_blocker: str | None = None
+    try:
+        cash_phase_decision = evaluate_cash_phase(
+            cash_phase_policy
+            if isinstance(cash_phase_policy, BasketCashPhasePolicyArtifact)
+            else BasketCashPhasePolicyArtifact.from_mapping(cash_phase_policy),
+            normalized_cash_input,
+        )
+    except ContractError as exc:
+        if str(exc) != "cash_phase_unobserved_phase_fail_closed":
+            raise
+        # An unobserved cash phase blocks sizing and execution authority, not
+        # the upstream probability/WS basket preselection.  Continue only far
+        # enough to materialize the v2 support/direction diagnostic, then
+        # return a zero-order blocked plan below.
+        cash_phase_decision = None
+        cash_phase_blocker = str(exc)
+
+    resolved = resolve_station_policy(
+        activations=policy_activations,
+        global_priors=global_priors,
+        artifacts=policy_artifacts,
+        station_id=envelope.station_id,
+        stage=envelope.stage,
+        season_bin=season_bin,
+        maturity_bin=maturity_bin,
+        liquidity_bin=liquidity_bin,
+        strategy_version=strategy_version,
+        # Resolve the execution policy at the action evaluation time.  The
+        # probability envelope keeps its own immutable evidence as-of clock.
+        decision_at_utc=evaluation_at_utc,
+        required_authority_scope=policy_authority_scope,
+    )
+
+    resolved_regime: RegimeArtifact | None = None
+    if regime_artifact is not None:
+        resolved_regime = resolve_regime_artifact(
+            regime_artifact,
+            station_id=envelope.station_id,
+            event_date=envelope.event_date,
+            stage=envelope.stage,
+            checkpoint_id=envelope.checkpoint_id,
+            settlement_timezone=envelope.settlement_timezone,
+            probability_sha256=envelope.content_sha256,
+            evaluation_at_utc=evaluation_at_utc,
+        )
+
+    policy_config = dict(_DEFAULT_POLICY)
+    policy_config.update(resolved.to_adaptive_policy_overrides())
+    policy_config.update(dict(base_policy or {}))
+    policy = TargetBasketPolicy.from_mapping(policy_config)
+    if resolved_regime is not None:
+        # Regime may only tighten concentration; never alter p(B).
+        multiplier = min(1.0, max(0.05, resolved_regime.concentration_multiplier))
+        policy_config["basket_concentration_lambda_usdc"] = (
+            float(policy_config["basket_concentration_lambda_usdc"]) / multiplier
+        )
+        policy = TargetBasketPolicy.from_mapping(policy_config)
+
+    raw_budget = market_snapshot.get("remaining_budget_usdc")
+    if raw_budget is None or isinstance(raw_budget, bool):
+        blockers = ["remaining_budget_usdc_required"]
+        return _blocked(
+            blockers=blockers,
+            remaining_budget_before=remaining_budget_before,
+            station_policy=resolved.to_dict(),
+        )
+    try:
+        remaining_budget = float(raw_budget)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("remaining_budget_usdc_invalid") from exc
+    if not math.isfinite(remaining_budget) or remaining_budget < 0.0:
+        raise ContractError("remaining_budget_usdc_invalid")
+
+    try:
+        resolved_delta_policy = (
+            delta_v2_policy
+            if isinstance(delta_v2_policy, DeltaV2PolicyArtifact)
+            else DeltaV2PolicyArtifact.from_mapping(delta_v2_policy)
+        )
+    except ContractError:
+        raise
+
+    if resource_probe_ok is not True:
+        return _blocked(
+            blockers=["resource_probe_unavailable"],
+            remaining_budget_before=remaining_budget_before,
+            station_policy=resolved.to_dict(),
+        )
+
+    delta_plan = compile_delta_v2_runtime_plan(
+        snapshot=snapshot,
+        basket_policy=policy,
+        delta_policy=resolved_delta_policy,
+        fill_resolver=delta_v2_fill_resolver,
+        capital_available_usdc=remaining_budget,
+        minimum_profit_floor=float(policy.minimum_expected_pnl_after_usdc),
+        resource_probe_ok=resource_probe_ok,
+    )
+
+    selected_actions_by_bucket: dict[str, dict[str, Any]] = {}
+    if isinstance(delta_plan.get("delta_v2_action_selection"), Mapping):
+        selected_rows = delta_plan["delta_v2_action_selection"].get(
+            "selected_actions", ()
+        )
+        if isinstance(selected_rows, Sequence) and not isinstance(
+            selected_rows, (str, bytes, bytearray)
+        ):
+            for selected in selected_rows:
+                if not isinstance(selected, Mapping):
+                    continue
+                action = selected.get("action")
+                if not isinstance(action, Mapping):
+                    continue
+                bucket = str(action.get("bucket") or "")
+                if bucket:
+                    selected_actions_by_bucket[bucket] = dict(action)
+    selected_authorized = (
+        delta_plan.get("state") == "TRADE"
+        and dict(delta_plan.get("delta_v2_audit", {})).get("authorized") is True
+    )
+    if resolved_regime is not None:
+        regime_gate = evaluate_regime_gate(
+            resolved_regime,
+            station_id=envelope.station_id,
+            event_date=envelope.event_date,
+            stage=envelope.stage,
+            checkpoint_id=envelope.checkpoint_id,
+            settlement_timezone=envelope.settlement_timezone,
+            evaluation_at_utc=evaluation_at_utc,
+            probability_sha256=envelope.content_sha256,
+            probability_direction=str(delta_plan.get("direction") or ""),
+            center_bucket=str(delta_plan.get("center_bucket") or ""),
+        )
+        if not regime_gate.direction_allowed:
+            delta_plan = compile_delta_v2_runtime_plan(
+                snapshot=snapshot,
+                basket_policy=policy,
+                delta_policy=resolved_delta_policy,
+                fill_resolver=delta_v2_fill_resolver,
+                capital_available_usdc=remaining_budget,
+                minimum_profit_floor=float(
+                    policy.minimum_expected_pnl_after_usdc
+                ),
+                resource_probe_ok=True,
+                regime_direction_allowed=False,
+            )
+            selected_authorized = False
+            blockers.append("regime_direction_not_allowed")
+            selected_actions_by_bucket = {}
+    else:
+        regime_gate = None
+
+    if cash_phase_decision is None:
+        return _blocked(
+            blockers=[cash_phase_blocker or "cash_phase_unresolved"],
+            station_policy={
+                "station_id": resolved.station_id,
+                "activation_id": resolved.activation_id,
+                "global_prior_id": resolved.global_prior_id,
+                "target_artifact_id": resolved.target_artifact_id,
+                "reserve_artifact_id": resolved.reserve_artifact_id,
+                "cadence_artifact_id": resolved.cadence_artifact_id,
+                "fallback_reason": resolved.fallback_reason,
+                "policy_sha256": resolved.policy_sha256,
+                "authority_scope": resolved.authority_scope,
+                "policy_id": policy.policy_id,
+                "station_policy_id": resolved.target_artifact_id,
+                "cash_phase_observed_at_utc": (
+                    normalized_cash_input.observed_at_utc
+                ),
+            },
+            regime_audit=(
+                regime_gate.audit
+                if regime_gate is not None
+                else {
+                    "schema": "bayes_basket_regime_gate_v1",
+                    "status": "NOT_APPLIED",
+                    "required": bool(require_regime_ssot),
+                }
+            ),
+            remaining_budget_before=remaining_budget,
+            extra_plan={
+                **dict(delta_plan),
+                "cash_phase_blocked": True,
+                "cash_phase_blocker": cash_phase_blocker,
+                "execution_authorized": False,
+                "intents_written": 0,
+                "reservations_written": 0,
+                "live_submit_authorized": False,
+                "calls_order_gateway": False,
+                "orders_submitted": 0,
+            },
+        )
+
+    row_by_bucket = {row.bucket: row for row in snapshot.buckets}
+    order_sizing_decisions: list[OrderSizingDecision] = []
+    remaining_after = remaining_budget
+    for row in delta_plan.get("targets", []) if isinstance(delta_plan, Mapping) else []:
+        row_bucket = str(row.get("bucket", ""))
+        snap_row = row_by_bucket[row_bucket]
+        candidate_price = float(row.get("candidate_price", 0.0) or 0.0)
+        delta_shares = float(row.get("delta_shares", 0.0) or 0.0)
+        clip_notional = row.get("clip_notional_usdc")
+        execution_candidate = str(row.get("execution_candidate", "NONE"))
+        is_selected = (
+            selected_authorized
+            and execution_candidate != "NONE"
+            and row_bucket in selected_actions_by_bucket
+        )
+        selected_action = selected_actions_by_bucket.get(row_bucket, {})
+        candidate_present = (
+            is_selected
+            and float(selected_action.get("cash_clip") or 0.0) > 0.0
+        )
+        executable_depth_cash = 0.0
+        if candidate_present:
+            executable_depth_cash = snap_row.executable_depth_shares * candidate_price
+            if execution_candidate == "TAKER_FOK":
+                executable_depth_cash = sum(
+                    level.price * level.shares
+                    for level in snap_row.ask_levels
+                    if level.price <= candidate_price + 1e-9
+                )
+        sizing = OrderSizingDecision.compute(
+            bucket=row_bucket,
+            phase_decision=cash_phase_decision,
+            delta_shares=delta_shares,
+            r_limit=candidate_price,
+            remaining_budget=remaining_after,
+            executable_depth_cash=executable_depth_cash,
+            candidate_present=candidate_present,
+            target_clip_notional_usdc=(
+                float(clip_notional)
+                if (candidate_present and clip_notional is not None)
+                else None
+            ),
+            minimum_clip_notional_usdc=float(policy.clip_min_notional_usdc),
+            # DeltaBasketScore v2 owns the selected adaptive clip.  The
+            # legacy phase cash template remains auditable cadence context,
+            # but may not silently replace the unique objective's size.
+            cash_template_caps_target=False,
+            share_quantum=float(market_snapshot.get("share_quantum", 0.01) or 0.01),
+        )
+        order_sizing_decisions.append(sizing)
+        remaining_after = sizing.remaining_budget_after
+
+    candidate_present_for_cadence = any(
+        item.candidate_present for item in order_sizing_decisions
+    )
+    selected_sizing = [
+        item for item in order_sizing_decisions if item.candidate_present
+    ]
+    required_gap_support = set(
+        str(value) for value in delta_plan.get("execution_gap_support", ())
+    )
+    sized_selected_buckets = {item.bucket for item in selected_sizing}
+    complete_bundle_sized = (
+        bool(required_gap_support)
+        and sized_selected_buckets == required_gap_support
+    )
+    sizing_eligible_for_cadence = (
+        complete_bundle_sized
+        and all(item.eligible for item in selected_sizing)
+    )
+    sizing_blockers = list(dict.fromkeys(
+        item.reason_code
+        for item in order_sizing_decisions
+        if item.candidate_present and not item.eligible
+    ))
+    blockers.extend(
+        reason for reason in sizing_blockers if reason not in blockers
+    )
+    effective_cadence_snapshot = (
+        cadence_snapshot if cadence_snapshot is not None else market_snapshot.get("cadence_snapshot")
+    )
+    effective_previous_cadence_snapshot = (
+        previous_cadence_snapshot if previous_cadence_snapshot is not None else market_snapshot.get("previous_cadence_snapshot")
+    )
+    selected_cash = sum(
+        float(action.get("cash_clip") or 0.0)
+        for action in selected_actions_by_bucket.values()
+    )
+    budget_passed = selected_cash <= remaining_budget + 1e-9 and selected_cash > 0.0
+    if delta_v2_owns_cadence:
+        cadence_decision = (
+            CadenceDecision.ALLOW_CANDIDATE.value
+            if (
+                selected_authorized
+                and sizing_eligible_for_cadence
+                and budget_passed
+                and snapshot.order_state_known
+                and candidate_present_for_cadence
+            )
+            else CadenceDecision.HOLD.value
+        )
+        cadence_authority = "DELTA_BASKET_SCORE_V2"
+    else:
+        cadence_decision = evaluate_no_live_cadence(
+            cadence_theta=resolved.cadence_theta,
+            current_snapshot=effective_cadence_snapshot,
+            previous_snapshot=effective_previous_cadence_snapshot,
+            b13_b14_passed=selected_authorized and sizing_eligible_for_cadence,
+            budget_passed=budget_passed,
+            order_state_known=snapshot.order_state_known,
+            candidate_present=candidate_present_for_cadence,
+        )
+        cadence_authority = "LEGACY_CADENCE_ARTIFACT"
+    cadence_allows = (
+        sizing_eligible_for_cadence
+        and cadence_decision == CadenceDecision.ALLOW_CANDIDATE.value
+    )
+
+    status = "ready" if selected_authorized and cadence_allows else "hold"
+    if not selected_authorized:
+        blockers.extend(
+            value
+            for value in dict(delta_plan.get("delta_v2_audit", {})).get("blockers", [])
+            if str(value) not in blockers
+        )
+    if not blockers and not cadence_allows:
+        blockers.append("cadence_gate_blocked")
+
+    resolved_station_policy = {
+        "station_id": resolved.station_id,
+        "activation_id": resolved.activation_id,
+        "global_prior_id": resolved.global_prior_id,
+        "target_artifact_id": resolved.target_artifact_id,
+        "reserve_artifact_id": resolved.reserve_artifact_id,
+        "cadence_artifact_id": resolved.cadence_artifact_id,
+        "fallback_reason": resolved.fallback_reason,
+        "policy_sha256": resolved.policy_sha256,
+        "authority_scope": resolved.authority_scope,
+        "policy_id": policy.policy_id,
+        "station_policy_id": resolved.target_artifact_id,
+        "cash_phase_observed_at_utc": normalized_cash_input.observed_at_utc,
+    }
+    plan = dict(delta_plan)
+    plan.update(
+        {
+            "target_only": True,
+            "settlement_timezone": envelope.settlement_timezone,
+            "execution_mode": "production_no_live",
+            "live_order_authorized": False,
+            "places_orders": False,
+            "writes_production_db": False,
+            "calls_order_gateway": False,
+            "delta_v2_audit": dict(dict(delta_plan.get("delta_v2_audit", {}))),
+            "lineage": {
+                **(dict(delta_plan.get("lineage", {})) if isinstance(delta_plan.get("lineage"), Mapping) else {}),
+                # Preserve the complete probability lineage, not only the
+                # optimizer's economic references.  The M5 atomic writer
+                # independently binds the selected P1 plan to its canonical
+                # METAR/SPECI observation and hard-bound identities.
+                **dict(envelope.lineage),
+                "probability_envelope_sha256": envelope.content_sha256,
+                "posterior_sha256": envelope.posterior_sha256,
+                "probability_stage": envelope.stage,
+                "probability_decision_at_utc": envelope.decision_at_utc,
+                "settlement_timezone": envelope.settlement_timezone,
+                "policy_resolution_sha256": resolved.policy_sha256,
+                "policy_activation_id": resolved.activation_id,
+                "global_prior_id": resolved.global_prior_id,
+                "quote_version": snapshot.quote_version,
+                "inventory_version": snapshot.inventory_version,
+                "order_state_version": snapshot.order_state_version,
+                "cash_phase_policy_version": cash_phase_decision.policy_version,
+                "cash_phase_policy_sha256": cash_phase_decision.policy_sha256,
+                "cash_phase_decision_sha256": content_sha256(cash_phase_decision.to_dict()),
+                "cash_phase_observed_at_utc": normalized_cash_input.observed_at_utc,
+                "cash_phase": cash_phase_decision.next_phase.value,
+                "cash_phase_checkpoint_id": cash_phase_decision.checkpoint_id,
+                "policy_authority_scope": resolved.authority_scope,
+                "cadence_artifact_key": CADENCE_GATE_SECONDS_KEY,
+                "cadence_decision": cadence_decision,
+            },
+        }
+    )
+    return {
+        "schema": "bayes_basket_target_plan_v1",
+        "status": status,
+        "reason_codes": list(dict.fromkeys(blockers)),
+        "stage": envelope.stage,
+        "probability_envelope": envelope.to_dict(),
+        "resolved_station_policy": resolved_station_policy,
+        "plan": plan,
+        "cash_phase_decision": cash_phase_decision.to_dict(),
+        "order_sizing_decisions": [item.to_dict() for item in order_sizing_decisions],
+        "cadence_decision": cadence_decision,
+        "cadence_authority": cadence_authority,
+        "cadence_allows_candidate": cadence_allows,
+        "remaining_budget_usdc_before": remaining_budget,
+        "remaining_budget_usdc_after": remaining_after,
+        "station_reserve_violations": [],
+        "delta_v2_audit": dict(delta_plan.get("delta_v2_audit", {})),
+        "boundary": {
+            "target_only": True,
+            "execution_mode": "production_no_live",
+            "live_order_authorized": False,
+            "places_orders": False,
+            "orders_submitted": 0,
+            "writes_production_db": False,
+            "calls_order_gateway": False,
+            "cadence_decision": cadence_decision,
+            "cadence_allows_candidate": cadence_allows,
+            "cadence_order_authorized": False,
+        },
+        "regime_audit": (
+            regime_gate.audit
+            if regime_gate is not None
+            else {
+                "schema": "bayes_basket_regime_gate_v1",
+                "status": "NOT_APPLIED",
+                "required": bool(require_regime_ssot),
+            }
+        ),
+    }
+
+
+class DeltaBasketScoreV2Optimizer:
+    """The sole production economic-decision boundary."""
+
+    schema = DELTA_V2_OPTIMIZER_SCHEMA
+    optimizer_id = DELTA_V2_OPTIMIZER_ID
+    version = "v2"
+
+    def compile(
+        self,
+        *,
+        probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
+        market_snapshot: Mapping[str, Any],
+        policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
+        global_priors: Mapping[str, GlobalBasketPriorArtifact] | Sequence[GlobalBasketPriorArtifact],
+        policy_artifacts: Mapping[str, PolicyArtifact] | Sequence[PolicyArtifact],
+        evaluation_at_utc: str,
+        season_bin: str,
+        maturity_bin: str,
+        liquidity_bin: str,
+        strategy_version: str,
+        base_policy: Mapping[str, Any] | None = None,
+        delta_v2_policy: DeltaV2PolicyArtifact | Mapping[str, Any] | None = None,
+        delta_v2_fill_resolver: Callable[..., Mapping[str, Any]] | None = None,
+        cash_phase_policy: BasketCashPhasePolicyArtifact | Mapping[str, Any] | None = None,
+        cash_phase_input: BasketCashPhaseInput | Mapping[str, Any] | None = None,
+        cadence_snapshot: CadenceSnapshot | Mapping[str, Any] | None = None,
+        previous_cadence_snapshot: CadenceSnapshot | Mapping[str, Any] | None = None,
+        delta_v2_owns_cadence: bool = False,
+        resource_probe_ok: bool = False,
+        policy_authority_scope: str = "FORMAL_PROMOTED",
+        regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
+        require_regime_ssot: bool = True,
+    ) -> dict[str, Any]:
+        result = _compile_target_plan(
+            probability_envelopes=probability_envelopes,
+            market_snapshot=market_snapshot,
+            policy_activations=policy_activations,
+            global_priors=global_priors,
+            policy_artifacts=policy_artifacts,
+            evaluation_at_utc=evaluation_at_utc,
+            season_bin=season_bin,
+            maturity_bin=maturity_bin,
+            liquidity_bin=liquidity_bin,
+            strategy_version=strategy_version,
+            base_policy=base_policy,
+            delta_v2_policy=delta_v2_policy,
+            delta_v2_fill_resolver=delta_v2_fill_resolver,
+            cash_phase_policy=cash_phase_policy,
+            cash_phase_input=cash_phase_input,
+            cadence_snapshot=cadence_snapshot,
+            previous_cadence_snapshot=previous_cadence_snapshot,
+            delta_v2_owns_cadence=delta_v2_owns_cadence,
+            resource_probe_ok=resource_probe_ok,
+            policy_authority_scope=policy_authority_scope,
+            regime_artifact=regime_artifact,
+            require_regime_ssot=require_regime_ssot,
+        )
+        boundary = dict(result.get("boundary") or {})
+        boundary.update({
+            "economic_decision_point": self.optimizer_id,
+            "economic_decision_point_schema": self.schema,
+            "all_weather_and_market_inputs_jointly_solved": True,
+        })
+        result["boundary"] = boundary
+        result["optimizer"] = {
+            "schema": self.schema,
+            "optimizer_id": self.optimizer_id,
+            "version": self.version,
+            "input_contract": (
+                "materialized_probability_envelope + official_clob_ws_snapshot + "
+                "resolved_station_policy + materialized_regime_artifact + "
+                "versioned_cash_phase + promoted_delta_v2_policy + "
+                "promoted_fill_distribution"
+            ),
+            "side_effects": [],
+        }
+        return result
+
+
+def compile_target_plan(
+    *,
+    probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
+    market_snapshot: Mapping[str, Any],
+    policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
+    global_priors: Mapping[str, GlobalBasketPriorArtifact] | Sequence[GlobalBasketPriorArtifact],
+    policy_artifacts: Mapping[str, PolicyArtifact] | Sequence[PolicyArtifact],
+    evaluation_at_utc: str,
+    season_bin: str,
+    maturity_bin: str,
+    liquidity_bin: str,
+    strategy_version: str,
+    base_policy: Mapping[str, Any] | None = None,
+    delta_v2_policy: DeltaV2PolicyArtifact | Mapping[str, Any] | None = None,
+    delta_v2_fill_resolver: Callable[..., Mapping[str, Any]] | None = None,
+    cash_phase_policy: BasketCashPhasePolicyArtifact | Mapping[str, Any] | None = None,
+    cash_phase_input: BasketCashPhaseInput | Mapping[str, Any] | None = None,
+    cadence_snapshot: CadenceSnapshot | Mapping[str, Any] | None = None,
+    previous_cadence_snapshot: CadenceSnapshot | Mapping[str, Any] | None = None,
+    delta_v2_owns_cadence: bool = False,
+    resource_probe_ok: bool = False,
+    policy_authority_scope: str = "FORMAL_PROMOTED",
+    regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
+    require_regime_ssot: bool = True,
+) -> dict[str, Any]:
+    """Compatibility-free public facade for the one optimizer boundary."""
+
+    return DeltaBasketScoreV2Optimizer().compile(
+        probability_envelopes=probability_envelopes,
+        market_snapshot=market_snapshot,
+        policy_activations=policy_activations,
+        global_priors=global_priors,
+        policy_artifacts=policy_artifacts,
+        evaluation_at_utc=evaluation_at_utc,
+        season_bin=season_bin,
+        maturity_bin=maturity_bin,
+        liquidity_bin=liquidity_bin,
+        strategy_version=strategy_version,
+        base_policy=base_policy,
+        delta_v2_policy=delta_v2_policy,
+        delta_v2_fill_resolver=delta_v2_fill_resolver,
+        cash_phase_policy=cash_phase_policy,
+        cash_phase_input=cash_phase_input,
+        cadence_snapshot=cadence_snapshot,
+        previous_cadence_snapshot=previous_cadence_snapshot,
+        delta_v2_owns_cadence=delta_v2_owns_cadence,
+        resource_probe_ok=resource_probe_ok,
+        policy_authority_scope=policy_authority_scope,
+        regime_artifact=regime_artifact,
+        require_regime_ssot=require_regime_ssot,
+    )
+
+
+__all__ = [
+    "DELTA_V2_OPTIMIZER_ID",
+    "DELTA_V2_OPTIMIZER_SCHEMA",
+    "DeltaBasketScoreV2Optimizer",
+    "compile_target_plan",
+    "evaluate_no_live_cadence",
+    "snapshot_from_probability_envelope",
+]

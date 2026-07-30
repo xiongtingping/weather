@@ -1,0 +1,66 @@
+{
+  "approval_id": "ADR-XSB-OPERATIONAL-SOFT-PROJECTION-0001",
+  "approval_receipt_sha256": "d57a459631bdde56d5bdf690fd230c4c2e6aaddcbc5327ffa5156d6b4de14fb3",
+  "approved_at": "2026-07-16T10:24:22Z",
+  "artifact_sha256": "c72873e0d7a2c0ea74926797b73aa96e1ae72974e9a850fb8346224099a3dac1",
+  "authority_contract_id": "zuuu_amsc_wunderground_daily_high_v4",
+  "authority_contract_sha256": "5667f95f50be2f36b1b01a11b0e2e393cdd834cb9d01fa9c832e76972cebfd59",
+  "bridge_closed": true,
+  "coverage": {
+    "accepted_pair_count": 0,
+    "distinct_event_days": 0,
+    "distinct_physical_x_values": 0,
+    "distinct_settlement_s_values": 0,
+    "required_for_runtime": false
+  },
+  "global_residual_pmf": {
+    "-1": 0.08333333333333333,
+    "-2": 0.08333333333333333,
+    "0": 0.6666666666666666,
+    "1": 0.08333333333333333,
+    "2": 0.08333333333333333
+  },
+  "kernel_kind": "same_station_sample_free_operational_residual_prior_v1",
+  "oos_evaluation": {
+    "evaluated_event_days": 0,
+    "required_for_runtime": false,
+    "state": "not_required_for_operational_baseline"
+  },
+  "operational_baseline": {
+    "accepted_pair_count": 0,
+    "calibrated_artifact_replaces_baseline_when_approved": true,
+    "construction": "same_station_integer_maximum_dirichlet_prior_v1",
+    "hard_exclusion_certificates_authorized": false,
+    "prior_pseudocount_by_residual": {
+      "-1": 1.0,
+      "-2": 1.0,
+      "0": 8.0,
+      "1": 1.0,
+      "2": 1.0
+    },
+    "residual_support_c": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "residual_support_is_probabilistic_not_authority_hard_envelope": true,
+    "sample_or_oos_required_for_runtime": false,
+    "settlement_exclusion_requires_full_residual_support_exclusion": true
+  },
+  "operational_projection_authority_contract_id": "zuuu_x_s_soft_projection_operational_v1",
+  "operational_projection_authority_contract_sha256": "6e82748b1ff679a97d2b2825886e1ac4a736ae1070ba7241a821e3eedc51deb4",
+  "physical_source_id": "amsc_zuuu_scheduled_metar_daily_max_v2",
+  "production_runtime_eligible": true,
+  "promotion_basis": "approved_sample_nonblocking_operational_baseline",
+  "schema": "resolution_x_s_bridge_artifact_v1",
+  "seasonal_residual_pmf": {},
+  "settlement_source_id": "wunderground_zuuu_historical_observation_daily_high_final_v3",
+  "settlement_type": "wunderground_zuuu_historical_observation_daily_max_c",
+  "shadow_only": false,
+  "state": "production_approved",
+  "target_type": "amsc_scheduled_regular_metar_reported_daily_max_c",
+  "training_dataset_sha256": "939e381aab96f2c2cb5f52e682fbca6027b9ef58b0eb3597c40af68a510782ba",
+  "validated": true
+}

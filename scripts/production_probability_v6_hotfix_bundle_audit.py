@@ -7,10 +7,13 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def _sha(path: Path) -> str:
@@ -47,6 +50,21 @@ def audit(root: Path, contract_path: Path, *, installed: bool = False) -> dict[s
     if installed:
         if not active_activation.is_file() or _sha(active_activation) != contract.get("candidate_activation_sha256"):
             blockers.append("installed_activation_mismatch")
+        else:
+            activation = json.loads(active_activation.read_text(encoding="utf-8"))
+            if activation.get("activation_contract_sha256") != contract.get("activation_contract_sha256"):
+                blockers.append("installed_activation_contract_mismatch")
+            if activation.get("runtime_manifest_sha256") != contract.get("runtime_manifest_sha256"):
+                blockers.append("installed_activation_manifest_mismatch")
+            try:
+                from production_probability_v6_runtime_manifest import v6_runtime_manifest_sha256
+
+                installed_manifest = v6_runtime_manifest_sha256(root)
+            except Exception as exc:
+                blockers.append(f"installed_runtime_manifest_unavailable:{type(exc).__name__}")
+            else:
+                if installed_manifest != contract.get("runtime_manifest_sha256"):
+                    blockers.append("installed_runtime_manifest_mismatch")
     elif not active_activation.is_file() or _sha(active_activation) != dict(contract.get("baseline") or {}).get("active_activation_sha256"):
         blockers.append("active_activation_baseline_drift")
     for name, receipt in dict(contract.get("receipts") or {}).items():

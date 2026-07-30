@@ -12,6 +12,9 @@ from typing import Any, Mapping, Sequence
 from .observation_model import ObservationFeatureVector
 
 
+TEMPERATURE_QUANTIZATION_C = 1.0
+
+
 @dataclass(frozen=True)
 class CanonicalEmissionInput:
     event_id: str
@@ -21,6 +24,8 @@ class CanonicalEmissionInput:
     cloud_suppressed: bool
     precipitation_present: bool
     cb_present: bool
+    tcu_present: bool
+    convective_evidence_kind: str
     features: ObservationFeatureVector
     pre_event_history_sha256: str
     input_sha256: str
@@ -63,10 +68,16 @@ def _sha(value: Any) -> str:
     ).hexdigest()
 
 
-def _weather_signature(cloud_text: str, weather_text: str) -> tuple[str, bool, bool, bool]:
+def _weather_signature(
+    cloud_text: str, weather_text: str
+) -> tuple[str, bool, bool, bool, bool, str]:
     cloud = cloud_text.upper()
     weather = weather_text.upper()
-    cb = "CB" in cloud or "TCU" in cloud or "TS" in weather
+    thunderstorm = "TS" in weather
+    cb_cloud = "CB" in cloud
+    tcu = "TCU" in cloud and not cb_cloud and not thunderstorm
+    cb = cb_cloud or thunderstorm
+    convective_kind = "thunderstorm" if thunderstorm else "cb" if cb_cloud else "tcu" if tcu else "none"
     precipitation = any(code in weather for code in ("RA", "DZ", "SN", "SG", "PL", "GR", "GS"))
     if any(code in cloud for code in ("OVC", "VV")):
         cloud_regime = "overcast_or_obscured"
@@ -77,9 +88,11 @@ def _weather_signature(cloud_text: str, weather_text: str) -> tuple[str, bool, b
     else:
         cloud_regime = "clear_or_few"
     cloud_suppressed = cloud_regime in {"broken", "overcast_or_obscured"}
-    weather_regime = "convective" if cb else "precipitation" if precipitation else "none"
-    signature = f"cloud={cloud_regime}|weather={weather_regime}|convective={int(cb)}"
-    return signature, cloud_suppressed, precipitation, cb
+    weather_regime = "convective" if cb or tcu else "precipitation" if precipitation else "none"
+    signature = (
+        f"cloud={cloud_regime}|weather={weather_regime}|convective={int(cb or tcu)}"
+    )
+    return signature, cloud_suppressed, precipitation, cb, tcu, convective_kind
 
 
 def build_canonical_emission_input(
@@ -116,14 +129,54 @@ def build_canonical_emission_input(
             history_rows.append((history_time, history_id, history_temperature))
     history_rows.sort()
     current_step_rate = None
+    current_step_rate_interval = None
+    elapsed_hours = None
     if history_rows:
         previous_time, _previous_id, previous_temperature = history_rows[-1]
         hours = (event_time - previous_time).total_seconds() / 3600.0
         if hours > 0.0:
+            elapsed_hours = hours
             current_step_rate = (temperature - previous_temperature) / hours
+            current_step_rate_interval = (
+                (temperature - previous_temperature - TEMPERATURE_QUANTIZATION_C) / hours,
+                (temperature - previous_temperature + TEMPERATURE_QUANTIZATION_C) / hours,
+            )
     depression = temperature - dewpoint if dewpoint is not None else None
-    signature, cloud_suppressed, precipitation, cb = _weather_signature(
-        _text(payload.get("cloud_text")), _text(payload.get("weather_text"))
+    visibility = _finite(payload.get("visibility_m"))
+    weather_text = _text(payload.get("weather_text"))
+    weather_tokens = {token.strip("+-").upper() for token in weather_text.split()}
+    fog_or_mist = any(
+        token in {"FG", "BR", "MIFG", "BCFG", "PRFG", "FZFG"}
+        or token.endswith("FG")
+        for token in weather_tokens
+    )
+    depression_interval = (
+        (depression - TEMPERATURE_QUANTIZATION_C, depression + TEMPERATURE_QUANTIZATION_C)
+        if depression is not None
+        else None
+    )
+    quantization_variance = TEMPERATURE_QUANTIZATION_C * TEMPERATURE_QUANTIZATION_C / 12.0
+    rate_variance = 2.0 * quantization_variance / (elapsed_hours * elapsed_hours) if elapsed_hours else 0.0
+    depression_variance = 2.0 * quantization_variance if depression is not None else 0.0
+    shared_covariance = quantization_variance / elapsed_hours if elapsed_hours and depression is not None else 0.0
+    measurement_covariance = (
+        (rate_variance, shared_covariance),
+        (shared_covariance, depression_variance),
+    )
+    signature, cloud_suppressed, precipitation, cb, tcu, convective_kind = _weather_signature(
+        _text(payload.get("cloud_text")), weather_text
+    )
+    if current_step_rate_interval is None:
+        trajectory_phase = "unknown"
+    elif current_step_rate_interval[0] > 0.0:
+        trajectory_phase = "warming"
+    elif current_step_rate_interval[1] < 0.0:
+        trajectory_phase = "cooling"
+    else:
+        trajectory_phase = "quantized_platform"
+    physical_event_cluster_signature = (
+        f"{signature}|convective_kind={convective_kind}|precipitation={int(precipitation)}|"
+        f"fog_or_mist={int(fog_or_mist)}|trajectory={trajectory_phase}"
     )
     history_identity = [
         {"valid_time": time.isoformat(), "event_id": identity, "temperature_c": value}
@@ -135,11 +188,19 @@ def build_canonical_emission_input(
         "report_type": report_type,
         "reported_temperature_c": temperature,
         "current_step_rate_c_per_hour": current_step_rate,
+        "current_step_rate_interval_c_per_hour": current_step_rate_interval,
         "dewpoint_depression_c": depression,
+        "dewpoint_depression_interval_c": depression_interval,
+        "continuous_measurement_covariance": measurement_covariance,
         "weather_signature": signature,
+        "visibility_m": visibility,
+        "fog_or_mist_present": fog_or_mist,
         "cloud_suppressed": cloud_suppressed,
         "precipitation_present": precipitation,
         "cb_present": cb,
+        "tcu_present": tcu,
+        "convective_evidence_kind": convective_kind,
+        "physical_event_cluster_signature": physical_event_cluster_signature,
         "pre_event_history_sha256": _sha(history_identity),
     }
     return CanonicalEmissionInput(
@@ -150,10 +211,19 @@ def build_canonical_emission_input(
         cloud_suppressed=cloud_suppressed,
         precipitation_present=precipitation,
         cb_present=cb,
+        tcu_present=tcu,
+        convective_evidence_kind=convective_kind,
         features=ObservationFeatureVector(
             current_step_rate_c_per_hour=current_step_rate,
             dewpoint_depression_c=depression,
             weather_signature=signature,
+            current_step_rate_interval_c_per_hour=current_step_rate_interval,
+            dewpoint_depression_interval_c=depression_interval,
+            continuous_measurement_covariance=measurement_covariance,
+            visibility_m=visibility,
+            fog_or_mist_present=fog_or_mist,
+            convective_evidence_kind=convective_kind,
+            physical_event_cluster_signature=physical_event_cluster_signature,
         ),
         pre_event_history_sha256=core["pre_event_history_sha256"],
         input_sha256=_sha(core),

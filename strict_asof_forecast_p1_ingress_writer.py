@@ -16,7 +16,7 @@ import json
 import sqlite3
 from typing import Any, Mapping
 
-from sequential_bayes_schema_contract import TABLE_DDL, verify_schema
+from sequential_bayes_schema_contract import TABLE_DDL, verify_additive_schema_compatibility
 from source_observation_runtime import build_source_observation
 
 
@@ -120,7 +120,7 @@ def verify_strict_forecast_p1_ingress_schema(conn: sqlite3.Connection) -> dict[s
     """Verify read/write prerequisites without changing the connection."""
 
     tables = _table_names(conn)
-    p1_schema = verify_schema(conn)
+    p1_schema = verify_additive_schema_compatibility(conn)
     missing_p1_tables = sorted(set(TABLE_DDL) - tables)
     source_columns = _table_columns(conn, "source_observations") if "source_observations" in tables else set()
     missing_source_columns = sorted(REQUIRED_SOURCE_COLUMNS - source_columns)
@@ -138,7 +138,9 @@ def verify_strict_forecast_p1_ingress_schema(conn: sqlite3.Connection) -> dict[s
             and source_observation_id_unique
         ),
         "missing_p1_tables": missing_p1_tables,
-        "incompatible_p1_tables": list(p1_schema.get("incompatible_tables") or []),
+        "incompatible_p1_tables": sorted((p1_schema.get("incompatible_table_columns") or {}).keys()),
+        "incompatible_p1_table_columns": dict(p1_schema.get("incompatible_table_columns") or {}),
+        "accepted_p1_extension_columns": dict(p1_schema.get("accepted_extension_columns") or {}),
         "incompatible_p1_indexes": list(p1_schema.get("incompatible_indexes") or []),
         "missing_source_columns": missing_source_columns,
         "source_event_id_primary_key": source_event_id_primary_key,
@@ -297,6 +299,12 @@ def _equivalent(existing: Mapping[str, Any], incoming: Mapping[str, Any]) -> boo
         expected = incoming.get(column)
         if column in {"quality_flags_json", "observation_json"}:
             if not _json_equivalent(current, expected):
+                return False
+        elif column == "hard_eligible":
+            try:
+                if int(current) != int(expected):
+                    return False
+            except (TypeError, ValueError):
                 return False
         elif current != expected:
             return False

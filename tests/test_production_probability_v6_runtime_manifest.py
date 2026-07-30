@@ -16,6 +16,7 @@ def test_manifest_closes_event_and_weak_revision_production_runtime() -> None:
     assert "production_probability_v6_initial_writer.py" in paths
     assert "production_probability_v6_weak_revision_runtime.py" in paths
     assert "production_probability_v6_weak_revision_writer.py" in paths
+    assert "identifiable_physical_probability_worker.py" in paths
     assert manifest["shadow_runtime"] is False
     assert manifest["v5_fallback_forbidden"] is True
     assert manifest["places_orders"] is False

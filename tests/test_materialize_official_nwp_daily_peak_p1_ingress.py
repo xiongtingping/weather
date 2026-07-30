@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from scripts.materialize_official_nwp_daily_peak_p1_ingress import (
+    _summary,
     materialize_official_nwp_daily_peak_p1,
     plan_official_nwp_daily_peak_p1_materialization,
 )
@@ -80,6 +81,15 @@ def test_materializer_appends_valid_official_revision_and_quarantines_other_prov
     assert result["ok"] is True
     assert result["outcomes"][0]["state"] == "appended"
     repeated = materialize_official_nwp_daily_peak_p1(db=db, curve_source_root=root, apply=True)
-    assert repeated["outcomes"][0]["state"] == "idempotent"
+    assert repeated["outcomes"][0]["state"] == "already_materialized_immutable"
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT source_id FROM source_observations").fetchone()[0] == "gfs"
+
+    compact = _summary(result)
+    assert compact["ok"] is True
+    assert compact["eligible_count"] == 1
+    assert compact["quarantined_count"] == 1
+    assert compact["outcome_state_counts"] == {"appended": 1}
+    assert compact["newly_appended"] == [
+        {"provider_id": "gfs", "event_date": "2026-07-13", "state": "appended"}
+    ]

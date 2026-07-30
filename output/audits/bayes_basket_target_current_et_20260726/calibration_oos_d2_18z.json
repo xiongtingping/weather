@@ -1,0 +1,4714 @@
+{
+  "aggregate_metrics": {
+    "calibrated_mae_c": 1.5451882716049379,
+    "calibrated_rmse_c": 1.9762358760164034,
+    "holdout_n": 324,
+    "mae_improvement_c": 0.0,
+    "raw_mae_c": 1.5451882716049379,
+    "raw_rmse_c": 1.9762358760164034,
+    "rmse_improvement_c": 0.0
+  },
+  "as_of_utc": "2026-07-26T12:15:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "offline_research_only": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "aggregate_mae_improves": false,
+    "aggregate_rmse_improves": false,
+    "all_candidate_scopes_reported": true,
+    "all_reports_have_positive_holdout": true,
+    "all_scope_mae_non_degradation": true,
+    "chronological_holdout_no_leakage": true,
+    "ensemble_oos_metrics_materialized": true,
+    "ensemble_probability_oos_materialized": false,
+    "ensemble_selection_non_degradation_vs_uniform": false,
+    "explicit_awc_scope": true,
+    "input_receipt_valid": true,
+    "metric_rows_consistent": true,
+    "native_historical_arrival_complete": false
+  },
+  "chronology_failures": [],
+  "counts": {
+    "artifact_scope_count": 108,
+    "ensemble_artifact_scope_count": 36,
+    "ensemble_improved_scope_count": 0,
+    "ensemble_oos_scope_count": 36,
+    "ensemble_tied_scope_count": 36,
+    "ensemble_worsened_scope_count": 0,
+    "holdout_observation_count": 324,
+    "improved_scope_count": 0,
+    "oos_report_count": 108,
+    "probability_oos_failed_scope_count": 10,
+    "probability_oos_passed_scope_count": 26,
+    "selection_improved_vs_uniform_scope_count": 23,
+    "selection_tied_vs_uniform_scope_count": 0,
+    "selection_worsened_vs_uniform_scope_count": 13,
+    "station_count": 36,
+    "tied_scope_count": 108,
+    "worsened_scope_count": 0
+  },
+  "ensemble_aggregate_metrics": {
+    "calibrated_mae_c": 1.0146879629629635,
+    "calibrated_rmse_c": 1.336201822434687,
+    "holdout_n": 108,
+    "mae_improvement_c": 0.0,
+    "raw_mae_c": 1.0146879629629635,
+    "raw_rmse_c": 1.336201822434687,
+    "rmse_improvement_c": 0.0,
+    "selection_mae_improvement_vs_uniform_c": 0.22514228395061697,
+    "selection_rmse_improvement_vs_uniform_c": 0.2726879178837902,
+    "uniform_three_model_mae_c": 1.2398302469135805,
+    "uniform_three_model_rmse_c": 1.6088897403184772
+  },
+  "ensemble_chronology_failures": [],
+  "ensemble_metric_failures": [],
+  "ensemble_report_rows": [
+    {
+      "calibrated_mae_c": 0.9348000000000004,
+      "calibrated_rmse_c": 1.1043455739335704,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7860772786589637,
+        "crps": 0.672248856233996,
+        "n": 3,
+        "nll": 1.7402077353550869
+      },
+      "raw_mae_c": 0.9348000000000004,
+      "raw_rmse_c": 1.1043455739335704,
+      "scope": "CYYZ|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "702a1cdb4bf38599ec3bf65853c4c3d63d7b14a6086336797a343f269da5bf50",
+      "selection_mae_improvement_vs_uniform_c": 0.4721999999999985,
+      "selection_rmse_improvement_vs_uniform_c": 0.6014797937946688,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.406999999999999,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8345996300483711,
+        "crps": 0.95902599733617,
+        "n": 3,
+        "nll": 1.9535605259133453
+      },
+      "uniform_three_model_rmse_c": 1.7058253677282391,
+      "weights": {
+        "GFS": 0.4,
+        "ICON": 0.6
+      }
+    },
+    {
+      "calibrated_mae_c": 0.7259166666666665,
+      "calibrated_rmse_c": 0.7884987449789211,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.721314482839067,
+        "crps": 0.4882156573628231,
+        "n": 3,
+        "nll": 1.4641898849871058
+      },
+      "raw_mae_c": 0.7259166666666665,
+      "raw_rmse_c": 0.7884987449789211,
+      "scope": "EDDM|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "48e6e726ed239abe7034e9ee056c70e44a699b17f29084dbcda3573a5f2d1425",
+      "selection_mae_improvement_vs_uniform_c": 1.3198611111111114,
+      "selection_rmse_improvement_vs_uniform_c": 1.3930646088264795,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 2.045777777777778,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9040433077391969,
+        "crps": 1.304631125212535,
+        "n": 3,
+        "nll": 2.1657848808551052
+      },
+      "uniform_three_model_rmse_c": 2.1815633538054007,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 1.7205666666666677,
+      "calibrated_rmse_c": 1.7548271923468717,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.9232385818941665,
+        "crps": 1.0818191462198066,
+        "n": 3,
+        "nll": 2.0384862059921947
+      },
+      "raw_mae_c": 1.7205666666666677,
+      "raw_rmse_c": 1.7548271923468717,
+      "scope": "EFHK|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "e14a9eb0c82980102cac1ee01e4dd834ddccf244663cccafb9a1497708fe646b",
+      "selection_mae_improvement_vs_uniform_c": 0.22109999999999874,
+      "selection_rmse_improvement_vs_uniform_c": 0.2999379920386731,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.9416666666666664,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.921761320703836,
+        "crps": 1.2511770116612093,
+        "n": 3,
+        "nll": 2.1552385660210014
+      },
+      "uniform_three_model_rmse_c": 2.054765184385545,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.3055500000000014,
+      "calibrated_rmse_c": 0.3448274193950755,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.649942656777021,
+        "crps": 0.33227702828224315,
+        "n": 3,
+        "nll": 1.2903531194114206
+      },
+      "raw_mae_c": 0.3055500000000014,
+      "raw_rmse_c": 0.3448274193950755,
+      "scope": "EGLC|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "6e90beb6998d5de21d31ad3e0145dc49157c56652d30345793edd17836e984ec",
+      "selection_mae_improvement_vs_uniform_c": -0.2164388888888903,
+      "selection_rmse_improvement_vs_uniform_c": -0.23650793310054458,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.08911111111111107,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.6957836027355331,
+        "crps": 0.3776162568956523,
+        "n": 3,
+        "nll": 1.4506574436363548
+      },
+      "uniform_three_model_rmse_c": 0.10831948629453093,
+      "weights": {
+        "ECMWF": 0.95,
+        "ICON": 0.05
+      }
+    },
+    {
+      "calibrated_mae_c": 1.0375000000000003,
+      "calibrated_rmse_c": 1.1065969230031323,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.7751276674413802,
+        "crps": 0.6360038615929504,
+        "n": 3,
+        "nll": 1.5801511171631641
+      },
+      "raw_mae_c": 1.0375000000000003,
+      "raw_rmse_c": 1.1065969230031323,
+      "scope": "EHAM|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "f623b1ddef55d0e849c12007000c6bf8ef1e60e0648fa706f0d264bace13d53f",
+      "selection_mae_improvement_vs_uniform_c": -0.2472777777777787,
+      "selection_rmse_improvement_vs_uniform_c": -0.3099381596764593,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.7902222222222216,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7466372910401592,
+        "crps": 0.5196096755706705,
+        "n": 3,
+        "nll": 1.5451542718082871
+      },
+      "uniform_three_model_rmse_c": 0.796658763326673,
+      "weights": {
+        "ECMWF": 0.5,
+        "ICON": 0.5
+      }
+    },
+    {
+      "calibrated_mae_c": 0.4726666666666664,
+      "calibrated_rmse_c": 0.479406577621403,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7105325259506734,
+        "crps": 0.41465956279029914,
+        "n": 3,
+        "nll": 1.4638481226796858
+      },
+      "raw_mae_c": 0.4726666666666664,
+      "raw_rmse_c": 0.479406577621403,
+      "scope": "EPWA|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "899f8b50cee2efd2c2d58b9bc27a43b769fba4d53a80612cb1510624038ab2da",
+      "selection_mae_improvement_vs_uniform_c": 0.3431111111111112,
+      "selection_rmse_improvement_vs_uniform_c": 0.4044409456791059,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.8157777777777776,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7588995408958891,
+        "crps": 0.554792254691802,
+        "n": 3,
+        "nll": 1.596224424162456
+      },
+      "uniform_three_model_rmse_c": 0.8838475233005089,
+      "weights": {
+        "GFS": 0.4,
+        "ICON": 0.6
+      }
+    },
+    {
+      "calibrated_mae_c": 0.9558000000000005,
+      "calibrated_rmse_c": 1.0594713209898619,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7893114847452546,
+        "crps": 0.6330238552378785,
+        "n": 3,
+        "nll": 1.6249928649688732
+      },
+      "raw_mae_c": 0.9558000000000005,
+      "raw_rmse_c": 1.0594713209898619,
+      "scope": "FACT|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "d2571193650c7763a2ae5e980c74e07e2d27b84a857fe3c09ece8d2a02ea1975",
+      "selection_mae_improvement_vs_uniform_c": 0.2705333333333334,
+      "selection_rmse_improvement_vs_uniform_c": 0.2904710234579797,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.226333333333334,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8177619522851728,
+        "crps": 0.7779447238682081,
+        "n": 3,
+        "nll": 1.7599666060852552
+      },
+      "uniform_three_model_rmse_c": 1.3499423444478416,
+      "weights": {
+        "ECMWF": 0.6,
+        "ICON": 0.4
+      }
+    },
+    {
+      "calibrated_mae_c": 1.9872666666666692,
+      "calibrated_rmse_c": 2.11132039728697,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.9630684585488396,
+        "crps": 1.3081515286155654,
+        "n": 3,
+        "nll": 2.346676109621932
+      },
+      "raw_mae_c": 1.9872666666666692,
+      "raw_rmse_c": 2.11132039728697,
+      "scope": "KATL|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "e280e2e0873f3a273800f1fcfb7d581a4d0d1039d23156b4f2dc4e595b7b5b51",
+      "selection_mae_improvement_vs_uniform_c": -0.5602666666666696,
+      "selection_rmse_improvement_vs_uniform_c": -0.4431844116231325,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.4269999999999996,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8769322122583096,
+        "crps": 0.9834101657832756,
+        "n": 3,
+        "nll": 1.9969728415116832
+      },
+      "uniform_three_model_rmse_c": 1.6681359856638376,
+      "weights": {
+        "ECMWF": 0.1,
+        "ICON": 0.9
+      }
+    },
+    {
+      "calibrated_mae_c": 0.6293666666666647,
+      "calibrated_rmse_c": 0.7160156166825757,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6791974141060754,
+        "crps": 0.42539482284373403,
+        "n": 3,
+        "nll": 1.3364547529577646
+      },
+      "raw_mae_c": 0.6293666666666647,
+      "raw_rmse_c": 0.7160156166825757,
+      "scope": "KAUS|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "f33e3c80de36f7e2f3a6fb994920c3ca79fce331510cb799a143ba9169dd43dd",
+      "selection_mae_improvement_vs_uniform_c": -0.18069999999999686,
+      "selection_rmse_improvement_vs_uniform_c": -0.1552244427677748,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.4486666666666679,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7469783540581568,
+        "crps": 0.5080237650151697,
+        "n": 3,
+        "nll": 1.6364937157575195
+      },
+      "uniform_three_model_rmse_c": 0.5607911739148009,
+      "weights": {
+        "GFS": 0.1,
+        "ICON": 0.9
+      }
+    },
+    {
+      "calibrated_mae_c": 0.6156166666666678,
+      "calibrated_rmse_c": 0.7236329346890367,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7162518253717858,
+        "crps": 0.5209266936217803,
+        "n": 3,
+        "nll": 1.4291071384145682
+      },
+      "raw_mae_c": 0.6156166666666678,
+      "raw_rmse_c": 0.7236329346890367,
+      "scope": "KBKF|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "c816b75ff9778e0143c041f253a572aa8e47a0b24606b98381833a184762eb8f",
+      "selection_mae_improvement_vs_uniform_c": 0.27782777777777434,
+      "selection_rmse_improvement_vs_uniform_c": 0.20359029944928142,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.8934444444444422,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.738241592346645,
+        "crps": 0.5521030184884353,
+        "n": 3,
+        "nll": 1.60887640781071
+      },
+      "uniform_three_model_rmse_c": 0.9272232341383181,
+      "weights": {
+        "GFS": 0.95,
+        "ICON": 0.05
+      }
+    },
+    {
+      "calibrated_mae_c": 2.3298500000000026,
+      "calibrated_rmse_c": 2.7020022978339613,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.9578960284550785,
+        "crps": 1.8514613270798155,
+        "n": 3,
+        "nll": 2.776358195676449
+      },
+      "raw_mae_c": 2.3298500000000026,
+      "raw_rmse_c": 2.7020022978339613,
+      "scope": "KDAL|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "f1d43cf053d283bb2858f545fcd2747e5b878f2a029b81ac1bdcdc2554730094",
+      "selection_mae_improvement_vs_uniform_c": -0.6312944444444448,
+      "selection_rmse_improvement_vs_uniform_c": -0.8142872279186961,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.6985555555555578,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.900732484441607,
+        "crps": 1.254602613604651,
+        "n": 3,
+        "nll": 2.262726491498808
+      },
+      "uniform_three_model_rmse_c": 1.8877150699152652,
+      "weights": {
+        "GFS": 0.85,
+        "ICON": 0.15
+      }
+    },
+    {
+      "calibrated_mae_c": 0.3886499999999984,
+      "calibrated_rmse_c": 0.5292331661627648,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6396054764763864,
+        "crps": 0.3412616527089852,
+        "n": 3,
+        "nll": 1.2411207816981606
+      },
+      "raw_mae_c": 0.3886499999999984,
+      "raw_rmse_c": 0.5292331661627648,
+      "scope": "KHOU|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "474399605827858ce90122f0e44700d9de912d2b5a1582ff6289fbb35f29a3e8",
+      "selection_mae_improvement_vs_uniform_c": -0.18042777777777985,
+      "selection_rmse_improvement_vs_uniform_c": -0.25909492994533223,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.20822222222221853,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7208613801192091,
+        "crps": 0.4318210571526611,
+        "n": 3,
+        "nll": 1.5393932919828288
+      },
+      "uniform_three_model_rmse_c": 0.2701382362174326,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 2.3540000000000005,
+      "calibrated_rmse_c": 2.358295576611776,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.919664668501868,
+        "crps": 1.362790577110583,
+        "n": 3,
+        "nll": 2.289777696289877
+      },
+      "raw_mae_c": 2.3540000000000005,
+      "raw_rmse_c": 2.358295576611776,
+      "scope": "KLAX|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "4631c6677b93685724fe75bd8b116ef904c18a265b8e9fa6ef7b4608e6dabdbd",
+      "selection_mae_improvement_vs_uniform_c": -1.235444444444447,
+      "selection_rmse_improvement_vs_uniform_c": -1.2299233468538455,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.1185555555555535,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8845557156046682,
+        "crps": 0.8512847017980606,
+        "n": 3,
+        "nll": 2.2465543287577607
+      },
+      "uniform_three_model_rmse_c": 1.1283722297579306,
+      "weights": {
+        "GFS": 0.6,
+        "ICON": 0.4
+      }
+    },
+    {
+      "calibrated_mae_c": 0.8870000000000005,
+      "calibrated_rmse_c": 1.2590121471481794,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.7765797719419503,
+        "crps": 0.690086574392997,
+        "n": 3,
+        "nll": 1.6855020841535673
+      },
+      "raw_mae_c": 0.8870000000000005,
+      "raw_rmse_c": 1.2590121471481794,
+      "scope": "KLGA|summer",
+      "selected_model_set_hash": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selection_evidence_sha256": "14e5c1708af4a3ac99b4f6ee9bc1f36e517598600a300f84a58e6eccdcdb7716",
+      "selection_mae_improvement_vs_uniform_c": 0.037666666666666515,
+      "selection_rmse_improvement_vs_uniform_c": -0.1303273340106026,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.924666666666667,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7688211840579243,
+        "crps": 0.631612353747948,
+        "n": 3,
+        "nll": 1.659051176825102
+      },
+      "uniform_three_model_rmse_c": 1.1286848131375768,
+      "weights": {
+        "ECMWF": 0.2,
+        "GFS": 0.8
+      }
+    },
+    {
+      "calibrated_mae_c": 0.20201666666667015,
+      "calibrated_rmse_c": 0.23235501034695602,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6195636381518629,
+        "crps": 0.28684040235863023,
+        "n": 3,
+        "nll": 1.222949353567014
+      },
+      "raw_mae_c": 0.20201666666667015,
+      "raw_rmse_c": 0.23235501034695602,
+      "scope": "KMIA|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "f814728ee47c08c739ca886a61ccaed254ab65785cb3cac56189d0e9b45f92ec",
+      "selection_mae_improvement_vs_uniform_c": 1.026872222222219,
+      "selection_rmse_improvement_vs_uniform_c": 0.9977579323749115,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.2288888888888891,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.805790680233622,
+        "crps": 0.6780189450546326,
+        "n": 3,
+        "nll": 1.667269381687383
+      },
+      "uniform_three_model_rmse_c": 1.2301129427218676,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.41845,
+      "calibrated_rmse_c": 0.458772664290278,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7358979425310338,
+        "crps": 0.4543318783138787,
+        "n": 3,
+        "nll": 1.5709491170515657
+      },
+      "raw_mae_c": 0.41845,
+      "raw_rmse_c": 0.458772664290278,
+      "scope": "KORD|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "568d75cd9bdbb6074c70622db812fdb964c2715a0645c4bc1690139bccb9a66b",
+      "selection_mae_improvement_vs_uniform_c": -0.041561111111109994,
+      "selection_rmse_improvement_vs_uniform_c": -0.0191560805030645,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.37688888888889,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7431954074849836,
+        "crps": 0.4550056213124322,
+        "n": 3,
+        "nll": 1.6127900333340308
+      },
+      "uniform_three_model_rmse_c": 0.4396165837872135,
+      "weights": {
+        "GFS": 0.45,
+        "ICON": 0.55
+      }
+    },
+    {
+      "calibrated_mae_c": 0.877499999999999,
+      "calibrated_rmse_c": 1.0259487276012695,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.8468968357303672,
+        "crps": 0.7504965652394171,
+        "n": 3,
+        "nll": 1.9516805187934196
+      },
+      "raw_mae_c": 0.877499999999999,
+      "raw_rmse_c": 1.0259487276012695,
+      "scope": "KSEA|summer",
+      "selected_model_set_hash": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selection_evidence_sha256": "32168afd2cceb50dc7895c384886d4cfb667f4b6395ec0b93e52be723433ae01",
+      "selection_mae_improvement_vs_uniform_c": 0.12449999999999994,
+      "selection_rmse_improvement_vs_uniform_c": 0.18771706934065002,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.001999999999999,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9106112180987114,
+        "crps": 0.9533746966563986,
+        "n": 3,
+        "nll": 2.265389783296762
+      },
+      "uniform_three_model_rmse_c": 1.2136657969419196,
+      "weights": {
+        "ECMWF": 0.75,
+        "GFS": 0.25
+      }
+    },
+    {
+      "calibrated_mae_c": 0.7555333333333358,
+      "calibrated_rmse_c": 0.8306181031818037,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.7832232201477555,
+        "crps": 0.5870916761182311,
+        "n": 3,
+        "nll": 1.7035226284952074
+      },
+      "raw_mae_c": 0.7555333333333358,
+      "raw_rmse_c": 0.8306181031818037,
+      "scope": "KSFO|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "d225049b2823384f17bed6c821b445cb18ef4dd39e575eb6c940aec23f2d53ca",
+      "selection_mae_improvement_vs_uniform_c": -0.20564444444444752,
+      "selection_rmse_improvement_vs_uniform_c": -0.2042973061929605,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.5498888888888883,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7867039561173707,
+        "crps": 0.5841179067086101,
+        "n": 3,
+        "nll": 1.7775044382600547
+      },
+      "uniform_three_model_rmse_c": 0.6263207969888432,
+      "weights": {
+        "ECMWF": 0.7,
+        "ICON": 0.3
+      }
+    },
+    {
+      "calibrated_mae_c": 0.10066666666666653,
+      "calibrated_rmse_c": 0.1141519455229162,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.5567106116097328,
+        "crps": 0.23538143032050543,
+        "n": 3,
+        "nll": 1.0675023499066445
+      },
+      "raw_mae_c": 0.10066666666666653,
+      "raw_rmse_c": 0.1141519455229162,
+      "scope": "LEMD|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "4798dcda8021f6f9216ba81c35caac3f15020ec8506f353063b6ef81283a5fe5",
+      "selection_mae_improvement_vs_uniform_c": 0.4342222222222248,
+      "selection_rmse_improvement_vs_uniform_c": 0.4279006007887538,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.5348888888888913,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.6497195999833743,
+        "crps": 0.3630626713260887,
+        "n": 3,
+        "nll": 1.273226472318422
+      },
+      "uniform_three_model_rmse_c": 0.54205254631167,
+      "weights": {
+        "GFS": 0.4,
+        "ICON": 0.6
+      }
+    },
+    {
+      "calibrated_mae_c": 0.4339666666666666,
+      "calibrated_rmse_c": 0.5387999551472382,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6786076657670534,
+        "crps": 0.3901387404106695,
+        "n": 3,
+        "nll": 1.3629290099594424
+      },
+      "raw_mae_c": 0.4339666666666666,
+      "raw_rmse_c": 0.5387999551472382,
+      "scope": "LFPB|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "efd9fd6edf672811e572d28815573dbbf3d02ce8d56094c63eb3729868802579",
+      "selection_mae_improvement_vs_uniform_c": -0.09029999999999916,
+      "selection_rmse_improvement_vs_uniform_c": -0.1567744082023796,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.34366666666666745,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.794881921156537,
+        "crps": 0.5527803289416883,
+        "n": 3,
+        "nll": 1.8035540654100926
+      },
+      "uniform_three_model_rmse_c": 0.38202554694485863,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.47974999999999923,
+      "calibrated_rmse_c": 0.5723954962844016,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.7089135911731232,
+        "crps": 0.4294208668073077,
+        "n": 3,
+        "nll": 1.4468565941506506
+      },
+      "raw_mae_c": 0.47974999999999923,
+      "raw_rmse_c": 0.5723954962844016,
+      "scope": "LIMC|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "c30c317c4e8b2a15f05c7dcd40de8e91aea281e8efc49c6dba87f4745ccfa25a",
+      "selection_mae_improvement_vs_uniform_c": 0.013805555555555571,
+      "selection_rmse_improvement_vs_uniform_c": -0.011238556461761195,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.4935555555555548,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.706471368113981,
+        "crps": 0.42500776096215737,
+        "n": 3,
+        "nll": 1.4460558937740782
+      },
+      "uniform_three_model_rmse_c": 0.5611569398226404,
+      "weights": {
+        "GFS": 0.35,
+        "ICON": 0.65
+      }
+    },
+    {
+      "calibrated_mae_c": 0.8543333333333342,
+      "calibrated_rmse_c": 1.0577186306701176,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.737477681928994,
+        "crps": 0.5803197953965668,
+        "n": 3,
+        "nll": 1.4829323155372187
+      },
+      "raw_mae_c": 0.8543333333333342,
+      "raw_rmse_c": 1.0577186306701176,
+      "scope": "LTAC|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "eb5a36df697f8aabd3126adb21fff6b3743c5f3a311cad2f8068aeafbab76d1d",
+      "selection_mae_improvement_vs_uniform_c": 0.45933333333333215,
+      "selection_rmse_improvement_vs_uniform_c": 0.4625976254156081,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.3136666666666663,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.845802753792403,
+        "crps": 0.8860719908502029,
+        "n": 3,
+        "nll": 1.836804475547015
+      },
+      "uniform_three_model_rmse_c": 1.5203162560857257,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.575316666666667,
+      "calibrated_rmse_c": 0.6073628164724393,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.654095513765064,
+        "crps": 0.3762825832582946,
+        "n": 3,
+        "nll": 1.258334375360931
+      },
+      "raw_mae_c": 0.575316666666667,
+      "raw_rmse_c": 0.6073628164724393,
+      "scope": "MMMX|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "c7628cf33bcca3764419ee18d3a888a598bd7362f6dd7f9e600c381c140fc416",
+      "selection_mae_improvement_vs_uniform_c": 0.35423888888888655,
+      "selection_rmse_improvement_vs_uniform_c": 0.46815142745410443,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.9295555555555536,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.760069528288675,
+        "crps": 0.6110288715690514,
+        "n": 3,
+        "nll": 1.5713140632957028
+      },
+      "uniform_three_model_rmse_c": 1.0755142439265437,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.7841333333333308,
+      "calibrated_rmse_c": 0.8078356938965555,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7318559369732002,
+        "crps": 0.4949358536756998,
+        "n": 3,
+        "nll": 1.41888092155118
+      },
+      "raw_mae_c": 0.7841333333333308,
+      "raw_rmse_c": 0.8078356938965555,
+      "scope": "MPMG|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "ac5bdadbd2493632cbfc9d60957f46744da98c982aaa3f210c90201b566321a4",
+      "selection_mae_improvement_vs_uniform_c": 0.2766444444444466,
+      "selection_rmse_improvement_vs_uniform_c": 0.2756510473783519,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.0607777777777774,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.817857402630681,
+        "crps": 0.7043118776330212,
+        "n": 3,
+        "nll": 1.8384478162700029
+      },
+      "uniform_three_model_rmse_c": 1.0834867412749074,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.9537833333333344,
+      "calibrated_rmse_c": 0.96322271438126,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7461797730312414,
+        "crps": 0.5495465530960919,
+        "n": 3,
+        "nll": 1.4308862862701062
+      },
+      "raw_mae_c": 0.9537833333333344,
+      "raw_rmse_c": 0.96322271438126,
+      "scope": "NZWN|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "5105e0c34e1446acadc370a82be12eef291f28551eddc550d266cfa3490cdd19",
+      "selection_mae_improvement_vs_uniform_c": 0.6158833333333328,
+      "selection_rmse_improvement_vs_uniform_c": 0.6093357694867285,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.5696666666666672,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9103616863129617,
+        "crps": 0.9688578239927031,
+        "n": 3,
+        "nll": 1.8982658808320882
+      },
+      "uniform_three_model_rmse_c": 1.5725584838679885,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.5634000000000015,
+      "calibrated_rmse_c": 0.6762926486859558,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6881213627532071,
+        "crps": 0.42333275717398927,
+        "n": 3,
+        "nll": 1.3667390995281705
+      },
+      "raw_mae_c": 0.5634000000000015,
+      "raw_rmse_c": 0.6762926486859558,
+      "scope": "OEJN|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "80303e91f58f28c80118406d925cd9d2e511e41c664b2bbdbfe011359753a244",
+      "selection_mae_improvement_vs_uniform_c": 0.019155555555556703,
+      "selection_rmse_improvement_vs_uniform_c": -0.001391695733377385,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.5825555555555582,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7117811420999609,
+        "crps": 0.45083389533597473,
+        "n": 3,
+        "nll": 1.453160109029416
+      },
+      "uniform_three_model_rmse_c": 0.6749009529525785,
+      "weights": {
+        "ECMWF": 0.2,
+        "ICON": 0.8
+      }
+    },
+    {
+      "calibrated_mae_c": 0.6360000000000028,
+      "calibrated_rmse_c": 1.0269854145345345,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7249985574745171,
+        "crps": 0.5625578030931245,
+        "n": 3,
+        "nll": 1.4974603397597928
+      },
+      "raw_mae_c": 0.6360000000000028,
+      "raw_rmse_c": 1.0269854145345345,
+      "scope": "OPKC|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "0c4508d3364bb6c93ca2a31a90c0dac873f9dcf427ad90d87b39600ae948a0b0",
+      "selection_mae_improvement_vs_uniform_c": 0.2304444444444419,
+      "selection_rmse_improvement_vs_uniform_c": -0.03864235668468119,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.8664444444444447,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7430200620107049,
+        "crps": 0.5683187989707293,
+        "n": 3,
+        "nll": 1.515158049045918
+      },
+      "uniform_three_model_rmse_c": 0.9883430578498533,
+      "weights": {
+        "GFS": 0.75,
+        "ICON": 0.25
+      }
+    },
+    {
+      "calibrated_mae_c": 1.531716666666669,
+      "calibrated_rmse_c": 1.598577912552281,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.8443067008510706,
+        "crps": 0.8953995835316763,
+        "n": 3,
+        "nll": 1.8235766210053805
+      },
+      "raw_mae_c": 1.531716666666669,
+      "raw_rmse_c": 1.598577912552281,
+      "scope": "RJTT|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "d9e09dc33f843a61d37fa84bfd377d5e94f65f95d5849fd1d5455440980e41a4",
+      "selection_mae_improvement_vs_uniform_c": 2.5352833333333322,
+      "selection_rmse_improvement_vs_uniform_c": 2.4743798942874,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 4.067000000000001,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9859909433247916,
+        "crps": 2.7091571890886192,
+        "n": 3,
+        "nll": 2.849936627251225
+      },
+      "uniform_three_model_rmse_c": 4.072957806839681,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.5205333333333352,
+      "calibrated_rmse_c": 0.7294978729692563,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7057253932065599,
+        "crps": 0.45493862795975765,
+        "n": 3,
+        "nll": 1.4165375573614352
+      },
+      "raw_mae_c": 0.5205333333333352,
+      "raw_rmse_c": 0.7294978729692563,
+      "scope": "RKPK|summer",
+      "selected_model_set_hash": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selection_evidence_sha256": "1c19f240db01fbf6721327dd00bf6b5419abb2c7a2e73d57a4a9d0ce536ed919",
+      "selection_mae_improvement_vs_uniform_c": 1.125022222222222,
+      "selection_rmse_improvement_vs_uniform_c": 0.9843151597478823,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.645555555555557,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8500744759229045,
+        "crps": 1.0071615904022415,
+        "n": 3,
+        "nll": 1.9491306380636078
+      },
+      "uniform_three_model_rmse_c": 1.7138130327171386,
+      "weights": {
+        "ECMWF": 0.8,
+        "GFS": 0.2
+      }
+    },
+    {
+      "calibrated_mae_c": 2.103700000000002,
+      "calibrated_rmse_c": 2.151767717482538,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.9731232809119473,
+        "crps": 1.375749988568848,
+        "n": 3,
+        "nll": 2.3720621394388397
+      },
+      "raw_mae_c": 2.103700000000002,
+      "raw_rmse_c": 2.151767717482538,
+      "scope": "RKSI|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "3cc96c8711a9539d949b499cacc85f57d28fab43864dc370d73b8e806d86b5c2",
+      "selection_mae_improvement_vs_uniform_c": 1.360077777777775,
+      "selection_rmse_improvement_vs_uniform_c": 1.322117267500253,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 3.463777777777777,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 1.0041262529639978,
+        "crps": 2.2511425576974866,
+        "n": 3,
+        "nll": 2.8823778355248826
+      },
+      "uniform_three_model_rmse_c": 3.473884984982791,
+      "weights": {
+        "ECMWF": 0.3,
+        "ICON": 0.7
+      }
+    },
+    {
+      "calibrated_mae_c": 1.4240333333333328,
+      "calibrated_rmse_c": 1.5383200739768037,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.8934457398688526,
+        "crps": 0.9313418675784774,
+        "n": 3,
+        "nll": 1.9476796230316973
+      },
+      "raw_mae_c": 1.4240333333333328,
+      "raw_rmse_c": 1.5383200739768037,
+      "scope": "RPLL|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "fc638cb9ea58c4a3d72faac45259c225db6b56dfe47517cf0f439277c5df0537",
+      "selection_mae_improvement_vs_uniform_c": -0.23136666666666628,
+      "selection_rmse_improvement_vs_uniform_c": 0.16851971758949147,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.1926666666666665,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.878024303504676,
+        "crps": 1.009006761717422,
+        "n": 3,
+        "nll": 2.234626935350179
+      },
+      "uniform_three_model_rmse_c": 1.7068397915662952,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 2.112866666666666,
+      "calibrated_rmse_c": 2.2635950197271004,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.9472964389582256,
+        "crps": 1.404816810260676,
+        "n": 3,
+        "nll": 2.3943580335556605
+      },
+      "raw_mae_c": 2.112866666666666,
+      "raw_rmse_c": 2.2635950197271004,
+      "scope": "SAEZ|summer",
+      "selected_model_set_hash": "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5",
+      "selected_models": [
+        "ECMWF",
+        "GFS"
+      ],
+      "selection_evidence_sha256": "bb60bfd21b9825f90367d4aead2ef9d94a7ce9242439fd24873665fb7b1e0557",
+      "selection_mae_improvement_vs_uniform_c": 0.020022222222223274,
+      "selection_rmse_improvement_vs_uniform_c": 0.0005813410258759255,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 2.132888888888889,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.963842573949352,
+        "crps": 1.4283726565295096,
+        "n": 3,
+        "nll": 2.430354935429922
+      },
+      "uniform_three_model_rmse_c": 2.2641763607529763,
+      "weights": {
+        "ECMWF": 0.6,
+        "GFS": 0.4
+      }
+    },
+    {
+      "calibrated_mae_c": 2.2274666666666683,
+      "calibrated_rmse_c": 3.019467396744004,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.9134536310910235,
+        "crps": 1.820115102421408,
+        "n": 3,
+        "nll": 4.155289296085129
+      },
+      "raw_mae_c": 2.2274666666666683,
+      "raw_rmse_c": 3.019467396744004,
+      "scope": "SBGR|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "0caeb43153dbb28c2434e424b6d78921cb7c42151cc593ff0eda07c30e54cf6f",
+      "selection_mae_improvement_vs_uniform_c": -0.3874666666666673,
+      "selection_rmse_improvement_vs_uniform_c": -0.22697599618030173,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.840000000000001,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8968444376120638,
+        "crps": 1.6482953974137156,
+        "n": 3,
+        "nll": 3.5526016458495753
+      },
+      "uniform_three_model_rmse_c": 2.7924914005637023,
+      "weights": {
+        "ECMWF": 0.8,
+        "ICON": 0.2
+      }
+    },
+    {
+      "calibrated_mae_c": 1.0121999999999989,
+      "calibrated_rmse_c": 1.0689843341539969,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7966651609477932,
+        "crps": 0.6761910106484574,
+        "n": 3,
+        "nll": 1.766228146609267
+      },
+      "raw_mae_c": 1.0121999999999989,
+      "raw_rmse_c": 1.0689843341539969,
+      "scope": "VILK|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "22f42a137afecabb13f465f84ddf07bca0d5a88607bdec5916dd048587b1f825",
+      "selection_mae_improvement_vs_uniform_c": -0.11419999999999686,
+      "selection_rmse_improvement_vs_uniform_c": -0.047535653403265155,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 0.898000000000002,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8090882528743473,
+        "crps": 0.6917613553923285,
+        "n": 3,
+        "nll": 1.8288647799151303
+      },
+      "uniform_three_model_rmse_c": 1.0214486807507317,
+      "weights": {
+        "ECMWF": 0.2,
+        "ICON": 0.8
+      }
+    },
+    {
+      "calibrated_mae_c": 1.394566666666665,
+      "calibrated_rmse_c": 1.456172820558511,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.8802687031962969,
+        "crps": 0.8770635630413729,
+        "n": 3,
+        "nll": 1.8216124701691963
+      },
+      "raw_mae_c": 1.394566666666665,
+      "raw_rmse_c": 1.456172820558511,
+      "scope": "WMKK|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "879e8dcca8055f13c48e94629de075c36ebbfffaef571b97763c40ea38cc6893",
+      "selection_mae_improvement_vs_uniform_c": 0.366766666666668,
+      "selection_rmse_improvement_vs_uniform_c": 0.3281037731799603,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.761333333333333,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9377486408534258,
+        "crps": 1.1149824692998669,
+        "n": 3,
+        "nll": 2.073193401195148
+      },
+      "uniform_three_model_rmse_c": 1.7842765937384713,
+      "weights": {
+        "GFS": 0.1,
+        "ICON": 0.9
+      }
+    },
+    {
+      "calibrated_mae_c": 1.2222833333333323,
+      "calibrated_rmse_c": 1.277176242406139,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.8380074953414823,
+        "crps": 0.7472543960925018,
+        "n": 3,
+        "nll": 1.6469252226536781
+      },
+      "raw_mae_c": 1.2222833333333323,
+      "raw_rmse_c": 1.277176242406139,
+      "scope": "WSSS|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "643ed17052b9e1d123b0e359dbc06efdad1af926279bf7887b0dd49b90bfff23",
+      "selection_mae_improvement_vs_uniform_c": 0.5229388888888877,
+      "selection_rmse_improvement_vs_uniform_c": 0.5593735522218586,
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8,
+      "uniform_three_model_mae_c": 1.74522222222222,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9180978396095805,
+        "crps": 1.124052028713863,
+        "n": 3,
+        "nll": 2.055315383885597
+      },
+      "uniform_three_model_rmse_c": 1.8365497946279976,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    }
+  ],
+  "evidence_sha256": "b2e5fde5def106d82eb4461e71512b4445513797724f30224da2840f53ac1309",
+  "input_artifact": {
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_current_et_20260726/calibration_d2_18z.json",
+    "receipt_sha256": "f4c77a3240c8c3204a598f360d6bbd26ccfeee1ee8c80689804a8c5f824b536a"
+  },
+  "method": {
+    "does_not_infer_native_arrival": true,
+    "split": "per_station_model_season_chronological_80_20",
+    "training_rows_precede_holdout": true,
+    "uses_historical_replay_only": true
+  },
+  "metric_failures": [],
+  "promotion_gate": {
+    "blockers": [
+      "ensemble_selection_scope_non_degradation_failed",
+      "ensemble_probability_oos_gate_failed",
+      "native_historical_arrival_receipts_incomplete"
+    ],
+    "evaluated": true,
+    "passed": false,
+    "production_calibration_allowed": false
+  },
+  "receipt_sha256": "2356b02444549ba07760219fae9a1338b4becf9410bf88fe43c6b3c2307046a7",
+  "report_rows": [
+    {
+      "calibrated_mae_c": 2.285333333333334,
+      "calibrated_rmse_c": 2.6838753075854083,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.285333333333334,
+      "raw_rmse_c": 2.6838753075854083,
+      "scope": "CYYZ|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.7369999999999994,
+      "calibrated_rmse_c": 2.009022067242335,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.7369999999999994,
+      "raw_rmse_c": 2.009022067242335,
+      "scope": "CYYZ|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.5333333333333338,
+      "calibrated_rmse_c": 0.7615773105863912,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.5333333333333338,
+      "raw_rmse_c": 0.7615773105863912,
+      "scope": "CYYZ|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 3.1390000000000007,
+      "calibrated_rmse_c": 3.3933675014651747,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 3.1390000000000007,
+      "raw_rmse_c": 3.3933675014651747,
+      "scope": "EDDM|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.698333333333333,
+      "calibrated_rmse_c": 2.7776083837239063,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.698333333333333,
+      "raw_rmse_c": 2.7776083837239063,
+      "scope": "EDDM|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7000000000000005,
+      "calibrated_rmse_c": 0.7593857166596353,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7000000000000005,
+      "raw_rmse_c": 0.7593857166596353,
+      "scope": "EDDM|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.013666666666667,
+      "calibrated_rmse_c": 2.1444869627333563,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.013666666666667,
+      "raw_rmse_c": 2.1444869627333563,
+      "scope": "EFHK|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.1859999999999986,
+      "calibrated_rmse_c": 2.7378927419945915,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.1859999999999986,
+      "raw_rmse_c": 2.7378927419945915,
+      "scope": "EFHK|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.7000000000000004,
+      "calibrated_rmse_c": 1.7597348285087355,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.7000000000000004,
+      "raw_rmse_c": 1.7597348285087355,
+      "scope": "EFHK|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.3023333333333345,
+      "calibrated_rmse_c": 0.36170844612754177,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.3023333333333345,
+      "raw_rmse_c": 0.36170844612754177,
+      "scope": "EGLC|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.6116666666666669,
+      "calibrated_rmse_c": 0.6646615680178899,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6116666666666669,
+      "raw_rmse_c": 0.6646615680178899,
+      "scope": "EGLC|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7666666666666669,
+      "calibrated_rmse_c": 0.7852812659593166,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7666666666666669,
+      "raw_rmse_c": 0.7852812659593166,
+      "scope": "EGLC|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.775000000000001,
+      "calibrated_rmse_c": 1.8091693305676695,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.775000000000001,
+      "raw_rmse_c": 1.8091693305676695,
+      "scope": "EHAM|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7423333333333346,
+      "calibrated_rmse_c": 0.933560389048294,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7423333333333346,
+      "raw_rmse_c": 0.933560389048294,
+      "scope": "EHAM|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.36666666666666714,
+      "calibrated_rmse_c": 0.525991127935316,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.36666666666666714,
+      "raw_rmse_c": 0.525991127935316,
+      "scope": "EHAM|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.149000000000001,
+      "calibrated_rmse_c": 1.3819513980841256,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.149000000000001,
+      "raw_rmse_c": 1.3819513980841256,
+      "scope": "EPWA|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.5316666666666663,
+      "calibrated_rmse_c": 1.592307026507974,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.5316666666666663,
+      "raw_rmse_c": 1.592307026507974,
+      "scope": "EPWA|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.2333333333333331,
+      "calibrated_rmse_c": 0.31091263510296036,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.2333333333333331,
+      "raw_rmse_c": 0.31091263510296036,
+      "scope": "EPWA|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.3263333333333336,
+      "calibrated_rmse_c": 1.4170072923830237,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.3263333333333336,
+      "raw_rmse_c": 1.4170072923830237,
+      "scope": "FACT|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.9526666666666668,
+      "calibrated_rmse_c": 2.133768653501749,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.9526666666666668,
+      "raw_rmse_c": 2.133768653501749,
+      "scope": "FACT|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.4666666666666674,
+      "calibrated_rmse_c": 0.6480740698407869,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.4666666666666674,
+      "raw_rmse_c": 0.6480740698407869,
+      "scope": "FACT|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.9726666666666676,
+      "calibrated_rmse_c": 1.2698747969780337,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.9726666666666676,
+      "raw_rmse_c": 1.2698747969780337,
+      "scope": "KATL|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.3223333333333342,
+      "calibrated_rmse_c": 2.350142194279601,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.3223333333333342,
+      "raw_rmse_c": 2.350142194279601,
+      "scope": "KATL|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.1000000000000014,
+      "calibrated_rmse_c": 2.2158519806160353,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.1000000000000014,
+      "raw_rmse_c": 2.2158519806160353,
+      "scope": "KATL|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.8503333333333316,
+      "calibrated_rmse_c": 0.9181671961031921,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.8503333333333316,
+      "raw_rmse_c": 0.9181671961031921,
+      "scope": "KAUS|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.096333333333334,
+      "calibrated_rmse_c": 2.1875183046853204,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.096333333333334,
+      "raw_rmse_c": 2.1875183046853204,
+      "scope": "KAUS|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.5666666666666677,
+      "calibrated_rmse_c": 0.6608075867199674,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.5666666666666677,
+      "raw_rmse_c": 0.6608075867199674,
+      "scope": "KAUS|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 3.043333333333333,
+      "calibrated_rmse_c": 3.0463758796314018,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 3.043333333333333,
+      "raw_rmse_c": 3.0463758796314018,
+      "scope": "KBKF|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.6410000000000018,
+      "calibrated_rmse_c": 0.7758670418742308,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6410000000000018,
+      "raw_rmse_c": 0.7758670418742308,
+      "scope": "KBKF|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.6666666666666666,
+      "calibrated_rmse_c": 0.7483314773547874,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6666666666666666,
+      "raw_rmse_c": 0.7483314773547874,
+      "scope": "KBKF|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.286666666666669,
+      "calibrated_rmse_c": 2.4121475908409935,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.286666666666669,
+      "raw_rmse_c": 2.4121475908409935,
+      "scope": "KDAL|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.5410000000000017,
+      "calibrated_rmse_c": 2.9855155333710806,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.5410000000000017,
+      "raw_rmse_c": 2.9855155333710806,
+      "scope": "KDAL|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.1333333333333353,
+      "calibrated_rmse_c": 1.238278374733783,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.1333333333333353,
+      "raw_rmse_c": 1.238278374733783,
+      "scope": "KDAL|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4196666666666669,
+      "calibrated_rmse_c": 1.4223160689523269,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4196666666666669,
+      "raw_rmse_c": 1.4223160689523269,
+      "scope": "KHOU|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.6616666666666665,
+      "calibrated_rmse_c": 0.9829365866287272,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6616666666666665,
+      "raw_rmse_c": 0.9829365866287272,
+      "scope": "KHOU|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.4333333333333324,
+      "calibrated_rmse_c": 0.5686240703077315,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.4333333333333324,
+      "raw_rmse_c": 0.5686240703077315,
+      "scope": "KHOU|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.6010000000000015,
+      "calibrated_rmse_c": 1.6151351852605624,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.6010000000000015,
+      "raw_rmse_c": 1.6151351852605624,
+      "scope": "KLAX|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.8566666666666656,
+      "calibrated_rmse_c": 1.912888566191628,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.8566666666666656,
+      "raw_rmse_c": 1.912888566191628,
+      "scope": "KLAX|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 3.1,
+      "calibrated_rmse_c": 3.2705758922041035,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 3.1,
+      "raw_rmse_c": 3.2705758922041035,
+      "scope": "KLAX|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.820333333333333,
+      "calibrated_rmse_c": 1.9809284860051528,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.820333333333333,
+      "raw_rmse_c": 1.9809284860051528,
+      "scope": "KLGA|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7563333333333327,
+      "calibrated_rmse_c": 1.130728526216616,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7563333333333327,
+      "raw_rmse_c": 1.130728526216616,
+      "scope": "KLGA|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.5666666666666652,
+      "calibrated_rmse_c": 0.6137317546507309,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.5666666666666652,
+      "raw_rmse_c": 0.6137317546507309,
+      "scope": "KLGA|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.506999999999999,
+      "calibrated_rmse_c": 1.5208792413162409,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.506999999999999,
+      "raw_rmse_c": 1.5208792413162409,
+      "scope": "KMIA|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.046333333333333,
+      "calibrated_rmse_c": 2.05290404062148,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.046333333333333,
+      "raw_rmse_c": 2.05290404062148,
+      "scope": "KMIA|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.13333333333333286,
+      "calibrated_rmse_c": 0.18257418583505408,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.13333333333333286,
+      "raw_rmse_c": 0.18257418583505408,
+      "scope": "KMIA|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.762333333333333,
+      "calibrated_rmse_c": 1.0431354977502507,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.762333333333333,
+      "raw_rmse_c": 1.0431354977502507,
+      "scope": "KORD|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.32833333333333314,
+      "calibrated_rmse_c": 0.4929195336631203,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.32833333333333314,
+      "raw_rmse_c": 0.4929195336631203,
+      "scope": "KORD|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.0,
+      "calibrated_rmse_c": 1.039230484541326,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.0,
+      "raw_rmse_c": 1.039230484541326,
+      "scope": "KORD|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.367666666666666,
+      "calibrated_rmse_c": 1.5279148100161426,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.367666666666666,
+      "raw_rmse_c": 1.5279148100161426,
+      "scope": "KSEA|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.4949999999999997,
+      "calibrated_rmse_c": 2.5423016474578044,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.4949999999999997,
+      "raw_rmse_c": 2.5423016474578044,
+      "scope": "KSEA|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.5666666666666664,
+      "calibrated_rmse_c": 2.6299556396765835,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.5666666666666664,
+      "raw_rmse_c": 2.6299556396765835,
+      "scope": "KSEA|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.2793333333333337,
+      "calibrated_rmse_c": 1.328052458803241,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.2793333333333337,
+      "raw_rmse_c": 1.328052458803241,
+      "scope": "KSFO|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.2409999999999997,
+      "calibrated_rmse_c": 1.4354452270985467,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.2409999999999997,
+      "raw_rmse_c": 1.4354452270985467,
+      "scope": "KSFO|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.5333333333333327,
+      "calibrated_rmse_c": 0.6782329983125255,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.5333333333333327,
+      "raw_rmse_c": 0.6782329983125255,
+      "scope": "KSFO|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.472999999999999,
+      "calibrated_rmse_c": 1.5143492551808067,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.472999999999999,
+      "raw_rmse_c": 1.5143492551808067,
+      "scope": "LEMD|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.201666666666668,
+      "calibrated_rmse_c": 0.20842664576936212,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.201666666666668,
+      "raw_rmse_c": 0.20842664576936212,
+      "scope": "LEMD|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.10000000000000142,
+      "calibrated_rmse_c": 0.1290994448735824,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.10000000000000142,
+      "raw_rmse_c": 0.1290994448735824,
+      "scope": "LEMD|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.041333333333334,
+      "calibrated_rmse_c": 2.089359550994834,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.041333333333334,
+      "raw_rmse_c": 2.089359550994834,
+      "scope": "LFPB|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.9016666666666673,
+      "calibrated_rmse_c": 1.913315185744367,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.9016666666666673,
+      "raw_rmse_c": 1.913315185744367,
+      "scope": "LFPB|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.40000000000000097,
+      "calibrated_rmse_c": 0.49665548085837863,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.40000000000000097,
+      "raw_rmse_c": 0.49665548085837863,
+      "scope": "LFPB|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.6283333333333326,
+      "calibrated_rmse_c": 0.8763517178241466,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6283333333333326,
+      "raw_rmse_c": 0.8763517178241466,
+      "scope": "LIMC|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7516666666666664,
+      "calibrated_rmse_c": 0.8896300729329387,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7516666666666664,
+      "raw_rmse_c": 0.8896300729329387,
+      "scope": "LIMC|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7333333333333331,
+      "calibrated_rmse_c": 0.8082903768654759,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7333333333333331,
+      "raw_rmse_c": 0.8082903768654759,
+      "scope": "LIMC|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.5193333333333332,
+      "calibrated_rmse_c": 1.7309382812028082,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.5193333333333332,
+      "raw_rmse_c": 1.7309382812028082,
+      "scope": "LTAC|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.854333333333334,
+      "calibrated_rmse_c": 2.0632069697439475,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.854333333333334,
+      "raw_rmse_c": 2.0632069697439475,
+      "scope": "LTAC|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.8333333333333321,
+      "calibrated_rmse_c": 1.0344080432788592,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.8333333333333321,
+      "raw_rmse_c": 1.0344080432788592,
+      "scope": "LTAC|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.450333333333333,
+      "calibrated_rmse_c": 1.544739999697899,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.450333333333333,
+      "raw_rmse_c": 1.544739999697899,
+      "scope": "MMMX|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.3729999999999987,
+      "calibrated_rmse_c": 1.6159114043370888,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.3729999999999987,
+      "raw_rmse_c": 1.6159114043370888,
+      "scope": "MMMX|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.5333333333333338,
+      "calibrated_rmse_c": 0.5887840577551905,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.5333333333333338,
+      "raw_rmse_c": 0.5887840577551905,
+      "scope": "MMMX|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4173333333333342,
+      "calibrated_rmse_c": 1.5393515950988377,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4173333333333342,
+      "raw_rmse_c": 1.5393515950988377,
+      "scope": "MPMG|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.6650000000000014,
+      "calibrated_rmse_c": 2.8568237024126417,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.6650000000000014,
+      "raw_rmse_c": 2.8568237024126417,
+      "scope": "MPMG|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.8999999999999998,
+      "calibrated_rmse_c": 0.925562891794321,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.8999999999999998,
+      "raw_rmse_c": 0.925562891794321,
+      "scope": "MPMG|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.9756666666666665,
+      "calibrated_rmse_c": 2.0018821976663195,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.9756666666666665,
+      "raw_rmse_c": 2.0018821976663195,
+      "scope": "NZWN|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.8333333333333333,
+      "calibrated_rmse_c": 1.8448349519672484,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.8333333333333333,
+      "raw_rmse_c": 1.8448349519672484,
+      "scope": "NZWN|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.9000000000000004,
+      "calibrated_rmse_c": 0.9110433579144301,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.9000000000000004,
+      "raw_rmse_c": 0.9110433579144301,
+      "scope": "NZWN|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.24966666666666745,
+      "calibrated_rmse_c": 0.294664215676082,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.24966666666666745,
+      "raw_rmse_c": 0.294664215676082,
+      "scope": "OEJN|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4526666666666657,
+      "calibrated_rmse_c": 1.5472024215768696,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4526666666666657,
+      "raw_rmse_c": 1.5472024215768696,
+      "scope": "OEJN|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.7666666666666657,
+      "calibrated_rmse_c": 0.8962886439832494,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.7666666666666657,
+      "raw_rmse_c": 0.8962886439832494,
+      "scope": "OEJN|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4466666666666679,
+      "calibrated_rmse_c": 1.6396245505196214,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4466666666666679,
+      "raw_rmse_c": 1.6396245505196214,
+      "scope": "OPKC|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.8813333333333327,
+      "calibrated_rmse_c": 1.233545837548541,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.8813333333333327,
+      "raw_rmse_c": 1.233545837548541,
+      "scope": "OPKC|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.6333333333333305,
+      "calibrated_rmse_c": 0.6757711644237737,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6333333333333305,
+      "raw_rmse_c": 0.6757711644237737,
+      "scope": "OPKC|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 5.301000000000001,
+      "calibrated_rmse_c": 5.3229318675582045,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 5.301000000000001,
+      "raw_rmse_c": 5.3229318675582045,
+      "scope": "RJTT|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 5.566666666666666,
+      "calibrated_rmse_c": 5.614358022071624,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 5.566666666666666,
+      "raw_rmse_c": 5.614358022071624,
+      "scope": "RJTT|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.3333333333333333,
+      "calibrated_rmse_c": 1.423610433604175,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.3333333333333333,
+      "raw_rmse_c": 1.423610433604175,
+      "scope": "RJTT|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 0.661999999999999,
+      "calibrated_rmse_c": 0.7057960045225522,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.661999999999999,
+      "raw_rmse_c": 0.7057960045225522,
+      "scope": "RKPK|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4666666666666675,
+      "calibrated_rmse_c": 1.5772812051121388,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4666666666666675,
+      "raw_rmse_c": 1.5772812051121388,
+      "scope": "RKPK|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 3.4666666666666663,
+      "calibrated_rmse_c": 3.472751070837067,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 3.4666666666666663,
+      "raw_rmse_c": 3.472751070837067,
+      "scope": "RKPK|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.8123333333333336,
+      "calibrated_rmse_c": 2.816361541658552,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.8123333333333336,
+      "raw_rmse_c": 2.816361541658552,
+      "scope": "RKSI|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 5.779,
+      "calibrated_rmse_c": 5.80539935462382,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 5.779,
+      "raw_rmse_c": 5.80539935462382,
+      "scope": "RKSI|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.8000000000000007,
+      "calibrated_rmse_c": 1.9339079605813723,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.8000000000000007,
+      "raw_rmse_c": 1.9339079605813723,
+      "scope": "RKSI|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4780000000000004,
+      "calibrated_rmse_c": 1.8877129019000753,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4780000000000004,
+      "raw_rmse_c": 1.8877129019000753,
+      "scope": "RPLL|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.1,
+      "calibrated_rmse_c": 2.298713263255482,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.1,
+      "raw_rmse_c": 2.298713263255482,
+      "scope": "RPLL|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.4666666666666675,
+      "calibrated_rmse_c": 1.555634918610405,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4666666666666675,
+      "raw_rmse_c": 1.555634918610405,
+      "scope": "RPLL|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.500333333333333,
+      "calibrated_rmse_c": 1.716009809606771,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.500333333333333,
+      "raw_rmse_c": 1.716009809606771,
+      "scope": "SAEZ|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 3.0316666666666663,
+      "calibrated_rmse_c": 3.131470634276064,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 3.0316666666666663,
+      "raw_rmse_c": 3.131470634276064,
+      "scope": "SAEZ|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.8666666666666665,
+      "calibrated_rmse_c": 2.0281354326901675,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.8666666666666665,
+      "raw_rmse_c": 2.0281354326901675,
+      "scope": "SAEZ|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.4843333333333333,
+      "calibrated_rmse_c": 3.134113218546303,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.4843333333333333,
+      "raw_rmse_c": 3.134113218546303,
+      "scope": "SBGR|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.5549999999999993,
+      "calibrated_rmse_c": 2.892537813063123,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.5549999999999993,
+      "raw_rmse_c": 2.892537813063123,
+      "scope": "SBGR|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.0,
+      "calibrated_rmse_c": 2.818983268248797,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.0,
+      "raw_rmse_c": 2.818983268248797,
+      "scope": "SBGR|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.2070000000000007,
+      "calibrated_rmse_c": 1.333637007085012,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.2070000000000007,
+      "raw_rmse_c": 1.333637007085012,
+      "scope": "VILK|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.6203333333333336,
+      "calibrated_rmse_c": 1.6376028211993283,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.6203333333333336,
+      "raw_rmse_c": 1.6376028211993283,
+      "scope": "VILK|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.0333333333333339,
+      "calibrated_rmse_c": 1.0535653752852743,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.0333333333333339,
+      "raw_rmse_c": 1.0535653752852743,
+      "scope": "VILK|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.7383333333333333,
+      "calibrated_rmse_c": 1.896863815178447,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.7383333333333333,
+      "raw_rmse_c": 1.896863815178447,
+      "scope": "WMKK|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.245666666666667,
+      "calibrated_rmse_c": 2.2567960327272236,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.245666666666667,
+      "raw_rmse_c": 2.2567960327272236,
+      "scope": "WMKK|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.2999999999999996,
+      "calibrated_rmse_c": 1.377195217340906,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.2999999999999996,
+      "raw_rmse_c": 1.377195217340906,
+      "scope": "WMKK|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.7899999999999991,
+      "calibrated_rmse_c": 1.850695544923583,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.7899999999999991,
+      "raw_rmse_c": 1.850695544923583,
+      "scope": "WSSS|ECMWF|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 2.279,
+      "calibrated_rmse_c": 2.5476777007044404,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.279,
+      "raw_rmse_c": 2.5476777007044404,
+      "scope": "WSSS|GFS|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    },
+    {
+      "calibrated_mae_c": 1.1666666666666654,
+      "calibrated_rmse_c": 1.2124355652982128,
+      "holdout_dates": [
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 3,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.1666666666666654,
+      "raw_rmse_c": 1.2124355652982128,
+      "scope": "WSSS|ICON|summer",
+      "train_dates": [
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21"
+      ],
+      "train_n": 8
+    }
+  ],
+  "schema": "bayes_basket_target_calibration_oos_audit_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "amsc"
+    ],
+    "included_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS"
+    ],
+    "mode": "allowlist"
+  },
+  "target_timezone": "America/New_York"
+}

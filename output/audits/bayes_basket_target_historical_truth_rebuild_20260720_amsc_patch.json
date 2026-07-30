@@ -1,0 +1,167 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-20"
+  ],
+  "evidence_sha256": "0c92de4d459b0b59f6839f2ba69d9511d4baee08efe6a7dea1658a5bf6351936",
+  "fetch_receipts": [
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "92ddc8a1c755b7cf5a49026578c104edd9675a99a7e56199e3f64b030c4717a7",
+      "returned": 48,
+      "source_lane": "amsc",
+      "station_id": "RCSS",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=RCSS&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "1f818e2f19158a0fe949e298ea7e4261f059dbdfe3917ab7401e1f3731cf6a00",
+      "returned": 50,
+      "source_lane": "amsc",
+      "station_id": "ZBAA",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZBAA&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "3ba20ccaf72c3a5f154d1f68428e870f930eefa99d19a8db9a3ab2ff6894e0dc",
+      "returned": 55,
+      "source_lane": "amsc",
+      "station_id": "ZGGG",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGGG&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "0a246bf5a5dce962d49f8265c038af4c7c9afc547847be5866fea207fcf2297c",
+      "returned": 51,
+      "source_lane": "amsc",
+      "station_id": "ZGSZ",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGSZ&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "3ff4d19de3e00d25360185ca1b6907b9e1310459532f2abd2e8273d13dd60491",
+      "returned": 24,
+      "source_lane": "amsc",
+      "station_id": "ZHHH",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZHHH&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "821f737759f786bbd9d7cf52aeb33028d9132b3b71ef57294735d0aeff5ede78",
+      "returned": 48,
+      "source_lane": "amsc",
+      "station_id": "ZSPD",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSPD&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "2dd5674afc34f0df4050a3915cfe8630496e9712751f6fc3c47ab73c8189790e",
+      "returned": 24,
+      "source_lane": "amsc",
+      "station_id": "ZSQD",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSQD&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "1687a070a15ec23402e433e28d20957c60506b28db182eb67f91af2a68d57dc5",
+      "returned": 24,
+      "source_lane": "amsc",
+      "station_id": "ZUCK",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUCK&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-20",
+      "response_sha256": "eb9edb5adbcfa3dd8e875091a3fc2cbf889b184610dd1cfc94710e6cba503679",
+      "returned": 44,
+      "source_lane": "amsc",
+      "station_id": "ZUUU",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUUU&starDate=2026-07-20+04%3A00%3A00&endDate=2026-07-21+03%3A59%3A59&tt=SA%2CSP%2C"
+    }
+  ],
+  "generated_at_utc": "2026-07-24T05:32:56Z",
+  "observation_count": 370,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260720_amsc_patch.json",
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "d79bd4fa63e16b2266dbce1fda269d9f733658503f452e565d5639d98b9533e8",
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 370,
+    "awc": 0
+  },
+  "station_day_count": 18,
+  "station_day_keys": [
+    "RCSS|2026-07-20",
+    "RCSS|2026-07-21",
+    "ZBAA|2026-07-20",
+    "ZBAA|2026-07-21",
+    "ZGGG|2026-07-20",
+    "ZGGG|2026-07-21",
+    "ZGSZ|2026-07-20",
+    "ZGSZ|2026-07-21",
+    "ZHHH|2026-07-20",
+    "ZHHH|2026-07-21",
+    "ZSPD|2026-07-20",
+    "ZSPD|2026-07-21",
+    "ZSQD|2026-07-20",
+    "ZSQD|2026-07-21",
+    "ZUCK|2026-07-20",
+    "ZUCK|2026-07-21",
+    "ZUUU|2026-07-20",
+    "ZUUU|2026-07-21"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

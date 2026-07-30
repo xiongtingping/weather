@@ -3,9 +3,11 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
+import production_posterior_commit_outbox_worker as outbox_runtime
 
 from production_posterior_commit_outbox_worker import (
     ProductionPosteriorCommitOutboxWorker,
+    _validated_inputs,
     claim_production_posterior_commit_outbox,
 )
 from sequential_bayes_schema_contract import apply_forward_schema
@@ -25,7 +27,13 @@ def _conn() -> sqlite3.Connection:
           fact_snapshot_id TEXT,posterior_run_id TEXT
         );
         CREATE TABLE event_fact_latest(slug TEXT,event_date TEXT,fact_id INTEGER);
-        CREATE TABLE auto_trade_decisions(id INTEGER PRIMARY KEY);
+        CREATE TABLE auto_trade_decisions(
+          id INTEGER PRIMARY KEY,run_id INTEGER,run_date TEXT,slug TEXT,event_date TEXT,
+          outcome TEXT,side TEXT,action TEXT,decided_state TEXT,will_order INTEGER,
+          reason_codes_json TEXT,reasons_json TEXT,details_json TEXT,created_at TEXT,
+          correlation_id TEXT,fact_snapshot_id TEXT,posterior_run_id TEXT,
+          decision_id TEXT UNIQUE,order_intent_id TEXT
+        );
         """
     )
     for suffix, latest in (("old", False), ("current", True)):
@@ -74,6 +82,18 @@ def _inputs(outbox: dict) -> dict:
         "risk_snapshot": {"risk_snapshot_id": "risk-current"},
         "production_activation": {"state": "enabled"},
     }
+
+
+def test_input_provider_block_reason_is_preserved_without_cascade_noise() -> None:
+    inputs, blockers = _validated_inputs(
+        {"slug": SLUG, "event_date": DATE},
+        {"ok": False, "block_reasons": ["production_input_exchange_snapshot_exception"]},
+    )
+    assert inputs["ok"] is False
+    assert blockers == [
+        "production_input_exchange_snapshot_exception",
+        "production_posterior_outbox_input_provider_blocked",
+    ]
 
 
 def test_worker_selects_only_latest_and_validates_all_frozen_inputs_before_claim() -> None:
@@ -129,7 +149,81 @@ def test_worker_deadline_expiry_never_claims() -> None:
         decision_as_of="2026-07-13T00:00:03.001Z", frozen_inputs_for=_inputs,
     )
     assert result["state"] == "idle_no_latest_outbox_ready"
-    assert conn.execute("SELECT state FROM posterior_commit_outbox WHERE outbox_event_id='outbox-current'").fetchone()[0] == "pending"
+    assert sorted(result["terminalized_expired_outbox_event_ids"]) == ["outbox-current", "outbox-old"]
+    assert conn.execute(
+        "SELECT state,attempt_count,claim_generation,terminal_reason FROM posterior_commit_outbox WHERE outbox_event_id='outbox-current'"
+    ).fetchone() == (
+        "dead_letter", 0, 0, "production_observation_to_order_hard_deadline_expired",
+    )
+    assert conn.execute(
+        "SELECT action,decided_state,will_order,posterior_run_id,fact_snapshot_id "
+        "FROM auto_trade_decisions WHERE posterior_run_id='post-current'"
+    ).fetchone() == ("hold", "blocked", 0, "post-current", "fact-current")
+
+
+def test_worker_at_exact_deadline_remains_actionable() -> None:
+    conn = _conn()
+    calls: list[str] = []
+
+    def runner(db: sqlite3.Connection, **kwargs: object) -> dict:
+        calls.append(str(kwargs["outbox_event_id"]))
+        db.execute(
+            "UPDATE posterior_commit_outbox SET state='completed' WHERE outbox_event_id=?",
+            (kwargs["outbox_event_id"],),
+        )
+        return {"ok": True, "state": "committed", "places_orders": False}
+
+    worker = ProductionPosteriorCommitOutboxWorker(
+        conn, lease_owner="production-worker-test", runner=runner,
+    )
+    result = worker.process_ready_latest_outbox(
+        decision_as_of="2026-07-13T00:00:03.000Z", frozen_inputs_for=_inputs,
+    )
+    assert result["ok"] is True
+    assert calls == ["outbox-current"]
+    assert conn.execute(
+        "SELECT state FROM posterior_commit_outbox WHERE outbox_event_id='outbox-current'"
+    ).fetchone()[0] == "completed"
+
+
+def test_idle_worker_never_opens_sqlite_writer_transaction() -> None:
+    conn = _conn()
+    conn.execute("UPDATE posterior_commit_outbox SET state='completed'")
+    conn.commit()
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    worker = ProductionPosteriorCommitOutboxWorker(conn, lease_owner="production-worker-test")
+    result = worker.process_ready_latest_outbox(
+        decision_as_of="2026-07-13T00:00:01.000Z", frozen_inputs_for=_inputs,
+    )
+    conn.set_trace_callback(None)
+    assert result["state"] == "idle_no_latest_outbox_ready"
+    assert result["terminalized_expired_outbox_event_ids"] == []
+    assert not any(statement.strip().upper().startswith("BEGIN IMMEDIATE") for statement in statements)
+
+
+def test_expired_no_order_decision_replay_drift_fails_closed() -> None:
+    conn = _conn()
+    worker = ProductionPosteriorCommitOutboxWorker(conn, lease_owner="production-worker-test")
+    first = worker.process_ready_latest_outbox(
+        decision_as_of="2026-07-13T00:00:03.001Z", frozen_inputs_for=_inputs,
+    )
+    assert first["ok"] is True
+    conn.execute(
+        "UPDATE auto_trade_decisions SET details_json='{}' WHERE posterior_run_id='post-current'"
+    )
+    conn.commit()
+    outbox_runtime._last_backfill_audit_monotonic = 0.0
+    second = worker.process_ready_latest_outbox(
+        decision_as_of="2026-07-13T00:00:04.000Z", frozen_inputs_for=_inputs,
+    )
+    assert second == {
+        "schema": "production_posterior_commit_outbox_worker_v1",
+        "ok": False,
+        "state": "blocked",
+        "reason": "production_posterior_outbox_expiry_terminalization_failed",
+        "places_orders": False,
+    }
 
 
 def test_runner_block_rolls_back_lease_and_any_partial_write() -> None:

@@ -1,0 +1,51 @@
+- generic [active] [ref=e1]:
+  - generic: 加载中
+  - button "返回顶部"
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: 状态灯
+        - generic [ref=e11]:
+          - generic "AMSC" [ref=e12]
+          - generic "AWC" [ref=e15]
+          - generic "TWC" [ref=e18]
+          - generic "WU" [ref=e21]
+          - generic "Fact" [ref=e24]
+          - generic "DB" [ref=e27]
+          - generic "GFS" [ref=e30]
+          - generic "ICON" [ref=e33]
+          - generic "ECMWF" [ref=e36]
+          - generic "NWS" [ref=e39]
+          - generic "扫描" [ref=e42]
+          - generic "缓存" [ref=e45]
+          - generic "UI" [ref=e48]
+          - generic "接口" [ref=e51]
+      - generic "自动交易：关闭=停止自动交易；开启=允许自动交易，数据刷新不受影响" [ref=e56] [cursor=pointer]:
+        - checkbox "自动交易 开启"
+        - generic [ref=e57]: 自动交易
+        - generic [ref=e59]: 开启
+  - main [ref=e60]:
+    - region "天气市场数字看板" [ref=e61]:
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e64]: Weather SSOT · Read only
+          - heading "天气市场数字看板" [level=1] [ref=e65]
+          - generic [ref=e66]: 等待完整 SSOT 快照…
+        - generic [ref=e67]: 等待数据
+      - generic [ref=e68]: 正在读取后验、报文、方向和执行分区…
+      - generic [ref=e71]: 前端只读展示：后验概率、变化、篮子桶和硬 NO 均来自服务端物化字段；缺字段显示“未物化”，不在浏览器重算。
+    - region "中国机场天气数据看板" [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - generic [ref=e75]: 中国机场站点天气
+          - generic [ref=e76]: 机场代码 · 最新 METAR/SPECI 实况 · TAF 峰值 · GFS / ICON / ECMWF 最高温预测
+        - generic [ref=e77]: 读取中…
+      - generic [ref=e78]: 正在读取中国机场站点快照…
+    - generic [ref=e79]:
+      - generic [ref=e80]:
+        - generic [ref=e81]: 报文轨迹 NO · Production SSOT
+        - generic [ref=e82]: AMSC/AWC 官方 METAR/SPECI · FAK NO ≤ 0.99 · 前端只读
+      - generic [ref=e83]: 正在读取 /api/ui_snapshot…
+    - generic [ref=e87]:
+      - text: 暂无可展示事件
+      - generic [ref=e88]: 状态统计：已结算 0 · 已收盘/过峰 0 · 已延后过期 0 · 锁定 0 · 低盘口 0 · 总数 0

@@ -1,0 +1,1916 @@
+{
+  "as_of_utc": "2026-07-29T11:40:00Z",
+  "blockers": [
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T13:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T15:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T14:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T12:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T16:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T17:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T19:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T21:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T22:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-27T23:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T00:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T03:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T02:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T01:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T05:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T06:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T07:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T08:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T09:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T10:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T11:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T13:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T12:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T14:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T15:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T16:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T04:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T17:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T19:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T18:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T20:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T21:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T23:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T22:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T00:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T01:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T02:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T03:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T04:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T05:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-28",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T06:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T15:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T12:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T14:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T13:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T19:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T16:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T17:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T18:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T23:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T21:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T22:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-28T20:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T01:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T00:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T03:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T02:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T04:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T05:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T06:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T07:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T08:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T09:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T10:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-29",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T11:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T13:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T14:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T12:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T15:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T19:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T17:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T16:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T18:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:200",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T23:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:200",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T21:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:200",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-29T22:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T00:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T03:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T07:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-06-30",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T08:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T13:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T12:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T19:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T18:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T20:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T16:00:00Z"
+    },
+    {
+      "detail": "historical_gem_http_failed:000",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T23:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T17:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T21:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-06-30T22:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-07-01T01:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-07-01T03:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-07-01T04:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-07-01T05:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-07-01T10:00:00Z"
+    },
+    {
+      "detail": "Command '['/usr/bin/curl', '--silent', '--show-error', '--location', '--connect-timeout', '15', '--max-time', '120', '--retry', '3', '--retry-delay', '1', '--max-filesize', '4194304', '--dump-header', '/var/folders/42/c48hkw455dj9swsq18xb147c0000gn/T/gem-h",
+      "event_date": "2026-07-01",
+      "reason": "historical_gem_fetch_or_decode_failed",
+      "valid_time_utc": "2026-07-01T11:00:00Z"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 20,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 9,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 15,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 11,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 19,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 20,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 19,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 20,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 20,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 19,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 19,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 9,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 15,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 18,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 22,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 9,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 8,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 9,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 17,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 15,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 1,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 7,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 3,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 12,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 3,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 12,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 3,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 12,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 15,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 19,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 0,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 15,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 21,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 19,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 1,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 7,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 16,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-06-28",
+      "expected_point_count": 24,
+      "point_count": 2,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-06-29",
+      "expected_point_count": 24,
+      "point_count": 4,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-06-30",
+      "expected_point_count": 24,
+      "point_count": 13,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-01",
+      "expected_point_count": 24,
+      "point_count": 10,
+      "reason": "historical_gem_curve_incomplete",
+      "station_id": "ZUUU"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "c8afb983b9fc9869bbf08c2f979e669e92dfd04aa121f84595cdbf596ae1219d",
+  "event_dates": [
+    "2026-06-28",
+    "2026-06-29",
+    "2026-06-30",
+    "2026-07-01"
+  ],
+  "model_id": "GEM",
+  "model_rows": [],
+  "provider_id": "gem_gdps_official",
+  "resource_budget": {
+    "max_process_rss_bytes": 536870912,
+    "max_response_bytes": 4194304,
+    "max_total_raw_bytes": 268435456,
+    "min_free_bytes": 10737418240,
+    "retained_bytes_this_run": 77361419
+  },
+  "run_cycle": "12Z",
+  "run_day_offset": 1,
+  "schema": "bayes_basket_target_historical_native_rebuild_evidence_v1",
+  "station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ]
+}

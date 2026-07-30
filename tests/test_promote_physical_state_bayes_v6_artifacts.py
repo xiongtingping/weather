@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from physical_state_bayes_v6.artifact_contracts import validate_observation_artifact, validate_transition_artifact
+from physical_state_bayes_v6.artifact_contracts import (
+    default_time_conditioned_observation_policy,
+    validate_observation_artifact,
+    validate_transition_artifact,
+)
 from scripts.promote_physical_state_bayes_v6_artifacts import promote
 
 
@@ -43,6 +47,14 @@ def test_promotion_requires_bound_oos_evidence(tmp_path) -> None:
             "training_dataset_sha256": "1" * 64,
             "training_code_sha256": "2" * 64,
             "promotion_evidence_sha256": "",
+            "quantized_observation_policy": {
+                "schema": "quantized_integer_temperature_robust_likelihood_v1",
+                "temperature_quantization_c": 1.0,
+                "measurement_error_model": "independent_uniform_rounding_moment_matched_gaussian",
+                "huberize_mahalanobis_tail": True,
+                "robust_mahalanobis_radius": 3.0,
+            },
+            "time_conditioned_observation_policy": default_time_conditioned_observation_policy(),
             "state_models": models,
         }
     )

@@ -63,6 +63,7 @@ def _artifact() -> dict:
             context_key: {
                 "ecmwf+gfs+taf+wu+twc": surface(source_ids),
                 "ecmwf": surface(["ecmwf"]),
+                "gfs": surface(["gfs"]),
                 "gfs+taf": surface(["gfs", "taf"]),
                 "empty": surface([]),
             }
@@ -144,6 +145,23 @@ def test_all_sources_are_experts_family_caps_apply_and_no_model_taf_special_case
     assert len(output_modes) >= 2
     assert first["formula"] == "correlation_aware_tempered_mixture_of_context_calibrated_forecast_experts"
     assert first["boundary"]["weak_distribution_preserves_material_scenarios_but_allows_evidence_based_mode_merging"] is True
+    attribution = first["source_weight_attribution"]
+    assert attribution["frontend_recompute_allowed"] is False
+    assert abs(attribution["normalized_information_share_total"] - 1.0) < 1e-12
+    assert abs(
+        attribution["final_information_index_total"] - first["applied_information_scale"]
+    ) < 1e-12
+    source_rows = {row["source_id"]: row for row in attribution["source_rows"]}
+    assert source_rows["ecmwf"]["base_information_weight"] == 0.25
+    assert source_rows["ecmwf"]["family_capped_information_weight"] == 0.15
+    assert source_rows["ecmwf"]["family_cap_scale"] == 0.6
+    assert source_rows["ecmwf"]["correlation_discount"] == first["correlation_discount"]
+    assert all(
+        abs(sum(row["local_responsibility_by_source"].values()) - 1.0) < 1e-12
+        for row in attribution["bucket_rows"]
+    )
+    assert abs(sum(row["weak_likelihood_mass"] for row in attribution["bucket_rows"]) - 1.0) < 1e-12
+    assert abs(sum(row["weak_mixture_mass"] for row in attribution["bucket_rows"]) - 1.0) < 1e-12
 
 
 def test_close_bias_corrected_sources_may_form_one_mode_and_modes_are_not_forced() -> None:
@@ -208,6 +226,30 @@ def test_latest_visible_revision_is_selected_strictly_asof_and_future_revision_i
     assert any(row["exclusion_reason"] == "forecast_revision_after_asof" for row in output["source_trace"])
 
 
+def test_new_revision_replaces_all_old_modes_instead_of_adding_independent_votes() -> None:
+    old = _revision("ecmwf", 31.0, revision="old", available_at="2026-07-03T06:10:00Z")
+    old["source_modes"] = [
+        {"mode_id": "old-cool", "mode_probability": 0.5, "forecast_peak_c": 29.0},
+        {"mode_id": "old-hot", "mode_probability": 0.5, "forecast_peak_c": 34.0},
+    ]
+    new = _revision("ecmwf", 30.0, revision="new", available_at="2026-07-03T06:20:00Z")
+    new["source_modes"] = [
+        {"mode_id": "new-primary", "mode_probability": 1.0, "forecast_peak_c": 30.0},
+    ]
+    output = _build([old, new])
+
+    assert output["ok"] is True
+    assert output["source_expert_trace"][0]["source_revision_id"] == "ecmwf-new"
+    assert [row["scenario_id"] for row in output["forecast_scenario_paths"]["paths"]] == [
+        "ecmwf-new#new-primary"
+    ]
+    assert all(
+        not scenario["scenario_id"].startswith("ecmwf-old#")
+        for row in output["candidate_scenario_responsibilities"]["rows"]
+        for scenario in row["scenarios"]
+    )
+
+
 def test_gfs_taf_uses_its_own_exact_surface_and_reports_information_confidence() -> None:
     output = _build([_revision("gfs", 30.0), _revision("taf", 31.0)])
 
@@ -243,7 +285,65 @@ def test_candidate_scenario_responsibility_comes_from_same_weak_mixture() -> Non
     }
     assert paths["gfs"]["future_forcing_available"] is True
     assert paths["taf"]["future_forcing_available"] is False
+    buckets = {
+        row["reported_x_c"]: row["local_responsibility_by_source"]
+        for row in output["source_weight_attribution"]["bucket_rows"]
+    }
+    assert buckets[29]["gfs"] > buckets[29]["taf"]
+    assert buckets[33]["taf"] > buckets[33]["gfs"]
     assert output["boundary"]["hourly_paths_are_transition_controls_not_second_likelihood"] is True
+
+
+def test_source_native_modes_survive_calibration_and_become_distinct_strong_scenarios() -> None:
+    gfs = _revision("gfs", 31.0)
+    gfs["source_modes_schema"] = "forecast_source_modes_v1"
+    gfs["source_modes"] = [
+        {
+            "mode_id": "suppressed",
+            "mode_probability": 0.4,
+            "forecast_peak_c": 29.0,
+            "forecast_sigma_c": 0.1,
+            "forecast_weather_regime": "wet_precipitation",
+            "hourly_curve": [{"valid_time": "2026-07-03T07:00:00Z", "temperature_c": 29.0}],
+            "mode_origin": "official_ensemble_cluster",
+        },
+        {
+            "mode_id": "rebound",
+            "mode_probability": 0.6,
+            "forecast_peak_c": 34.0,
+            "forecast_sigma_c": 0.1,
+            "forecast_weather_regime": "clear_dry",
+            "hourly_curve": [{"valid_time": "2026-07-03T07:00:00Z", "temperature_c": 34.0}],
+            "mode_origin": "official_ensemble_cluster",
+        },
+    ]
+    output = _build([gfs])
+
+    assert output["ok"] is True
+    expert = output["source_expert_trace"][0]
+    assert expert["source_mode_count"] == 2
+    assert [row["mode_id"] for row in expert["source_modes"]] == ["suppressed", "rebound"]
+    assert abs(sum(row["mode_probability"] for row in expert["source_modes"]) - 1.0) < 1e-12
+    paths = {row["scenario_id"]: row for row in output["forecast_scenario_paths"]["paths"]}
+    assert set(paths) == {"gfs-r1#suppressed", "gfs-r1#rebound"}
+    assert paths["gfs-r1#suppressed"]["forecast_weather_regime"] == "wet_precipitation"
+    responsibilities = {
+        float(row["continuous_y_c"]): {
+            scenario["source_mode_id"]: float(scenario["responsibility"])
+            for scenario in row["scenarios"]
+        }
+        for row in output["candidate_scenario_responsibilities"]["rows"]
+    }
+    assert responsibilities[29.0]["suppressed"] > responsibilities[29.0]["rebound"]
+    assert responsibilities[34.0]["rebound"] > responsibilities[34.0]["suppressed"]
+    assert abs(sum(responsibilities[29.0].values()) - 1.0) < 1e-12
+    bucket_modes = {
+        row["reported_x_c"]: row["local_responsibility_by_mode"]
+        for row in output["source_weight_attribution"]["bucket_rows"]
+    }
+    assert bucket_modes[29]["gfs-r1#suppressed"] > bucket_modes[29]["gfs-r1#rebound"]
+    assert bucket_modes[34]["gfs-r1#rebound"] > bucket_modes[34]["gfs-r1#suppressed"]
+    assert output["forecast_multimodality_trace"]["multimodality_state"] == "multimodal"
 
 
 def test_non_forecast_or_hard_eligible_rows_cannot_enter_weak_likelihood() -> None:

@@ -32,18 +32,29 @@ class DurationClocks:
     cloud_suppression_minutes: float = 0.0
     precipitation_minutes: float = 0.0
     cb_minutes: float = 0.0
+    tcu_minutes: float = 0.0
     cloud_suppression_active: bool = False
     precipitation_active: bool = False
     cb_active: bool = False
+    tcu_active: bool = False
+    canonical_event_count: int = 0
+    physical_event_cluster_signature: str = ""
+    physical_event_cluster_minutes: float = 0.0
+    physical_event_cluster_information_spent: float = 0.0
 
     def __post_init__(self) -> None:
         values = (
             self.cloud_suppression_minutes,
             self.precipitation_minutes,
             self.cb_minutes,
+            self.tcu_minutes,
+            self.physical_event_cluster_minutes,
+            self.physical_event_cluster_information_spent,
         )
         if any(not math.isfinite(value) or value < 0.0 for value in values):
             raise ValueError("duration_clock_negative")
+        if self.canonical_event_count < 0:
+            raise ValueError("canonical_event_count_negative")
 
 
 @dataclass(frozen=True)
@@ -91,6 +102,15 @@ class CanonicalObservationEmission:
     cb_present: bool
     log_emission_by_cell: Mapping[tuple[float, str], float]
     observation_artifact_sha256: str
+    tcu_present: bool = False
+    convective_evidence_kind: str = "none"
+    physical_event_cluster_signature: str = ""
+    physical_event_cluster_change_point: bool = False
+    event_information_weight: float = 1.0
+    observation_feature_trace: Mapping[str, object] = field(default_factory=dict)
+    log_component_by_cell: Mapping[tuple[float, str], Mapping[str, float]] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         if not self.event_id or not self.pre_event_prediction_sha256 or not self.event_valid_at:
@@ -101,6 +121,10 @@ class CanonicalObservationEmission:
             value = float(self.reported_temperature_c)
             if not math.isfinite(value) or not value.is_integer():
                 raise ValueError("reported_temperature_not_integer_c")
+        if self.convective_evidence_kind not in {"none", "tcu", "cb", "thunderstorm"}:
+            raise ValueError("convective_evidence_kind_invalid")
+        if not math.isfinite(self.event_information_weight) or not 0.0 <= self.event_information_weight <= 1.0:
+            raise ValueError("event_information_weight_invalid")
 
 
 @dataclass(frozen=True)

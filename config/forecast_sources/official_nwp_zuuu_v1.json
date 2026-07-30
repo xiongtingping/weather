@@ -9,11 +9,11 @@
       "source_id": "ecmwf_ifs_official",
       "model_id": "ecmwf_ifs",
       "authority": "ECMWF official Open Data or authorised ECMWF delivery",
-      "allowed_hosts": ["data.ecmwf.int", "api.ecmwf.int"],
+      "allowed_hosts": ["data.ecmwf.int", "api.ecmwf.int", "ecmwf-forecasts.s3.eu-central-1.amazonaws.com", "storage.googleapis.com", "ai4edataeuwest.blob.core.windows.net"],
       "transport": "GRIB2",
       "authorization": "official_open_data_or_authorized_account",
       "collector_adapter": "ecmwf_open_data_server_side_subset",
-      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps", "total_cloud_cover_pct", "total_precipitation_mm", "total_precipitation_accumulation_hours", "convective_available_potential_energy_j_per_kg", "boundary_layer_gust_mps", "eastward_turbulent_surface_stress_n_m2_s", "northward_turbulent_surface_stress_n_m2_s"],
       "run_schedule_utc_hours": [0, 6, 12, 18]
     },
     "icon": {
@@ -24,7 +24,7 @@
       "transport": "GRIB2",
       "authorization": "official_open_data",
       "collector_adapter": "dwd_icon_multifile_unstructured_grid_projection",
-      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps", "total_cloud_cover_pct", "low_cloud_cover_pct", "middle_cloud_cover_pct", "high_cloud_cover_pct", "total_precipitation_mm", "total_precipitation_accumulation_hours", "convective_available_potential_energy_j_per_kg", "convective_cloud_base_msl_m", "convective_cloud_top_msl_m", "boundary_layer_momentum_transfer_coefficient"],
       "run_schedule_utc_hours": [0, 6, 12, 18]
     },
     "gfs": {
@@ -35,7 +35,7 @@
       "transport": "GRIB2",
       "authorization": "official_operational_data",
       "collector_adapter": "noaa_nomads_filter_grib2_latlon_subset",
-      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps"],
+      "required_normalized_fields": ["temperature_2m_c", "temperature_850_c", "temperature_700_c", "relative_humidity_850_pct", "relative_humidity_700_pct", "geopotential_height_500_m", "geopotential_height_850_m", "u_wind_850_mps", "v_wind_850_mps", "u_wind_700_mps", "v_wind_700_mps", "total_cloud_cover_pct", "total_precipitation_mm", "total_precipitation_accumulation_hours", "convective_precipitation_mm", "convective_precipitation_accumulation_hours", "convective_available_potential_energy_j_per_kg", "boundary_layer_height_m"],
       "run_schedule_utc_hours": [0, 6, 12, 18]
     },
     "jma": {

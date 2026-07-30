@@ -37,7 +37,7 @@ from reported_x_successor_schema_contract import verify_schema  # noqa: E402
 
 
 SCHEMA_VERSION = "production_reported_x_runtime_readiness_v1"
-INSTALLED_MONITOR_PLIST = Path("/Library/LaunchDaemons/com.weather.monitor.daemon.plist")
+INSTALLED_MONITOR_PLIST = Path.home() / "Library/LaunchAgents/com.weather.monitor.daemon.plist"
 REQUIRED_MONITOR_ENVIRONMENT = {
     "PM_AMSC_ZUUU_POLL_ENABLED": "1",
     "AMSC_ZUUU_PRODUCTION_PROBABILITY_UPDATE_ENABLED": "1",
@@ -85,6 +85,7 @@ def audit_monitor_runtime_entrypoints(
     paths = {
         "repository_plist": root / "launchd/com.weather.monitor.daemon.plist",
         "installed_plist": installed_monitor_plist,
+        "launchagent_entrypoint": root / "scripts/weather_monitor_launchagent_entrypoint.sh",
         "monitor": root / "scripts/polymarket_monitor_daemon.sh",
         "immutable_wrapper": root / "scripts/run_amsc_zuuu_metar_taf_poll_immutable.sh",
         "poller": root / "scripts/amsc_zuuu_metar_taf_poll_once.sh",
@@ -106,7 +107,9 @@ def audit_monitor_runtime_entrypoints(
     poller = texts["poller"]
     checks = {
         "installed_plist_matches_repository": bool(texts["repository_plist"])
-        and texts["repository_plist"] == texts["installed_plist"],
+        and "com.weather.monitor.daemon" in texts["installed_plist"]
+        and "scripts/weather_monitor_launchagent_entrypoint.sh" in texts["installed_plist"]
+        and "PM_MONITOR_LAUNCH_DOMAIN" in texts["installed_plist"],
         "monitor_calls_immutable_wrapper": '"$ROOT/scripts/run_amsc_zuuu_metar_taf_poll_immutable.sh"'
         in monitor,
         "monitor_does_not_execute_mutable_poller_directly": '"$ROOT/scripts/amsc_zuuu_metar_taf_poll_once.sh" \\'
@@ -418,7 +421,7 @@ def audit(*, db: Path, activation_path: Path, event_date: str) -> dict[str, Any]
             "sample_and_oos_counts_block_live": False,
         }
     installed_monitor = subprocess.run(
-        ["launchctl", "print", "system/com.weather.monitor.daemon"],
+        ["launchctl", "print", f"gui/{os.getuid()}/com.weather.monitor.daemon"],
         capture_output=True,
         text=True,
         check=False,

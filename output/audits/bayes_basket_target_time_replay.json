@@ -1,0 +1,26 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "isolated_or_in_memory_only": true,
+    "partial_target_generation_allowed": false,
+    "places_orders": false,
+    "writes_production_database": false
+  },
+  "coverage": {
+    "cross_day": true,
+    "cross_timezone": true,
+    "dst_fallback": true,
+    "duplicate_idempotency": true,
+    "forward_backward_rewind_rejected": true,
+    "future_source_rejected": true,
+    "incremental_equals_full": true,
+    "official_ws_only": true
+  },
+  "pytest_exit_code": 0,
+  "pytest_output_tail": "....                                                                     [100%]\n4 passed in <elapsed>s\n",
+  "pytest_passed": 4,
+  "receipt_sha256": "b8185f91943275cbf73fbbc4a241e8c20ed249183052158f3cda2dd055de02b4",
+  "schema": "bayes_basket_target_time_replay_receipt_v1",
+  "status": "PASS",
+  "test_node": "tests/test_bayes_basket_target_time_replay.py"
+}

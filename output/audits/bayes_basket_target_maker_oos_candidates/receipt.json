@@ -1,0 +1,67 @@
+{
+  "as_of_utc": "2026-07-27T10:00:00Z",
+  "blocked": true,
+  "calls_order_gateway": false,
+  "candidate_only": true,
+  "candidates": [],
+  "content_sha256": "6123c3d87b07cf603ac56b09c25260940ecfda3fd6921e0331abc18479d891f9",
+  "counts": {
+    "bytes_read": 0,
+    "duplicate_rows": 0,
+    "execution_receipts": 0,
+    "execution_transitions": 0,
+    "files_read": 0,
+    "files_seen": 0,
+    "future_rows_rejected": 0,
+    "live_rows_rejected": 0,
+    "malformed_files": 0,
+    "missing_ws_pair": 0,
+    "normalized_fact_rejections": 0,
+    "normalized_facts": 0,
+    "official_ws": 0,
+    "paired_rows": 0,
+    "rejected_rows": 0,
+    "sample_insufficient_scopes": 0,
+    "unknown_rows": 0
+  },
+  "execution_mode": "candidate_only_no_live",
+  "live_submit_authorized": false,
+  "normalized_fact_count": 0,
+  "normalized_fact_schema": "target_maker_oos_normalized_fact_v1",
+  "normalized_facts_sha256": "5b8987c9d8e7826dbfb86781312982c7c3f970503caa30b0f2bd43f9fe6a5f60",
+  "orders_submitted": 0,
+  "output_cleanup": {
+    "bounded": true,
+    "directory": "/Users/xiong/weather/output/audits/bayes_basket_target_maker_oos_candidates",
+    "recursive": false,
+    "removed_files": 1
+  },
+  "reason_codes": [
+    "no_scope_meets_train_holdout_minimum",
+    "official_ws_execution_pairs_missing",
+    "source_root_missing",
+    "target_owned_execution_history_missing"
+  ],
+  "requirements": {
+    "activation": false,
+    "min_holdout_samples": 30,
+    "min_train_samples": 30,
+    "official_ws_required": true,
+    "promotion": false,
+    "seeds": [
+      11,
+      29,
+      47
+    ]
+  },
+  "resource_bounds": {
+    "max_file_bytes": 262144,
+    "max_files": 512,
+    "max_rows": 10000,
+    "max_total_bytes": 1048576
+  },
+  "schema": "target_maker_fill_queue_risk_oos_candidate_receipt_v1",
+  "source_root": "/Users/xiong/weather/output/audits/bayes_basket_target_maker_oos_source",
+  "status": "BLOCKED",
+  "writes_production_db": false
+}

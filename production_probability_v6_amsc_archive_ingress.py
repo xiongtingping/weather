@@ -12,7 +12,11 @@ from joint_weak_live_evidence_runtime import DEFAULT_CURVE_ROOT
 from p2_canonical_amsc_forward_writer import apply_p2_canonical_amsc_forward_append
 from production_probability_v6_p0_input_runtime import DEFAULT_NCEI_ROOT, DEFAULT_RESOLUTION_AUTHORITY
 from production_probability_v6_activation_contract import validate_v6_activation
+from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
+)
 from production_probability_v6_canonical_event_drain_runtime import drain_v6_canonical_events, ensure_v6_daily_p0
+from production_probability_v6_market_inputs_runtime import prewarm_v6_market_inputs
 from weather_fact_snapshot_writer import persist_source_observations_for_payload, utc_now_iso
 
 
@@ -53,6 +57,23 @@ def apply_v6_amsc_archive_probability_ingress(
     stages: dict[str, float] = {}
     source_result: dict[str, Any] = {"ok": True, "state": "not_requested_already_persisted"}
     incremental_ids: list[str] | None = None
+    stage_started = time.monotonic()
+    activation = _load_activation(activation_path)
+    stages["activation_load_ms"] = round(
+        (time.monotonic() - stage_started) * 1000.0, 3
+    )
+    stage_started = time.monotonic()
+    market_inputs = prewarm_v6_market_inputs(
+        event_date=day,
+        resolution_authority_path=resolution_authority_path,
+        strategy_projection_role=(
+            "basket_probability_only"
+            if _text(activation.get("composer_schema"))
+            == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+            else "legacy_realization"
+        ),
+    )
+    stages["market_inputs_prewarm_ms"] = round((time.monotonic() - stage_started) * 1000.0, 3)
     with archive_db_write_gate(db, owner="physical_state_bayes_v6_amsc_ingress", wait_sec=writer_queue_wait_sec):
         with connect_archive_db_rw(
             db,
@@ -111,9 +132,6 @@ def apply_v6_amsc_archive_probability_ingress(
                 source_observation_ids=incremental_ids,
             )
             stages["canonical_append_ms"] = round((time.monotonic() - stage_started) * 1000.0, 3)
-        stage_started = time.monotonic()
-        activation = _load_activation(activation_path)
-        stages["activation_load_ms"] = round((time.monotonic() - stage_started) * 1000.0, 3)
         with connect_archive_db_rw(
             db,
             owner="physical_state_bayes_v6_probability_update",
@@ -132,6 +150,7 @@ def apply_v6_amsc_archive_probability_ingress(
                 weak_artifact_path=weak_artifact_path,
                 ncei_root=ncei_root,
                 resolution_authority_path=resolution_authority_path,
+                market_inputs=market_inputs,
             )
             stages["daily_p0_ms"] = round((time.monotonic() - stage_started) * 1000.0, 3)
             stage_started = time.monotonic()
@@ -142,6 +161,7 @@ def apply_v6_amsc_archive_probability_ingress(
                     event_date=day,
                     public_slug=public_slug,
                     max_events=max_events,
+                    market_inputs=market_inputs,
                 )
                 if p0.get("ok") is True
                 else {"ok": False, "state": "blocked", "reason": "v6_daily_p0_unavailable"}
@@ -157,6 +177,12 @@ def apply_v6_amsc_archive_probability_ingress(
         "canonical": canonical,
         "daily_p0": p0,
         "probability": probability,
+        "market_branch": {
+            "state": _text(market_inputs.get("state")),
+            "market_projection_available": bool(market_inputs.get("market_projection_available")),
+            "market_projection_na_reason": _text(market_inputs.get("market_projection_na_reason")),
+            "blocks_physical_x": False,
+        },
         "latency_stages_ms": stages,
         "probability_ssot_3000ms_slo_met": bool(ok and stages["total_ingress_ms"] <= 3000.0),
         "places_orders": False,

@@ -1,0 +1,11 @@
+{
+  "authorizes_order": false,
+  "calls_order_gateway": false,
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "reason": "ContractError:production_ssot_schema_incomplete",
+  "schema": "bayes_basket_target_artifact_ingress_v1",
+  "state": "BLOCKED_FAIL_CLOSED"
+}

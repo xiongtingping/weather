@@ -90,6 +90,29 @@ def _sha(value: str) -> str:
 
 
 def transform(source: str) -> str:
+    # The final market-Transaction-B successor deliberately folds the public
+    # peak projection into commit_v6_candidate_transaction and narrows the
+    # auxiliary import to the pre-commit enrichment function.  That source is
+    # already a semantic successor of this installer even though the original
+    # exact import/public anchors no longer exist.  Recognize the complete
+    # successor closure as idempotent; never accept a partial marker set.
+    market_successor_markers = (
+        "from production_probability_v6_path_auxiliary_runtime import (\n"
+        "    enrich_v6_candidate_with_post_event_auxiliary,\n)",
+        "from production_probability_v6_transaction_commit_runtime import (\n"
+        "    commit_v6_candidate_transaction,\n)",
+        "candidate = enrich_v6_candidate_with_post_event_auxiliary(",
+        "branch_commit = commit_v6_candidate_transaction(",
+        '"forecast_peak_timing_prior": peak_timing,',
+    )
+    successor_hits = [marker in source for marker in market_successor_markers]
+    if all(successor_hits):
+        return source
+    # Only the transaction-commit markers distinguish the successor from the
+    # normal path-auxiliary result; enrichment and peak-prior markers are
+    # intentionally shared by both complete forms.
+    if successor_hits[1] or successor_hits[3]:
+        raise ValueError("v6_path_auxiliary_market_successor_partial_install")
     result = source
     replacements = (
         (IMPORT_BEFORE, IMPORT_AFTER, "import"),

@@ -1,0 +1,123 @@
+{
+  "as_of_utc": "2026-07-29T11:25:00Z",
+  "blockers": [
+    {
+      "event_date": "2026-06-26",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-06-27",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-06-28",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-06-29",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-06-30",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-07-01",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "regional_history_fetch_retries_exhausted:429 Client Error: Too Many Requests for url: https://single-runs-api.open-meteo.com/v1/forecast?latitude=43.679%2C48.348%2C60.327%2C51.505%2C52.315%2C52.163%2C-"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_database": false
+  },
+  "checks": {
+    "all_expected_station_dates_complete": false,
+    "future_data_used": false,
+    "historical_closed_targets_only": true,
+    "native_arrival_not_claimed": true,
+    "native_publication_not_claimed": true,
+    "online_weight_update": false
+  },
+  "content_sha256": "808938557fb31bebed1e128e75148844121a4612c048901dec600e04add906ec",
+  "end_date": "2026-07-05",
+  "inputs": [],
+  "model_id": "CMA",
+  "model_rows": [],
+  "provider_id": "cma_grapes_global_open_meteo",
+  "schema": "bayes_basket_target_historical_aggregator_rebuild_evidence_v1",
+  "source": {
+    "model_parameter": "cma_grapes_global",
+    "native_publication_time_available": false,
+    "run_cycle": "12Z",
+    "run_day_offset": 1,
+    "single_run_parameter_explicit": true,
+    "source_class": "aggregator_republisher",
+    "source_url": "https://single-runs-api.open-meteo.com/v1/forecast"
+  },
+  "start_date": "2026-06-26",
+  "station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ]
+}

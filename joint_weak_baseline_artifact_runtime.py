@@ -38,7 +38,7 @@ DEFAULT_ARTIFACT_PATH = (
     / "runtime"
     / "joint_forecast_weak_likelihood"
     / "approved"
-    / "joint_weak_operational_baseline_v3.json"
+    / "joint_weak_d1_settlement_calibrated_v1.json"
 )
 
 

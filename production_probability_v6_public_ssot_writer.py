@@ -7,9 +7,13 @@ import sqlite3
 from typing import Any, Mapping
 
 from physical_state_bayes_v6.contracts import SCHEMA_VERSION as STATE_SCHEMA
+from identifiable_physical_state_bayes.contracts import (
+    SCHEMA_VERSION as IDENTIFIABLE_PHYSICAL_STATE_SCHEMA,
+)
 from physical_state_bayes_v6.schema_contract import verify_schema
 from production_probability_v6_activation_contract import (
     CHECKPOINT_SCHEMA,
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
     PUBLIC_SSOT_SCHEMA,
     STRONG_UPDATE_SCHEMA,
     validate_v6_activation,
@@ -88,6 +92,10 @@ def materialize_v6_public_physical_fact_row(
     market_bucket_probabilities_na_reason: str,
 ) -> dict[str, Any]:
     authorized = validate_v6_activation(activation)
+    identifiable_physical = (
+        _text(authorized.get("composer_schema"))
+        == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+    )
     update = _mapping(strong_update_row)
     checkpoint = _mapping(checkpoint_row)
     if _text(update.get("probability_update_schema")) != STRONG_UPDATE_SCHEMA:
@@ -96,9 +104,12 @@ def materialize_v6_public_physical_fact_row(
         raise V6TransactionIntegrityError("v6_public_post_emission_transition_not_retired")
     if _parse(update.get("post_state_transition_json"), None) != {}:
         raise V6TransactionIntegrityError("v6_public_post_state_transition_not_empty")
+    expected_state_schema = (
+        IDENTIFIABLE_PHYSICAL_STATE_SCHEMA if identifiable_physical else STATE_SCHEMA
+    )
     if (
         _text(checkpoint.get("checkpoint_probability_schema")) != CHECKPOINT_SCHEMA
-        or _text(checkpoint.get("state_space_schema")) != STATE_SCHEMA
+        or _text(checkpoint.get("state_space_schema")) != expected_state_schema
     ):
         raise V6TransactionIntegrityError("v6_public_checkpoint_schema_invalid")
     reported = _validate_reported_distribution(checkpoint)
@@ -138,6 +149,18 @@ def materialize_v6_public_physical_fact_row(
         "probability_target_type": _text(checkpoint.get("probability_target_type")),
         "reported_physical_x_distribution": reported,
         "reported_x_lower_bound_c": checkpoint.get("reported_x_lower_bound_c"),
+        "hard_mask_reason": (
+            (
+                "observed_contract_reported_x_lower_bound+frozen_reporting_operator"
+                if identifiable_physical
+                else "observed_reported_x_lower_bound+final_locked_reported_x_compatibility"
+            )
+            if checkpoint.get("reported_x_lower_bound_c") is not None
+            else "none"
+        ),
+        "final_locked_reported_x_compatibility_hard_condition": (
+            _mapping(auxiliary).get("final_locked_reported_x_compatibility_hard_condition") is True
+        ),
         "latent_y_public": False,
         "settlement_scalar_distribution": [],
         "market_bucket_probabilities": {},
@@ -147,6 +170,21 @@ def materialize_v6_public_physical_fact_row(
         "committed_at": _text(checkpoint.get("committed_at")),
         "termination_risk": termination,
         "duration_clocks": _parse(checkpoint.get("duration_clocks_json"), {}),
+        "physical_state_posterior_sha256": (
+            _text(checkpoint.get("physical_state_posterior_sha256"))
+            if identifiable_physical
+            else ""
+        ),
+        "physical_path_projection_sha256": (
+            _text(checkpoint.get("physical_path_projection_sha256"))
+            if identifiable_physical
+            else ""
+        ),
+        "physical_reporting_operator_sha256": (
+            _text(checkpoint.get("physical_reporting_operator_sha256"))
+            if identifiable_physical
+            else ""
+        ),
         "probability_runtime_identity": {
             "activation_contract_sha256": _text(authorized.get("activation_contract_sha256")),
             "runtime_manifest_sha256": _text(authorized.get("runtime_manifest_sha256")),
@@ -158,6 +196,15 @@ def materialize_v6_public_physical_fact_row(
             "observation_artifact_sha256": _text(authorized.get("observation_artifact_sha256")),
             "prior_model_artifact_sha256": _text(authorized.get("prior_model_artifact_sha256")),
             "weak_likelihood_artifact_sha256": _text(authorized.get("weak_likelihood_artifact_sha256")),
+            "physical_state_model_artifact_sha256": _text(
+                authorized.get("physical_state_model_artifact_sha256")
+            ),
+            "physical_observation_artifact_sha256": _text(
+                authorized.get("physical_observation_artifact_sha256")
+            ),
+            "physical_reporting_operator_sha256": _text(
+                authorized.get("physical_reporting_operator_sha256")
+            ),
             "v5_fallback_forbidden": True,
         },
     }
@@ -166,7 +213,11 @@ def materialize_v6_public_physical_fact_row(
         "slug": _text(slug),
         "event_date": _text(event_date),
         "fact_as_of": _text(fact_as_of),
-        "composer_version": "physical_state_bayes_v6_production",
+        "composer_version": (
+            "identifiable_physical_state_bayes_production"
+            if identifiable_physical
+            else "physical_state_bayes_v6_production"
+        ),
         "fact_json": _json({"posterior_ssot_fact": ssot}),
         "created_at": _text(fact_as_of),
         "correlation_id": _text(correlation_id),
@@ -257,7 +308,11 @@ def _assert_bundle(
         raise V6TransactionConflict("v6_predecessor_is_not_latest")
     if int(predecessor[3] or 0) != generation or int(checkpoint.get("replay_generation") or 0) != generation:
         raise V6TransactionIntegrityError("v6_replay_generation_mismatch")
-    bindings = (
+    identifiable_physical = (
+        _text(authorized.get("composer_schema"))
+        == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+    )
+    common_bindings = (
         (checkpoint.get("previous_checkpoint_id"), expected_previous_checkpoint_id),
         (update.get("previous_checkpoint_id"), expected_previous_checkpoint_id),
         (update.get("previous_posterior_run_id"), expected_previous_posterior_run_id),
@@ -269,11 +324,27 @@ def _assert_bundle(
         (checkpoint.get("forecast_evidence_snapshot_id"), predecessor[6]),
         (checkpoint.get("model_artifact_sha256"), predecessor[7]),
         (checkpoint.get("model_artifact_sha256"), authorized.get("activation_contract_sha256")),
+    )
+    artifact_bindings = (
+        (
+            checkpoint.get("physical_state_model_artifact_sha256"),
+            authorized.get("physical_state_model_artifact_sha256"),
+        ),
+        (
+            checkpoint.get("physical_observation_artifact_sha256"),
+            authorized.get("physical_observation_artifact_sha256"),
+        ),
+        (
+            checkpoint.get("physical_reporting_operator_sha256"),
+            authorized.get("physical_reporting_operator_sha256"),
+        ),
+    ) if identifiable_physical else (
         (checkpoint.get("transition_artifact_sha256"), authorized.get("transition_artifact_sha256")),
         (checkpoint.get("observation_artifact_sha256"), authorized.get("observation_artifact_sha256")),
         (update.get("transition_artifact_sha256"), authorized.get("transition_artifact_sha256")),
         (update.get("observation_artifact_sha256"), authorized.get("observation_artifact_sha256")),
     )
+    bindings = common_bindings + artifact_bindings
     if any(_text(left) != _text(right) for left, right in bindings):
         raise V6TransactionIntegrityError("v6_transaction_bundle_binding_mismatch")
     event = conn.execute(
@@ -282,14 +353,25 @@ def _assert_bundle(
     ).fetchone()
     if event is None or _text(event[0]) not in {"accepted_primary", "accepted_substitute"}:
         raise V6TransactionIntegrityError("v6_canonical_event_not_accepted")
+    expected_state_schema = (
+        IDENTIFIABLE_PHYSICAL_STATE_SCHEMA if identifiable_physical else STATE_SCHEMA
+    )
     if (
         _text(update.get("probability_update_schema")) != STRONG_UPDATE_SCHEMA
         or int(update.get("no_post_emission_transition") or 0) != 1
         or _parse(update.get("post_state_transition_json"), None) != {}
         or _text(checkpoint.get("checkpoint_probability_schema")) != CHECKPOINT_SCHEMA
-        or _text(checkpoint.get("state_space_schema")) != STATE_SCHEMA
+        or _text(checkpoint.get("state_space_schema")) != expected_state_schema
     ):
         raise V6TransactionIntegrityError("v6_transaction_semantics_invalid")
+    if identifiable_physical and (
+        int(update.get("physical_current_event_consumption_count") or 0) != 1
+        or _text(checkpoint.get("physical_composer_schema"))
+        != IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+        or _text(checkpoint.get("physical_state_posterior_sha256"))
+        != _text(checkpoint.get("joint_posterior_sha256"))
+    ):
+        raise V6TransactionIntegrityError("physical_transaction_semantics_invalid")
     _validate_reported_distribution(checkpoint)
 
 

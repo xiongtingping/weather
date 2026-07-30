@@ -31,19 +31,72 @@ def _date(value: Any) -> date | None:
         return None
 
 
-def _mean_probability_and_rps(rows: Sequence[Mapping[str, Any]], target_c: float) -> tuple[float, float, float]:
+def _mean_probability_and_rps(
+    rows: Sequence[Mapping[str, Any]], *, target_lower_c: float, target_upper_c: float,
+    settlement_bucket_c: float | None = None,
+) -> tuple[float, float, float]:
     temperatures = [float(row["temperature_c"]) for row in rows]
     probabilities = [float(row["likelihood"]) for row in rows]
     mean = sum(temperature * probability for temperature, probability in zip(temperatures, probabilities))
-    nearest = min(range(len(temperatures)), key=lambda index: abs(temperatures[index] - target_c))
+    in_interval = [index for index, temperature in enumerate(temperatures) if target_lower_c <= temperature <= target_upper_c]
+    target_probability = sum(probabilities[index] for index in in_interval)
+    if not in_interval:
+        nearest = min(range(len(temperatures)), key=lambda index: min(abs(temperatures[index] - target_lower_c), abs(temperatures[index] - target_upper_c)))
+        target_probability = probabilities[nearest]
+    observed_threshold = float(settlement_bucket_c) if settlement_bucket_c is not None else (target_lower_c + target_upper_c) / 2.0
     cumulative = 0.0
     rps_sum = 0.0
     for index, probability in enumerate(probabilities[:-1]):
         cumulative += probability
-        observed_cumulative = 1.0 if nearest <= index else 0.0
+        observed_cumulative = 1.0 if temperatures[index] >= observed_threshold else 0.0
         rps_sum += (cumulative - observed_cumulative) ** 2
     rps = rps_sum / max(len(probabilities) - 1, 1)
-    return mean, max(probabilities[nearest], 1e-300), rps
+    return mean, max(target_probability, 1e-300), rps
+
+
+def _interval_bucket_safety(
+    *, candidate_rows: Sequence[Mapping[str, Any]], raw_rows: Sequence[Mapping[str, Any]], minimum_event_days: int = 10
+) -> dict[str, Any]:
+    raw_by_key = {
+        (str(row.get("event_id")), str(row.get("event_date")), str(row.get("decision_as_of"))): row
+        for row in raw_rows
+    }
+    aligned = [
+        (row, raw_by_key.get((str(row.get("event_id")), str(row.get("event_date")), str(row.get("decision_as_of")))))
+        for row in candidate_rows
+    ]
+    aligned = [(left, right) for left, right in aligned if right is not None]
+
+    def mean(field: str, side: int) -> float | None:
+        values = [float(pair[side][field]) for pair in aligned]
+        return sum(values) / len(values) if values else None
+
+    corrected_mae, raw_mae = mean("absolute_error_c", 0), mean("absolute_error_c", 1)
+    corrected_nll, raw_nll = mean("negative_log_probability", 0), mean("negative_log_probability", 1)
+    corrected_rps, raw_rps = mean("ranked_probability_score", 0), mean("ranked_probability_score", 1)
+    blockers = []
+    if len(aligned) < int(minimum_event_days):
+        blockers.append("insufficient_interval_bucket_oos_event_days")
+    if corrected_mae is not None and raw_mae is not None and corrected_mae > raw_mae + 0.05:
+        blockers.append("interval_bucket_mae_harm_tolerance_failed")
+    if corrected_nll is not None and raw_nll is not None and corrected_nll > raw_nll + 0.02:
+        blockers.append("interval_bucket_logloss_harm_tolerance_failed")
+    if corrected_rps is not None and raw_rps is not None and corrected_rps > raw_rps + 0.005:
+        blockers.append("interval_bucket_rps_harm_tolerance_failed")
+    return {
+        "schema": "joint_weak_interval_bucket_oos_safety_v1",
+        "state": "passed" if not blockers else "blocked", "blockers": blockers,
+        "sample_count": len(aligned), "minimum_event_days": int(minimum_event_days),
+        "metrics": {
+            "corrected_interval_mae_c": corrected_mae, "raw_interval_mae_c": raw_mae,
+            "interval_mae_improvement_c": None if corrected_mae is None or raw_mae is None else raw_mae - corrected_mae,
+            "corrected_bucket_logloss": corrected_nll, "raw_bucket_logloss": raw_nll,
+            "bucket_logloss_improvement": None if corrected_nll is None or raw_nll is None else raw_nll - corrected_nll,
+            "corrected_bucket_rps": corrected_rps, "raw_bucket_rps": raw_rps,
+            "bucket_rps_improvement": None if corrected_rps is None or raw_rps is None else raw_rps - corrected_rps,
+        },
+        "live_runtime_gate": False,
+    }
 
 
 def _score_bias_alpha(
@@ -94,13 +147,25 @@ def _score_bias_alpha(
                 for reason in runtime.get("block_reasons") or ["unknown_runtime_block"]:
                     blocked[str(reason)] = blocked.get(str(reason), 0) + 1
                 continue
-            target = float(value_sample["physical_x_final_c"])
+            target_lower = float(value_sample.get("target_lower_c", value_sample.get("physical_x_final_c")))
+            target_upper = float(value_sample.get("target_upper_c", value_sample.get("physical_x_final_c")))
+            settlement_bucket = value_sample.get("settlement_bucket_c")
             likelihood = runtime["joint_forecast_weak_likelihood"]
-            predicted, target_probability, rps = _mean_probability_and_rps(likelihood, target)
+            predicted, target_probability, rps = _mean_probability_and_rps(
+                likelihood,
+                target_lower_c=target_lower,
+                target_upper_c=target_upper,
+                settlement_bucket_c=float(settlement_bucket) if settlement_bucket is not None else None,
+            )
+            interval_error = max(target_lower - predicted, 0.0, predicted - target_upper)
             rows.append({
                 "event_id": value_sample.get("event_id"), "event_date": value_sample.get("event_date"), "decision_as_of": value_sample.get("decision_as_of"),
-                "source_set_key": value_sample.get("source_set_key"), "target_physical_x_final_c": target,
-                "predicted_peak_c": predicted, "absolute_error_c": abs(predicted - target),
+                "source_set_key": value_sample.get("source_set_key"),
+                "target_label_kind": value_sample.get("label_kind"),
+                "target_lower_c": target_lower, "target_upper_c": target_upper,
+                "target_physical_x_final_c": value_sample.get("physical_x_final_c"),
+                "settlement_bucket_c": settlement_bucket,
+                "predicted_peak_c": predicted, "absolute_error_c": interval_error,
                 "negative_log_probability": -math.log(target_probability), "ranked_probability_score": rps,
                 "weak_information_confidence": runtime.get("weak_information_confidence"),
                 "artifact_sha256": artifact.get("artifact_sha256"), "bias_ewma_alpha": bias_ewma_alpha,
@@ -118,12 +183,13 @@ def _score_bias_alpha(
         }
     mae = sum(float(row["absolute_error_c"]) for row in rows) / len(rows)
     nll = sum(float(row["negative_log_probability"]) for row in rows) / len(rows)
+    exact_only = all(row.get("target_physical_x_final_c") is not None for row in rows)
     safety = build_joint_weak_oos_safety_evidence(
         candidate_rows=rows,
         raw_rows=raw_rows,
         training_samples=train_dataset.get("samples") if isinstance(train_dataset.get("samples"), Sequence) else [],
         candidate_artifact_sha256=str(artifact.get("artifact_sha256") or ""),
-    )
+    ) if exact_only else _interval_bucket_safety(candidate_rows=rows, raw_rows=raw_rows)
     return {
         "bias_ewma_alpha": bias_ewma_alpha, "state": "evaluated_shadow_only", "training": training,
         "artifact_sha256": artifact.get("artifact_sha256"), "sample_count": len(rows), "mae_c": mae,

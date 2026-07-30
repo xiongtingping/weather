@@ -1,0 +1,70 @@
+{
+  "activates_production": false,
+  "activation_contract_sha256": "69bbc873db0ac3ff8cd45de99fb363c1411272f55bb82bce154494d8604462c9",
+  "adds_fourth_service": false,
+  "blocking_gates": {
+    "additive_schema_plan_valid": true,
+    "candidate_artifacts_valid": true,
+    "current_basket_hard_no_production_accepted": true,
+    "observation_identifiability_boundary_declared": true,
+    "runtime_dependency_closure_complete": true,
+    "zero_order_transaction_b_accepted": true
+  },
+  "files": {
+    "amsc_frozen_reporting_operator_v1.json": {
+      "sha256": "73bd195e256d1275d1829ae85fdb32e5bf6ee331ee8861e6c52c44af2acb8494",
+      "size_bytes": 1649
+    },
+    "identifiable_physical_observation_v1.json": {
+      "sha256": "5c0d6a8ec769f2226c0fbbdbee3f0346b7e41d91c16b7216e7b3926f6ac08ea0",
+      "size_bytes": 4125
+    },
+    "identifiable_physical_state_model_v1.json": {
+      "sha256": "053c22e89b801c17c8afcc93f4a4348cf7f437f79ac5f11773f38dad6ed964b5",
+      "size_bytes": 10946
+    },
+    "production_probability_runtime_activation.json": {
+      "sha256": "826ec56997795a9163e8b5df6deeec5aa7109f26e29abf21f5c1328112008780",
+      "size_bytes": 3128
+    }
+  },
+  "non_blocking_diagnostics": {
+    "no_worse_mean_crps_than_legacy": false,
+    "no_worse_mean_nll_than_legacy": false,
+    "research_evidence_gates": {
+      "canonical_replay_blocking_gates_pass": false,
+      "canonical_replay_complete": true,
+      "state_parameter_draws_bound_to_calibration": false,
+      "strict_asof_parameter_calibration_ready": false
+    }
+  },
+  "places_orders": false,
+  "promotion_policy": {
+    "calibration_activation_role": "non_blocking_diagnostic_only",
+    "canonical_replay_activation_role": "non_blocking_diagnostic_only",
+    "crps_activation_role": "non_blocking_diagnostic_only",
+    "nll_activation_role": "non_blocking_diagnostic_only",
+    "nll_crps_excluded_from_blocking_gate_set": true,
+    "research_evidence_excluded_from_blocking_gate_set": true,
+    "sample_volume_activation_role": "non_blocking_diagnostic_only",
+    "strict_asof_activation_role": "non_blocking_diagnostic_only"
+  },
+  "promotion_ready": true,
+  "readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+  "release_manifest_sha256": "07a0379f1dd2bc474c3edd5a602c8a83a88bdda8071519f5d336a670436b9dc9",
+  "resident_service": "com.weather.reported_trajectory_no",
+  "runtime_manifest_repair": {
+    "artifact_bindings_unchanged": true,
+    "basis_readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+    "basis_release_manifest_sha256": "b6eac611fb1d97107bfbd74cac18d3e34b9df0cf7b8024ab7c2e1f497f2279a7",
+    "current_runtime_manifest_sha256": "a349b4d2af27bee961217e197a8923247020f72656311ce231aa3cb10bc60e51",
+    "database_writes": false,
+    "places_orders": false,
+    "previous_runtime_manifest_sha256": "d0a254a412fc43d87f6040f5b18a01353842cf7bf0a143fa8fbf5869d007c2aa",
+    "reason": "active_activation_runtime_manifest_drift",
+    "schema": "identifiable_physical_runtime_manifest_repair_v1"
+  },
+  "runtime_manifest_sha256": "a349b4d2af27bee961217e197a8923247020f72656311ce231aa3cb10bc60e51",
+  "schema": "identifiable_physical_state_release_bundle_v1",
+  "state": "release_built_not_active"
+}

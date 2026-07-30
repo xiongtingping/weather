@@ -1,0 +1,909 @@
+"""Persistent multi-scope official WS publisher inside ``market_ws``.
+
+This coroutine is an internal task of the existing system-domain
+``market_ws`` service.  It opens bounded official WS subscriptions for the
+canonical registry catalog and atomically maintains one deterministic,
+scope-addressable target-owned manifest.  A subscription is never larger than
+the official per-connection token limit; all shards are one generation and a
+failed shard invalidates that generation.
+It never writes ticks, SQLite, the protected shared manifest, or any order
+surface.  A disconnect stops freshness advancement, so the unchanged target
+manifest expires through the existing five-second policy.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import ssl
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import certifi
+import websockets
+
+from bayes_basket_target.contracts import ContractError
+from bayes_basket_target.database import (
+    DEFAULT_TARGET_DB,
+    DEFAULT_TARGET_WS_MANIFEST,
+)
+from bayes_basket_target.market_registry import (
+    load_active_registry_rows,
+    settlement_day_state,
+)
+from bayes_basket_target.resource_bounds import (
+    MAX_JSON_OUTPUT_BYTES,
+    MIN_TARGET_FREE_BYTES,
+    assert_process_memory_budget,
+    write_bounded_json,
+)
+from bayes_basket_target.station_registry import (
+    coordinate_registry_manifest,
+)
+from scripts.capture_bayes_basket_target_official_ws_snapshot import (
+    ONE_SHOT_CLOSE_TIMEOUT_SEC,
+    WS_URL,
+    _build_manifest,
+    _configured_proxy,
+    _iter_messages,
+    _now_utc,
+    _quote_from_message,
+)
+
+
+SCHEMA = "bayes_basket_target_resident_multi_scope_ws_publisher_v1"
+MANIFEST_SCHEMA = "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
+# The catalog is intentionally dynamic, but bounded to the canonical rollout
+# domain.  A station may contribute exactly one current open scope and one
+# fresh not-started scope; it cannot silently rotate through additional days.
+MAX_TARGET_STATIONS = 45
+MAX_TARGET_SCOPES = MAX_TARGET_STATIONS * 2
+MAX_TARGET_TOKENS = 2048
+MAX_TOKENS_PER_CONNECTION = 400
+CANONICAL_TARGET_STATIONS = frozenset(
+    coordinate_registry_manifest()["station_ids"]
+)
+MAX_FRAME_BYTES = 8 * 1024 * 1024
+TEXT_PING_SECONDS = 1.0
+RECEIVE_TIMEOUT_SECONDS = 2.0
+SCOPE_REFRESH_SECONDS = 2.0
+RETRY_MAX_SECONDS = 10.0
+_STAGE_PRIORITY = {"P0": 0, "P0-M": 1, "P1": 2}
+
+
+class ScopeCatalogChanged(RuntimeError):
+    """Reconnect the entire shard generation for an exact catalog."""
+
+
+def _apply_no_live_boundary(manifest: dict[str, Any]) -> None:
+    manifest["resident_exact_scope_publisher"] = {
+        "schema": SCHEMA,
+        "persistent_connection": True,
+        "exact_scope": True,
+        "multi_scope": True,
+        "writes_historical_ticks": False,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+    }
+    manifest["evidence_only"] = True
+    manifest["authorizes_order"] = False
+    manifest["calls_order_gateway"] = False
+    manifest["live_submit_authorized"] = False
+    manifest["orders_submitted"] = 0
+
+
+def _open_target_read_only(path: Path = DEFAULT_TARGET_DB) -> sqlite3.Connection:
+    resolved = Path(path).expanduser().resolve()
+    conn = sqlite3.connect(
+        f"file:{resolved}?mode=ro",
+        uri=True,
+        timeout=5.0,
+        isolation_level=None,
+    )
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only=ON")
+    return conn
+
+
+def _parse_utc(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractError("resident_target_ws_timestamp_invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ContractError("resident_target_ws_timestamp_timezone_required")
+    return parsed.astimezone(timezone.utc)
+
+
+def _catalog_sha256(scopes: list[Mapping[str, Any]]) -> str:
+    core = [
+        {
+            "scope_key": str(scope["scope_key"]),
+            "station_id": str(scope["station_id"]),
+            "event_date": str(scope["event_date"]),
+            "target_timezone": str(scope["target_timezone"]),
+            "tokens": list(scope["tokens"]),
+            "probability_stage": str(scope["probability_stage"]),
+            "probability_envelope_id": str(
+                scope["probability_envelope_id"]
+            ),
+            "probability_fresh_until_utc": str(
+                scope["probability_fresh_until_utc"]
+            ),
+            "probability_evidence_fresh": bool(
+                scope["probability_evidence_fresh"]
+            ),
+            "registry_snapshot_sha256": str(
+                scope["registry_scope"]["registry_snapshot_sha256"]
+            ),
+        }
+        for scope in scopes
+    ]
+    return hashlib.sha256(
+        json.dumps(
+            core,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _connection_shards(tokens: Sequence[str]) -> list[dict[str, Any]]:
+    """Partition the canonical token set deterministically for official WS.
+
+    This is a transport partition only: scopes remain the authority boundary
+    and all shards must be complete before their combined manifest is written.
+    """
+
+    normalized = sorted({str(token).strip() for token in tokens if str(token).strip()})
+    if not normalized or len(normalized) > MAX_TARGET_TOKENS:
+        raise ContractError("resident_target_ws_token_catalog_invalid")
+    return [
+        {
+            "shard_id": index,
+            "tokens": normalized[offset : offset + MAX_TOKENS_PER_CONNECTION],
+        }
+        for index, offset in enumerate(
+            range(0, len(normalized), MAX_TOKENS_PER_CONNECTION)
+        )
+    ]
+
+
+def _future_probability_expired(
+    catalog: Mapping[str, Any],
+    *,
+    observed_at_utc: str,
+) -> bool:
+    """Only a future preselection scope requires fresh probability.
+
+    An open scope remains subscribed when its latest P1 expires so the next
+    official observation can immediately rebuild P1 against a current book.
+    Probability consumers still fail closed on the stale P1 itself.
+    """
+
+    observed = _parse_utc(observed_at_utc)
+    return any(
+        str(scope.get("event_day_state") or "") == "not_started"
+        and observed >= _parse_utc(
+            str(scope["probability_fresh_until_utc"])
+        )
+        for scope in catalog.get("scopes", ())
+    )
+
+
+def _scope(
+    *,
+    db_path: Path = DEFAULT_TARGET_DB,
+    as_of_utc: str,
+) -> dict[str, Any]:
+    """Return a bounded catalog of open and pre-event probability scopes.
+
+    This is deliberately separate from ``load_started_registry_rows``.
+    Truth, P1 production, and hard-NO consumers keep their started-day gate;
+    only this evidence-only WS subscriber may include a not-started day, and
+    then only when its current SSOT is a fresh P0/P0-M artifact.
+    """
+
+    as_of = _parse_utc(as_of_utc)
+    with _open_target_read_only(db_path) as conn:
+        probability_rows = conn.execute(
+            "SELECT envelope_id,stage,station_id,event_date,"
+            "settlement_timezone,decision_at_utc,fresh_until_utc "
+            "FROM basket_probability_envelope "
+            "WHERE state='COMMITTED' "
+            "AND stage IN ('P0','P0-M','P1') "
+            "ORDER BY station_id,event_date,decision_at_utc,stage,envelope_id"
+        ).fetchall()
+        current_probability: dict[tuple[str, str], sqlite3.Row] = {}
+        for row in probability_rows:
+            decision_at = _parse_utc(str(row["decision_at_utc"]))
+            if decision_at > as_of:
+                continue
+            station_id = str(row["station_id"] or "").strip().upper()
+            event_date = str(row["event_date"] or "")
+            if not station_id or not event_date:
+                raise ContractError("resident_target_ws_probability_scope_invalid")
+            if station_id not in CANONICAL_TARGET_STATIONS:
+                continue
+            key = (station_id, event_date)
+            previous = current_probability.get(key)
+            if previous is None:
+                current_probability[key] = row
+                continue
+            previous_rank = (
+                _parse_utc(str(previous["decision_at_utc"])),
+                _STAGE_PRIORITY.get(str(previous["stage"]), -1),
+                str(previous["envelope_id"]),
+            )
+            candidate_rank = (
+                decision_at,
+                _STAGE_PRIORITY.get(str(row["stage"]), -1),
+                str(row["envelope_id"]),
+            )
+            if candidate_rank > previous_rank:
+                current_probability[key] = row
+
+        active_rows = load_active_registry_rows(conn)
+        rows_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in active_rows:
+            station_id = str(row.get("station_id") or "").strip().upper()
+            event_date = str(row.get("event_date") or "")
+            if not station_id or not event_date:
+                raise ContractError("resident_target_ws_registry_scope_invalid")
+            if station_id not in CANONICAL_TARGET_STATIONS:
+                continue
+            rows_by_scope.setdefault((station_id, event_date), []).append(row)
+
+        scopes: list[dict[str, Any]] = []
+        for (station_id, event_date), probability in sorted(current_probability.items()):
+            rows = rows_by_scope.get((station_id, event_date)) or []
+            if not rows:
+                continue
+            timezones = {
+                str(row.get("settlement_timezone") or "").strip()
+                for row in rows
+            }
+            if len(timezones) != 1 or "" in timezones:
+                raise ContractError(
+                    "resident_target_ws_settlement_timezone_invalid"
+                )
+            timezone_name = next(iter(timezones))
+            probability_timezone = str(
+                probability["settlement_timezone"] or ""
+            ).strip()
+            if probability_timezone != timezone_name:
+                raise ContractError(
+                    "resident_target_ws_probability_registry_timezone_mismatch"
+                )
+            state = str(settlement_day_state(
+                event_date,
+                as_of_utc=as_of_utc,
+                settlement_timezone=timezone_name,
+            )["state"])
+            stage = str(probability["stage"])
+            fresh_until = _parse_utc(str(probability["fresh_until_utc"]))
+            probability_evidence_fresh = as_of < fresh_until
+            if state == "closed":
+                continue
+            if state == "not_started" and stage not in {"P0", "P0-M"}:
+                continue
+            if state == "not_started" and not probability_evidence_fresh:
+                continue
+            if state not in {"not_started", "open"}:
+                continue
+            tokens = sorted({
+                str(row.get("yes_token") or "").strip()
+                for row in rows
+                if str(row.get("yes_token") or "").strip()
+            })
+            if not tokens or len(tokens) != len(rows):
+                raise ContractError(
+                    "resident_target_ws_token_scope_invalid"
+                )
+            snapshot_row = conn.execute(
+                "SELECT s.snapshot_sha256 FROM "
+                "basket_target_market_registry_snapshot s "
+                "WHERE EXISTS (SELECT 1 FROM "
+                "basket_target_market_registry r "
+                "WHERE r.snapshot_sha256=s.snapshot_sha256 "
+                "AND r.station_id=? AND r.event_date=?) "
+                "ORDER BY s.ingested_at_utc DESC,"
+                "s.snapshot_sha256 DESC LIMIT 1",
+                (station_id, event_date),
+            ).fetchone()
+            if snapshot_row is None:
+                raise ContractError(
+                    "resident_target_ws_registry_snapshot_missing"
+                )
+            scopes.append({
+                "scope_key": f"{station_id}|{event_date}",
+                "station_id": station_id,
+                "station_ids": [station_id],
+                "event_date": event_date,
+                "target_timezone": timezone_name,
+                "event_day_state": state,
+                "probability_stage": stage,
+                "probability_envelope_id": str(
+                    probability["envelope_id"]
+                ),
+                "probability_fresh_until_utc": str(
+                    probability["fresh_until_utc"]
+                ),
+                "probability_evidence_fresh": probability_evidence_fresh,
+                "tokens": tokens,
+                "registry_scope": {
+                    "event_date": event_date,
+                    "station_allowlist": [station_id],
+                    "settlement_timezones_by_station": {
+                        station_id: timezone_name,
+                    },
+                    "markets_by_token": {
+                        str(row["yes_token"]): {
+                            "event_date": event_date,
+                            "outcome": str(row["outcome"]),
+                            "settlement_timezone": timezone_name,
+                            "slug": str(row["slug"]),
+                            "station_id": station_id,
+                        }
+                        for row in rows
+                    },
+                    "registry_snapshot_sha256": str(snapshot_row[0] or ""),
+                },
+            })
+
+    if not scopes:
+        raise ContractError("resident_target_ws_scope_missing")
+    scopes.sort(key=lambda item: str(item["scope_key"]))
+    station_states: dict[str, set[str]] = {}
+    for scope in scopes:
+        station_id = str(scope["station_id"])
+        state = str(scope["event_day_state"])
+        seen = station_states.setdefault(station_id, set())
+        if state in seen:
+            raise ContractError("resident_target_ws_station_state_ambiguous")
+        seen.add(state)
+    if len(station_states) > MAX_TARGET_STATIONS:
+        raise ContractError("resident_target_ws_station_cap_exceeded")
+    if len(scopes) > MAX_TARGET_SCOPES:
+        raise ContractError("resident_target_ws_scope_cap_exceeded")
+    all_tokens = [
+        token
+        for scope in scopes
+        for token in scope["tokens"]
+    ]
+    if (
+        len(all_tokens) != len(set(all_tokens))
+        or len(all_tokens) > MAX_TARGET_TOKENS
+    ):
+        raise ContractError("resident_target_ws_token_catalog_invalid")
+    tokens = sorted(all_tokens)
+    return {
+        "scopes": scopes,
+        "tokens": tokens,
+        "connection_shards": _connection_shards(tokens),
+        "catalog_sha256": _catalog_sha256(scopes),
+    }
+
+
+def _manifest_sha256(value: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _build_multi_scope_manifest(
+    catalog: Mapping[str, Any],
+    *,
+    quotes: Mapping[str, Mapping[str, Any]],
+    observed_at: str,
+    started_at: str,
+) -> dict[str, Any]:
+    shards = list(catalog.get("connection_shards") or _connection_shards(
+        list(catalog["tokens"])
+    ))
+    scope_manifests: dict[str, dict[str, Any]] = {}
+    scope_summaries: list[dict[str, Any]] = []
+    for scope in catalog["scopes"]:
+        scope_key = str(scope["scope_key"])
+        scope_tokens = list(scope["tokens"])
+        scope_quotes = {
+            token: dict(quotes[token])
+            for token in scope_tokens
+            if token in quotes
+        }
+        manifest = _build_manifest(
+            event_date=str(scope["event_date"]),
+            as_of_utc=observed_at,
+            tokens=scope_tokens,
+            quotes=scope_quotes,
+            shard_size=MAX_TOKENS_PER_CONNECTION,
+            started_at_utc=started_at,
+            finished_at_utc=observed_at,
+            errors=[],
+            timeout_sec=RECEIVE_TIMEOUT_SECONDS,
+            target_timezone=str(scope["target_timezone"]),
+            station_scope=scope["station_ids"],
+            registry_scope=scope["registry_scope"],
+        )
+        _apply_no_live_boundary(manifest)
+        manifest["scope_key"] = scope_key
+        manifest["event_day_state"] = str(scope["event_day_state"])
+        manifest["probability_authority"] = {
+            "stage": str(scope["probability_stage"]),
+            "envelope_id": str(scope["probability_envelope_id"]),
+            "fresh_until_utc": str(
+                scope["probability_fresh_until_utc"]
+            ),
+            "evidence_fresh": bool(
+                scope["probability_evidence_fresh"]
+            ),
+        }
+        manifest["snapshot_sha256"] = _manifest_sha256({
+            key: value
+            for key, value in manifest.items()
+            if key != "snapshot_sha256"
+        })
+        scope_manifests[scope_key] = manifest
+        scope_summaries.append({
+            "scope_key": scope_key,
+            "station_id": str(scope["station_id"]),
+            "event_date": str(scope["event_date"]),
+            "event_day_state": str(scope["event_day_state"]),
+            "probability_stage": str(scope["probability_stage"]),
+            "probability_fresh_until_utc": str(
+                scope["probability_fresh_until_utc"]
+            ),
+            "probability_evidence_fresh": bool(
+                scope["probability_evidence_fresh"]
+            ),
+            "token_count": len(scope_tokens),
+            "scope_manifest_sha256": manifest["snapshot_sha256"],
+        })
+    complete = (
+        bool(scope_manifests)
+        and len(quotes) == len(catalog["tokens"])
+        and all(
+            all(token in quotes for token in shard["tokens"])
+            for shard in shards
+        )
+        and all(
+            value.get("state") == "connected"
+            for value in scope_manifests.values()
+        )
+    )
+    root: dict[str, Any] = {
+        "schema": MANIFEST_SCHEMA,
+        "state": "connected" if complete else "blocked",
+        "source": "official_polymarket_clob_websocket",
+        "evidence_only": True,
+        "authorizes_order": False,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+        "quote_storage": "inline_scopes_v1",
+        "scope_count": len(scope_manifests),
+        "subscribed_token_count": len(catalog["tokens"]),
+        "received_book_token_count": len(quotes),
+        "connection_shard_count": len(shards),
+        "connection_shards": [
+            {
+                "shard_id": int(shard["shard_id"]),
+                "token_count": len(shard["tokens"]),
+                "tokens_sha256": hashlib.sha256(
+                    json.dumps(
+                        list(shard["tokens"]),
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest(),
+            }
+            for shard in shards
+        ],
+        "catalog_sha256": str(catalog["catalog_sha256"]),
+        "connection_observed_at": observed_at,
+        "scopes": scope_summaries,
+        "scope_manifests": scope_manifests,
+    }
+    _apply_no_live_boundary(root)
+    root["snapshot_sha256"] = _manifest_sha256(root)
+    return root
+
+
+def _assert_output_disk_budget(path: Path) -> None:
+    destination = Path(path).expanduser().resolve()
+    parent = destination.parent
+    while not parent.exists() and parent != parent.parent:
+        parent = parent.parent
+    try:
+        free_bytes = int(shutil.disk_usage(parent).free)
+    except OSError as exc:
+        raise ContractError(
+            "resident_target_ws_output_disk_probe_failed"
+        ) from exc
+    if free_bytes < MIN_TARGET_FREE_BYTES + MAX_JSON_OUTPUT_BYTES:
+        raise ContractError(
+            "resident_target_ws_output_min_free_space_guard"
+        )
+
+
+def _quote_economic_state(quote: Mapping[str, Any]) -> dict[str, Any]:
+    """Return price/depth state without transport or observation clocks."""
+
+    return {
+        key: value
+        for key, value in quote.items()
+        if key not in {
+            "book_observed_at",
+            "created_at",
+            "_stream_confirmed_at",
+        }
+    }
+
+
+def _merge_book_quote(
+    quotes: dict[str, dict[str, Any]],
+    token_id: str,
+    incoming: Mapping[str, Any],
+) -> bool:
+    """Keep the original economic observation clock for duplicate books."""
+
+    current = quotes.get(token_id)
+    if (
+        current is not None
+        and _quote_economic_state(current)
+        == _quote_economic_state(incoming)
+    ):
+        return False
+    quotes[token_id] = dict(incoming)
+    return True
+
+
+def _apply_price_changes(
+    quotes: dict[str, dict[str, Any]],
+    message: Mapping[str, Any],
+    *,
+    observed_at: str,
+) -> set[str]:
+    if str(message.get("event_type") or "").strip() != "price_change":
+        return set()
+    before_by_token: dict[str, tuple[dict[str, Any], str, str]] = {}
+    confirmed_tokens: set[str] = set()
+    for raw in message.get("price_changes") or []:
+        if not isinstance(raw, Mapping):
+            continue
+        token_id = str(raw.get("asset_id") or "").strip()
+        quote = quotes.get(token_id)
+        if quote is None:
+            continue
+        confirmed_tokens.add(token_id)
+        if token_id not in before_by_token:
+            before_by_token[token_id] = (
+                _quote_economic_state(quote),
+                str(quote.get("book_observed_at") or ""),
+                str(quote.get("created_at") or ""),
+            )
+        side = str(raw.get("side") or "").strip().upper()
+        key = "bids" if side in {"BUY", "BID"} else (
+            "asks" if side in {"SELL", "ASK"} else ""
+        )
+        if not key:
+            continue
+        try:
+            price = float(raw.get("price"))
+            size = float(raw.get("size"))
+        except (TypeError, ValueError):
+            continue
+        levels = {
+            float(item["price"]): float(item["size"])
+            for item in quote.get(key) or []
+            if isinstance(item, Mapping)
+        }
+        if size <= 0.0:
+            levels.pop(price, None)
+        else:
+            levels[price] = size
+        ordered = sorted(
+            levels.items(),
+            reverse=(key == "bids"),
+        )[:5]
+        quote[key] = [
+            {"price": level_price, "size": level_size}
+            for level_price, level_size in ordered
+        ]
+        quote["best_bid"] = (
+            quote["bids"][0]["price"] if quote.get("bids") else None
+        )
+        quote["best_ask"] = (
+            quote["asks"][0]["price"] if quote.get("asks") else None
+        )
+    for token_id, (before, old_observed_at, old_created_at) in (
+        before_by_token.items()
+    ):
+        quote = quotes[token_id]
+        if _quote_economic_state(quote) != before:
+            quote["book_observed_at"] = observed_at
+            quote["created_at"] = observed_at
+        else:
+            if old_observed_at:
+                quote["book_observed_at"] = old_observed_at
+            else:
+                quote.pop("book_observed_at", None)
+            if old_created_at:
+                quote["created_at"] = old_created_at
+            else:
+                quote.pop("created_at", None)
+    return confirmed_tokens
+
+
+def _confirm_shard_stream(
+    quotes: dict[str, dict[str, Any]],
+    shard_tokens: set[str],
+    *,
+    observed_at: str,
+) -> None:
+    """Advance only transport freshness for every known book on one shard."""
+
+    for token_id in shard_tokens:
+        if token_id in quotes:
+            quotes[token_id]["_stream_confirmed_at"] = observed_at
+
+
+async def _text_ping(ws: Any) -> None:
+    while True:
+        await asyncio.sleep(TEXT_PING_SECONDS)
+        await ws.send("PING")
+
+
+async def _receive_connection_shard(
+    shard: Mapping[str, Any],
+    *,
+    queue: asyncio.Queue[tuple[int, str | None]],
+    proxy: str | None,
+) -> None:
+    """Stream one bounded official-WS shard into the generation coordinator.
+
+    A normal return is also a failure: a generation is valid only while every
+    shard remains connected.  This function deliberately has no disk or DB
+    surface; the coordinator is the sole atomic manifest writer.
+    """
+
+    shard_id = int(shard["shard_id"])
+    tokens = list(shard["tokens"])
+    if not tokens or len(tokens) > MAX_TOKENS_PER_CONNECTION:
+        raise ContractError("resident_target_ws_connection_token_cap_exceeded")
+    subscription = {
+        "assets_ids": tokens,
+        "type": "market",
+        "custom_feature_enabled": True,
+    }
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connect_kwargs: dict[str, Any] = {
+        "ssl": ssl_context,
+        "ping_interval": 20,
+        "ping_timeout": 20,
+        "open_timeout": 20,
+        "close_timeout": ONE_SHOT_CLOSE_TIMEOUT_SEC,
+        "max_size": MAX_FRAME_BYTES,
+    }
+    if proxy:
+        connect_kwargs["proxy"] = proxy
+    async with websockets.connect(WS_URL, **connect_kwargs) as ws:
+        await ws.send(json.dumps(subscription))
+        ping_task = asyncio.create_task(_text_ping(ws))
+        try:
+            while True:
+                try:
+                    raw = await asyncio.wait_for(
+                        ws.recv(),
+                        timeout=RECEIVE_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    await queue.put((shard_id, None))
+                    continue
+                await queue.put((shard_id, raw))
+        finally:
+            ping_task.cancel()
+
+
+async def _publish_connection(
+    catalog: Mapping[str, Any],
+    *,
+    db_path: Path,
+    output_path: Path,
+    proxy: str | None,
+) -> None:
+    """Publish a complete multi-shard generation or publish nothing.
+
+    Any task failure, disconnect, or catalog change cancels every shard before
+    the outer resident loop starts a new generation.  This avoids blending
+    quotes from different catalog generations.
+    """
+
+    tokens = list(catalog["tokens"])
+    token_set = set(tokens)
+    shards = list(catalog.get("connection_shards") or _connection_shards(tokens))
+    shard_ids = [int(shard.get("shard_id", -1)) for shard in shards]
+    shard_tokens = [
+        str(token).strip()
+        for shard in shards
+        for token in (shard.get("tokens") or ())
+    ]
+    if (
+        not shards
+        or len(tokens) != len(token_set)
+        or len(shard_ids) != len(set(shard_ids))
+        or any(len(shard.get("tokens") or ()) > MAX_TOKENS_PER_CONNECTION for shard in shards)
+        or len(shard_tokens) != len(set(shard_tokens))
+        or sorted(shard_tokens) != sorted(tokens)
+    ):
+        raise ContractError("resident_target_ws_shard_catalog_invalid")
+    assert_process_memory_budget(projected_bytes=len(tokens) * 64 * 1024)
+    started_at = _now_utc()
+    quotes: dict[str, dict[str, Any]] = {}
+    queue: asyncio.Queue[tuple[int, str | None]] = asyncio.Queue()
+    tokens_by_shard = {
+        int(shard["shard_id"]): set(shard["tokens"])
+        for shard in shards
+    }
+    tasks = {
+        int(shard["shard_id"]): asyncio.create_task(
+            _receive_connection_shard(shard, queue=queue, proxy=proxy)
+        )
+        for shard in shards
+    }
+    next_scope_probe = time.monotonic() + SCOPE_REFRESH_SECONDS
+    try:
+        while True:
+            for shard_id, task in tasks.items():
+                if task.done():
+                    # A closed socket must not leave a partially fresh root
+                    # manifest behind while other shards continue advancing.
+                    try:
+                        task.result()
+                    except asyncio.CancelledError:
+                        raise ConnectionError(
+                            f"resident_target_ws_shard_cancelled:{shard_id}"
+                        ) from None
+                    except Exception:
+                        raise
+                    raise ConnectionError(
+                        f"resident_target_ws_shard_disconnected:{shard_id}"
+                    )
+            try:
+                shard_id, raw = await asyncio.wait_for(
+                    queue.get(), timeout=RECEIVE_TIMEOUT_SECONDS
+                )
+            except asyncio.TimeoutError:
+                shard_id, raw = -1, None
+            observed_at = _now_utc()
+            if raw is not None:
+                shard_tokens = tokens_by_shard.get(shard_id)
+                if shard_tokens is None:
+                    raise ContractError("resident_target_ws_unknown_shard_event")
+                for message in _iter_messages(raw):
+                    parsed = _quote_from_message(message, observed_at=observed_at)
+                    if parsed is not None and parsed[0] in token_set:
+                        token_id, incoming = parsed
+                        if token_id not in shard_tokens:
+                            raise ContractError(
+                                "resident_target_ws_shard_token_escape"
+                            )
+                        _merge_book_quote(quotes, token_id, incoming)
+                        quotes[token_id]["_stream_confirmed_at"] = observed_at
+                    confirmed = _apply_price_changes(
+                        quotes, message, observed_at=observed_at
+                    )
+                    for token_id in confirmed:
+                        if token_id not in shard_tokens:
+                            raise ContractError(
+                                "resident_target_ws_shard_token_escape"
+                            )
+                # Any authenticated official message confirms the whole
+                # socket generation, including economically unchanged books
+                # on the same bounded shard. This transport clock never
+                # changes their economic quote identity.
+                _confirm_shard_stream(
+                    quotes,
+                    shard_tokens,
+                    observed_at=observed_at,
+                )
+            if _future_probability_expired(catalog, observed_at_utc=observed_at):
+                raise ScopeCatalogChanged("resident_target_ws_probability_expired")
+            if time.monotonic() >= next_scope_probe:
+                refreshed = _scope(db_path=db_path, as_of_utc=observed_at)
+                if refreshed["catalog_sha256"] != catalog["catalog_sha256"]:
+                    raise ScopeCatalogChanged("resident_target_ws_catalog_changed")
+                next_scope_probe = time.monotonic() + SCOPE_REFRESH_SECONDS
+            if raw is None or len(quotes) != len(tokens):
+                continue
+            # Recheck immediately before the sole write.  A closed or failed
+            # shard never permits a partial or cross-generation publication.
+            if any(task.done() for task in tasks.values()):
+                continue
+            manifest = _build_multi_scope_manifest(
+                catalog,
+                quotes=quotes,
+                observed_at=observed_at,
+                started_at=started_at,
+            )
+            if manifest["state"] != "connected":
+                continue
+            _assert_output_disk_budget(output_path)
+            write_bounded_json(output_path, manifest, limit=MAX_JSON_OUTPUT_BYTES)
+            assert_process_memory_budget()
+    finally:
+        for task in tasks.values():
+            task.cancel()
+        await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+
+async def run_resident_target_ws_publisher(
+    *,
+    db_path: Path = DEFAULT_TARGET_DB,
+    output_path: Path = DEFAULT_TARGET_WS_MANIFEST,
+) -> None:
+    """Reconnect forever without disturbing the shared WS listener."""
+
+    backoff = 1.0
+    while True:
+        try:
+            as_of_utc = datetime.now(timezone.utc).isoformat().replace(
+                "+00:00",
+                "Z",
+            )
+            catalog = _scope(db_path=db_path, as_of_utc=as_of_utc)
+            await _publish_connection(
+                catalog,
+                db_path=Path(db_path).expanduser().resolve(),
+                output_path=Path(output_path).expanduser().resolve(),
+                proxy=_configured_proxy(
+                    os.environ.get("PM_MARKET_WS_PROXY", "")
+                ),
+            )
+            backoff = 1.0
+        except asyncio.CancelledError:
+            raise
+        except ScopeCatalogChanged:
+            backoff = 1.0
+            continue
+        except Exception as exc:
+            print(
+                "[market_ws][target_exact] "
+                f"{type(exc).__name__}:{str(exc)[:240]}",
+                flush=True,
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 1.7, RETRY_MAX_SECONDS)
+
+
+__all__ = [
+    "MANIFEST_SCHEMA",
+    "MAX_TARGET_STATIONS",
+    "MAX_TARGET_SCOPES",
+    "MAX_TARGET_TOKENS",
+    "MAX_TOKENS_PER_CONNECTION",
+    "SCHEMA",
+    "ScopeCatalogChanged",
+    "_apply_no_live_boundary",
+    "_apply_price_changes",
+    "_confirm_shard_stream",
+    "_build_multi_scope_manifest",
+    "_connection_shards",
+    "_future_probability_expired",
+    "_merge_book_quote",
+    "_quote_economic_state",
+    "_receive_connection_shard",
+    "_scope",
+    "run_resident_target_ws_publisher",
+]

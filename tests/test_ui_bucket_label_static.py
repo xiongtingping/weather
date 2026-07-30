@@ -55,6 +55,20 @@ def test_dashboard_uses_local_font_stack_without_remote_google_fonts():
     assert '"PingFang SC"' in html
 
 
+def test_physical_ssot_posterior_renders_the_complete_server_distribution():
+    html = UI_INDEX.read_text(encoding="utf-8")
+    dashboard_block = _function_block("dashboardPosterior")
+    ssot_chain_block = _function_block("renderUiSnapshotSsotChainBoard")
+    assert "rows," in dashboard_block
+    assert "marketRows," in dashboard_block
+    assert "reported_physical_x_distribution.slice().sort" in html
+    assert "ranked_temperature_probabilities.slice(0, 5)" not in ssot_chain_block
+    assert "ranked_bucket_probabilities.slice(0, 5)" not in ssot_chain_block
+    assert "bucket_probabilities) ? posterior.bucket_probabilities : []" in ssot_chain_block
+    assert "全部整数格点 · 服务端 SSOT" in html
+    assert "toExponential(2)" in html
+
+
 def test_recovered_bayes_chain_is_marked_retired_compat_in_frontend():
     html = UI_INDEX.read_text(encoding="utf-8")
     block = _function_block("bayesChainForDistributionRow")
@@ -646,7 +660,7 @@ def test_pending_model_blocks_intraday_physical_axis_neutral_fallback():
     assert "function renderEventIntelIntradayEvidenceAxis(payload, item = null)" in html
     assert pending_idx < evidence_idx
     assert "后验SSOT未物化" in block
-    assert "等待模型分布生成" in block
+    assert "待接入生产后验" in block
     assert "不把空证据解释为中性或拉扯" in block
     assert "renderEventIntelIntradayEvidenceAxis(payload, item)" in html
     assert "renderEventIntelIntradayEvidenceAxis(payload || {}, item)" in html

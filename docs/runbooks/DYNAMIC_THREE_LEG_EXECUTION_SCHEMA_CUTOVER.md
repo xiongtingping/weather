@@ -1,8 +1,9 @@
 ---
-status: accepted
+status: superseded
 authority: L2
 owner: weather-system
 effective_from: 2026-07-13
+superseded_by: ../adr/ADR-0004-DYNAMIC-THREE-LEG-V4-POSTERIOR-NO-STANDING-EXIT.md
 ---
 
 # 动态三腿生产执行 Schema 切换 Runbook
@@ -92,4 +93,4 @@ trap - EXIT
 
 ## 后续边界
 
-第一阶段 schema 已在 2026-07-14 受控维护窗口完成：4 张表与 5 个索引均已验收，且无订单演练使用同一窗口外置备份完成。第二阶段 position-lot/continuation/market-alpha additive schema 也已完成；当前只读验收的三个 schema section 均为 `state=ready`，无缺表或缺索引。Schema 完成不等于 live 激活。resident validator、CLOB place/reconcile adapter、reconcile-first 循环、fill→position/transition/risk reservation、ACK-loss/partial-fill/restart 幂等均已实现并通过自动化测试。default-off launchd unit 已安装到用户 LaunchAgents，但保持 persistent disabled、未加载，仓库与安装 SHA 一致；launcher 使用项目 `.venv`，不使用 macOS Python。真实 T1→T5 生产证据与 accepted activation 仍未满足；未全部通过前不得开启六个 production/live 环境开关。
+第一阶段 schema 已在 2026-07-14 受控维护窗口完成：4 张表与 5 个索引均已验收，且无订单演练使用同一窗口外置备份完成。第二阶段 position-lot/continuation/market-alpha additive schema 也已完成；当前只读验收的三个 schema section 均为 `state=ready`，无缺表或缺索引。Schema 完成不等于 live 激活。resident validator、CLOB place/reconcile adapter、reconcile-first 循环、fill→position/transition/risk reservation、ACK-loss/partial-fill/restart 幂等均已实现并通过自动化测试。default-off launchd unit 已安装到用户 LaunchAgents，但保持 persistent disabled、未加载，仓库与安装 SHA 一致；launcher 使用项目 `.venv`，不使用 macOS Python。accepted activation 尚未满足；未通过前不得开启六个 production/live 环境开关。真实 T1→T5 从首笔受硬 deadline 保护的 POST 开始采集并持续验收，不再作为无法自举的前置样本门。

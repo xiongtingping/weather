@@ -1,0 +1,564 @@
+{
+  "activation": {
+    "calls_order_gateway": false,
+    "contract_sha256": "93c5fcda7316f49828aff3057c3c708207fe051d51c9f2913f55aba05d57f186",
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+    "places_orders": false,
+    "schema": "bayes_basket_target_production_no_live_activation_v1",
+    "validation_blockers": []
+  },
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "read_only_audit": true,
+    "writes_orders": false
+  },
+  "calibration_evidence": {
+    "blocked_without_candidates": false,
+    "calibration_artifact_count": 3,
+    "calls_order_gateway": false,
+    "candidate_only": true,
+    "checks": {
+      "candidate_artifact_count_positive": true,
+      "model_provider_set_complete": true,
+      "oos_promotion_gate_complete": false,
+      "published_receive_timestamps_complete": false,
+      "strict_asof_replay_pass": true,
+      "three_model_available": true,
+      "truth_lineage_complete": true
+    },
+    "ensemble_artifact_count": 1,
+    "et_history_evidence": {
+      "as_of_utc": "2026-07-26T16:00:00Z",
+      "joined_station_days": 9,
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/settlement_history_18z_d2_v8.json",
+      "promotion_allowed": false,
+      "receipt_sha256": "e2f19734b051bb07a602dfe1b0e1e739aa839d5abba9b3cba9437123b8d5cb8f",
+      "scope": {
+        "excluded_source_lanes": [
+          "amsc"
+        ],
+        "excluded_station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KDAL",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KMIA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MMMX",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RCSS",
+          "RJTT",
+          "RKSI",
+          "RPLL",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ],
+        "included_station_ids": [
+          "RKPK"
+        ],
+        "mode": "allowlist"
+      },
+      "state": "READY_FOR_STRICT_ASOF"
+    },
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/calibration_18z_d2_v3.json",
+    "promotion_allowed": false,
+    "promotion_decision_count": 4,
+    "receipt_sha256": "edc4cb69ca8d246b6d1b620fdf3261a334695c34c2dcdf116f23aecdbbfde5d9",
+    "rejected_only": true,
+    "state": "VALID_CANDIDATE_EVIDENCE",
+    "writes_production_db": false
+  },
+  "capital_pool": {
+    "balance_usdc": 0.0,
+    "capital_epoch_id_present": true,
+    "pool_id": 1,
+    "ready": true,
+    "reserved_usdc": 0.0,
+    "state": "ready",
+    "version": 0
+  },
+  "controlled_migration_pause_marker": "/Users/xiong/weather/data/bayes_basket_target_migration_paused.flag",
+  "controlled_migration_pause_marker_required": false,
+  "controlled_migration_pause_marker_token": "bayes-basket-target-m5-migration-v1",
+  "controlled_migration_pause_marker_valid": null,
+  "database": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/rkpk_no_live_ssot.db",
+  "database_scope": "isolated_target_no_live",
+  "db_activation_alignment": {
+    "aligned": true,
+    "expected": {
+      "activation_contract_sha256": "93c5fcda7316f49828aff3057c3c708207fe051d51c9f2913f55aba05d57f186",
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false,
+      "places_orders": false
+    },
+    "mismatches": [],
+    "observed": {
+      "activation_contract_sha256": "93c5fcda7316f49828aff3057c3c708207fe051d51c9f2913f55aba05d57f186",
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false,
+      "places_orders": false
+    },
+    "state": "checked"
+  },
+  "future_day_residue": {
+    "as_of_utc": "2026-07-26T16:30:05.357238Z",
+    "audit_sha256": "0c6711a336ff88b10c0ee5844b1c12d5a6ccceec1a6ad6388cf9154b057c9fc3",
+    "blockers": [],
+    "checks": {
+      "calls_order_gateway": false,
+      "future_decisions_are_blocked_no_order": true,
+      "future_residue_isolated": true,
+      "no_order_intents_or_capital_downstream": true,
+      "places_orders": false,
+      "started_registry_excludes_future": true,
+      "writes_production_database": false,
+      "writes_target_database": false
+    },
+    "consumer_filter": {
+      "future_scope_excluded": true,
+      "started_registry_future_scope_count": 0,
+      "started_registry_scope_count": 11
+    },
+    "formal_input_future_partitions": [
+      {
+        "currently_future_settlement": 0,
+        "invalid": 0,
+        "row_count": 1,
+        "started_or_closed_settlement": 1,
+        "state": "checked",
+        "table": "basket_probability_envelope"
+      },
+      {
+        "currently_future_settlement": 0,
+        "invalid": 0,
+        "row_count": 1,
+        "started_or_closed_settlement": 1,
+        "state": "checked",
+        "table": "basket_official_ws_snapshot"
+      },
+      {
+        "currently_future_settlement": 0,
+        "row_count": 0,
+        "state": "missing_or_no_settlement_scope",
+        "table": "basket_confirmed_inventory_snapshot"
+      },
+      {
+        "currently_future_settlement": 0,
+        "row_count": 0,
+        "state": "missing_or_no_settlement_scope",
+        "table": "basket_order_state_snapshot"
+      },
+      {
+        "currently_future_settlement": 0,
+        "row_count": 0,
+        "state": "missing_or_no_settlement_scope",
+        "table": "basket_cash_phase_policy_artifact"
+      }
+    ],
+    "future_residue": {
+      "cycle_count": 0,
+      "cycle_ids_match_decisions": true,
+      "decision_count": 0,
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "non_blocked_decision_count": 0,
+      "non_prepared_cycle_count": 0
+    },
+    "operational": {
+      "auto_trade_decisions": {
+        "created_before_settlement_start_count": 0,
+        "currently_future_settlement_count": 0,
+        "event_dates": [
+          "2026-07-27"
+        ],
+        "row_count": 1
+      },
+      "basket_target_execution_cycles": {
+        "created_before_settlement_start_count": 0,
+        "currently_future_settlement_count": 0,
+        "event_dates": [
+          "2026-07-27"
+        ],
+        "row_count": 1
+      }
+    },
+    "residue_definition": "created_at_before_registry_settlement_day_start",
+    "schema": "bayes_basket_target_future_day_residue_audit_v1",
+    "target_timezone_authority": "market_registry.settlement_timezone"
+  },
+  "main_chain": {
+    "blocked_at": "OFFICIAL_FACTS",
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "final_p1_chain": {
+      "blocked_at": "OFFICIAL_FACTS",
+      "ready": false,
+      "requires_auto_trade_decision": true
+    },
+    "live_submit_authorized": false,
+    "order": [
+      "OFFICIAL_FACTS",
+      "THREE_MODEL",
+      "SETTLEMENT_ALIGN",
+      "CALIBRATION_ENSEMBLE",
+      "P0_P1",
+      "OFFICIAL_WS",
+      "BASKET",
+      "DECISION_RECONCILE"
+    ],
+    "places_orders": false,
+    "preliminary_p0_chain": {
+      "capital_authorized": false,
+      "final_authority": "P1",
+      "intents_written": 0,
+      "orders_submitted": 0,
+      "preselection_plan_count": 1,
+      "ready": true,
+      "reservations_written": 0,
+      "state": "PRELIMINARY_NO_LIVE"
+    },
+    "ready": false,
+    "schema": "bayes_basket_target_main_chain_status_v1",
+    "stages": [
+      {
+        "id": "OFFICIAL_FACTS",
+        "label": "官方天气事实",
+        "observed": {
+          "observation_facts": 0
+        },
+        "ready": false,
+        "state": "MISSING"
+      },
+      {
+        "id": "THREE_MODEL",
+        "label": "ECMWF/GFS/ICON 三模型预测",
+        "observed": {
+          "complete_curve_count": 2,
+          "model_provider_set_complete": true
+        },
+        "ready": true,
+        "state": "READY_EVIDENCE"
+      },
+      {
+        "id": "SETTLEMENT_ALIGN",
+        "label": "market_registry 结算日界 exact join",
+        "observed": {
+          "joined_station_days": 9,
+          "state": "READY_FOR_STRICT_ASOF"
+        },
+        "ready": true,
+        "state": "READY_FOR_STRICT_ASOF"
+      },
+      {
+        "id": "CALIBRATION_ENSEMBLE",
+        "label": "模型校准与组合",
+        "observed": {
+          "calibration_activation": 3,
+          "calibration_ensemble_artifact": 1,
+          "calibration_model_artifact": 2
+        },
+        "ready": true,
+        "state": "ACTIVE_NO_LIVE_ONLY"
+      },
+      {
+        "id": "P0_P1",
+        "label": "P0/P1 温度概率",
+        "observed": {
+          "basket_probability_envelope": 1,
+          "stage_counts": {
+            "P0-M": 1
+          },
+          "started_settlement_p1_count": 0
+        },
+        "ready": false,
+        "state": "BLOCKED"
+      },
+      {
+        "id": "OFFICIAL_WS",
+        "label": "官方 CLOB WS 盘口快照",
+        "observed": {
+          "basket_official_ws_snapshot": 1,
+          "complete_scope_count": 1,
+          "incomplete_scope_count": 0
+        },
+        "ready": true,
+        "state": "MATERIALIZED"
+      },
+      {
+        "id": "BASKET",
+        "label": "篮子计算与持有计划",
+        "observed": {
+          "execution_cycles": 1,
+          "execution_cycles_future_settlement": 0,
+          "execution_cycles_started_settlement": 1
+        },
+        "ready": false,
+        "state": "BLOCKED"
+      },
+      {
+        "id": "DECISION_RECONCILE",
+        "label": "no-live 决策与对账",
+        "observed": {
+          "capital_reservations": 0,
+          "decisions": 1,
+          "decisions_future_settlement": 0,
+          "decisions_started_settlement": 1,
+          "non_blocked_decisions": 0,
+          "order_events": 0,
+          "order_intents": 0,
+          "reconciliations": 0
+        },
+        "ready": true,
+        "state": "NO_RECONCILIATION_REQUIRED"
+      }
+    ]
+  },
+  "migration": {
+    "calls_order_gateway": false,
+    "legacy_decision_row_count": 1,
+    "legacy_decision_table_collision": false,
+    "legacy_decision_table_present": true,
+    "live_submit_authorized": false,
+    "mutation_required": false,
+    "production_ssot_schema": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": []
+      },
+      "ledger_missing_columns": {
+        "auto_trade_decisions": []
+      },
+      "ledger_schema_ok": true,
+      "missing_tables": [],
+      "ok": true,
+      "probability_stage_contract_ok": true,
+      "schema": "bayes_basket_target_ssot_v3",
+      "settlement_timezone_missing_columns": {},
+      "target_tables_present": true
+    },
+    "schema": "bayes_basket_target_ssot_migration_plan_v1",
+    "target_ledger_schema": {
+      "blocking_authority": "auto_trade_decisions",
+      "calls_order_gateway": false,
+      "missing_columns": {},
+      "missing_tables": [],
+      "ok": true,
+      "places_orders": false,
+      "schema": "bayes_basket_target_atomic_ledger_v1"
+    },
+    "writes_orders": false
+  },
+  "native_decode_evidence": {
+    "calls_order_gateway": false,
+    "complete_curve_count": 2,
+    "curve_count": 2,
+    "decoded_point_count": 10,
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/native_decode_rkpk_20260727_18z.json",
+    "promotion_allowed": false,
+    "receipt_sha256": "403b631548e6522a53ee589edc413be831fec54c3f6abe7b93f2d519789fc1c3",
+    "state": "VALID_NATIVE_DECODE_EVIDENCE",
+    "writes_production_db": false
+  },
+  "official_ws_manifest": {
+    "exists": true,
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/ws_rkpk_20260727_manifest_latest.json"
+  },
+  "official_ws_scope_coverage": {
+    "authorizes_order": false,
+    "complete_scope_count": 1,
+    "complete_scope_token_count": 11,
+    "evidence_only": true,
+    "incomplete_scope_count": 0,
+    "incomplete_scope_sample": [],
+    "loaded_quote_count": 11,
+    "manifest_state": "connected",
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/ws_rkpk_20260727_manifest_latest.json",
+    "pending_materialized_token_count": 0,
+    "pending_shards": [],
+    "registry_scope_count": 1,
+    "registry_yes_token_count": 11,
+    "state": "loaded",
+    "station_scope": {
+      "mode": "allowlist",
+      "source_lane": "AWC_ONLY",
+      "station_ids": [
+        "RKPK"
+      ]
+    },
+    "unmaterialized_token_count": 0
+  },
+  "ok": true,
+  "resource_budget": {
+    "database_bytes": 602112,
+    "database_path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/rkpk_no_live_ssot.db",
+    "free_bytes": 39203966976,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_research_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 34373632,
+    "raw_bytes": 761857347,
+    "raw_file_count": 3698,
+    "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+    "shm_bytes": 0,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 0
+  },
+  "schema": "bayes_basket_target_production_readiness_v1",
+  "services": {
+    "state": "not_probed",
+    "system": {},
+    "user": {}
+  },
+  "state": "ready",
+  "station_scope": {
+    "mode": "allowlist",
+    "source_lane": "AWC_ONLY",
+    "station_ids": [
+      "RKPK"
+    ]
+  },
+  "target_inputs": {
+    "calibration_no_live_active": true,
+    "cash_phase_authorized": true,
+    "cash_phase_promoted": false,
+    "counts": {
+      "basket_cash_phase_policy_artifact": 1,
+      "basket_confirmed_inventory_snapshot": 1,
+      "basket_global_prior_artifact": 1,
+      "basket_official_ws_snapshot": 1,
+      "basket_order_state_snapshot": 1,
+      "basket_p0_preselection_plan": 1,
+      "basket_policy_activation": 1,
+      "basket_probability_envelope": 1,
+      "basket_station_policy_artifact": 3,
+      "basket_target_market_registry_snapshot": 1,
+      "calibration_activation": 3,
+      "calibration_artifact_promotion": 0,
+      "calibration_ensemble_artifact": 1,
+      "calibration_model_artifact": 2
+    },
+    "decision_clock_utc": "2026-07-26T16:30:05.357238Z",
+    "market_registry_materialized": true,
+    "missing_tables": [],
+    "official_ws_materialized": true,
+    "operational_counts": {
+      "bound_facts": 0,
+      "capital_reservations": 0,
+      "decisions": 1,
+      "execution_cycles": 1,
+      "non_blocked_decisions": 0,
+      "observation_facts": 0,
+      "order_events": 0,
+      "order_intents": 0,
+      "reconciliations": 0
+    },
+    "operational_event_day_counts": {
+      "decisions": {
+        "future_settlement": 0,
+        "invalid": 0,
+        "started_settlement": 1,
+        "total": 1
+      },
+      "execution_cycles": {
+        "future_settlement": 0,
+        "invalid": 0,
+        "started_settlement": 1,
+        "total": 1
+      }
+    },
+    "order_state_materialized": true,
+    "p0_preselection_materialized": true,
+    "policy_authority_counts": {
+      "cash_phase": 1,
+      "station_policy": 1
+    },
+    "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+    "probability_materialized": true,
+    "probability_stage_counts": {
+      "P0-M": 1
+    },
+    "probability_started_settlement_stage_counts": {
+      "P0-M": 1
+    },
+    "promoted_or_activated_counts": {
+      "calibration_no_live_authority": 3,
+      "cash_phase": 0,
+      "station_policy_promotion": 0
+    },
+    "q0_inventory_materialized": true,
+    "ready": true,
+    "station_policy_authorized": true,
+    "station_policy_promoted": false
+  },
+  "unfinished_target_inputs": [
+    {
+      "code": "started_settlement_p1_materialization",
+      "evidence": "target_ssot_stage_and_event_date_exact_count",
+      "observed": {
+        "all_stage_counts": {
+          "P0-M": 1
+        },
+        "started_settlement_stage_counts": {
+          "P0-M": 1
+        }
+      },
+      "required_tables": [
+        "basket_probability_envelope"
+      ],
+      "requirement": "当前已开始市场结算日的最终权威P1 probability envelope",
+      "state": "missing"
+    }
+  ]
+}

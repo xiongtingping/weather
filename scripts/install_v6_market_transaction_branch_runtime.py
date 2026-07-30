@@ -166,25 +166,27 @@ def _replace_once(source: str, before: str, after: str, label: str) -> str:
 
 def transform_drain(source: str) -> str:
     result = source if source.count(DRAIN_IMPORT_AFTER) == 1 else add_peak_auxiliary(source)
-    for before, after, label in (
-        (DRAIN_IMPORT_BEFORE, DRAIN_IMPORT_AFTER, "drain_import"),
-        (DRAIN_SIGNATURE_BEFORE, DRAIN_SIGNATURE_AFTER, "drain_signature"),
-        (DRAIN_COMMIT_BEFORE, DRAIN_COMMIT_AFTER, "drain_commit"),
-        (DRAIN_OUTCOME_BEFORE, DRAIN_OUTCOME_AFTER, "drain_outcome"),
+    for before, after, label, installed_token in (
+        (DRAIN_IMPORT_BEFORE, DRAIN_IMPORT_AFTER, "drain_import", "from production_probability_v6_transaction_commit_runtime import"),
+        (DRAIN_SIGNATURE_BEFORE, DRAIN_SIGNATURE_AFTER, "drain_signature", "market_inputs: Mapping[str, Any] | None = None"),
+        (DRAIN_COMMIT_BEFORE, DRAIN_COMMIT_AFTER, "drain_commit", "branch_commit = commit_v6_candidate_transaction("),
+        (DRAIN_OUTCOME_BEFORE, DRAIN_OUTCOME_AFTER, "drain_outcome", '"writer_route": _text(branch_commit.get("writer_route"))'),
     ):
-        result = _replace_once(result, before, after, label)
+        if installed_token not in result:
+            result = _replace_once(result, before, after, label)
     return result
 
 
 def transform_ingress(source: str) -> str:
     result = source
-    for before, after, label in (
-        (INGRESS_IMPORT_BEFORE, INGRESS_IMPORT_AFTER, "ingress_import"),
-        (INGRESS_PREWARM_BEFORE, INGRESS_PREWARM_AFTER, "ingress_prewarm"),
-        (INGRESS_DRAIN_BEFORE, INGRESS_DRAIN_AFTER, "ingress_drain"),
-        (INGRESS_RESULT_BEFORE, INGRESS_RESULT_AFTER, "ingress_result"),
+    for before, after, label, installed_token in (
+        (INGRESS_IMPORT_BEFORE, INGRESS_IMPORT_AFTER, "ingress_import", "from production_probability_v6_market_inputs_runtime import prewarm_v6_market_inputs"),
+        (INGRESS_PREWARM_BEFORE, INGRESS_PREWARM_AFTER, "ingress_prewarm", "market_inputs = prewarm_v6_market_inputs("),
+        (INGRESS_DRAIN_BEFORE, INGRESS_DRAIN_AFTER, "ingress_drain", "market_inputs=market_inputs,"),
+        (INGRESS_RESULT_BEFORE, INGRESS_RESULT_AFTER, "ingress_result", '"market_branch": {'),
     ):
-        result = _replace_once(result, before, after, label)
+        if installed_token not in result:
+            result = _replace_once(result, before, after, label)
     return result
 
 

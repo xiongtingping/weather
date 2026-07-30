@@ -1,0 +1,150 @@
+{
+  "approved_budget": {
+    "approval_scope": "bounded_read_only_audit_only",
+    "calls_order_gateway": false,
+    "effective_date": "2026-07-24",
+    "execution_mode": "production_no_live",
+    "lane": "bayes_basket_target",
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "max_writer_lock_wait_ms": 250.0,
+      "max_ws_snapshot_age_sec": 120.0,
+      "min_free_bytes": 536870912,
+      "resource_audit_p95_ms": 500.0,
+      "resource_audit_p99_ms": 1000.0,
+      "runtime_audit_p95_ms": 250.0,
+      "runtime_audit_p99_ms": 500.0
+    },
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "schema": "bayes_basket_target_performance_budget_v1",
+    "source": "/Users/xiong/weather/config/bayes_basket_target/performance_budget_v1.json",
+    "state": "DECLARED_FOR_NO_LIVE_AUDIT",
+    "writes_production_db": false
+  },
+  "blockers": [
+    "official_ws_materialized_snapshot_stale"
+  ],
+  "boundary": {
+    "authorizes_order": false,
+    "calls_order_gateway": false,
+    "cleanup_performed": false,
+    "evidence_only_ws": true,
+    "external_archive_dependency": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "settlement_floor_calculation_only": true,
+    "writes_shared_live_db": false
+  },
+  "checks": {
+    "approved_performance_budget_present": true,
+    "calls_order_gateway": false,
+    "evidence_cache_non_authorizing": true,
+    "evidence_cache_not_used_as_snapshot": true,
+    "input_batch_limit_declared": true,
+    "materialized_ws_snapshot_present": true,
+    "materialized_ws_snapshot_within_declared_age": false,
+    "orders_submitted": false,
+    "resource_audit_samples_completed": true,
+    "resource_audit_within_declared_budget": true,
+    "runtime_audit_samples_completed": true,
+    "runtime_audit_within_declared_budget": true,
+    "sample_count_bounded": true,
+    "target_resource_budget_within_limit": true,
+    "writer_lock_wait_telemetry_present": true,
+    "writes_production_db": false
+  },
+  "execution_mode": "production_no_live",
+  "lane": "bayes_basket_target",
+  "measured_at_utc": "2026-07-29T14:52:38.252671Z",
+  "performance": {
+    "read_transaction_acquire": {
+      "error_count": 0,
+      "errors": [],
+      "read_transaction_acquire_latency": {
+        "max_ms": 1.456,
+        "mean_ms": 1.454,
+        "min_ms": 1.453,
+        "p95_ms": 1.456,
+        "p99_ms": 1.456,
+        "sample_count": 3
+      },
+      "state": "OBSERVED",
+      "writer_lock_wait_last_acquired_at": "2026-07-29T14:52:41.210Z",
+      "writer_lock_wait_last_ms": 1.822417,
+      "writer_lock_wait_last_operation": "commit_blocked_scope_decision",
+      "writer_lock_wait_max_ms": 2585.127625,
+      "writer_lock_wait_reason": "target_owned_bounded_writer_telemetry",
+      "writer_lock_wait_sample_count": 61339,
+      "writer_lock_wait_telemetry": "OBSERVED",
+      "writer_lock_wait_total_ms": 101088.797768,
+      "writer_lock_wait_updated_at": "2026-07-29T14:52:41.212Z"
+    },
+    "resource_audit": {
+      "error_count": 0,
+      "errors": [],
+      "latency": {
+        "max_ms": 118.567,
+        "mean_ms": 89.154,
+        "min_ms": 78.453,
+        "p95_ms": 97.901,
+        "p99_ms": 118.567,
+        "sample_count": 31
+      }
+    },
+    "runtime_audit": {
+      "error_count": 0,
+      "errors": [],
+      "latency": {
+        "max_ms": 123.323,
+        "mean_ms": 77.203,
+        "min_ms": 59.438,
+        "p95_ms": 120.361,
+        "p99_ms": 123.323,
+        "sample_count": 31
+      }
+    }
+  },
+  "resource_budget": {
+    "database_bytes": 167256064,
+    "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "free_bytes": 10221654016,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_research_raw_bytes": 1073741824,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 77135872,
+    "raw_bytes": 940485381,
+    "raw_file_count": 7267,
+    "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+    "shm_bytes": 32768,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 2855192
+  },
+  "sample_count_requested": 31,
+  "sample_limit": 64,
+  "schema": "bayes_basket_target_performance_audit_v1",
+  "state": "BLOCKED_EVIDENCE",
+  "ws_snapshot_age": {
+    "error_count": 0,
+    "errors": [],
+    "evidence_cache_count": 30,
+    "evidence_cache_is_non_authorizing": true,
+    "evidence_cache_is_not_materialized_snapshot": true,
+    "latest_evidence_cache_age_sec": 1594.067,
+    "latest_materialized_snapshot_age_sec": 3592.916,
+    "materialized_snapshot_count": 2147,
+    "oldest_evidence_cache_age_sec": 217860.196,
+    "oldest_materialized_snapshot_age_sec": 132193.422,
+    "state": "READY"
+  }
+}

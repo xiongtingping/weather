@@ -1,0 +1,58 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-9b84a91fae030b9da769295d",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_pre_event",
+    "content_sha256": "22395e2ad5bbf86556877796e4e293944f3f7b051fb7d212c25d7229ac81d2b2",
+    "decision_at_utc": "2026-07-29T06:26:45Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "GFS",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": false,
+    "production_authority": false,
+    "provider_id": "gfs_0p25_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-28T21:47:12Z",
+    "raw_payload_sha256s": [
+      "ba3def82c86c896ade1d5e036ea608d30d11412ad36d09f11ad788c259547fa1"
+    ],
+    "receipt_sha256": "df713a5e8a7026d0f0ac8e5ca1b2815978f82d60d7964c90a33ddaf19470584a",
+    "received_at_utc": "2026-07-29T06:26:45Z",
+    "run_initialization_utc": "2026-07-28T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260728/18/atmos/gfs.t18z.pgrb2.0p25.f036",
+    "station_id": "WSSS",
+    "target_local_date": "2026-07-30",
+    "target_timezone": "Asia/Singapore",
+    "valid_time_utc": "2026-07-30T06:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "capture_phase": "prospective_pre_event",
+    "global_native_field_reused": true,
+    "live_submit_authorized": false,
+    "network_request_reused": true,
+    "orders_submitted": 0,
+    "p0_consumption_authorized": true,
+    "p1_consumption_authorized": false,
+    "places_orders": false,
+    "raw_capture_only": true,
+    "request_byte_range": {
+      "end": 414113928,
+      "start": 413599921
+    },
+    "resource_budget": {
+      "captured_response_bytes": 514008,
+      "max_capture_bytes": 268435456,
+      "max_response_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/gfs_0p25_official/receipts/9b84a91fae030b9da769295d0e34a9893bd7c197c8b373dad4df9dae4f71b793.json"
+}

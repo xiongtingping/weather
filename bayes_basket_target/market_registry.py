@@ -1,0 +1,708 @@
+"""Isolated market-registry export and target-local ingress.
+
+The resident live database may be read by an explicit, read-only exporter,
+but the target lane never opens it at runtime.  A registry snapshot is a
+content-addressed append-only object in the target SSOT.  Consumers select
+the newest complete target snapshot and never fall back to the shared-live
+table.  Small in-memory unit-test fixtures may still expose the historical
+table name; that compatibility path is intentionally limited to SQLite's
+``:memory:`` connections and is not available to a file-backed deployment.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+from .contracts import ContractError, content_sha256
+from .database import SHARED_LIVE_DB
+from .settlement_time import settlement_day_state
+from .resource_bounds import load_bounded_json, write_bounded_json_if_changed
+from .resource_bounds import assert_connection_target_capacity
+
+
+SCHEMA = "bayes_basket_target_market_registry_snapshot_v1"
+SHARED_EXPORT_SCOPE = "shared_live_registry_export_only"
+TARGET_LOCAL_EXPORT_SCOPE = "target_local_registry_scope_export"
+EXPORT_SCOPES = frozenset({SHARED_EXPORT_SCOPE, TARGET_LOCAL_EXPORT_SCOPE})
+TABLE = "basket_target_market_registry"
+SNAPSHOT_TABLE = "basket_target_market_registry_snapshot"
+LEGACY_TEST_TABLE = "reported_trajectory_market_registry"
+REQUIRED_ROW_KEYS = (
+    "slug", "event_date", "outcome", "city_slug", "station_id",
+    "settlement_timezone", "settlement_unit", "source_lane",
+    "source_eligible", "source_block_reason", "resolution_url",
+    "rules_sha256", "yes_token", "no_token", "market_active",
+    "market_accepting_orders", "registry_json", "refreshed_at",
+)
+
+DDL = f"""
+CREATE TABLE IF NOT EXISTS {SNAPSHOT_TABLE} (
+  snapshot_sha256 TEXT PRIMARY KEY CHECK(length(snapshot_sha256)=64),
+  source_schema TEXT NOT NULL,
+  source_scope TEXT NOT NULL CHECK(source_scope='shared_live_registry_export_only'),
+  exported_at_utc TEXT NOT NULL,
+  source_database_path TEXT NOT NULL,
+  row_count INTEGER NOT NULL CHECK(row_count>=0),
+  ingested_at_utc TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64)
+);
+
+CREATE TABLE IF NOT EXISTS {TABLE} (
+  snapshot_sha256 TEXT NOT NULL REFERENCES {SNAPSHOT_TABLE}(snapshot_sha256),
+  slug TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  city_slug TEXT NOT NULL,
+  station_id TEXT,
+  settlement_timezone TEXT,
+  settlement_unit TEXT,
+  source_lane TEXT NOT NULL CHECK(source_lane IN ('amsc','awc','blocked')),
+  source_eligible INTEGER NOT NULL CHECK(source_eligible IN (0,1)),
+  source_block_reason TEXT,
+  resolution_url TEXT,
+  rules_sha256 TEXT NOT NULL CHECK(length(rules_sha256)=64),
+  yes_token TEXT,
+  no_token TEXT,
+  market_active INTEGER NOT NULL CHECK(market_active IN (0,1)),
+  market_accepting_orders INTEGER NOT NULL CHECK(market_accepting_orders IN (0,1)),
+  registry_json TEXT NOT NULL,
+  refreshed_at TEXT NOT NULL,
+  PRIMARY KEY(snapshot_sha256,slug,event_date,outcome)
+);
+
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_latest_idx
+  ON {TABLE}(snapshot_sha256,station_id,event_date,source_eligible,market_active,market_accepting_orders);
+"""
+
+
+def _canonical(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _text(name: str, value: Any, *, allow_empty: bool = False) -> str:
+    result = str(value or "").strip()
+    if not result and not allow_empty:
+        raise ContractError(f"{name}_missing")
+    return result
+
+
+def _iso(name: str, value: Any) -> str:
+    result = _text(name, value)
+    try:
+        parsed = datetime.fromisoformat(result.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractError(f"{name}_invalid_iso8601") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ContractError(f"{name}_timezone_required")
+    return result
+
+
+def _flag(name: str, value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if value in (0, 1):
+        return int(value)
+    raise ContractError(f"{name}_must_be_boolean")
+
+
+def _row_for_export(raw: Mapping[str, Any]) -> dict[str, Any]:
+    row = {key: raw.get(key) for key in REQUIRED_ROW_KEYS}
+    row["slug"] = _text("slug", row["slug"])
+    row["event_date"] = _text("event_date", row["event_date"])
+    row["outcome"] = _text("outcome", row["outcome"])
+    row["city_slug"] = _text("city_slug", row["city_slug"], allow_empty=True)
+    row["station_id"] = _text("station_id", row["station_id"], allow_empty=True)
+    row["settlement_timezone"] = _text("settlement_timezone", row["settlement_timezone"], allow_empty=True)
+    row["settlement_unit"] = _text("settlement_unit", row["settlement_unit"], allow_empty=True)
+    source_lane = _text("source_lane", row["source_lane"])
+    if source_lane not in {"amsc", "awc", "blocked"}:
+        raise ContractError("source_lane_invalid")
+    row["source_lane"] = source_lane
+    row["source_eligible"] = _flag("source_eligible", row["source_eligible"])
+    row["market_active"] = _flag("market_active", row["market_active"])
+    row["market_accepting_orders"] = _flag("market_accepting_orders", row["market_accepting_orders"])
+    for key in ("source_block_reason", "resolution_url", "yes_token", "no_token"):
+        row[key] = _text(key, row[key], allow_empty=True)
+    row["rules_sha256"] = _text("rules_sha256", row["rules_sha256"])
+    if len(row["rules_sha256"]) != 64:
+        raise ContractError("rules_sha256_invalid")
+    registry = row["registry_json"]
+    if isinstance(registry, str):
+        try:
+            registry = json.loads(registry)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ContractError("registry_json_invalid") from exc
+    if not isinstance(registry, Mapping):
+        raise ContractError("registry_json_mapping_required")
+    row["registry_json"] = json.dumps(dict(registry), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    row["refreshed_at"] = _iso("refreshed_at", row["refreshed_at"])
+    return row
+
+
+def _snapshot_core(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in payload.items() if key != "snapshot_sha256"}
+
+
+def _read_payload(path: Path) -> dict[str, Any]:
+    try:
+        payload = load_bounded_json(path)
+    except Exception as exc:
+        raise ContractError("market_registry_snapshot_json_invalid") from exc
+    if not isinstance(payload, Mapping):
+        raise ContractError("market_registry_snapshot_mapping_required")
+    payload = dict(payload)
+    supplied = _text("snapshot_sha256", payload.get("snapshot_sha256"))
+    expected = hashlib.sha256(_canonical(_snapshot_core(payload))).hexdigest()
+    if supplied != expected:
+        raise ContractError("market_registry_snapshot_content_sha_mismatch")
+    if payload.get("schema") != SCHEMA:
+        raise ContractError("market_registry_snapshot_schema_invalid")
+    source_scope = str(payload.get("source_scope") or "")
+    if source_scope not in EXPORT_SCOPES:
+        raise ContractError("market_registry_snapshot_scope_invalid")
+    if source_scope == TARGET_LOCAL_EXPORT_SCOPE:
+        boundary = payload.get("boundary")
+        required_boundary = {
+            "target_only": True,
+            "reads_target_database": True,
+            "writes_target_database": False,
+            "reads_shared_live_database": False,
+            "writes_shared_live_database": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+        if (
+            not isinstance(boundary, Mapping)
+            or any(boundary.get(key) is not value for key, value in required_boundary.items())
+        ):
+            raise ContractError("market_registry_target_local_boundary_invalid")
+        source_database = Path(
+            _text("source_database_path", payload.get("source_database_path"))
+        ).expanduser().resolve()
+        if source_database == SHARED_LIVE_DB:
+            raise ContractError("market_registry_target_local_database_invalid")
+        source_snapshot = _text(
+            "source_snapshot_sha256",
+            payload.get("source_snapshot_sha256"),
+        )
+        if len(source_snapshot) != 64:
+            raise ContractError("market_registry_source_snapshot_sha256_invalid")
+    if payload.get("source_schema") != "reported_trajectory_market_registry_v1":
+        raise ContractError("market_registry_snapshot_source_schema_invalid")
+    _iso("exported_at_utc", payload.get("exported_at_utc"))
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        raise ContractError("market_registry_snapshot_rows_missing")
+    normalized = [_row_for_export(item) for item in rows if isinstance(item, Mapping)]
+    if len(normalized) != len(rows):
+        raise ContractError("market_registry_snapshot_row_invalid")
+    if int(payload.get("row_count") or -1) != len(normalized):
+        raise ContractError("market_registry_snapshot_row_count_mismatch")
+    identities: set[tuple[str, str, str]] = set()
+    for row in normalized:
+        identity = (row["slug"], row["event_date"], row["outcome"])
+        if identity in identities:
+            raise ContractError("market_registry_snapshot_duplicate_identity")
+        identities.add(identity)
+    payload["rows"] = normalized
+    return payload
+
+
+def load_market_registry_snapshot(path: Path) -> dict[str, Any]:
+    """Load and content-verify one exported registry snapshot without ingesting it."""
+
+    return _read_payload(Path(path).expanduser().resolve())
+
+
+def export_shared_live_registry(
+    *,
+    source_db: Path,
+    output_path: Path,
+    station_id: str = "",
+    event_date: str = "",
+    as_of_utc: str | datetime | None = None,
+    include_not_started_for_p0: bool = False,
+    current_catalog_only: bool = False,
+) -> dict[str, Any]:
+    """Read only the shared registry and write one independent JSON object.
+
+    The shared/live registry may contain markets listed before their ET event
+    day starts.  Such rows are discovery material, not target SSOT scope, so
+    they are filtered before the target snapshot is written.
+    """
+
+    source = Path(source_db).expanduser().resolve()
+    if not source.is_file():
+        raise ContractError("shared_live_registry_source_missing")
+    clauses: list[str] = []
+    params: list[str] = []
+    if station_id:
+        clauses.append("station_id=?")
+        params.append(station_id)
+    if event_date:
+        clauses.append("event_date=?")
+        params.append(event_date)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    with sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=30.0) as conn:
+        conn.row_factory = sqlite3.Row
+        table = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='reported_trajectory_market_registry'"
+        ).fetchone()
+        if table is None:
+            raise ContractError("shared_live_registry_table_missing")
+        source_rows = [
+            _row_for_export(dict(row))
+            for row in conn.execute(
+                "SELECT slug,event_date,outcome,city_slug,station_id,settlement_timezone,settlement_unit,"
+                "source_lane,source_eligible,source_block_reason,resolution_url,rules_sha256,yes_token,no_token,"
+                "market_active,market_accepting_orders,registry_json,refreshed_at "
+                "FROM reported_trajectory_market_registry" + where +
+                " ORDER BY slug,event_date,outcome",
+                tuple(params),
+            )
+        ]
+    decision_clock = as_of_utc or datetime.now(timezone.utc)
+    classified_rows: list[tuple[dict[str, Any], str]] = []
+    first_future_date_by_station: dict[str, str] = {}
+    for row in source_rows:
+        try:
+            state = str(settlement_day_state(
+                row["event_date"],
+                as_of_utc=decision_clock,
+                settlement_timezone=str(
+                    row.get("settlement_timezone") or ""
+                ),
+            )["state"])
+        except Exception as exc:
+            raise ContractError("market_registry_event_date_invalid") from exc
+        classified_rows.append((row, state))
+        if state == "not_started":
+            station_scope = str(
+                row.get("station_id")
+                or row.get("city_slug")
+                or row.get("slug")
+                or ""
+            )
+            previous = first_future_date_by_station.get(station_scope)
+            if previous is None or row["event_date"] < previous:
+                first_future_date_by_station[station_scope] = row["event_date"]
+
+    rows: list[dict[str, Any]] = []
+    excluded_future_rows = 0
+    excluded_closed_row_count = 0
+    excluded_additional_future_scope_row_count = 0
+    for row, state in classified_rows:
+        if current_catalog_only and state == "closed":
+            excluded_closed_row_count += 1
+            continue
+        if state == "not_started" and not include_not_started_for_p0:
+            excluded_future_rows += 1
+            continue
+        if current_catalog_only and state == "not_started":
+            station_scope = str(
+                row.get("station_id")
+                or row.get("city_slug")
+                or row.get("slug")
+                or ""
+            )
+            if (
+                row["event_date"]
+                != first_future_date_by_station.get(station_scope)
+            ):
+                excluded_additional_future_scope_row_count += 1
+                continue
+        rows.append(row)
+    destination = Path(output_path).expanduser().resolve()
+    stable_scope = {
+        "source_database_path": str(source),
+        "station_id": station_id,
+        "event_date": event_date,
+        "include_not_started_for_p0": bool(include_not_started_for_p0),
+        "current_catalog_only": bool(current_catalog_only),
+        "rows": rows,
+    }
+    stable_scope_sha256 = content_sha256(stable_scope)
+    if destination.is_file():
+        try:
+            existing = load_bounded_json(destination)
+        except Exception:
+            existing = None
+        if (
+            isinstance(existing, Mapping)
+            and existing.get("schema") == SCHEMA
+            and existing.get("stable_scope_sha256") == stable_scope_sha256
+        ):
+            return {
+                "schema": SCHEMA,
+                "state": "UNCHANGED_NO_WRITE",
+                "snapshot_sha256": str(existing.get("snapshot_sha256") or ""),
+                "row_count": len(rows),
+                "source_row_count": len(source_rows),
+                "current_catalog_only": bool(current_catalog_only),
+                "excluded_future_row_count": excluded_future_rows,
+                "excluded_closed_row_count": excluded_closed_row_count,
+                "excluded_additional_future_scope_row_count": (
+                    excluded_additional_future_scope_row_count
+                ),
+                "as_of_utc": str(
+                    (existing.get("filters") or {}).get("as_of_utc") or ""
+                ),
+                "output": str(destination),
+                "source_database": str(source),
+                "boundary": {
+                    "reads_shared_live_database": True,
+                    "writes_shared_live_database": False,
+                    "writes_target_database": False,
+                    "calls_order_gateway": False,
+                    "places_orders": False,
+                },
+            }
+    exported_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    normalized_clock = decision_clock.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z") if isinstance(decision_clock, datetime) else str(decision_clock)
+    payload: dict[str, Any] = {
+        "schema": SCHEMA,
+        "source_schema": "reported_trajectory_market_registry_v1",
+        "source_scope": "shared_live_registry_export_only",
+        "source_database_path": str(source),
+        "exported_at_utc": exported_at,
+        "source_row_count": len(source_rows),
+        "row_count": len(rows),
+        "filters": {
+            "station_id": station_id,
+            "event_date": event_date,
+            "as_of_utc": normalized_clock,
+            "excluded_future_row_count": excluded_future_rows,
+            "include_not_started_for_p0": bool(include_not_started_for_p0),
+            "current_catalog_only": bool(current_catalog_only),
+            "excluded_closed_row_count": excluded_closed_row_count,
+            "excluded_additional_future_scope_row_count": (
+                excluded_additional_future_scope_row_count
+            ),
+        },
+        "rows": rows,
+        "stable_scope_sha256": stable_scope_sha256,
+        "writes_shared_live_database": False,
+        "calls_order_gateway": False,
+        "places_orders": False,
+        "forward_p0_catalog_only": bool(include_not_started_for_p0),
+    }
+    payload["snapshot_sha256"] = hashlib.sha256(_canonical(payload)).hexdigest()
+    write_bounded_json_if_changed(destination, payload)
+    return {
+        "schema": SCHEMA,
+        "state": "EXPORTED",
+        "snapshot_sha256": payload["snapshot_sha256"],
+        "row_count": len(rows),
+        "source_row_count": len(source_rows),
+        "current_catalog_only": bool(current_catalog_only),
+        "excluded_future_row_count": excluded_future_rows,
+        "excluded_closed_row_count": excluded_closed_row_count,
+        "excluded_additional_future_scope_row_count": (
+            excluded_additional_future_scope_row_count
+        ),
+        "as_of_utc": normalized_clock,
+        "output": str(destination),
+        "source_database": str(source),
+        "boundary": {
+            "reads_shared_live_database": True,
+            "writes_shared_live_database": False,
+            "writes_target_database": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+
+
+def apply_target_market_registry_schema(conn: sqlite3.Connection, *, commit: bool = True) -> dict[str, Any]:
+    """Install only target-local registry tables on an already-owned DB."""
+
+    statement = ""
+    for line in DDL.splitlines(keepends=True):
+        statement += line
+        if sqlite3.complete_statement(statement):
+            if statement.strip():
+                conn.execute(statement.strip())
+            statement = ""
+    if statement.strip():
+        raise RuntimeError("target_market_registry_ddl_incomplete")
+    if commit:
+        conn.commit()
+    return {"schema": SCHEMA, "tables": [SNAPSHOT_TABLE, TABLE], "ok": True}
+
+
+def ingest_target_market_registry(
+    conn: sqlite3.Connection,
+    *,
+    snapshot_path: Path,
+    commit: bool = False,
+    as_of_utc: str | datetime | None = None,
+) -> dict[str, Any]:
+    """Validate and append one registry snapshot into the target SSOT."""
+
+    payload = _read_payload(Path(snapshot_path).expanduser().resolve())
+    decision_clock = as_of_utc or datetime.now(timezone.utc)
+    forward_catalog = (
+        payload.get("forward_p0_catalog_only") is True
+        and isinstance(payload.get("filters"), Mapping)
+        and payload["filters"].get("include_not_started_for_p0") is True
+    )
+    for row in payload["rows"]:
+        try:
+            state = settlement_day_state(
+                row["event_date"],
+                as_of_utc=decision_clock,
+                settlement_timezone=str(row.get("settlement_timezone") or ""),
+            )["state"]
+        except Exception as exc:
+            raise ContractError("market_registry_event_date_invalid") from exc
+        if state == "not_started" and not forward_catalog:
+            raise ContractError("market_registry_future_event_day_not_allowed")
+    tables = {
+        str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if {TABLE, SNAPSHOT_TABLE} - tables:
+        raise ContractError("target_market_registry_schema_missing")
+    snapshot_sha = str(payload["snapshot_sha256"])
+    already = conn.execute(
+        f"SELECT row_count,content_sha256 FROM {SNAPSHOT_TABLE} WHERE snapshot_sha256=?",
+        (snapshot_sha,),
+    ).fetchone()
+    if already is not None:
+        if int(already[0]) != int(payload["row_count"]) or str(already[1]) != snapshot_sha:
+            raise ContractError("target_market_registry_snapshot_collision")
+        return {
+            "schema": SCHEMA,
+            "state": "VALIDATED_NO_WRITE" if not commit else "ALREADY_COMMITTED",
+            "snapshot_sha256": snapshot_sha,
+            "row_count": int(payload["row_count"]),
+            "wrote_rows": False,
+            "writes_shared_live_database": False,
+            "places_orders": False,
+        }
+    if not commit:
+        return {
+            "schema": SCHEMA,
+            "state": "VALIDATED_NO_WRITE",
+            "snapshot_sha256": snapshot_sha,
+            "row_count": int(payload["row_count"]),
+            "wrote_rows": False,
+            "writes_shared_live_database": False,
+            "places_orders": False,
+        }
+    assert_connection_target_capacity(conn)
+    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    own_transaction = not conn.in_transaction
+    if own_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            f"INSERT INTO {SNAPSHOT_TABLE}(snapshot_sha256,source_schema,source_scope,exported_at_utc,"
+            "source_database_path,row_count,ingested_at_utc,content_sha256) VALUES(?,?,?,?,?,?,?,?)",
+            (snapshot_sha, payload["source_schema"], payload["source_scope"], payload["exported_at_utc"],
+             str(payload.get("source_database_path") or ""), int(payload["row_count"]), now, snapshot_sha),
+        )
+        conn.executemany(
+            f"INSERT INTO {TABLE}(snapshot_sha256,slug,event_date,outcome,city_slug,station_id,"
+            "settlement_timezone,settlement_unit,source_lane,source_eligible,source_block_reason,"
+            "resolution_url,rules_sha256,yes_token,no_token,market_active,market_accepting_orders,"
+            "registry_json,refreshed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                (snapshot_sha, row["slug"], row["event_date"], row["outcome"], row["city_slug"], row["station_id"],
+                 row["settlement_timezone"], row["settlement_unit"], row["source_lane"], row["source_eligible"],
+                 row["source_block_reason"], row["resolution_url"], row["rules_sha256"], row["yes_token"], row["no_token"],
+                 row["market_active"], row["market_accepting_orders"], row["registry_json"], row["refreshed_at"])
+                for row in payload["rows"]
+            ],
+        )
+        if own_transaction:
+            conn.commit()
+    except Exception:
+        if own_transaction:
+            conn.rollback()
+        raise
+    return {
+        "schema": SCHEMA,
+        "state": "COMMITTED" if commit else "VALIDATED_NO_WRITE",
+        "snapshot_sha256": snapshot_sha,
+        "row_count": int(payload["row_count"]),
+        "wrote_rows": bool(commit),
+        "writes_shared_live_database": False,
+        "places_orders": False,
+    }
+
+
+def _is_memory_connection(conn: sqlite3.Connection) -> bool:
+    try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+    except sqlite3.Error:
+        return False
+    return not str(row[2] or "")
+
+
+def _latest_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str = "",
+    event_date: str = "",
+) -> str:
+    """Resolve the newest immutable snapshot that actually owns the scope.
+
+    Registry exports may be bounded to one event date.  A newer shard for an
+    unrelated date must not hide an older full snapshot that still owns the
+    requested station/date.
+    """
+
+    params: list[Any] = []
+    row_clauses = [
+        "r.source_eligible=1",
+        "r.market_active=1",
+        "r.market_accepting_orders=1",
+    ]
+    if station_id:
+        row_clauses.append("r.station_id=?")
+        params.append(station_id)
+    if event_date:
+        row_clauses.append("r.event_date=?")
+        params.append(event_date)
+    scoped = bool(station_id or event_date)
+    query = (
+        f"SELECT s.snapshot_sha256 FROM {SNAPSHOT_TABLE} s "
+        + (
+            f"WHERE EXISTS (SELECT 1 FROM {TABLE} r "
+            "WHERE r.snapshot_sha256=s.snapshot_sha256 AND "
+            + " AND ".join(row_clauses)
+            + ") "
+            if scoped
+            else ""
+        )
+        + "ORDER BY s.ingested_at_utc DESC,s.snapshot_sha256 DESC LIMIT 1"
+    )
+    row = conn.execute(query, tuple(params)).fetchone()
+    if row is None:
+        raise ContractError("target_market_registry_snapshot_empty")
+    return _text("target_market_registry_snapshot_sha256", row[0])
+
+
+def load_active_registry_rows(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str = "",
+    event_date: str = "",
+) -> list[dict[str, Any]]:
+    """Read eligible target-local rows; allow only in-memory test fixtures."""
+
+    tables = {
+        str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    params: list[Any] = []
+    clauses = ["source_eligible=1", "market_active=1", "market_accepting_orders=1"]
+    if station_id:
+        clauses.append("station_id=?")
+        params.append(station_id)
+    if event_date:
+        clauses.append("event_date=?")
+        params.append(event_date)
+    if {TABLE, SNAPSHOT_TABLE} <= tables:
+        snapshot = _latest_snapshot(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+        )
+        clauses.insert(0, "snapshot_sha256=?")
+        params.insert(0, snapshot)
+        rows = conn.execute(
+            f"SELECT slug,event_date,station_id,settlement_timezone,settlement_unit,"
+            f"outcome,yes_token,registry_json,source_lane "
+            f"FROM {TABLE} WHERE " + " AND ".join(clauses) + " ORDER BY station_id,event_date,slug,outcome",
+            tuple(params),
+        ).fetchall()
+    elif _is_memory_connection(conn) and LEGACY_TEST_TABLE in tables:
+        legacy_columns = {
+            str(row[1]) for row in conn.execute(f"PRAGMA table_info({LEGACY_TEST_TABLE})")
+        }
+        def _field(name: str, default_sql: str = "''") -> str:
+            return name if name in legacy_columns else f"{default_sql} AS {name}"
+
+        rows = conn.execute(
+            "SELECT " + ",".join([
+                _field("slug"), _field("event_date"), _field("station_id"),
+                _field("settlement_timezone"), _field("settlement_unit"),
+                _field("outcome"), _field("yes_token"), _field("registry_json"),
+                # Historical in-memory fixtures predate source routing.  This
+                # compatibility default can never run on a file-backed target
+                # database and therefore cannot become production authority.
+                _field("source_lane", "'awc'"),
+            ]) + " FROM reported_trajectory_market_registry WHERE " + " AND ".join(clauses[0:3] + clauses[3:]) +
+            " ORDER BY station_id,event_date,slug,outcome",
+            tuple(params),
+        ).fetchall()
+    else:
+        raise ContractError("target_market_registry_snapshot_missing")
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        registry_json = str(row[7] or "{}")
+        raw = json.loads(registry_json)
+        if not isinstance(raw, Mapping):
+            raise ContractError("market_registry_json_invalid")
+        item = {
+            "slug": str(row[0]), "event_date": str(row[1]), "station_id": str(row[2] or ""),
+            "settlement_timezone": str(row[3] or ""),
+            "settlement_unit": str(row[4] or ""),
+            "outcome": str(row[5] or ""),
+            "yes_token": str(row[6] or ""),
+            "registry_json": registry_json,
+            "source_lane": str(row[8] or "").strip().lower(),
+            "market_id": str(raw.get("market_id") or ""),
+            "lower": raw.get("lower"), "upper": raw.get("upper"),
+        }
+        if (
+            not item["station_id"]
+            or not item["outcome"]
+            or item["source_lane"] not in {"amsc", "awc"}
+        ):
+            raise ContractError("market_registry_target_identity_missing")
+        result.append(item)
+    return result
+
+
+def load_started_registry_rows(
+    conn: sqlite3.Connection,
+    *,
+    as_of_utc: str | None = None,
+    station_id: str = "",
+    event_date: str = "",
+) -> list[dict[str, Any]]:
+    """Read formal target scopes whose registry settlement day has started.
+
+    A legacy or externally supplied registry snapshot may still contain
+    forward rows, but the target lane does not create future-day scopes.
+    Formal market, inventory, order-state, and readiness consumers must use
+    this view so only an already-started settlement day can enter the chain.
+    """
+
+    decision_clock = as_of_utc or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    result: list[dict[str, Any]] = []
+    for row in load_active_registry_rows(conn, station_id=station_id, event_date=event_date):
+        try:
+            state = settlement_day_state(
+                str(row.get("event_date") or ""),
+                as_of_utc=decision_clock,
+                settlement_timezone=str(row.get("settlement_timezone") or ""),
+            )["state"]
+        except Exception:
+            continue
+        if state in {"open", "closed"}:
+            result.append(row)
+    return result
+
+
+__all__ = [
+    "DDL", "SCHEMA", "SNAPSHOT_TABLE", "TABLE", "apply_target_market_registry_schema",
+    "export_shared_live_registry", "ingest_target_market_registry",
+    "load_active_registry_rows", "load_started_registry_rows",
+]

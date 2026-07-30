@@ -1,0 +1,56 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "canonical_ingress": true,
+  "evidence_sha256": "b0d176bac99e403f0a9c496768f1554f569b7cae561be27e0d7b64b3547e1594",
+  "generated_at_utc": "2026-07-26T17:53:02Z",
+  "historical_only": true,
+  "observation_count": 3,
+  "observations": [
+    {
+      "canonical_committed_at_utc": "2026-07-26T17:53:02Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-07-26T17:53:02Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "39570a8324eddd7ca68c40b6761cee5c97695a0c6f805077876d4e8f0cab9b5f",
+      "report_type": "METAR",
+      "reported_temperature_c": 29.0,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-1338de7452ab5d0069cc1d949b8858885de1d248a05ecb0325d4eb1a2edcbe75",
+      "station_id": "RKPK",
+      "valid_at_utc": "2026-07-26T15:00:00Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-26T17:53:02Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-07-26T17:53:02Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "ab0914a6bbd596d816cdb25544cfc3f99b52a37c2ae5446f220f474ce9dff956",
+      "report_type": "METAR",
+      "reported_temperature_c": 28.0,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-1338de7452ab5d0069cc1d949b8858885de1d248a05ecb0325d4eb1a2edcbe75",
+      "station_id": "RKPK",
+      "valid_at_utc": "2026-07-26T16:00:00Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-26T17:53:02Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-07-26T17:53:02Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "f1857ebe892d9c1f2edaae522f94c4d2992ca42c5449e7831c9c6ddcdc4e1fd7",
+      "report_type": "METAR",
+      "reported_temperature_c": 28.0,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-1338de7452ab5d0069cc1d949b8858885de1d248a05ecb0325d4eb1a2edcbe75",
+      "station_id": "RKPK",
+      "valid_at_utc": "2026-07-26T17:00:00Z"
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "target_timezone": "Asia/Seoul"
+}

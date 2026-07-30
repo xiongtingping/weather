@@ -1,0 +1,63 @@
+{
+  "all_cases_passed": true,
+  "calls_order_gateway": false,
+  "candidate_bundle": "/Users/xiong/weather/output/audits/station_policy_candidate_bundle_v1.json",
+  "candidate_bundle_remains_unpromoted": true,
+  "candidate_bundle_sha256": "c709b49c4581bddad80f96d5b9650a1dfe3c3ebca73d028b27bdeec6253131b5",
+  "case_count": 9,
+  "cases": {
+    "activation_scope_mismatch": {
+      "actual": "FAIL_CLOSED_NO_STATION_POLICY",
+      "expected": "FAIL_CLOSED_NO_STATION_POLICY",
+      "status": "PASS"
+    },
+    "candidate_bundle_default_off": {
+      "actual": "FAIL_CLOSED_NO_STATION_POLICY",
+      "expected": "FAIL_CLOSED_NO_STATION_POLICY",
+      "status": "PASS"
+    },
+    "exact_promoted_activation": {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "a75a635c9e2ab455343bc05d4a56994d09a2b0d10ef1b2768fffa36d39465a8f",
+      "status": "PASS"
+    },
+    "expired_activation": {
+      "actual": "FAIL_CLOSED_NO_STATION_POLICY",
+      "expected": "FAIL_CLOSED_NO_STATION_POLICY",
+      "status": "PASS"
+    },
+    "explicit_promoted_global_fallback": {
+      "fallback_reason": "target",
+      "status": "PASS",
+      "target_artifact_id": "GLOBAL_FALLBACK:global-station-formula-v1-shadow-prior:target"
+    },
+    "missing_target_artifact": {
+      "actual": "FAIL_CLOSED_NO_STATION_POLICY",
+      "expected": "FAIL_CLOSED_NO_STATION_POLICY",
+      "status": "PASS"
+    },
+    "neighbor_station_no_borrow": {
+      "actual": "FAIL_CLOSED_NO_STATION_POLICY",
+      "expected": "FAIL_CLOSED_NO_STATION_POLICY",
+      "status": "PASS"
+    },
+    "same_generation_conflict": {
+      "actual": "ambiguous_station_policy_activation",
+      "expected": "ambiguous_station_policy_activation",
+      "status": "PASS"
+    },
+    "unpromoted_target_artifact": {
+      "actual": "FAIL_CLOSED_NO_STATION_POLICY",
+      "expected": "FAIL_CLOSED_NO_STATION_POLICY",
+      "status": "PASS"
+    }
+  },
+  "decision_at_utc": "2026-07-23T12:00:00Z",
+  "orders_submitted": 0,
+  "production_mutation": false,
+  "promotion_simulation": "in_memory_only",
+  "receipt_sha256": "cb8db366b6fc0ba1ade4b4c38fe782f3de4e54974acc5898f2fe9a92c39db52f",
+  "schema": "station_policy_resolver_fault_matrix_v1",
+  "station_id": "CYYZ",
+  "writes_production_db": false
+}

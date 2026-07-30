@@ -1,0 +1,18 @@
+{
+  "schema": "bayes_basket_cash_phase_ingress_v1",
+  "markets": [
+    {
+      "station_id": "RKPK",
+      "event_date": "2026-07-27",
+      "cash_phase_input": {
+        "policy_version": "target-no-live-cash-design-v2-RKPK",
+        "station_id": "RKPK",
+        "current_phase": "HEAVY",
+        "event_date_local": "2026-07-27",
+        "observed_at_utc": "2026-07-26T21:08:20Z",
+        "station_timezone": "Asia/Seoul",
+        "checkpoint_id": "cash-rkpk-20260727-20260726t210820z"
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-5f123771543413d7324ed362",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "cebc958632c33e231190b61de3e5302b0ca9c9e50aa1181ed41a0c3b4bbb5942",
+    "decision_at_utc": "2026-07-26T15:45:14Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ECMWF",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "ecmwf_ifs025_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-26T00:27:09Z",
+    "raw_payload_sha256s": [
+      "337d5a8baecf492a263393bf3ad74c192b58ae635c722643a3374a9f09173dcc"
+    ],
+    "receipt_sha256": "86eca3c964fa50ee4429b964fe6770f7418afd8d26c6c458f285fd11cc786035",
+    "received_at_utc": "2026-07-26T15:45:14Z",
+    "run_initialization_utc": "2026-07-25T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-42h-oper-fc.grib2",
+    "station_id": "RKPK",
+    "target_local_date": "2026-07-27",
+    "target_timezone": "Asia/Seoul",
+    "valid_time_utc": "2026-07-27T12:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "p0_station_lineage_only": true,
+    "p1_probability_input_authorized": false,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "formal_consumed_at_utc": "2026-07-26T15:45:48Z",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals_rkpk_settlement_aligned/ecmwf_ifs025_official/receipts/c97e426bbcccc883a12ef2475eb0461a3754653bd13ab15d5fc2c0eed357f8ae.json"
+}

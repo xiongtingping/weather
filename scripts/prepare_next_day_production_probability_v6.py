@@ -18,7 +18,9 @@ if str(ROOT) not in sys.path:
 from archive_db_write_queue import connect_archive_db_rw
 from joint_weak_live_evidence_runtime import DEFAULT_CURVE_ROOT
 from production_probability_v6_activation_contract import validate_v6_activation
+from production_probability_v6_activation_contract import IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
 from production_probability_v6_canonical_event_drain_runtime import ensure_v6_daily_p0
+from production_probability_v6_market_inputs_runtime import prewarm_v6_market_inputs
 
 
 SCHEMA_VERSION = "prepare_next_day_production_probability_v6_v1"
@@ -48,6 +50,15 @@ def main() -> int:
         decision_as_of = datetime.now(ZoneInfo("UTC")).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         try:
             activation = validate_v6_activation(json.loads(args.activation.read_text(encoding="utf-8")))
+            market_inputs = prewarm_v6_market_inputs(
+                event_date=expected,
+                strategy_projection_role=(
+                    "basket_probability_only"
+                    if activation.get("composer_schema")
+                    == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+                    else "legacy_realization"
+                ),
+            )
             with connect_archive_db_rw(args.db, owner="physical_state_bayes_v6_next_day_p0") as conn:
                 p0 = ensure_v6_daily_p0(
                     conn,
@@ -55,6 +66,7 @@ def main() -> int:
                     event_date=expected,
                     decision_as_of=decision_as_of,
                     curve_root=args.curve_root,
+                    market_inputs=market_inputs,
                 )
             result = {
                 "schema": SCHEMA_VERSION,

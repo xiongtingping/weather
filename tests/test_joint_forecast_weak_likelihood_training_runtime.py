@@ -108,6 +108,39 @@ def test_training_quarantines_non_tier_a_or_market_contaminated_revisions() -> N
     assert dataset["manifest"]["excluded_counts"]["no_strict_asof_forecasts_at_cutoff"] == 2
 
 
+def test_settlement_bucket_is_trained_as_interval_not_exact_physical_x() -> None:
+    events = []
+    for index in range(30):
+        event = _event(index, ["gfs"])
+        event.pop("physical_x_final")
+        event["settlement_bucket_final"] = {
+            "label_kind": "settlement_bucket_interval",
+            "final": True,
+            "bucket_c": 30.0,
+            "lower_c": 29.5,
+            "upper_c": 30.5,
+            "rounding_rule": "whole_degrees",
+            "raw_sha256": f"settlement-{index}",
+        }
+        event["source_revisions"][0]["forecast_peak_c"] = 29.0
+        events.append(event)
+
+    dataset = build_joint_weak_training_dataset(events=events, source_catalog=CATALOG)
+    sample = dataset["samples"][0]
+    assert sample["label_kind"] == "settlement_bucket_interval"
+    assert sample["target_lower_c"] == 29.5
+    assert sample["target_upper_c"] == 30.5
+    assert "physical_x_final_c" not in sample
+    assert dataset["boundary"]["settlement_bucket_never_coerced_to_exact_physical_x"] is True
+
+    report = train_joint_weak_source_set_artifact(
+        dataset=dataset, minimum_event_days_per_surface=30, minimum_pair_samples=20
+    )
+    calibration = report["artifact"]["bias_correction"]
+    assert calibration["residual_definition"] == "interval_censored_forecast_error_against_exact_x_or_settlement_bucket"
+    assert calibration["source_global_states"]["source_global:gfs|d0"]["bias_c"] < 0.0
+
+
 def test_walk_forward_oos_uses_label_only_after_weak_likelihood() -> None:
     events = [_event(index, ["gfs", "taf"]) for index in range(30)]
     events += [_event(index + 31, ["gfs", "taf"]) for index in range(5)]

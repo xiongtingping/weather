@@ -1,0 +1,36 @@
+{
+  "boundary": {
+    "authorizes_order": false,
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "network_access": false,
+    "read_only_audit": true,
+    "writes_shared_live_db": false
+  },
+  "checks": {
+    "daemon_file_present": true,
+    "daemon_only_schedules_worker": true,
+    "no_forbidden_imports": true,
+    "no_gateway_boundary": true,
+    "no_live_submit_authorized": true,
+    "no_order_submit_calls": true,
+    "retention_guard_present": true,
+    "single_compile_route": true,
+    "single_target_worker_owner": true,
+    "syntax_clean": true,
+    "target_db_boundary": true,
+    "worker_file_present": true
+  },
+  "class_owners": [
+    "bayes_basket_target/production_worker.py"
+  ],
+  "forbidden_calls": [],
+  "forbidden_imports": [],
+  "ok": true,
+  "receipt_sha256": "9d54e1f94f941415b0fcb5d8ce1e676377130137f0ce44046c64fb337a675a6a",
+  "resident_scheduler": "scripts/reported_trajectory_no_daemon.py",
+  "runtime_mode": "production_no_live",
+  "schema": "bayes_basket_target_runtime_uniqueness_audit_v1",
+  "syntax_errors": [],
+  "worker_owner": "bayes_basket_target/production_worker.py"
+}

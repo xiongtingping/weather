@@ -29,9 +29,15 @@ from production_probability_v6_outbox_contract_runtime import (
     materialize_v6_outbox_execution_contract_row,
     materialize_v6_outbox_row,
 )
+from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
+)
 
 
 SCHEMA_VERSION = "production_probability_v6_market_bundle_v1"
+BASKET_PROJECTION_SCHEMA_VERSION = (
+    "production_probability_v6_basket_market_projection_bundle_v1"
+)
 
 
 def _text(value: Any) -> str:
@@ -166,6 +172,19 @@ def _market_public_fact(
         or not _text(realization.get("realization_state_id"))
     ):
         raise ValueError("v6_market_bundle_public_projection_invalid")
+    market_bucket_probabilities = dict(
+        _mapping(bridge.get("market_bucket_probabilities"))
+    )
+    ranked_market_buckets = sorted(
+        (
+            (str(bucket), float(probability))
+            for bucket, probability in market_bucket_probabilities.items()
+        ),
+        key=lambda row: (-row[1], row[0]),
+    )
+    if not ranked_market_buckets:
+        raise ValueError("v6_market_bundle_market_bucket_probabilities_empty")
+    market_top_bucket, market_top_probability = ranked_market_buckets[0]
     ssot.update(
         {
             "state": "available",
@@ -179,8 +198,12 @@ def _market_public_fact(
             "settlement_scalar_distribution": list(
                 bridge.get("settlement_scalar_distribution") or []
             ),
-            "market_bucket_probabilities": dict(
-                _mapping(bridge.get("market_bucket_probabilities"))
+            "market_bucket_probabilities": market_bucket_probabilities,
+            "market_top_bucket": market_top_bucket,
+            "market_top_probability": market_top_probability,
+            "market_top_probability_pct": market_top_probability * 100.0,
+            "market_top_probability_field": (
+                "posterior_ssot_fact.market_bucket_probabilities"
             ),
             "settlement_exclusion_certificates": dict(
                 _mapping(bridge.get("settlement_exclusion_certificates"))
@@ -200,6 +223,168 @@ def _market_public_fact(
     fact["posterior_ssot_fact"] = ssot
     public["fact_json"] = _json(fact)
     return public
+
+
+def project_v6_basket_probabilities_into_public_fact(
+    *,
+    public_fact_row: Mapping[str, Any],
+    checkpoint_row: Mapping[str, Any],
+    physical_resolution_contract: Mapping[str, Any],
+    market_target_contract: Mapping[str, Any],
+    bridge_artifact: Mapping[str, Any],
+    event_date: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Apply the frozen X→S→B bridge to an already materialized SSOT row."""
+
+    checkpoint = _checkpoint_view(checkpoint_row)
+    _validate_physical_resolution_binding(
+        physical_resolution_contract=physical_resolution_contract,
+        market_target_contract=market_target_contract,
+        bridge_artifact=bridge_artifact,
+        checkpoint=checkpoint,
+        event_date=event_date,
+    )
+    market = build_posterior_market_projection(
+        reported_physical_x_distribution=checkpoint[
+            "reported_physical_x_distribution"
+        ],
+        physical_resolution_contract=physical_resolution_contract,
+        market_target_contract=market_target_contract,
+        bridge_artifact=bridge_artifact,
+    )
+    bridge = _mapping(market.get("resolution_bridge"))
+    probabilities = dict(_mapping(bridge.get("market_bucket_probabilities")))
+    if (
+        market.get("ok") is not True
+        or bridge.get("bridge_closed") is not True
+        or not probabilities
+        or abs(sum(float(item) for item in probabilities.values()) - 1.0) > 1e-8
+    ):
+        raise ValueError("v6_basket_projection_closed_projection_unavailable")
+    public = dict(_mapping(public_fact_row))
+    fact = dict(_mapping(_parse(public.get("fact_json"), {})))
+    ssot = dict(_mapping(fact.get("posterior_ssot_fact")))
+    if not ssot:
+        raise ValueError("v6_basket_projection_public_ssot_missing")
+    ranked = sorted(
+        ((str(bucket), float(probability)) for bucket, probability in probabilities.items()),
+        key=lambda row: (-row[1], row[0]),
+    )
+    top_bucket, top_probability = ranked[0]
+    ssot.update(
+        {
+            "state": "available",
+            "strategy_projection_role": "basket_probability_only",
+            "realization_state_id": "",
+            "realization_state_na_reason": "retired_dynamic_three_leg_not_consumed",
+            "physical_resolution_contract_id": _text(
+                checkpoint.get("resolution_contract_id")
+            ),
+            "resolution_contract_id": _text(
+                bridge.get("resolution_contract_id")
+            ),
+            "target_contract_sha256": _text(market.get("target_contract_sha256")),
+            "bridge_artifact_sha256": _text(market.get("bridge_artifact_sha256")),
+            "settlement_scalar_distribution": list(
+                bridge.get("settlement_scalar_distribution") or []
+            ),
+            "market_bucket_probabilities": probabilities,
+            "market_top_bucket": top_bucket,
+            "market_top_probability": top_probability,
+            "market_top_probability_pct": top_probability * 100.0,
+            "market_top_probability_field": (
+                "posterior_ssot_fact.market_bucket_probabilities"
+            ),
+            "settlement_exclusion_certificates": dict(
+                _mapping(bridge.get("settlement_exclusion_certificates"))
+            ),
+            "market_bucket_probabilities_na_reason": "",
+            "current_report_bucket": "",
+            "current_report_bucket_na_reason": (
+                "physical_x_must_not_be_directly_mapped_to_market_bucket_b"
+            ),
+            "market_projection_boundary": {
+                "reported_x_unchanged": True,
+                "market_b_is_projection_not_second_weather_posterior": True,
+                "market_price_consumed": False,
+                "dynamic_three_leg_realization_consumed": False,
+                "creates_strategy_signal": False,
+            },
+        }
+    )
+    fact["posterior_ssot_fact"] = ssot
+    public["fact_json"] = _json(fact)
+    return public, market
+
+
+def build_v6_basket_market_projection_bundle(
+    *,
+    activation: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    physical_resolution_contract: Mapping[str, Any],
+    market_target_contract: Mapping[str, Any],
+    bridge_artifact: Mapping[str, Any],
+    fact_snapshot_id: str,
+    slug: str,
+    event_date: str,
+    fact_as_of: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Project physical ``P(X)`` to basket-facing ``P(B)`` only.
+
+    The identifiable physical composer must not enter the retired dynamic
+    three-leg realization/outbox surface.  This bundle keeps Transaction B
+    atomic through the existing physical writer while materializing the same
+    frozen X->S->B public SSOT consumed by the basket lane.
+    """
+
+    value = _mapping(candidate)
+    if (
+        value.get("ok") is not True
+        or _text(value.get("candidate_mode")) != "identifiable_physical_state"
+        or value.get("shadow_only") is not False
+        or _text(activation.get("composer_schema"))
+        != IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+    ):
+        raise ValueError("v6_basket_projection_candidate_not_physical_ready")
+    checkpoint = _checkpoint_view(_mapping(value.get("checkpoint_row")))
+    update = dict(_mapping(value.get("strong_update_row")))
+    public = materialize_v6_public_physical_fact_row(
+        activation=activation,
+        strong_update_row=update,
+        checkpoint_row=checkpoint,
+        fact_snapshot_id=fact_snapshot_id,
+        slug=slug,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        correlation_id=correlation_id,
+        market_bucket_probabilities_na_reason="market_projection_materializing",
+    )
+    public, market = project_v6_basket_probabilities_into_public_fact(
+        public_fact_row=public,
+        checkpoint_row=checkpoint,
+        physical_resolution_contract=physical_resolution_contract,
+        market_target_contract=market_target_contract,
+        bridge_artifact=bridge_artifact,
+        event_date=event_date,
+    )
+    return {
+        "schema": BASKET_PROJECTION_SCHEMA_VERSION,
+        "ok": True,
+        "state": "basket_market_projection_bundle_ready",
+        "strong_update_row": update,
+        "checkpoint_row": dict(_mapping(value.get("checkpoint_row"))),
+        "public_fact_row": public,
+        "realization_state_row": None,
+        "outbox_row": None,
+        "outbox_execution_contract_row": None,
+        "market_projection": market,
+        "reported_x_unchanged": True,
+        "creates_outbox": False,
+        "creates_strategy_signal": False,
+        "places_orders": False,
+        "clob": False,
+    }
 
 
 def build_v6_market_transaction_bundle(
@@ -368,4 +553,10 @@ def build_v6_market_transaction_bundle(
     }
 
 
-__all__ = ["SCHEMA_VERSION", "build_v6_market_transaction_bundle"]
+__all__ = [
+    "BASKET_PROJECTION_SCHEMA_VERSION",
+    "SCHEMA_VERSION",
+    "build_v6_basket_market_projection_bundle",
+    "build_v6_market_transaction_bundle",
+    "project_v6_basket_probabilities_into_public_fact",
+]

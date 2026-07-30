@@ -1,0 +1,130 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_source_database": false
+  },
+  "clone_resources_after": {
+    "page_bytes": 76525568,
+    "page_count": 18683,
+    "page_size": 4096,
+    "regime_payload_bytes": 3805,
+    "regime_rows": 4
+  },
+  "clone_resources_before": {
+    "page_bytes": 76500992,
+    "page_count": 18677,
+    "page_size": 4096,
+    "regime_payload_bytes": 3805,
+    "regime_rows": 4
+  },
+  "content_sha256": "033da486909067745f2044d1d3ad55e530f26876dc8af3f9413f5048735e35c1",
+  "forward": {
+    "after": {
+      "columns_exact": true,
+      "committed_partial_unique_ok": true,
+      "controlled_update_trigger_ok": true,
+      "legacy_no_update_absent": true,
+      "missing_columns": [],
+      "no_delete_trigger_ok": true,
+      "ok": true,
+      "supports_superseded": true,
+      "table_present": true
+    },
+    "before": {
+      "columns_exact": true,
+      "committed_partial_unique_ok": false,
+      "controlled_update_trigger_ok": false,
+      "legacy_no_update_absent": false,
+      "missing_columns": [],
+      "no_delete_trigger_ok": true,
+      "ok": false,
+      "supports_superseded": false,
+      "table_present": true
+    },
+    "rows_preserved": 4,
+    "state": "migrated"
+  },
+  "forward_then_rollback": {
+    "after": {
+      "columns_exact": true,
+      "committed_partial_unique_ok": true,
+      "controlled_update_trigger_ok": true,
+      "legacy_no_update_absent": true,
+      "missing_columns": [],
+      "no_delete_trigger_ok": true,
+      "ok": true,
+      "supports_superseded": true,
+      "table_present": true
+    },
+    "before": {
+      "columns_exact": true,
+      "committed_partial_unique_ok": false,
+      "controlled_update_trigger_ok": false,
+      "legacy_no_update_absent": false,
+      "missing_columns": [],
+      "no_delete_trigger_ok": true,
+      "ok": false,
+      "supports_superseded": false,
+      "table_present": true
+    },
+    "rows_preserved": 4,
+    "state": "migrated"
+  },
+  "mode": "REHEARSAL",
+  "resources": {
+    "database_bytes": 76500992,
+    "free_bytes": 20172763136,
+    "projected_database_bytes": 153001984,
+    "required_free_bytes": 766373888,
+    "wal_bytes": 0
+  },
+  "rollback_exact": true,
+  "schema": "bayes_basket_target_regime_superseded_schema_migration_v1",
+  "second_forward": {
+    "after": {
+      "columns_exact": true,
+      "committed_partial_unique_ok": true,
+      "controlled_update_trigger_ok": true,
+      "legacy_no_update_absent": true,
+      "missing_columns": [],
+      "no_delete_trigger_ok": true,
+      "ok": true,
+      "supports_superseded": true,
+      "table_present": true
+    },
+    "before": {
+      "columns_exact": true,
+      "committed_partial_unique_ok": true,
+      "controlled_update_trigger_ok": true,
+      "legacy_no_update_absent": true,
+      "missing_columns": [],
+      "no_delete_trigger_ok": true,
+      "ok": true,
+      "supports_superseded": true,
+      "table_present": true
+    },
+    "rows_preserved": 4,
+    "state": "already_current"
+  },
+  "source_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "source_opened_read_only": true,
+  "source_regime_digest": {
+    "rows": 4,
+    "sha256": "71cd28e804ac095eed0d9258326f639f67cdcaf4490c09ea651ad7571c10654e"
+  },
+  "source_schema_before": {
+    "columns_exact": true,
+    "committed_partial_unique_ok": false,
+    "controlled_update_trigger_ok": false,
+    "legacy_no_update_absent": false,
+    "missing_columns": [],
+    "no_delete_trigger_ok": true,
+    "ok": false,
+    "supports_superseded": false,
+    "table_present": true
+  },
+  "status": "PASS",
+  "temporary_clone_removed": true
+}

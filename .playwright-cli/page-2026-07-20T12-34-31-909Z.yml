@@ -1,0 +1,693 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - link [ref=e1480] [cursor=pointer]:
+      - /url: "#__pm_main"
+      - text: Skip to main content
+    - navigation [ref=e1481]:
+      - generic [ref=e6]:
+        - link [ref=e1482] [cursor=pointer]:
+          - /url: /zh
+        - generic [ref=e12]:
+          - textbox [ref=e1484]:
+            - /placeholder: 搜索 polymarkets...
+          - button [ref=e1485] [cursor=pointer]:
+            - generic [ref=e842]: 玩法介绍
+        - generic [ref=e21]:
+          - generic [ref=e844]:
+            - button [ref=e1486] [cursor=pointer]:
+              - generic [ref=e846]: 登陆
+            - button [ref=e1487] [cursor=pointer]:
+              - generic [ref=e849]: 注册
+          - button [ref=e1488] [cursor=pointer]
+      - generic [ref=e27]:
+        - link [ref=e1489] [cursor=pointer]:
+          - /url: /zh
+          - generic [ref=e32]: 热门
+        - link [ref=e1490] [cursor=pointer]:
+          - /url: /zh/sports/world-cup
+          - generic [ref=e35]: 世界杯
+        - link [ref=e1491] [cursor=pointer]:
+          - /url: /zh/combos
+          - generic [ref=e39]: 组合
+        - link [ref=e1493] [cursor=pointer]:
+          - /url: /zh/asset/sp500
+          - text: 永续合约
+        - link [ref=e1494] [cursor=pointer]:
+          - /url: /zh/breaking
+          - text: 突发
+        - link [ref=e1495] [cursor=pointer]:
+          - /url: /zh/politics
+          - generic [ref=e46]: 政治
+        - link [ref=e1496] [cursor=pointer]:
+          - /url: /zh/sports/live
+          - generic [ref=e48]: 体育
+        - link [ref=e1497] [cursor=pointer]:
+          - /url: /zh/crypto
+          - generic [ref=e50]: 加密
+        - link [ref=e1498] [cursor=pointer]:
+          - /url: /zh/esports
+          - generic [ref=e52]: 电竞
+        - link [ref=e1499] [cursor=pointer]:
+          - /url: /zh/iran
+          - generic [ref=e54]: 伊朗
+        - link [ref=e1500] [cursor=pointer]:
+          - /url: /zh/finance
+          - generic [ref=e56]: 财务
+        - link [ref=e1501] [cursor=pointer]:
+          - /url: /zh/geopolitics
+          - generic [ref=e58]: 地缘政治
+        - link [ref=e1502] [cursor=pointer]:
+          - /url: /zh/tech
+          - generic [ref=e60]: 科技
+        - link [ref=e1503] [cursor=pointer]:
+          - /url: /zh/pop-culture
+          - generic [ref=e62]: 文化
+        - link [ref=e1504] [cursor=pointer]:
+          - /url: /zh/economy
+          - generic [ref=e64]: 经济
+        - link [ref=e1505] [cursor=pointer]:
+          - /url: /zh/weather
+          - generic [ref=e66]: 天气
+        - link [ref=e1506] [cursor=pointer]:
+          - /url: /zh/mentions
+          - generic [ref=e68]: 提及
+        - link [ref=e1507] [cursor=pointer]:
+          - /url: /zh/elections
+          - generic [ref=e70]: 选举
+        - link [ref=e1508] [cursor=pointer]:
+          - /url: /zh/pop-culture/art
+          - generic [ref=e72]: 艺术
+        - button [ref=e1509] [cursor=pointer]: 更多
+    - generic [ref=e77]:
+      - main [ref=e80]:
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - generic [ref=e86]:
+              - generic [ref=e87]:
+                - generic [ref=e100]:
+                  - paragraph [ref=e102]: badatmath.
+                  - generic [ref=e103]:
+                    - button [ref=e107] [cursor=pointer]
+                    - button [ref=e108] [cursor=pointer]
+                - generic [ref=e109]:
+                  - generic [ref=e110]: 加入时间 1月 2026
+                  - generic [ref=e111]: ·
+                  - generic [ref=e112]: 1.6K 浏览量
+              - generic [ref=e113]:
+                - generic [ref=e114]:
+                  - paragraph [ref=e115]: $16.9K
+                  - paragraph [ref=e116]: 持仓价值
+                - generic [ref=e118]:
+                  - paragraph [ref=e119]: $5,538.57
+                  - paragraph [ref=e120]: 最高赢利
+                - generic [ref=e122]:
+                  - paragraph [ref=e123]: 16,445
+                  - paragraph [ref=e124]: 预测
+            - generic [ref=e127]:
+              - generic [ref=e128]:
+                - heading [level=2] [ref=e1512]: 盈亏
+                - generic [ref=e135]:
+                  - button [ref=e1513] [cursor=pointer]: 1天
+                  - button [ref=e1514] [cursor=pointer]: 1周
+                  - button [ref=e1515] [cursor=pointer]: 1个月
+                  - button [ref=e1516] [cursor=pointer]: 1年
+                  - button [ref=e1517] [cursor=pointer]: 年初至今
+                  - button [ref=e1518] [cursor=pointer]: 全部
+              - generic [ref=e143]:
+                - generic:
+                  - generic: $
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: "1"
+                        - generic: ","
+                        - generic: "3"
+                        - generic: "2"
+                        - generic: "5"
+                      - generic:
+                        - generic: .
+                        - generic: "7"
+                        - generic: "1"
+                - button [ref=e144] [cursor=pointer]
+              - paragraph [ref=e149]: 过去 24 小时
+          - generic [ref=e155]:
+            - generic [ref=e159]:
+              - button [ref=e1521] [cursor=pointer]: 持仓
+              - button [ref=e1522] [cursor=pointer]: 交易记录
+            - generic [ref=e985]:
+              - generic [ref=e986]:
+                - generic [ref=e987]: 类型
+                - generic [ref=e989]: 盘口
+                - button [ref=e1523] [cursor=pointer]:
+                  - generic [ref=e993]: 金额
+              - generic [ref=e1000]:
+                - generic [ref=e1001]:
+                  - generic [ref=e1254]:
+                    - paragraph [ref=e1256]: 买入
+                    - generic [ref=e1258]:
+                      - link [ref=e1524] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                      - generic [ref=e1263]:
+                        - link [ref=e1526] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                          - heading [level=2] [ref=e1527]: Will the highest temperature in Jeddah be 40°C on July 21?
+                        - generic [ref=e1266]:
+                          - generic [ref=e1267]: Yes 13¢
+                          - generic [ref=e1268]: 7.0 份额
+                    - generic [ref=e1269]:
+                      - paragraph [ref=e1270]: $0.90
+                      - link [ref=e1528] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x4d9b6cef9335e2595a06db3edf2b52a9603c65cda002a929dfae600bb2b0bc03
+                        - text: 5 分钟前
+                  - generic [ref=e1279]:
+                    - paragraph [ref=e1281]: 买入
+                    - generic [ref=e1283]:
+                      - link [ref=e1529] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                      - generic [ref=e1288]:
+                        - link [ref=e1531] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                          - heading [level=2] [ref=e1532]: Will the highest temperature in Jeddah be 40°C on July 21?
+                        - generic [ref=e1291]:
+                          - generic [ref=e1292]: Yes 13¢
+                          - generic [ref=e1293]: 12.0 份额
+                    - generic [ref=e1294]:
+                      - paragraph [ref=e1295]: $1.56
+                      - link [ref=e1533] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0xa10f77e42e9afaf6d6b4003877ce3b63f5ffed93e84234e2bea87d174de6f026
+                        - text: 6 分钟前
+                  - generic [ref=e1304]:
+                    - paragraph [ref=e1306]: 买入
+                    - generic [ref=e1308]:
+                      - link [ref=e1534] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-busan-on-july-22-2026/highest-temperature-in-busan-on-july-22-2026-33c
+                      - generic [ref=e1313]:
+                        - link [ref=e1536] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-busan-on-july-22-2026/highest-temperature-in-busan-on-july-22-2026-33c
+                          - heading [level=2] [ref=e1537]: Will the highest temperature in Busan be 33°C on July 22?
+                        - generic [ref=e1316]:
+                          - generic [ref=e1317]: Yes 42¢
+                          - generic [ref=e1318]: 15.0 份额
+                    - generic [ref=e1319]:
+                      - paragraph [ref=e1320]: $6.30
+                      - link [ref=e1538] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x8d05fa30a4a15656421935a9574bb1bc41f5659789de0913db74c4ea96ee16c0
+                        - text: 6 分钟前
+                  - generic [ref=e1329]:
+                    - paragraph [ref=e1331]: 买入
+                    - generic [ref=e1333]:
+                      - link [ref=e1539] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                      - generic [ref=e1338]:
+                        - link [ref=e1541] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                          - heading [level=2] [ref=e1542]: Will the highest temperature in Jeddah be 40°C on July 21?
+                        - generic [ref=e1341]:
+                          - generic [ref=e1342]: Yes 13¢
+                          - generic [ref=e1343]: 4.8 份额
+                    - generic [ref=e1344]:
+                      - paragraph [ref=e1345]: $0.62
+                      - link [ref=e1543] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x482d5f750629ef7288983c263bfa7e0e1c1b9bb253daf2364af60a31b5410b8b
+                        - text: 6 分钟前
+                  - generic [ref=e1354]:
+                    - paragraph [ref=e1356]: 买入
+                    - generic [ref=e1358]:
+                      - link [ref=e1544] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                      - generic [ref=e1363]:
+                        - link [ref=e1546] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                          - heading [level=2] [ref=e1547]: Will the highest temperature in Seoul be 30°C on July 22?
+                        - generic [ref=e1366]:
+                          - generic [ref=e1367]: Yes 19¢
+                          - generic [ref=e1368]: 20.0 份额
+                    - generic [ref=e1369]:
+                      - paragraph [ref=e1370]: $3.95
+                      - link [ref=e1548] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x0f2afc5b16e1ada00c96e50ba68c57e73d434cbdd2819a031abb875867373e72
+                        - text: 6 分钟前
+                  - generic [ref=e1379]:
+                    - paragraph [ref=e1381]: 买入
+                    - generic [ref=e1383]:
+                      - link [ref=e1549] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                      - generic [ref=e1388]:
+                        - link [ref=e1551] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-jeddah-on-july-21-2026/highest-temperature-in-jeddah-on-july-21-2026-40c
+                          - heading [level=2] [ref=e1552]: Will the highest temperature in Jeddah be 40°C on July 21?
+                        - generic [ref=e1391]:
+                          - generic [ref=e1392]: Yes 13¢
+                          - generic [ref=e1393]: 12.0 份额
+                    - generic [ref=e1394]:
+                      - paragraph [ref=e1395]: $1.56
+                      - link [ref=e1553] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0xadd7eca8c82581914fedc9c948ab8a46bc7a76f854d67fbfc1a67082d2279f66
+                        - text: 6 分钟前
+                  - generic [ref=e1404]:
+                    - paragraph [ref=e1406]: 买入
+                    - generic [ref=e1408]:
+                      - link [ref=e1554] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-chicago-on-july-21-2026/highest-temperature-in-chicago-on-july-21-2026-82-83f
+                      - generic [ref=e1413]:
+                        - link [ref=e1556] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-chicago-on-july-21-2026/highest-temperature-in-chicago-on-july-21-2026-82-83f
+                          - heading [level=2] [ref=e1557]: Will the highest temperature in Chicago be between 82-83°F on July 21?
+                        - generic [ref=e1416]:
+                          - generic [ref=e1417]: Yes 20¢
+                          - generic [ref=e1418]: 2.1 份额
+                    - generic [ref=e1419]:
+                      - paragraph [ref=e1420]: $0.41
+                      - link [ref=e1558] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x7ba089ab50369802403b8da6812df3550b5c2378b954b7a531bde25daa607dbc
+                        - text: 7 分钟前
+                  - generic [ref=e1429]:
+                    - paragraph [ref=e1431]: 买入
+                    - generic [ref=e1433]:
+                      - link [ref=e1559] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                      - generic [ref=e1438]:
+                        - link [ref=e1561] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                          - heading [level=2] [ref=e1562]: Will the highest temperature in Seoul be 30°C on July 22?
+                        - generic [ref=e1441]:
+                          - generic [ref=e1442]: Yes 19¢
+                          - generic [ref=e1443]: 62.0 份额
+                    - generic [ref=e1444]:
+                      - paragraph [ref=e1445]: $12.26
+                      - link [ref=e1563] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x6d30af1c12bf221b1c7de6f19323a378785e24d0996fb6670cf110306d29c6b0
+                        - text: 7 分钟前
+                  - generic [ref=e1454]:
+                    - paragraph [ref=e1456]: 买入
+                    - generic [ref=e1458]:
+                      - link [ref=e1564] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                      - generic [ref=e1463]:
+                        - link [ref=e1566] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                          - heading [level=2] [ref=e1567]: Will the highest temperature in Seoul be 30°C on July 22?
+                        - generic [ref=e1466]:
+                          - generic [ref=e1467]: Yes 19¢
+                          - generic [ref=e1468]: 62.0 份额
+                    - generic [ref=e1469]:
+                      - paragraph [ref=e1470]: $12.26
+                      - link [ref=e1568] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x390e30b3e6b82bab698987f32cbf8ea9b8c2afb650c51a7660276f85f7d85278
+                        - text: 7 分钟前
+                  - generic [ref=e1571]:
+                    - paragraph [ref=e1573]: 买入
+                    - generic [ref=e1575]:
+                      - link [ref=e1576] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-mexico-city-on-july-21-2026/highest-temperature-in-mexico-city-on-july-21-2026-27c
+                      - generic [ref=e1580]:
+                        - link [ref=e1581] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-mexico-city-on-july-21-2026/highest-temperature-in-mexico-city-on-july-21-2026-27c
+                          - heading [level=2] [ref=e1582]: Will the highest temperature in Mexico City be 27°C on July 21?
+                        - generic [ref=e1583]:
+                          - generic [ref=e1584]: Yes 46¢
+                          - generic [ref=e1585]: 25.5 份额
+                    - generic [ref=e1586]:
+                      - paragraph [ref=e1587]: $12.05
+                      - link [ref=e1588] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0xea53de7ca7ee417f29088d96e408f97d5c8dadf5676d24d20c69cf53f5e073b4
+                        - text: 8 分钟前
+                  - generic [ref=e1596]:
+                    - paragraph [ref=e1598]: 买入
+                    - generic [ref=e1600]:
+                      - link [ref=e1601] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-chongqing-on-july-21-2026/highest-temperature-in-chongqing-on-july-21-2026-40c
+                      - generic [ref=e1605]:
+                        - link [ref=e1606] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-chongqing-on-july-21-2026/highest-temperature-in-chongqing-on-july-21-2026-40c
+                          - heading [level=2] [ref=e1607]: Will the highest temperature in Chongqing be 40°C on July 21?
+                        - generic [ref=e1608]:
+                          - generic [ref=e1609]: Yes 26¢
+                          - generic [ref=e1610]: 20.0 份额
+                    - generic [ref=e1611]:
+                      - paragraph [ref=e1612]: $5.20
+                      - link [ref=e1613] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0xd394c6d54f41822f570a39b7dfbb0744b84c634614bb364d6b746d093aaaa63f
+                        - text: 8 分钟前
+                  - generic [ref=e1621]:
+                    - paragraph [ref=e1623]: 买入
+                    - generic [ref=e1625]:
+                      - link [ref=e1626] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-chongqing-on-july-21-2026/highest-temperature-in-chongqing-on-july-21-2026-41c
+                      - generic [ref=e1630]:
+                        - link [ref=e1631] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-chongqing-on-july-21-2026/highest-temperature-in-chongqing-on-july-21-2026-41c
+                          - heading [level=2] [ref=e1632]: Will the highest temperature in Chongqing be 41°C on July 21?
+                        - generic [ref=e1633]:
+                          - generic [ref=e1634]: Yes 9¢
+                          - generic [ref=e1635]: 20.0 份额
+                    - generic [ref=e1636]:
+                      - paragraph [ref=e1637]: $1.88
+                      - link [ref=e1638] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x472e2176279a82b85665fc123ee383aa58a7baa4feb03cebddb4b4f5d06ddc68
+                        - text: 8 分钟前
+                  - generic [ref=e1646]:
+                    - paragraph [ref=e1648]: 买入
+                    - generic [ref=e1650]:
+                      - link [ref=e1651] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                      - generic [ref=e1655]:
+                        - link [ref=e1656] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-seoul-on-july-22-2026/highest-temperature-in-seoul-on-july-22-2026-30c
+                          - heading [level=2] [ref=e1657]: Will the highest temperature in Seoul be 30°C on July 22?
+                        - generic [ref=e1658]:
+                          - generic [ref=e1659]: Yes 18¢
+                          - generic [ref=e1660]: 55.0 份额
+                    - generic [ref=e1661]:
+                      - paragraph [ref=e1662]: $10.31
+                      - link [ref=e1663] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x843efb449b727831b3572da02f7f306ef474256b01f0d6d9060d69337e74f7e8
+                        - text: 8 分钟前
+                  - generic [ref=e1671]:
+                    - paragraph [ref=e1673]: 买入
+                    - generic [ref=e1675]:
+                      - link [ref=e1676] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-mexico-city-on-july-21-2026/highest-temperature-in-mexico-city-on-july-21-2026-27c
+                      - generic [ref=e1680]:
+                        - link [ref=e1681] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-mexico-city-on-july-21-2026/highest-temperature-in-mexico-city-on-july-21-2026-27c
+                          - heading [level=2] [ref=e1682]: Will the highest temperature in Mexico City be 27°C on July 21?
+                        - generic [ref=e1683]:
+                          - generic [ref=e1684]: Yes 45¢
+                          - generic [ref=e1685]: 13.6 份额
+                    - generic [ref=e1686]:
+                      - paragraph [ref=e1687]: $6.29
+                      - link [ref=e1688] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x6b62d0192cbcf40529096ba574f8b3f200a4ec211e57dc58eb1da8cbd90b75a4
+                        - text: 8 分钟前
+                  - generic [ref=e1696]:
+                    - paragraph [ref=e1698]: 买入
+                    - generic [ref=e1700]:
+                      - link [ref=e1701] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-mexico-city-on-july-21-2026/highest-temperature-in-mexico-city-on-july-21-2026-27c
+                      - generic [ref=e1705]:
+                        - link [ref=e1706] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-mexico-city-on-july-21-2026/highest-temperature-in-mexico-city-on-july-21-2026-27c
+                          - heading [level=2] [ref=e1707]: Will the highest temperature in Mexico City be 27°C on July 21?
+                        - generic [ref=e1708]:
+                          - generic [ref=e1709]: Yes 45¢
+                          - generic [ref=e1710]: 26.4 份额
+                    - generic [ref=e1711]:
+                      - paragraph [ref=e1712]: $12.21
+                      - link [ref=e1713] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x543f348fca821593fb499c738775f9e1ac779d130dde2ea8cf3710296dd62c08
+                        - text: 8 分钟前
+                  - generic [ref=e1721]:
+                    - paragraph [ref=e1723]: 买入
+                    - generic [ref=e1725]:
+                      - link [ref=e1726] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-los-angeles-on-july-21-2026/highest-temperature-in-los-angeles-on-july-21-2026-78-79f
+                      - generic [ref=e1730]:
+                        - link [ref=e1731] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-los-angeles-on-july-21-2026/highest-temperature-in-los-angeles-on-july-21-2026-78-79f
+                          - heading [level=2] [ref=e1732]: Will the highest temperature in Los Angeles be between 78-79°F on July 21?
+                        - generic [ref=e1733]:
+                          - generic [ref=e1734]: Yes 18¢
+                          - generic [ref=e1735]: 9.0 份额
+                    - generic [ref=e1736]:
+                      - paragraph [ref=e1737]: $1.62
+                      - link [ref=e1738] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x14f03f0f1af329eba2dea8882eb97d74ebd4888a1f0bce0e3590eccee5130da4
+                        - text: 9 分钟前
+                  - generic [ref=e1746]:
+                    - paragraph [ref=e1748]: 卖出
+                    - generic [ref=e1750]:
+                      - link [ref=e1751] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-jeddah-on-july-20-2026/highest-temperature-in-jeddah-on-july-20-2026-40corhigher
+                      - generic [ref=e1755]:
+                        - link [ref=e1756] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-jeddah-on-july-20-2026/highest-temperature-in-jeddah-on-july-20-2026-40corhigher
+                          - heading [level=2] [ref=e1757]: Will the highest temperature in Jeddah be 40°C or higher on July 20?
+                        - generic [ref=e1758]:
+                          - generic [ref=e1759]: Yes 100¢
+                          - generic [ref=e1760]: 99.3 份额
+                    - generic [ref=e1761]:
+                      - paragraph [ref=e1762]: $99.11
+                      - link [ref=e1763] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x335f754e3bb35505bc275c52a6985807385d800242aa82077e4711ae8e06eb1b
+                        - text: 9 分钟前
+                  - generic [ref=e1771]:
+                    - paragraph [ref=e1773]: 买入
+                    - generic [ref=e1775]:
+                      - link [ref=e1776] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-panama-city-on-july-20-2026/highest-temperature-in-panama-city-on-july-20-2026-28c
+                      - generic [ref=e1780]:
+                        - link [ref=e1781] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-panama-city-on-july-20-2026/highest-temperature-in-panama-city-on-july-20-2026-28c
+                          - heading [level=2] [ref=e1782]: Will the highest temperature in Panama City be 28°C on July 20?
+                        - generic [ref=e1783]:
+                          - generic [ref=e1784]: Yes 20¢
+                          - generic [ref=e1785]: 1.3 份额
+                    - generic [ref=e1786]:
+                      - paragraph [ref=e1787]: $0.25
+                      - link [ref=e1788] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x2b982da93ed2ced0c97fc11fac6a780e74d4143b561d5549b08726976fcee459
+                        - text: 9 分钟前
+                  - generic [ref=e1796]:
+                    - paragraph [ref=e1798]: 买入
+                    - generic [ref=e1800]:
+                      - link [ref=e1801] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-atlanta-on-july-21-2026/highest-temperature-in-atlanta-on-july-21-2026-88-89f
+                      - generic [ref=e1805]:
+                        - link [ref=e1806] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-atlanta-on-july-21-2026/highest-temperature-in-atlanta-on-july-21-2026-88-89f
+                          - heading [level=2] [ref=e1807]: Will the highest temperature in Atlanta be between 88-89°F on July 21?
+                        - generic [ref=e1808]:
+                          - generic [ref=e1809]: Yes 13¢
+                          - generic [ref=e1810]: 12.0 份额
+                    - generic [ref=e1811]:
+                      - paragraph [ref=e1812]: $1.56
+                      - link [ref=e1813] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x8bad823aed0f144ef95bcce909feebebba65db81301459bb4143e61512ca36ca
+                        - text: 9 分钟前
+                  - generic [ref=e1821]:
+                    - paragraph [ref=e1823]: 买入
+                    - generic [ref=e1825]:
+                      - link [ref=e1826] [cursor=pointer]:
+                        - /url: /event/highest-temperature-in-los-angeles-on-july-21-2026/highest-temperature-in-los-angeles-on-july-21-2026-78-79f
+                      - generic [ref=e1830]:
+                        - link [ref=e1831] [cursor=pointer]:
+                          - /url: /event/highest-temperature-in-los-angeles-on-july-21-2026/highest-temperature-in-los-angeles-on-july-21-2026-78-79f
+                          - heading [level=2] [ref=e1832]: Will the highest temperature in Los Angeles be between 78-79°F on July 21?
+                        - generic [ref=e1833]:
+                          - generic [ref=e1834]: Yes 18¢
+                          - generic [ref=e1835]: 9.0 份额
+                    - generic [ref=e1836]:
+                      - paragraph [ref=e1837]: $1.62
+                      - link [ref=e1838] [cursor=pointer]:
+                        - /url: https://polygonscan.com/tx/0x9bb97231689c52da4c6c31535d68fa3a24a102dd55ecf939ce7bfd195defdac4
+                        - text: 9 分钟前
+                - button [active] [ref=e1844] [cursor=pointer]: 显示更多活动
+            - button [ref=e1846] [cursor=pointer]:
+              - generic [ref=e1847]: 返回顶部
+      - contentinfo [ref=e720]:
+        - generic [ref=e722]:
+          - generic [ref=e723]:
+            - link [ref=e1848] [cursor=pointer]:
+              - /url: /zh
+            - paragraph [ref=e726]: 全球最大预测市场™
+          - generic [ref=e727]:
+            - generic [ref=e728]:
+              - heading [level=3] [ref=e1850]: 按分类和话题浏览盘口
+              - generic [ref=e730]:
+                - link [ref=e1851] [cursor=pointer]:
+                  - /url: /zh/predictions/tweets-markets
+                  - text: Tweet Markets
+                  - generic [ref=e944]: 预测与赔率
+                - link [ref=e1852] [cursor=pointer]:
+                  - /url: /zh/predictions/daily-temperature
+                  - text: 每日温度
+                  - generic [ref=e946]: 预测与赔率
+                - link [ref=e1853] [cursor=pointer]:
+                  - /url: /zh/predictions/oil
+                  - text: 油
+                  - generic [ref=e948]: 预测与赔率
+                - link [ref=e1854] [cursor=pointer]:
+                  - /url: /zh/predictions/clacton
+                  - text: 克拉克顿
+                  - generic [ref=e950]: 预测与赔率
+                - link [ref=e1855] [cursor=pointer]:
+                  - /url: /zh/predictions/uk-labour-leadership
+                  - text: 英国劳工领导力
+                  - generic [ref=e952]: 预测与赔率
+                - link [ref=e1856] [cursor=pointer]:
+                  - /url: /zh/predictions/gta-vi
+                  - text: GTA VI
+                  - generic [ref=e954]: 预测与赔率
+                - link [ref=e1857] [cursor=pointer]:
+                  - /url: /zh/predictions/privates
+                  - text: 私有化
+                  - generic [ref=e956]: 预测与赔率
+                - link [ref=e1858] [cursor=pointer]:
+                  - /url: /zh/predictions/spacex
+                  - text: SpaceX
+                  - generic [ref=e958]: 预测与赔率
+                - link [ref=e1859] [cursor=pointer]:
+                  - /url: /zh/predictions/strait-of-hormuz
+                  - text: 霍尔木兹海峡
+                  - generic [ref=e960]: 预测与赔率
+                - link [ref=e1860] [cursor=pointer]:
+                  - /url: /zh/predictions/earnings
+                  - text: 收入
+                  - generic [ref=e962]: 预测与赔率
+                - link [ref=e1861] [cursor=pointer]:
+                  - /url: /zh/predictions/global-elections
+                  - text: 全球选举
+                  - generic [ref=e964]: 预测与赔率
+                - link [ref=e1862] [cursor=pointer]:
+                  - /url: /zh/predictions/midterms
+                  - text: 中期
+                  - generic [ref=e966]: 预测与赔率
+                - link [ref=e1863] [cursor=pointer]:
+                  - /url: /zh/predictions/movies
+                  - text: 电影
+                  - generic [ref=e968]: 预测与赔率
+                - link [ref=e1864] [cursor=pointer]:
+                  - /url: /zh/predictions/crypto-prices
+                  - text: 加密货币价格
+                  - generic [ref=e970]: 预测与赔率
+                - button [ref=e1865] [cursor=pointer]:
+                  - generic [ref=e972]: 查看更多
+            - generic [ref=e779]:
+              - heading [level=3] [ref=e1866]: 支持与社交
+              - generic [ref=e781]:
+                - link [ref=e1867] [cursor=pointer]:
+                  - /url: https://docs.polymarket.com/concepts
+                  - text: 了解更多
+                - link [ref=e1868] [cursor=pointer]:
+                  - /url: https://x.com/Polymarket
+                  - text: 𝕏 (Twitter)
+                - link [ref=e1869] [cursor=pointer]:
+                  - /url: https://www.instagram.com/polymarket
+                  - text: Instagram
+                - link [ref=e1870] [cursor=pointer]:
+                  - /url: https://discord.gg/Polymarket
+                  - text: Discord
+                - link [ref=e1871] [cursor=pointer]:
+                  - /url: https://www.tiktok.com/@polymarket
+                  - text: TikTok
+                - link [ref=e1872] [cursor=pointer]:
+                  - /url: https://news.polymarket.com
+                  - text: 新闻
+                - link [ref=e1873] [cursor=pointer]:
+                  - /url: mailto:hello@polymarket.com
+                  - text: 联系我们
+                - link [ref=e1874] [cursor=pointer]:
+                  - /url: https://help.polymarket.com
+                  - text: 帮助中心
+                - link [ref=e1875] [cursor=pointer]:
+                  - /url: https://status.polymarket.com
+                  - text: 状态
+            - generic [ref=e791]:
+              - heading [level=3] [ref=e1876]: Polymarket
+              - generic [ref=e793]:
+                - link [ref=e1877] [cursor=pointer]:
+                  - /url: /zh/rewards
+                  - text: 奖励
+                - link [ref=e1878] [cursor=pointer]:
+                  - /url: https://docs.polymarket.com/api-reference
+                  - text: API 接口
+                - link [ref=e1879] [cursor=pointer]:
+                  - /url: /zh/leaderboard
+                  - text: 排行榜
+                - link [ref=e1880] [cursor=pointer]:
+                  - /url: /zh/accuracy
+                  - text: 准确率
+                - link [ref=e1881] [cursor=pointer]:
+                  - /url: /zh/brand
+                  - text: 品牌
+                - link [ref=e1882] [cursor=pointer]:
+                  - /url: /zh/activity
+                  - text: 动态
+                - link [ref=e1883] [cursor=pointer]:
+                  - /url: https://careers.polymarket.com
+                  - text: 招聘
+                - link [ref=e1884] [cursor=pointer]:
+                  - /url: mailto:press@polymarket.com
+                  - text: 媒体
+          - generic [ref=e802]:
+            - generic [ref=e803]:
+              - generic [ref=e804]:
+                - link [ref=e1885] [cursor=pointer]:
+                  - /url: mailto:hello@polymarket.com
+                - link [ref=e1886] [cursor=pointer]:
+                  - /url: https://x.com/Polymarket
+                - link [ref=e1887] [cursor=pointer]:
+                  - /url: https://www.instagram.com/polymarket
+                - link [ref=e1888] [cursor=pointer]:
+                  - /url: https://discord.gg/Polymarket
+                - link [ref=e1889] [cursor=pointer]:
+                  - /url: https://www.tiktok.com/@polymarket
+              - generic [ref=e825]:
+                - generic [ref=e826]: Adventure One QSS Inc. © 2026
+                - generic [ref=e827]: ·
+                - link [ref=e1890] [cursor=pointer]:
+                  - /url: /zh/privacy
+                  - text: 隐私
+                - generic [ref=e829]: ·
+                - link [ref=e1891] [cursor=pointer]:
+                  - /url: https://polymarket.com/tos
+                  - text: 使用条款
+                - generic [ref=e831]: ·
+                - link [ref=e1892] [cursor=pointer]:
+                  - /url: https://integrity.polymarket.com/
+                  - text: 市场诚信
+                - generic [ref=e833]: ·
+                - link [ref=e1893] [cursor=pointer]:
+                  - /url: https://help.polymarket.com
+                  - text: 帮助中心
+                - generic [ref=e835]: ·
+                - link [ref=e1894] [cursor=pointer]:
+                  - /url: https://docs.polymarket.com
+                  - text: 文档
+              - button [ref=e1895] [cursor=pointer]:
+                - generic [ref=e979]: 中文
+            - paragraph [ref=e837]:
+              - text: Polymarket通过独立法律实体在全球运营。
+              - link [ref=e1896] [cursor=pointer]:
+                - /url: https://polymarket.us/
+                - text: Polymarket US
+              - text: 由QCX LLC d/b/a Polymarket US运营，其为受CFTC监管的Designated Contract Market。本国际平台不受CFTC监管，并独立运营。交易存在重大亏损风险。请参阅我们的《
+              - link [ref=e1897] [cursor=pointer]:
+                - /url: https://polymarket.com/tos
+                - text: 服务条款
+              - text: 》和《
+              - link [ref=e1898] [cursor=pointer]:
+                - /url: https://polymarket.com/privacy
+                - text: 隐私政策
+              - text: 》。本翻译仅供参考。如英文文本与本翻译之间存在任何差异，以英文版本为准。
+  - alert [ref=e982]
+  - dialog [ref=e1942]:
+    - generic [ref=e1943]:
+      - heading "身份验证" [level=2] [ref=e1944]
+      - paragraph [ref=e1945]: 身份验证
+    - generic [ref=e1949]:
+      - paragraph [ref=e1951]: 欢迎来到 Polymarket
+      - button "用 Google 账号继续" [ref=e1952] [cursor=pointer]
+      - generic [ref=e1955]: 或者
+      - generic [ref=e1959]:
+        - textbox "电子邮箱地址" [ref=e1960]
+        - generic [ref=e1961]:
+          - button "继续" [disabled]
+      - generic [ref=e1963]:
+        - button "继续电报" [ref=e1964] [cursor=pointer]
+        - button "继续使用 Steam" [ref=e1965] [cursor=pointer]
+        - button [ref=e1966] [cursor=pointer]
+        - button [ref=e1968] [cursor=pointer]
+        - link [ref=e1970] [cursor=pointer]:
+          - /url: https://chrome.google.com/webstore/detail/rabby-wallet/acmacodkjbdgmoleebolmdjonilkdbch
+        - link [ref=e1972] [cursor=pointer]:
+          - /url: https://chrome.google.com/webstore/detail/phantom/bfnaelmomeimhlpmgjnjophhpkkoljpa
+        - button [ref=e1974] [cursor=pointer]
+        - button "More methods" [ref=e1976] [cursor=pointer]
+      - generic [ref=e1979]:
+        - link "条款" [ref=e1980] [cursor=pointer]:
+          - /url: /tos
+        - generic [ref=e1981]: •
+        - link "隐私" [ref=e1982] [cursor=pointer]:
+          - /url: /privacy

@@ -1,0 +1,2765 @@
+{
+  "blockers": [
+    "round_one_not_ready",
+    "round_two_not_ready"
+  ],
+  "calls_order_gateway": false,
+  "content_sha256": "9cc63bf611244ca767f95ac4a4025d7dd6789770c0d23e1ead3e5d845bd53410",
+  "durable_ssot_replay": {
+    "as_of_utc": null,
+    "boundary": {
+      "calls_order_gateway": false,
+      "live_submit_authorized": false,
+      "network_access": false,
+      "orders_submitted": 0,
+      "places_orders": false,
+      "query_only": true,
+      "read_only": true,
+      "writes_production_db": false
+    },
+    "content_sha256": "f79ae5ef430e330da933c339378c2d2aa51388e72695ce59af931d25e42cae38",
+    "continuation": {
+      "as_of_utc": null,
+      "chain_sha256": "e833194c766e707fc4ce27d8417b02fe36956ca9aec4bc14ef8590141676cfc8",
+      "event_date": "2026-07-30",
+      "explicit_core_seen": false,
+      "last_core_buckets": null,
+      "last_decision_at_utc": "2026-07-29T16:00:27.069000Z",
+      "last_direction": null,
+      "last_rowid": 720,
+      "last_source_sequence": 206,
+      "last_stage_rank": 2,
+      "last_ws_semantic_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0",
+      "recent_ws_transition_sha256s": [
+        "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+        "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0"
+      ],
+      "registry_set_sha256": "2083a03682f4011f7907be60787495bc926178650b2dfee089a32a406623e3db",
+      "schema": "bayes_basket_target_durable_ssot_replay_continuation_v1",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "ws_keepalive_duplicate_count": 0,
+      "ws_return_transition_count": 0,
+      "ws_semantic_chain_sha256": "e3616c2bd3cdf986d73b6819dc4428ad5c3ace60515a7da9ea65dbcfd2de9e4f",
+      "ws_transition_count": 15
+    },
+    "event_date": "2026-07-30",
+    "forward_oos": {
+      "blocks_formal_parameter_promotion_or_live": true,
+      "blocks_production_no_live": false,
+      "consulted": false
+    },
+    "label_status": {
+      "materialized_label_count": 0,
+      "required_for_production_no_live_replay": false
+    },
+    "registry_set_sha256": "2083a03682f4011f7907be60787495bc926178650b2dfee089a32a406623e3db",
+    "replayed_fact_count": 15,
+    "rows": [
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_b0ee11ecab3a34fff11d008293bbe23712338727",
+        "decision_at_utc": "2026-07-29T15:04:52.274Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_76c59832a4fcd38e69b510c5bedbc4ada9a5f69d",
+        "decision_sha256": "64668617f79b4c2ac75f5e5a7d45b1766de679c60b32f4e22b91ca4270ba2130",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_56626819ef793bc51ccb258833a8b505cb2b13c4",
+        "fact_sha256": "56626819ef793bc51ccb258833a8b505cb2b13c411348b48136a18b4eae607ad",
+        "intent_count": 0,
+        "inventory_sha256": "0582fb4b460f788b59bc8aefca9f9d6e521cb47bc8946d9802d0ce7583a2bd8c",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "f664e00f7aee6cbcca82256469e0d9296b235eb76a2a8d8f8f8cc79e2483c28a",
+        "order_state_sha256": "f26572e07db5878e3bc07fcf8a4f9612065943910fa42e1aaac6860489979cdc",
+        "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "c1dfef8a9c09a7a55439351c93fc8dd3abcd4ae9ed9003dc7dc92f6844dda028",
+        "rowid": 706,
+        "source_sequence": 0,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_3e0cad47548923e86ae9ce6df27836bf5f612de6",
+        "decision_at_utc": "2026-07-29T15:06:20.977Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_c2da73b0108e9587f2011219524d013dac02a376",
+        "decision_sha256": "85c9deb357d47db9e4bf8d966695bc3a96513874efd55409c6e2976106e932a4",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_db04d05635edb1240442abb9dfeca081121d72ec",
+        "fact_sha256": "db04d05635edb1240442abb9dfeca081121d72eca9af4e137302c021b96693b5",
+        "intent_count": 0,
+        "inventory_sha256": "ce5566fa62a8025e58c1f446bcc27b4db9c001e691473f62a68b4703330efc89",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "e7195b2334a8e15ad177525f4b1274764cae5502c8290252c7e244b5f29d3af4",
+        "order_state_sha256": "cd8ed6e603c477c5f9da7d0990e0f154ccc3a1a0de0b03d129e20e5e4263a6c6",
+        "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "4b49a001fbc9e41e03ac2687aa48c77302f21ff49b644506f02046f53456cded",
+        "rowid": 707,
+        "source_sequence": 6,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_b72f259ce2576e1a74098509140e280cfd16c4c3",
+        "decision_at_utc": "2026-07-29T15:07:05.652Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_2f86e4b06b2870b59bb18a6e21f73a8103245e42",
+        "decision_sha256": "0b07c1fabacdfa1d3653d6ea05d15f6649e1eee846111b669d851733619c124c",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_3bcd28b073ca2092027597bd090dfe9894e4b472",
+        "fact_sha256": "3bcd28b073ca2092027597bd090dfe9894e4b47266091224c3876278ce74d15b",
+        "intent_count": 0,
+        "inventory_sha256": "3b0d6245e19aeebc6992bbed5e30c88cd028f67c705e1de6c6e5840478ff39d8",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "c921c5ad9c3bcf3f901eec93e33189bc2db0bb02ed81fcb06f808f9fab7735fa",
+        "order_state_sha256": "e8e07737493efbf43b8a6a74ca04aa913886b61d8b2dbdfa187ff10404de3480",
+        "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "76a568407771784803a11b6810133664c3a0b8807fdf28ce6768b631cd178a71",
+        "rowid": 708,
+        "source_sequence": 9,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_0cf5bedd1afa7d4a1a8da63e361f27f77de06bd4",
+        "decision_at_utc": "2026-07-29T15:09:07.141Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_f40005f02c43a0fb714df4dac11cb1207cc67392",
+        "decision_sha256": "773c285a77195a27a1e2f1cb8397e842423e22fceca000beb78aadd8487584ae",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_802f6f37054f5e857b90974f672766fe534c154e",
+        "fact_sha256": "802f6f37054f5e857b90974f672766fe534c154e28e616fec3f99ca3cb06a435",
+        "intent_count": 0,
+        "inventory_sha256": "88e0a4ca05a69a364f964468810e7ac3a2a6503b859ef70f4bf41626943aae58",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "d6f70c26c715ad63fdf94fac8a6043d8da601f5659e504c5ec2e1d5c3a32013d",
+        "order_state_sha256": "020f1cb2fcc39e271eddc25047ae4037c675219ee5c2b0bea1e4e76ba32f0991",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "38d7d6467020dffabebc42127cd8ba08bea9057e7e2fb94b3e3753adf645fc12",
+        "rowid": 709,
+        "source_sequence": 17,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_9f22d1ec79c6ba4f4a17655b29da8f90bc9a3f98",
+        "decision_at_utc": "2026-07-29T15:09:22.152Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_2f7681bbe6d521eb2e51d6147d131e622173b5e6",
+        "decision_sha256": "1c8fb06781ca4bdb121041974fe86f3bf75982da22b2c6f1273f9f2afe902df1",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_be6be3aa3806332678a6013796de024621966214",
+        "fact_sha256": "be6be3aa3806332678a6013796de0246219662148d1f8f541bf4e1553a273e3e",
+        "intent_count": 0,
+        "inventory_sha256": "17437a0213fe7bcaf63d3658808cbb314b54d6b88a414e44464c4967b07e843f",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "c7d775b52a3bf65f96f7298ad66800e595956caf2cb2d79df1326c79fe627457",
+        "order_state_sha256": "a2040d2b1b61858c6d908f30c8851f3cc85f43b783fc826b01ad9fe326b099f6",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "19dcf1bbb9073cd91ad8df894ef4d98819233778dffa2141c14168b4d2423b73",
+        "rowid": 710,
+        "source_sequence": 18,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_1e06b19fc2d9070ce648da6a627bfae94b608081",
+        "decision_at_utc": "2026-07-29T15:12:07.449Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_5a0bf37d8789309bd6a03308ff5cd8393a029951",
+        "decision_sha256": "63d469933a47919fc3ddd5663eecb1d54783ea9784ed9895a16e3fca41437275",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_b167273d7f8470f6df80b4bbbf0d8683a34bcc9d",
+        "fact_sha256": "b167273d7f8470f6df80b4bbbf0d8683a34bcc9d5f9db166c85a89e26f66c324",
+        "intent_count": 0,
+        "inventory_sha256": "e15f1dca5c5cd24ae75c321b1592cc93d1b66f9722b753340a0eee2cb9199918",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "11a0d1a30a1fd8a5d27ff4e596472b8917b60adcb870870f66b3a79f948e2849",
+        "order_state_sha256": "14e230371483b16a8618faf038f2bafe4bc2eddb5ff41fd7334c2ab94bd8bc0d",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "1a06e5d4283a046e001adb07f9459118f8254a7412d01be4c4629c4119111aa6",
+        "rowid": 711,
+        "source_sequence": 29,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_05c783ed277aaf266b50d94265ed05b0e9437dd1",
+        "decision_at_utc": "2026-07-29T15:37:08.830Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_1d5fd72982b9401320790038af3970beea76bb9b",
+        "decision_sha256": "d061aee723502ce7a4604a69493e77d0264d6c842400e36f99028512b2e6d030",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_3acb2ef3d93fbfda6446951de2fd3f2a1850919e",
+        "fact_sha256": "3acb2ef3d93fbfda6446951de2fd3f2a1850919e2a5c6eba1718fed6b5859102",
+        "intent_count": 0,
+        "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "4bae3602e8194877e3d906c659f18da786e62e2912f8ba77645469b72f9aad83",
+        "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "67f8b92a68fadc2ebc28e150b0927098b9570cc78e203ddd3ae800f04b294ee1",
+        "rowid": 712,
+        "source_sequence": 124,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_f6ea824e5efdfbb418d060499ae3a8c316c9e55f",
+        "decision_at_utc": "2026-07-29T15:37:31.819Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_f3ea3e9ecb53181aa482a2349d4827936463ef0d",
+        "decision_sha256": "88847d8b97ab2ba3e7dd647e30e982b0b3fa8c6d6cbb7a118067da7ed4e81197",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_0dc530436ddaa5f5e157961a6aee067e22217fab",
+        "fact_sha256": "0dc530436ddaa5f5e157961a6aee067e22217fab3a52462fccf16124a27976c0",
+        "intent_count": 0,
+        "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "37d45f697e9467296de617a82325e59d0aa26293bca27ebb421d4af3e580e62f",
+        "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "ec6829a9048aca5725a8a3afef5598d0c64f1f96bad9b92e50df3fd2741d3f9e",
+        "rowid": 713,
+        "source_sequence": 125,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_705bd2b2df7e780be637933c238dd3500a3d7f46",
+        "decision_at_utc": "2026-07-29T15:37:38.768Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_8c4226936086909d9c295b128bb420f432ad11fa",
+        "decision_sha256": "b6b4eaff55b588427c29a3b7448ac3e4aa9ef7ad85e1070b23ce4b46c0fd7748",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_f7a845b05a0798d5e327df924e9a4f31aad8fee9",
+        "fact_sha256": "f7a845b05a0798d5e327df924e9a4f31aad8fee9f174eb6628b9caf33dbb76d8",
+        "intent_count": 0,
+        "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "6dca094b110929a1b19f019d0b9e626848519591d2d3c1d39d19568e6ae90272",
+        "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "d53812bafc7dac734c6a157a4a5588eb1daa70eabf387d7b37ba4a4006fc29f7",
+        "rowid": 714,
+        "source_sequence": 126,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_e5d21be389fd15d28ba8d30119c8472a676e4e41",
+        "decision_at_utc": "2026-07-29T15:56:12.148Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_b0b4fe726aaf3df4056b422f2f7b949cf8bbbb59",
+        "decision_sha256": "f6e0f67f8b90eb07a8e511315abfb74343b301e5e6cd0338814d8237f8522fc6",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_4bc5910758085a9989e7b987877b86f260f1e2a9",
+        "fact_sha256": "4bc5910758085a9989e7b987877b86f260f1e2a9c9134c918dde2103169bae9a",
+        "intent_count": 0,
+        "inventory_sha256": "aeac9fe9d25e9e568723cace4935382f3f7e9e3ddb13b9637f9c757ce705356f",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "2c876acb8f1e0901db860b451c1f0781e81c12c77af91aa5635e77f4e3fb9633",
+        "order_state_sha256": "d1814d3b20bb69518e88b90bbfbc05c5a9e1d735725b5dcad02ee71586dfc762",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "a5631b7e9c1f70b6431a5c1d444ea226b23b1b1901ce820a08699f47010f9898",
+        "rowid": 715,
+        "source_sequence": 189,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_17509e4cb359f5bec3c5873582841f46c4250e13",
+        "decision_at_utc": "2026-07-29T15:57:26.723Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_9af54c1a3d7fc5fe7d32300fa3b3cebd54bc7fa7",
+        "decision_sha256": "66dfabdc39eec5d371d94d46c6ceb3f2f6f2cd28a6520fea7588ce8b85437f6d",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_78e7538ece3928ad39da3d1bcb62e560c5c72a13",
+        "fact_sha256": "78e7538ece3928ad39da3d1bcb62e560c5c72a13df0df2f5e19fb294be0d679f",
+        "intent_count": 0,
+        "inventory_sha256": "0591048f66418784e47f0e893f1331178319cac68480c305433cf53cfe5fb026",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "fc1bd35c5525c5dad35d4e32601ce59a77d54cd600ec008f2caa10696a4ace06",
+        "order_state_sha256": "046c7021581d127e51ce16b3fa778610f4bd4863b6196f309320a6a7cdde1900",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "619f852eab071e8c723e179096acbb06581dde9de8bcc8a63c86cccab0e667d8",
+        "rowid": 716,
+        "source_sequence": 194,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_2d53d723811bdeaa980e466177f430b4d9269baf",
+        "decision_at_utc": "2026-07-29T15:59:11.650Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_e47c3a1b8f95629175756fd89aeaa0ea188c48bb",
+        "decision_sha256": "6476349bce990c2f1bd13e736462754362df720d1e1b3c4455ad5eae8d6bf269",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_e433fea36f24135d9e079b3207cffe06a43e8a83",
+        "fact_sha256": "e433fea36f24135d9e079b3207cffe06a43e8a8358f06b83fa0a8b08398a63c8",
+        "intent_count": 0,
+        "inventory_sha256": "3f0f74ef0a78d85073992f3e6a9eecc5579854fff496ed2cbb164c599b556891",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "87dfd2fee452539190f7b439ec9dece083a3e1903ce33174a16204a65445eb68",
+        "order_state_sha256": "e27fd274bf448e8ef5c2bb3bf9d491697149985ce95912862e8e92f8331a74fd",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "39902294a6f34378f2418025ac5a5cf53b17baa3a9cbbb428ae0d7fc3da51aeb",
+        "rowid": 717,
+        "source_sequence": 201,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_294f46dd813037bd9c7fd509683d9dfa9c107ead",
+        "decision_at_utc": "2026-07-29T15:59:26.713Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_266abf4b3cba5ff99fdfc3e5b57da72d74c8ab5d",
+        "decision_sha256": "aac6dec35a3ef8b874e82cdc22aaea8c96493c7f7fc70e74736b9208dbdd3df6",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_5c2e519d80b243af55033d32dca087b45f65faca",
+        "fact_sha256": "5c2e519d80b243af55033d32dca087b45f65facac6bc23e6ddf32e254c9bfebf",
+        "intent_count": 0,
+        "inventory_sha256": "44537424356b0b8273b1e4c5b9dc816355b02b00af37538cd35e98265b85cd46",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "43673e922713501d588c1a65571780813812bcad5251b8fdd12dbf61eecd65d9",
+        "order_state_sha256": "e6f80ea73a47f7e41e5c40ddcf98bd6e847c54ea7ec45dcbb0d4ee6c7d621ed4",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "01b5a7be10262f8d54bc6578685cc6049549ce44aaa732b9af5f42d3f72b7ed8",
+        "rowid": 718,
+        "source_sequence": 202,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_b39b522a6bd539aa70a5d9883b23114568885103",
+        "decision_at_utc": "2026-07-29T15:59:41.715Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_dd9e49ff6d75c10127223aabeeddb4c83b8d400c",
+        "decision_sha256": "19fd378d6097caa24ad097f70a204fc1fd93e3f6d0c5a002326e063874ea74b8",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_f87360eea67d08f638ec8d93429eb1541b4c6ca2",
+        "fact_sha256": "f87360eea67d08f638ec8d93429eb1541b4c6ca2c632f7b5fa43a95d60e3e906",
+        "intent_count": 0,
+        "inventory_sha256": "c5765a25f1cfc9f869cbef435a3dd08e42a5a5776afd05892a5fbb5cbd084452",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "f32cbd42f96f6bc296b4ef869feb22a638476aa8e95c21ef1c574261ac0d6193",
+        "order_state_sha256": "beced579f7a481d7b3f4976352714b0930335b0eb52b97b885657fd236b68e5d",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "400554546c3a6cee3f33e09d17a6d55f0c4484a302d2b928bc7cc8e2d177eef1",
+        "rowid": 719,
+        "source_sequence": 203,
+        "stage": "P1",
+        "training_fact_present": true
+      },
+      {
+        "core_direction": {
+          "contract_state": "LEGACY_NA",
+          "core_buckets": null,
+          "current_core_buckets": null,
+          "current_direction": null,
+          "decision_state": "blocked",
+          "direction": "NEUTRAL",
+          "final_support": [
+            "35°C or below",
+            "36°C",
+            "37°C",
+            "38°C"
+          ],
+          "plan_state": "HOLD"
+        },
+        "cycle_id": "cycle_26f277de4aab56b2086ea9a9f3e1f3f3e86fe5bf",
+        "decision_at_utc": "2026-07-29T16:00:27.069Z",
+        "decision_hash_matches_current_contract": false,
+        "decision_id": "decision_187c444bd175f894a76ac22af748bc64deef029a",
+        "decision_sha256": "bddcf6f893653de5ba1fe050b71614bb7af7f1e7748e4abd99aaaa0a542a27e0",
+        "decision_state": "blocked",
+        "execution_policy": "NO_EXECUTION",
+        "fact_id": "d2fact_05418a7226f3210842e4ae817e2f4a7647d70145",
+        "fact_sha256": "05418a7226f3210842e4ae817e2f4a7647d70145bbc52858646a3ff1202459e4",
+        "intent_count": 0,
+        "inventory_sha256": "b2b6505d0eb6aa606746e62e43d04de3d9dc9628e71adbf9fb266edcfa2029a1",
+        "label_required": false,
+        "official_ws_economic_changed": true,
+        "official_ws_economic_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0",
+        "official_ws_low_high_low_return": false,
+        "official_ws_sha256": "2002130b8f5b320a1c762a46ba048a178cc8371ca26704924fd833c214852da2",
+        "order_state_sha256": "271077b393a57a27a378c644420322b7f1674d276af7f8ba904bef83b6d2c7ea",
+        "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+        "reason_codes": [
+          "regime_direction_not_allowed",
+          "complete_basket_delta_not_positive"
+        ],
+        "reserve_amount_usdc": 0.0,
+        "row_sha256": "b7e19c9406ed0bdc4ba1bcd9bb3322ca4bee5edeac51c7e687045ab6d37a9d9b",
+        "rowid": 720,
+        "source_sequence": 206,
+        "stage": "P1",
+        "training_fact_present": true
+      }
+    ],
+    "schema": "bayes_basket_target_durable_ssot_replay_v1",
+    "settlement_timezone": "Asia/Seoul",
+    "state": "PASS",
+    "station_id": "RKPK",
+    "ws_economic_summary": {
+      "adjacent_keepalive_duplicate_count": 0,
+      "low_high_low_return_count": 0,
+      "semantic_chain_sha256": "e3616c2bd3cdf986d73b6819dc4428ad5c3ace60515a7da9ea65dbcfd2de9e4f",
+      "transition_count": 15
+    },
+    "ws_economic_transitions": [
+      {
+        "content_sha256": "07b52480cc01c69e1f9f995e6338665edd8e426f21f05c219039a05da033d8e5",
+        "from_sha256": null,
+        "is_low_high_low_return": false,
+        "rowid": 706,
+        "to_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959"
+      },
+      {
+        "content_sha256": "8114a9387939962241762dbe6b7e82f48c5778d4560105e3b4bc6c57b15744c6",
+        "from_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959",
+        "is_low_high_low_return": false,
+        "rowid": 707,
+        "to_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0"
+      },
+      {
+        "content_sha256": "7e191b6dd6c93b360e932ffbefc2dac98c6aa659bf33ca255254ba2d440d3257",
+        "from_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0",
+        "is_low_high_low_return": false,
+        "rowid": 708,
+        "to_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584"
+      },
+      {
+        "content_sha256": "d1c2e05779fc196693e1b0b749a648b86daacbcba54f060a2f3d8805389ad958",
+        "from_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584",
+        "is_low_high_low_return": false,
+        "rowid": 709,
+        "to_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5"
+      },
+      {
+        "content_sha256": "7b31ca74ff2a167d3faea52feec7b9c59eeb1122ab1f0f148aed3e1e5da7996a",
+        "from_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5",
+        "is_low_high_low_return": false,
+        "rowid": 710,
+        "to_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d"
+      },
+      {
+        "content_sha256": "4d8243d6323ba09b7320305af2796bbf91139dc829b225c87fd8a9a3ceb8f0fe",
+        "from_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d",
+        "is_low_high_low_return": false,
+        "rowid": 711,
+        "to_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9"
+      },
+      {
+        "content_sha256": "c20938f16150ba909da601566631399a75f97d6551e5a30912d89df01413cb85",
+        "from_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9",
+        "is_low_high_low_return": false,
+        "rowid": 712,
+        "to_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47"
+      },
+      {
+        "content_sha256": "d410714a0142f980252735f80736a1d93c18f74c64ba8c7435ebdf89cc968d84",
+        "from_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47",
+        "is_low_high_low_return": false,
+        "rowid": 713,
+        "to_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94"
+      },
+      {
+        "content_sha256": "a2a0468bfcf944bdf2bc0733cd680d6e4822d00efb65082219616cd28a3c1880",
+        "from_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94",
+        "is_low_high_low_return": false,
+        "rowid": 714,
+        "to_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021"
+      },
+      {
+        "content_sha256": "52990f9577d9ca94339f8bada414931cbb3c1a643e4539a727a9d01b5b957c0d",
+        "from_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021",
+        "is_low_high_low_return": false,
+        "rowid": 715,
+        "to_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b"
+      },
+      {
+        "content_sha256": "d3a4d30edd4891eec58504f953432fe6276107be57989fdc56f1ba9d8441df41",
+        "from_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b",
+        "is_low_high_low_return": false,
+        "rowid": 716,
+        "to_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200"
+      },
+      {
+        "content_sha256": "6362a4026338f9593c9bb0ddb86aec2e5ce351dc6e8d2e5a85c6b09bf6d0cd2b",
+        "from_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200",
+        "is_low_high_low_return": false,
+        "rowid": 717,
+        "to_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834"
+      },
+      {
+        "content_sha256": "78eb00748b08c2bc4f91d52494bfb1b05e2c6d01e5530c62041ede9902a0efb2",
+        "from_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834",
+        "is_low_high_low_return": false,
+        "rowid": 718,
+        "to_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df"
+      },
+      {
+        "content_sha256": "61fe546299a58c433e70671e96a0d2c9b9e08706f6a30243f375fdbfdce6df16",
+        "from_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df",
+        "is_low_high_low_return": false,
+        "rowid": 719,
+        "to_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f"
+      },
+      {
+        "content_sha256": "9befca93e5ae1478d2f70ffe765a9c9cb3a76db3161252028e56c0c3d51642af",
+        "from_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+        "is_low_high_low_return": false,
+        "rowid": 720,
+        "to_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0"
+      }
+    ]
+  },
+  "live_submit_authorized": false,
+  "non_target_station_counts": {
+    "auto_trade_decisions": 275,
+    "basket_policy_training_fact": 0,
+    "basket_probability_bridge_history": -1,
+    "basket_probability_bridge_latest": -1,
+    "basket_probability_envelope": 0,
+    "basket_probability_evidence_activation": -1,
+    "basket_probability_evidence_artifact": -1,
+    "basket_probability_update_proof": -1
+  },
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "round_one_sha256": "9d44703a0d9ced77108acda6a11d32eb40bca602df4ecd9a4bf2cbc8d8d49835",
+  "round_two_sha256": "b04ef560d05650106126bad07784964f43e0ef87526a0edfdf4187f502ce3352",
+  "rounds": [
+    {
+      "blockers": [
+        "candidate_artifact_missing",
+        "directional_core_decision_missing",
+        "identity_likelihood_fallback_not_consumed",
+        "theta_zero_fallback_not_consumed",
+        "wal_size_exceeded"
+      ],
+      "calls_order_gateway": false,
+      "captured_at_utc": "2026-07-30T02:36:16.236Z",
+      "core_chain": {
+        "content_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "history_truncated": true,
+        "latest": null,
+        "legacy_count": 0,
+        "malformed_count": 0,
+        "validated_count": 0,
+        "violations": []
+      },
+      "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+      "durable_ssot_replay": {
+        "as_of_utc": null,
+        "boundary": {
+          "calls_order_gateway": false,
+          "live_submit_authorized": false,
+          "network_access": false,
+          "orders_submitted": 0,
+          "places_orders": false,
+          "query_only": true,
+          "read_only": true,
+          "writes_production_db": false
+        },
+        "content_sha256": "f79ae5ef430e330da933c339378c2d2aa51388e72695ce59af931d25e42cae38",
+        "continuation": {
+          "as_of_utc": null,
+          "chain_sha256": "e833194c766e707fc4ce27d8417b02fe36956ca9aec4bc14ef8590141676cfc8",
+          "event_date": "2026-07-30",
+          "explicit_core_seen": false,
+          "last_core_buckets": null,
+          "last_decision_at_utc": "2026-07-29T16:00:27.069000Z",
+          "last_direction": null,
+          "last_rowid": 720,
+          "last_source_sequence": 206,
+          "last_stage_rank": 2,
+          "last_ws_semantic_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0",
+          "recent_ws_transition_sha256s": [
+            "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+            "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0"
+          ],
+          "registry_set_sha256": "2083a03682f4011f7907be60787495bc926178650b2dfee089a32a406623e3db",
+          "schema": "bayes_basket_target_durable_ssot_replay_continuation_v1",
+          "settlement_timezone": "Asia/Seoul",
+          "station_id": "RKPK",
+          "ws_keepalive_duplicate_count": 0,
+          "ws_return_transition_count": 0,
+          "ws_semantic_chain_sha256": "e3616c2bd3cdf986d73b6819dc4428ad5c3ace60515a7da9ea65dbcfd2de9e4f",
+          "ws_transition_count": 15
+        },
+        "event_date": "2026-07-30",
+        "forward_oos": {
+          "blocks_formal_parameter_promotion_or_live": true,
+          "blocks_production_no_live": false,
+          "consulted": false
+        },
+        "label_status": {
+          "materialized_label_count": 0,
+          "required_for_production_no_live_replay": false
+        },
+        "registry_set_sha256": "2083a03682f4011f7907be60787495bc926178650b2dfee089a32a406623e3db",
+        "replayed_fact_count": 15,
+        "rows": [
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_b0ee11ecab3a34fff11d008293bbe23712338727",
+            "decision_at_utc": "2026-07-29T15:04:52.274Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_76c59832a4fcd38e69b510c5bedbc4ada9a5f69d",
+            "decision_sha256": "64668617f79b4c2ac75f5e5a7d45b1766de679c60b32f4e22b91ca4270ba2130",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_56626819ef793bc51ccb258833a8b505cb2b13c4",
+            "fact_sha256": "56626819ef793bc51ccb258833a8b505cb2b13c411348b48136a18b4eae607ad",
+            "intent_count": 0,
+            "inventory_sha256": "0582fb4b460f788b59bc8aefca9f9d6e521cb47bc8946d9802d0ce7583a2bd8c",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "f664e00f7aee6cbcca82256469e0d9296b235eb76a2a8d8f8f8cc79e2483c28a",
+            "order_state_sha256": "f26572e07db5878e3bc07fcf8a4f9612065943910fa42e1aaac6860489979cdc",
+            "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "c1dfef8a9c09a7a55439351c93fc8dd3abcd4ae9ed9003dc7dc92f6844dda028",
+            "rowid": 706,
+            "source_sequence": 0,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_3e0cad47548923e86ae9ce6df27836bf5f612de6",
+            "decision_at_utc": "2026-07-29T15:06:20.977Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_c2da73b0108e9587f2011219524d013dac02a376",
+            "decision_sha256": "85c9deb357d47db9e4bf8d966695bc3a96513874efd55409c6e2976106e932a4",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_db04d05635edb1240442abb9dfeca081121d72ec",
+            "fact_sha256": "db04d05635edb1240442abb9dfeca081121d72eca9af4e137302c021b96693b5",
+            "intent_count": 0,
+            "inventory_sha256": "ce5566fa62a8025e58c1f446bcc27b4db9c001e691473f62a68b4703330efc89",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "e7195b2334a8e15ad177525f4b1274764cae5502c8290252c7e244b5f29d3af4",
+            "order_state_sha256": "cd8ed6e603c477c5f9da7d0990e0f154ccc3a1a0de0b03d129e20e5e4263a6c6",
+            "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "4b49a001fbc9e41e03ac2687aa48c77302f21ff49b644506f02046f53456cded",
+            "rowid": 707,
+            "source_sequence": 6,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_b72f259ce2576e1a74098509140e280cfd16c4c3",
+            "decision_at_utc": "2026-07-29T15:07:05.652Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_2f86e4b06b2870b59bb18a6e21f73a8103245e42",
+            "decision_sha256": "0b07c1fabacdfa1d3653d6ea05d15f6649e1eee846111b669d851733619c124c",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_3bcd28b073ca2092027597bd090dfe9894e4b472",
+            "fact_sha256": "3bcd28b073ca2092027597bd090dfe9894e4b47266091224c3876278ce74d15b",
+            "intent_count": 0,
+            "inventory_sha256": "3b0d6245e19aeebc6992bbed5e30c88cd028f67c705e1de6c6e5840478ff39d8",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "c921c5ad9c3bcf3f901eec93e33189bc2db0bb02ed81fcb06f808f9fab7735fa",
+            "order_state_sha256": "e8e07737493efbf43b8a6a74ca04aa913886b61d8b2dbdfa187ff10404de3480",
+            "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "76a568407771784803a11b6810133664c3a0b8807fdf28ce6768b631cd178a71",
+            "rowid": 708,
+            "source_sequence": 9,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_0cf5bedd1afa7d4a1a8da63e361f27f77de06bd4",
+            "decision_at_utc": "2026-07-29T15:09:07.141Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_f40005f02c43a0fb714df4dac11cb1207cc67392",
+            "decision_sha256": "773c285a77195a27a1e2f1cb8397e842423e22fceca000beb78aadd8487584ae",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_802f6f37054f5e857b90974f672766fe534c154e",
+            "fact_sha256": "802f6f37054f5e857b90974f672766fe534c154e28e616fec3f99ca3cb06a435",
+            "intent_count": 0,
+            "inventory_sha256": "88e0a4ca05a69a364f964468810e7ac3a2a6503b859ef70f4bf41626943aae58",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "d6f70c26c715ad63fdf94fac8a6043d8da601f5659e504c5ec2e1d5c3a32013d",
+            "order_state_sha256": "020f1cb2fcc39e271eddc25047ae4037c675219ee5c2b0bea1e4e76ba32f0991",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "38d7d6467020dffabebc42127cd8ba08bea9057e7e2fb94b3e3753adf645fc12",
+            "rowid": 709,
+            "source_sequence": 17,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_9f22d1ec79c6ba4f4a17655b29da8f90bc9a3f98",
+            "decision_at_utc": "2026-07-29T15:09:22.152Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_2f7681bbe6d521eb2e51d6147d131e622173b5e6",
+            "decision_sha256": "1c8fb06781ca4bdb121041974fe86f3bf75982da22b2c6f1273f9f2afe902df1",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_be6be3aa3806332678a6013796de024621966214",
+            "fact_sha256": "be6be3aa3806332678a6013796de0246219662148d1f8f541bf4e1553a273e3e",
+            "intent_count": 0,
+            "inventory_sha256": "17437a0213fe7bcaf63d3658808cbb314b54d6b88a414e44464c4967b07e843f",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "c7d775b52a3bf65f96f7298ad66800e595956caf2cb2d79df1326c79fe627457",
+            "order_state_sha256": "a2040d2b1b61858c6d908f30c8851f3cc85f43b783fc826b01ad9fe326b099f6",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "19dcf1bbb9073cd91ad8df894ef4d98819233778dffa2141c14168b4d2423b73",
+            "rowid": 710,
+            "source_sequence": 18,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_1e06b19fc2d9070ce648da6a627bfae94b608081",
+            "decision_at_utc": "2026-07-29T15:12:07.449Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_5a0bf37d8789309bd6a03308ff5cd8393a029951",
+            "decision_sha256": "63d469933a47919fc3ddd5663eecb1d54783ea9784ed9895a16e3fca41437275",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_b167273d7f8470f6df80b4bbbf0d8683a34bcc9d",
+            "fact_sha256": "b167273d7f8470f6df80b4bbbf0d8683a34bcc9d5f9db166c85a89e26f66c324",
+            "intent_count": 0,
+            "inventory_sha256": "e15f1dca5c5cd24ae75c321b1592cc93d1b66f9722b753340a0eee2cb9199918",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "11a0d1a30a1fd8a5d27ff4e596472b8917b60adcb870870f66b3a79f948e2849",
+            "order_state_sha256": "14e230371483b16a8618faf038f2bafe4bc2eddb5ff41fd7334c2ab94bd8bc0d",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "1a06e5d4283a046e001adb07f9459118f8254a7412d01be4c4629c4119111aa6",
+            "rowid": 711,
+            "source_sequence": 29,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_05c783ed277aaf266b50d94265ed05b0e9437dd1",
+            "decision_at_utc": "2026-07-29T15:37:08.830Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_1d5fd72982b9401320790038af3970beea76bb9b",
+            "decision_sha256": "d061aee723502ce7a4604a69493e77d0264d6c842400e36f99028512b2e6d030",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_3acb2ef3d93fbfda6446951de2fd3f2a1850919e",
+            "fact_sha256": "3acb2ef3d93fbfda6446951de2fd3f2a1850919e2a5c6eba1718fed6b5859102",
+            "intent_count": 0,
+            "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "4bae3602e8194877e3d906c659f18da786e62e2912f8ba77645469b72f9aad83",
+            "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "67f8b92a68fadc2ebc28e150b0927098b9570cc78e203ddd3ae800f04b294ee1",
+            "rowid": 712,
+            "source_sequence": 124,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_f6ea824e5efdfbb418d060499ae3a8c316c9e55f",
+            "decision_at_utc": "2026-07-29T15:37:31.819Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_f3ea3e9ecb53181aa482a2349d4827936463ef0d",
+            "decision_sha256": "88847d8b97ab2ba3e7dd647e30e982b0b3fa8c6d6cbb7a118067da7ed4e81197",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_0dc530436ddaa5f5e157961a6aee067e22217fab",
+            "fact_sha256": "0dc530436ddaa5f5e157961a6aee067e22217fab3a52462fccf16124a27976c0",
+            "intent_count": 0,
+            "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "37d45f697e9467296de617a82325e59d0aa26293bca27ebb421d4af3e580e62f",
+            "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "ec6829a9048aca5725a8a3afef5598d0c64f1f96bad9b92e50df3fd2741d3f9e",
+            "rowid": 713,
+            "source_sequence": 125,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_705bd2b2df7e780be637933c238dd3500a3d7f46",
+            "decision_at_utc": "2026-07-29T15:37:38.768Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_8c4226936086909d9c295b128bb420f432ad11fa",
+            "decision_sha256": "b6b4eaff55b588427c29a3b7448ac3e4aa9ef7ad85e1070b23ce4b46c0fd7748",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_f7a845b05a0798d5e327df924e9a4f31aad8fee9",
+            "fact_sha256": "f7a845b05a0798d5e327df924e9a4f31aad8fee9f174eb6628b9caf33dbb76d8",
+            "intent_count": 0,
+            "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "6dca094b110929a1b19f019d0b9e626848519591d2d3c1d39d19568e6ae90272",
+            "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "d53812bafc7dac734c6a157a4a5588eb1daa70eabf387d7b37ba4a4006fc29f7",
+            "rowid": 714,
+            "source_sequence": 126,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_e5d21be389fd15d28ba8d30119c8472a676e4e41",
+            "decision_at_utc": "2026-07-29T15:56:12.148Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_b0b4fe726aaf3df4056b422f2f7b949cf8bbbb59",
+            "decision_sha256": "f6e0f67f8b90eb07a8e511315abfb74343b301e5e6cd0338814d8237f8522fc6",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_4bc5910758085a9989e7b987877b86f260f1e2a9",
+            "fact_sha256": "4bc5910758085a9989e7b987877b86f260f1e2a9c9134c918dde2103169bae9a",
+            "intent_count": 0,
+            "inventory_sha256": "aeac9fe9d25e9e568723cace4935382f3f7e9e3ddb13b9637f9c757ce705356f",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "2c876acb8f1e0901db860b451c1f0781e81c12c77af91aa5635e77f4e3fb9633",
+            "order_state_sha256": "d1814d3b20bb69518e88b90bbfbc05c5a9e1d735725b5dcad02ee71586dfc762",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "a5631b7e9c1f70b6431a5c1d444ea226b23b1b1901ce820a08699f47010f9898",
+            "rowid": 715,
+            "source_sequence": 189,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_17509e4cb359f5bec3c5873582841f46c4250e13",
+            "decision_at_utc": "2026-07-29T15:57:26.723Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_9af54c1a3d7fc5fe7d32300fa3b3cebd54bc7fa7",
+            "decision_sha256": "66dfabdc39eec5d371d94d46c6ceb3f2f6f2cd28a6520fea7588ce8b85437f6d",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_78e7538ece3928ad39da3d1bcb62e560c5c72a13",
+            "fact_sha256": "78e7538ece3928ad39da3d1bcb62e560c5c72a13df0df2f5e19fb294be0d679f",
+            "intent_count": 0,
+            "inventory_sha256": "0591048f66418784e47f0e893f1331178319cac68480c305433cf53cfe5fb026",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "fc1bd35c5525c5dad35d4e32601ce59a77d54cd600ec008f2caa10696a4ace06",
+            "order_state_sha256": "046c7021581d127e51ce16b3fa778610f4bd4863b6196f309320a6a7cdde1900",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "619f852eab071e8c723e179096acbb06581dde9de8bcc8a63c86cccab0e667d8",
+            "rowid": 716,
+            "source_sequence": 194,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_2d53d723811bdeaa980e466177f430b4d9269baf",
+            "decision_at_utc": "2026-07-29T15:59:11.650Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_e47c3a1b8f95629175756fd89aeaa0ea188c48bb",
+            "decision_sha256": "6476349bce990c2f1bd13e736462754362df720d1e1b3c4455ad5eae8d6bf269",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_e433fea36f24135d9e079b3207cffe06a43e8a83",
+            "fact_sha256": "e433fea36f24135d9e079b3207cffe06a43e8a8358f06b83fa0a8b08398a63c8",
+            "intent_count": 0,
+            "inventory_sha256": "3f0f74ef0a78d85073992f3e6a9eecc5579854fff496ed2cbb164c599b556891",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "87dfd2fee452539190f7b439ec9dece083a3e1903ce33174a16204a65445eb68",
+            "order_state_sha256": "e27fd274bf448e8ef5c2bb3bf9d491697149985ce95912862e8e92f8331a74fd",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "39902294a6f34378f2418025ac5a5cf53b17baa3a9cbbb428ae0d7fc3da51aeb",
+            "rowid": 717,
+            "source_sequence": 201,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_294f46dd813037bd9c7fd509683d9dfa9c107ead",
+            "decision_at_utc": "2026-07-29T15:59:26.713Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_266abf4b3cba5ff99fdfc3e5b57da72d74c8ab5d",
+            "decision_sha256": "aac6dec35a3ef8b874e82cdc22aaea8c96493c7f7fc70e74736b9208dbdd3df6",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_5c2e519d80b243af55033d32dca087b45f65faca",
+            "fact_sha256": "5c2e519d80b243af55033d32dca087b45f65facac6bc23e6ddf32e254c9bfebf",
+            "intent_count": 0,
+            "inventory_sha256": "44537424356b0b8273b1e4c5b9dc816355b02b00af37538cd35e98265b85cd46",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "43673e922713501d588c1a65571780813812bcad5251b8fdd12dbf61eecd65d9",
+            "order_state_sha256": "e6f80ea73a47f7e41e5c40ddcf98bd6e847c54ea7ec45dcbb0d4ee6c7d621ed4",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "01b5a7be10262f8d54bc6578685cc6049549ce44aaa732b9af5f42d3f72b7ed8",
+            "rowid": 718,
+            "source_sequence": 202,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_b39b522a6bd539aa70a5d9883b23114568885103",
+            "decision_at_utc": "2026-07-29T15:59:41.715Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_dd9e49ff6d75c10127223aabeeddb4c83b8d400c",
+            "decision_sha256": "19fd378d6097caa24ad097f70a204fc1fd93e3f6d0c5a002326e063874ea74b8",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_f87360eea67d08f638ec8d93429eb1541b4c6ca2",
+            "fact_sha256": "f87360eea67d08f638ec8d93429eb1541b4c6ca2c632f7b5fa43a95d60e3e906",
+            "intent_count": 0,
+            "inventory_sha256": "c5765a25f1cfc9f869cbef435a3dd08e42a5a5776afd05892a5fbb5cbd084452",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "f32cbd42f96f6bc296b4ef869feb22a638476aa8e95c21ef1c574261ac0d6193",
+            "order_state_sha256": "beced579f7a481d7b3f4976352714b0930335b0eb52b97b885657fd236b68e5d",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "400554546c3a6cee3f33e09d17a6d55f0c4484a302d2b928bc7cc8e2d177eef1",
+            "rowid": 719,
+            "source_sequence": 203,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_26f277de4aab56b2086ea9a9f3e1f3f3e86fe5bf",
+            "decision_at_utc": "2026-07-29T16:00:27.069Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_187c444bd175f894a76ac22af748bc64deef029a",
+            "decision_sha256": "bddcf6f893653de5ba1fe050b71614bb7af7f1e7748e4abd99aaaa0a542a27e0",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_05418a7226f3210842e4ae817e2f4a7647d70145",
+            "fact_sha256": "05418a7226f3210842e4ae817e2f4a7647d70145bbc52858646a3ff1202459e4",
+            "intent_count": 0,
+            "inventory_sha256": "b2b6505d0eb6aa606746e62e43d04de3d9dc9628e71adbf9fb266edcfa2029a1",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "2002130b8f5b320a1c762a46ba048a178cc8371ca26704924fd833c214852da2",
+            "order_state_sha256": "271077b393a57a27a378c644420322b7f1674d276af7f8ba904bef83b6d2c7ea",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "b7e19c9406ed0bdc4ba1bcd9bb3322ca4bee5edeac51c7e687045ab6d37a9d9b",
+            "rowid": 720,
+            "source_sequence": 206,
+            "stage": "P1",
+            "training_fact_present": true
+          }
+        ],
+        "schema": "bayes_basket_target_durable_ssot_replay_v1",
+        "settlement_timezone": "Asia/Seoul",
+        "state": "PASS",
+        "station_id": "RKPK",
+        "ws_economic_summary": {
+          "adjacent_keepalive_duplicate_count": 0,
+          "low_high_low_return_count": 0,
+          "semantic_chain_sha256": "e3616c2bd3cdf986d73b6819dc4428ad5c3ace60515a7da9ea65dbcfd2de9e4f",
+          "transition_count": 15
+        },
+        "ws_economic_transitions": [
+          {
+            "content_sha256": "07b52480cc01c69e1f9f995e6338665edd8e426f21f05c219039a05da033d8e5",
+            "from_sha256": null,
+            "is_low_high_low_return": false,
+            "rowid": 706,
+            "to_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959"
+          },
+          {
+            "content_sha256": "8114a9387939962241762dbe6b7e82f48c5778d4560105e3b4bc6c57b15744c6",
+            "from_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959",
+            "is_low_high_low_return": false,
+            "rowid": 707,
+            "to_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0"
+          },
+          {
+            "content_sha256": "7e191b6dd6c93b360e932ffbefc2dac98c6aa659bf33ca255254ba2d440d3257",
+            "from_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0",
+            "is_low_high_low_return": false,
+            "rowid": 708,
+            "to_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584"
+          },
+          {
+            "content_sha256": "d1c2e05779fc196693e1b0b749a648b86daacbcba54f060a2f3d8805389ad958",
+            "from_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584",
+            "is_low_high_low_return": false,
+            "rowid": 709,
+            "to_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5"
+          },
+          {
+            "content_sha256": "7b31ca74ff2a167d3faea52feec7b9c59eeb1122ab1f0f148aed3e1e5da7996a",
+            "from_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5",
+            "is_low_high_low_return": false,
+            "rowid": 710,
+            "to_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d"
+          },
+          {
+            "content_sha256": "4d8243d6323ba09b7320305af2796bbf91139dc829b225c87fd8a9a3ceb8f0fe",
+            "from_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d",
+            "is_low_high_low_return": false,
+            "rowid": 711,
+            "to_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9"
+          },
+          {
+            "content_sha256": "c20938f16150ba909da601566631399a75f97d6551e5a30912d89df01413cb85",
+            "from_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9",
+            "is_low_high_low_return": false,
+            "rowid": 712,
+            "to_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47"
+          },
+          {
+            "content_sha256": "d410714a0142f980252735f80736a1d93c18f74c64ba8c7435ebdf89cc968d84",
+            "from_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47",
+            "is_low_high_low_return": false,
+            "rowid": 713,
+            "to_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94"
+          },
+          {
+            "content_sha256": "a2a0468bfcf944bdf2bc0733cd680d6e4822d00efb65082219616cd28a3c1880",
+            "from_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94",
+            "is_low_high_low_return": false,
+            "rowid": 714,
+            "to_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021"
+          },
+          {
+            "content_sha256": "52990f9577d9ca94339f8bada414931cbb3c1a643e4539a727a9d01b5b957c0d",
+            "from_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021",
+            "is_low_high_low_return": false,
+            "rowid": 715,
+            "to_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b"
+          },
+          {
+            "content_sha256": "d3a4d30edd4891eec58504f953432fe6276107be57989fdc56f1ba9d8441df41",
+            "from_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b",
+            "is_low_high_low_return": false,
+            "rowid": 716,
+            "to_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200"
+          },
+          {
+            "content_sha256": "6362a4026338f9593c9bb0ddb86aec2e5ce351dc6e8d2e5a85c6b09bf6d0cd2b",
+            "from_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200",
+            "is_low_high_low_return": false,
+            "rowid": 717,
+            "to_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834"
+          },
+          {
+            "content_sha256": "78eb00748b08c2bc4f91d52494bfb1b05e2c6d01e5530c62041ede9902a0efb2",
+            "from_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834",
+            "is_low_high_low_return": false,
+            "rowid": 718,
+            "to_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df"
+          },
+          {
+            "content_sha256": "61fe546299a58c433e70671e96a0d2c9b9e08706f6a30243f375fdbfdce6df16",
+            "from_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df",
+            "is_low_high_low_return": false,
+            "rowid": 719,
+            "to_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f"
+          },
+          {
+            "content_sha256": "9befca93e5ae1478d2f70ffe765a9c9cb3a76db3161252028e56c0c3d51642af",
+            "from_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+            "is_low_high_low_return": false,
+            "rowid": 720,
+            "to_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0"
+          }
+        ]
+      },
+      "durable_ssot_replay_error": null,
+      "forbidden_execution_counts": {
+        "execution_receipts": 0,
+        "live_submit_authorized": 0,
+        "order_events": 0,
+        "will_order": 0
+      },
+      "live_submit_authorized": false,
+      "non_target_station_counts": {
+        "auto_trade_decisions": 275,
+        "basket_policy_training_fact": 0,
+        "basket_probability_bridge_history": -1,
+        "basket_probability_bridge_latest": -1,
+        "basket_probability_envelope": 0,
+        "basket_probability_evidence_activation": -1,
+        "basket_probability_evidence_artifact": -1,
+        "basket_probability_update_proof": -1
+      },
+      "orders_submitted": 0,
+      "probability_evidence_runtime": {
+        "calls_order_gateway": false,
+        "candidate_activation_count": 0,
+        "candidate_artifact_counts": {},
+        "candidate_rejected_count": 0,
+        "continuous_core_decision_count": 0,
+        "continuous_core_proof_count": 0,
+        "direction_transition_decision_count": 0,
+        "fallback_proof_counts": {},
+        "formal_activation_counts": {},
+        "formal_consumption_counts": {},
+        "missing_tables": [
+          "basket_probability_evidence_activation",
+          "basket_probability_evidence_artifact",
+          "basket_probability_evidence_promotion",
+          "basket_probability_update_proof"
+        ],
+        "orders_submitted": 0,
+        "p0_historical_state": "SCHEMA_MISSING",
+        "p1_trajectory_state": "SCHEMA_MISSING",
+        "production_no_live": true,
+        "proof_counts": {},
+        "read_only": true,
+        "schema": "bayes_basket_probability_evidence_runtime_status_v1",
+        "state": "SCHEMA_MISSING",
+        "station_ids": [
+          "RKPK"
+        ]
+      },
+      "production_no_live": true,
+      "resources": {
+        "database_bytes": 191246336,
+        "free_bytes": 10329378816,
+        "wal_bytes": 134217728
+      },
+      "round_sha256": "9d44703a0d9ced77108acda6a11d32eb40bca602df4ecd9a4bf2cbc8d8d49835",
+      "schema": "bayes_basket_target_probability_resident_round_v1",
+      "services": {
+        "com.weather.clob_order_service": 95880,
+        "com.weather.market_ws": 80378,
+        "com.weather.reported_trajectory_no": 32237
+      },
+      "state": "BLOCKED_FAIL_CLOSED",
+      "station_counts": {
+        "auto_trade_decisions": 908,
+        "basket_policy_training_fact": 720,
+        "basket_probability_bridge_history": -1,
+        "basket_probability_bridge_latest": -1,
+        "basket_probability_envelope": 270,
+        "basket_probability_evidence_activation": -1,
+        "basket_probability_evidence_artifact": -1,
+        "basket_probability_update_proof": -1
+      },
+      "station_id": "RKPK"
+    },
+    {
+      "blockers": [
+        "candidate_artifact_missing",
+        "directional_core_decision_missing",
+        "identity_likelihood_fallback_not_consumed",
+        "theta_zero_fallback_not_consumed",
+        "wal_size_exceeded"
+      ],
+      "calls_order_gateway": false,
+      "captured_at_utc": "2026-07-30T02:36:16.697Z",
+      "core_chain": {
+        "content_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "history_truncated": true,
+        "latest": null,
+        "legacy_count": 0,
+        "malformed_count": 0,
+        "validated_count": 0,
+        "violations": []
+      },
+      "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+      "durable_ssot_replay": {
+        "as_of_utc": null,
+        "boundary": {
+          "calls_order_gateway": false,
+          "live_submit_authorized": false,
+          "network_access": false,
+          "orders_submitted": 0,
+          "places_orders": false,
+          "query_only": true,
+          "read_only": true,
+          "writes_production_db": false
+        },
+        "content_sha256": "f79ae5ef430e330da933c339378c2d2aa51388e72695ce59af931d25e42cae38",
+        "continuation": {
+          "as_of_utc": null,
+          "chain_sha256": "e833194c766e707fc4ce27d8417b02fe36956ca9aec4bc14ef8590141676cfc8",
+          "event_date": "2026-07-30",
+          "explicit_core_seen": false,
+          "last_core_buckets": null,
+          "last_decision_at_utc": "2026-07-29T16:00:27.069000Z",
+          "last_direction": null,
+          "last_rowid": 720,
+          "last_source_sequence": 206,
+          "last_stage_rank": 2,
+          "last_ws_semantic_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0",
+          "recent_ws_transition_sha256s": [
+            "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+            "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0"
+          ],
+          "registry_set_sha256": "2083a03682f4011f7907be60787495bc926178650b2dfee089a32a406623e3db",
+          "schema": "bayes_basket_target_durable_ssot_replay_continuation_v1",
+          "settlement_timezone": "Asia/Seoul",
+          "station_id": "RKPK",
+          "ws_keepalive_duplicate_count": 0,
+          "ws_return_transition_count": 0,
+          "ws_semantic_chain_sha256": "e3616c2bd3cdf986d73b6819dc4428ad5c3ace60515a7da9ea65dbcfd2de9e4f",
+          "ws_transition_count": 15
+        },
+        "event_date": "2026-07-30",
+        "forward_oos": {
+          "blocks_formal_parameter_promotion_or_live": true,
+          "blocks_production_no_live": false,
+          "consulted": false
+        },
+        "label_status": {
+          "materialized_label_count": 0,
+          "required_for_production_no_live_replay": false
+        },
+        "registry_set_sha256": "2083a03682f4011f7907be60787495bc926178650b2dfee089a32a406623e3db",
+        "replayed_fact_count": 15,
+        "rows": [
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_b0ee11ecab3a34fff11d008293bbe23712338727",
+            "decision_at_utc": "2026-07-29T15:04:52.274Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_76c59832a4fcd38e69b510c5bedbc4ada9a5f69d",
+            "decision_sha256": "64668617f79b4c2ac75f5e5a7d45b1766de679c60b32f4e22b91ca4270ba2130",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_56626819ef793bc51ccb258833a8b505cb2b13c4",
+            "fact_sha256": "56626819ef793bc51ccb258833a8b505cb2b13c411348b48136a18b4eae607ad",
+            "intent_count": 0,
+            "inventory_sha256": "0582fb4b460f788b59bc8aefca9f9d6e521cb47bc8946d9802d0ce7583a2bd8c",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "f664e00f7aee6cbcca82256469e0d9296b235eb76a2a8d8f8f8cc79e2483c28a",
+            "order_state_sha256": "f26572e07db5878e3bc07fcf8a4f9612065943910fa42e1aaac6860489979cdc",
+            "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "c1dfef8a9c09a7a55439351c93fc8dd3abcd4ae9ed9003dc7dc92f6844dda028",
+            "rowid": 706,
+            "source_sequence": 0,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_3e0cad47548923e86ae9ce6df27836bf5f612de6",
+            "decision_at_utc": "2026-07-29T15:06:20.977Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_c2da73b0108e9587f2011219524d013dac02a376",
+            "decision_sha256": "85c9deb357d47db9e4bf8d966695bc3a96513874efd55409c6e2976106e932a4",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_db04d05635edb1240442abb9dfeca081121d72ec",
+            "fact_sha256": "db04d05635edb1240442abb9dfeca081121d72eca9af4e137302c021b96693b5",
+            "intent_count": 0,
+            "inventory_sha256": "ce5566fa62a8025e58c1f446bcc27b4db9c001e691473f62a68b4703330efc89",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "e7195b2334a8e15ad177525f4b1274764cae5502c8290252c7e244b5f29d3af4",
+            "order_state_sha256": "cd8ed6e603c477c5f9da7d0990e0f154ccc3a1a0de0b03d129e20e5e4263a6c6",
+            "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "4b49a001fbc9e41e03ac2687aa48c77302f21ff49b644506f02046f53456cded",
+            "rowid": 707,
+            "source_sequence": 6,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_b72f259ce2576e1a74098509140e280cfd16c4c3",
+            "decision_at_utc": "2026-07-29T15:07:05.652Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_2f86e4b06b2870b59bb18a6e21f73a8103245e42",
+            "decision_sha256": "0b07c1fabacdfa1d3653d6ea05d15f6649e1eee846111b669d851733619c124c",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_3bcd28b073ca2092027597bd090dfe9894e4b472",
+            "fact_sha256": "3bcd28b073ca2092027597bd090dfe9894e4b47266091224c3876278ce74d15b",
+            "intent_count": 0,
+            "inventory_sha256": "3b0d6245e19aeebc6992bbed5e30c88cd028f67c705e1de6c6e5840478ff39d8",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "c921c5ad9c3bcf3f901eec93e33189bc2db0bb02ed81fcb06f808f9fab7735fa",
+            "order_state_sha256": "e8e07737493efbf43b8a6a74ca04aa913886b61d8b2dbdfa187ff10404de3480",
+            "probability_sha256": "4331fd5cf2519085abe29cd1373360c6950e346f8d5da0a6f15bad42270c34a1",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "76a568407771784803a11b6810133664c3a0b8807fdf28ce6768b631cd178a71",
+            "rowid": 708,
+            "source_sequence": 9,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_0cf5bedd1afa7d4a1a8da63e361f27f77de06bd4",
+            "decision_at_utc": "2026-07-29T15:09:07.141Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_f40005f02c43a0fb714df4dac11cb1207cc67392",
+            "decision_sha256": "773c285a77195a27a1e2f1cb8397e842423e22fceca000beb78aadd8487584ae",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_802f6f37054f5e857b90974f672766fe534c154e",
+            "fact_sha256": "802f6f37054f5e857b90974f672766fe534c154e28e616fec3f99ca3cb06a435",
+            "intent_count": 0,
+            "inventory_sha256": "88e0a4ca05a69a364f964468810e7ac3a2a6503b859ef70f4bf41626943aae58",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "d6f70c26c715ad63fdf94fac8a6043d8da601f5659e504c5ec2e1d5c3a32013d",
+            "order_state_sha256": "020f1cb2fcc39e271eddc25047ae4037c675219ee5c2b0bea1e4e76ba32f0991",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "38d7d6467020dffabebc42127cd8ba08bea9057e7e2fb94b3e3753adf645fc12",
+            "rowid": 709,
+            "source_sequence": 17,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_9f22d1ec79c6ba4f4a17655b29da8f90bc9a3f98",
+            "decision_at_utc": "2026-07-29T15:09:22.152Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_2f7681bbe6d521eb2e51d6147d131e622173b5e6",
+            "decision_sha256": "1c8fb06781ca4bdb121041974fe86f3bf75982da22b2c6f1273f9f2afe902df1",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_be6be3aa3806332678a6013796de024621966214",
+            "fact_sha256": "be6be3aa3806332678a6013796de0246219662148d1f8f541bf4e1553a273e3e",
+            "intent_count": 0,
+            "inventory_sha256": "17437a0213fe7bcaf63d3658808cbb314b54d6b88a414e44464c4967b07e843f",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "c7d775b52a3bf65f96f7298ad66800e595956caf2cb2d79df1326c79fe627457",
+            "order_state_sha256": "a2040d2b1b61858c6d908f30c8851f3cc85f43b783fc826b01ad9fe326b099f6",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "19dcf1bbb9073cd91ad8df894ef4d98819233778dffa2141c14168b4d2423b73",
+            "rowid": 710,
+            "source_sequence": 18,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_1e06b19fc2d9070ce648da6a627bfae94b608081",
+            "decision_at_utc": "2026-07-29T15:12:07.449Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_5a0bf37d8789309bd6a03308ff5cd8393a029951",
+            "decision_sha256": "63d469933a47919fc3ddd5663eecb1d54783ea9784ed9895a16e3fca41437275",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_b167273d7f8470f6df80b4bbbf0d8683a34bcc9d",
+            "fact_sha256": "b167273d7f8470f6df80b4bbbf0d8683a34bcc9d5f9db166c85a89e26f66c324",
+            "intent_count": 0,
+            "inventory_sha256": "e15f1dca5c5cd24ae75c321b1592cc93d1b66f9722b753340a0eee2cb9199918",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "11a0d1a30a1fd8a5d27ff4e596472b8917b60adcb870870f66b3a79f948e2849",
+            "order_state_sha256": "14e230371483b16a8618faf038f2bafe4bc2eddb5ff41fd7334c2ab94bd8bc0d",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "1a06e5d4283a046e001adb07f9459118f8254a7412d01be4c4629c4119111aa6",
+            "rowid": 711,
+            "source_sequence": 29,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_05c783ed277aaf266b50d94265ed05b0e9437dd1",
+            "decision_at_utc": "2026-07-29T15:37:08.830Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_1d5fd72982b9401320790038af3970beea76bb9b",
+            "decision_sha256": "d061aee723502ce7a4604a69493e77d0264d6c842400e36f99028512b2e6d030",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_3acb2ef3d93fbfda6446951de2fd3f2a1850919e",
+            "fact_sha256": "3acb2ef3d93fbfda6446951de2fd3f2a1850919e2a5c6eba1718fed6b5859102",
+            "intent_count": 0,
+            "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "4bae3602e8194877e3d906c659f18da786e62e2912f8ba77645469b72f9aad83",
+            "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "67f8b92a68fadc2ebc28e150b0927098b9570cc78e203ddd3ae800f04b294ee1",
+            "rowid": 712,
+            "source_sequence": 124,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_f6ea824e5efdfbb418d060499ae3a8c316c9e55f",
+            "decision_at_utc": "2026-07-29T15:37:31.819Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_f3ea3e9ecb53181aa482a2349d4827936463ef0d",
+            "decision_sha256": "88847d8b97ab2ba3e7dd647e30e982b0b3fa8c6d6cbb7a118067da7ed4e81197",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_0dc530436ddaa5f5e157961a6aee067e22217fab",
+            "fact_sha256": "0dc530436ddaa5f5e157961a6aee067e22217fab3a52462fccf16124a27976c0",
+            "intent_count": 0,
+            "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "37d45f697e9467296de617a82325e59d0aa26293bca27ebb421d4af3e580e62f",
+            "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "ec6829a9048aca5725a8a3afef5598d0c64f1f96bad9b92e50df3fd2741d3f9e",
+            "rowid": 713,
+            "source_sequence": 125,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_705bd2b2df7e780be637933c238dd3500a3d7f46",
+            "decision_at_utc": "2026-07-29T15:37:38.768Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_8c4226936086909d9c295b128bb420f432ad11fa",
+            "decision_sha256": "b6b4eaff55b588427c29a3b7448ac3e4aa9ef7ad85e1070b23ce4b46c0fd7748",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_f7a845b05a0798d5e327df924e9a4f31aad8fee9",
+            "fact_sha256": "f7a845b05a0798d5e327df924e9a4f31aad8fee9f174eb6628b9caf33dbb76d8",
+            "intent_count": 0,
+            "inventory_sha256": "2fb63e5fa9343d7ebf296cf1a1c0aa9b256748b7781cc634b6a241014dbb0ab3",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "6dca094b110929a1b19f019d0b9e626848519591d2d3c1d39d19568e6ae90272",
+            "order_state_sha256": "14c027d776851e23c762e7501fd846fabd8090c07adad1458fd4886cc6d25f94",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "d53812bafc7dac734c6a157a4a5588eb1daa70eabf387d7b37ba4a4006fc29f7",
+            "rowid": 714,
+            "source_sequence": 126,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_e5d21be389fd15d28ba8d30119c8472a676e4e41",
+            "decision_at_utc": "2026-07-29T15:56:12.148Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_b0b4fe726aaf3df4056b422f2f7b949cf8bbbb59",
+            "decision_sha256": "f6e0f67f8b90eb07a8e511315abfb74343b301e5e6cd0338814d8237f8522fc6",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_4bc5910758085a9989e7b987877b86f260f1e2a9",
+            "fact_sha256": "4bc5910758085a9989e7b987877b86f260f1e2a9c9134c918dde2103169bae9a",
+            "intent_count": 0,
+            "inventory_sha256": "aeac9fe9d25e9e568723cace4935382f3f7e9e3ddb13b9637f9c757ce705356f",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "2c876acb8f1e0901db860b451c1f0781e81c12c77af91aa5635e77f4e3fb9633",
+            "order_state_sha256": "d1814d3b20bb69518e88b90bbfbc05c5a9e1d735725b5dcad02ee71586dfc762",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "a5631b7e9c1f70b6431a5c1d444ea226b23b1b1901ce820a08699f47010f9898",
+            "rowid": 715,
+            "source_sequence": 189,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_17509e4cb359f5bec3c5873582841f46c4250e13",
+            "decision_at_utc": "2026-07-29T15:57:26.723Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_9af54c1a3d7fc5fe7d32300fa3b3cebd54bc7fa7",
+            "decision_sha256": "66dfabdc39eec5d371d94d46c6ceb3f2f6f2cd28a6520fea7588ce8b85437f6d",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_78e7538ece3928ad39da3d1bcb62e560c5c72a13",
+            "fact_sha256": "78e7538ece3928ad39da3d1bcb62e560c5c72a13df0df2f5e19fb294be0d679f",
+            "intent_count": 0,
+            "inventory_sha256": "0591048f66418784e47f0e893f1331178319cac68480c305433cf53cfe5fb026",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "fc1bd35c5525c5dad35d4e32601ce59a77d54cd600ec008f2caa10696a4ace06",
+            "order_state_sha256": "046c7021581d127e51ce16b3fa778610f4bd4863b6196f309320a6a7cdde1900",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "619f852eab071e8c723e179096acbb06581dde9de8bcc8a63c86cccab0e667d8",
+            "rowid": 716,
+            "source_sequence": 194,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_2d53d723811bdeaa980e466177f430b4d9269baf",
+            "decision_at_utc": "2026-07-29T15:59:11.650Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_e47c3a1b8f95629175756fd89aeaa0ea188c48bb",
+            "decision_sha256": "6476349bce990c2f1bd13e736462754362df720d1e1b3c4455ad5eae8d6bf269",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_e433fea36f24135d9e079b3207cffe06a43e8a83",
+            "fact_sha256": "e433fea36f24135d9e079b3207cffe06a43e8a8358f06b83fa0a8b08398a63c8",
+            "intent_count": 0,
+            "inventory_sha256": "3f0f74ef0a78d85073992f3e6a9eecc5579854fff496ed2cbb164c599b556891",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "87dfd2fee452539190f7b439ec9dece083a3e1903ce33174a16204a65445eb68",
+            "order_state_sha256": "e27fd274bf448e8ef5c2bb3bf9d491697149985ce95912862e8e92f8331a74fd",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "39902294a6f34378f2418025ac5a5cf53b17baa3a9cbbb428ae0d7fc3da51aeb",
+            "rowid": 717,
+            "source_sequence": 201,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_294f46dd813037bd9c7fd509683d9dfa9c107ead",
+            "decision_at_utc": "2026-07-29T15:59:26.713Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_266abf4b3cba5ff99fdfc3e5b57da72d74c8ab5d",
+            "decision_sha256": "aac6dec35a3ef8b874e82cdc22aaea8c96493c7f7fc70e74736b9208dbdd3df6",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_5c2e519d80b243af55033d32dca087b45f65faca",
+            "fact_sha256": "5c2e519d80b243af55033d32dca087b45f65facac6bc23e6ddf32e254c9bfebf",
+            "intent_count": 0,
+            "inventory_sha256": "44537424356b0b8273b1e4c5b9dc816355b02b00af37538cd35e98265b85cd46",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "43673e922713501d588c1a65571780813812bcad5251b8fdd12dbf61eecd65d9",
+            "order_state_sha256": "e6f80ea73a47f7e41e5c40ddcf98bd6e847c54ea7ec45dcbb0d4ee6c7d621ed4",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "01b5a7be10262f8d54bc6578685cc6049549ce44aaa732b9af5f42d3f72b7ed8",
+            "rowid": 718,
+            "source_sequence": 202,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_b39b522a6bd539aa70a5d9883b23114568885103",
+            "decision_at_utc": "2026-07-29T15:59:41.715Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_dd9e49ff6d75c10127223aabeeddb4c83b8d400c",
+            "decision_sha256": "19fd378d6097caa24ad097f70a204fc1fd93e3f6d0c5a002326e063874ea74b8",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_f87360eea67d08f638ec8d93429eb1541b4c6ca2",
+            "fact_sha256": "f87360eea67d08f638ec8d93429eb1541b4c6ca2c632f7b5fa43a95d60e3e906",
+            "intent_count": 0,
+            "inventory_sha256": "c5765a25f1cfc9f869cbef435a3dd08e42a5a5776afd05892a5fbb5cbd084452",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "f32cbd42f96f6bc296b4ef869feb22a638476aa8e95c21ef1c574261ac0d6193",
+            "order_state_sha256": "beced579f7a481d7b3f4976352714b0930335b0eb52b97b885657fd236b68e5d",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "400554546c3a6cee3f33e09d17a6d55f0c4484a302d2b928bc7cc8e2d177eef1",
+            "rowid": 719,
+            "source_sequence": 203,
+            "stage": "P1",
+            "training_fact_present": true
+          },
+          {
+            "core_direction": {
+              "contract_state": "LEGACY_NA",
+              "core_buckets": null,
+              "current_core_buckets": null,
+              "current_direction": null,
+              "decision_state": "blocked",
+              "direction": "NEUTRAL",
+              "final_support": [
+                "35°C or below",
+                "36°C",
+                "37°C",
+                "38°C"
+              ],
+              "plan_state": "HOLD"
+            },
+            "cycle_id": "cycle_26f277de4aab56b2086ea9a9f3e1f3f3e86fe5bf",
+            "decision_at_utc": "2026-07-29T16:00:27.069Z",
+            "decision_hash_matches_current_contract": false,
+            "decision_id": "decision_187c444bd175f894a76ac22af748bc64deef029a",
+            "decision_sha256": "bddcf6f893653de5ba1fe050b71614bb7af7f1e7748e4abd99aaaa0a542a27e0",
+            "decision_state": "blocked",
+            "execution_policy": "NO_EXECUTION",
+            "fact_id": "d2fact_05418a7226f3210842e4ae817e2f4a7647d70145",
+            "fact_sha256": "05418a7226f3210842e4ae817e2f4a7647d70145bbc52858646a3ff1202459e4",
+            "intent_count": 0,
+            "inventory_sha256": "b2b6505d0eb6aa606746e62e43d04de3d9dc9628e71adbf9fb266edcfa2029a1",
+            "label_required": false,
+            "official_ws_economic_changed": true,
+            "official_ws_economic_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0",
+            "official_ws_low_high_low_return": false,
+            "official_ws_sha256": "2002130b8f5b320a1c762a46ba048a178cc8371ca26704924fd833c214852da2",
+            "order_state_sha256": "271077b393a57a27a378c644420322b7f1674d276af7f8ba904bef83b6d2c7ea",
+            "probability_sha256": "20140ccf71c92b9225dfd6f714e7289d279f5faaf46386aeabbd017c5dbc53e8",
+            "reason_codes": [
+              "regime_direction_not_allowed",
+              "complete_basket_delta_not_positive"
+            ],
+            "reserve_amount_usdc": 0.0,
+            "row_sha256": "b7e19c9406ed0bdc4ba1bcd9bb3322ca4bee5edeac51c7e687045ab6d37a9d9b",
+            "rowid": 720,
+            "source_sequence": 206,
+            "stage": "P1",
+            "training_fact_present": true
+          }
+        ],
+        "schema": "bayes_basket_target_durable_ssot_replay_v1",
+        "settlement_timezone": "Asia/Seoul",
+        "state": "PASS",
+        "station_id": "RKPK",
+        "ws_economic_summary": {
+          "adjacent_keepalive_duplicate_count": 0,
+          "low_high_low_return_count": 0,
+          "semantic_chain_sha256": "e3616c2bd3cdf986d73b6819dc4428ad5c3ace60515a7da9ea65dbcfd2de9e4f",
+          "transition_count": 15
+        },
+        "ws_economic_transitions": [
+          {
+            "content_sha256": "07b52480cc01c69e1f9f995e6338665edd8e426f21f05c219039a05da033d8e5",
+            "from_sha256": null,
+            "is_low_high_low_return": false,
+            "rowid": 706,
+            "to_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959"
+          },
+          {
+            "content_sha256": "8114a9387939962241762dbe6b7e82f48c5778d4560105e3b4bc6c57b15744c6",
+            "from_sha256": "3e353d1efc82cee1c606e5383e4b0ac450630fc979be3e35723e53e426225959",
+            "is_low_high_low_return": false,
+            "rowid": 707,
+            "to_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0"
+          },
+          {
+            "content_sha256": "7e191b6dd6c93b360e932ffbefc2dac98c6aa659bf33ca255254ba2d440d3257",
+            "from_sha256": "342651d5bd9eb6d1590913c22d89889847169fc95ce88f1c437bdb56a5d5a9f0",
+            "is_low_high_low_return": false,
+            "rowid": 708,
+            "to_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584"
+          },
+          {
+            "content_sha256": "d1c2e05779fc196693e1b0b749a648b86daacbcba54f060a2f3d8805389ad958",
+            "from_sha256": "5fa9b16dc63ca49b024410bc3d0ff437e3fb1716e2f699ce0f6053b6d7d99584",
+            "is_low_high_low_return": false,
+            "rowid": 709,
+            "to_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5"
+          },
+          {
+            "content_sha256": "7b31ca74ff2a167d3faea52feec7b9c59eeb1122ab1f0f148aed3e1e5da7996a",
+            "from_sha256": "17e991a61ccd2e2a914ac8942cb27e01b65b2f3211dd7a79e3564db467136dc5",
+            "is_low_high_low_return": false,
+            "rowid": 710,
+            "to_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d"
+          },
+          {
+            "content_sha256": "4d8243d6323ba09b7320305af2796bbf91139dc829b225c87fd8a9a3ceb8f0fe",
+            "from_sha256": "47de3ab7abab38aa2db5b9984cc3ff2f8d70ae405fbaee07dd0ec6f127746a1d",
+            "is_low_high_low_return": false,
+            "rowid": 711,
+            "to_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9"
+          },
+          {
+            "content_sha256": "c20938f16150ba909da601566631399a75f97d6551e5a30912d89df01413cb85",
+            "from_sha256": "f778dc2d2706acdde6a68f4f1e62440562c52a1f63055a4c0a0c646c9be48ad9",
+            "is_low_high_low_return": false,
+            "rowid": 712,
+            "to_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47"
+          },
+          {
+            "content_sha256": "d410714a0142f980252735f80736a1d93c18f74c64ba8c7435ebdf89cc968d84",
+            "from_sha256": "1a3dd81a56f298eefaa78ae610c0ef1d919c873a2a6bce55bc59770eff721a47",
+            "is_low_high_low_return": false,
+            "rowid": 713,
+            "to_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94"
+          },
+          {
+            "content_sha256": "a2a0468bfcf944bdf2bc0733cd680d6e4822d00efb65082219616cd28a3c1880",
+            "from_sha256": "7335452b9186676cd414326852239038da49a86c68ccbc51ea9096b1fef08d94",
+            "is_low_high_low_return": false,
+            "rowid": 714,
+            "to_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021"
+          },
+          {
+            "content_sha256": "52990f9577d9ca94339f8bada414931cbb3c1a643e4539a727a9d01b5b957c0d",
+            "from_sha256": "6cdcdc0079710be74ccebb933ca55fbcaf8b0f6a5d48a06acce7da9b21c1e021",
+            "is_low_high_low_return": false,
+            "rowid": 715,
+            "to_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b"
+          },
+          {
+            "content_sha256": "d3a4d30edd4891eec58504f953432fe6276107be57989fdc56f1ba9d8441df41",
+            "from_sha256": "b3443c65fec9d29f497d6c8f24adf30d3a85462f7e44b47f20c2bbc5b852916b",
+            "is_low_high_low_return": false,
+            "rowid": 716,
+            "to_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200"
+          },
+          {
+            "content_sha256": "6362a4026338f9593c9bb0ddb86aec2e5ce351dc6e8d2e5a85c6b09bf6d0cd2b",
+            "from_sha256": "483d75598d812d7180175cb6f355741d0eec5059874a865b90617f4357486200",
+            "is_low_high_low_return": false,
+            "rowid": 717,
+            "to_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834"
+          },
+          {
+            "content_sha256": "78eb00748b08c2bc4f91d52494bfb1b05e2c6d01e5530c62041ede9902a0efb2",
+            "from_sha256": "e0283629b0c1dbbd5be312c6e400662f0b02d698c4c506cc7c52b39287d3d834",
+            "is_low_high_low_return": false,
+            "rowid": 718,
+            "to_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df"
+          },
+          {
+            "content_sha256": "61fe546299a58c433e70671e96a0d2c9b9e08706f6a30243f375fdbfdce6df16",
+            "from_sha256": "446e64ec57f4cecda9cbac7b7f9c7894b0eb6af0b1f59d1229a6ae2c304f51df",
+            "is_low_high_low_return": false,
+            "rowid": 719,
+            "to_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f"
+          },
+          {
+            "content_sha256": "9befca93e5ae1478d2f70ffe765a9c9cb3a76db3161252028e56c0c3d51642af",
+            "from_sha256": "67009c5b9663cc092545db3acc8054b010deeacf83aaa7ce9408b51ba1e4de9f",
+            "is_low_high_low_return": false,
+            "rowid": 720,
+            "to_sha256": "a875ed24c814e1ca539e51f8538b2d5833ed2233b95c66795c32358eb8ff84e0"
+          }
+        ]
+      },
+      "durable_ssot_replay_error": null,
+      "forbidden_execution_counts": {
+        "execution_receipts": 0,
+        "live_submit_authorized": 0,
+        "order_events": 0,
+        "will_order": 0
+      },
+      "live_submit_authorized": false,
+      "non_target_station_counts": {
+        "auto_trade_decisions": 275,
+        "basket_policy_training_fact": 0,
+        "basket_probability_bridge_history": -1,
+        "basket_probability_bridge_latest": -1,
+        "basket_probability_envelope": 0,
+        "basket_probability_evidence_activation": -1,
+        "basket_probability_evidence_artifact": -1,
+        "basket_probability_update_proof": -1
+      },
+      "orders_submitted": 0,
+      "probability_evidence_runtime": {
+        "calls_order_gateway": false,
+        "candidate_activation_count": 0,
+        "candidate_artifact_counts": {},
+        "candidate_rejected_count": 0,
+        "continuous_core_decision_count": 0,
+        "continuous_core_proof_count": 0,
+        "direction_transition_decision_count": 0,
+        "fallback_proof_counts": {},
+        "formal_activation_counts": {},
+        "formal_consumption_counts": {},
+        "missing_tables": [
+          "basket_probability_evidence_activation",
+          "basket_probability_evidence_artifact",
+          "basket_probability_evidence_promotion",
+          "basket_probability_update_proof"
+        ],
+        "orders_submitted": 0,
+        "p0_historical_state": "SCHEMA_MISSING",
+        "p1_trajectory_state": "SCHEMA_MISSING",
+        "production_no_live": true,
+        "proof_counts": {},
+        "read_only": true,
+        "schema": "bayes_basket_probability_evidence_runtime_status_v1",
+        "state": "SCHEMA_MISSING",
+        "station_ids": [
+          "RKPK"
+        ]
+      },
+      "production_no_live": true,
+      "resources": {
+        "database_bytes": 191246336,
+        "free_bytes": 10329464832,
+        "wal_bytes": 134217728
+      },
+      "round_sha256": "b04ef560d05650106126bad07784964f43e0ef87526a0edfdf4187f502ce3352",
+      "schema": "bayes_basket_target_probability_resident_round_v1",
+      "services": {
+        "com.weather.clob_order_service": 95880,
+        "com.weather.market_ws": 80378,
+        "com.weather.reported_trajectory_no": 32237
+      },
+      "state": "BLOCKED_FAIL_CLOSED",
+      "station_counts": {
+        "auto_trade_decisions": 908,
+        "basket_policy_training_fact": 720,
+        "basket_probability_bridge_history": -1,
+        "basket_probability_bridge_latest": -1,
+        "basket_probability_envelope": 270,
+        "basket_probability_evidence_activation": -1,
+        "basket_probability_evidence_artifact": -1,
+        "basket_probability_update_proof": -1
+      },
+      "station_id": "RKPK"
+    }
+  ],
+  "schema": "bayes_basket_target_probability_resident_two_round_acceptance_v1",
+  "services": {
+    "com.weather.clob_order_service": 95880,
+    "com.weather.market_ws": 80378,
+    "com.weather.reported_trajectory_no": 32237
+  },
+  "state": "BLOCKED_FAIL_CLOSED",
+  "target_station_counts": {
+    "auto_trade_decisions": 908,
+    "basket_policy_training_fact": 720,
+    "basket_probability_bridge_history": -1,
+    "basket_probability_bridge_latest": -1,
+    "basket_probability_envelope": 270,
+    "basket_probability_evidence_activation": -1,
+    "basket_probability_evidence_artifact": -1,
+    "basket_probability_update_proof": -1
+  }
+}

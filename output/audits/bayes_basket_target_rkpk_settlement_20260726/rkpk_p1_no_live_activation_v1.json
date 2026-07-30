@@ -1,0 +1,55 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "global_fallback_explicit": true,
+    "orders_submitted": 0,
+    "p0_policy_reused": false,
+    "p1_station_oos_claimed": false,
+    "places_orders": false,
+    "stage_specific": true,
+    "writes_production_db": false
+  },
+  "calibration_activations": [],
+  "calibration_artifacts": [],
+  "calibration_promotions": [],
+  "calls_order_gateway": false,
+  "cash_phase_policies": [],
+  "ensemble_artifacts": [],
+  "ensemble_selection_evidence": [],
+  "execution_mode": "production_no_live",
+  "global_priors": [],
+  "live_order_authorized": false,
+  "live_submit_authorized": false,
+  "places_orders": false,
+  "policy_activations": [
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-RKPK-p1-cold-start-v1",
+      "cadence_artifact_id": null,
+      "content_sha256": "c1bb6f8d832269bbb0c9d101b0486139b9fc4e461cd709c3b6b9d0c9a294563b",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 1,
+      "global_prior_id": "target-no-live-global-prior-design-v2",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P1",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_artifacts": [],
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "policy_promotions": [],
+  "schema": "bayes_basket_target_artifact_ingress_v1"
+}

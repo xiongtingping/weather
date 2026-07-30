@@ -1,0 +1,63 @@
+{
+  "schema": "delta_basket_score_fill_distribution_preregistration_v1",
+  "preregistration_id": "delta-v2-maker-fill-rkpk-v1",
+  "station_id": "RKPK",
+  "stage": "P1",
+  "season_bin": "summer",
+  "maturity_bin": "d0",
+  "liquidity_bin": "liquid",
+  "strategy_version": "target-v2",
+  "authority_scope": "PRODUCTION_NO_LIVE",
+  "evidence_status": "PREREGISTERED_NO_OOS",
+  "activation_eligible": false,
+  "fill_fraction_support_required": [
+    0.0,
+    "strictly_between_0_and_1",
+    1.0
+  ],
+  "required_outcomes": [
+    "ZERO_FILL",
+    "PARTIAL_FILL",
+    "FULL_FILL",
+    "LATE_FILL_AFTER_CANCEL_REQUEST"
+  ],
+  "required_conditioning": [
+    "station_id",
+    "stage",
+    "season_bin",
+    "maturity_bin",
+    "liquidity_bin",
+    "bucket",
+    "limit_price",
+    "timeout_seconds",
+    "queue_ahead_shares",
+    "spread",
+    "depth",
+    "quote_version"
+  ],
+  "required_costs": [
+    "WaitCost",
+    "QueueRisk",
+    "AdverseSelection",
+    "RepriceRisk",
+    "CapitalLockCost"
+  ],
+  "time_order": [
+    "train",
+    "promotion_holdout",
+    "final_audit",
+    "immutable_artifact",
+    "as_of_activation"
+  ],
+  "minimum_consecutive_forward_windows": 2,
+  "required_baselines": [
+    "EV_ONLY",
+    "HOLD",
+    "ZERO_WEIGHT",
+    "v1"
+  ],
+  "online_parameter_updates_allowed": false,
+  "calls_order_gateway": false,
+  "live_submit_authorized": false,
+  "orders_submitted": 0
+}

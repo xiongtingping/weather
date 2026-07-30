@@ -14,12 +14,6 @@ if str(ROOT) not in sys.path:
 
 from physical_state_bayes_v6.artifact_contracts import validate_observation_artifact, validate_transition_artifact
 from production_probability_v6_activation_contract import (
-    CHECKPOINT_SCHEMA,
-    COMPOSER_SCHEMA,
-    FORMULA_ID,
-    PUBLIC_SSOT_SCHEMA,
-    SCHEMA_VERSION,
-    STRONG_UPDATE_SCHEMA,
     activation_sha256,
     validate_v6_activation,
 )
@@ -28,7 +22,7 @@ from production_probability_v6_runtime_manifest import build_v6_runtime_manifest
 
 def build(root: Path) -> dict[str, object]:
     current_path = root / "config/production_probability_runtime_activation.json"
-    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current = validate_v6_activation(json.loads(current_path.read_text(encoding="utf-8")))
     transition = validate_transition_artifact(
         json.loads((root / "config/physical_state_bayes_v6_transition_artifact.json").read_text(encoding="utf-8"))
     )
@@ -38,31 +32,20 @@ def build(root: Path) -> dict[str, object]:
     if transition.get("production_runtime_eligible") is not True or observation.get("production_runtime_eligible") is not True:
         raise ValueError("v6_candidate_activation_artifacts_not_production_eligible")
     manifest = build_v6_runtime_manifest(root)
-    value = {
-        "schema": SCHEMA_VERSION,
-        "state": "production_enabled",
-        "bayes_formula_id": FORMULA_ID,
-        "composer_schema": COMPOSER_SCHEMA,
-        "checkpoint_schema": CHECKPOINT_SCHEMA,
-        "strong_update_schema": STRONG_UPDATE_SCHEMA,
-        "public_ssot_schema": PUBLIC_SSOT_SCHEMA,
-        "unique_probability_mainline": True,
-        "legacy_probability_writer_disabled": True,
-        "v5_fallback_forbidden": True,
-        "pre_event_predict_does_not_consume_current_observation": True,
-        "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
-        "runtime_manifest_sha256": manifest["runtime_manifest_sha256"],
-        "transition_artifact_sha256": transition["artifact_sha256"],
-        "observation_artifact_sha256": observation["artifact_sha256"],
-        "prior_model_artifact_sha256": str(current.get("prior_model_artifact_sha256") or ""),
-        "weak_likelihood_artifact_sha256": str(current.get("weak_likelihood_artifact_sha256") or ""),
-        "production_transaction_b_authorized": True,
-        "places_orders": False,
-        "authorizes_clob": False,
-        "activation_requires_atomic_install": True,
-        "supersedes_probability_epoch_schema_on_cutover": str(current.get("schema") or ""),
-    }
+    # The active activation is the authority for the probability identity.  The
+    # former implementation reconstructed a legacy v6 contract here, which
+    # silently produced a candidate with a different composer/artifact set even
+    # when the active runtime was already consistent.  Rebind only the runtime
+    # manifest to the current source tree and preserve the active composer
+    # schema and its artifact bindings.
+    value = dict(current)
+    value.update(
+        {
+            "runtime_manifest_sha256": manifest["runtime_manifest_sha256"],
+            "activation_requires_atomic_install": True,
+            "supersedes_probability_epoch_schema_on_cutover": str(current.get("schema") or ""),
+        }
+    )
     value["activation_contract_sha256"] = activation_sha256(value)
     return validate_v6_activation(value)
 

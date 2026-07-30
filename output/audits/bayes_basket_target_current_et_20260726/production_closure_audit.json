@@ -1,0 +1,726 @@
+{
+  "checks": {
+    "basket_data_dependencies_closed": true,
+    "blocking_authority_is_auto_trade_decisions": true,
+    "bounded_scan_closed": true,
+    "config_contract_closed": true,
+    "gateway_boundary_unique": true,
+    "legacy_runtime_dependency_absent": true,
+    "no_forbidden_market_rest_or_tick_fallback": true,
+    "production_no_live_and_mutation_flags_closed": true,
+    "runtime_config_isolation_closed": true,
+    "service_domain_and_manifest_closed": true,
+    "target_only_consumer_unique": true,
+    "target_runtime_scope_complete": true,
+    "writer_authorities_and_database_bindings_closed": true
+  },
+  "closure_version": "target-production-entry-closure-v1",
+  "configuration_closure": {
+    "config_files": [
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+    ],
+    "flag_checks": {
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:calls_order_gateway": true,
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:live_decision_write_authorized": true,
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:live_order_authorized": true,
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:live_submit_authorized": true,
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:places_orders": true,
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:production_mutation": true,
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json:writes_production_db": true
+    },
+    "target_only_values": [
+      true
+    ]
+  },
+  "data_lane_closure": {
+    "checks": {
+      "basket_consumes_materialized_probability_and_regime": true,
+      "basket_consumes_official_ws": true,
+      "hard_no_probability_isolation": true,
+      "hard_no_uses_official_reported_hard_bound": true
+    },
+    "evidence": {
+      "basket_forbidden_tokens": [
+        "taf",
+        "nwp",
+        "metar",
+        "speċi",
+        "hard_lower_bound",
+        "hard_no"
+      ],
+      "basket_scope_files": [
+        "bayes_basket_target/basket_kernel/__init__.py",
+        "bayes_basket_target/basket_kernel/contracts.py",
+        "bayes_basket_target/basket_kernel/execution_gates.py",
+        "bayes_basket_target/basket_kernel/maker_simulator.py",
+        "bayes_basket_target/basket_kernel/optimizer.py",
+        "bayes_basket_target/basket_kernel/pricing.py",
+        "bayes_basket_target/basket_kernel/state_machine.py",
+        "bayes_basket_target/basket_kernel/strict_delta.py",
+        "bayes_basket_target/basket_kernel/taker_simulator.py",
+        "bayes_basket_target/runtime.py"
+      ],
+      "hard_no_scope": "atomic_ledger+production+reported_trajectory_no_daemon"
+    }
+  },
+  "ok": true,
+  "production_boundary": {
+    "authorizes_order": false,
+    "blocking_authority": "auto_trade_decisions",
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "gateway_owner": "scripts/clob_order_service.mjs",
+    "gateway_owners_observed": [
+      "scripts/clob_order_service.mjs"
+    ],
+    "live_submit_authorized": false,
+    "places_orders": false
+  },
+  "read_only_boundary": {
+    "calls_order_gateway": false,
+    "changes_launchd": false,
+    "deletes_files": false,
+    "network_access": false,
+    "opens_database": false,
+    "writes_production_state": false
+  },
+  "receipt_sha256": "a4eeafaaef120f7c5319a7461fc1f13dffddf7797c3aa38e56417c7837f05376",
+  "reference_graph": {
+    "content_sha256": "ad17742c687c7390cc48ccd542b63ff6a568d43c88dd981ac83d8697162dcb09",
+    "edge_count": 22,
+    "node_count": 128
+  },
+  "runtime_config_isolation": {
+    "checks": {
+      "forbidden_cross_read_rules_complete": true,
+      "manifest_content_addressed": true,
+      "manifest_present": true,
+      "manifest_schema_valid": true,
+      "protected_legacy_config_content_addressed": true,
+      "single_owner_per_resource": true,
+      "target_source_reference_graph_closed": true,
+      "target_source_scope_content_addressed": true
+    },
+    "evidence": {
+      "computed_manifest_sha256": "dafe2d4bb481067ed65edd6b0aa92acc9032ee4897c4b530b2c55bb00822ec50",
+      "forbidden_cross_read": [
+        {
+          "consumer_owner": "bayes_basket_target",
+          "reason": "target_must_not_read_protected_l0_config",
+          "resource_path": "config/trading/basket_plus_hard_no_v1.json"
+        }
+      ],
+      "manifest_path": "config/bayes_basket_target/runtime_config_isolation_v1.json",
+      "manifest_sha256": "dafe2d4bb481067ed65edd6b0aa92acc9032ee4897c4b530b2c55bb00822ec50",
+      "protected_legacy_config": {
+        "consumers": [
+          "legacy_l0_runtime"
+        ],
+        "owner": "protected_l0_legacy",
+        "path": "config/trading/basket_plus_hard_no_v1.json",
+        "sha256": "94623db2d33322e5f01ead34374a073fd28d6355c0543a45f2635e30a97e075f"
+      },
+      "target_activation": {
+        "consumers": [
+          "target_runtime"
+        ],
+        "owner": "bayes_basket_target",
+        "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+        "sha256": "0bdb99c71f03a56b18a25504d23990b4f740ac5760cc2deea6204c8994601e91"
+      },
+      "target_reference_graph": {
+        "edge_count": 0,
+        "edges": [],
+        "nodes": [
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/atomic_ledger.py",
+            "sha256": "cafe21b4e19703212e2901c18e2e715e34b39896cdef94be46547cffecc30dd4"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/__init__.py",
+            "sha256": "333192626abcfa4242a0a08a91ee42536d979ed7fa446301abb152b7420c76f3"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/contracts.py",
+            "sha256": "03b0e4991f6230b66a7152ec74280c65a119b8c7de63d96378180801fdb0e820"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/execution_gates.py",
+            "sha256": "617c9fad1a576389938a832a1163185dd1c396f10b0b811815539c600399bed9"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/maker_simulator.py",
+            "sha256": "c3a589bc629bd7fdbcac43f93dcaba18cc2bef38be546de38cc31a285650afc5"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/optimizer.py",
+            "sha256": "b4215cab60908a91fe9e536c76fcd1ffc8b967c88c0cd4b92d7b7c11ec423443"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/pricing.py",
+            "sha256": "ee47730d80e93e2878073717d0be45b7e50b9032d3864f60968618a01a902ce9"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/state_machine.py",
+            "sha256": "029d4a88ef12f6e90dcd90dbfc817b6847d036af00130c4455c857ffad90a98d"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/strict_delta.py",
+            "sha256": "a31f27a5d7a2b9bc7a9c98f674e6c1057828f274f51f244c9e6535a6318c6ad8"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/basket_kernel/taker_simulator.py",
+            "sha256": "594007e8124f79363201aae44cd8970db923449503575a05228814b27fb30f31"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/cash_phase_forward_observation.py",
+            "sha256": "39c45e619be5ff0c8a0bebe19afa05307ba69f74ff1b0e7f90cfc91cbf61e1b3"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/execution_reconciliation.py",
+            "sha256": "fe2c1bfd1b5e8419f080f58ca98d0a6e34a785f1555dbff4929b3bc004fec5c3"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/forward_observation_store.py",
+            "sha256": "47dbb61f15735431e8c831322b5659b0dcc97c1ef2b62bb792c9c474595b4ab0"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/order_state_producer.py",
+            "sha256": "0d27ce2f189956256d8b65243783d10562ab105937deafaa87d33848d6890901"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/production.py",
+            "sha256": "cc12a36949dd5d9da0447ee423bafa0c73a0611c8445909eac1bf38f17ac09ba"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/production_io.py",
+            "sha256": "12a17a95e91a6069000aea52bf68ead2d0f33d1afc5f7c8a1122fa4f3db4dcfb"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/production_worker.py",
+            "sha256": "9aaf65f16766f438d864372e5e91b9ce929caa659ab3feeefa74ccc8f6817d91"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/resident_nwp_producer.py",
+            "sha256": "8a51b145b8c7de8a2628c47ba7010b29e9f69f595d9e3eb4fbd7518265110d6e"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "bayes_basket_target/runtime.py",
+            "sha256": "923739071bbeabdde5098a3d7e669fb091dd2aa6fdd24085d1aea1b526ae511f"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+            "sha256": "0bdb99c71f03a56b18a25504d23990b4f740ac5760cc2deea6204c8994601e91"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "scripts/clob_order_service.mjs",
+            "sha256": "3d36b0a619676959f08c75f639593c5cdbd303cb345c683e42fc9f4e9518ab7c"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "scripts/clob_order_service.sh",
+            "sha256": "a5dd368fb05275226f66dcb93caa8f1c7d9634d03f01937aec5fb1929b0fe2e4"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "scripts/market_ws_listener.py",
+            "sha256": "3d077f62bb21a38602e803a3684bda41ef877bb176e30f69fd4066011c5c7fc5"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "scripts/market_ws_listener.sh",
+            "sha256": "20d2e46397fe8ccd2f54a8c399ffc3adc7320ee21bfee290e993b85a8aa07980"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "scripts/reported_trajectory_no_daemon.py",
+            "sha256": "82f7210d47a0f6effa2d8d9aba20800638d64d8861475dac3394df8dadc57583"
+          },
+          {
+            "owner": "bayes_basket_target",
+            "path": "scripts/reported_trajectory_no_daemon.sh",
+            "sha256": "e45ca17ae198166e820ba7fd91503c8f17e28fe7591483058cb5d184181da5be"
+          }
+        ],
+        "protected_resource": "config/trading/basket_plus_hard_no_v1.json"
+      },
+      "target_source_closure": [
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "scripts/reported_trajectory_no_daemon.py",
+          "sha256": "82f7210d47a0f6effa2d8d9aba20800638d64d8861475dac3394df8dadc57583"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "scripts/reported_trajectory_no_daemon.sh",
+          "sha256": "e45ca17ae198166e820ba7fd91503c8f17e28fe7591483058cb5d184181da5be"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "scripts/market_ws_listener.py",
+          "sha256": "3d077f62bb21a38602e803a3684bda41ef877bb176e30f69fd4066011c5c7fc5"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "scripts/market_ws_listener.sh",
+          "sha256": "20d2e46397fe8ccd2f54a8c399ffc3adc7320ee21bfee290e993b85a8aa07980"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "scripts/clob_order_service.mjs",
+          "sha256": "3d36b0a619676959f08c75f639593c5cdbd303cb345c683e42fc9f4e9518ab7c"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "scripts/clob_order_service.sh",
+          "sha256": "a5dd368fb05275226f66dcb93caa8f1c7d9634d03f01937aec5fb1929b0fe2e4"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/production_worker.py",
+          "sha256": "9aaf65f16766f438d864372e5e91b9ce929caa659ab3feeefa74ccc8f6817d91"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/resident_nwp_producer.py",
+          "sha256": "8a51b145b8c7de8a2628c47ba7010b29e9f69f595d9e3eb4fbd7518265110d6e"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/production.py",
+          "sha256": "cc12a36949dd5d9da0447ee423bafa0c73a0611c8445909eac1bf38f17ac09ba"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/production_io.py",
+          "sha256": "12a17a95e91a6069000aea52bf68ead2d0f33d1afc5f7c8a1122fa4f3db4dcfb"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/runtime.py",
+          "sha256": "923739071bbeabdde5098a3d7e669fb091dd2aa6fdd24085d1aea1b526ae511f"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/cash_phase_forward_observation.py",
+          "sha256": "39c45e619be5ff0c8a0bebe19afa05307ba69f74ff1b0e7f90cfc91cbf61e1b3"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/forward_observation_store.py",
+          "sha256": "47dbb61f15735431e8c831322b5659b0dcc97c1ef2b62bb792c9c474595b4ab0"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/order_state_producer.py",
+          "sha256": "0d27ce2f189956256d8b65243783d10562ab105937deafaa87d33848d6890901"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/atomic_ledger.py",
+          "sha256": "cafe21b4e19703212e2901c18e2e715e34b39896cdef94be46547cffecc30dd4"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/execution_reconciliation.py",
+          "sha256": "fe2c1bfd1b5e8419f080f58ca98d0a6e34a785f1555dbff4929b3bc004fec5c3"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/__init__.py",
+          "sha256": "333192626abcfa4242a0a08a91ee42536d979ed7fa446301abb152b7420c76f3"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/contracts.py",
+          "sha256": "03b0e4991f6230b66a7152ec74280c65a119b8c7de63d96378180801fdb0e820"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/execution_gates.py",
+          "sha256": "617c9fad1a576389938a832a1163185dd1c396f10b0b811815539c600399bed9"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/maker_simulator.py",
+          "sha256": "c3a589bc629bd7fdbcac43f93dcaba18cc2bef38be546de38cc31a285650afc5"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/optimizer.py",
+          "sha256": "b4215cab60908a91fe9e536c76fcd1ffc8b967c88c0cd4b92d7b7c11ec423443"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/pricing.py",
+          "sha256": "ee47730d80e93e2878073717d0be45b7e50b9032d3864f60968618a01a902ce9"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/state_machine.py",
+          "sha256": "029d4a88ef12f6e90dcd90dbfc817b6847d036af00130c4455c857ffad90a98d"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/strict_delta.py",
+          "sha256": "a31f27a5d7a2b9bc7a9c98f674e6c1057828f274f51f244c9e6535a6318c6ad8"
+        },
+        {
+          "consumers": [
+            "target_runtime"
+          ],
+          "owner": "bayes_basket_target",
+          "path": "bayes_basket_target/basket_kernel/taker_simulator.py",
+          "sha256": "594007e8124f79363201aae44cd8970db923449503575a05228814b27fb30f31"
+        }
+      ]
+    }
+  },
+  "safe_deletion_candidates": {
+    "content_sha256": "7345fd274756708d90542caf1e4456f72254f9d98593d2c3975687d7a22cca9a",
+    "count": 128,
+    "sample": [
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_clob_gateway_adapter.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_continuation_schema_contract.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_position_lot_runtime.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_position_lot_schema_contract.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_production_activation.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_release_runtime.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_shadow_decision_writer.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_trading_plan_runtime.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_transition_runtime.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      },
+      {
+        "category": "dynamic_three_leg",
+        "loaded_service_matches": [],
+        "path": "dynamic_three_leg_v6_capital_allocator.py",
+        "referenced_by": [],
+        "safe_to_delete_without_operator_review": true
+      }
+    ]
+  },
+  "schema": "bayes_basket_target_production_closure_audit_v1",
+  "scope": {
+    "authority_source_bytes": 86616,
+    "authority_source_files_included": [
+      "reported_trajectory_no_engine.py"
+    ],
+    "authority_source_files_requested": [
+      "reported_trajectory_no_engine.py"
+    ],
+    "excluded_directories": [
+      ".git",
+      "__pycache__",
+      "_moved_from_old_root",
+      "data",
+      "docs",
+      "output",
+      "tests",
+      "tmp"
+    ],
+    "launchd_bytes": 3873,
+    "launchd_dir": "launchd",
+    "max_file_bytes": 1000000,
+    "max_files": 96,
+    "max_total_bytes": 12000000,
+    "project_root": "/Users/xiong/weather",
+    "resource_hits": {
+      "content_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "count": 0,
+      "sample": []
+    },
+    "source_bytes": 978083,
+    "source_files_included": [
+      "bayes_basket_target/atomic_ledger.py",
+      "bayes_basket_target/basket_kernel/__init__.py",
+      "bayes_basket_target/basket_kernel/contracts.py",
+      "bayes_basket_target/basket_kernel/execution_gates.py",
+      "bayes_basket_target/basket_kernel/maker_simulator.py",
+      "bayes_basket_target/basket_kernel/optimizer.py",
+      "bayes_basket_target/basket_kernel/pricing.py",
+      "bayes_basket_target/basket_kernel/state_machine.py",
+      "bayes_basket_target/basket_kernel/strict_delta.py",
+      "bayes_basket_target/basket_kernel/taker_simulator.py",
+      "bayes_basket_target/cash_phase_forward_observation.py",
+      "bayes_basket_target/execution_reconciliation.py",
+      "bayes_basket_target/forward_observation_store.py",
+      "bayes_basket_target/order_state_producer.py",
+      "bayes_basket_target/production.py",
+      "bayes_basket_target/production_io.py",
+      "bayes_basket_target/production_worker.py",
+      "bayes_basket_target/resident_nwp_producer.py",
+      "bayes_basket_target/runtime.py",
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "scripts/clob_order_service.mjs",
+      "scripts/clob_order_service.sh",
+      "scripts/market_ws_listener.py",
+      "scripts/market_ws_listener.sh",
+      "scripts/reported_trajectory_no_daemon.py",
+      "scripts/reported_trajectory_no_daemon.sh"
+    ],
+    "source_files_requested": [
+      "scripts/reported_trajectory_no_daemon.py",
+      "scripts/reported_trajectory_no_daemon.sh",
+      "scripts/market_ws_listener.py",
+      "scripts/market_ws_listener.sh",
+      "scripts/clob_order_service.mjs",
+      "scripts/clob_order_service.sh",
+      "bayes_basket_target/production_worker.py",
+      "bayes_basket_target/resident_nwp_producer.py",
+      "bayes_basket_target/production.py",
+      "bayes_basket_target/production_io.py",
+      "bayes_basket_target/runtime.py",
+      "bayes_basket_target/cash_phase_forward_observation.py",
+      "bayes_basket_target/forward_observation_store.py",
+      "bayes_basket_target/order_state_producer.py",
+      "bayes_basket_target/atomic_ledger.py",
+      "bayes_basket_target/execution_reconciliation.py",
+      "bayes_basket_target/basket_kernel/__init__.py",
+      "bayes_basket_target/basket_kernel/contracts.py",
+      "bayes_basket_target/basket_kernel/execution_gates.py",
+      "bayes_basket_target/basket_kernel/maker_simulator.py",
+      "bayes_basket_target/basket_kernel/optimizer.py",
+      "bayes_basket_target/basket_kernel/pricing.py",
+      "bayes_basket_target/basket_kernel/state_machine.py",
+      "bayes_basket_target/basket_kernel/strict_delta.py",
+      "bayes_basket_target/basket_kernel/taker_simulator.py",
+      "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+    ]
+  },
+  "service_closure": {
+    "checks": {
+      "forbidden_loaded_services_absent": true,
+      "forbidden_service_declarations_absent": true,
+      "service_probe_or_snapshot_complete": true,
+      "target_service_labels_unique": true,
+      "target_service_manifests_present": true,
+      "target_services_system_only": true
+    },
+    "declared_manifest_count": 3,
+    "evidence": {
+      "declared_label_count": 3,
+      "declared_service_count": 3,
+      "forbidden_declaration_count": 0,
+      "forbidden_declaration_sample": [],
+      "forbidden_loaded_service_count": 0,
+      "forbidden_loaded_service_sample": [],
+      "loaded_system": [
+        "com.weather.clob_order_service",
+        "com.weather.market_ws",
+        "com.weather.reported_trajectory_no"
+      ],
+      "loaded_user": [],
+      "target_labels": [
+        "com.weather.reported_trajectory_no",
+        "com.weather.market_ws",
+        "com.weather.clob_order_service"
+      ]
+    },
+    "required_domain": "system",
+    "target_services": [
+      "com.weather.reported_trajectory_no",
+      "com.weather.market_ws",
+      "com.weather.clob_order_service"
+    ]
+  },
+  "status": "PASS",
+  "violation_summary": {},
+  "violations": [],
+  "writer_authority_closure": {
+    "checks": {
+      "authority_hard_no_engine_scanned": true,
+      "basket_atomic_ledger_target_database_only": true,
+      "cross_lane_writer_isolation": true,
+      "hard_no_writer_archive_database_only": true
+    },
+    "evidence": {
+      "allowed_databases": {
+        "basket": "data/bayes_basket_target_ssot.db",
+        "hard_no": "data/archive.db"
+      },
+      "authority_sources": [
+        "reported_trajectory_no_engine.py"
+      ],
+      "orchestrator": {
+        "hard_no_archive_binding": true,
+        "hard_no_call_arguments": [
+          "conn",
+          "self . conn",
+          "self . conn",
+          "self . conn",
+          "conn"
+        ],
+        "hard_no_first_argument": "conn",
+        "source": "scripts/reported_trajectory_no_daemon.py",
+        "target_database_binding": true,
+        "target_writer_call_arguments": [
+          "DEFAULT_TARGET_DB",
+          "DEFAULT_TARGET_DB",
+          "DEFAULT_TARGET_DB",
+          "DEFAULT_TARGET_DB"
+        ],
+        "target_writer_first_argument": "DEFAULT_TARGET_DB"
+      },
+      "writer_authorities": {
+        "basket": {
+          "binding": "target worker commit connection",
+          "database": "data/bayes_basket_target_ssot.db",
+          "source": "bayes_basket_target/atomic_ledger.py",
+          "writer_detected": true
+        },
+        "hard_no": {
+          "binding": "daemon archive connection (DEFAULT_DB/args.db)",
+          "database": "data/archive.db",
+          "source": "reported_trajectory_no_engine.py",
+          "writer_detected": true
+        }
+      }
+    }
+  }
+}

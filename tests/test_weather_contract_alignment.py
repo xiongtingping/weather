@@ -6,7 +6,6 @@ import scan_weather_market as swm
 from scripts.market_ws_listener import (
     TickCoalescer,
     TokenBinding,
-    _write_ticks,
     parse_args,
     rows_from_ws_message,
 )
@@ -715,54 +714,6 @@ def test_tick_coalescer_skips_same_quote_until_refresh_interval() -> None:
     assert coalescer.skipped == 1
     assert coalescer.filter_rows([changed], now=106.0) == [changed]
     assert coalescer.filter_rows([dict(changed)], now=116.0) == [changed]
-
-
-def test_market_ws_write_ticks_closes_long_lived_connection(monkeypatch) -> None:
-    class FakeConnection:
-        def __init__(self) -> None:
-            self.total_changes = 0
-            self.closed = False
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        def executemany(self, _sql, rows) -> None:
-            self.total_changes += len(list(rows))
-
-        def close(self) -> None:
-            self.closed = True
-
-    fake = FakeConnection()
-    monkeypatch.setattr(swm, "open_db", lambda **_kwargs: fake)
-    monkeypatch.setattr(swm, "init_db", lambda: None)
-    monkeypatch.setattr(swm, "_should_run_market_tick_cleanup", lambda _now: False)
-
-    written = _write_ticks(
-        [
-            {
-                "run_date": "2026-04-29",
-                "event_date": "2026-04-29",
-                "slug": "slug-a",
-                "outcome": "20°C",
-                "side": "YES",
-                "best_bid": 0.31,
-                "best_ask": 0.34,
-                "mid": 0.325,
-                "spread": 0.03,
-                "bid_depth_topN": 4.0,
-                "ask_depth_topN": 5.0,
-                "source": "clob_ws",
-                "source_detail": "book",
-                "created_at": "2026-04-29T12:00:00+00:00",
-            }
-        ]
-    )
-
-    assert written == 1
-    assert fake.closed is True
 
 
 def test_market_ws_parse_args_exposes_coalesce_tolerance_alias(monkeypatch) -> None:

@@ -1,0 +1,57 @@
+{
+  "artifact_sha256": "cbae1c614ad7c5171fff9a0a4fc00ce4b17fc498433b00cac2c04dc77796b88b",
+  "calibration_state": "structural_operator_only",
+  "continuous_support_completion": {
+    "apply_only_with_future_contract_slots": true,
+    "degrees_of_freedom": 5.0,
+    "kernel": "bounded_student_t_on_integer_reported_x",
+    "minimum_scale_c": 1.0,
+    "schema": "bounded_continuous_quadrature_support_completion_v1",
+    "total_mass": 1e-06
+  },
+  "max_path_branches": 4096,
+  "minimum_path_weight": 1e-12,
+  "path_merge_key": "scenario_regime_parameter_quantile",
+  "path_quantiles": [
+    {
+      "weight": 0.1,
+      "z": -1.2815515655
+    },
+    {
+      "weight": 0.2,
+      "z": -0.5244005127
+    },
+    {
+      "weight": 0.4,
+      "z": 0.0
+    },
+    {
+      "weight": 0.2,
+      "z": 0.5244005127
+    },
+    {
+      "weight": 0.1,
+      "z": 1.2815515655
+    }
+  ],
+  "production_runtime_eligible": true,
+  "promotion_evidence_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+  "promotion_forbidden_until_oos_gates": false,
+  "promotion_scope": "resident_probability_worker_for_yes_basket_only",
+  "reporting_schedule_id": "zuuu_primary_metar_local_44_slot_2026_07_v1",
+  "schema": "amsc_frozen_reporting_operator_v1",
+  "shadow_only": false,
+  "slot_policy": {
+    "default": {
+      "encoding_step_c": 1.0,
+      "is_contract_slot": true,
+      "missing_reason": "",
+      "quality_acceptance_probability": 1.0,
+      "report_probability": 1.0
+    }
+  },
+  "speci_can_fill_contract_slot": false,
+  "state": "approved",
+  "temperature_encoding": "positive_celsius_half_up_integer",
+  "timezone": "Asia/Shanghai"
+}

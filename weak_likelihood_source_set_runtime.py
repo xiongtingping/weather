@@ -59,6 +59,7 @@ def _baseline_template_contract(template: Mapping[str, Any] | None, catalog: Map
         issues.append("joint_weak_baseline_template_no_fallback_guard_missing")
     weights = _mapping(value.get("source_base_weights"))
     errors = _mapping(value.get("source_error_sigma_c"))
+    contextual_errors = _mapping(value.get("source_error_sigma_c_by_horizon"))
     families = {_mapping(catalog.get(source)).get("provider_family") for source in SOURCE_UNIVERSE}
     caps = _mapping(value.get("family_information_caps"))
     correlations = _mapping(value.get("family_pair_correlation"))
@@ -66,6 +67,14 @@ def _baseline_template_contract(template: Mapping[str, Any] | None, catalog: Map
         if _number(weights.get(source)) is None or _number(weights.get(source)) <= 0.0:
             issues.append("joint_weak_baseline_template_source_weight_missing_or_invalid")
             break
+    for horizon, overrides in contextual_errors.items():
+        if str(horizon) not in {"d0", "d1"} or not isinstance(overrides, Mapping):
+            issues.append("joint_weak_baseline_template_contextual_error_surface_invalid")
+            break
+        for source, sigma in overrides.items():
+            if source not in SOURCE_UNIVERSE or _number(sigma) is None or _number(sigma) <= 0.0:
+                issues.append("joint_weak_baseline_template_contextual_error_surface_invalid")
+                break
         if _number(errors.get(source)) is None or _number(errors.get(source)) <= 0.0:
             issues.append("joint_weak_baseline_template_source_error_missing_or_invalid")
             break
@@ -134,6 +143,15 @@ def _baseline_exact_surface(
         }
     weights = _mapping(template.get("source_base_weights"))
     errors = _mapping(template.get("source_error_sigma_c"))
+    lead_bucket = ""
+    for part in str(context_key or "").split("|"):
+        if part.startswith("lead_bucket="):
+            lead_bucket = part.split("=", 1)[1].lower()
+            break
+    horizon = "d1" if lead_bucket.startswith("d1") or "minus" in lead_bucket or lead_bucket.startswith("d_") else "d0"
+    contextual_errors = _mapping(_mapping(template.get("source_error_sigma_c_by_horizon")).get(horizon))
+    effective_errors = {source: float(contextual_errors.get(source, errors[source])) for source in available}
+    calibrated_sources = set(_mapping(template.get("calibrated_source_ids_by_horizon")).get(horizon) or [])
     source_families = {
         source: str(_mapping(catalog.get(source)).get("provider_family") or "")
         for source in available
@@ -161,20 +179,23 @@ def _baseline_exact_surface(
         "source_error_calibration": {
             source: {
                 "bias_c": 0.0,
-                "error_sigma_c": float(errors[source]),
+                "error_sigma_c": effective_errors[source],
                 "residual_distribution": {
                     "schema": "conditional_source_residual_distribution_v1",
-                    "family": str(
-                        template.get("source_residual_distribution_family")
-                        or "gaussian_scale_fallback"
+                    "family": (
+                        "interval_censored_gaussian_fit"
+                        if source in calibrated_sources
+                        else str(template.get("source_residual_distribution_family") or "gaussian_scale_fallback")
                     ),
                     "location_c": 0.0,
-                    "scale_c": float(errors[source]),
+                    "scale_c": effective_errors[source],
                     "learned_from_closed_physical_x": False,
-                    "state": "approved_precalibration_fallback",
+                    "learned_from_closed_exact_x_or_settlement_interval": source in calibrated_sources,
+                    "state": "operator_approved_d1_interval_calibration" if source in calibrated_sources else "approved_precalibration_fallback",
                 },
                 "sample_count": 0,
-                "bias_mode": "explicit_zero_precalibration_baseline",
+                "bias_mode": "artifact_hierarchical_state" if source in calibrated_sources else "explicit_zero_precalibration_baseline",
+                "error_scale_origin": "d1_interval_censored_training" if source in calibrated_sources else "fixed_precalibration_baseline",
             }
             for source in available
         },
@@ -187,6 +208,7 @@ def _baseline_exact_surface(
             f"{value.get('artifact_sha256') or ''}|{context_key}|{source_set_key(available)}"
         ),
         "training_event_day_count": 0,
+        "surface_horizon": horizon,
         "missingness_effect": "lower_information_scale_and_confidence_not_source_imputation",
         "mode_formation_policy": str(
             template.get("mode_formation_policy")

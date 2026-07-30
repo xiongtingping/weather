@@ -1,0 +1,950 @@
+{
+  "as_of_utc": "2026-07-27T23:31:33Z",
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "history_only": true,
+    "offline_research_only": true,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false,
+    "writes_target_db": false
+  },
+  "checks": {
+    "all_joined_model_sets_exact_three": true,
+    "calls_order_gateway": false,
+    "historical_coverage_gaps_nonfatal": true,
+    "history_only_mode": true,
+    "model_input_nonempty": true,
+    "model_rows_et_compatible": true,
+    "open_event_days_pending_not_blocking_history": true,
+    "promotion_allowed": false,
+    "registry_settlement_timezones_bound": true,
+    "three_model_join_positive": true,
+    "truth_input_nonempty": true,
+    "truth_quarantine_isolated": true,
+    "truth_rows_canonical_et_compatible": true,
+    "writes_production_db": false,
+    "writes_target_db": false
+  },
+  "coverage_gaps": [
+    {
+      "event_date": "2026-07-15",
+      "reason": "truth_missing",
+      "station_id": "RCSS",
+      "target_day_end_utc": "2026-07-15T16:00:00Z",
+      "target_day_start_utc": "2026-07-14T16:00:00Z",
+      "truth_window_reason": "target_settlement_day_closed",
+      "truth_window_state": "closed"
+    },
+    {
+      "event_date": "2026-07-16",
+      "reason": "truth_missing",
+      "station_id": "RCSS",
+      "target_day_end_utc": "2026-07-16T16:00:00Z",
+      "target_day_start_utc": "2026-07-15T16:00:00Z",
+      "truth_window_reason": "target_settlement_day_closed",
+      "truth_window_state": "closed"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "truth_missing",
+      "station_id": "RCSS",
+      "target_day_end_utc": "2026-07-17T16:00:00Z",
+      "target_day_start_utc": "2026-07-16T16:00:00Z",
+      "truth_window_reason": "target_settlement_day_closed",
+      "truth_window_state": "closed"
+    },
+    {
+      "event_date": "2026-07-18",
+      "reason": "truth_missing",
+      "station_id": "RCSS",
+      "target_day_end_utc": "2026-07-18T16:00:00Z",
+      "target_day_start_utc": "2026-07-17T16:00:00Z",
+      "truth_window_reason": "target_settlement_day_closed",
+      "truth_window_state": "closed"
+    },
+    {
+      "event_date": "2026-07-19",
+      "reason": "truth_missing",
+      "station_id": "RCSS",
+      "target_day_end_utc": "2026-07-19T16:00:00Z",
+      "target_day_start_utc": "2026-07-18T16:00:00Z",
+      "truth_window_reason": "target_settlement_day_closed",
+      "truth_window_state": "closed"
+    }
+  ],
+  "event_day_windows": {
+    "by_station_event_date": {
+      "RCSS|2026-07-15": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-15",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-15T16:00:00Z",
+        "target_day_start_utc": "2026-07-14T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-16": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-16",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-16T16:00:00Z",
+        "target_day_start_utc": "2026-07-15T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-17": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-17",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-17T16:00:00Z",
+        "target_day_start_utc": "2026-07-16T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-18": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-18",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-18T16:00:00Z",
+        "target_day_start_utc": "2026-07-17T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-19": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-19",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-19T16:00:00Z",
+        "target_day_start_utc": "2026-07-18T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-20": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-20",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-20T16:00:00Z",
+        "target_day_start_utc": "2026-07-19T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-21": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-21",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-21T16:00:00Z",
+        "target_day_start_utc": "2026-07-20T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-22": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-22",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-22T16:00:00Z",
+        "target_day_start_utc": "2026-07-21T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-23": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-23",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-23T16:00:00Z",
+        "target_day_start_utc": "2026-07-22T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      },
+      "RCSS|2026-07-24": {
+        "as_of_utc": "2026-07-27T23:31:33Z",
+        "event_date": "2026-07-24",
+        "reason": "target_settlement_day_closed",
+        "state": "closed",
+        "target_day_end_utc": "2026-07-24T16:00:00Z",
+        "target_day_start_utc": "2026-07-23T16:00:00Z",
+        "target_timezone": "Asia/Taipei"
+      }
+    },
+    "target_timezone": "MARKET_REGISTRY_SCOPED"
+  },
+  "historical_rebuild_boundary": {
+    "as_of_utc": "2026-07-27T23:31:33Z",
+    "closed_settlement_days_only": true,
+    "excluded_non_closed_event_dates": []
+  },
+  "input_counts": {
+    "accepted_model_rows": 30,
+    "blocked_model_rows": 0,
+    "coverage_gap_count": 5,
+    "fatal_truth_rows": 0,
+    "joined_station_days": 5,
+    "model_rows": 30,
+    "pending_event_days": 0,
+    "quarantined_truth_rows": 0,
+    "truth_day_rows": 5,
+    "truth_observation_rows": 128
+  },
+  "joined_station_days": [
+    {
+      "event_date": "2026-07-20",
+      "forecasts": {
+        "ecmwf_ifs025_official": 28.872,
+        "gfs_0p25_official": 34.539,
+        "icon_global_open_meteo": 34.1
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "1b3962699070bbe1a14558be880d7ee2447f3dff081c9524e91f6c20b52c29c3",
+        "gfs_0p25_official": "31d935fad93fd397ddb535f45e0d0d1ecdfd89e0ceb05045b88cd983ab4166cf",
+        "icon_global_open_meteo": "e11c8bbf7905be939c8f89af994322fbb851aa4baf174eb6509b4cc80a77c4f9"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "4ed53a988ed97e5a1b8856ff2575dee6a7f6836d5cda4955f492264d737bd9aa"
+        ],
+        "gfs_0p25_official": [
+          "238079328cc8ff3c13780c3456b0a147a700c6f9987ee503b5591fae6c91ca5c"
+        ],
+        "icon_global_open_meteo": [
+          "43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "abd7612dac0f2f695836108753ed994d2cac8997973e9d1bd003353a9607841f"
+        ],
+        "gfs_0p25_official": [
+          "b5f17fd2cb0ad55a5abbf71aa14d7912f1ca2772fa3e1e13bdaf0bf1de872d89"
+        ],
+        "icon_global_open_meteo": [
+          "9a5f227736feb0e4c1fffae6172bf5dbf96f6df298cf17c96d87dfe85aea25f4"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 34.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-19T00:00:00Z",
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-cfb287d863b14be7c1fbcb2286123c6f"
+    },
+    {
+      "event_date": "2026-07-21",
+      "forecasts": {
+        "ecmwf_ifs025_official": 30.337,
+        "gfs_0p25_official": 34.05,
+        "icon_global_open_meteo": 34.1
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "7465fed8a8200d81c788e4fc6b7fa75d2da2ec7ecea1deec5475e0407daa40b3",
+        "gfs_0p25_official": "587b3468b552289735072284b0ad10ee94e20af90bc88babee496e4ecf4b1cd3",
+        "icon_global_open_meteo": "aad9d58dd9bbd12b9599aa6dd3b52b16b0454f7f90162f38f10aa6f2335eb946"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "d077b56944a90eff3b1b132698bb3b843d20fdf902802fe6685e4acea7c86f69"
+        ],
+        "gfs_0p25_official": [
+          "a42205e45a02d40b93c2e2936853bbfdc960dc7d5fd4b26d56d2f0ac577a8f01"
+        ],
+        "icon_global_open_meteo": [
+          "43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "d7a98847b18ab3cd330eef8d9ccca425ca4ab4a905d33312bd59f87b5c040559"
+        ],
+        "gfs_0p25_official": [
+          "381ece355b700e5ba16499e53e0500c5f186aa8cc14f4f14bdcffb4e43b43e60"
+        ],
+        "icon_global_open_meteo": [
+          "e13a51999b5da718fa03c98aea95c7eb5dbb70153b451d245fa467a44a9af35f"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 34.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-20T00:00:00Z",
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-9b1da4fa1a0ac40f22b14c938dd59da1"
+    },
+    {
+      "event_date": "2026-07-22",
+      "forecasts": {
+        "ecmwf_ifs025_official": 32.422,
+        "gfs_0p25_official": 30.677,
+        "icon_global_open_meteo": 33.8
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "f96e033e241d2124917017508d4b8db107131142c4f0695b22327150d10206cc",
+        "gfs_0p25_official": "d3f3d0596df6cdb63d76e2bcc9dd52bffed32526e3043e2c395513be2ec62c10",
+        "icon_global_open_meteo": "13e1b9f9133228d823b3aabeac86e8207cc14fd1177d20688fb67216995c37dc"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "ba6253097b66b61f96e8271793bb90a9e6bf1425df4f03510f7da108880192c7"
+        ],
+        "gfs_0p25_official": [
+          "4bbe068fa33b613f28a83c74c61ea5241538efcbd669bb9be2a9d6d803d5ade2"
+        ],
+        "icon_global_open_meteo": [
+          "43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "d19f5ec03ae124f428da49a8580f5bf0859557d58cc6a942041fa4f5e99f75ab"
+        ],
+        "gfs_0p25_official": [
+          "fee545c1c24bc4dcb257487d7c0f4836da2edb315a3ed7caf6f2a6acc8b733b8"
+        ],
+        "icon_global_open_meteo": [
+          "268f0a8ac6af94bb00ef85bfb3133ef99b017205f7fd54da8771ee9e835083d8"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 36.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-21T00:00:00Z",
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-3a24517f830c787a1c089a1b53fc1543"
+    },
+    {
+      "event_date": "2026-07-23",
+      "forecasts": {
+        "ecmwf_ifs025_official": 31.584,
+        "gfs_0p25_official": 31.31,
+        "icon_global_open_meteo": 31.9
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "8783e237cf36847482aa606425cff46f459d5e0c937c6da8cdf04860c13ffae2",
+        "gfs_0p25_official": "b2d24037888ea17ab504e0b41287d3c4862225451a9f12f5cfae2c89ad851ca9",
+        "icon_global_open_meteo": "2750dfa96a2dfd9954ed64d212aef0438ebe6a5f622384ead887c5336f303425"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "5b9d12200de87d326f4918652be15698cabf5884bf247258ba160d3343b1312b"
+        ],
+        "gfs_0p25_official": [
+          "2e937197054d74fa6c322dfa76518a40ff3f6a0990517264e36f6aeca6b188d8"
+        ],
+        "icon_global_open_meteo": [
+          "43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "69ecec09c3a00855ef333b07a860a08f207f165e3918e58ab83b23ec10d3a993"
+        ],
+        "gfs_0p25_official": [
+          "f1a44813cc8a40598467711b375e45dfb221842a929257c6aba466a61dcac43a"
+        ],
+        "icon_global_open_meteo": [
+          "35e136c0745e2b99860ab6ddc96f0c09bad85784ba3765aadb1f9c4873ea0e74"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 34.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-22T00:00:00Z",
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-e305db7e2a580e60cb721fd68f35a57b"
+    },
+    {
+      "event_date": "2026-07-24",
+      "forecasts": {
+        "ecmwf_ifs025_official": 32.004,
+        "gfs_0p25_official": 33.81,
+        "icon_global_open_meteo": 35.9
+      },
+      "historical_replay_eligible": true,
+      "model_capture_modes": {
+        "ecmwf_ifs025_official": [
+          "historical_rebuild"
+        ],
+        "gfs_0p25_official": [
+          "historical_rebuild"
+        ],
+        "icon_global_open_meteo": [
+          "historical_rebuild"
+        ]
+      },
+      "model_lineage_sha256": {
+        "ecmwf_ifs025_official": "afd39ac8202157cd6a018b27ec364ba3a0c968773cb99878cfefd20ee858e348",
+        "gfs_0p25_official": "8b56d99f6050e239ab19ed5769607a9cc426c92298b4830e4409e730267a0451",
+        "icon_global_open_meteo": "e2e3ac3829b88ab22944c83a1f0b355a1be8a752ea2d07be1815594a5180775c"
+      },
+      "model_raw_message_sha256": {
+        "ecmwf_ifs025_official": [
+          "640dc52e90724e54a6878c855cfd1b1f0fdff59a9fa3bff6b2417768fe65c51b"
+        ],
+        "gfs_0p25_official": [
+          "d1a7a0ee9d0ec62368e7d5e63d09ba71e090ad21a5b331e23465a50c1235f33b"
+        ],
+        "icon_global_open_meteo": [
+          "43063edd1d376f9dad4b2f96797493c7d0900ea276ec6b38fea770879f6a5377"
+        ]
+      },
+      "model_receipt_sha256": {
+        "ecmwf_ifs025_official": [
+          "a6bd68176e055979f7f84d3dce20699f9bc9860d22f04c8215ce679b4add915f"
+        ],
+        "gfs_0p25_official": [
+          "e2b09bf9496fe06fc0889e8736cd7cd2413ab7274b36a6661575d1c0139f148c"
+        ],
+        "icon_global_open_meteo": [
+          "4570e5d75ab0261a40b007fd8387884044e04f5b089b12779e1b227e4f03ff75"
+        ]
+      },
+      "model_roles": {
+        "ecmwf_ifs025_official": "ecmwf_ifs025_official",
+        "gfs_0p25_official": "gfs_0p25_official",
+        "icon_global_official": "icon_global_open_meteo"
+      },
+      "model_source_classes": {
+        "ecmwf_ifs025_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "gfs_0p25_official": [
+          "native_or_official_cloud_replica"
+        ],
+        "icon_global_open_meteo": [
+          "aggregator_republisher"
+        ]
+      },
+      "official_tmax_c": 36.0,
+      "prospective_strict_asof_eligible": false,
+      "run_initialization_utc": "2026-07-23T00:00:00Z",
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-de676234799c6cb56c9e98e9e885cfc0"
+    }
+  ],
+  "pending_event_days": [],
+  "quarantine": {
+    "excluded_from_truth": true,
+    "reason_counts": {},
+    "row_count": 0
+  },
+  "receipt_sha256": "84734839890318f5217ef698c5791b9bada3cdfd96a9fa079b42eb1e4af0469b",
+  "reference_only": {
+    "excluded_from_truth": true,
+    "reason_counts": {},
+    "row_count": 0
+  },
+  "schema": "bayes_basket_target_et_history_evidence_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "amsc"
+    ],
+    "excluded_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "included_station_ids": [
+      "RCSS"
+    ],
+    "mode": "allowlist"
+  },
+  "state": "READY_FOR_STRICT_ASOF",
+  "target_timezone": "MARKET_REGISTRY_SCOPED",
+  "truth_rows": [
+    {
+      "canonical_committed_at_utc": "2026-07-24T11:52:49Z",
+      "canonical_ingress": true,
+      "content_sha256": "cfb287d863b14be7c1fbcb2286123c6fa3b2939e53a08da78ba8e3bd77f7ee0d",
+      "event_date": "2026-07-20",
+      "official_tmax_c": 34.0,
+      "raw_sha256": [
+        "0beb25844e4f476b7bccf3c948b28a05c5cdf901113aa98734c3803def6f81c9",
+        "1412239fa843a90004d209044b902c9bd5a0326605a7870410b93ed20b36205e",
+        "1987a4857838587f3efedc6ad4dda8b49aa6829b3f6f67d0655506df6ee4030e",
+        "2e028f578d9750b37ccf9266c4c4b7db34a35ffceddb1a122c8ce8b73c10850d",
+        "3ccb2819aee8213d0a87ca701cf4ea5fef46fbd7f0784f30bd52c22974623658",
+        "505af0e54b52ae42635500217a81c0e35cd95fb8a36d70962d68fd84a8e87ee8",
+        "64872d4eaec53d0247a42569adcdc8d0feeeec4534b794daad6feaae647aea24",
+        "68b559681e0ea95224bcf889c4246a92cbbe6cc013557cb49855cdd49bd04842",
+        "714f74f14ee95ed728a2a3e860ebf302722422d506f6b9c6a5d49e6644d44c86",
+        "72f71d5ea191a8aa3ca39b2db3f965928ba2a7245bc66b652a0e0c670c8faec2",
+        "81b1abcc7587b1a607af3aae34b3374a9168efb5c4124eaa28b897404681609c",
+        "9b09079a3cf98d2d4c266fe6c15fc50977527b5ceffbffb4d0bdcfe4be327204",
+        "a2fa047367825c3a2a233e9ff06bda02307e0810ff3a7352a3617ca980f0b653",
+        "aed50df8a7af867bea17382d5444086d9e2c280393deec485ffa735c305e398a",
+        "b9c74a588470e083aefcb467707e21ff06a42dcacd8160b3fd58a3f0df8a2997",
+        "be9e9347f668dd5177b79be58338d7771b6a0a0a644ad44374ed2e612119e761",
+        "cc80f0458db30e3bc2620cd0cecb3dc0d6bbe81fa14a066c438b732e470add37",
+        "d8bd8dd8e3f17c9af2d95be61e920d0d807343c6732fccd8d3b945381b5c2d9f",
+        "dc0d41be21edefe9385c0cebf79bec49f735ec45c585118edbe6bed857ec531d",
+        "dfe6491b236a2f5e2e3d9e2655292bde269642919215d8c5114a3532111df9b4",
+        "f8670215b415cd28673d9184a2ef1ad118cf2915e5c8ea6114991077a24ad658",
+        "f8df820a25b1ac77a63e4922507213e1b2c9d6950c2f5f992667f4da61e408e1"
+      ],
+      "received_at_utc": "2026-07-24T11:52:49Z",
+      "report_count": 22,
+      "source_lane": "amsc",
+      "source_poll_ids": [
+        "0beb25844e4f476b7bccf3c948b28a05c5cdf901113aa98734c3803def6f81c9.json.gz",
+        "1412239fa843a90004d209044b902c9bd5a0326605a7870410b93ed20b36205e.json.gz",
+        "1987a4857838587f3efedc6ad4dda8b49aa6829b3f6f67d0655506df6ee4030e.json.gz",
+        "2e028f578d9750b37ccf9266c4c4b7db34a35ffceddb1a122c8ce8b73c10850d.json.gz",
+        "3ccb2819aee8213d0a87ca701cf4ea5fef46fbd7f0784f30bd52c22974623658.json.gz",
+        "505af0e54b52ae42635500217a81c0e35cd95fb8a36d70962d68fd84a8e87ee8.json.gz",
+        "64872d4eaec53d0247a42569adcdc8d0feeeec4534b794daad6feaae647aea24.json.gz",
+        "68b559681e0ea95224bcf889c4246a92cbbe6cc013557cb49855cdd49bd04842.json.gz",
+        "714f74f14ee95ed728a2a3e860ebf302722422d506f6b9c6a5d49e6644d44c86.json.gz",
+        "72f71d5ea191a8aa3ca39b2db3f965928ba2a7245bc66b652a0e0c670c8faec2.json.gz",
+        "81b1abcc7587b1a607af3aae34b3374a9168efb5c4124eaa28b897404681609c.json.gz",
+        "9b09079a3cf98d2d4c266fe6c15fc50977527b5ceffbffb4d0bdcfe4be327204.json.gz",
+        "a2fa047367825c3a2a233e9ff06bda02307e0810ff3a7352a3617ca980f0b653.json.gz",
+        "aed50df8a7af867bea17382d5444086d9e2c280393deec485ffa735c305e398a.json.gz",
+        "b9c74a588470e083aefcb467707e21ff06a42dcacd8160b3fd58a3f0df8a2997.json.gz",
+        "be9e9347f668dd5177b79be58338d7771b6a0a0a644ad44374ed2e612119e761.json.gz",
+        "cc80f0458db30e3bc2620cd0cecb3dc0d6bbe81fa14a066c438b732e470add37.json.gz",
+        "d8bd8dd8e3f17c9af2d95be61e920d0d807343c6732fccd8d3b945381b5c2d9f.json.gz",
+        "dc0d41be21edefe9385c0cebf79bec49f735ec45c585118edbe6bed857ec531d.json.gz",
+        "dfe6491b236a2f5e2e3d9e2655292bde269642919215d8c5114a3532111df9b4.json.gz",
+        "f8670215b415cd28673d9184a2ef1ad118cf2915e5c8ea6114991077a24ad658.json.gz",
+        "f8df820a25b1ac77a63e4922507213e1b2c9d6950c2f5f992667f4da61e408e1.json.gz"
+      ],
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-cfb287d863b14be7c1fbcb2286123c6f"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T11:52:49Z",
+      "canonical_ingress": true,
+      "content_sha256": "9b1da4fa1a0ac40f22b14c938dd59da1a2b736a0f0acfd8cf664a768d51de32a",
+      "event_date": "2026-07-21",
+      "official_tmax_c": 34.0,
+      "raw_sha256": [
+        "08e3c82e51719a7ef837b8e58a45901520dac545f3296d1eba1e4afb1beeddcf",
+        "09cdefa8b6e2016b80b52ca8e3fe1e3013fbbf6fdd68d79911a79cc3158e8a78",
+        "0d72fe32251be477c42cb37d2acb1f980a78e68771c6f5b5a2c0692348a13f97",
+        "0d9c507a540dc7397dc1623744921aca9ec587a1516bbec8a2d90cdcf459e51c",
+        "0fe087f2ff79661a66568923f33fd88b96ba289820066b924f29eff90f485f26",
+        "15946cfcd7e313a49cf85c82319a1e0c4cf730bb2bf22b393351b54d4a3a52c8",
+        "166f8b8b8cece6919233eea31c036f17e3c192002178f23489fe951cc405010e",
+        "1cd5803ce9ae527981cbe520534281a915a0a6cd47e3531e64fa2619b75fc3a3",
+        "22f9e8ef6f846d53a9dd13ade10a2abcecbb3dc9ebe537bead1282f2a358f495",
+        "286a84c08fa5bc9981cd06e572bbe7f9ff6807e38e7910f588948137d1ed55b6",
+        "293d7596cefce0eb3da83c72720ddf5907851e6b9d9b731b01556afd6611c6e8",
+        "338163af8cc3491b8045aed002ac85486918b2ed6248c6d9fb53e9d06919c824",
+        "3c7d5173b743b7178dd0016cdb6b2170e71fcf4ae33b11b5cf4ef838432c77ee",
+        "3dfedd9dd568de3d3e271190156e30ac442c4753a5cda7a5978f2ecd55b3ec72",
+        "4b7e04eae45ef2b8e55c82805fd93f5b6dedb648a816f7025df5e860f4fad955",
+        "4bb10a010f67b580b5bf1d40b94757f406489bcd6da0d892cc76a5ac6b44fa86",
+        "520fe315e0b3de3f1eda591ea68fe900d37ef2f54125fc983e61e0c7b88d39a7",
+        "574489ddbad60396df5aedbee53470b252d9729593800ba64e55a4d2a7011c78",
+        "57e9fc92a301fa47aae9ba5c20ac36d41a89841a6e87d2e2472dee50dd81b461",
+        "5a2fe815bb16d4dbb096b4de3f6bf6200c216c9712681f7fd940417c0f80f265",
+        "5c3ee9951954c4dd7cd4f0da7ced57e60c8c385a22ebe00cbe9682e674f30225",
+        "661a8061207fae8bfa58dd3ad86f2263856043be782091e81eeec2a21e8ae67a",
+        "67a7a368e19d2c390dfba33b6917c201809291f9c5294647f3fc87eca3685af9",
+        "776e6a3f75676dcb483222126c6135f228bc5150749c678771ab69c6bbca2f45",
+        "81936fe065270d0b5c3ff88a0c536443509d9ce0559e29d5ae5175d41370cf5d",
+        "8c1065242d9c2610bb438707c4479d61781592aa49735cdc9f22305be5c57177",
+        "99e8d909d72ee31685867aa4270452070b42c6fa047218f671a3ae598639501c",
+        "9b7925efec9db5abbd01aab25b72881b2b4bea08f66465da5625fae202a3c452",
+        "9cdd238a16125fbf7f9ba64cd9a1032439b0a1bd6fc1e699779326b3864ba0ab",
+        "c123afdacfdae95b86a464692cda72c16199cbe1b0f684334326a970fb929e64",
+        "c26cca74a733775dae9494f8ca4783202a40875914abf605a8f1e4ccf675c183",
+        "c2dc91a6bd1883998a4347355df9591c7a1d7e1725b4c657e47b66ebb527b5e1",
+        "c2e868ecb7673306a999c10e7d4fe7586570b320650730aa81eda9b5473137ee",
+        "cd7a9f8c2e823232fd68680ac368cdffad5c8754fc14837b948b3fe610706a7f",
+        "d24fc3724ef603a74710aeb43fd6bb5d4e63627a059591ce498e217ebf8850ab",
+        "daa901201670b08b09e8531c629a3a5b5eb5a77fff922c3734b4961c6d38d6ad",
+        "e4c423264f15256be8c0a78a590026defeabdcfb43a2bda30297584c84d435e0",
+        "ed305fa11a054589aac5a1c95b0395dc2a3bcc7decae75ce58eed8fb33d33f98",
+        "ed3554e45817a16187c19c4ac24122de8d24d0eebd2f261317ee9c5bb9afab23",
+        "f5eefa72f85d5826e769ec60f6f3c9179338bf0b9074be82db46e53b0e91dbee"
+      ],
+      "received_at_utc": "2026-07-24T11:52:49Z",
+      "report_count": 40,
+      "source_lane": "amsc",
+      "source_poll_ids": [
+        "08e3c82e51719a7ef837b8e58a45901520dac545f3296d1eba1e4afb1beeddcf.json.gz",
+        "09cdefa8b6e2016b80b52ca8e3fe1e3013fbbf6fdd68d79911a79cc3158e8a78.json.gz",
+        "0d72fe32251be477c42cb37d2acb1f980a78e68771c6f5b5a2c0692348a13f97.json.gz",
+        "0d9c507a540dc7397dc1623744921aca9ec587a1516bbec8a2d90cdcf459e51c.json.gz",
+        "0fe087f2ff79661a66568923f33fd88b96ba289820066b924f29eff90f485f26.json.gz",
+        "15946cfcd7e313a49cf85c82319a1e0c4cf730bb2bf22b393351b54d4a3a52c8.json.gz",
+        "166f8b8b8cece6919233eea31c036f17e3c192002178f23489fe951cc405010e.json.gz",
+        "1cd5803ce9ae527981cbe520534281a915a0a6cd47e3531e64fa2619b75fc3a3.json.gz",
+        "22f9e8ef6f846d53a9dd13ade10a2abcecbb3dc9ebe537bead1282f2a358f495.json.gz",
+        "286a84c08fa5bc9981cd06e572bbe7f9ff6807e38e7910f588948137d1ed55b6.json.gz",
+        "293d7596cefce0eb3da83c72720ddf5907851e6b9d9b731b01556afd6611c6e8.json.gz",
+        "338163af8cc3491b8045aed002ac85486918b2ed6248c6d9fb53e9d06919c824.json.gz",
+        "3c7d5173b743b7178dd0016cdb6b2170e71fcf4ae33b11b5cf4ef838432c77ee.json.gz",
+        "3dfedd9dd568de3d3e271190156e30ac442c4753a5cda7a5978f2ecd55b3ec72.json.gz",
+        "4b7e04eae45ef2b8e55c82805fd93f5b6dedb648a816f7025df5e860f4fad955.json.gz",
+        "4bb10a010f67b580b5bf1d40b94757f406489bcd6da0d892cc76a5ac6b44fa86.json.gz",
+        "520fe315e0b3de3f1eda591ea68fe900d37ef2f54125fc983e61e0c7b88d39a7.json.gz",
+        "574489ddbad60396df5aedbee53470b252d9729593800ba64e55a4d2a7011c78.json.gz",
+        "57e9fc92a301fa47aae9ba5c20ac36d41a89841a6e87d2e2472dee50dd81b461.json.gz",
+        "5a2fe815bb16d4dbb096b4de3f6bf6200c216c9712681f7fd940417c0f80f265.json.gz",
+        "5c3ee9951954c4dd7cd4f0da7ced57e60c8c385a22ebe00cbe9682e674f30225.json.gz",
+        "661a8061207fae8bfa58dd3ad86f2263856043be782091e81eeec2a21e8ae67a.json.gz",
+        "67a7a368e19d2c390dfba33b6917c201809291f9c5294647f3fc87eca3685af9.json.gz",
+        "776e6a3f75676dcb483222126c6135f228bc5150749c678771ab69c6bbca2f45.json.gz",
+        "81936fe065270d0b5c3ff88a0c536443509d9ce0559e29d5ae5175d41370cf5d.json.gz",
+        "8c1065242d9c2610bb438707c4479d61781592aa49735cdc9f22305be5c57177.json.gz",
+        "99e8d909d72ee31685867aa4270452070b42c6fa047218f671a3ae598639501c.json.gz",
+        "9b7925efec9db5abbd01aab25b72881b2b4bea08f66465da5625fae202a3c452.json.gz",
+        "9cdd238a16125fbf7f9ba64cd9a1032439b0a1bd6fc1e699779326b3864ba0ab.json.gz",
+        "c123afdacfdae95b86a464692cda72c16199cbe1b0f684334326a970fb929e64.json.gz",
+        "c26cca74a733775dae9494f8ca4783202a40875914abf605a8f1e4ccf675c183.json.gz",
+        "c2dc91a6bd1883998a4347355df9591c7a1d7e1725b4c657e47b66ebb527b5e1.json.gz",
+        "c2e868ecb7673306a999c10e7d4fe7586570b320650730aa81eda9b5473137ee.json.gz",
+        "cd7a9f8c2e823232fd68680ac368cdffad5c8754fc14837b948b3fe610706a7f.json.gz",
+        "d24fc3724ef603a74710aeb43fd6bb5d4e63627a059591ce498e217ebf8850ab.json.gz",
+        "daa901201670b08b09e8531c629a3a5b5eb5a77fff922c3734b4961c6d38d6ad.json.gz",
+        "e4c423264f15256be8c0a78a590026defeabdcfb43a2bda30297584c84d435e0.json.gz",
+        "ed305fa11a054589aac5a1c95b0395dc2a3bcc7decae75ce58eed8fb33d33f98.json.gz",
+        "ed3554e45817a16187c19c4ac24122de8d24d0eebd2f261317ee9c5bb9afab23.json.gz",
+        "f5eefa72f85d5826e769ec60f6f3c9179338bf0b9074be82db46e53b0e91dbee.json.gz"
+      ],
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-9b1da4fa1a0ac40f22b14c938dd59da1"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T11:52:49Z",
+      "canonical_ingress": true,
+      "content_sha256": "3a24517f830c787a1c089a1b53fc1543e602490eb865ad316ee7ecbf4cec7415",
+      "event_date": "2026-07-22",
+      "official_tmax_c": 36.0,
+      "raw_sha256": [
+        "0d3f8675c00d20c0d283aaa19d59f64767128fc297e2276f4d54238e45099681",
+        "10a51c4866458f45d18631c4eb800cdd418dd0cabbf945691e53c5305f597c9c",
+        "10b5b8c0c6f888c87c72fc471ff0bc8b9a7b68f05136ef587d4f679257f93525",
+        "15d09a31ce20f07a676a398c4d57ac7b130087815c7e772d3e70ab404079e7a0",
+        "28d062aed686f71054e24a7ab97a2ca48f96fe5297172df4b914a6145e67b63e",
+        "2f441f2c942ff952fbd68b59c42a28a42da957dc847cdb54697dcc89734b0f4f",
+        "3997a8825ad37be7016d67eb7f631ab94b0690edf6966ee259e6aac6d616fb1b",
+        "40e99465b87c8082165601498ffec93ccc5509b0ce0d606cf2c2bc0a1ee19a88",
+        "4ce7d1c56db418388196d305650c3acb502e886305279c975f1ac222bebd8241",
+        "52a1d531c15960f85dcfe10bfada9b06b37df004351af19860141cf313787403",
+        "52dea32453dba9d19bc06149115c3fcc589adfdc49c3dc43c71028cbcc80cc42",
+        "56ba1cdc02cb0b3a16cff304af2c302885d8a8e8a32a5602132647312a3c2a61",
+        "58b738c26358ed216f1cbd29335f0fa9d60b58a04db87ff14b2033c950f2357c",
+        "768732a8efa0172914c3da0c547a06ecd6dd19f9c0a35ed230dbc6c558754bad",
+        "92f2e7c42d97f6cc02e7f99b1bbc52107600d7cb7f0de8c6e8409b77ab5d069d",
+        "973603dc3d42ea71f087ba06c67b4c7fc2067e5e9184b9f27a9518821f396b74",
+        "abef83ac992273686f7c71d199c180ed366902c12ca97c5764c835922618f395",
+        "ad36ac8d463c241ad4c87270172e25fe373804f8596624bae3df457850c389a2",
+        "c5a50fff5dc0cd3057d698400dca8b614fa1382526709126796ce464bbfbfe1c",
+        "cec83c5565071ff6824b06588db2e9ba4eb2590819d298514f2c9f430d3f3a98",
+        "d09e4cecc723d4507fe222b76ac8945364990dea5d1b3b96ec8512418e4a8b90",
+        "d38ce0dde0d19db0046b1759d875ada234da10d71aae3990c267ad56967d3451",
+        "d9ddfa23acbbb8aae23ced50a4332d5fb7f299b6887f0f6ffe56865b031e372b",
+        "db902086274dbe054e955e73f0bd8367c9cb4ef03d8d09dd95521301e6c20453",
+        "deac2acd91926ac96268de98f01f1fa5e922b64d5c68fb85435be5ea69a72895",
+        "f27aa33e2304b751fdd46b2ffc2dd535d1da08bd47ef74a7de940ccf2e44578a",
+        "fb596fd3e693bcb2d185bfe30a090edaa540f28306fdbed71dd2f661c789694b"
+      ],
+      "received_at_utc": "2026-07-24T11:52:49Z",
+      "report_count": 27,
+      "source_lane": "amsc",
+      "source_poll_ids": [
+        "0d3f8675c00d20c0d283aaa19d59f64767128fc297e2276f4d54238e45099681.json.gz",
+        "10a51c4866458f45d18631c4eb800cdd418dd0cabbf945691e53c5305f597c9c.json.gz",
+        "10b5b8c0c6f888c87c72fc471ff0bc8b9a7b68f05136ef587d4f679257f93525.json.gz",
+        "15d09a31ce20f07a676a398c4d57ac7b130087815c7e772d3e70ab404079e7a0.json.gz",
+        "28d062aed686f71054e24a7ab97a2ca48f96fe5297172df4b914a6145e67b63e.json.gz",
+        "2f441f2c942ff952fbd68b59c42a28a42da957dc847cdb54697dcc89734b0f4f.json.gz",
+        "3997a8825ad37be7016d67eb7f631ab94b0690edf6966ee259e6aac6d616fb1b.json.gz",
+        "40e99465b87c8082165601498ffec93ccc5509b0ce0d606cf2c2bc0a1ee19a88.json.gz",
+        "4ce7d1c56db418388196d305650c3acb502e886305279c975f1ac222bebd8241.json.gz",
+        "52a1d531c15960f85dcfe10bfada9b06b37df004351af19860141cf313787403.json.gz",
+        "52dea32453dba9d19bc06149115c3fcc589adfdc49c3dc43c71028cbcc80cc42.json.gz",
+        "56ba1cdc02cb0b3a16cff304af2c302885d8a8e8a32a5602132647312a3c2a61.json.gz",
+        "58b738c26358ed216f1cbd29335f0fa9d60b58a04db87ff14b2033c950f2357c.json.gz",
+        "768732a8efa0172914c3da0c547a06ecd6dd19f9c0a35ed230dbc6c558754bad.json.gz",
+        "92f2e7c42d97f6cc02e7f99b1bbc52107600d7cb7f0de8c6e8409b77ab5d069d.json.gz",
+        "973603dc3d42ea71f087ba06c67b4c7fc2067e5e9184b9f27a9518821f396b74.json.gz",
+        "abef83ac992273686f7c71d199c180ed366902c12ca97c5764c835922618f395.json.gz",
+        "ad36ac8d463c241ad4c87270172e25fe373804f8596624bae3df457850c389a2.json.gz",
+        "c5a50fff5dc0cd3057d698400dca8b614fa1382526709126796ce464bbfbfe1c.json.gz",
+        "cec83c5565071ff6824b06588db2e9ba4eb2590819d298514f2c9f430d3f3a98.json.gz",
+        "d09e4cecc723d4507fe222b76ac8945364990dea5d1b3b96ec8512418e4a8b90.json.gz",
+        "d38ce0dde0d19db0046b1759d875ada234da10d71aae3990c267ad56967d3451.json.gz",
+        "d9ddfa23acbbb8aae23ced50a4332d5fb7f299b6887f0f6ffe56865b031e372b.json.gz",
+        "db902086274dbe054e955e73f0bd8367c9cb4ef03d8d09dd95521301e6c20453.json.gz",
+        "deac2acd91926ac96268de98f01f1fa5e922b64d5c68fb85435be5ea69a72895.json.gz",
+        "f27aa33e2304b751fdd46b2ffc2dd535d1da08bd47ef74a7de940ccf2e44578a.json.gz",
+        "fb596fd3e693bcb2d185bfe30a090edaa540f28306fdbed71dd2f661c789694b.json.gz"
+      ],
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-3a24517f830c787a1c089a1b53fc1543"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T11:52:49Z",
+      "canonical_ingress": true,
+      "content_sha256": "e305db7e2a580e60cb721fd68f35a57b1b668a372becd294273effcabe321a19",
+      "event_date": "2026-07-23",
+      "official_tmax_c": 34.0,
+      "raw_sha256": [
+        "0255b9fab6a9a04659cec01fc2021a24d3a72415999b82f26e1fb2405f24b0f7",
+        "0a7de901778b6b49c39c4c96f537616f389f6ec80d2870ca6088afaeebeda896",
+        "10f265b9224a861ec69c1d974d8502a40d153f540ccd45b5ec9b6f93214410f8",
+        "11886551e1c3ff912299470562abd8bf181e487e2f99f9daa7e64f0d19ccbdfc",
+        "16b30953ae93036ff3fdd9f764aa66c5623147dc3a2cd5718883fd19174c8089",
+        "17f5baaebef6f439efc5591f2d69d500d34bf188e2643b75477d912003cd7bbc",
+        "1c4a0ded2176935f3817e9d45a0364fed6a44aa030312ba2601ff3b3408a3185",
+        "3206bc9b95dd07ac16720b85eb91dc1112887eae2188832259e70c14939d552b",
+        "34d2302e471f033d39cfed96d0764d9cb91d75e75466226aaf668314ddd2c555",
+        "4a601040207fbe4004cb1c34e4cdd8b0a1ac0eb49eef0b861f6b737becd38806",
+        "4ad7089714b400635076004e7d283a7d79bf5aca8755461dfaa0cc18fce04040",
+        "4b82da31f86f74f48307c7e5ef17bb98738e9de12409e9254dd0ab23eceabfd1",
+        "51e17e67cb2885f043bff2b6dbddadc1b52bc57dc643f52f7272a25c45df2591",
+        "611ed4a4c413491f5b9ef33013160802b98ba95a9c4bf40469c2c91d7ae21d79",
+        "6885ea887afd55255010cc829b7e6c78a3062003106b05ed84f077d165ff6378",
+        "7d1108869f2d261ed7a7d60bc2a4c294e0d81315e3d4b2575f49eab4369a1d31",
+        "800e125223a0a964129cc992cde660c63ac2da646f64cbde30088c566ae3dbe8",
+        "80984359fb406d035789e8de4fec6d81304da65d2d1f675df4a1f456f3f28821",
+        "898ef9a7a537fc88e0816f84bf832175e146c4f55c3a6a02b340fdc908cffca0",
+        "9c416faa2268ef61efa9396ae18cd6124c9d4a73cad7c3a4c10e36c2d14ae68d",
+        "aa531384b17c8c2545c01c5fa104ed2d1f5a3fb14e3c4728ee96f5e72d5202ad",
+        "b72637d0d0afca2021747edc46ec79da1bcc41b6c9a8f684ae34ce3d709543c8",
+        "cd57423603e2cc7d508ba77aa3826a61a8461c3aa74a8d0c7b235d9f9010d731",
+        "e826aa4a3f09f2bf8ac7d21891a01cf1e2fcc11836a0c90caa9f4591adeebf4b",
+        "f72ef4297afa27310ad8bbba89ae360da2142537dc51723a45592cbb493c25cc",
+        "f7d42eb4bec7fc7ae317a895eada4bdd8694ef7fc7c74aea4908026e1e039f36"
+      ],
+      "received_at_utc": "2026-07-24T11:52:49Z",
+      "report_count": 26,
+      "source_lane": "amsc",
+      "source_poll_ids": [
+        "0255b9fab6a9a04659cec01fc2021a24d3a72415999b82f26e1fb2405f24b0f7.json.gz",
+        "0a7de901778b6b49c39c4c96f537616f389f6ec80d2870ca6088afaeebeda896.json.gz",
+        "10f265b9224a861ec69c1d974d8502a40d153f540ccd45b5ec9b6f93214410f8.json.gz",
+        "11886551e1c3ff912299470562abd8bf181e487e2f99f9daa7e64f0d19ccbdfc.json.gz",
+        "16b30953ae93036ff3fdd9f764aa66c5623147dc3a2cd5718883fd19174c8089.json.gz",
+        "17f5baaebef6f439efc5591f2d69d500d34bf188e2643b75477d912003cd7bbc.json.gz",
+        "1c4a0ded2176935f3817e9d45a0364fed6a44aa030312ba2601ff3b3408a3185.json.gz",
+        "3206bc9b95dd07ac16720b85eb91dc1112887eae2188832259e70c14939d552b.json.gz",
+        "34d2302e471f033d39cfed96d0764d9cb91d75e75466226aaf668314ddd2c555.json.gz",
+        "4a601040207fbe4004cb1c34e4cdd8b0a1ac0eb49eef0b861f6b737becd38806.json.gz",
+        "4ad7089714b400635076004e7d283a7d79bf5aca8755461dfaa0cc18fce04040.json.gz",
+        "4b82da31f86f74f48307c7e5ef17bb98738e9de12409e9254dd0ab23eceabfd1.json.gz",
+        "51e17e67cb2885f043bff2b6dbddadc1b52bc57dc643f52f7272a25c45df2591.json.gz",
+        "611ed4a4c413491f5b9ef33013160802b98ba95a9c4bf40469c2c91d7ae21d79.json.gz",
+        "6885ea887afd55255010cc829b7e6c78a3062003106b05ed84f077d165ff6378.json.gz",
+        "7d1108869f2d261ed7a7d60bc2a4c294e0d81315e3d4b2575f49eab4369a1d31.json.gz",
+        "800e125223a0a964129cc992cde660c63ac2da646f64cbde30088c566ae3dbe8.json.gz",
+        "80984359fb406d035789e8de4fec6d81304da65d2d1f675df4a1f456f3f28821.json.gz",
+        "898ef9a7a537fc88e0816f84bf832175e146c4f55c3a6a02b340fdc908cffca0.json.gz",
+        "9c416faa2268ef61efa9396ae18cd6124c9d4a73cad7c3a4c10e36c2d14ae68d.json.gz",
+        "aa531384b17c8c2545c01c5fa104ed2d1f5a3fb14e3c4728ee96f5e72d5202ad.json.gz",
+        "b72637d0d0afca2021747edc46ec79da1bcc41b6c9a8f684ae34ce3d709543c8.json.gz",
+        "cd57423603e2cc7d508ba77aa3826a61a8461c3aa74a8d0c7b235d9f9010d731.json.gz",
+        "e826aa4a3f09f2bf8ac7d21891a01cf1e2fcc11836a0c90caa9f4591adeebf4b.json.gz",
+        "f72ef4297afa27310ad8bbba89ae360da2142537dc51723a45592cbb493c25cc.json.gz",
+        "f7d42eb4bec7fc7ae317a895eada4bdd8694ef7fc7c74aea4908026e1e039f36.json.gz"
+      ],
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-e305db7e2a580e60cb721fd68f35a57b"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-24T11:52:49Z",
+      "canonical_ingress": true,
+      "content_sha256": "de676234799c6cb56c9e98e9e885cfc0f1e3b87a6c59372154e0b47d3b4c58d7",
+      "event_date": "2026-07-24",
+      "official_tmax_c": 36.0,
+      "raw_sha256": [
+        "01be9fc0fed01f04438066907342a9a06f6255cd2dd3a902af4c0d5628e4779e",
+        "11e9b762b275e6f0f20f979e31e1157c7225151d4a38c8971d30a774858ee88f",
+        "1e87167441d2be363c2fb05f8ec9f90c143bd83c5e1b8704a655d7479189b8a0",
+        "8bb5aa2d7001baef7fb9c5c73f27840b2316def55b52d3da3c1fc84588b5bd91",
+        "8dbb91bc57327a895069e5399aedd0229760675fc5d9ccdfdb8d37ba035e0c23",
+        "b14a519071ba4b705abf0600f719b6c34ecd83ed49357bc5f5318f7541d0952a",
+        "b8fe9f17144c5502101e76ef4eba983ec6e311dea2789efc7c0a384f1ce09ece",
+        "bbfdbe4647fcb4fb6b7d29bd5b2bfbd431dfb79cc4e7d729414c4b0e9f7f26c5",
+        "c11bb14538fb6b96b4b96ba30292095958437c3f1e316804ab6aa1b779be8996",
+        "c403f95bfedc2ab9647c2c00cdba129cc63ca6e5d965a77331e07936cdf080ef",
+        "c8265ef892457de9e31de454567682c487a4d1c479b6806d6edfefb50967242d",
+        "e1055202204a7b1ce139a99f724e30b0100ff23e3b7a2c2a885532c607cd719d",
+        "faf973c5771336114bb5e1e54831e715ad6348e0fd0847a34307b39a5aaf4b73"
+      ],
+      "received_at_utc": "2026-07-24T11:52:49Z",
+      "report_count": 13,
+      "source_lane": "amsc",
+      "source_poll_ids": [
+        "01be9fc0fed01f04438066907342a9a06f6255cd2dd3a902af4c0d5628e4779e.json.gz",
+        "11e9b762b275e6f0f20f979e31e1157c7225151d4a38c8971d30a774858ee88f.json.gz",
+        "1e87167441d2be363c2fb05f8ec9f90c143bd83c5e1b8704a655d7479189b8a0.json.gz",
+        "8bb5aa2d7001baef7fb9c5c73f27840b2316def55b52d3da3c1fc84588b5bd91.json.gz",
+        "8dbb91bc57327a895069e5399aedd0229760675fc5d9ccdfdb8d37ba035e0c23.json.gz",
+        "b14a519071ba4b705abf0600f719b6c34ecd83ed49357bc5f5318f7541d0952a.json.gz",
+        "b8fe9f17144c5502101e76ef4eba983ec6e311dea2789efc7c0a384f1ce09ece.json.gz",
+        "bbfdbe4647fcb4fb6b7d29bd5b2bfbd431dfb79cc4e7d729414c4b0e9f7f26c5.json.gz",
+        "c11bb14538fb6b96b4b96ba30292095958437c3f1e316804ab6aa1b779be8996.json.gz",
+        "c403f95bfedc2ab9647c2c00cdba129cc63ca6e5d965a77331e07936cdf080ef.json.gz",
+        "c8265ef892457de9e31de454567682c487a4d1c479b6806d6edfefb50967242d.json.gz",
+        "e1055202204a7b1ce139a99f724e30b0100ff23e3b7a2c2a885532c607cd719d.json.gz",
+        "faf973c5771336114bb5e1e54831e715ad6348e0fd0847a34307b39a5aaf4b73.json.gz"
+      ],
+      "station_id": "RCSS",
+      "target_timezone": "Asia/Taipei",
+      "truth_id": "et-truth-de676234799c6cb56c9e98e9e885cfc0"
+    }
+  ]
+}

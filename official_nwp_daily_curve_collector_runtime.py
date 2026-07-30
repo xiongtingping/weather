@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import urlencode
 
 from official_nwp_daily_curve_plan_runtime import build_official_nwp_daily_curve_plan
+from official_nwp_source_catalog_runtime import load_official_nwp_catalog
 
 
 SCHEMA_VERSION = "official_nwp_daily_curve_collector_run_v1"
@@ -32,6 +34,10 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
 def _time(value: Any) -> datetime:
     return datetime.fromisoformat(_text(value).replace("Z", "+00:00")).astimezone(timezone.utc)
 
@@ -50,11 +56,18 @@ def build_nomads_gfs_hourly_url(*, run_at_utc: str, valid_time_utc: str) -> str:
         "lev_850_mb": "on",
         "lev_700_mb": "on",
         "lev_500_mb": "on",
+        "lev_surface": "on",
+        "lev_entire_atmosphere": "on",
         "var_TMP": "on",
         "var_RH": "on",
         "var_HGT": "on",
         "var_UGRD": "on",
         "var_VGRD": "on",
+        "var_TCDC": "on",
+        "var_APCP": "on",
+        "var_ACPCP": "on",
+        "var_CAPE": "on",
+        "var_HPBL": "on",
         "subregion": "",
         **_GFS_FILTER_BOUNDS,
         "dir": f"/gfs.{run:%Y%m%d}/{run:%H}/atmos",
@@ -69,6 +82,12 @@ def _default_collectors() -> dict[str, Collector]:
 
     def ecmwf(**kwargs: Any) -> Mapping[str, Any]:
         kwargs.pop("timeout_sec", None)
+        try:
+            interval = float(os.environ.get("PM_ECMWF_MIN_REQUEST_INTERVAL_SEC") or 2.0)
+        except (TypeError, ValueError):
+            interval = 2.0
+        interval = max(1.0, min(60.0, interval))
+        kwargs["min_request_interval_sec"] = interval
         return collect_ecmwf(**kwargs)
 
     def gfs(**kwargs: Any) -> Mapping[str, Any]:
@@ -81,7 +100,7 @@ def _default_collectors() -> dict[str, Collector]:
     return {"ecmwf": ecmwf, "icon": collect_icon, "gfs": gfs}
 
 
-def _history_point_already_collected(*, curve_source_root: Path, provider_id: str, run_at_utc: str, valid_time_utc: str) -> bool:
+def _history_point_already_collected(*, curve_source_root: Path, provider_id: str, run_at_utc: str, valid_time_utc: str, required_fields: set[str]) -> bool:
     """Reuse only an immutable normalized point with exact provider/run/valid identity."""
 
     history = Path(curve_source_root) / provider_id / "history"
@@ -99,6 +118,10 @@ def _history_point_already_collected(*, curve_source_root: Path, provider_id: st
             and _text(snapshot.get("valid_time_utc")) == valid_time_utc
             and _text(snapshot.get("raw_sha256"))
             and _text(snapshot.get("snapshot_sha256"))
+            and required_fields.issubset(set(_mapping(snapshot.get("normalized_features"))))
+            and snapshot.get("response_headers_observed") is True
+            and bool(_text(snapshot.get("requested_at")))
+            and bool(_text(snapshot.get("response_started_at")))
         ):
             return True
     return False
@@ -146,12 +169,15 @@ def collect_official_daily_curve(
         return {**result, "ok": False, "state": "blocked", "blockers": ["official_nwp_daily_curve_provider_adapter_unavailable"], "point_results": []}
     point_by_valid: dict[str, dict[str, Any]] = {}
     pending: list[str] = []
+    provider_contract = _mapping(_mapping(load_official_nwp_catalog(Path(catalog_path))).get("providers")).get(_text(provider_id), {})
+    required_fields = {str(field) for field in _mapping(provider_contract).get("required_normalized_fields") or [] if str(field)}
     for valid_time_utc in plan["expected_valid_times_utc"]:
         if _history_point_already_collected(
             curve_source_root=root,
             provider_id=_text(provider_id),
             run_at_utc=plan["run_at_utc"],
             valid_time_utc=valid_time_utc,
+            required_fields=required_fields,
         ):
             point_by_valid[valid_time_utc] = {"ok": True, "state": "already_collected", "valid_time_utc": valid_time_utc, "blockers": []}
             continue
@@ -165,7 +191,13 @@ def collect_official_daily_curve(
         item["valid_time_utc"] = valid_time_utc
         return item
 
-    workers = max(1, min(4, int(max_point_workers)))
+    # ECMWF is range-request based: one point expands into multiple requests
+    # against the same corpus.  Parallel points recreate the provider burst
+    # even when each point is individually bounded; the adapter has its own
+    # persistent gate, and the orchestration layer keeps one in-flight point.
+    # ICON is a multi-file, remapped source just like ECMWF is a range-based
+    # source. Multiple valid times multiply a not-yet-published run burst.
+    workers = 1 if _text(provider_id) in {"ecmwf", "icon"} else max(1, min(4, int(max_point_workers)))
     if workers == 1 or len(pending) < 2:
         for valid_time_utc in pending:
             point_by_valid[valid_time_utc] = collect_one(valid_time_utc)

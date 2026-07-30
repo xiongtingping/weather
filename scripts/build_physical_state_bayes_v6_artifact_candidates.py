@@ -25,6 +25,7 @@ from physical_state_bayes_v6.artifact_contracts import (
     artifact_sha256,
     validate_observation_artifact,
     validate_transition_artifact,
+    default_time_conditioned_observation_policy,
 )
 
 
@@ -287,7 +288,19 @@ def build(
         "control_coefficient_policy": "frozen_physics_monotonic_v1_not_fit_from_future_truth",
     }
     transition["artifact_sha256"] = artifact_sha256(transition)
-    observation = {"schema": OBSERVATION_ARTIFACT_SCHEMA, **common, "state_models": state_models}
+    observation = {
+        "schema": OBSERVATION_ARTIFACT_SCHEMA,
+        **common,
+        "quantized_observation_policy": {
+            "schema": "quantized_integer_temperature_robust_likelihood_v1",
+            "temperature_quantization_c": 1.0,
+            "measurement_error_model": "independent_uniform_rounding_moment_matched_gaussian",
+            "huberize_mahalanobis_tail": True,
+            "robust_mahalanobis_radius": 3.0,
+        },
+        "time_conditioned_observation_policy": default_time_conditioned_observation_policy(),
+        "state_models": state_models,
+    }
     observation["artifact_sha256"] = artifact_sha256(observation)
     validate_transition_artifact(transition)
     validate_observation_artifact(observation)

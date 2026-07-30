@@ -1,0 +1,34 @@
+{
+  "schema": "bayes_basket_target_target_v2_station_policy_no_live_manifest_v1",
+  "station_id": "RKPK",
+  "strategy_version": "target-v2",
+  "stages": ["P0", "P1"],
+  "season_bin": "summer",
+  "maturity_bins": ["d1", "d2", "d2_fallback"],
+  "liquidity_bin": "liquid",
+  "global_prior_id": "target-v2-rkpk-no-live-global-prior-v1",
+  "generation": 1,
+  "valid_from_utc": "2026-07-28T17:41:00Z",
+  "valid_until_utc": "2026-08-31T00:00:00Z",
+  "activated_at_utc": "2026-07-28T23:28:47Z",
+  "family_parameters": {
+    "target": {},
+    "reserve": {},
+    "cadence": {
+      "gate_seconds_intercept": 1.0
+    }
+  },
+  "default_policy": {
+    "policy_id": "target-v2-rkpk-delta-basket-score-no-live-v1",
+    "total_budget_usdc": 12.0,
+    "clip_min_notional_usdc": 1.0,
+    "clip_max_notional_usdc": 2.0
+  },
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "execution_mode": "production_no_live",
+  "production_no_live": true,
+  "live_submit_authorized": false,
+  "calls_order_gateway": false,
+  "places_orders": false,
+  "orders_submitted": 0
+}

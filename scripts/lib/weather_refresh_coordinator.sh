@@ -517,7 +517,7 @@ weather_refresh_db_writer_acquire() {
   local log_path="${3:-}"
   local prefix="${4:-$owner}"
   local poll_sec="${PM_DB_WRITER_LOCK_POLL_SEC:-1}"
-  local lock_dir="${ROOT:-}/data/db_writer.lock"
+  local lock_dir="${ROOT:-}/data/db_writer.user.lock"
   local lock_pid_file="$lock_dir/pid"
   local lock_owner_file="$lock_dir/owner"
   local waited=0
@@ -589,7 +589,7 @@ weather_refresh_db_writer_release() {
   if [ "${WEATHER_REFRESH_DB_WRITER_LOCK_ACQUIRED:-0}" != "1" ]; then
     return 0
   fi
-  local lock_dir="${ROOT:-}/data/db_writer.lock"
+  local lock_dir="${ROOT:-}/data/db_writer.user.lock"
   local lock_pid_file="$lock_dir/pid"
   local cur_pid=""
   if [ -f "$lock_pid_file" ]; then

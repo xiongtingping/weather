@@ -80,7 +80,7 @@ def test_parameter_governance_surface_audit_allows_no_apply_governance(tmp_path:
     )
     _write(
         tmp_path / "scripts" / "install_monitor_launchdaemon.sh",
-        'MONITOR_LABEL="com.weather.monitor.daemon"\nlaunchctl kickstart -k "system/${MONITOR_LABEL}"\n',
+        'LABEL="com.weather.monitor.daemon"\nlaunchctl bootstrap "gui/${UID_VALUE}" "$DEST"\n',
     )
     _write(
         tmp_path / "scripts" / "weatherctl.sh",
@@ -115,7 +115,7 @@ def test_parameter_governance_surface_audit_allows_no_apply_governance(tmp_path:
     ][0]
     assert transition_surface["status"] == "controlled_transition_contract"
     assert transition_surface["changes_parameters"] is False
-    assert any(surface["id"] == "monitor_launchdaemon_install_and_kickstart" for surface in report["launchd_restart_surfaces"])
+    assert any(surface["id"] == "monitor_launchagent_install_and_bootstrap" for surface in report["launchd_restart_surfaces"])
     assert report["boundary"]["daily_review_candidates"] == "proposed only until reviewed/approved"
 
 

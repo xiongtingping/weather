@@ -1,0 +1,61 @@
+{
+  "activates_production": false,
+  "activation_contract_sha256": "5d27a10f1cd085a2066beba1696c2bcfe7afbf21839603fec685d6f90bf0d0e0",
+  "adds_fourth_service": false,
+  "blocking_gates": {
+    "additive_schema_plan_valid": true,
+    "candidate_artifacts_valid": true,
+    "current_basket_hard_no_production_accepted": true,
+    "observation_identifiability_boundary_declared": true,
+    "runtime_dependency_closure_complete": true,
+    "zero_order_transaction_b_accepted": true
+  },
+  "files": {
+    "amsc_frozen_reporting_operator_v1.json": {
+      "sha256": "73bd195e256d1275d1829ae85fdb32e5bf6ee331ee8861e6c52c44af2acb8494",
+      "size_bytes": 1649
+    },
+    "identifiable_physical_observation_v1.json": {
+      "sha256": "5c0d6a8ec769f2226c0fbbdbee3f0346b7e41d91c16b7216e7b3926f6ac08ea0",
+      "size_bytes": 4125
+    },
+    "identifiable_physical_state_model_v1.json": {
+      "sha256": "7b157ea8844836d7e9628b005206b17c9e344823ded2b7d01efc526edca0a94e",
+      "size_bytes": 13750
+    },
+    "production_probability_runtime_activation.json": {
+      "sha256": "a0cbb2f05a38b2df983f8981744cf5c838621e4e856acae699c085092ace8e7b",
+      "size_bytes": 2866
+    }
+  },
+  "non_blocking_diagnostics": {},
+  "places_orders": false,
+  "promotion_policy": {
+    "calibration_activation_role": "non_blocking_diagnostic_only",
+    "canonical_replay_activation_role": "non_blocking_diagnostic_only",
+    "crps_activation_role": "non_blocking_diagnostic_only",
+    "nll_activation_role": "non_blocking_diagnostic_only",
+    "nll_crps_excluded_from_blocking_gate_set": true,
+    "research_evidence_excluded_from_blocking_gate_set": true,
+    "sample_volume_activation_role": "non_blocking_diagnostic_only",
+    "strict_asof_activation_role": "non_blocking_diagnostic_only"
+  },
+  "promotion_ready": true,
+  "readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+  "release_manifest_sha256": "f1ad8e30559cf113697a3fc0a515bd21e9eb19829be4c3a7340dd96c24761384",
+  "resident_service": "com.weather.reported_trajectory_no",
+  "runtime_manifest_repair": {
+    "artifact_bindings_unchanged": true,
+    "basis_readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+    "basis_release_manifest_sha256": "dd0d41ecaf295ee52f76cd692aead6e6dc955cefc1a965ef6ca5058ed9d88c85",
+    "current_runtime_manifest_sha256": "c56cab71c3167c5b20ebf2c17cf19928aea0efea64c1d0eeb131ed70b7e22a6c",
+    "database_writes": false,
+    "places_orders": false,
+    "previous_runtime_manifest_sha256": "7ad0e229e24fe82035cd2c18bc28ee6d357eb79be1643964db5a515982ae8a7e",
+    "reason": "active_activation_runtime_manifest_drift",
+    "schema": "identifiable_physical_runtime_manifest_repair_v1"
+  },
+  "runtime_manifest_sha256": "c56cab71c3167c5b20ebf2c17cf19928aea0efea64c1d0eeb131ed70b7e22a6c",
+  "schema": "identifiable_physical_state_release_bundle_v1",
+  "state": "release_built_not_active"
+}

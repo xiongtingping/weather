@@ -1,0 +1,111 @@
+{
+  "schema": "delta_basket_score_v2_no_live_bootstrap_manifest_v1",
+  "bootstrap_id": "global-summer-liquid-v1",
+  "station_id": "*",
+  "stage": "*",
+  "season_bin": "summer",
+  "maturity_bins": [
+    "d1",
+    "d2",
+    "d2_fallback"
+  ],
+  "liquidity_bin": "liquid",
+  "strategy_version": "target-v2",
+  "activation_generation": 1,
+  "authority_scope": "PRODUCTION_NO_LIVE",
+  "decision": "NO_LIVE_ACTIVATED",
+  "oos_gate_version": "delta-v2-forward-oos-v1",
+  "oos_gate_passed": false,
+  "valid_from_utc": "2026-07-29T15:57:00Z",
+  "valid_until_utc": "2026-08-31T00:00:00Z",
+  "trained_through_utc": "2026-07-29T15:55:00Z",
+  "decided_at_utc": "2026-07-29T15:56:00Z",
+  "train_start_date": "2026-05-01",
+  "train_end_date": "2026-05-31",
+  "holdout_start_date": "2026-06-01",
+  "holdout_end_date": "2026-06-30",
+  "value_weights": {
+    "lambda_profit_floor": 0.5,
+    "lambda_cvar": 0.5,
+    "lambda_shortfall": 0.1,
+    "lambda_breakthrough": 0.1,
+    "lambda_overfill": 0.2,
+    "lambda_excess_hhi": 0.2,
+    "cvar_alpha": 0.1,
+    "hhi_max": 0.5,
+    "expected_pnl_scale": 1.0,
+    "profit_floor_scale": 1.0,
+    "cvar_scale": 1.0,
+    "coverage_scale": 1.0,
+    "overfill_scale": 1.0,
+    "excess_hhi_scale": 1.0
+  },
+  "execution_weights": {
+    "epsilon_score": 0.001,
+    "lambda_wait": 0.1,
+    "lambda_queue": 0.1,
+    "lambda_adverse_selection": 0.1,
+    "lambda_reprice": 0.1,
+    "lambda_capital_lock": 0.1,
+    "wait_scale": 1.0,
+    "queue_scale": 1.0,
+    "adverse_selection_scale": 1.0,
+    "reprice_scale": 1.0,
+    "capital_lock_scale": 1.0,
+    "maximum_candidates": 16
+  },
+  "cash_clip_grid": [
+    1.0,
+    2.0
+  ],
+  "fill_price_tick_size": 0.001,
+  "timeout_grid_seconds": [
+    60.0
+  ],
+  "fill_prior": {
+    "queue_ahead_min": 0.0,
+    "queue_ahead_max": 1000000000.0,
+    "spread_min": 0.0,
+    "spread_max": 1.0,
+    "depth_min": 0.0,
+    "depth_max": 1000000000.0,
+    "quote_version_scope": "*",
+    "maker_distribution": {
+      "fill_probability_zero": 0.7,
+      "fill_probability_partial": 0.2,
+      "fill_probability_full": 0.1,
+      "late_fill_after_cancel_request_probability": 0.02,
+      "partial_fill_fraction": 0.5
+    },
+    "fok_distribution": {
+      "fill_probability_zero": 0.0,
+      "fill_probability_partial": 0.0,
+      "fill_probability_full": 1.0,
+      "late_fill_after_cancel_request_probability": 0.0,
+      "partial_fill_fraction": 0.0
+    },
+    "maker_execution_costs": {
+      "wait_cost": 0.02,
+      "queue_risk": 0.02,
+      "adverse_selection": 0.01,
+      "reprice_risk": 0.01,
+      "capital_lock_cost": 0.01
+    },
+    "fok_execution_costs": {
+      "wait_cost": 0.0,
+      "queue_risk": 0.0,
+      "adverse_selection": 0.02,
+      "reprice_risk": 0.0,
+      "capital_lock_cost": 0.0
+    }
+  },
+  "sample_n": 0,
+  "holdout_n": 0,
+  "consecutive_forward_windows": 0,
+  "compared_baselines": [],
+  "oos_metrics": {},
+  "production_no_live": true,
+  "live_submit_authorized": false,
+  "calls_order_gateway": false,
+  "orders_submitted": 0
+}

@@ -1,0 +1,7 @@
+{
+  "places_orders": false,
+  "reason": "ContractError:market_registry_future_event_day_not_allowed",
+  "schema": "bayes_basket_target_market_registry_snapshot_v1",
+  "state": "BLOCKED_FAIL_CLOSED",
+  "writes_shared_live_database": false
+}

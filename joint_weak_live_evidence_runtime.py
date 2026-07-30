@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from amsc_taf_revision_runtime import taf_revision_order_key
+from amsc_taf_revision_runtime import parse_zuuu_taf_revision, taf_revision_order_key
 from joint_forecast_weak_likelihood_runtime import build_joint_forecast_weak_likelihood
 from joint_weak_baseline_artifact_runtime import load_approved_joint_weak_artifact
 from independent_weak_live_source_runtime import load_live_independent_weak_source_observations
@@ -28,6 +28,9 @@ SCHEMA_VERSION = "joint_weak_live_forecast_evidence_v1"
 DEFAULT_CURVE_ROOT = Path(__file__).resolve().parent / "data" / "runtime" / "official_nwp_curve_sources_v2"
 _OFFICIAL_SOURCE_IDS = ("ecmwf", "icon", "gfs", "jma")
 _INDEPENDENT_SOURCE_IDS = ("taf", "wu", "twc")
+# GFS is retained in the diagnostic source universe and trace, but the
+# production basket must not use it as a bucket-selection model input.
+PRODUCTION_FORECAST_SOURCE_IDS = ("ecmwf", "icon", "taf")
 _FORECAST_REGIMES = frozenset(
     {
         "clear_dry",
@@ -120,7 +123,25 @@ def _clean_revision(
     forecast_peak_c: float, raw_sha256: str, forecast_sigma_c: float | None,
     provenance: Mapping[str, Any], forecast_weather_regime: str = "",
     forecast_peak_valid_time: str = "",
+    hourly_curve: Sequence[Mapping[str, Any]] = (),
+    forecast_weather_regime_origin: str = "source_declared",
+    physical_regime: Mapping[str, Any] | None = None,
+    source_modes: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
+    curve = [dict(point) for point in hourly_curve if isinstance(point, Mapping)]
+    modes = [dict(mode) for mode in source_modes if isinstance(mode, Mapping)]
+    if not modes:
+        modes = [{
+            "mode_id": "primary",
+            "mode_probability": 1.0,
+            "forecast_peak_c": forecast_peak_c,
+            "forecast_sigma_c": forecast_sigma_c,
+            "forecast_peak_valid_time": _text(forecast_peak_valid_time),
+            "hourly_curve": curve,
+            "physical_regime": dict(physical_regime or {}),
+            "forecast_weather_regime": forecast_weather_regime,
+            "mode_origin": "source_native_deterministic_path",
+        }]
     return {
         "source_id": source_id,
         "source_revision_id": revision_id,
@@ -132,6 +153,11 @@ def _clean_revision(
         "forecast_sigma_c": forecast_sigma_c,
         "raw_sha256": raw_sha256,
         "forecast_weather_regime": forecast_weather_regime,
+        "forecast_weather_regime_origin": forecast_weather_regime_origin,
+        "hourly_curve": curve,
+        "physical_regime": dict(physical_regime or {}),
+        "source_modes_schema": "forecast_source_modes_v1",
+        "source_modes": modes,
         "provenance": dict(provenance),
     }
 
@@ -156,9 +182,16 @@ def _official_revisions(*, curve_root: Path, event_date: str, decision: datetime
                 trace_row["exclusion_reason"] = "official_peak_revision_identity_mismatch"
             elif available is None or available > decision:
                 trace_row["exclusion_reason"] = "official_peak_revision_after_asof_or_time_invalid"
+            elif row.get("strict_asof_tier_a") is not True or row.get("response_headers_observed") is not True:
+                trace_row["exclusion_reason"] = "official_peak_revision_not_strict_asof_tier_a"
             elif peak is None or not raw_sha or not revision_id:
                 trace_row["exclusion_reason"] = "official_peak_revision_forecast_or_lineage_missing"
             else:
+                physical_regime = _mapping(row.get("physical_regime"))
+                direct_regime_eligible = (
+                    _text(physical_regime.get("schema")) == "official_nwp_daily_physical_regime_v2"
+                    and _text(row.get("forecast_weather_regime_origin")) == "official_nwp_direct_physical_fields_v2"
+                )
                 candidate = _clean_revision(
                     source_id=provider,
                     revision_id=revision_id,
@@ -167,12 +200,32 @@ def _official_revisions(*, curve_root: Path, event_date: str, decision: datetime
                     forecast_peak_c=peak,
                     raw_sha256=raw_sha,
                     forecast_sigma_c=_finite(row.get("forecast_sigma_c")),
-                    forecast_weather_regime=_text(row.get("forecast_weather_regime")).lower(),
+                    forecast_weather_regime=(
+                        _text(row.get("forecast_weather_regime")).lower()
+                        if direct_regime_eligible else "unknown_forecast_regime"
+                    ),
+                    forecast_weather_regime_origin=(
+                        _text(row.get("forecast_weather_regime_origin"))
+                        if direct_regime_eligible else "physical_regime_not_v2_or_origin_invalid"
+                    ),
                     forecast_peak_valid_time=_text(row.get("forecast_peak_valid_time")),
+                    hourly_curve=(
+                        row.get("hourly_curve")
+                        if isinstance(row.get("hourly_curve"), list)
+                        else ()
+                    ),
+                    physical_regime=physical_regime if direct_regime_eligible else {},
+                    source_modes=(
+                        row.get("source_modes")
+                        if isinstance(row.get("source_modes"), list)
+                        else ()
+                    ),
                     provenance={
                         "kind": "official_complete_daily_curve_revision",
                         "revision_path": str(path),
                         "strict_asof_tier_a": row.get("strict_asof_tier_a") is True,
+                        "physical_regime_schema": _text(physical_regime.get("schema")),
+                        "direct_physical_regime_eligible": direct_regime_eligible,
                     },
                 )
                 previous = selected.get(provider)
@@ -245,6 +298,19 @@ def _independent_revisions(*, source_observations: Iterable[Mapping[str, Any]], 
         elif peak is None or not revision_id or not raw_sha:
             trace_row["exclusion_reason"] = "independent_forecast_peak_or_lineage_missing"
         else:
+            weather_regime = _text(payload.get("forecast_weather_regime")).lower()
+            weather_regime_origin = "source_declared"
+            if source_id == "taf" and weather_regime not in _FORECAST_REGIMES:
+                raw_taf = _text(payload.get("raw_text") or row.get("raw_ref"))
+                try:
+                    parsed_taf = parse_zuuu_taf_revision(
+                        raw_taf, first_seen_at=_iso(available)
+                    )
+                except ValueError:
+                    pass
+                else:
+                    weather_regime = _text(parsed_taf.get("forecast_weather_regime")).lower()
+                    weather_regime_origin = "taf_tx_peak_window_parser_v1"
             candidate = _clean_revision(
                 source_id=source_id,
                 revision_id=revision_id,
@@ -253,10 +319,32 @@ def _independent_revisions(*, source_observations: Iterable[Mapping[str, Any]], 
                 forecast_peak_c=peak,
                 raw_sha256=raw_sha,
                 forecast_sigma_c=_finite(row.get("forecast_sigma_c") or payload.get("forecast_sigma_c")),
-                forecast_weather_regime=_text(payload.get("forecast_weather_regime")).lower(),
+                forecast_weather_regime=weather_regime,
+                forecast_weather_regime_origin=weather_regime_origin,
                 forecast_peak_valid_time=_text(
                     row.get("forecast_peak_valid_time")
                     or payload.get("forecast_peak_valid_time")
+                ),
+                hourly_curve=(
+                    payload.get("hourly_curve")
+                    if isinstance(payload.get("hourly_curve"), list)
+                    else row.get("hourly_curve")
+                    if isinstance(row.get("hourly_curve"), list)
+                    else ()
+                ),
+                physical_regime=(
+                    payload.get("physical_regime")
+                    if isinstance(payload.get("physical_regime"), Mapping)
+                    else row.get("physical_regime")
+                    if isinstance(row.get("physical_regime"), Mapping)
+                    else {}
+                ),
+                source_modes=(
+                    payload.get("source_modes")
+                    if isinstance(payload.get("source_modes"), list)
+                    else row.get("source_modes")
+                    if isinstance(row.get("source_modes"), list)
+                    else ()
                 ),
                 provenance={
                     "kind": "independent_forecast_source_observation",
@@ -304,6 +392,7 @@ def _independent_revisions(*, source_observations: Iterable[Mapping[str, Any]], 
 def build_joint_weak_live_forecast_evidence(
     *, event_date: str, decision_as_of: str, source_observations: Iterable[Mapping[str, Any]] | None = None,
     curve_root: Path | str = DEFAULT_CURVE_ROOT,
+    allowed_source_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Build one immutable forecast-only source revision snapshot for live use."""
 
@@ -312,12 +401,42 @@ def build_joint_weak_live_forecast_evidence(
     if not day or decision is None or not _season(day):
         return {"schema": SCHEMA_VERSION, "ok": False, "state": "blocked", "block_reasons": ["joint_weak_live_event_date_or_asof_invalid"], "read_only": True}
     root = Path(curve_root).expanduser().resolve()
-    official, official_trace = _official_revisions(curve_root=root, event_date=day, decision=decision)
+    official_all, official_trace = _official_revisions(curve_root=root, event_date=day, decision=decision)
+    allowed = set(
+        _text(value).lower()
+        for value in (allowed_source_ids if allowed_source_ids is not None else (*_OFFICIAL_SOURCE_IDS, *_INDEPENDENT_SOURCE_IDS))
+        if _text(value)
+    )
+    official: list[dict[str, Any]] = []
+    for row in official_all:
+        source_id = _text(row.get("source_id")).lower()
+        if source_id in allowed:
+            official.append(row)
+            continue
+        for trace_row in official_trace:
+            if (
+                _text(trace_row.get("source_id")).lower() == source_id
+                and _text(trace_row.get("source_revision_id")) == _text(row.get("source_revision_id"))
+            ):
+                trace_row["included"] = False
+                trace_row["exclusion_reason"] = "excluded_by_production_source_policy"
+                break
     independent_load = None
     if source_observations is None:
         independent_load = load_live_independent_weak_source_observations(event_date=day)
         source_observations = independent_load.get("source_observations") or []
-    independent, independent_trace = _independent_revisions(source_observations=source_observations, event_date=day, decision=decision)
+    independent_all, independent_trace = _independent_revisions(source_observations=source_observations, event_date=day, decision=decision)
+    independent = [
+        row for row in independent_all
+        if _text(row.get("source_id")).lower() in allowed
+    ]
+    for trace_row in independent_trace:
+        if (
+            trace_row.get("included") is True
+            and _text(trace_row.get("source_id")).lower() not in allowed
+        ):
+            trace_row["included"] = False
+            trace_row["exclusion_reason"] = "excluded_by_production_source_policy"
     revisions = [*official, *independent]
     revisions.sort(key=lambda row: (SOURCE_UNIVERSE.index(str(row["source_id"])), str(row["available_at"]), str(row["source_revision_id"])))
     regimes = {
@@ -437,6 +556,7 @@ def build_live_joint_weak_likelihood(
     *, temperature_grid_c: Sequence[Any], event_date: str, decision_as_of: str,
     source_observations: Iterable[Mapping[str, Any]] | None = None, curve_root: Path | str = DEFAULT_CURVE_ROOT,
     artifact_path: Path | str | None = None,
+    allowed_source_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the approved joint weak model from a live forecast-only snapshot."""
 
@@ -445,6 +565,7 @@ def build_live_joint_weak_likelihood(
         decision_as_of=decision_as_of,
         source_observations=source_observations,
         curve_root=curve_root,
+        allowed_source_ids=allowed_source_ids,
     )
     artifact_load = load_approved_joint_weak_artifact(artifact_path)
     if evidence.get("ok") is not True or artifact_load.get("ok") is not True:
@@ -578,6 +699,7 @@ def bind_live_joint_weak_likelihood_for_production(
 
 __all__ = [
     "DEFAULT_CURVE_ROOT",
+    "PRODUCTION_FORECAST_SOURCE_IDS",
     "SCHEMA_VERSION",
     "bind_live_joint_weak_likelihood_for_production",
     "build_joint_weak_live_forecast_evidence",

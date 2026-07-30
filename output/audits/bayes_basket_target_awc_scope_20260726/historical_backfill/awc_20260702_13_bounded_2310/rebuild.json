@@ -1,0 +1,962 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-02",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-02",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-03",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-04",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-05",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    },
+    {
+      "event_date": "2026-07-06",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-06",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-06",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-06",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    },
+    {
+      "event_date": "2026-07-07",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-07",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-07",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-07",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    },
+    {
+      "event_date": "2026-07-08",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-08",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "reason": "batch_budget_exceeded",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13"
+  ],
+  "evidence_sha256": "8078986ce6c123175a4abdd416724e8dd421eaee81be5b722a824e1f69d25daa",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260703_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260703_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260703_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260703_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260703_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260704_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260704_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260704_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260704_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260704_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260705_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260705_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260705_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260705_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260705_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260706_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260706_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260706_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260706_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260706_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260707_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260707_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260707_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260707_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260707_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260708_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260708_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260708_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260708_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260708_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-08",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260709_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-08",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260709_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-02",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        },
+        {
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-03",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        },
+        {
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-04",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        },
+        {
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-05",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        },
+        {
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        },
+        {
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-07",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        },
+        {
+          "event_date": "2026-07-08",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-08",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-08",
+          "reason": "batch_budget_exceeded",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        }
+      ],
+      "query_count": 32,
+      "reference_only": false,
+      "returned": 0,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "batch_budget_sec": 45.0,
+        "budget_exhausted": true,
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-25T23:08:18Z",
+  "observation_count": 0,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/historical_backfill/awc_20260702_13_bounded_2310/observations.json",
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "6b4069cdaad2a697b17de710c1e66b16ff0c4479a4f086c0b5b36e6527f51eca",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_awc_scope_20260726/historical_backfill/awc_20260702_13_bounded_2310/reference.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 0
+  },
+  "station_day_count": 0,
+  "station_day_keys": [],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

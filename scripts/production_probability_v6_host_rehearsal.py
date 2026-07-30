@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta
 import json
+import math
 from pathlib import Path
 import sqlite3
 import sys
@@ -17,7 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from production_probability_v6_activation_contract import validate_v6_activation
+from production_probability_v6_activation_contract import (
+    IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA,
+    validate_v6_activation,
+)
 from joint_weak_live_evidence_runtime import DEFAULT_CURVE_ROOT
 from production_probability_v6_canonical_event_drain_runtime import (
     drain_v6_canonical_events,
@@ -143,6 +147,18 @@ def audit(root: Path, source_db: Path, event_date: str) -> dict[str, object]:
             (target_identity, generation),
         ).fetchone()
         latest_value = dict(latest) if latest else {}
+        latest_reported_bound = latest_value.get("reported_x_lower_bound_c")
+        if activation.get("composer_schema") == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA:
+            latest_final_locked_incompatible_mass = 0.0
+        else:
+            latest_final_locked_incompatible_mass = sum(
+                float(row.get("probability") or 0.0)
+                for row in json.loads(latest_value.get("joint_posterior_json") or "[]")
+                if latest_reported_bound is not None
+                and str(row.get("state") or "") == "final_locked"
+                and int(math.floor(float(row.get("continuous_y_c")) + 0.5))
+                != int(latest_reported_bound)
+            )
         public = conn.execute(
             "SELECT h.composer_version,h.posterior_run_id,h.fact_json FROM event_fact_latest l "
             "JOIN event_fact_history h ON h.id=l.fact_id WHERE h.event_date=? ORDER BY h.id DESC LIMIT 1",
@@ -154,9 +170,17 @@ def audit(root: Path, source_db: Path, event_date: str) -> dict[str, object]:
                 json.loads(public["fact_json"]).get("posterior_ssot_fact", {}).get("probability_runtime_identity", {})
             )
         orders_after = _counts(conn)
-        peak_timing_acceptance = audit_peak_timing_connection(
-            conn,
-            event_date=event_date,
+        peak_timing_acceptance = (
+            {
+                "schema": "production_probability_v6_peak_timing_acceptance_v1",
+                "ok": True,
+                "state": "not_applicable_identifiable_physical_state_space",
+                "does_not_update_physical_x": True,
+                "places_orders": False,
+                "read_only": True,
+            }
+            if activation.get("composer_schema") == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+            else audit_peak_timing_connection(conn, event_date=event_date)
         )
         gates = {
             "real_current_canonical_sequence_nonempty": canonical_count > 0,
@@ -168,9 +192,17 @@ def audit(root: Path, source_db: Path, event_date: str) -> dict[str, object]:
             ) < 3000.0,
             "one_activation_bound_p0_lineage": lineage == 1,
             "latest_checkpoint_is_v6": latest_value.get("checkpoint_probability_schema") == activation["checkpoint_schema"],
+            "latest_final_locked_cells_match_observed_reported_x": (
+                latest_final_locked_incompatible_mass <= 1e-12
+            ),
             "public_ssot_is_v6": bool(
                 public
-                and public["composer_version"] == "physical_state_bayes_v6_production"
+                and public["composer_version"]
+                == (
+                    "identifiable_physical_state_bayes_production"
+                    if activation.get("composer_schema") == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+                    else "physical_state_bayes_v6_production"
+                )
                 and public["posterior_run_id"] == latest_value.get("posterior_run_id")
                 and public_identity.get("activation_contract_sha256") == activation["activation_contract_sha256"]
             ),
@@ -186,10 +218,16 @@ def audit(root: Path, source_db: Path, event_date: str) -> dict[str, object]:
             "pending_canonical_event_count": pending,
             "activation_contract_sha256": activation["activation_contract_sha256"],
             "runtime_manifest_sha256": activation["runtime_manifest_sha256"],
-            "transition_artifact_sha256": activation["transition_artifact_sha256"],
-            "observation_artifact_sha256": activation["observation_artifact_sha256"],
+            "transition_artifact_sha256": activation.get("transition_artifact_sha256", ""),
+            "observation_artifact_sha256": activation.get("observation_artifact_sha256", ""),
+            "physical_state_model_artifact_sha256": activation.get("physical_state_model_artifact_sha256", ""),
+            "physical_observation_artifact_sha256": activation.get("physical_observation_artifact_sha256", ""),
+            "physical_reporting_operator_sha256": activation.get("physical_reporting_operator_sha256", ""),
             "latest_checkpoint_id": latest_value.get("posterior_checkpoint_id"),
             "latest_reported_x_lower_bound_c": latest_value.get("reported_x_lower_bound_c"),
+            "latest_final_locked_reported_x_incompatible_mass": (
+                latest_final_locked_incompatible_mass
+            ),
             "p0_elapsed_ms": p0_elapsed_ms,
             "next_day_p0_elapsed_ms": next_day_p0_elapsed_ms,
             "next_day_p0_state": next_day_p0.get("state"),

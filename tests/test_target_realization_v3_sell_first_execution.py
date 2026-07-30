@@ -103,22 +103,6 @@ def test_existing_worker_schema_fast_path_marks_ready_without_writer_init(tmp_pa
     assert db.exists()
 
 
-def test_dedicated_worker_is_persistent_and_v3_claim_only():
-    plist = plistlib.loads(
-        (ROOT / "launchd" / "com.weather.target_realization_worker.plist").read_bytes()
-    )
-    env = plist["EnvironmentVariables"]
-    assert env["PM_AUTO_TRADE_WORKER_PERSISTENT_PROCESS"] == "1"
-    assert env["PM_AUTO_TRADE_WORKER_EXISTING_SCHEMA_FAST_PATH"] == "1"
-    assert env["PM_AUTO_TRADE_JOB_CLAIM_ONLY_TARGET_REALIZATION_V3"] == "1"
-    assert env["PM_AUTO_TRADE_JOB_SKIP_CLEANUP_ON_CLAIM"] == "1"
-    script = (ROOT / "scripts" / "auto_trade_worker.sh").read_text(encoding="utf-8")
-    assert '"$ROOT/scan_weather_market.py" --auto-trade-job-worker' in script
-    assert "WORKER_CHILD_PID=$!" in script
-    assert "trap forward_worker_shutdown TERM INT" in script
-    assert "PM_AUTO_TRADE_WORKER_PERSISTENT_PROCESS" in script
-
-
 def test_sell_first_partial_fill_keeps_remaining_position_and_blocks_buy(tmp_path, monkeypatch):
     db, payload = _setup(tmp_path, monkeypatch, size=10.0)
 

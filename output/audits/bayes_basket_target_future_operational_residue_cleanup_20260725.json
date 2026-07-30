@@ -1,0 +1,522 @@
+{
+  "as_of_utc": "2026-07-25T03:21:38Z",
+  "blockers": [
+    "target_ssot_append_only:append_only"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_protected_production_line": false,
+    "writes_shared_live_database": false
+  },
+  "candidate_count": 29,
+  "candidates": [
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_141b7e87af42cc9fa01a0c6a01da7b7a4aaabd1c",
+      "cycle_sha256": "3d195c08ac39ba856a9d408195032a0e29baa1134bf9923cae8fc231bbf5a075",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_0343e51f4b542fcce3b318d8678c7f64996d1ea2",
+      "decision_sha256": "117dad603e6d8a19c8dbef9c021da1897cd75ac16aa4d26636ea7e0abb983f7b",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "RPLL"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_181adc39aefa000116a35c36ad8ad3a09f28c639",
+      "cycle_sha256": "5865f3b8281238a569f97d146d83a41210583b1dbaf6d137daf5495d39a8cef7",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_84d16f6b88ecf70564a329cd5d158797da597b97",
+      "decision_sha256": "ceb78269c91b21aadc166e22fe0f456b68afa087846a72deb91745e8ad6acda0",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "EFHK"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_2060b889525dc34766da7a0b25936493f3a1d709",
+      "cycle_sha256": "dbf4b7638101c7084f8eda42a680b5d661716ae225964a6272775162ad6dd78d",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_6fe86879bda92a000099d8b6b26b5d090f32d6dd",
+      "decision_sha256": "d6fccf5e4f20045ae50d4ecb99dedad3219cefbdd843be2402c6a4203131d243",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZBAA"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_3c1c14492fbb40d8ddd3991489b5513a74a46aae",
+      "cycle_sha256": "8d4ac87d2b1c2e6ba4c5a268cba7b630936d9c0356c290c81530dcdf8add9059",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_35a700e89e04ba20fa562565433c2449feb0923f",
+      "decision_sha256": "ca34664c9ff37e0a0ef167a4777ffe0740fab068e3437ee0ddeef70744d21a4b",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "LIMC"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_3f13a991ca42ca876592885005f9774438316a63",
+      "cycle_sha256": "922131c9eac19ad89f646e98426ef77aa33c33a974a7cac3c935183ddac93c5c",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_edceac90308406acc759d6223a7df6a34c9ab6f7",
+      "decision_sha256": "bae65479401cd1280c40cd6e7c46c94779010d10d73216bd4fa94f4ecca61a12",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZSPD"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_49f19163fa2a34112fce0485dcf7ffa70bdb515f",
+      "cycle_sha256": "9eb31a0fea02c64a710d44e7b388652bf4125ead75da9fbeae096f4190bad6ff",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_10950b090625e30aaafc99fc6bc32dd587d66b77",
+      "decision_sha256": "2f18cf289601e56f0d4afb3df2a761a49ac732fbc7d1464ed0602e19e344bd96",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "EPWA"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_6fa662730a85b6a688da6d1c9ae022560488c026",
+      "cycle_sha256": "95cb3438569dff930a29df084cd606cf45218147e9b4ed19fd43035826f68ef2",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_40ad9364b921656f332c6ab5981a958f03a71ac2",
+      "decision_sha256": "30a27a97f009261d369d8b44dc7479fea12d83ef04f3218f97be2c8f1f19b772",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZGSZ"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_72805c975cbc9a62dad47007f9e74813afab9de2",
+      "cycle_sha256": "16a571d84c088fd6e6d235c31e341a5fb10be01059ee11252d9d0b498218da71",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_455bb0f6f6b9454dc7c812e258ceea845181c262",
+      "decision_sha256": "0e1f943ec074d44c85f03e5a4653f8005f775a13e621bc7a6bb97d5dfd3d9506",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "LTAC"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_76e7b1b801a3628336b329e58f2a4841cfc33b3f",
+      "cycle_sha256": "81f21f7908e227aeef81be6813842fd1696496bc9827de1f2615eb63725c3410",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_8302b2914a7041b44d230201afee5930745c8f0d",
+      "decision_sha256": "0466a44d0602a7882432e01173a9d7f63070cbc1e09b66cf63fb3a5546187f79",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "EGLC"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_7d7e768876b6ffb4c6b53f2cfcaba0a789b66e72",
+      "cycle_sha256": "bc946ffc8621ab1aad9674b949147dc18f0462715f45cffc8460d3ba0ae93b8e",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_1590fa10e762cf0ecf70d1ce610e8ce4c63cf5fb",
+      "decision_sha256": "10c06ae36fe6c7d57a715039b43f96c0d8fa6cacd1b2084211e347045f05002b",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "RJTT"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_8023d17e819e18fe2839c864d08ebe6227bcf590",
+      "cycle_sha256": "70fadd08ef4240c1204795dd2e7828264733f5fcd478b2cf92944fee67c2038a",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_2ba52117f45b2d9c54a0ac2530eb6ae9b5ecb5d1",
+      "decision_sha256": "5fbe7ab3255dde904497a9a335bb06db730367b297162271c6c7d1adbe5e89d7",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZHHH"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_873079c95940ceb1e63cb08f12c55aa6fdc90d09",
+      "cycle_sha256": "2d4310a1af11924d0d0720234627e7c1197c652165398a357cfef1f340037897",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_b5a9f6942a4a8b2dcb6f8054a4e627865635f378",
+      "decision_sha256": "862d2c31f009ee8cd7fe2220671cd83f2b882efcd2480a94c80411c74262b51b",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "LEMD"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_8d5628c2d2a4e5602d6c3e2970811f9e32eee928",
+      "cycle_sha256": "02ed5aa98d7ec7276055ba2c22975ecf4f8c73702c7f0c88cbec7fe8482a4919",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_2b31a7a130068a59e0dcc55dcd4c674197d89844",
+      "decision_sha256": "f0e4f9d3e26a226b9645aaf469c706e86cd0976373b624fbb8cec38658858e6d",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "NZWN"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_9a8f08b024a2f37f7aafa3bb94f855fc70a6c80f",
+      "cycle_sha256": "abcf9438ec73721ae2aea98c157fdeee88fc91b05f8f788344d021bd872f4efc",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_90c80be83bf97618f9a80dfa4ed44868a16d5f7d",
+      "decision_sha256": "5b324a30942c75e5eccc72f265b59ce2dab0617b835cfcc76a350259bbdd653c",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "FACT"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_a444e9630254d0d41cdb6e47b53ae5b67cec41a8",
+      "cycle_sha256": "3686bebb0e89fd067a85a05d3ba2756fad63c1a5903ff8817f72fb2c6952ece7",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_c03eebf40ffbb8b973ce00bcaca607de46c51ef8",
+      "decision_sha256": "ab85de3d65b77359102d708a3c92865d090fa76983f7983964ff0f0bc93f76e7",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZSQD"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_a6e271a2c6a1c1cf84a5a222a3d259eeef8f8abc",
+      "cycle_sha256": "1efa3f86a7e4ad35f35821081aa25907693ead5e2dcb8366401b09f34d676eb5",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_f33ddf4515f191aa49930395e0146ee6768bcd38",
+      "decision_sha256": "0e67a757c4bad179f51f4d9a3839544e77fa0cdfcf9524dec231b6678dfb9943",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZGGG"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_ab1a7af001581c15b2e0a3240a0c6a251f18baf2",
+      "cycle_sha256": "191c48a5e8f97b53724c06f978b2934cf23202cc8767557514152cb450ae50fa",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_fd94fae59ecc69b64a60b171c1c760bc1740c843",
+      "decision_sha256": "949d67bc871aaf7dedb1250c940a1e801b0122ad45a6683d424b294aeebcd083",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZUUU"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_b081b62eaf67a1012a5687262cf94ed1b2751e7d",
+      "cycle_sha256": "3585045c357fce6d496f77d10a68bb9e33bace58045d6faa159233c2a14340de",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_9f1d8f51918b3871bd7b118052546b281edd84c3",
+      "decision_sha256": "5d2a90a2af08500e3004b252d975db9a98c406c558ca852eba362cde2d2de805",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "WSSS"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_b2bf1244333851e7750a64b6cbe6ff53aecaaf90",
+      "cycle_sha256": "0d42517539bede185c46f37b077d1ba610147c359c6fd25e63358d695b35d591",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_3a7f3435445cffa6fbc704fd0b2385bf03ad8282",
+      "decision_sha256": "63e80a9329a06bf59b3a75d5f8a037a2f90a0840232d6fa911164252b4b686ac",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "EHAM"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_b897f57205e4fc03a1571a97a5fad9ede7f77f56",
+      "cycle_sha256": "315192db053aa807c073715c7378c23fad02a3b04ed42d343531b21a73dc4d56",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_d792d0b7157791c6ed78b17fc2f0a33e6d3337e7",
+      "decision_sha256": "ff6acef8677e297973d5b694561252696bf828d4d4d8ebb0c4606fc1ae910387",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "WMKK"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_cc8d56a86174414cfe99d380a48dbdd14b933f4b",
+      "cycle_sha256": "a1078bff5f67c43a4ca28d494abb7f392c9502dd9cd3ac6c39721b9875083506",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_5176816204f1a7e1585d80585db5a982d53c5eba",
+      "decision_sha256": "e97d7a9f0f050e0309418605c71d8081994a2863e92421e0d4c6f28acd8f0f5e",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "ZUCK"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_cd6f8953c94cea60bedc4c9df21c76ff78d4b367",
+      "cycle_sha256": "b953f42df2432b9cf20f99653b875619b44e0709760dbe6c7eb2fc5d6fd1365c",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_b094d3f3a6c12750d116235f049167d89c13d0c5",
+      "decision_sha256": "ff36d3a82646ee10619c7e9b0c2ff4bd2273676faeb86bc32f6a7992ae56958b",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "VILK"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_d1300bf6865fcd23777a27dae6d90c73ab64f4df",
+      "cycle_sha256": "834244d10293d431bd000826717b32721adec6146591b0006812ec42e7f133b3",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_1d2520af4c987d0e98c97fae1721f17346bf8906",
+      "decision_sha256": "4e62108eec72ddaa4c2c17c14644a1bac60679b5e97c5dd1cc95743e3ba4b5de",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "LFPB"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_d74a3c6dff9f97400f9d29115b9f667d62ecfc7a",
+      "cycle_sha256": "311db95c674a4b9476cd2fb7a2a69db04b5bd29ff2d0b122c931819f2bdb11f9",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_d835617a1564465fb733f842e62d5d8db2d1e2c9",
+      "decision_sha256": "061e2c5e09e580d9da445a45b58b663df6ae9b9c4e72a53abe050fd9f9abf3d1",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "RCSS"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_e19cd478419f6ec0dd70e25d5afb5fde905bb096",
+      "cycle_sha256": "1494442c87192b206e88c116a5dc83a64a623f19464ae6e2ccd62087fe14e87d",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_1d883be57626be45eab5144b44a8046dc2910c55",
+      "decision_sha256": "8f310c402555b04cdf7614d2c8f8e4194da384bcd0e756fb4ee7b4ae25d2aa60",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "EDDM"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_f5767af3be318fcc61a63d1999ad77b4faffe542",
+      "cycle_sha256": "ae7bcb7c442243eed6f1098aa71fa216ff6f13e9583c0f8cdb3a94e0f1a7ea88",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_6237aabd172b25b4e90bc77b8885c53c77126fe4",
+      "decision_sha256": "a0d0a8afb2660f0be13c2ab9084693e80e6e92837d1b54e8210a913e7d478989",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "OEJN"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_f7fa8b1c69b0681022aad612b69107ec49cc4c32",
+      "cycle_sha256": "774442e3166fd246331ffa3819b01661a5f2e9ecb1085800008e2b4b3021eae6",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_884772de293d47dffff1ad5a506c5b170c6173c2",
+      "decision_sha256": "661c7f3521dd729bfbdf7f0b3c11f65e0186d7c6de40926befc09c1c6be3f0d7",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "OPKC"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_fddc43f14a30a5cea577dbccd2693be59f2895d5",
+      "cycle_sha256": "d06de796ee8e48f99eb24459af1735585acd13fc0f33475d4fa2cbbaf033f989",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_0e3f10a0cf16d9e64483d08e75c5d9b72b2d6f27",
+      "decision_sha256": "966b4c368494d83e23ef15bcc98d3f20974ad6144e6a72ffd18d1fc7c4babb96",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "RKSI"
+    },
+    {
+      "cycle_created_at": "2026-07-24T14:26:49.366Z",
+      "cycle_id": "cycle_fec41e01b071c35c0d204e00ab94e3683638cc1a",
+      "cycle_sha256": "c4cbcbe235408294036755940fb7db9705478b72f6e558520c89c854cf5f7b16",
+      "decision_created_at": "2026-07-24T14:26:49.366Z",
+      "decision_id": "decision_048f4c3ba294c39c84fe21c21784418d425a2479",
+      "decision_sha256": "94f5ce116b9e755339d73242078ef3ed8a8d8ac8d5e4a5fafe31f8c79a14681e",
+      "downstream_counts": {
+        "basket_target_capital_reservations": 0,
+        "basket_target_execution_version_vectors": 0,
+        "basket_target_order_events": 0,
+        "basket_target_order_intents": 0,
+        "basket_target_order_reconciliations": 0
+      },
+      "event_date": "2026-07-25",
+      "station_id": "RKPK"
+    }
+  ],
+  "database_scope": "isolated_target_no_live",
+  "deleted_counts": {
+    "auto_trade_decisions": 0,
+    "basket_target_execution_cycles": 0
+  },
+  "generated_at_utc": "2026-07-25T03:22:29Z",
+  "protected_database_untouched": true,
+  "protected_production_line": "019f7a84-53ec-7183-9c5f-7f9cfa62e1f0",
+  "purge_requested": true,
+  "purged": false,
+  "receipt_sha256": "10ac57cb7f916f2141715c7eeb391cefd1ecd47ad423f9cdcbba14599a4e8b5c",
+  "schema": "bayes_basket_target_future_operational_residue_cleanup_v1",
+  "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db"
+}

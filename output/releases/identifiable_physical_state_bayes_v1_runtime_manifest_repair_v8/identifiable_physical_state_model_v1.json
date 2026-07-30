@@ -1,0 +1,773 @@
+{
+  "artifact_sha256": "6ea5905ee1c0a58d4ff3b00563b85035ea6ba30b4b4be6fcc2a2bdc589d81a5e",
+  "bounded_parameter_draws": [
+    {
+      "draw_id": "transition_tendency_q10",
+      "initial_covariance_scale": 1.0,
+      "latent_temperature_bias_c": 0.0,
+      "net_temperature_tendency_bias_c_per_hour": -2.0,
+      "normalized_weight": 0.1,
+      "process_noise_scale_multiplier": 3.9077382399999996
+    },
+    {
+      "draw_id": "transition_tendency_q30",
+      "initial_covariance_scale": 1.0,
+      "latent_temperature_bias_c": 0.0,
+      "net_temperature_tendency_bias_c_per_hour": 0.0,
+      "normalized_weight": 0.2,
+      "process_noise_scale_multiplier": 3.9077382399999996
+    },
+    {
+      "draw_id": "transition_tendency_q50",
+      "initial_covariance_scale": 1.0,
+      "latent_temperature_bias_c": 0.0,
+      "net_temperature_tendency_bias_c_per_hour": 0.0,
+      "normalized_weight": 0.4,
+      "process_noise_scale_multiplier": 3.9077382399999996
+    },
+    {
+      "draw_id": "transition_tendency_q70",
+      "initial_covariance_scale": 1.0,
+      "latent_temperature_bias_c": 0.0,
+      "net_temperature_tendency_bias_c_per_hour": 0.0,
+      "normalized_weight": 0.2,
+      "process_noise_scale_multiplier": 3.9077382399999996
+    },
+    {
+      "draw_id": "transition_tendency_q90",
+      "initial_covariance_scale": 1.0,
+      "latent_temperature_bias_c": 0.0,
+      "net_temperature_tendency_bias_c_per_hour": 2.0,
+      "normalized_weight": 0.1,
+      "process_noise_scale_multiplier": 3.9077382399999996
+    }
+  ],
+  "calibration_input_contract": {
+    "excluded_inputs": [
+      "TAF",
+      "NWP",
+      "forecast_peak_c",
+      "forecast_scenario_paths",
+      "daily_maximum_label",
+      "market_data",
+      "settlement_data"
+    ],
+    "fit_target": "one_step_state_transition",
+    "observation_kind": "official_METAR_temperature_only",
+    "parser_version": "amsc_zuuu_metar_taf_fetcher_v1",
+    "source_id": "zuuu_metar_raw_amsc",
+    "station_id": "ZUUU",
+    "strict_asof_first_seen_per_valid_time": true
+  },
+  "calibration_state": "strict_oos_metar_transition_candidate",
+  "driver_coefficients": {
+    "cold_pool_from_precipitation": 0.8,
+    "drying_clear_fraction": 0.12,
+    "wetting_from_precipitation": 0.25
+  },
+  "forecast_regime_map": {
+    "clear_dry": "clear_heating",
+    "cloudy_stable": "cloud_attenuated",
+    "convection_or_showers": "precipitation_cold_pool",
+    "fog_low_cloud": "cloud_attenuated",
+    "wet_precipitation": "precipitation_cold_pool"
+  },
+  "initial_covariance_by_regime": {
+    "clear_heating": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ],
+    "cloud_attenuated": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ],
+    "cold_advection": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ],
+    "evening_stable_decay": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ],
+    "post_rain_recovery": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ],
+    "precipitation_cold_pool": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ],
+    "warm_advection_or_mixing": [
+      [
+        0.64,
+        0,
+        0.12,
+        0,
+        0
+      ],
+      [
+        0,
+        4e-06,
+        0,
+        0,
+        0
+      ],
+      [
+        0.12,
+        0,
+        0.49,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.04,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.25
+      ]
+    ]
+  },
+  "initial_state_defaults": {
+    "cold_pool_memory": 0.0,
+    "latent_temperature": 24.0,
+    "regime_state": "cloud_attenuated",
+    "surface_wetness_memory": 0.25
+  },
+  "max_substep_minutes": 15.0,
+  "memory_hours": {
+    "cold_pool_memory": {
+      "clear_heating": 2.0,
+      "cloud_attenuated": 2.0,
+      "cold_advection": 2.0,
+      "evening_stable_decay": 2.0,
+      "post_rain_recovery": 2.0,
+      "precipitation_cold_pool": 2.0,
+      "warm_advection_or_mixing": 2.0
+    },
+    "net_temperature_tendency": {
+      "clear_heating": 1.5,
+      "cloud_attenuated": 1.5,
+      "cold_advection": 1.5,
+      "evening_stable_decay": 1.5,
+      "post_rain_recovery": 1.5,
+      "precipitation_cold_pool": 1.5,
+      "warm_advection_or_mixing": 1.5
+    },
+    "specific_humidity": {
+      "clear_heating": 3.0,
+      "cloud_attenuated": 3.0,
+      "cold_advection": 3.0,
+      "evening_stable_decay": 3.0,
+      "post_rain_recovery": 3.0,
+      "precipitation_cold_pool": 3.0,
+      "warm_advection_or_mixing": 3.0
+    }
+  },
+  "missing_driver_defaults": {
+    "cloud_suppression_probability": 0.5,
+    "net_tendency_target_c_per_hour": 0.0,
+    "precipitation_probability": 0.0,
+    "specific_humidity_target": 0.012
+  },
+  "missing_driver_noise_increment": 0.35,
+  "parameter_draw_calibration": {
+    "calibration_source": "official_amsc_metar_only",
+    "holdout_day_count": 4,
+    "holdout_end": "2026-07-21",
+    "holdout_metrics": {
+      "mean_absolute_tendency_error_against_training_median": 1.3035714285714286,
+      "mean_observed_tendency_c_per_hour": 0.30357142857142855,
+      "q10_q90_tendency_interval_coverage": 0.8928571428571429
+    },
+    "holdout_start": "2026-07-17",
+    "holdout_transition_count": 112,
+    "identifiability_boundary": {
+      "daily_maximum_not_used": true,
+      "forecast_peak_not_used": true,
+      "latent_temperature_bias_fixed_zero": true,
+      "legacy_y_not_consumed": true,
+      "market_price_not_consumed": true,
+      "nwp_not_read": true,
+      "settlement_s_not_consumed": true,
+      "taf_not_read": true
+    },
+    "identified_quantity": "one_step_official_metar_temperature_state_transition",
+    "sample_lineage_sha256": "0889ade4861891b3d4148d8f9e74d4fe6ec9f50b95e3b3b04b8f95ce61708c15",
+    "schema": "identifiable_physical_metar_transition_calibration_v2",
+    "state": "metar_transition_candidate_fitted_strict_oos",
+    "training_day_count": 12,
+    "training_end": "2026-07-16",
+    "training_start": "2026-07-05",
+    "training_transition_count": 388
+  },
+  "process_covariance_per_hour": {
+    "clear_heating": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ],
+    "cloud_attenuated": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ],
+    "cold_advection": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ],
+    "evening_stable_decay": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ],
+    "post_rain_recovery": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ],
+    "precipitation_cold_pool": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ],
+    "warm_advection_or_mixing": [
+      [
+        0.04,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1e-07,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0.09,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0.0025,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0.04
+      ]
+    ]
+  },
+  "production_runtime_eligible": true,
+  "promotion_evidence_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+  "promotion_forbidden_until_oos_gates": false,
+  "promotion_scope": "resident_probability_worker_for_yes_basket_only",
+  "regime_tendency_offset_c_per_hour": {
+    "clear_heating": 0.6,
+    "cloud_attenuated": -0.2,
+    "cold_advection": -1.0,
+    "evening_stable_decay": -0.8,
+    "post_rain_recovery": 0.3,
+    "precipitation_cold_pool": -1.5,
+    "warm_advection_or_mixing": 0.8
+  },
+  "regime_transition_per_hour": {
+    "clear_heating": {
+      "clear_heating": 0.0,
+      "cloud_attenuated": 0.04,
+      "cold_advection": 0.04,
+      "evening_stable_decay": 0.04,
+      "post_rain_recovery": 0.04,
+      "precipitation_cold_pool": 0.04,
+      "warm_advection_or_mixing": 0.04
+    },
+    "cloud_attenuated": {
+      "clear_heating": 0.04,
+      "cloud_attenuated": 0.0,
+      "cold_advection": 0.04,
+      "evening_stable_decay": 0.04,
+      "post_rain_recovery": 0.04,
+      "precipitation_cold_pool": 0.04,
+      "warm_advection_or_mixing": 0.04
+    },
+    "cold_advection": {
+      "clear_heating": 0.04,
+      "cloud_attenuated": 0.04,
+      "cold_advection": 0.0,
+      "evening_stable_decay": 0.04,
+      "post_rain_recovery": 0.04,
+      "precipitation_cold_pool": 0.04,
+      "warm_advection_or_mixing": 0.04
+    },
+    "evening_stable_decay": {
+      "clear_heating": 0.04,
+      "cloud_attenuated": 0.04,
+      "cold_advection": 0.04,
+      "evening_stable_decay": 0.0,
+      "post_rain_recovery": 0.04,
+      "precipitation_cold_pool": 0.04,
+      "warm_advection_or_mixing": 0.04
+    },
+    "post_rain_recovery": {
+      "clear_heating": 0.04,
+      "cloud_attenuated": 0.04,
+      "cold_advection": 0.04,
+      "evening_stable_decay": 0.04,
+      "post_rain_recovery": 0.0,
+      "precipitation_cold_pool": 0.04,
+      "warm_advection_or_mixing": 0.04
+    },
+    "precipitation_cold_pool": {
+      "clear_heating": 0.04,
+      "cloud_attenuated": 0.04,
+      "cold_advection": 0.04,
+      "evening_stable_decay": 0.04,
+      "post_rain_recovery": 0.04,
+      "precipitation_cold_pool": 0.0,
+      "warm_advection_or_mixing": 0.04
+    },
+    "warm_advection_or_mixing": {
+      "clear_heating": 0.04,
+      "cloud_attenuated": 0.04,
+      "cold_advection": 0.04,
+      "evening_stable_decay": 0.04,
+      "post_rain_recovery": 0.04,
+      "precipitation_cold_pool": 0.04,
+      "warm_advection_or_mixing": 0.0
+    }
+  },
+  "schema": "identifiable_physical_state_model_artifact_v1",
+  "shadow_only": false,
+  "state": "approved",
+  "state_bounds": {
+    "cold_pool_memory": [
+      0.0,
+      12.0
+    ],
+    "latent_temperature": [
+      -60.0,
+      60.0
+    ],
+    "net_temperature_tendency": [
+      -12.0,
+      12.0
+    ],
+    "specific_humidity": [
+      0.0,
+      0.05
+    ],
+    "surface_wetness_memory": [
+      0.0,
+      1.0
+    ]
+  }
+}

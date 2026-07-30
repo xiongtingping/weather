@@ -26,7 +26,12 @@ def _revision(provider: str, *, peak: float, available_at: str, revision_id: str
         "available_at": available_at,
         "forecast_peak_c": peak,
         "raw_sha256": f"raw-{provider}-{revision_id}",
-        "strict_asof_tier_a": provider != "ecmwf",
+        "strict_asof_tier_a": True,
+        "response_headers_observed": True,
+        "hourly_curve": [
+            {"valid_time_utc": "2026-07-12T18:00:00Z", "temperature_c": 25.0},
+            {"valid_time_utc": "2026-07-13T06:00:00Z", "temperature_c": peak},
+        ],
     }
 
 
@@ -102,6 +107,7 @@ def test_live_evidence_selects_only_latest_visible_forecasts_and_never_reads_obs
     assert evidence["ok"] is True
     assert [row["source_id"] for row in evidence["source_revisions"]] == ["icon", "gfs", "taf"]
     assert next(row for row in evidence["source_revisions"] if row["source_id"] == "gfs")["forecast_peak_c"] == 33.2
+    assert len(next(row for row in evidence["source_revisions"] if row["source_id"] == "gfs")["hourly_curve"]) == 2
     assert evidence["forecast_context"] == {
         "season": "summer",
         "weather_regime": "clear_dry",
@@ -132,11 +138,16 @@ def test_live_joint_weak_likelihood_uses_the_new_baseline_not_legacy_v31(tmp_pat
     assert weak["weak_source_surface_selection"]["baseline_exact_surface_generated"] is True
     assert result["boundary"]["legacy_v31_or_open_meteo_used"] is False
     assert weak["boundary"]["d0_observation_or_trajectory_not_consumed"] is True
+    paths = {row["source_id"]: row for row in weak["forecast_scenario_paths"]["paths"]}
+    assert paths["gfs"]["future_forcing_available"] is True
+    assert paths["taf"]["future_forcing_available"] is False
     background = weak["forecast_background_context"]
     assert background["forecast_evidence_snapshot_id"] == weak["forecast_evidence_snapshot_id"]
     assert background["transition_control_active"] is False
-    assert background["changes_probability"] is False
-    assert background["physical_weather_regime_consumed"] is False
+    assert background["changes_p0_temperature_likelihood"] is False
+    assert background["observed_weather_used_to_build_context"] is False
+    assert background["observation_conditioning_eligible"] is True
+    assert background["independent_likelihood"] is False
 
     production = bind_live_joint_weak_likelihood_for_production(result)
     assert production["production_runtime_eligible"] is True
@@ -144,6 +155,35 @@ def test_live_joint_weak_likelihood_uses_the_new_baseline_not_legacy_v31(tmp_pat
     assert production["joint_weak_likelihood"]["shadow_only"] is False
     assert production["joint_weak_likelihood"]["artifact_sha256"] == weak["artifact_sha256"]
     assert production["joint_weak_likelihood"]["joint_forecast_weak_likelihood"] == weak["joint_forecast_weak_likelihood"]
+
+
+def test_direct_physical_regime_enters_same_weak_context_only_when_visible_asof(tmp_path: Path) -> None:
+    visible = _revision("gfs", peak=33.0, available_at="2026-07-12T20:00:00Z", revision_id="physical-visible")
+    visible.update({
+        "forecast_weather_regime": "wet_precipitation",
+        "forecast_weather_regime_origin": "official_nwp_direct_physical_fields_v2",
+        "physical_regime": {"schema": "official_nwp_daily_physical_regime_v2"},
+    })
+    future = _revision("icon", peak=36.0, available_at="2026-07-13T00:02:00Z", revision_id="physical-future")
+    future.update({
+        "forecast_weather_regime": "convection_or_showers",
+        "forecast_weather_regime_origin": "official_nwp_direct_physical_fields_v2",
+        "physical_regime": {"schema": "official_nwp_daily_physical_regime_v2"},
+    })
+    _write_revision(tmp_path, "gfs", visible)
+    _write_revision(tmp_path, "icon", future)
+
+    evidence = build_joint_weak_live_forecast_evidence(
+        event_date=EVENT_DATE,
+        decision_as_of=AS_OF,
+        curve_root=tmp_path,
+        source_observations=[],
+    )
+
+    assert evidence["available_source_ids"] == ["gfs"]
+    assert evidence["forecast_context"]["weather_regime"] == "wet_precipitation"
+    assert evidence["source_revisions"][0]["forecast_weather_regime_origin"] == "official_nwp_direct_physical_fields_v2"
+    assert any(row["source_id"] == "icon" and row["exclusion_reason"] == "official_peak_revision_after_asof_or_time_invalid" for row in evidence["source_trace"])
 
 
 def test_taf_amd_replaces_original_inside_new_weak_source_set() -> None:

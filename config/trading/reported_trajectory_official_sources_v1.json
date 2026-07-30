@@ -1,0 +1,252 @@
+{
+  "schema": "reported_trajectory_official_sources_v1",
+  "fallback_provider_id": "global_noaa_awc_relay",
+  "providers": {
+    "cn_amsc": {
+      "authority": "中国民用航空气象服务网（AMSC）",
+      "country_code": "CN",
+      "adapter": "amsc",
+      "access": "direct_session",
+      "official_url": "https://www.amsc.net.cn/"
+    },
+    "us_noaa_awc": {
+      "authority": "NOAA/NWS Telecommunications Gateway",
+      "country_code": "US",
+      "adapter": "noaa_station_metar",
+      "access": "public_raw_station_file",
+      "official_url": "https://tgftp.nws.noaa.gov/data/observations/metar/stations/"
+    },
+    "ca_eccc_datamart": {
+      "authority": "Environment and Climate Change Canada DataMart",
+      "country_code": "CA",
+      "adapter": "eccc_datamart",
+      "access": "public_raw_bulletin",
+      "official_url": "https://dd.weather.gc.ca/today/bulletins/alphanumeric/"
+    },
+    "nl_knmi_aviation": {
+      "authority": "Royal Netherlands Meteorological Institute (KNMI)",
+      "country_code": "NL",
+      "adapter": "official_html_metar",
+      "access": "public_html",
+      "official_url": "https://www.knmi.nl/nederland-nu/luchtvaart/vliegveldwaarnemingen"
+    },
+    "fi_fmi_aviation": {
+      "authority": "Finnish Meteorological Institute (FMI)",
+      "country_code": "FI",
+      "adapter": "fmi_backend",
+      "access": "public_json_backend",
+      "official_url": "https://ilmailusaa.fi/weather-flightpath.html"
+    },
+    "pl_imgw_aviation": {
+      "authority": "Institute of Meteorology and Water Management (IMGW-PIB)",
+      "country_code": "PL",
+      "adapter": "imgw_aviation_api",
+      "access": "public_json_api",
+      "official_url": "https://awiacja.imgw.pl/metar-i-taf"
+    },
+    "ph_pagasa_aviation": {
+      "authority": "PAGASA Aeronautical Meteorology Service",
+      "country_code": "PH",
+      "adapter": "official_html_metar",
+      "access": "public_html",
+      "official_url": "https://www.pagasa.dost.gov.ph/aviation/metar"
+    },
+    "kr_kma_apihub": {
+      "authority": "Korea Aviation Meteorological Office (KMA AMO)",
+      "country_code": "KR",
+      "adapter": "kma_apihub",
+      "access": "api_key_required",
+      "credential_env": "KMA_API_AUTH_KEY",
+      "official_url": "https://apihub.kma.go.kr/apiList.do?seqApi=14"
+    },
+    "br_decea_redemet": {
+      "authority": "Brazil DECEA REDEMET",
+      "country_code": "BR",
+      "adapter": "redemet",
+      "access": "api_key_required",
+      "credential_env": "REDEMET_API_KEY",
+      "official_url": "https://api-redemet.decea.mil.br/"
+    },
+    "nz_metservice_aviation": {
+      "authority": "Meteorological Service of New Zealand (MetService)",
+      "country_code": "NZ",
+      "adapter": "metservice",
+      "access": "commercial_api_key_required",
+      "credential_env": "METSERVICE_API_KEY",
+      "official_url": "https://developer.metservice.com/docs/api-catalog/aviation/meteorological-terminal-aerodrome-reports-metars/"
+    },
+    "de_dwd_pcmet": {
+      "authority": "Deutscher Wetterdienst (DWD)",
+      "country_code": "DE",
+      "adapter": "awc_fallback_only",
+      "access": "licensed_portal_only",
+      "official_url": "https://www.dwd.de/EN/ourservices/aviation_lf_01_pc_met/pcmet_internet_node.html"
+    },
+    "gb_metoffice_mavis": {
+      "authority": "UK Met Office MAVIS",
+      "country_code": "GB",
+      "adapter": "awc_fallback_only",
+      "access": "restricted_portal_only",
+      "official_url": "https://www.metoffice.gov.uk/services/transport/aviation/regulated/mavis"
+    },
+    "es_aemet_ama": {
+      "authority": "Agencia Estatal de Meteorologia (AEMET)",
+      "country_code": "ES",
+      "adapter": "awc_fallback_only",
+      "access": "restricted_portal_only",
+      "official_url": "https://ama.aemet.es/en/acceso"
+    },
+    "fr_meteofrance_aeroweb": {
+      "authority": "Meteo-France AEROWEB",
+      "country_code": "FR",
+      "adapter": "awc_fallback_only",
+      "access": "restricted_portal_only",
+      "official_url": "https://aviation.meteo.fr/"
+    },
+    "it_enav_meteo": {
+      "authority": "ENAV Aeronautical Meteorology",
+      "country_code": "IT",
+      "adapter": "awc_fallback_only",
+      "access": "restricted_portal_only",
+      "official_url": "https://www.enav.it/"
+    },
+    "tr_mgm_hezarfen": {
+      "authority": "Turkish State Meteorological Service (MGM)",
+      "country_code": "TR",
+      "adapter": "awc_fallback_only",
+      "access": "restricted_portal_only",
+      "official_url": "https://hezarfen.mgm.gov.tr/"
+    },
+    "mx_seneam_meteorology": {
+      "authority": "Servicios a la Navegacion en el Espacio Aereo Mexicano (SENEAM)",
+      "country_code": "MX",
+      "adapter": "awc_fallback_only",
+      "access": "no_public_machine_api_verified",
+      "official_url": "https://www.gob.mx/seneam"
+    },
+    "pa_imhpa_aviation": {
+      "authority": "Instituto de Meteorologia e Hidrologia de Panama (IMHPA)",
+      "country_code": "PA",
+      "adapter": "awc_fallback_only",
+      "access": "no_public_machine_api_verified",
+      "official_url": "https://www.imhpa.gob.pa/"
+    },
+    "za_saws_aviation": {
+      "authority": "South African Weather Service (SAWS)",
+      "country_code": "ZA",
+      "adapter": "awc_fallback_only",
+      "access": "restricted_portal_only",
+      "official_url": "https://aviation.weathersa.co.za/"
+    },
+    "sa_ncm_aviation": {
+      "authority": "Saudi National Center for Meteorology",
+      "country_code": "SA",
+      "adapter": "awc_fallback_only",
+      "access": "no_public_machine_api_verified",
+      "official_url": "https://beta.ncm.gov.sa/"
+    },
+    "pk_pmd_aviation": {
+      "authority": "Pakistan Meteorological Department",
+      "country_code": "PK",
+      "adapter": "awc_fallback_only",
+      "access": "no_public_machine_api_verified",
+      "official_url": "https://www.pmd.gov.pk/"
+    },
+    "jp_jma_aviation": {
+      "authority": "Japan Meteorological Agency (JMA)",
+      "country_code": "JP",
+      "adapter": "awc_fallback_only",
+      "access": "distribution_center_only",
+      "official_url": "https://www.data.jma.go.jp/haneda-airport/"
+    },
+    "in_imd_camd": {
+      "authority": "India Meteorological Department CAMD",
+      "country_code": "IN",
+      "adapter": "awc_fallback_only",
+      "access": "briefing_portal_only",
+      "official_url": "https://camd.imd.gov.in/"
+    },
+    "my_metmalaysia": {
+      "authority": "Malaysian Meteorological Department",
+      "country_code": "MY",
+      "adapter": "awc_fallback_only",
+      "access": "no_public_raw_metar_api_verified",
+      "official_url": "https://www.met.gov.my/"
+    },
+    "sg_mss_caas": {
+      "authority": "Meteorological Service Singapore / CAAS",
+      "country_code": "SG",
+      "adapter": "awc_fallback_only",
+      "access": "aviation_distribution_only",
+      "official_url": "https://aim-sg.caas.gov.sg/"
+    },
+    "ar_smn_aviation": {
+      "authority": "Servicio Meteorologico Nacional Argentina",
+      "country_code": "AR",
+      "adapter": "awc_fallback_only",
+      "access": "no_public_raw_metar_api_verified",
+      "official_url": "https://www.smn.gob.ar/"
+    },
+    "tw_cwa_aviation": {
+      "authority": "Central Weather Administration Aviation Weather Center",
+      "country_code": "TW",
+      "adapter": "amsc",
+      "access": "routed_via_existing_amsc_lane",
+      "official_url": "https://aoaws.anws.gov.tw/"
+    },
+    "global_noaa_awc_relay": {
+      "authority": "NOAA/NWS Aviation Weather Center worldwide relay",
+      "country_code": "ZZ",
+      "adapter": "awc",
+      "access": "public_api_fallback",
+      "official_url": "https://aviationweather.gov/data/api/"
+    }
+  },
+  "station_routes": {
+    "CYYZ": "ca_eccc_datamart",
+    "EDDM": "de_dwd_pcmet",
+    "EFHK": "fi_fmi_aviation",
+    "EGLC": "gb_metoffice_mavis",
+    "EHAM": "nl_knmi_aviation",
+    "EPWA": "pl_imgw_aviation",
+    "FACT": "za_saws_aviation",
+    "KATL": "us_noaa_awc",
+    "KAUS": "us_noaa_awc",
+    "KBKF": "us_noaa_awc",
+    "KDAL": "us_noaa_awc",
+    "KHOU": "us_noaa_awc",
+    "KLAX": "us_noaa_awc",
+    "KLGA": "us_noaa_awc",
+    "KMIA": "us_noaa_awc",
+    "KORD": "us_noaa_awc",
+    "KSEA": "us_noaa_awc",
+    "KSFO": "us_noaa_awc",
+    "LEMD": "es_aemet_ama",
+    "LFPB": "fr_meteofrance_aeroweb",
+    "LIMC": "it_enav_meteo",
+    "LTAC": "tr_mgm_hezarfen",
+    "MMMX": "mx_seneam_meteorology",
+    "MPMG": "pa_imhpa_aviation",
+    "NZWN": "nz_metservice_aviation",
+    "OEJN": "sa_ncm_aviation",
+    "OPKC": "pk_pmd_aviation",
+    "RCSS": "tw_cwa_aviation",
+    "RJTT": "jp_jma_aviation",
+    "RKPK": "kr_kma_apihub",
+    "RKSI": "kr_kma_apihub",
+    "RPLL": "ph_pagasa_aviation",
+    "SAEZ": "ar_smn_aviation",
+    "SBGR": "br_decea_redemet",
+    "VILK": "in_imd_camd",
+    "WMKK": "my_metmalaysia",
+    "WSSS": "sg_mss_caas",
+    "ZBAA": "cn_amsc",
+    "ZGGG": "cn_amsc",
+    "ZGSZ": "cn_amsc",
+    "ZHHH": "cn_amsc",
+    "ZSPD": "cn_amsc",
+    "ZSQD": "cn_amsc",
+    "ZUCK": "cn_amsc",
+    "ZUUU": "cn_amsc"
+  }
+}

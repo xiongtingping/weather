@@ -1,0 +1,104 @@
+{
+  "attempted_count": 5,
+  "blocked_count": 0,
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "formal_probability_input_role_eligible": true,
+    "live_order_authorized": false,
+    "live_submit_authorized": false,
+    "p0_consumption_before_event": true,
+    "p0_probability_input_eligible_now": true,
+    "p1_consumption_before_event": false,
+    "p1_probability_input_eligible_now": true,
+    "raw_capture_may_precede_event": true,
+    "target_only": true,
+    "unrelated_production_line_touched": false,
+    "writes_production_db": false
+  },
+  "capture_config_path": "/Users/xiong/weather/config/bayes_basket_target/model_arrival_capture_v1.json",
+  "captured_or_reused_count": 5,
+  "decision_at_utc": "2026-07-26T15:43:37Z",
+  "early_stop": null,
+  "early_stopped": false,
+  "expected_capture_count": 5,
+  "forecast_hour_count": 5,
+  "forecast_hours": [
+    21,
+    27,
+    33,
+    39,
+    42
+  ],
+  "network_capture_count": 5,
+  "output_dir": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/gfs_forward_18z",
+  "records": [
+    {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/gfs_forward_18z/RKPK_20260726T150000Z.json",
+      "status": "CAPTURED"
+    },
+    {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/gfs_forward_18z/RKPK_20260726T210000Z.json",
+      "status": "CAPTURED"
+    },
+    {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/gfs_forward_18z/RKPK_20260727T030000Z.json",
+      "status": "CAPTURED"
+    },
+    {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/gfs_forward_18z/RKPK_20260727T090000Z.json",
+      "status": "CAPTURED"
+    },
+    {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_rkpk_settlement_20260726/gfs_forward_18z/RKPK_20260727T120000Z.json",
+      "status": "CAPTURED"
+    }
+  ],
+  "resource_budget": {
+    "max_capture_bytes": 268435456,
+    "max_process_rss_bytes": 536870912,
+    "max_raw_bytes": 1073741824,
+    "max_response_bytes": 67108864,
+    "min_free_bytes": 536870912
+  },
+  "run_initialization_utc": "2026-07-25T18:00:00Z",
+  "schema": "bayes_basket_target_gfs_same_run_capture_v1",
+  "source_ranges": {
+    "21": {
+      "range_end": 417650120,
+      "range_start": 417125846,
+      "response_bytes": 524275,
+      "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260725/18/atmos/gfs.t18z.pgrb2.0p25.f021"
+    },
+    "27": {
+      "range_end": 414592158,
+      "range_start": 414068731,
+      "response_bytes": 523428,
+      "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260725/18/atmos/gfs.t18z.pgrb2.0p25.f027"
+    },
+    "33": {
+      "range_end": 414046178,
+      "range_start": 413526196,
+      "response_bytes": 519983,
+      "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260725/18/atmos/gfs.t18z.pgrb2.0p25.f033"
+    },
+    "39": {
+      "range_end": 415250667,
+      "range_start": 414727469,
+      "response_bytes": 523199,
+      "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260725/18/atmos/gfs.t18z.pgrb2.0p25.f039"
+    },
+    "42": {
+      "range_end": 412133463,
+      "range_start": 411610963,
+      "response_bytes": 522501,
+      "url": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20260725/18/atmos/gfs.t18z.pgrb2.0p25.f042"
+    }
+  },
+  "source_transport": "official_noaa_s3_idx_http_range",
+  "station_count": 1,
+  "station_lineage_from_global_native_field": true,
+  "target_local_date": "2026-07-27",
+  "target_timezone": "Asia/Seoul"
+}

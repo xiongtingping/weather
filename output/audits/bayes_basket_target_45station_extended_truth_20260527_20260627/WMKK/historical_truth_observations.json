@@ -1,0 +1,16 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "canonical_ingress": true,
+  "evidence_sha256": "9792fd743db7426b8e1c42d016cef31b96edc08ba989c4a3307b0f61cdcb37d5",
+  "generated_at_utc": "2026-07-29T03:56:18Z",
+  "historical_only": true,
+  "observation_count": 0,
+  "observations": [],
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "target_timezone": "Asia/Kuala_Lumpur"
+}

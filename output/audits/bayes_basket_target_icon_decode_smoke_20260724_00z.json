@@ -1,0 +1,450 @@
+{
+  "as_of_utc": "2026-07-24T21:04:08Z",
+  "blocked_captures": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "read_only_decode": true,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "checks": {
+    "calls_order_gateway": false,
+    "complete_curve_count_positive": false,
+    "decoded_points_have_coordinate_lineage": true,
+    "decoded_points_have_raw_lineage": true,
+    "native_provider_only": true,
+    "no_default_station_coordinate_fallback": true,
+    "official_ecmwf_gfs_icon_only": true,
+    "orders_submitted": 0,
+    "production_authority": false,
+    "promotion_allowed": false,
+    "writes_production_db": false
+  },
+  "curves": {
+    "all_complete": false,
+    "complete_curve_count": 0,
+    "curve_count": 3,
+    "curves": [
+      {
+        "blockers": [
+          "native_daily_curve_gap_too_large",
+          "native_daily_curve_point_count_insufficient"
+        ],
+        "coverage": {
+          "ends_within_hours": 1.0,
+          "first_valid_time_utc": "2026-07-24T04:00:00Z",
+          "last_valid_time_utc": "2026-07-25T03:00:00Z",
+          "max_gap_hours": 23.0,
+          "point_count": 2,
+          "starts_within_hours": 0.0
+        },
+        "curve_sha256": "3a5c2c2f1065ee34302087eae08cf2dd59688e8f015e304d03de96a91c8ab623",
+        "event_date": "2026-07-24",
+        "forecast_daily_max_c": 18.233,
+        "model_id": "ICON",
+        "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-07-24",
+            "model_id": "ICON",
+            "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+            "provider_id": "icon_global_official",
+            "published_at_utc": "2026-07-24T02:40:00Z",
+            "raw_message_sha256": "6ffe200013e760f2815faeeb9b95807e1466b8ffb2fe5501c9d6dfda86d750f0",
+            "receipt_sha256": "5707b15a4ea4922ba2b3e26ecc008b8d199dbbdd77b21bfe8eef7b27bf9fce7f",
+            "received_at_utc": "2026-07-24T21:01:50Z",
+            "station_id": "CYYZ",
+            "temperature_2m_c": 16.059,
+            "valid_time_utc": "2026-07-24T04:00:00Z"
+          },
+          {
+            "event_date": "2026-07-24",
+            "model_id": "ICON",
+            "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+            "provider_id": "icon_global_official",
+            "published_at_utc": "2026-07-24T02:47:45Z",
+            "raw_message_sha256": "07bffdfde81dcacc7557f92f22340f1641434da691034809c74e659e834d5d46",
+            "receipt_sha256": "06e79c69ebc8a37787a6897569e70f01f384e26d1f33bb09d136a2d6bdc4c132",
+            "received_at_utc": "2026-07-24T19:43:00Z",
+            "station_id": "CYYZ",
+            "temperature_2m_c": 18.233,
+            "valid_time_utc": "2026-07-25T03:00:00Z"
+          }
+        ],
+        "provider_id": "icon_global_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "BLOCKED_INCOMPLETE_CURVE",
+        "station_id": "CYYZ",
+        "target_timezone": "America/New_York"
+      },
+      {
+        "blockers": [
+          "native_daily_curve_gap_too_large",
+          "native_daily_curve_point_count_insufficient"
+        ],
+        "coverage": {
+          "ends_within_hours": 1.0,
+          "first_valid_time_utc": "2026-07-24T04:00:00Z",
+          "last_valid_time_utc": "2026-07-25T03:00:00Z",
+          "max_gap_hours": 23.0,
+          "point_count": 2,
+          "starts_within_hours": 0.0
+        },
+        "curve_sha256": "237399a2ebf365c25e3ba5df8846fd37aa3ad2030f821c209e14439dbf0c9cdf",
+        "event_date": "2026-07-24",
+        "forecast_daily_max_c": 25.153,
+        "model_id": "ICON",
+        "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-07-24",
+            "model_id": "ICON",
+            "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+            "provider_id": "icon_global_official",
+            "published_at_utc": "2026-07-24T02:40:00Z",
+            "raw_message_sha256": "6ffe200013e760f2815faeeb9b95807e1466b8ffb2fe5501c9d6dfda86d750f0",
+            "receipt_sha256": "5707b15a4ea4922ba2b3e26ecc008b8d199dbbdd77b21bfe8eef7b27bf9fce7f",
+            "received_at_utc": "2026-07-24T21:01:50Z",
+            "station_id": "KATL",
+            "temperature_2m_c": 25.153,
+            "valid_time_utc": "2026-07-24T04:00:00Z"
+          },
+          {
+            "event_date": "2026-07-24",
+            "model_id": "ICON",
+            "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+            "provider_id": "icon_global_official",
+            "published_at_utc": "2026-07-24T02:47:45Z",
+            "raw_message_sha256": "07bffdfde81dcacc7557f92f22340f1641434da691034809c74e659e834d5d46",
+            "receipt_sha256": "06e79c69ebc8a37787a6897569e70f01f384e26d1f33bb09d136a2d6bdc4c132",
+            "received_at_utc": "2026-07-24T19:43:00Z",
+            "station_id": "KATL",
+            "temperature_2m_c": 23.987,
+            "valid_time_utc": "2026-07-25T03:00:00Z"
+          }
+        ],
+        "provider_id": "icon_global_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "BLOCKED_INCOMPLETE_CURVE",
+        "station_id": "KATL",
+        "target_timezone": "America/New_York"
+      },
+      {
+        "blockers": [
+          "native_daily_curve_gap_too_large",
+          "native_daily_curve_point_count_insufficient"
+        ],
+        "coverage": {
+          "ends_within_hours": 1.0,
+          "first_valid_time_utc": "2026-07-24T04:00:00Z",
+          "last_valid_time_utc": "2026-07-25T03:00:00Z",
+          "max_gap_hours": 23.0,
+          "point_count": 2,
+          "starts_within_hours": 0.0
+        },
+        "curve_sha256": "fd965c93226197655d4763b65c4575efc52c66b5ffa420c861dbc4b69bd9327a",
+        "event_date": "2026-07-24",
+        "forecast_daily_max_c": 36.34,
+        "model_id": "ICON",
+        "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-07-24",
+            "model_id": "ICON",
+            "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+            "provider_id": "icon_global_official",
+            "published_at_utc": "2026-07-24T02:40:00Z",
+            "raw_message_sha256": "6ffe200013e760f2815faeeb9b95807e1466b8ffb2fe5501c9d6dfda86d750f0",
+            "receipt_sha256": "5707b15a4ea4922ba2b3e26ecc008b8d199dbbdd77b21bfe8eef7b27bf9fce7f",
+            "received_at_utc": "2026-07-24T21:01:50Z",
+            "station_id": "ZUUU",
+            "temperature_2m_c": 36.34,
+            "valid_time_utc": "2026-07-24T04:00:00Z"
+          },
+          {
+            "event_date": "2026-07-24",
+            "model_id": "ICON",
+            "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+            "provider_id": "icon_global_official",
+            "published_at_utc": "2026-07-24T02:47:45Z",
+            "raw_message_sha256": "07bffdfde81dcacc7557f92f22340f1641434da691034809c74e659e834d5d46",
+            "receipt_sha256": "06e79c69ebc8a37787a6897569e70f01f384e26d1f33bb09d136a2d6bdc4c132",
+            "received_at_utc": "2026-07-24T19:43:00Z",
+            "station_id": "ZUUU",
+            "temperature_2m_c": 33.694,
+            "valid_time_utc": "2026-07-25T03:00:00Z"
+          }
+        ],
+        "provider_id": "icon_global_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "BLOCKED_INCOMPLETE_CURVE",
+        "station_id": "ZUUU",
+        "target_timezone": "America/New_York"
+      }
+    ],
+    "eligible_model_rows": [],
+    "production_authority": false,
+    "promotion_allowed": false,
+    "schema": "bayes_basket_target_native_model_daily_curve_v1",
+    "target_timezone": "America/New_York"
+  },
+  "decoded_point_count": 6,
+  "decoded_points": [
+    {
+      "coordinate_lineage": {
+        "latitude": 43.679,
+        "longitude": -79.629,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "CYYZ"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-07-24",
+      "latitude": 43.679,
+      "longitude": -79.629,
+      "model_id": "ICON",
+      "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+      "provider_id": "icon_global_official",
+      "published_at_utc": "2026-07-24T02:40:00Z",
+      "raw_message_sha256": "6ffe200013e760f2815faeeb9b95807e1466b8ffb2fe5501c9d6dfda86d750f0",
+      "receipt_sha256": "5707b15a4ea4922ba2b3e26ecc008b8d199dbbdd77b21bfe8eef7b27bf9fce7f",
+      "received_at_utc": "2026-07-24T21:01:50Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "CYYZ",
+      "temperature_2m_c": 16.059,
+      "valid_time_utc": "2026-07-24T04:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 30.576,
+        "longitude": 103.95,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "ZUUU"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-07-24",
+      "latitude": 30.576,
+      "longitude": 103.95,
+      "model_id": "ICON",
+      "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+      "provider_id": "icon_global_official",
+      "published_at_utc": "2026-07-24T02:40:00Z",
+      "raw_message_sha256": "6ffe200013e760f2815faeeb9b95807e1466b8ffb2fe5501c9d6dfda86d750f0",
+      "receipt_sha256": "5707b15a4ea4922ba2b3e26ecc008b8d199dbbdd77b21bfe8eef7b27bf9fce7f",
+      "received_at_utc": "2026-07-24T21:01:50Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "ZUUU",
+      "temperature_2m_c": 36.34,
+      "valid_time_utc": "2026-07-24T04:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 33.62972,
+        "longitude": -84.44223,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "KATL"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-07-24",
+      "latitude": 33.62972,
+      "longitude": -84.44223,
+      "model_id": "ICON",
+      "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+      "provider_id": "icon_global_official",
+      "published_at_utc": "2026-07-24T02:40:00Z",
+      "raw_message_sha256": "6ffe200013e760f2815faeeb9b95807e1466b8ffb2fe5501c9d6dfda86d750f0",
+      "receipt_sha256": "5707b15a4ea4922ba2b3e26ecc008b8d199dbbdd77b21bfe8eef7b27bf9fce7f",
+      "received_at_utc": "2026-07-24T21:01:50Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "KATL",
+      "temperature_2m_c": 25.153,
+      "valid_time_utc": "2026-07-24T04:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 43.679,
+        "longitude": -79.629,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "CYYZ"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-07-24",
+      "latitude": 43.679,
+      "longitude": -79.629,
+      "model_id": "ICON",
+      "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+      "provider_id": "icon_global_official",
+      "published_at_utc": "2026-07-24T02:47:45Z",
+      "raw_message_sha256": "07bffdfde81dcacc7557f92f22340f1641434da691034809c74e659e834d5d46",
+      "receipt_sha256": "06e79c69ebc8a37787a6897569e70f01f384e26d1f33bb09d136a2d6bdc4c132",
+      "received_at_utc": "2026-07-24T19:43:00Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "CYYZ",
+      "temperature_2m_c": 18.233,
+      "valid_time_utc": "2026-07-25T03:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 30.576,
+        "longitude": 103.95,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "ZUUU"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-07-24",
+      "latitude": 30.576,
+      "longitude": 103.95,
+      "model_id": "ICON",
+      "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+      "provider_id": "icon_global_official",
+      "published_at_utc": "2026-07-24T02:47:45Z",
+      "raw_message_sha256": "07bffdfde81dcacc7557f92f22340f1641434da691034809c74e659e834d5d46",
+      "receipt_sha256": "06e79c69ebc8a37787a6897569e70f01f384e26d1f33bb09d136a2d6bdc4c132",
+      "received_at_utc": "2026-07-24T19:43:00Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "ZUUU",
+      "temperature_2m_c": 33.694,
+      "valid_time_utc": "2026-07-25T03:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 33.62972,
+        "longitude": -84.44223,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "KATL"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-07-24",
+      "latitude": 33.62972,
+      "longitude": -84.44223,
+      "model_id": "ICON",
+      "model_run_initialization_utc": "2026-07-24T00:00:00Z",
+      "provider_id": "icon_global_official",
+      "published_at_utc": "2026-07-24T02:47:45Z",
+      "raw_message_sha256": "07bffdfde81dcacc7557f92f22340f1641434da691034809c74e659e834d5d46",
+      "receipt_sha256": "06e79c69ebc8a37787a6897569e70f01f384e26d1f33bb09d136a2d6bdc4c132",
+      "received_at_utc": "2026-07-24T19:43:00Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "KATL",
+      "temperature_2m_c": 23.987,
+      "valid_time_utc": "2026-07-25T03:00:00Z"
+    }
+  ],
+  "evidence_sha256": "5187a13bfe2f4eea6c8e01c8214cf0b5034df3ce9d33477b602dc9ad82cf9766",
+  "input_artifacts": [
+    {
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/arrival_fanout/20260724_00z/2026-07-24T04-00-00Z_CYYZ.json",
+      "sha256": "b11ffc6ce34a86d5f4bb744b1b93a12b154b5d588e6437958e9678fae99d051f"
+    },
+    {
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/arrival_fanout/20260724_00z/2026-07-24T04-00-00Z_ZUUU.json",
+      "sha256": "a828a73a746844847e89ba35b19698082ea92437e45d9f4d8b4c29cd1eadea91"
+    },
+    {
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/arrival_fanout/20260724_00z/2026-07-24T04-00-00Z_KATL.json",
+      "sha256": "e812a57fc457c7ea692a497c8b0f7e46ae6372be3c36f7310c18c90bd77f9bc8"
+    },
+    {
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/arrival_fanout/20260724_00z/2026-07-25T03-00-00Z_CYYZ.json",
+      "sha256": "4a8dd00721735ac44824b6aafae54a1aaad1dffaac701e56e21a74d2b938f0d6"
+    },
+    {
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/arrival_fanout/20260724_00z/2026-07-25T03-00-00Z_ZUUU.json",
+      "sha256": "e8cf73dce0a64d215f1365a77af8f132c0dfcecedb99df6aca2228dac470fdb9"
+    },
+    {
+      "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/arrival_fanout/20260724_00z/2026-07-25T03-00-00Z_KATL.json",
+      "sha256": "7d80273d5541c490df818c367f9ab992e75020b0e3d0fd6a6a83a5a18196fab6"
+    }
+  ],
+  "receipt_sha256": "54f13343b750289fdaba86dd6aa38c0a73d033fcbfe80c0a79c816be61fba576",
+  "schema": "bayes_basket_target_native_model_arrival_decode_evidence_v1",
+  "station_coordinate_registry": {
+    "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+    "schema": "bayes_basket_target_station_coordinate_registry_v1",
+    "source_id": "awc_stationinfo",
+    "source_schema": "awc_stationinfo_v1",
+    "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+    "source_url": "https://aviationweather.gov/api/data/stationinfo",
+    "station_count": 45,
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ]
+  },
+  "target_timezone": "America/New_York"
+}

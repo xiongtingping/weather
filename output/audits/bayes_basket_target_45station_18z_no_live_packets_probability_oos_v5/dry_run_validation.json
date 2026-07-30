@@ -1,0 +1,712 @@
+{
+  "blocked_results": [
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "EDDM"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "EFHK"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "EGLC"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "EHAM"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "EPWA"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "FACT"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KATL"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KBKF"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KHOU"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KLAX"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KMIA"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KSEA"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "KSFO"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "LFPB"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "LIMC"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "OPKC"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "RCSS"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "RKSI"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "RPLL"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "SBGR"
+    },
+    {
+      "expected_state": "BLOCKED_PROBABILITY_OOS_GATE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "VILK"
+    },
+    {
+      "expected_state": "BLOCKED_TEMPORARY_AWC_TRUTH",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZBAA"
+    },
+    {
+      "expected_state": "BLOCKED_TEMPORARY_AWC_TRUTH",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZGGG"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZGSZ"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZHHH"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZSPD"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZSQD"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZUCK"
+    },
+    {
+      "expected_state": "BLOCKED_INSUFFICIENT_EVIDENCE",
+      "fail_closed_reason": "production_calibration_artifacts_missing",
+      "station_id": "ZUUU"
+    }
+  ],
+  "blocked_station_count": 29,
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "temporary_in_memory_database_only": true,
+    "writes_production_database": false
+  },
+  "checks": {
+    "all_other_stations_fail_closed": true,
+    "all_ready_exact_mask_resolved": true,
+    "all_ready_p0_preflight_resolved": true,
+    "calls_order_gateway": false,
+    "formal_promotion_created": false,
+    "ingress_exact_counts": true,
+    "ingress_replay_zero_write": true,
+    "live_order_authorized": false,
+    "wrong_masks_fail_closed": true
+  },
+  "content_sha256": "ad63d64d43fbf227b50466afbe9332a53df3c44001dd94b3d8c1200b2f969ba0",
+  "decision_at_utc": "2026-07-29T07:00:00Z",
+  "idempotent_replay_counts": {
+    "calibration_activations": 0,
+    "calibration_artifacts": 0,
+    "calibration_promotions": 0,
+    "cash_phase_authority_manifests": 0,
+    "cash_phase_policies": 0,
+    "ensemble_artifacts": 0,
+    "ensemble_selection_evidence": 0,
+    "global_priors": 0,
+    "policy_activations": 0,
+    "policy_artifacts": 0,
+    "policy_promotions": 0
+  },
+  "ingress_counts": {
+    "calibration_activations": 48,
+    "calibration_artifacts": 32,
+    "calibration_promotions": 0,
+    "cash_phase_authority_manifests": 0,
+    "cash_phase_policies": 0,
+    "ensemble_artifacts": 16,
+    "ensemble_selection_evidence": 16,
+    "global_priors": 0,
+    "policy_activations": 0,
+    "policy_artifacts": 0,
+    "policy_promotions": 0
+  },
+  "ready_results": [
+    {
+      "ensemble_activation_id": "no-live-ens-76fe5d9cc53f4ab92527a5a42c5a4f74",
+      "ensemble_artifact_id": "ens-18z-d2-CYYZ-f376452a89f77eb2",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-f376589aa20bd14948876346ea3af035",
+          "artifact_id": "cal-research-CYYZ-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-0372aa61dc77fb0fd2e585a95be779b9",
+          "artifact_id": "cal-research-CYYZ-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "CYYZ",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-123272a14ca5352ee0118156492b1298",
+      "ensemble_artifact_id": "ens-18z-d2-KAUS-299b47a4dd142075",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-8c587d888bad5600bcd8590f1efe6d8f",
+          "artifact_id": "cal-research-KAUS-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-e4145be2b3db8626945ecd9f2e6f67e8",
+          "artifact_id": "cal-research-KAUS-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "KAUS",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-366d6b6317773a687106b25e9b3d444d",
+      "ensemble_artifact_id": "ens-18z-d2-KDAL-55ad9a269e1dabe1",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-82ba0ed6c96163c7d1a3ed7b1e717dae",
+          "artifact_id": "cal-research-KDAL-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-1695e6a5a02573f565fb399995125539",
+          "artifact_id": "cal-research-KDAL-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.5,
+        "ICON": 0.5
+      },
+      "station_id": "KDAL",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-b0f644a0bb31398f8c1284c6c2c1a848",
+      "ensemble_artifact_id": "ens-18z-d2-KLGA-93fd541e7eb65570",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-00c19d46d5002135dbc7aa7054ecbba6",
+          "artifact_id": "cal-research-KLGA-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-409cc10aa82be8153bffbe9112f2731e",
+          "artifact_id": "cal-research-KLGA-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.5,
+        "ICON": 0.5
+      },
+      "station_id": "KLGA",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-75811579b8a931d7c040141a730ae5f0",
+      "ensemble_artifact_id": "ens-18z-d2-KORD-c3f5b310ccabf3a2",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-7cb8dde4d80701d24dc2d93989caa626",
+          "artifact_id": "cal-research-KORD-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-02064076bc1f8fe5696339acd8f5e990",
+          "artifact_id": "cal-research-KORD-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.45,
+        "ICON": 0.55
+      },
+      "station_id": "KORD",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-a2fd69ab74b335c91f009470b79d680a",
+      "ensemble_artifact_id": "ens-18z-d2-LEMD-ab9416174ccea02c",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-a3cd8fc0d18bfdb957ef42bb4c7e8b88",
+          "artifact_id": "cal-research-LEMD-GFS-d2-1b74e8f9001f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-4bf70bfda6f2897799dda5157e932dc3",
+          "artifact_id": "cal-research-LEMD-ICON-d2-1b74e8f9001f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "LEMD",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-7554eb8b6dd839a6bd9015a69891be7e",
+      "ensemble_artifact_id": "ens-18z-d2-LTAC-c7f71e499060036b",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-201be98815206d84e826866bfc3b270f",
+          "artifact_id": "cal-research-LTAC-GFS-d2-104fe506a17f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-bd7e4fd11af8067531551746230b82f5",
+          "artifact_id": "cal-research-LTAC-ICON-d2-104fe506a17f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "LTAC",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-2c81ef28f047c4b3778b29291612d8e2",
+      "ensemble_artifact_id": "ens-18z-d2-MMMX-03518abfbe0f3d3c",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-ddec61ed471b710bd3c5bb4844c449b2",
+          "artifact_id": "cal-research-MMMX-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-ea918806394ecd59107fe10266b7c479",
+          "artifact_id": "cal-research-MMMX-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "MMMX",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-0ea7b36d3a1c3f9709f62c769f32ef0f",
+      "ensemble_artifact_id": "ens-18z-d2-MPMG-a96b1484849475ea",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-de45d180d4bdc1b13c44c5f8294f0a0b",
+          "artifact_id": "cal-research-MPMG-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-7c14b346cb02cf138e113009c7131787",
+          "artifact_id": "cal-research-MPMG-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "MPMG",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-40ba7c932e7a8ce01a3023b7222240e3",
+      "ensemble_artifact_id": "ens-18z-d2-NZWN-5afd0e467538ce64",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-19356364fc8d93bf113a457b93add1e9",
+          "artifact_id": "cal-research-NZWN-GFS-d2-6b29593e746b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-0d2fa9e48336a85d9df9cdc363809753",
+          "artifact_id": "cal-research-NZWN-ICON-d2-6b29593e746b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "NZWN",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-74cded6c02e39553f4596b331e3c3073",
+      "ensemble_artifact_id": "ens-18z-d2-OEJN-0f5930932244b0e9",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-256f17f98430aa5769d6f0988203e134",
+          "artifact_id": "cal-research-OEJN-GFS-d2-1b74e8f9001f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-4d263a462bb94f2de9a0d08e7d49945b",
+          "artifact_id": "cal-research-OEJN-ICON-d2-1b74e8f9001f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "OEJN",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-2de3de6a67a5a239425699a69b16315d",
+      "ensemble_artifact_id": "ens-18z-d2-RJTT-efdfda534e0a3408",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-93a258eb006d74ba85259aedc23f1d13",
+          "artifact_id": "cal-research-RJTT-GFS-d2-1b74e8f9001f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-f67c79c075c435a72e83061de52d4840",
+          "artifact_id": "cal-research-RJTT-ICON-d2-1b74e8f9001f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "RJTT",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-7bd6abbdf607af8fdc3f10278dae2c0a",
+      "ensemble_artifact_id": "ens-18z-d2-RKPK-3e06772a11298515",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-9df3a890beb31f6d0fe7c18d5c9a87fd",
+          "artifact_id": "cal-research-RKPK-GFS-d2-1b74e8f9001f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-259c328b46ac8a34fd229942379012ee",
+          "artifact_id": "cal-research-RKPK-ICON-d2-1b74e8f9001f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.7,
+        "ICON": 0.3
+      },
+      "station_id": "RKPK",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-cc90597e707b9ce39ae62f025244e5af",
+      "ensemble_artifact_id": "ens-18z-d2-SAEZ-aa485ddd1eb1ccbc",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-c915f9f20708427d963570e8bb4cb2d9",
+          "artifact_id": "cal-research-SAEZ-GFS-d2-c71acd2e784b"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-69fb5b8a0e2eda98afcedb3be6446111",
+          "artifact_id": "cal-research-SAEZ-ICON-d2-c71acd2e784b"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "SAEZ",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-92cc50bebfbfe1c0fc92acbce1e6bedf",
+      "ensemble_artifact_id": "ens-18z-d2-WMKK-2c0cbe5eca2ab25f",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-3ca380301d21d1ebb673f20d71f18f00",
+          "artifact_id": "cal-research-WMKK-GFS-d2-104fe506a17f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-f90df815ecce929ce0dc46fec931ab48",
+          "artifact_id": "cal-research-WMKK-ICON-d2-104fe506a17f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "WMKK",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    },
+    {
+      "ensemble_activation_id": "no-live-ens-133c117056c356a7a3ec920f518689d3",
+      "ensemble_artifact_id": "ens-18z-d2-WSSS-7a20812f2e4ccbe6",
+      "p0_preflight": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_initialization_utc": "2026-07-27T18:00:00Z",
+        "selected_models": [
+          "GFS",
+          "ICON"
+        ]
+      },
+      "resolved_models": {
+        "GFS": {
+          "activation_id": "no-live-cal-3c77fa7dbb692b19a18afa1defcb9a83",
+          "artifact_id": "cal-research-WSSS-GFS-d2-1b74e8f9001f"
+        },
+        "ICON": {
+          "activation_id": "no-live-cal-72151f613e99e1add07fc08d5ff18abe",
+          "artifact_id": "cal-research-WSSS-ICON-d2-1b74e8f9001f"
+        }
+      },
+      "resolved_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "station_id": "WSSS",
+      "wrong_mask_failures": [
+        "formal_ensemble_requires_at_least_two_models",
+        "no_active_ensemble_artifact"
+      ]
+    }
+  ],
+  "ready_station_count": 16,
+  "schema": "bayes_basket_target_45station_18z_no_live_packet_dry_run_v1"
+}

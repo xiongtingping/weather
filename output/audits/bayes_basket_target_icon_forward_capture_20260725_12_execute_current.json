@@ -1,0 +1,75 @@
+{
+  "as_of_utc": "2026-07-25T14:27:53Z",
+  "blocked_count": 3,
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_service": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "promotion_allowed": false,
+    "prospective_only": true,
+    "protected_production_line_touched": false,
+    "target_only": true,
+    "writes_market_state": false,
+    "writes_probability_state": false,
+    "writes_production_db": false,
+    "writes_target_database": false
+  },
+  "capture_count": 3,
+  "capture_results": [
+    {
+      "forecast_hour": 0,
+      "reason_codes": [
+        "model_arrival_icon_preflight_http_404"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T12:00:00Z"
+    },
+    {
+      "forecast_hour": 1,
+      "reason_codes": [
+        "model_arrival_icon_preflight_http_404"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T13:00:00Z"
+    },
+    {
+      "forecast_hour": 2,
+      "reason_codes": [
+        "model_arrival_icon_preflight_http_404"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-25T14:00:00Z"
+    }
+  ],
+  "captured_count": 0,
+  "execution_decision_at_utc": "2026-07-25T14:32:24.892Z",
+  "fanout": null,
+  "output_root": "/Users/xiong/weather/output/audits/bayes_basket_target_icon_forward_runs/2026-07-25_20260725T120000Z",
+  "plan_sha256": "6360beb96c0fb76cfce813cf92807dd1d2e031a1f36969caa4c6687b51fe1528",
+  "receipt_sha256": "50a24682fe7958ced3766ff12561289d1e7a627587f2190482a243f025933062",
+  "reused_count": 0,
+  "run_initialization_utc": "2026-07-25T12:00:00Z",
+  "schema": "bayes_basket_target_icon_forward_capture_scheduler_v1",
+  "target_local_date": "2026-07-25",
+  "valid_hours": [
+    {
+      "forecast_hour": 0,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072512_000_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-25T12:00:00Z"
+    },
+    {
+      "forecast_hour": 1,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072512_001_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-25T13:00:00Z"
+    },
+    {
+      "forecast_hour": 2,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/12/t_2m/icon_global_icosahedral_single-level_2026072512_002_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-07-25T14:00:00Z"
+    }
+  ]
+}

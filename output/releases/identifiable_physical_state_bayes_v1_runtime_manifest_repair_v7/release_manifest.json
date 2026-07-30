@@ -1,0 +1,59 @@
+{
+  "activates_production": false,
+  "activation_contract_sha256": "146d244b7e1650591835acfd336784424137584d50c946fa1ed756a9b96caf8f",
+  "adds_fourth_service": false,
+  "blocking_gates": {
+    "additive_schema_plan_valid": true,
+    "candidate_artifacts_valid": true,
+    "current_basket_hard_no_production_accepted": true,
+    "observation_identifiability_boundary_declared": true,
+    "runtime_dependency_closure_complete": true,
+    "zero_order_transaction_b_accepted": true
+  },
+  "files": {
+    "amsc_frozen_reporting_operator_v1.json": {
+      "sha256": "73bd195e256d1275d1829ae85fdb32e5bf6ee331ee8861e6c52c44af2acb8494",
+      "size_bytes": 1649
+    },
+    "identifiable_physical_observation_v1.json": {
+      "sha256": "5c0d6a8ec769f2226c0fbbdbee3f0346b7e41d91c16b7216e7b3926f6ac08ea0",
+      "size_bytes": 4125
+    },
+    "identifiable_physical_state_model_v1.json": {
+      "sha256": "7b157ea8844836d7e9628b005206b17c9e344823ded2b7d01efc526edca0a94e",
+      "size_bytes": 13750
+    },
+    "production_probability_runtime_activation.json": {
+      "sha256": "3ad60b775cdba934e0fe0c6bd85db274374fef36e21e38b30c4f030e18a8ed37",
+      "size_bytes": 2866
+    }
+  },
+  "non_blocking_diagnostics": {
+    "no_worse_mean_crps_than_legacy": false,
+    "no_worse_mean_nll_than_legacy": false,
+    "research_evidence_gates": {
+      "canonical_replay_blocking_gates_pass": false,
+      "canonical_replay_complete": true,
+      "state_parameter_draws_bound_to_calibration": false,
+      "strict_asof_parameter_calibration_ready": false
+    }
+  },
+  "places_orders": false,
+  "promotion_policy": {
+    "calibration_activation_role": "non_blocking_diagnostic_only",
+    "canonical_replay_activation_role": "non_blocking_diagnostic_only",
+    "crps_activation_role": "non_blocking_diagnostic_only",
+    "nll_activation_role": "non_blocking_diagnostic_only",
+    "nll_crps_excluded_from_blocking_gate_set": true,
+    "research_evidence_excluded_from_blocking_gate_set": true,
+    "sample_volume_activation_role": "non_blocking_diagnostic_only",
+    "strict_asof_activation_role": "non_blocking_diagnostic_only"
+  },
+  "promotion_ready": true,
+  "readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
+  "release_manifest_sha256": "7f5d858ad80a96c3f16f08a7570f4dca90f62736a95bd9d0620f422e6179af7b",
+  "resident_service": "com.weather.reported_trajectory_no",
+  "runtime_manifest_sha256": "a7c473b415204c8ea65a56a5f2933b0754cddf029c227efdc2044eff40d6a580",
+  "schema": "identifiable_physical_state_release_bundle_v1",
+  "state": "release_built_not_active"
+}

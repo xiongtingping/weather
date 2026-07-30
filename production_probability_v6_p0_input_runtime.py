@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping
 
 from joint_weak_live_evidence_runtime import (
     DEFAULT_CURVE_ROOT,
+    PRODUCTION_FORECAST_SOURCE_IDS,
     bind_live_joint_weak_likelihood_for_production,
     build_live_joint_weak_likelihood,
 )
@@ -131,6 +132,7 @@ def build_v6_production_p0_inputs(
         source_observations=source_observations,
         curve_root=curve_root,
         artifact_path=weak_artifact_path,
+        allowed_source_ids=PRODUCTION_FORECAST_SOURCE_IDS,
     )
     weak = bind_live_joint_weak_likelihood_for_production(weak_envelope)
     blockers: list[str] = []

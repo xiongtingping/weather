@@ -34,6 +34,7 @@ COPY_DIRS = (
     "configs",
     "dist",
     "launchd",
+    "identifiable_physical_state_bayes",
     "physical_state_bayes_v6",
     "scripts",
     "tests",
@@ -51,6 +52,7 @@ TEST_FILES = (
     "tests/test_production_probability_v6_transaction_commit_runtime.py",
     "tests/test_production_probability_v6_path_auxiliary_runtime.py",
     "tests/test_physical_state_bayes_v6.py",
+    "tests/test_physical_state_bayes_v6_scenario_joint.py",
     "tests/test_physical_state_bayes_v6_models.py",
     "tests/test_physical_state_bayes_v6_forcing_adapter.py",
     "tests/test_physical_state_bayes_v6_observation_adapter.py",
@@ -130,9 +132,10 @@ def _copy_stage(root: Path, stage: Path) -> None:
         source = root / "data" / name
         if source.exists():
             (data / name).symlink_to(source)
-    research = root / "data/research"
-    if research.exists():
-        (data / "research").symlink_to(research, target_is_directory=True)
+    for name in ("research", "runtime"):
+        source = root / "data" / name
+        if source.exists():
+            (data / name).symlink_to(source, target_is_directory=True)
 
 
 def _json_receipt(path: Path, expected_schema: str) -> dict[str, Any]:
@@ -147,12 +150,24 @@ def prepare(root: Path, *, event_date: str, python: str) -> dict[str, Any]:
     if not source_db.is_file():
         raise FileNotFoundError("production_archive_db_missing")
     baseline = {
-        "active_activation_sha256": _sha_file(ACTIVE_ACTIVATION),
+        "active_activation_sha256": _sha_file(
+            root / ACTIVE_ACTIVATION.relative_to(ROOT)
+        ),
         "active_file_sha256": {name: _sha_file(root / name) for name in ACTIVE_FILES},
     }
+
+    def assert_active_unchanged(stage_label: str) -> None:
+        activation = root / ACTIVE_ACTIVATION.relative_to(ROOT)
+        if _sha_file(activation) != baseline["active_activation_sha256"]:
+            raise RuntimeError(f"candidate_preparation_mutated_active_activation:{stage_label}")
+        for name, expected in baseline["active_file_sha256"].items():
+            if _sha_file(root / name) != expected:
+                raise RuntimeError(f"candidate_preparation_mutated_active_runtime:{stage_label}:{name}")
+
     with tempfile.TemporaryDirectory(prefix="v6-hotfix-candidate-", dir="/private/tmp") as raw_stage:
         stage = Path(raw_stage)
         _copy_stage(root, stage)
+        assert_active_unchanged("copy_stage")
         _run(
             [
                 python,
@@ -165,6 +180,7 @@ def prepare(root: Path, *, event_date: str, python: str) -> dict[str, Any]:
             ],
             cwd=stage,
         )
+        assert_active_unchanged("install_candidate_in_stage")
         activation_path = stage / "config/production_probability_runtime_activation.v6_candidate.json"
         _run(
             [
@@ -176,22 +192,33 @@ def prepare(root: Path, *, event_date: str, python: str) -> dict[str, Any]:
             ],
             cwd=stage,
         )
+        assert_active_unchanged("freeze_candidate_activation_in_stage")
         activation = json.loads(activation_path.read_text(encoding="utf-8"))
+        # The isolated rehearsal must execute the candidate artifact and
+        # candidate activation together.  Leaving the predecessor activation
+        # in the stage while loading the candidate observation artifact is an
+        # intentional fail-closed mismatch, not a meaningful candidate test.
+        shutil.copy2(activation_path, stage / ACTIVE_ACTIVATION.relative_to(ROOT))
         test_receipt = _run([python, "-m", "pytest", "-q", *TEST_FILES], cwd=stage)
+        assert_active_unchanged("candidate_tests")
 
         receipts_dir = stage / "output/audits"
         receipts_dir.mkdir(parents=True, exist_ok=True)
         replay_path = receipts_dir / "canonical_replay.json"
         zero_path = receipts_dir / "zero_order.json"
         host_path = receipts_dir / "host_rehearsal.json"
+        physical_counterfactual_path = receipts_dir / "physical_counterfactual.json"
+        walk_forward_path = receipts_dir / "walk_forward_calibration.json"
         _run(
             [python, "scripts/replay_physical_state_bayes_v6_canonical.py", "--db", str(source_db), "--output", str(replay_path)],
             cwd=stage,
         )
+        assert_active_unchanged("canonical_replay")
         _run(
             [python, "scripts/production_probability_v6_zero_order_drill.py", "--db", str(source_db), "--output", str(zero_path)],
             cwd=stage,
         )
+        assert_active_unchanged("zero_order_drill")
         _run(
             [
                 python,
@@ -205,10 +232,41 @@ def prepare(root: Path, *, event_date: str, python: str) -> dict[str, Any]:
             ],
             cwd=stage,
         )
+        assert_active_unchanged("host_rehearsal")
+        _run(
+            [
+                python,
+                "scripts/production_probability_v6_physical_counterfactual_acceptance.py",
+                "--db", str(source_db),
+                "--event-date", event_date,
+                "--output", str(physical_counterfactual_path),
+            ],
+            cwd=stage,
+        )
+        assert_active_unchanged("physical_counterfactual")
+        _run(
+            [
+                python,
+                "scripts/production_probability_v6_walk_forward_calibration.py",
+                "--db", str(source_db),
+                "--activation", str(activation_path),
+                "--output", str(walk_forward_path),
+            ],
+            cwd=stage,
+        )
+        assert_active_unchanged("walk_forward_calibration")
         receipts = {
             "canonical_replay": _json_receipt(replay_path, "physical_state_bayes_v6_canonical_production_replay_v1"),
             "zero_order": _json_receipt(zero_path, "production_probability_v6_zero_order_drill_v1"),
             "host_rehearsal": _json_receipt(host_path, "production_probability_v6_host_rehearsal_v1"),
+            "physical_counterfactual": _json_receipt(
+                physical_counterfactual_path,
+                "production_probability_v6_physical_counterfactual_acceptance_v1",
+            ),
+            "walk_forward_calibration": _json_receipt(
+                walk_forward_path,
+                "production_probability_v6_strict_day_walk_forward_calibration_v1",
+            ),
         }
         activation_sha = str(activation["activation_contract_sha256"])
         bundle_dir = root / "data/candidates/physical_state_bayes_v6_runtime_hotfix" / activation_sha
@@ -223,20 +281,37 @@ def prepare(root: Path, *, event_date: str, python: str) -> dict[str, Any]:
             shutil.copy2(source, destination)
             candidate_files[name] = _sha_file(destination)
         shutil.copy2(activation_path, temporary_bundle / activation_path.name)
-        for name, source in (("canonical_replay.json", replay_path), ("zero_order.json", zero_path), ("host_rehearsal.json", host_path)):
+        for name, source in (
+            ("canonical_replay.json", replay_path),
+            ("zero_order.json", zero_path),
+            ("host_rehearsal.json", host_path),
+            ("physical_counterfactual.json", physical_counterfactual_path),
+            ("walk_forward_calibration.json", walk_forward_path),
+        ):
             shutil.copy2(source, temporary_bundle / name)
         if bundle_dir.exists():
             shutil.rmtree(bundle_dir)
         temporary_bundle.replace(bundle_dir)
+        assert_active_unchanged("publish_content_addressed_bundle")
 
+    candidate_activation_sha256 = _sha_file(
+        bundle_dir / "production_probability_runtime_activation.v6_candidate.json"
+    )
+    already_active = (
+        baseline["active_activation_sha256"] == candidate_activation_sha256
+        and all(
+            baseline["active_file_sha256"].get(name) == sha
+            for name, sha in candidate_files.items()
+        )
+    )
     contract = {
         "schema": "production_probability_v6_hotfix_bundle_v1",
-        "state": "prepared_not_active",
+        "state": "already_active_verified_bundle" if already_active else "prepared_not_active",
         "event_date": event_date,
         "bundle_dir": str(bundle_dir.relative_to(root)),
         "activation_contract_sha256": activation_sha,
         "runtime_manifest_sha256": activation["runtime_manifest_sha256"],
-        "candidate_activation_sha256": _sha_file(bundle_dir / "production_probability_runtime_activation.v6_candidate.json"),
+        "candidate_activation_sha256": candidate_activation_sha256,
         "candidate_file_sha256": candidate_files,
         "baseline": baseline,
         "receipts": {
@@ -257,16 +332,21 @@ def prepare(root: Path, *, event_date: str, python: str) -> dict[str, Any]:
         "writes_archive_db": False,
         "places_orders": False,
         "external_disk_required": False,
+        "active_runtime_already_matches_candidate": already_active,
     }
     contract_core = dict(contract)
     contract["bundle_contract_sha256"] = _sha_bytes(
         json.dumps(contract_core, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     )
-    _write_atomic(BUNDLE_POINTER, (json.dumps(contract, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
+    _write_atomic(
+        root / BUNDLE_POINTER.relative_to(ROOT),
+        (json.dumps(contract, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(),
+    )
     _write_atomic(
         root / "config/production_probability_runtime_activation.v6_candidate.json",
         (bundle_dir / "production_probability_runtime_activation.v6_candidate.json").read_bytes(),
     )
+    assert_active_unchanged("publish_candidate_contracts")
     return contract
 
 

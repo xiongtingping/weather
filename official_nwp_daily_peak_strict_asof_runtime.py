@@ -153,6 +153,13 @@ def build_official_nwp_daily_peak_tier_a_proposal(
             "official_nwp_raw_object_refs": raw_refs,
             "official_nwp_snapshot_sha256s": snapshot_sha256s,
             "official_nwp_run_at_utc": _text(value.get("run_at_utc")),
+            "physical_regime": _mapping(value.get("physical_regime")),
+            "forecast_weather_regime": _text(value.get("forecast_weather_regime")) or "unknown_forecast_regime",
+            "forecast_weather_regime_origin": _text(value.get("forecast_weather_regime_origin")),
+            "basin_regime": _text(value.get("basin_regime")) or "unknown",
+            "basin_regime_confidence": _finite(value.get("basin_regime_confidence")),
+            "basin_regime_source": _text(value.get("basin_regime_source")),
+            "temperature_curve_weather_type_inference_forbidden": True,
         },
     ).as_dict()
     return {

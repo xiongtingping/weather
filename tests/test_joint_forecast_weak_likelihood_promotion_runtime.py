@@ -14,20 +14,20 @@ def test_promotion_packet_requires_identity_matched_oos_but_cannot_apply() -> No
         dataset=build_joint_weak_training_dataset(events=events[:30], source_catalog=CATALOG),
         minimum_event_days_per_surface=30,
         minimum_pair_samples=20,
-        bias_ewma_alpha=0.03,
+        bias_ewma_alpha=0.05,
     )["artifact"]
     oos = evaluate_joint_weak_walk_forward(
         dataset=dataset,
         evaluation_start_date="2025-05-31",
         minimum_event_days_per_surface=30,
         minimum_pair_samples=20,
-        candidate_bias_ewma_alpha=0.03,
+        candidate_bias_ewma_alpha=0.05,
     )
 
     packet = build_joint_weak_promotion_packet(candidate_artifact=candidate, oos_evaluation=oos, minimum_oos_samples=30)
 
     assert packet["state"] == "proposed"
-    assert packet["oos_evaluation"]["bias_alpha_selection"]["selected_bias_ewma_alpha"] == 0.03
+    assert packet["oos_evaluation"]["bias_alpha_selection"]["selected_bias_ewma_alpha"] == 0.05
     assert packet["boundary"]["writes_runtime_artifact_pointer"] is False
     assert packet["boundary"]["strict_asof_oos_runtime_gate"] is False
 

@@ -1,0 +1,627 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-23"
+  ],
+  "evidence_sha256": "b40a62e67bf2b3597801a1eeb9b60ba44ea62043b40599e7f7b04af0bdd83cfc",
+  "fetch_receipts": [
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 26,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 44,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "2a79cdbc0744e11926824f53ba3a1de7f9605ce918b30c1935369f64f5314f62",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=RCSS&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 49,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "78e1fe1ce2790ea837d54d3db1ba4b3e3c9970097afe8e1f295eb68969393817",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=RCSS&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 18,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 93,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "513d0ad16cc5e0ec2746c7021d08f66d659c08a03511331fcf68ac825751598c",
+      "returned": 44,
+      "source_lane": "amsc",
+      "station_id": "RCSS",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=RCSS&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "85ddf0986df1edb64e6ebcc0eb97419e266d8f904729d0053503f9ed57e5b659",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZBAA&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "8a00ee8971c284ed7ca317df1519b09aeb166e959ec57936d52d27da185ff4ba",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZBAA&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 24,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 96,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "c12c8ac0ba4830bd36db0e618fb116df490254a9f02a6b470bcafd54dc216f7b",
+      "returned": 48,
+      "source_lane": "amsc",
+      "station_id": "ZBAA",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZBAA&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "727c8afb50c556c5aaab24322b09722d727b17e549568ac4e774cb9cfe214bc7",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGGG&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "b7afaefeb065b92175156f0eb84e2851fc853e7cfbdf6255dbf1f4ad4bdebc64",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGGG&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 24,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 96,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "0a2cb2cbca6277201df07abfbc9f28f5c9a5dbaefddee4457cea27c8b3506b2d",
+      "returned": 48,
+      "source_lane": "amsc",
+      "station_id": "ZGGG",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGGG&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "73a19e0ec2acc4ac328218e05b4901da0d88d9996d8b52e8811986f0e0111785",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGSZ&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "424658ac428ebae5c4baa350afab3a94e9346ec51065993d6b2f6554bac233d9",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGSZ&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 24,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 96,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "84444063861ef1467f5ddc548c456edd67dd741b910eedab355ab2351fe25cfb",
+      "returned": 48,
+      "source_lane": "amsc",
+      "station_id": "ZGSZ",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZGSZ&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 24,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "fde13e326d792ade014d42eacea3a213268c1ef88075208d666e36610f0f1eba",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZHHH&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 27,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "6e9710a2a4444b3819b3fb530d541659fea5da5d3a88205c19867e507422a9a2",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZHHH&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 0,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 51,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "4f5857fb856e2d9a78edd661160e1262d35f71c99f2296910d6f3f242722f946",
+      "returned": 24,
+      "source_lane": "amsc",
+      "station_id": "ZHHH",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZHHH&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "953aaeb6d85da42df825660caeae9ff7e9edd02aaf9d37095e7516fb7f94046e",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSPD&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 48,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "9fecf9cb4303181f3a2e7509dbe233e8bf6c1968060253efde38df0e64e32da2",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSPD&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 24,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 96,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "a64293c9008ad9e4bc59de7a75aada033122a6e33bc17d6421aad7991664f861",
+      "returned": 48,
+      "source_lane": "amsc",
+      "station_id": "ZSPD",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSPD&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 25,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 24,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "94d88d646b46a641285efc2e764647d8cca16250ee95b1bc471d8cc7c885d0d4",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSQD&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 25,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "d953d60dbcd343252c74c1d47066d2a7faa7cddb21e339b4cb9aef5cc077d5d5",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSQD&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 0,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 49,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "fd707e7ae95cc128837295dd74f21d4bb83ed30be65e05f2f8ef236c9714cd1d",
+      "returned": 25,
+      "source_lane": "amsc",
+      "station_id": "ZSQD",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZSQD&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 24,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "60df657058dd8b98b9ae09192c06e66e75b831846df501b336a2ce4494414b03",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUCK&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 26,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "02a88e8c809fd5210e4f7d0deb9938029875fe24b0905263525ff9b2e05a2d3f",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUCK&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 0,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 50,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "5ffd62c0ec627fb9d5a9c820f5fbf1941b47b9e8cfe3d1f7a8a478504ba70693",
+      "returned": 24,
+      "source_lane": "amsc",
+      "station_id": "ZUCK",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUCK&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "event_date": "2026-07-23",
+      "formal_returned": 24,
+      "query_physical_station_days": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "query_receipts": [
+        {
+          "physical_station_date": "2026-07-23",
+          "response_code": 200,
+          "response_data_count": 44,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "6367c176c4b63438e543c2aae002eeaa15e377ad802c1087ad5d7272c957f53a",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUUU&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+        },
+        {
+          "physical_station_date": "2026-07-24",
+          "response_code": 200,
+          "response_data_count": 45,
+          "response_data_type": "list",
+          "response_message": "操作成功",
+          "response_sha256": "88e48ca4cd5eb536014baca6e2886203dd66edc40f29a4015396358fccf94150",
+          "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUUU&starDate=2026-07-23+16%3A00%3A00&endDate=2026-07-24+15%3A59%3A59&tt=SA%2CSP%2C"
+        }
+      ],
+      "reference_returned": 20,
+      "response_code": 200,
+      "response_codes": [
+        200,
+        200
+      ],
+      "response_data_count": 89,
+      "response_data_type": "list",
+      "response_message": "操作成功",
+      "response_sha256": "9c4435d78fb8ef08911c7c4843da3e207fb5eb00695b25def56c652cf156bbfb",
+      "returned": 44,
+      "source_lane": "amsc",
+      "station_id": "ZUUU",
+      "url": "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort?isCCCC=cccc&cccc=ZUUU&starDate=2026-07-22+16%3A00%3A00&endDate=2026-07-23+15%3A59%3A59&tt=SA%2CSP%2C"
+    },
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "75a5cae62f57034ab0f7fc7716b159788a251de28c08d962c973de8385272c45",
+          "returned_rows": 329,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "c7fb2b9ce4b866870ed4b5c488649cd7ea18dcd541248a852afe988b6b732d39",
+          "returned_rows": 218,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "81922c73c2ebba207cf5ca0ef991d136afc2e1019d19bc04a6ef89237d39f8c1",
+          "returned_rows": 318,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "1cd5dea95701faa35e6c110ca9bc6e08e14d998c67ca47e4d800119e53c1a592",
+          "returned_rows": 302,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "823bc133a552d2bd0c8e93e1376a2ee08c1d27f2df2c114f954c9232ec75644a",
+          "returned_rows": 174,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        }
+      ],
+      "query_blockers": [],
+      "query_count": 5,
+      "reference_only": false,
+      "returned": 1323,
+      "source_lane": "awc"
+    },
+    {
+      "purpose": "reference_only",
+      "queries": [
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "05ef12246c9ade78153a00dd1e100c6844e15972fd8a8b2fda02d28d0891bb03",
+          "returned_rows": 292,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=RCSS%2CZBAA%2CZGGG%2CZGSZ%2CZHHH%2CZSPD%2CZSQD%2CZUCK&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "RCSS",
+            "ZBAA",
+            "ZGGG",
+            "ZGSZ",
+            "ZHHH",
+            "ZSPD",
+            "ZSQD",
+            "ZUCK"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "e9167ce0df45a5f82590c869dd478733e3b41d852d587a9f98b8907d80ef41d0",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZUUU&format=json&date=20260724_0400&hours=24",
+          "stations": [
+            "ZUUU"
+          ]
+        }
+      ],
+      "query_blockers": [],
+      "query_count": 2,
+      "reference_only": true,
+      "returned": 216,
+      "source_lane": "awc"
+    }
+  ],
+  "generated_at_utc": "2026-07-24T22:19:42Z",
+  "observation_count": 1542,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260723_current.json",
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "195c956e0d77eb9ab13e9f5a9f08b90516358095466cf89838167e8d5861c015",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_truth_reference_20260723_current.json",
+  "reference_observation_count": 350,
+  "reference_source_counts": {
+    "amsc_half_hour": 134,
+    "awc_hourly": 216
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 219,
+    "awc": 1323
+  },
+  "station_day_count": 45,
+  "station_day_keys": [
+    "CYYZ|2026-07-23",
+    "EDDM|2026-07-23",
+    "EFHK|2026-07-23",
+    "EGLC|2026-07-23",
+    "EHAM|2026-07-23",
+    "EPWA|2026-07-23",
+    "FACT|2026-07-23",
+    "KATL|2026-07-23",
+    "KAUS|2026-07-23",
+    "KBKF|2026-07-23",
+    "KDAL|2026-07-23",
+    "KHOU|2026-07-23",
+    "KLAX|2026-07-23",
+    "KLGA|2026-07-23",
+    "KMIA|2026-07-23",
+    "KORD|2026-07-23",
+    "KSEA|2026-07-23",
+    "KSFO|2026-07-23",
+    "LEMD|2026-07-23",
+    "LFPB|2026-07-23",
+    "LIMC|2026-07-23",
+    "LTAC|2026-07-23",
+    "MMMX|2026-07-23",
+    "MPMG|2026-07-23",
+    "NZWN|2026-07-23",
+    "OEJN|2026-07-23",
+    "OPKC|2026-07-23",
+    "RCSS|2026-07-23",
+    "RJTT|2026-07-23",
+    "RKPK|2026-07-23",
+    "RKSI|2026-07-23",
+    "RPLL|2026-07-23",
+    "SAEZ|2026-07-23",
+    "SBGR|2026-07-23",
+    "VILK|2026-07-23",
+    "WMKK|2026-07-23",
+    "WSSS|2026-07-23",
+    "ZBAA|2026-07-23",
+    "ZGGG|2026-07-23",
+    "ZGSZ|2026-07-23",
+    "ZHHH|2026-07-23",
+    "ZSPD|2026-07-23",
+    "ZSQD|2026-07-23",
+    "ZUCK|2026-07-23",
+    "ZUUU|2026-07-23"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

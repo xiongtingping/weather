@@ -1,0 +1,233 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-17",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+    },
+    {
+      "event_date": "2026-07-17",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "awc",
+      "stations": "SBGR,VILK,WMKK,WSSS"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-17"
+  ],
+  "evidence_sha256": "5a297e971a1900353af4561c0ed2efb58e885a1a5182a034e10bd73cb084cf87",
+  "fetch_receipts": [
+    {
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=CYYZ%2CEDDM%2CEFHK%2CEGLC%2CEHAM%2CEPWA%2CFACT%2CKATL&format=json&date=20260718_0400&hours=24",
+          "stations": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS%2CKBKF%2CKDAL%2CKHOU%2CKLAX%2CKLGA%2CKMIA%2CKORD&format=json&date=20260718_0400&hours=24",
+          "stations": [
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KSEA%2CKSFO%2CLEMD%2CLFPB%2CLIMC%2CLTAC%2CMMMX%2CMPMG&format=json&date=20260718_0400&hours=24",
+          "stations": [
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=NZWN%2COEJN%2COPKC%2CRJTT%2CRKPK%2CRKSI%2CRPLL%2CSAEZ&format=json&date=20260718_0400&hours=24",
+          "stations": [
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR%2CVILK%2CWMKK%2CWSSS&format=json&date=20260718_0400&hours=24",
+          "stations": [
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "stations": "CYYZ,EDDM,EFHK,EGLC,EHAM,EPWA,FACT,KATL"
+        },
+        {
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "stations": "KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD"
+        },
+        {
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "stations": "KSEA,KSFO,LEMD,LFPB,LIMC,LTAC,MMMX,MPMG"
+        },
+        {
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "stations": "NZWN,OEJN,OPKC,RJTT,RKPK,RKSI,RPLL,SAEZ"
+        },
+        {
+          "event_date": "2026-07-17",
+          "reason": "fetch:RuntimeError",
+          "stations": "SBGR,VILK,WMKK,WSSS"
+        }
+      ],
+      "query_count": 5,
+      "returned": 0,
+      "source_lane": "awc"
+    }
+  ],
+  "generated_at_utc": "2026-07-24T05:08:04Z",
+  "observation_count": 302,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260717_awc_retry2.json",
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "a57cdfbd5c3d799dc69c4c4512301a8171a19a763d3a84307aacee68243221a3",
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 302,
+    "awc": 0
+  },
+  "station_day_count": 15,
+  "station_day_keys": [
+    "ZBAA|2026-07-17",
+    "ZBAA|2026-07-18",
+    "ZGGG|2026-07-17",
+    "ZGGG|2026-07-18",
+    "ZGSZ|2026-07-17",
+    "ZGSZ|2026-07-18",
+    "ZHHH|2026-07-17",
+    "ZHHH|2026-07-18",
+    "ZSPD|2026-07-17",
+    "ZSPD|2026-07-18",
+    "ZSQD|2026-07-17",
+    "ZSQD|2026-07-18",
+    "ZUCK|2026-07-17",
+    "ZUCK|2026-07-18",
+    "ZUUU|2026-07-17"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

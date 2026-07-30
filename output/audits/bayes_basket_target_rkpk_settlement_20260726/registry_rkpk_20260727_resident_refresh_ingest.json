@@ -1,0 +1,9 @@
+{
+  "places_orders": false,
+  "row_count": 11,
+  "schema": "bayes_basket_target_market_registry_snapshot_v1",
+  "snapshot_sha256": "6858100e52a87cfda1c85d895f905168253493705effdd25c851488c8205b8cf",
+  "state": "COMMITTED",
+  "writes_shared_live_database": false,
+  "wrote_rows": true
+}

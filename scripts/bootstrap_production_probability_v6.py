@@ -18,7 +18,9 @@ if str(ROOT) not in sys.path:
 from archive_db_write_queue import connect_archive_db_rw
 from joint_weak_live_evidence_runtime import DEFAULT_CURVE_ROOT
 from production_probability_v6_activation_contract import validate_v6_activation
+from production_probability_v6_activation_contract import IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
 from production_probability_v6_canonical_event_drain_runtime import drain_v6_canonical_events, ensure_v6_daily_p0
+from production_probability_v6_market_inputs_runtime import prewarm_v6_market_inputs
 
 
 SCHEMA_VERSION = "bootstrap_production_probability_v6_v1"
@@ -40,6 +42,15 @@ def main() -> int:
     else:
         activation = validate_v6_activation(json.loads(args.activation.read_text(encoding="utf-8")))
         try:
+            market_inputs = prewarm_v6_market_inputs(
+                event_date=args.event_date,
+                strategy_projection_role=(
+                    "basket_probability_only"
+                    if activation.get("composer_schema")
+                    == IDENTIFIABLE_PHYSICAL_COMPOSER_SCHEMA
+                    else "legacy_realization"
+                ),
+            )
             with connect_archive_db_rw(args.db, owner="physical_state_bayes_v6_cutover_bootstrap") as conn:
                 p0 = ensure_v6_daily_p0(
                     conn,
@@ -47,6 +58,7 @@ def main() -> int:
                     event_date=args.event_date,
                     decision_as_of=args.decision_as_of,
                     curve_root=args.curve_root,
+                    market_inputs=market_inputs,
                 )
                 drain = (
                     drain_v6_canonical_events(
@@ -54,6 +66,7 @@ def main() -> int:
                         activation=activation,
                         event_date=args.event_date,
                         max_events=4096,
+                        market_inputs=market_inputs,
                     )
                     if p0.get("ok") is True
                     else {"ok": False, "state": "blocked", "reason": "v6_p0_unavailable"}

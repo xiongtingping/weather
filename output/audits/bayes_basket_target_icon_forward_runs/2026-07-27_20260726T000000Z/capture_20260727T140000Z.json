@@ -1,0 +1,7 @@
+{
+  "forecast_hour": 38,
+  "reason_codes": [],
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_official/receipts/7bfc9e6e08d5e9f240a5d76ad44cb8f42e521c21458b519aceb202e954ce6399.json",
+  "valid_time_utc": "2026-07-27T14:00:00Z"
+}

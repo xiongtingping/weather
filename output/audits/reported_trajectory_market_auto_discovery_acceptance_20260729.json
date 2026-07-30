@@ -1,0 +1,52 @@
+{
+  "automatic_policy": {
+    "gamma_max_pages": 4,
+    "isolated_worker": true,
+    "previous_generation_retained_on_failure": true,
+    "refresh_sec": 300,
+    "retry_sec": 30,
+    "semantic_replay_zero_registry_writes": true
+  },
+  "content_sha256": "94c2056294999a4bfc8bccbbeccde32a2c1ead8800cefd4b8a609b46b6cf33db",
+  "deployment": {
+    "clob_order_service_restart_required": false,
+    "manual_materialization_complete": true,
+    "market_ws_restart_required": false,
+    "resident_pid": "66261",
+    "resident_reload_required": true,
+    "schema_applied": true
+  },
+  "formal_registry": {
+    "accepting": 11,
+    "active": 11,
+    "eligible": 11,
+    "n": 11,
+    "tokens": 11,
+    "tz_max": "Asia/Singapore",
+    "tz_min": "Asia/Singapore"
+  },
+  "market_ws": {
+    "dynamic_reload_sec": 60,
+    "wsss_yes_books_materialized": 11,
+    "wsss_yes_token_shards_present": 11
+  },
+  "production_boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "places_orders": false
+  },
+  "refresh_state": {
+    "eligible_market_count": 164,
+    "last_successful_refresh_at": "2026-07-29T06:52:07.260Z",
+    "official_market_count": 180,
+    "registry_row_count": 1980,
+    "semantic_sha256": "a93a77a1150d1d05a6a6e803f8f336c3c559b2956b0f668c3f5a387d323bd4eb",
+    "singleton": 1
+  },
+  "schema": "reported_trajectory_market_auto_discovery_acceptance_v1",
+  "state": "MATERIALIZED_PENDING_RESIDENT_RELOAD",
+  "tests": {
+    "passed": 126
+  }
+}

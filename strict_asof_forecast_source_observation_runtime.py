@@ -22,8 +22,16 @@ SCHEMA_VERSION = "strict_asof_forecast_source_observation_proposal_v1"
 # retired Open-Meteo/model-display identifiers here: only the independent TAF,
 # WU and TWC capture identities are normalized at this boundary.
 _WEAK_SOURCE_BY_PROVIDER_SOURCE = {
+    # Official NWP captures use provider-facing peak identities at the raw
+    # transport boundary; the model contract consumes the canonical logical
+    # source IDs.  Keep this mapping explicit so an official model capture is
+    # normalized without accepting an arbitrary caller-supplied relabel.
+    "ecmwf_model_peak": "ecmwf",
+    "gfs_model_peak": "gfs",
+    "icon_model_peak": "icon",
     "zuuu_taf_forecast_amsc": "taf",
     "wu_forecast_high": "wu",
+    "wu_forecast_peak": "wu",
     "weather_com_forecast_peak": "twc",
     "twc_forecast_peak": "twc",
 }

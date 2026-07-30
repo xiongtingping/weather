@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CUTOVER = ROOT / "scripts/cutover_physical_state_bayes_v6_production.sh"
+HOTFIX_CUTOVER = ROOT / "scripts/cutover_physical_state_bayes_v6_runtime_hotfix.sh"
 
 
 def test_v6_cutover_has_irreversible_commit_boundary_without_v5_fallback() -> None:
@@ -83,3 +84,50 @@ def test_v6_cutover_stops_root_monitor_before_user_domain_writers() -> None:
     assert pause.index("stop_system_monitor") < pause.index("scripts/weatherctl.sh stop")
     assert "system_monitor_process_group_pids" in text
     assert "sudo kill -KILL $pids" in text
+
+
+def test_v6_hotfix_cutover_stops_weak_revision_writer_before_bootstrap() -> None:
+    text = HOTFIX_CUTOVER.read_text(encoding="utf-8")
+    pause = text.split("pause_services()", 1)[1].split("resume_services()", 1)[0]
+    assert '"$ROOT/scripts/apply_current_weak_source_revisions_v6.py"' in pause
+    assert 'step "pause_all_archive_writers"' in text
+    assert text.index('step "pause_all_archive_writers"') < text.index(
+        'step "create_new_generation_p0_and_replay_all_canonical_events"'
+    )
+
+
+def test_v6_hotfix_rollback_never_installs_or_resumes_from_partial_copy() -> None:
+    text = HOTFIX_CUTOVER.read_text(encoding="utf-8")
+    restore = text.split("restore_database()", 1)[1].split("recover()", 1)[0]
+    recover = text.split("recover()", 1)[1].split("trap recover EXIT", 1)[0]
+    assert '/bin/cp -c "$LOCAL_STAGE" "$restore_tmp"' in restore
+    assert 'stat -f%z "$LOCAL_STAGE"' in restore
+    assert "PRAGMA quick_check;" in restore
+    assert 'mv "$restore_tmp" data/archive.db' in restore
+    assert 'restore_ok=0' in recover
+    assert 'services remain paused fail-closed' in recover
+    assert '[ "$restore_ok" = 1 ]' in recover
+
+
+def test_v6_hotfix_cutover_proves_shared_writer_gate_is_released() -> None:
+    text = HOTFIX_CUTOVER.read_text(encoding="utf-8")
+    pause = text.index('step "pause_all_archive_writers"')
+    install = text.index(
+        'step "install_peak_timing_and_default_off_market_transaction_runtime_then_freeze_candidate"'
+    )
+    gate = text.index("verify_archive_writer_gate_quiescent", pause)
+    assert pause < gate < install
+    assert 'owner="physical_state_bayes_v6_cutover_quiescence_probe"' in text
+    assert "wait_sec=120.0" in text
+
+
+def test_v6_hotfix_recovery_baseline_requires_exact_token_and_integrity() -> None:
+    text = HOTFIX_CUTOVER.read_text(encoding="utf-8")
+    recovery = text.split("verify_explicit_recovery_baseline()", 1)[1].split(
+        "restore_database()", 1
+    )[0]
+    assert 'PHYSICAL_STATE_BAYES_V6_RECOVERY_CONFIRM:-' in recovery
+    assert 'RECOVER_VALID_V6_BASELINE' in recovery
+    assert 'PRAGMA quick_check' in recovery
+    assert 'validate_v6_activation' in recovery
+    assert 'recovery_baseline_schema_not_pure_additive' in recovery

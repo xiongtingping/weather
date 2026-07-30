@@ -10,16 +10,21 @@ one outer SQLite transaction.  It never calls CLOB.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import sqlite3
 import threading
+import time
 from typing import Any, Callable, Mapping
 
+from lineage_identity_runtime import lineage_id_from_parts
 from production_dynamic_three_leg_cycle_runner import (
     run_production_dynamic_three_leg_cycle,
 )
 
 
 SCHEMA_VERSION = "production_posterior_commit_outbox_worker_v1"
+BACKFILL_AUDIT_INTERVAL_SEC = 5.0
+_last_backfill_audit_monotonic = 0.0
 DEFAULT_LEASE_MS = 1_000
 MAX_LEASE_MS = 5_000
 REQUIRED_INPUTS = (
@@ -30,6 +35,12 @@ REQUIRED_INPUTS = (
     "risk_snapshot",
     "production_activation",
 )
+REQUIRED_AUTO_DECISION_COLUMNS = {
+    "run_id", "run_date", "slug", "event_date", "outcome", "side", "action",
+    "decided_state", "will_order", "reason_codes_json", "reasons_json",
+    "details_json", "created_at", "correlation_id", "fact_snapshot_id",
+    "posterior_run_id", "decision_id", "order_intent_id",
+}
 
 
 def _text(value: Any) -> str:
@@ -73,6 +84,13 @@ def _assert_production_outbox_schema(conn: sqlite3.Connection) -> None:
     missing = [table for table in required if not _table_exists(conn, table)]
     if missing:
         raise ValueError("production_posterior_outbox_tables_missing:" + ",".join(missing))
+    decision_columns = {_text(row[1]) for row in conn.execute("PRAGMA table_info(auto_trade_decisions)")}
+    missing_columns = sorted(REQUIRED_AUTO_DECISION_COLUMNS - decision_columns)
+    if missing_columns:
+        raise ValueError(
+            "production_posterior_outbox_auto_decision_columns_missing:"
+            + ",".join(missing_columns)
+        )
 
 
 def _ready_latest_rows(
@@ -92,6 +110,7 @@ def _ready_latest_rows(
             ON x.outbox_event_id=o.outbox_event_id AND x.posterior_run_id=o.posterior_run_id
           JOIN event_fact_history h
             ON h.posterior_run_id=o.posterior_run_id AND h.fact_snapshot_id=o.fact_snapshot_id
+           AND h.fact_snapshot_id IS NOT NULL AND h.fact_snapshot_id<>''
           JOIN event_fact_latest l
             ON l.fact_id=h.id AND l.slug=h.slug AND l.event_date=h.event_date
          WHERE ((o.state='pending' AND (o.next_attempt_at IS NULL OR o.next_attempt_at<=?))
@@ -121,11 +140,246 @@ def _ready_latest_rows(
     return result
 
 
+def _terminalize_expired_outbox(
+    conn: sqlite3.Connection, *, decision_as_of: str,
+) -> list[str]:
+    """Close expired executable events without ever creating a late decision.
+
+    An observation's three-second execution opportunity is a hard deadline, not
+    a retry window.  Keeping such rows ``pending`` makes the durable ledger claim
+    that work remains actionable even though the claim CAS correctly refuses it.
+    """
+
+    rows = conn.execute(
+        """
+        SELECT o.outbox_event_id,o.posterior_run_id,o.fact_snapshot_id,o.correlation_id,
+               h.slug,h.event_date,x.observation_to_order_hard_deadline_at
+          FROM posterior_commit_outbox o
+          JOIN posterior_outbox_execution_contracts x
+            ON x.outbox_event_id=o.outbox_event_id AND x.posterior_run_id=o.posterior_run_id
+          JOIN event_fact_history h
+            ON h.posterior_run_id=o.posterior_run_id AND h.fact_snapshot_id=o.fact_snapshot_id
+           AND h.fact_snapshot_id IS NOT NULL AND h.fact_snapshot_id<>''
+         WHERE (o.state='pending'
+             OR (o.state='claimed' AND o.lease_until IS NOT NULL AND o.lease_until<=?))
+           AND x.execution_eligible_at_commit=1
+           AND julianday(x.observation_to_order_hard_deadline_at)<julianday(?)
+         ORDER BY o.created_at,o.outbox_event_id
+        """,
+        (_text(decision_as_of), _text(decision_as_of)),
+    ).fetchall()
+    event_ids = [_text(row[0]) for row in rows if _text(row[0])]
+    if not event_ids:
+        return []
+    placeholders = ",".join("?" for _ in event_ids)
+    conn.execute(
+        f"""
+        UPDATE posterior_commit_outbox
+           SET state='dead_letter',completed_at=?,lease_owner=NULL,lease_until=NULL,
+               error_class='observation_to_order_deadline_expired',
+               last_error='late_execution_forbidden',
+               terminal_reason='production_observation_to_order_hard_deadline_expired'
+         WHERE outbox_event_id IN ({placeholders})
+           AND (state='pending'
+             OR (state='claimed' AND lease_until IS NOT NULL AND lease_until<=?))
+        """,
+        (_text(decision_as_of), *event_ids, _text(decision_as_of)),
+    )
+    _persist_expired_no_order_decisions(conn, rows=rows, decided_at=decision_as_of)
+    return event_ids
+
+
+def _persist_expired_no_order_decisions(
+    conn: sqlite3.Connection, *, rows: list[sqlite3.Row | tuple[Any, ...]], decided_at: str,
+) -> list[str]:
+    decision_ids: list[str] = []
+    for row in rows:
+        outbox_event_id = _text(row[0])
+        decision_id = lineage_id_from_parts(
+            "decision_id",
+            {
+                "outbox_event_id": outbox_event_id,
+                "action": "HOLD",
+                "reason_code": "production_observation_to_order_hard_deadline_expired",
+            },
+        )
+        details = {
+            "schema": "dynamic_three_leg_no_order_decision_v1",
+            "outbox_event_id": outbox_event_id,
+            "posterior_run_id": _text(row[1]),
+            "fact_snapshot_id": _text(row[2]),
+            "state": "blocked_no_order",
+            "will_order": False,
+            "observation_to_order_hard_deadline_at": _text(row[6]),
+            "late_execution_forbidden": True,
+            "called_gateway": False,
+        }
+        reason_codes_json = '["production_observation_to_order_hard_deadline_expired"]'
+        reasons_json = '[{"reason_family":"execution_deadline","reason_code":"production_observation_to_order_hard_deadline_expired"}]'
+        details_json = json.dumps(
+            details, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        expected = (
+            "hold", "blocked", 0, reason_codes_json, reasons_json, details_json,
+            _text(row[3]), _text(row[2]), _text(row[1]),
+        )
+        existing = conn.execute(
+            """
+            SELECT action,decided_state,will_order,reason_codes_json,reasons_json,
+                   details_json,correlation_id,fact_snapshot_id,posterior_run_id
+              FROM auto_trade_decisions WHERE decision_id=?
+               AND decision_id IS NOT NULL AND decision_id<>''
+            """,
+            (decision_id,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing) != expected:
+                raise ValueError("production_expired_no_order_decision_replay_drift")
+            continue
+        conn.execute(
+            """
+            INSERT INTO auto_trade_decisions(
+              run_id,run_date,slug,event_date,outcome,side,action,decided_state,
+              will_order,reason_codes_json,reasons_json,details_json,created_at,
+              correlation_id,fact_snapshot_id,posterior_run_id,decision_id,order_intent_id
+            ) VALUES(NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+            """,
+            (
+                _text(row[5]), _text(row[4]), _text(row[5]), "", "", "hold",
+                "blocked", 0,
+                reason_codes_json, reasons_json, details_json,
+                _text(decided_at), _text(row[3]), _text(row[2]), _text(row[1]), decision_id,
+            ),
+        )
+        decision_ids.append(decision_id)
+    return decision_ids
+
+
+def _backfill_expired_no_order_decisions(
+    conn: sqlite3.Connection, *, decision_as_of: str,
+) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT o.outbox_event_id,o.posterior_run_id,o.fact_snapshot_id,o.correlation_id,
+               h.slug,h.event_date,x.observation_to_order_hard_deadline_at
+          FROM posterior_commit_outbox o
+          JOIN posterior_outbox_execution_contracts x
+            ON x.outbox_event_id=o.outbox_event_id AND x.posterior_run_id=o.posterior_run_id
+          JOIN event_fact_history h
+            ON h.posterior_run_id=o.posterior_run_id AND h.fact_snapshot_id=o.fact_snapshot_id
+           AND h.fact_snapshot_id IS NOT NULL AND h.fact_snapshot_id<>''
+         WHERE o.state='dead_letter'
+           AND o.terminal_reason='production_observation_to_order_hard_deadline_expired'
+         ORDER BY o.created_at,o.outbox_event_id
+        """
+    ).fetchall()
+    return _persist_expired_no_order_decisions(
+        conn, rows=rows, decided_at=decision_as_of,
+    )
+
+
+def _outbox_maintenance_needed(
+    conn: sqlite3.Connection, *, decision_as_of: str,
+) -> bool:
+    """Return whether expiry maintenance needs a SQLite writer transaction.
+
+    The resident polls every 50ms.  Taking ``BEGIN IMMEDIATE`` on every idle
+    poll starves the latency-critical canonical writer even when there is
+    nothing to mutate.  Keep the common idle path strictly read-only.
+    """
+
+    row = conn.execute(
+        """
+        SELECT 1
+          FROM posterior_commit_outbox o
+          JOIN posterior_outbox_execution_contracts x
+            ON x.outbox_event_id=o.outbox_event_id AND x.posterior_run_id=o.posterior_run_id
+         WHERE (o.state='pending'
+             OR (o.state='claimed' AND o.lease_until IS NOT NULL AND o.lease_until<=?))
+           AND x.execution_eligible_at_commit=1
+           AND julianday(x.observation_to_order_hard_deadline_at)<julianday(?)
+         LIMIT 1
+        """,
+        (_text(decision_as_of), _text(decision_as_of)),
+    ).fetchone()
+    if row is not None:
+        return True
+    global _last_backfill_audit_monotonic
+    audit_now = time.monotonic()
+    if audit_now - _last_backfill_audit_monotonic < BACKFILL_AUDIT_INTERVAL_SEC:
+        return False
+    _last_backfill_audit_monotonic = audit_now
+
+    # ``auto_trade_decisions`` is large.  Never run a correlated JSON scan on
+    # every 50ms tick; the deterministic decision identity has a unique index,
+    # so point lookups make this O(number of expired outboxes).
+    expired_rows = conn.execute(
+        """
+        SELECT outbox_event_id
+          FROM posterior_commit_outbox
+         WHERE state='dead_letter'
+           AND terminal_reason='production_observation_to_order_hard_deadline_expired'
+        """
+    ).fetchall()
+    for expired in expired_rows:
+        outbox_event_id = _text(expired[0])
+        decision_id = lineage_id_from_parts(
+            "decision_id",
+            {
+                "outbox_event_id": outbox_event_id,
+                "action": "HOLD",
+                "reason_code": "production_observation_to_order_hard_deadline_expired",
+            },
+        )
+        decision = conn.execute(
+            """SELECT details_json FROM auto_trade_decisions
+                WHERE decision_id=? AND decision_id IS NOT NULL AND decision_id<>''""",
+            (decision_id,),
+        ).fetchone()
+        if decision is None:
+            return True
+        try:
+            details = json.loads(_text(decision[0]))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return True
+        if (
+            _text(details.get("outbox_event_id")) != outbox_event_id
+            or details.get("late_execution_forbidden") is not True
+        ):
+            return True
+    return False
+
+
+def _run_outbox_maintenance_if_needed(
+    conn: sqlite3.Connection, *, decision_as_of: str,
+) -> tuple[list[str], list[str]]:
+    if not _outbox_maintenance_needed(conn, decision_as_of=decision_as_of):
+        return [], []
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        terminalized = _terminalize_expired_outbox(conn, decision_as_of=decision_as_of)
+        backfilled = _backfill_expired_no_order_decisions(conn, decision_as_of=decision_as_of)
+        conn.commit()
+        return terminalized, backfilled
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+
+
 def _validated_inputs(outbox: Mapping[str, Any], raw_inputs: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Reject incomplete or cross-posterior inputs before the lease mutation."""
 
     inputs = _mapping(raw_inputs)
     blockers: list[str] = []
+    if inputs.get("ok") is False:
+        blockers.append("production_posterior_outbox_input_provider_blocked")
+        provider_reasons = inputs.get("block_reasons")
+        if isinstance(provider_reasons, (list, tuple)):
+            blockers.extend(_text(reason) for reason in provider_reasons if _text(reason))
+        elif _text(provider_reasons):
+            blockers.append(_text(provider_reasons))
+        return inputs, sorted(set(blockers))
     if _text(inputs.get("slug")) != _text(outbox.get("slug")):
         blockers.append("production_posterior_outbox_slug_mismatch")
     if _text(inputs.get("event_date")) != _text(outbox.get("event_date")):
@@ -174,6 +428,7 @@ def claim_production_posterior_commit_outbox(
                  JOIN event_fact_history h
                    ON h.posterior_run_id=posterior_commit_outbox.posterior_run_id
                   AND h.fact_snapshot_id=posterior_commit_outbox.fact_snapshot_id
+                  AND h.fact_snapshot_id IS NOT NULL AND h.fact_snapshot_id<>''
                  JOIN event_fact_latest l
                    ON l.fact_id=h.id AND l.slug=h.slug AND l.event_date=h.event_date
                 WHERE x.outbox_event_id=posterior_commit_outbox.outbox_event_id
@@ -225,8 +480,36 @@ class ProductionPosteriorCommitOutboxWorker:
             if self._conn.in_transaction:
                 return {"schema": SCHEMA_VERSION, "ok": False, "state": "blocked", "reason": "production_posterior_outbox_outer_transaction_open", "places_orders": False}
             ready = _ready_latest_rows(self._conn, decision_as_of=decision_as_of, limit=max_events)
+            terminalized: list[str] = []
+            backfilled_decisions: list[str] = []
             if not ready:
-                return {"schema": SCHEMA_VERSION, "ok": True, "state": "idle_no_latest_outbox_ready", "outcomes": [], "places_orders": False}
+                try:
+                    terminalized, backfilled_decisions = _run_outbox_maintenance_if_needed(
+                        self._conn, decision_as_of=decision_as_of,
+                    )
+                except Exception:
+                    if self._conn.in_transaction:
+                        self._conn.rollback()
+                    return {
+                        "schema": SCHEMA_VERSION,
+                        "ok": False,
+                        "state": "blocked",
+                        "reason": "production_posterior_outbox_expiry_terminalization_failed",
+                        "places_orders": False,
+                    }
+                # Maintenance may have changed readiness (for example an
+                # expired lease).  Re-read from the durable SSOT.
+                ready = _ready_latest_rows(self._conn, decision_as_of=decision_as_of, limit=max_events)
+            if not ready:
+                return {
+                    "schema": SCHEMA_VERSION,
+                    "ok": True,
+                    "state": "idle_no_latest_outbox_ready",
+                    "outcomes": [],
+                    "terminalized_expired_outbox_event_ids": terminalized,
+                    "backfilled_expired_no_order_decision_ids": backfilled_decisions,
+                    "places_orders": False,
+                }
             outcomes: list[dict[str, Any]] = []
             last_lease_until = ""
             for outbox in ready:
@@ -293,6 +576,8 @@ class ProductionPosteriorCommitOutboxWorker:
                 "state": "dispatched" if all_ok else "partial_or_blocked",
                 "decision_as_of": _text(decision_as_of), "lease_owner": self._lease_owner,
                 "lease_until": last_lease_until, "outcomes": outcomes, "places_orders": False,
+                "terminalized_expired_outbox_event_ids": terminalized,
+                "backfilled_expired_no_order_decision_ids": backfilled_decisions,
                 "boundary": {"dedicated_posterior_outbox_only": True, "generic_task_queue": False,
                              "weather_or_market_acquisition": False, "posterior_recalculation": False,
                              "signer_or_clob": False, "frozen_inputs_before_lease": True,
@@ -303,6 +588,7 @@ class ProductionPosteriorCommitOutboxWorker:
 
 
 __all__ = [
-    "DEFAULT_LEASE_MS", "MAX_LEASE_MS", "REQUIRED_INPUTS", "SCHEMA_VERSION",
+    "DEFAULT_LEASE_MS", "MAX_LEASE_MS", "REQUIRED_AUTO_DECISION_COLUMNS",
+    "REQUIRED_INPUTS", "SCHEMA_VERSION",
     "ProductionPosteriorCommitOutboxWorker", "claim_production_posterior_commit_outbox",
 ]

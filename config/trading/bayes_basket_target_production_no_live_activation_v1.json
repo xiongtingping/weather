@@ -1,0 +1,52 @@
+{
+  "schema": "bayes_basket_target_production_no_live_activation_v1",
+  "state": "production_no_live",
+  "execution_mode": "production_no_live",
+  "strategy_id": "bayes_basket_target_v1",
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "quote_freshness_policy": {
+    "schema": "bayes_basket_quote_freshness_policy_v1",
+    "policy_id": "target-official-ws-60s-no-live-v2",
+    "max_quote_age_seconds": 60.0,
+    "valid_from_utc": "2026-07-01T00:00:00Z",
+    "valid_until_utc": "2027-01-01T00:00:00Z",
+    "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+    "evidence_status": "DESIGN_CANDIDATE",
+    "content_sha256": "4e6c9a76da7c08e7c6102b5669b885290149cf196c756575e298cb0ada644a69"
+  },
+  "target_scope": {
+    "season_bin": "summer",
+    "maturity_bin": "d1",
+    "liquidity_bin": "liquid",
+    "strategy_version": "target-v2"
+  },
+  "target_only": true,
+  "authorizes_order": false,
+  "live_decision_write_authorized": false,
+  "live_order_authorized": false,
+  "live_submit_authorized": false,
+  "production_mutation": false,
+  "places_orders": false,
+  "writes_production_db": false,
+  "calls_order_gateway": false,
+  "network_access": false,
+  "required_inputs": [
+    "strict_asof_current_model_runs",
+    "production_no_live_only_calibration_activations",
+    "exact_available_model_set_ensemble_mask",
+    "materialized_stage_probability_envelope",
+    "materialized_regime_artifact",
+    "official_clob_ws_quote_snapshot",
+    "resolved_station_policy_activation",
+    "confirmed_inventory_snapshot",
+    "production_no_live_order_state_snapshot",
+    "basket_cash_phase_authority_manifest",
+    "content_addressed_quote_freshness_policy"
+  ],
+  "stage_precedence_same_decision_only": ["P1", "P0-M", "P0"],
+  "fallback_policy": "FAIL_CLOSED_NO_STATION_POLICY",
+  "missing_model_policy": "FAIL_CLOSED_NO_P0",
+  "next_consumers": ["reported_trajectory_no_internal_target_worker"],
+  "production_service_count_impact": 0,
+  "activation_contract_sha256": "10780f04761a435cfe9dc67a06d2ed62ec9f6a4abd5b7181ebe885db24355566"
+}

@@ -28,7 +28,7 @@ def _activation() -> dict[str, object]:
         "v5_fallback_forbidden": True,
         "pre_event_predict_does_not_consume_current_observation": True,
         "no_post_emission_state_transition": True,
-        "nwp_hourly_curve_is_transition_control_only": True,
+        "nwp_hourly_curve_not_reapplied_as_independent_likelihood": True,
         "runtime_manifest_sha256": "b" * 64,
         "transition_artifact_sha256": "c" * 64,
         "observation_artifact_sha256": "d" * 64,

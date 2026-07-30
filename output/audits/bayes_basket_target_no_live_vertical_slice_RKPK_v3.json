@@ -1,0 +1,531 @@
+{
+  "calibration_activations": [
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-a7a47de687c0821ec114378aace04a33",
+      "artifact_id": "cal-research-RKPK-GFS-d2-0501d1cdad36",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "f6b88e5f1f4f91abf40ef48b921f2783664fda3cd7f95ebbe469d3a072830a1c",
+      "generation": 4,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-1597c51939bc8a35e25f46851e3f5d0a",
+      "artifact_id": "cal-research-RKPK-ICON-d2-0501d1cdad36",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "f678c30b1a72fb91bb65deb81761ee82f5f090c61a049c2d665529c8d3c1c7e4",
+      "generation": 4,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-ens-037c582b6ff4e500c681e982321dd616",
+      "artifact_id": "ens-18z-d2-RKPK-e81bd76c85fd8b48",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "content_sha256": "487293e99ca5717225d6b636477e28cfdb6f0109cc7da08796a0e53de4e41926",
+      "generation": 4,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    }
+  ],
+  "calibration_artifacts": [
+    {
+      "bias_c": 0.4122903225806453,
+      "calibration_artifact_id": "cal-research-RKPK-GFS-d2-0501d1cdad36",
+      "content_sha256": "3cdbc09ef8bb9071f691b8fa3e9c184494f0eb7828bfb42b6a7e4aaa45e01d32",
+      "effective_sample_n": 23.0,
+      "lead_bucket": "d2",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 2.080150886276623,
+      "run_cycle": "18Z",
+      "sample_n": 23,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-20T15:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": 1.4548387096774198,
+      "calibration_artifact_id": "cal-research-RKPK-ICON-d2-0501d1cdad36",
+      "content_sha256": "c8ffc1f2f887114f8061a0603d8300d829798f4436ee625342c3b2032e52240c",
+      "effective_sample_n": 23.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.6920202573609002,
+      "run_cycle": "18Z",
+      "sample_n": 23,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-20T15:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    }
+  ],
+  "calibration_authority_receipt": {
+    "activation_count": 33,
+    "artifact_count": 22,
+    "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+    "ensemble_count": 11,
+    "evidence_sha256": "14356b0abf8c25c676c08b7babd66fa40d06d7150c8ef774c8b02d55d2d8b08c",
+    "formal_promotion_created": false,
+    "live_order_authorized": false,
+    "oos_evidence_sha256": "43aff1551a0c3b1376a68386c21a53613d23b894592b2c6f3f0080c1f9ddd73e",
+    "rejected_ensemble_scope_count": 0,
+    "schema": "bayes_basket_target_no_live_calibration_authority_v1"
+  },
+  "calibration_promotions": [],
+  "calibration_source_packet_sha256": "f8135f19778e1b647da15f146177f1784a7aba20ee5da0a848bdf18c8d1ac870",
+  "calls_order_gateway": false,
+  "candidate_bundle_sha256": "c709b49c4581bddad80f96d5b9650a1dfe3c3ebca73d028b27bdeec6253131b5",
+  "cash_phase_authority_manifests": [
+    {
+      "artifact_sha256": "b1b41ca2b25d8593fc35a5e6d7f43e96c3f97f92f63f002fa3e33456b6c09775",
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "manifest_sha256": "4e885141f9a1eef76e27bff7e8eec4bf34038a8d6924d67e3c41d033a2259829",
+      "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RKPK",
+      "schema": "basket_cash_phase_authority_manifest_v1",
+      "station_id": "RKPK",
+      "station_timezone": "Asia/Seoul",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "cash_phase_boundary": {
+    "changes_probability": false,
+    "changes_support_set": false,
+    "changes_target_shares": false,
+    "controls_clip_ceiling_only": true,
+    "source_wallet_parameters_used": false
+  },
+  "cash_phase_policies": [
+    {
+      "cash_by_phase": {
+        "STANDARD": 10.77,
+        "TAIL": 0.25
+      },
+      "content_sha256": "b1b41ca2b25d8593fc35a5e6d7f43e96c3f97f92f63f002fa3e33456b6c09775",
+      "evidence_status": "DESIGN_CANDIDATE",
+      "heavy_to_standard_local_time": "19:54",
+      "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RKPK",
+      "promoted": false,
+      "schema": "basket_cash_phase_policy_artifact_v1",
+      "standard_to_tail_local_time": "09:58",
+      "station_id": "RKPK",
+      "station_timezone": "Asia/Seoul",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "ensemble_artifacts": [
+    {
+      "candidate_models": [
+        "GFS",
+        "ICON"
+      ],
+      "content_sha256": "646a41f74742b3cc59e0a64b64620c41a73da564219256e4b6ff78581b4661aa",
+      "correlation_penalty": 0.07082448079591452,
+      "effective_sample_n": 23.0,
+      "ensemble_artifact_id": "ens-18z-d2-RKPK-e81bd76c85fd8b48",
+      "holdout_end_date": "2026-07-26",
+      "holdout_start_date": "2026-07-21",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "oos_metrics": {
+        "brier_score": 0.8849245927778636,
+        "crps": 1.3409141889266039,
+        "nll": 2.3286490385077445
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-20",
+      "recent_start_date": "2026-07-12",
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 5.0494721304347845,
+          "ICON": 2.1892648221343873
+        },
+        "ICON": {
+          "GFS": 2.1892648221343873,
+          "ICON": 3.0761264822134375
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "bac15dc90848ba932026061e2148c3479937c53b37fd28b381183f73e2b096bb",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "supported_masks": {
+        "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+          "GFS": 0.85,
+          "ICON": 0.15
+        }
+      },
+      "train_end_date": "2026-07-20",
+      "train_start_date": "2026-06-28",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2"
+    }
+  ],
+  "ensemble_selection_evidence": [
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 0.8558656311013971,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.0938693615111772,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 21,
+          "nll": 2.1107449792508075,
+          "objective": 1.2217202266765408,
+          "recent_brier_score": 0.826561586997748,
+          "recent_crps": 0.8750488718799037,
+          "recent_n": 9,
+          "recent_nll": 1.9509993636474507,
+          "shrinkage_strength": 0.29906542056074764,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.9095141696475894,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.4766480737302796,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 21,
+          "nll": 2.418440393873676,
+          "objective": 1.4091453368495088,
+          "recent_brier_score": 0.8747549334756165,
+          "recent_crps": 1.1994039962056409,
+          "recent_n": 9,
+          "recent_nll": 2.192820638690798,
+          "shrinkage_strength": 0.29906542056074764,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8573826657778012,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.07082448079591452,
+          "crps": 1.0773882464851572,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 21,
+          "nll": 2.1211007195469764,
+          "objective": 1.2298983909538315,
+          "recent_brier_score": 0.8258655239040089,
+          "recent_crps": 0.8350005328288764,
+          "recent_n": 9,
+          "recent_nll": 1.9548384221084163,
+          "shrinkage_strength": 0.29906542056074764,
+          "weights": {
+            "GFS": 0.85,
+            "ICON": 0.15
+          }
+        }
+      ],
+      "content_sha256": "bac15dc90848ba932026061e2148c3479937c53b37fd28b381183f73e2b096bb",
+      "effective_sample_n": 23.0,
+      "holdout_end_date": "2026-07-26",
+      "holdout_start_date": "2026-07-21",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+      "oos_metrics": {
+        "brier_score": 0.8849245927778636,
+        "crps": 1.3409141889266039,
+        "nll": 2.3286490385077445
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-20",
+      "recent_start_date": "2026-07-12",
+      "residual_correlation": {
+        "GFS": {
+          "GFS": 1.0,
+          "ICON": 0.5554861238895257
+        },
+        "ICON": {
+          "GFS": 0.5554861238895257,
+          "ICON": 1.0
+        }
+      },
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 5.0494721304347845,
+          "ICON": 2.1892648221343873
+        },
+        "ICON": {
+          "GFS": 2.1892648221343873,
+          "ICON": 3.0761264822134375
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selected_weights": {
+        "GFS": 0.85,
+        "ICON": 0.15
+      },
+      "selection_evidence_id": "sel-18z-d2-RKPK-e81bd76c85fd8b48",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKPK",
+      "train_end_date": "2026-07-20",
+      "train_start_date": "2026-06-28"
+    }
+  ],
+  "execution_mode": "production_no_live",
+  "global_priors": [
+    {
+      "content_sha256": "555bd13cd4365d060d1d7a1aeed1c3bf27e05e15d69e79e12829e70c23ec4f96",
+      "default_policy": {
+        "basket_concentration_lambda_usdc": 0.25,
+        "basket_directional_coverage_lambda_usdc": 0.05,
+        "basket_downside_lambda_per_usdc": 0.02,
+        "basket_optimizer_max_iterations": 4000,
+        "basket_optimizer_tolerance": 1e-08,
+        "clip_max_notional_usdc": 3.0,
+        "clip_min_notional_usdc": 1.0,
+        "disagreement_concentration_gain_per_layer": 0.5,
+        "maximum_bucket_budget_fraction": 0.75,
+        "total_budget_usdc": 12.0
+      },
+      "family_parameters": {
+        "cadence": {},
+        "reserve": {},
+        "target": {}
+      },
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "promoted": false,
+      "schema": "global_basket_prior_artifact_v1",
+      "strategy_version": "target-v1",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "live_order_authorized": false,
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "packet_sha256": "91c30974a3e7bd8298607f4ef4b58a69599cd17d79ec4c55b70da688abe8f831",
+  "places_orders": false,
+  "policy_activations": [
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "station-formula-v1-RKPK-activation-no-live-v3",
+      "cadence_artifact_id": "station-formula-v1-RKPK-cadence",
+      "content_sha256": "f268adac50ef97a8cfacba3583c4d04224242726685b89b2f42022864cea44e1",
+      "fallback_families": [],
+      "generation": 4,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": "station-formula-v1-RKPK-reserve",
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": "station-formula-v1-RKPK-target",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-global-fallback-v4-RKPK-P0-d1",
+      "cadence_artifact_id": null,
+      "content_sha256": "5b93bd87b1b478b61cafb823e3691230a0cfe6e43eb0f2b024e246ded1ea5519",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 2,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P0",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-global-fallback-v4-RKPK-P1-d1",
+      "cadence_artifact_id": null,
+      "content_sha256": "eb17f46c3d499d3fa8690e21a3b778d34d65571c36f3b6a01db74d1135277df4",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 2,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P1",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_artifacts": [
+    {
+      "artifact_id": "station-formula-v1-RKPK-target",
+      "content_sha256": "a187557c01e4c6dbf7875e98b34e76a756a9097d1b224a1d5bc9165b450bdca5",
+      "effective_sample_n": 3.0,
+      "family": "target",
+      "kappa": 8.0,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "abs_bucket_offset_from_proxy_c": 0.9064045773962864,
+        "bucket_offset_from_proxy_c": 0.40982284989518625,
+        "edge": 0.4786474851896284,
+        "kelly_fraction": 0.1386981003621672,
+        "model_spread_c": -0.06851961384773578,
+        "proxy_probability": -0.21856580969030295,
+        "reference_price": -0.7054375126872742,
+        "roi_edge": 0.10911448180074239
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "artifact_id": "station-formula-v1-RKPK-reserve",
+      "content_sha256": "67906515a62963a74e046c094229819be653e171cbcf1afeecfb865c7b3b4412",
+      "effective_sample_n": 44.0,
+      "family": "reserve",
+      "kappa": 99.99999999999999,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "price_margin": 0.008444654622123876
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "artifact_id": "station-formula-v1-RKPK-cadence",
+      "content_sha256": "3330a98dc6fa8a9c91baa5b1c7d3c5e6942bd9890bc1cf1d325e5d5ee986a29b",
+      "effective_sample_n": 73.0,
+      "family": "cadence",
+      "kappa": 99.99999999999999,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "RKPK",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "gate_seconds_intercept": 5.7991099495572955
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "policy_promotions": [],
+  "producer_schema": "bayes_basket_target_no_live_candidate_artifacts_v1",
+  "promoted": false,
+  "research_parameter_boundary": {
+    "research_coefficients_promoted": false,
+    "self_owned_baseline_prior": "target-no-live-global-prior-design-v3",
+    "source_candidate_bundle_retained_as_lineage": true,
+    "unsupported_cadence_coefficients_not_executed": true,
+    "unsupported_target_coefficients_not_executed": true
+  },
+  "schema": "bayes_basket_target_artifact_ingress_v1",
+  "station_ids": [
+    "RKPK"
+  ],
+  "vertical_slice": {
+    "batch_expansion_authorized": false,
+    "mode": "single_station_exact_scope",
+    "station_id": "RKPK"
+  }
+}

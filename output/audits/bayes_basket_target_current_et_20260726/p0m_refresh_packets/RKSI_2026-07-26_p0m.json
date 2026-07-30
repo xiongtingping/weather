@@ -1,0 +1,462 @@
+{
+  "bridge_sha256": "f5e02f01f21ea984e70fd59b6e2cb8c403120162eb5d60632d97161071cdbd46",
+  "bucket_intervals": {
+    "23°C or below": [
+      null,
+      23.5
+    ],
+    "24°C": [
+      23.5,
+      24.5
+    ],
+    "25°C": [
+      24.5,
+      25.5
+    ],
+    "26°C": [
+      25.5,
+      26.5
+    ],
+    "27°C": [
+      26.5,
+      27.5
+    ],
+    "28°C": [
+      27.5,
+      28.5
+    ],
+    "29°C": [
+      28.5,
+      29.5
+    ],
+    "30°C": [
+      29.5,
+      30.5
+    ],
+    "31°C": [
+      30.5,
+      31.5
+    ],
+    "32°C": [
+      31.5,
+      32.5
+    ],
+    "33°C or higher": [
+      32.5,
+      null
+    ]
+  },
+  "calibration_activations": [
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-9f33bb080ecc89ee3af221dc16d97111",
+      "artifact_id": "cal-candidate-RKSI-ECMWF-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "704fb12ea270180e04f3b81b644595612f43de56083251ac3f2bc046e5be079a",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-02b3d07514883f6046d136fdc0851843",
+      "artifact_id": "cal-candidate-RKSI-GFS-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "78e2a23bf0f1db7eb00f8e945995fd427876b033ed025ecf6a34a296e3f41e4e",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-ded8299e76c2275473f7869c2f7d0261",
+      "artifact_id": "cal-candidate-RKSI-ICON-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "9ef2883816adba3a5481f0176e183c9e148fa48b44124531c533b7447424c77a",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T12:15:00Z",
+      "activation_id": "no-live-cal-dbb2d4788be38a863284b9330c4a2840",
+      "artifact_id": "cal-candidate-RKSI-ECMWF-summer-b0210b338373",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "0dd4350312228885c90ddf87b44b429163a4b8bf50fa55d456ad63882102740d",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T12:15:00Z",
+      "activation_id": "no-live-cal-d0860ce8e22a5a94c1f9c9055c797c70",
+      "artifact_id": "cal-candidate-RKSI-ICON-summer-b0210b338373",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "df54680fb323b86287fff435ebb27b495d6b12bc37f4eef845982fa05de27c24",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-b8027453ef6c32eca1f799b7111cbe9f",
+      "artifact_id": "cal-candidate-RKSI-ECMWF-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "8c15ad8720225ec3fe9d3565d6029312a447c2e247d8476ce09727931bbfd5d6",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-5ca14e3b96d12d1acaf006b7dc0b4f42",
+      "artifact_id": "cal-candidate-RKSI-GFS-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "685bbd358a56969dc82c6db6e15677e2e780a74f73fc83cb128ffaba86551794",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-9cf951384d14ebe3c66ded5925a62b64",
+      "artifact_id": "cal-candidate-RKSI-ICON-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "08fa5913d9dbcd59223edb9f857b06242deae1709c88eab50856ffc213130fc2",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-ens-c0a16bb5a215c4b2121a86fdd02e5410",
+      "artifact_id": "ens-candidate-RKSI-summer-0aee07eba321",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+      "content_sha256": "629efb4f12b3314d6c3d28966abc568058df18690ff64878270f3626349fd170",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T12:15:00Z",
+      "activation_id": "no-live-ens-7d5b0226c7b57dc68363f035464c3057",
+      "artifact_id": "ens-candidate-RKSI-summer-b0210b338373-755020c6c41b",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "content_sha256": "7bfcfd051d1eb69d8080f0e20634f734611a08c78b83a9bb78cd50d6bc633aa5",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-ens-2cbe7a4730d4f03a47d5a4065d241ba1",
+      "artifact_id": "ens-candidate-RKSI-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+      "content_sha256": "6c7d5aed57afbe11c660cb46dfd78f53b56186f1da0fc2cc6ee85f879d1d6e57",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    }
+  ],
+  "calibration_artifacts": {
+    "ECMWF": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-RKSI-ECMWF-summer-b0210b338373",
+      "content_sha256": "635d82e3c188fb19d8502dc31df9418ed0c1e53b3baf2929075b023467c6019e",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2",
+      "model_id": "ECMWF",
+      "promoted": false,
+      "residual_scale_c": 1.489449850496101,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    },
+    "ICON": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-RKSI-ICON-summer-b0210b338373",
+      "content_sha256": "d8700ddb9203bd9ca65fcc4374f21b35de3b8eff9e2c3b048efaabc04b569452",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.279753045373543,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    }
+  },
+  "climatology_weight": 0.0,
+  "created_at_utc": "2026-07-26T12:56:07Z",
+  "current_model_runs": [
+    {
+      "lead_bucket": "d2",
+      "model_id": "ECMWF",
+      "model_run_id": "current-eb9adc5bd46771334ece6a89b7fbac9d",
+      "published_at_utc": "2026-07-26T00:27:07Z",
+      "raw_tmax_c": 28.464,
+      "received_at_utc": "2026-07-26T11:16:09Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "eb9adc5bd46771334ece6a89b7fbac9d2d88b7b9d787f0acf356afd7b439c9b9",
+      "station_id": "RKSI",
+      "target_local_date": "2026-07-26"
+    },
+    {
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "model_run_id": "current-197213e485ea12009f326dc945eff68a",
+      "published_at_utc": "2026-07-25T20:51:59Z",
+      "raw_tmax_c": 28.488,
+      "received_at_utc": "2026-07-26T11:25:18Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "197213e485ea12009f326dc945eff68a62b1dd926d6430a6b5eb7ab67d62fb75",
+      "station_id": "RKSI",
+      "target_local_date": "2026-07-26"
+    }
+  ],
+  "decision_at_utc": "2026-07-26T12:56:07Z",
+  "diagnostic_calibration_artifacts": {
+    "ECMWF": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-RKSI-ECMWF-summer-b0210b338373",
+      "content_sha256": "635d82e3c188fb19d8502dc31df9418ed0c1e53b3baf2929075b023467c6019e",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2",
+      "model_id": "ECMWF",
+      "promoted": false,
+      "residual_scale_c": 1.489449850496101,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    },
+    "ICON": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-RKSI-ICON-summer-b0210b338373",
+      "content_sha256": "d8700ddb9203bd9ca65fcc4374f21b35de3b8eff9e2c3b048efaabc04b569452",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.279753045373543,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "RKSI",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T12:15:00Z",
+      "valid_until_utc": "2026-08-25T12:15:00Z"
+    }
+  },
+  "diagnostic_model_runs": [
+    {
+      "lead_bucket": "d2",
+      "model_id": "ECMWF",
+      "model_run_id": "current-eb9adc5bd46771334ece6a89b7fbac9d",
+      "published_at_utc": "2026-07-26T00:27:07Z",
+      "raw_tmax_c": 28.464,
+      "received_at_utc": "2026-07-26T11:16:09Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "eb9adc5bd46771334ece6a89b7fbac9d2d88b7b9d787f0acf356afd7b439c9b9",
+      "station_id": "RKSI",
+      "target_local_date": "2026-07-26"
+    },
+    {
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "model_run_id": "current-197213e485ea12009f326dc945eff68a",
+      "published_at_utc": "2026-07-25T20:51:59Z",
+      "raw_tmax_c": 28.488,
+      "received_at_utc": "2026-07-26T11:25:18Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "197213e485ea12009f326dc945eff68a62b1dd926d6430a6b5eb7ab67d62fb75",
+      "station_id": "RKSI",
+      "target_local_date": "2026-07-26"
+    }
+  ],
+  "ensemble_artifact": {
+    "candidate_models": [
+      "ECMWF",
+      "ICON"
+    ],
+    "content_sha256": "1c422dba82f244950c82813b244c17517a834e6f8687f0ce657672d697963942",
+    "correlation_penalty": 0.12842460668269112,
+    "effective_sample_n": 5.4,
+    "ensemble_artifact_id": "ens-candidate-RKSI-summer-b0210b338373-755020c6c41b",
+    "holdout_end_date": "2026-07-24",
+    "holdout_start_date": "2026-07-22",
+    "lead_bucket": "d2",
+    "max_weight_delta": 0.2,
+    "oos_metrics": {
+      "brier_score": 0.9731232809119792,
+      "crps": 1.3757499885687288,
+      "n": 3,
+      "nll": 2.372062139438785
+    },
+    "previous_ensemble_artifact_sha256": null,
+    "promoted": false,
+    "recent_end_date": "2026-07-21",
+    "recent_start_date": "2026-07-19",
+    "residual_covariance": {
+      "ECMWF": {
+        "ECMWF": 2.1869217142857145,
+        "ICON": 0.9158428571428584
+      },
+      "ICON": {
+        "ECMWF": 0.9158428571428584,
+        "ICON": 1.0255357142857153
+      }
+    },
+    "run_cycle": "18Z",
+    "season_bin": "summer",
+    "selection_evidence_sha256": "3cc96c8711a9539d949b499cacc85f57d28fab43864dc370d73b8e806d86b5c2",
+    "settlement_definition": "official_daily_tmax_c",
+    "station_id": "RKSI",
+    "supported_masks": {
+      "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff": {
+        "ECMWF": 0.3,
+        "ICON": 0.7
+      }
+    },
+    "train_end_date": "2026-07-21",
+    "train_start_date": "2026-07-14",
+    "valid_from_utc": "2026-07-26T12:15:00Z",
+    "valid_until_utc": "2026-08-25T12:15:00Z",
+    "weight_method": "rolling_origin_probability_stack_v3_min2"
+  },
+  "event_date": "2026-07-26",
+  "fresh_until_utc": "2026-07-26T13:26:07Z",
+  "stage": "P0-M",
+  "station_id": "RKSI"
+}

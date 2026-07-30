@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 from resolution_bridge_runtime import (
     build_final_resolution_label,
@@ -47,7 +48,8 @@ def test_explicit_kernel_maps_physical_distribution_to_settlement_and_market_buc
         "31°C": 0.6,
         "32°C or higher": 0.0,
     }
-    assert result["settlement_exclusion_certificates"]["32°C or higher"]["state"] == "valid"
+    assert result["settlement_exclusion_certificates"]["32°C or higher"]["state"] == "na"
+    assert result["settlement_exclusion_certificates"]["32°C or higher"]["reason"] == "authority_hard_residual_envelope_not_approved"
 
 
 def test_missing_kernel_or_bucket_coverage_fails_closed() -> None:
@@ -77,7 +79,37 @@ def test_hard_zero_certificate_is_na_until_bridge_is_closed_and_validated() -> N
     assert result["ok"] is True
     certificate = result["settlement_exclusion_certificates"]["31°C"]
     assert certificate["state"] == "na"
-    assert certificate["reason"] == "resolution_bridge_not_closed_or_bucket_not_zero"
+    assert certificate["reason"] == "resolution_bridge_not_closed"
+
+
+def test_hard_certificate_requires_exact_authority_and_physical_full_support_witness() -> None:
+    physical_rows = [[30.0, 0.4], [31.0, 0.6]]
+    physical_support = [30.0, 31.0]
+    canonical = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    sha = lambda value: hashlib.sha256(canonical(value).encode("utf-8")).hexdigest()
+    authority_sha = "d" * 64
+    result = build_resolution_bridge(
+        physical_high_distribution={30.0: 0.4, 31.0: 0.6},
+        resolution_contract=_contract(
+            bridge_artifact_sha256="a" * 64,
+            target_contract_sha256="b" * 64,
+            hard_exclusion_certificates_authorized=True,
+            hard_residual_support_authority_sha256=authority_sha,
+        ),
+        hard_exclusion_context={
+            "posterior_checkpoint_id": "checkpoint-1",
+            "physical_distribution_sha256": sha(physical_rows),
+            "physical_hard_support_c": physical_support,
+            "physical_hard_support_sha256": sha(physical_support),
+            "hard_residual_support_c": [0.0],
+            "hard_residual_support_authority_sha256": authority_sha,
+        },
+    )
+    certificate = result["settlement_exclusion_certificates"]["32°C or higher"]
+    assert certificate["state"] == "valid"
+    assert certificate["full_support_exclusion_verified"] is True
+    assert certificate["settlement_support_witness_c"] == [30.0, 31.0]
+    assert len(certificate["certificate_sha256"]) == 64
 
 
 def test_resolution_contract_cannot_consume_market_or_edge_inputs() -> None:

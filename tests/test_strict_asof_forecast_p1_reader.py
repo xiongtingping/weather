@@ -73,6 +73,23 @@ def test_reader_rehydrates_only_bound_strict_forecast_observations() -> None:
     assert observation["forecast_peak_c"] == 33.0
 
 
+def test_reader_accepts_forward_added_generation_columns_without_weakening_p1() -> None:
+    conn = sqlite3.connect(":memory:")
+    _initialize_source_observations(conn)
+    apply_forward_schema(conn)
+    conn.execute("ALTER TABLE posterior_checkpoints ADD COLUMN future_generation_sha256 TEXT")
+    persist_tier_a_forecast_p1_proposal(conn, _proposal())
+
+    result = load_strict_forecast_p1_source_observations(conn, event_date="2026-07-12")
+
+    assert result["ok"] is True
+    assert result["source_observation_count"] == 1
+    assert result["p1_schema"]["verification_mode"] == "additive_runtime_compatibility"
+    assert result["p1_schema"]["accepted_extension_columns"]["posterior_checkpoints"] == [
+        "future_generation_sha256"
+    ]
+
+
 def test_reader_fails_closed_on_column_json_binding_drift() -> None:
     conn = sqlite3.connect(":memory:")
     _initialize_source_observations(conn)

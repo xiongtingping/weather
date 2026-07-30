@@ -1,0 +1,43 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "native_local_receipt": false,
+    "official_awc_db_population_time_preserved": true,
+    "places_orders": false,
+    "retrospective_replay_only": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "b94b164f471b8df16260db835f1164cda88f3ec9b71959be5bf839db2baba7e3",
+  "decision_at_utc": "2026-07-26T16:00:11Z",
+  "event_date": "2026-07-27",
+  "forecast_revision": {
+    "event_date": "2026-07-27",
+    "issued_at_utc": "2026-07-26T11:00:00Z",
+    "received_at_utc": "2026-07-26T11:05:47Z",
+    "revision_id": "taf-revision-e504f27eb5688ccca25534881e665e6b",
+    "revision_kind": "TAF",
+    "schema": "bayes_basket_forecast_revision_v1",
+    "sequence": 1,
+    "source_object_sha256": "a63ac9e2421d87fa0199228ecbf2af01fba21061c1c48270893a78fea69a0cd3",
+    "station_id": "RKPK",
+    "supersedes_revision_id": null,
+    "valid_from_utc": "2026-07-26T12:00:00Z",
+    "valid_until_utc": "2026-07-27T18:00:00Z"
+  },
+  "provider": "NOAA Aviation Weather Center",
+  "raw_taf": "TAF RKPK 261100Z 2612/2718 18006KT 9999 SCT030 SCT200 TN26/2620Z TX35/2706Z BECMG 2623/2624 18010KT BECMG 2710/2711 18006KT",
+  "raw_taf_sha256": "a63ac9e2421d87fa0199228ecbf2af01fba21061c1c48270893a78fea69a0cd3",
+  "response_bytes": 1563,
+  "response_sha256": "8f8338d989b4d14b50db426adce59f2017b932414e1948695070ec1f498968b5",
+  "schema": "bayes_basket_awc_taf_revision_capture_v1",
+  "settlement_timezone": "Asia/Seoul",
+  "source_class": "official_date_addressed_retrospective_capture",
+  "source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-26T16%3A00%3A11Z",
+  "station_id": "RKPK",
+  "taf_fields": {
+    "cloud_cover_fraction": 0.375,
+    "precipitation_probability": 0.0,
+    "tx_c": 35.0,
+    "wind_speed_mps": 4.687156444444445
+  }
+}

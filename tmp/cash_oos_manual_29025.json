@@ -1,0 +1,62 @@
+{
+  "as_of_utc": "2026-07-27T17:20:00Z",
+  "calls_order_gateway": false,
+  "content_sha256": "cf743e0cd233a7bffef86398f9db54cedd584a893a3df585ddd79f6061018ea5",
+  "design_candidate_mutated": false,
+  "evaluation_window": {
+    "end_utc_exclusive": "2026-07-27T17:20:00Z",
+    "start_utc_inclusive": "2026-07-10T00:00:00Z"
+  },
+  "evidence": null,
+  "input_gaps": [
+    "input_missing:/Users/xiong/weather/output/audits/bayes_basket_target_cash_phase_fault_cases.json",
+    "input_missing:/Users/xiong/weather/output/audits/bayes_basket_target_cash_phase_forward_observations.json",
+    "input_missing:/Users/xiong/weather/output/audits/bayes_basket_target_cash_phase_training_cutoffs.json"
+  ],
+  "input_paths": {
+    "fault_cases": "/Users/xiong/weather/output/audits/bayes_basket_target_cash_phase_fault_cases.json",
+    "observations": "/Users/xiong/weather/output/audits/bayes_basket_target_cash_phase_forward_observations.json",
+    "policies": "/Users/xiong/weather/output/audits/bayes_basket_target_kst_recalibration_20260727/no_live_candidate_artifacts_RKPK_20260727.json",
+    "registry": "/Users/xiong/weather/data/bayes_basket_target_market_registry_snapshot_boundary_fixed.json",
+    "training_cutoffs": "/Users/xiong/weather/output/audits/bayes_basket_target_cash_phase_training_cutoffs.json"
+  },
+  "live_order_authorized": false,
+  "orders_submitted": 0,
+  "required_station_count": 45,
+  "rkpk": {
+    "design_candidate_policy_count": 1,
+    "minimum_unique_events_per_phase": 30,
+    "missing_requirements": [
+      "fault_case_missing:duplicate_conflict_rejected",
+      "fault_case_missing:future_label_excluded",
+      "fault_case_missing:half_open_end_excluded",
+      "fault_case_missing:half_open_start_included",
+      "fault_case_missing:phase_rewind_rejected",
+      "fault_case_missing:timezone_mismatch_rejected",
+      "forward_realized_observations_missing",
+      "phase_heavy_unique_event_deficit:30",
+      "phase_standard_unique_event_deficit:30",
+      "phase_tail_unique_event_deficit:30",
+      "policy_training_cutoff_missing",
+      "price_coverage_deficit:90",
+      "settled_attribution_deficit:90"
+    ],
+    "observation_count": 0,
+    "phase_observation_counts": {
+      "HEAVY": 0,
+      "STANDARD": 0,
+      "TAIL": 0
+    },
+    "price_coverage_count": 0,
+    "registry_timezones": [
+      "Asia/Seoul"
+    ],
+    "settled_attribution_count": 0,
+    "station_id": "RKPK",
+    "status": "NA"
+  },
+  "schema": "bayes_basket_target_cash_phase_oos_evidence_v1",
+  "status": "NA",
+  "writes_authority": false,
+  "writes_production_db": false
+}

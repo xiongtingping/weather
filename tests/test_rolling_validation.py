@@ -131,7 +131,7 @@ class RollingValidationTest(unittest.TestCase):
 
     def test_launchd_snapshot_checks_system_monitor_daemon(self) -> None:
         def fake_run(args, **kwargs):
-            self.assertEqual(args, ["launchctl", "print", "system/com.weather.monitor.daemon"])
+            self.assertEqual(args, ["launchctl", "print", rolling_validation.MONITOR_DAEMON_DOMAIN_LABEL])
             return SimpleNamespace(
                 returncode=0,
                 stdout="state = running\npid = 508\n",
@@ -148,7 +148,7 @@ class RollingValidationTest(unittest.TestCase):
                         "ProgramArguments": [
                             "/bin/zsh",
                             "-lc",
-                            f"exec {rolling_validation.ROOT}/scripts/polymarket_monitor_daemon.sh",
+                            f"{rolling_validation.ROOT}/scripts/weather_monitor_launchagent_entrypoint.sh",
                         ],
                     },
                     handle,
@@ -164,13 +164,13 @@ class RollingValidationTest(unittest.TestCase):
         self.assertEqual(payload["warnings"], [])
         self.assertEqual(payload["missing_labels"], [])
         self.assertEqual(
-            payload["labels"]["system/com.weather.monitor.daemon"]["status"],
+            payload["labels"][rolling_validation.MONITOR_DAEMON_DOMAIN_LABEL]["status"],
             "running",
         )
 
     def test_launchd_snapshot_reports_monitor_plist_drift(self) -> None:
         def fake_run(args, **kwargs):
-            self.assertEqual(args, ["launchctl", "print", "system/com.weather.monitor.daemon"])
+            self.assertEqual(args, ["launchctl", "print", rolling_validation.MONITOR_DAEMON_DOMAIN_LABEL])
             return SimpleNamespace(returncode=113, stdout="", stderr="missing")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -192,7 +192,7 @@ class RollingValidationTest(unittest.TestCase):
                 payload = rolling_validation._launchd_snapshot()
 
         self.assertFalse(payload["ok"])
-        self.assertIn("system/com.weather.monitor.daemon", payload["missing_labels"])
+        self.assertIn(rolling_validation.MONITOR_DAEMON_DOMAIN_LABEL, payload["missing_labels"])
         self.assertIn("monitor_plist_root_drift", payload["warnings"])
         self.assertIn("monitor_plist_program_drift", payload["warnings"])
         self.assertIn("install_monitor_launchdaemon.sh", payload["repair_command"])

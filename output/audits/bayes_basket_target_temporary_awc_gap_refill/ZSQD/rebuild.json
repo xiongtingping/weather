@@ -1,0 +1,398 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-06-28",
+      "purpose": "reference_only",
+      "reason": "fetch:RuntimeError:awc_official_response_invalid_json",
+      "source_lane": "awc",
+      "stations": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "purpose": "reference_only",
+      "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+      "source_lane": "awc",
+      "stations": "ZSQD"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-06-28",
+    "2026-06-29",
+    "2026-06-30",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-06-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-28T16:00:00Z",
+      "target_day_start_utc": "2026-06-27T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-06-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-29T16:00:00Z",
+      "target_day_start_utc": "2026-06-28T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-06-30",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-30T16:00:00Z",
+      "target_day_start_utc": "2026-06-29T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-02T16:00:00Z",
+      "target_day_start_utc": "2026-07-01T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-03T16:00:00Z",
+      "target_day_start_utc": "2026-07-02T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-05T16:00:00Z",
+      "target_day_start_utc": "2026-07-04T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-06T16:00:00Z",
+      "target_day_start_utc": "2026-07-05T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-07T16:00:00Z",
+      "target_day_start_utc": "2026-07-06T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-08T16:00:00Z",
+      "target_day_start_utc": "2026-07-07T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-09T16:00:00Z",
+      "target_day_start_utc": "2026-07-08T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-10T16:00:00Z",
+      "target_day_start_utc": "2026-07-09T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-11T16:00:00Z",
+      "target_day_start_utc": "2026-07-10T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-12T16:00:00Z",
+      "target_day_start_utc": "2026-07-11T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "as_of_utc": "2026-07-29T11:07:43Z",
+      "event_date": "2026-07-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-13T16:00:00Z",
+      "target_day_start_utc": "2026-07-12T16:00:00Z",
+      "target_timezone": "Asia/Shanghai"
+    }
+  ],
+  "evidence_sha256": "dddb28e24292e342739f5c164471f11aeb999240121951dda24f2b464735c99e",
+  "fetch_receipts": [
+    {
+      "purpose": "reference_only",
+      "queries": [
+        {
+          "blocked": true,
+          "event_date": "2026-06-28",
+          "reason": "fetch:RuntimeError:awc_official_response_invalid_json",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260628_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-06-29",
+          "response_sha256": "569e1bc71d7c3afec115e72247bed8b9e729573a3544a8ae79b1190c7f5bc553",
+          "returned_rows": 10,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260629_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-06-30",
+          "response_sha256": "60917489c817ee2d8ed8ebf3ce9f092bda010c20df95b3f3de1e9c5ab8b98bb7",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260630_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-02",
+          "response_sha256": "d563ea74c62f54e0f309a72f21670de1d5ab61bc9c142d4ef330bea8942d3d2e",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260702_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-03",
+          "response_sha256": "917bbd3e746ecedf34896f7f78c37627c591066c378c1e9d10958b9d53a1d133",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260703_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-05",
+          "response_sha256": "94c4656834216cc02722936e7d4adadd67840ea8e6309cd02cb6e82545264dc7",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260705_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "blocked": true,
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260706_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-07",
+          "response_sha256": "d30e46c8dac5e1e4b68800d94277b55247a2afa0d7c167faf957d1d0a242b42a",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260707_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-08",
+          "response_sha256": "9747eb3fd1c8b4e20b547d479ee5b40a5796d6a443c0b5096c780d202ce72d13",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260708_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-09",
+          "response_sha256": "b1ed67e5160d4f3423bb45ba2348981d4e963f1105380745ad3af8177c06502e",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260709_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-10",
+          "response_sha256": "266ded32c92c7e8309322a71af761bd175174c28aa55412e67098704e15e6d1d",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260710_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-11",
+          "response_sha256": "9492a5259ef2bb7536baf26ef7feadcd22e2fa6afd6bebcc8f44f76fad1d584d",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260711_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-12",
+          "response_sha256": "092b81c44dcff5dad9bf0fdbc2d9d31041e508851af828907ea7063a9084fa98",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260712_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        },
+        {
+          "event_date": "2026-07-13",
+          "response_sha256": "59355e1a8bfaaeacd82af2aa8987e0355b83823f87e6638b32835eda21edb8db",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=ZSQD&format=json&date=20260713_1600&hours=24",
+          "stations": [
+            "ZSQD"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-06-28",
+          "reason": "fetch:RuntimeError:awc_official_response_invalid_json",
+          "stations": "ZSQD"
+        },
+        {
+          "event_date": "2026-07-06",
+          "reason": "fetch:RuntimeError:awc_official_fetch_failed_rc_28",
+          "stations": "ZSQD"
+        }
+      ],
+      "query_count": 14,
+      "reference_only": true,
+      "returned": 273,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "proxy_or_direct_dns",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": false,
+        "connect_to": [],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-29T11:07:43Z",
+  "observation_count": 0,
+  "observation_evidence_path": null,
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/temporary_awc_gap_refill",
+  "receipt_sha256": "ca011922230deee31796e01dec23ffdc7cd171ad720a3725d8900e7c8db7b600",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_temporary_awc_gap_refill/ZSQD/references.json",
+  "reference_observation_count": 273,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 273
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 0
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 0,
+  "station_day_keys": [],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "Asia/Shanghai"
+}

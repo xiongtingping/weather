@@ -2,11 +2,27 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MONITOR_LAUNCH_DOMAIN="${PM_MONITOR_LAUNCH_DOMAIN:-system/com.weather.monitor.daemon}"
+USER_DOMAIN_MIGRATION_SENTINEL="$ROOT/data/monitor_user_domain_migration.enabled"
+if [ "$MONITOR_LAUNCH_DOMAIN" = "system/com.weather.monitor.daemon" ] \
+  && [ -f "$USER_DOMAIN_MIGRATION_SENTINEL" ]; then
+  printf '[polymarket-monitor] retired system-domain image refused by %s at %s\n' \
+    "$USER_DOMAIN_MIGRATION_SENTINEL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    >> "$ROOT/data/logs/monitor_domain_migration.log"
+  exit 0
+fi
 LIVE_PAUSE_FILE="${PM_LIVE_PAUSE_FILE:-$ROOT/data/live_paused.flag}"
 if [ -f "$LIVE_PAUSE_FILE" ]; then
   mkdir -p "$ROOT/data/logs"
   printf '[polymarket-monitor] live paused by %s at %s\n' "$LIVE_PAUSE_FILE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$ROOT/data/logs/live_pause.log"
-  exec sleep "${PM_LIVE_PAUSE_SLEEP_SEC:-86400}"
+  # Stay owned by launchd while paused, but do not turn a short maintenance
+  # window into an uninterruptible day-long outage.  Once the linearization
+  # point removes the pause file, restart this same process image and resume
+  # all monitor children without requiring a second privileged reload.
+  while [ -f "$LIVE_PAUSE_FILE" ]; do
+    sleep "${PM_LIVE_PAUSE_POLL_SEC:-1}"
+  done
+  exec "$0" "$@"
 fi
 
 if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
@@ -54,18 +70,54 @@ P10_MONITOR_RUNTIME_STATUS_PATH="${PM_P10_MONITOR_RUNTIME_STATUS_PATH:-$ROOT/dat
 P10_MONITOR_RUNTIME_GENERATION="ssot_probability_mainline_v1"
 RESOLUTION_FINAL_SHADOW_CAPTURE_ENABLED="${PM_RESOLUTION_FINAL_SHADOW_CAPTURE_ENABLED:-1}"
 RESOLUTION_FINAL_SHADOW_CAPTURE_INTERVAL="${PM_RESOLUTION_FINAL_SHADOW_CAPTURE_INTERVAL_SEC:-300}"
+V6_MARKET_CONTEXT_REFRESH_ENABLED="${PM_V6_MARKET_CONTEXT_REFRESH_ENABLED:-1}"
 STATION_DAY_WEAK_PHYSICAL_MATERIALIZATION_ENABLED="${PM_STATION_DAY_WEAK_PHYSICAL_MATERIALIZATION_ENABLED:-1}"
 JOINT_WEAK_BIAS_RESEARCH_PIPELINE_ENABLED="${PM_JOINT_WEAK_BIAS_RESEARCH_PIPELINE_ENABLED:-1}"
+SETTLEMENT_INTERVAL_CANDIDATE_REFRESH_ENABLED="${PM_SETTLEMENT_INTERVAL_CANDIDATE_REFRESH_ENABLED:-1}"
 STATION_DAY_STRONG_PHYSICAL_MATERIALIZATION_ENABLED="${PM_STATION_DAY_STRONG_PHYSICAL_MATERIALIZATION_ENABLED:-1}"
 OFFICIAL_NWP_CURVE_COLLECTION_ENABLED="${PM_OFFICIAL_NWP_CURVE_COLLECTION_ENABLED:-0}"
 OFFICIAL_NWP_CURVE_COLLECTION_INTERVAL="${PM_OFFICIAL_NWP_CURVE_COLLECTION_INTERVAL_SEC:-3600}"
 OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED="${PM_OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED:-0}"
+WEAK_REVISION_CONSUMER_ENABLED="${PM_WEAK_REVISION_CONSUMER_ENABLED:-0}"
+WEAK_REVISION_CONSUMER_INTERVAL="${PM_WEAK_REVISION_CONSUMER_INTERVAL_SEC:-15}"
 OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_ENABLED="${PM_OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_ENABLED:-0}"
 OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_INTERVAL="${PM_OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_INTERVAL_SEC:-900}"
 WATCHER_INTERVAL="${PM_WATCH_INTERVAL_SEC:-10}"
 WATCHER_SMS_ENABLED="${PM_AUTO_TRADE_WATCHER_SMS_ENABLED:-1}"
 ANOMALY_INTERVAL="${PM_CHENGDU_ANOMALY_INTERVAL_SEC:-300}"
 CHILD_CHECK_INTERVAL="${PM_MONITOR_CHILD_CHECK_INTERVAL_SEC:-5}"
+
+# reported_trajectory_no is the sole production successor.  This override is
+# intentionally evaluated after .env and launchd variables so a stale Bayes,
+# hard-source, NWP, or ZUUU setting cannot silently resurrect an old writer.
+# The archive WAL keeper remains read-only and independent of trading logic.
+REPORTED_TRAJECTORY_NO_SUCCESSOR_ACTIVE="${PM_REPORTED_TRAJECTORY_NO_SUCCESSOR_ACTIVE:-0}"
+if [ "$REPORTED_TRAJECTORY_NO_SUCCESSOR_ACTIVE" = "1" ]; then
+  WATCHER_ENABLED=0
+  ANOMALY_ENABLED=0
+  HARD_SOURCE_DIRECT_ENABLED=0
+  AMSC_ZUUU_POLL_ENABLED=0
+  AMSC_ZUUU_SPECI_WATCH_ENABLED=0
+  AMSC_ZUUU_SPECI_PRODUCTION_PROBABILITY_INGRESS_ENABLED=0
+  AMSC_P10_SHADOW_SOURCE_ENABLED=0
+  AMSC_P10_RESIDENT_CONSUMER_ENABLED=0
+  P10_NEXT_DAY_PREPARATION_ENABLED=0
+  RESOLUTION_FINAL_SHADOW_CAPTURE_ENABLED=0
+  V6_MARKET_CONTEXT_REFRESH_ENABLED=0
+  STATION_DAY_WEAK_PHYSICAL_MATERIALIZATION_ENABLED=0
+  JOINT_WEAK_BIAS_RESEARCH_PIPELINE_ENABLED=0
+  SETTLEMENT_INTERVAL_CANDIDATE_REFRESH_ENABLED=0
+  STATION_DAY_STRONG_PHYSICAL_MATERIALIZATION_ENABLED=0
+  OFFICIAL_NWP_CURVE_COLLECTION_ENABLED=0
+  OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED=0
+  WEAK_REVISION_CONSUMER_ENABLED=0
+  OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_ENABLED=0
+  export FORECAST_SOURCE_FORWARD_ARCHIVE_ENABLED=0
+  export AMSC_ZUUU_PRODUCTION_PROBABILITY_UPDATE_ENABLED=0
+  export AMSC_ZUUU_APPLY=0
+  export AMSC_ZUUU_KICK_TASK_QUEUE=0
+  export PM_AWC_FACT_REFRESH_RECENT_WINDOW_ENABLED=0
+fi
 ONCE=0
 NO_WATCHER=0
 
@@ -104,6 +156,8 @@ RESOLUTION_FINAL_SHADOW_CAPTURE_PID=""
 RESOLUTION_FINAL_SHADOW_CAPTURE_LAST_START_EPOCH=0
 OFFICIAL_NWP_CURVE_COLLECTION_PID=""
 OFFICIAL_NWP_CURVE_COLLECTION_LAST_START_EPOCH=0
+WEAK_REVISION_CONSUMER_PID=""
+WEAK_REVISION_CONSUMER_LAST_START_EPOCH=0
 OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_PID=""
 OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_LAST_START_EPOCH=0
 
@@ -126,7 +180,7 @@ payload = {
     "state": sys.argv[3],
     "monitor_pid": int(sys.argv[4]),
     "observed_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-    "monitor_domain": "system/com.weather.monitor.daemon",
+    "monitor_domain": os.environ.get("PM_MONITOR_LAUNCH_DOMAIN", "unknown"),
     "resident_consumer_managed": True,
     "next_day_preparation_managed": True,
     "shadow_only": True,
@@ -596,9 +650,29 @@ start_resolution_final_shadow_capture() {
       fi
     fi
     run_resolution_capture_stage target_rule capture_target_rule_shadow.py CAPTURE_FORWARD_TARGET_RULES
+    if [ "$V6_MARKET_CONTEXT_REFRESH_ENABLED" = "1" ]; then
+      event_date="$(TZ=Asia/Shanghai date +%F)"
+      log "v6_market_context_refresh event_date=${event_date} start"
+      if nice -n 10 "$PY" "$ROOT/scripts/refresh_active_v6_market_context.py" \
+        --event-date "$event_date" --apply; then
+        log "v6_market_context_refresh event_date=${event_date} complete"
+      else
+        rc="$?"
+        log "v6_market_context_refresh event_date=${event_date} failed_nonblocking exit=${rc}"
+      fi
+    fi
     run_resolution_capture_stage market_finality capture_market_finality_shadow.py CAPTURE_FORWARD_MARKET_FINALITY
     run_resolution_capture_stage settlement_s capture_settlement_final_source_shadow.py CAPTURE_FORWARD_SETTLEMENT_SOURCE
     run_resolution_capture_stage observed_x_s_pair capture_resolution_observed_x_s_pairs_shadow.py CAPTURE_FORWARD_OBSERVED_X_S_PAIR
+    if [ "$SETTLEMENT_INTERVAL_CANDIDATE_REFRESH_ENABLED" = "1" ]; then
+      log "resolution_final_shadow_capture stage=settlement_interval_candidate start"
+      if nice -n 10 "$PY" "$ROOT/scripts/build_joint_weak_settlement_interval_candidate.py" --write; then
+        log "resolution_final_shadow_capture stage=settlement_interval_candidate complete"
+      else
+        rc="$?"
+        log "resolution_final_shadow_capture stage=settlement_interval_candidate failed_nonblocking exit=${rc}"
+      fi
+    fi
   ) >> "$ROOT/data/logs/resolution_final_shadow_capture.out.log" \
     2>> "$ROOT/data/logs/resolution_final_shadow_capture.err.log" &
   RESOLUTION_FINAL_SHADOW_CAPTURE_PID="$!"
@@ -623,13 +697,71 @@ start_official_nwp_curve_collection() {
   log "starting official_nwp_daily_curve_monitor_job interval=${interval}s isolated_curve_root=1 p1_ingress=${OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED}"
   (
     "$PY" "$ROOT/scripts/run_official_nwp_daily_curve_monitor_job.py" --execute || true
-    if [ "$OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED" = "1" ]; then
-      "$PY" "$ROOT/scripts/materialize_official_nwp_daily_peak_p1_ingress.py" \
-        --apply --confirm MATERIALIZE_OFFICIAL_NWP_DAILY_PEAK_P1 || true
-    fi
+    "$PY" "$ROOT/scripts/capture_current_forecast_source_forward.py" \
+      --day-offset 1 \
+      --independent-only \
+      --output "$ROOT/data/research/forecast_source_skill/forward/d1_capture_latest.json" \
+      --allow-research-write || true
   ) >> "$ROOT/data/logs/official_nwp_daily_curve_monitor.out.log" \
     2>> "$ROOT/data/logs/official_nwp_daily_curve_monitor.err.log" &
   OFFICIAL_NWP_CURVE_COLLECTION_PID="$!"
+}
+
+run_weak_revision_consumer_once() {
+  local rc p1_rc apply_rc
+  p1_rc=0
+  apply_rc=0
+  # Completed provider files may appear while the full three-provider capture
+  # is still running.  Promote strict-as-of P1 first, then consume the now
+  # visible TAF/NWP/independent revisions into one v6 replacement checkpoint.
+  if [ "$OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED" = "1" ]; then
+    if "$PY" "$ROOT/scripts/materialize_official_nwp_daily_peak_p1_ingress.py" \
+      --apply --confirm MATERIALIZE_OFFICIAL_NWP_DAILY_PEAK_P1 --summary; then
+      :
+    else
+      rc="$?"
+      log "weak_revision_consumer p1_materialize_failed exit=${rc}"
+      p1_rc="$rc"
+    fi
+  fi
+  if "$PY" "$ROOT/scripts/apply_current_weak_source_revisions_v6.py" --day-offset 1; then
+    :
+  else
+    rc="$?"
+    log "weak_revision_consumer checkpoint_apply_failed exit=${rc}"
+    apply_rc="$rc"
+  fi
+  if [ "$apply_rc" -ne 0 ]; then
+    return "$apply_rc"
+  fi
+  if [ "$p1_rc" -ne 0 ]; then
+    return "$p1_rc"
+  fi
+  log "weak_revision_consumer complete"
+}
+
+start_weak_revision_consumer() {
+  if [ "$WEAK_REVISION_CONSUMER_ENABLED" != "1" ]; then
+    return 0
+  fi
+  if [ -n "${WEAK_REVISION_CONSUMER_PID:-}" ] \
+    && kill -0 "$WEAK_REVISION_CONSUMER_PID" 2>/dev/null; then
+    return 0
+  fi
+  local now interval elapsed
+  now="$(date +%s)"
+  interval="$(positive_int_arg "$WEAK_REVISION_CONSUMER_INTERVAL" 15)"
+  elapsed="$((now - WEAK_REVISION_CONSUMER_LAST_START_EPOCH))"
+  if [ "$WEAK_REVISION_CONSUMER_LAST_START_EPOCH" -gt 0 ] && [ "$elapsed" -lt "$interval" ]; then
+    return 0
+  fi
+  WEAK_REVISION_CONSUMER_LAST_START_EPOCH="$now"
+  log "starting weak_revision_consumer interval=${interval}s p1_ingress=${OFFICIAL_NWP_DAILY_PEAK_P1_INGRESS_ENABLED}"
+  (
+    run_weak_revision_consumer_once
+  ) >> "$ROOT/data/logs/weak_revision_consumer.out.log" \
+    2>> "$ROOT/data/logs/weak_revision_consumer.err.log" &
+  WEAK_REVISION_CONSUMER_PID="$!"
 }
 
 start_official_nwp_live_snapshot_collection() {
@@ -671,6 +803,7 @@ sleep_with_child_supervision() {
     start_p10_next_day_preparation
     start_resolution_final_shadow_capture
     start_official_nwp_curve_collection
+    start_weak_revision_consumer
     start_official_nwp_live_snapshot_collection
     now="$(date +%s)"
     if [ "$now" -ge "$deadline" ]; then
@@ -724,6 +857,10 @@ cleanup() {
     kill "$OFFICIAL_NWP_CURVE_COLLECTION_PID" 2>/dev/null || true
     wait "$OFFICIAL_NWP_CURVE_COLLECTION_PID" 2>/dev/null || true
   fi
+  if [ -n "${WEAK_REVISION_CONSUMER_PID:-}" ] && kill -0 "$WEAK_REVISION_CONSUMER_PID" 2>/dev/null; then
+    kill "$WEAK_REVISION_CONSUMER_PID" 2>/dev/null || true
+    wait "$WEAK_REVISION_CONSUMER_PID" 2>/dev/null || true
+  fi
   if [ -n "${OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_PID:-}" ] && kill -0 "$OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_PID" 2>/dev/null; then
     kill "$OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_PID" 2>/dev/null || true
     wait "$OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_PID" 2>/dev/null || true
@@ -759,6 +896,14 @@ if [ "$ONCE" = "1" ]; then
   start_p10_next_day_preparation
   if [ "$OFFICIAL_NWP_CURVE_COLLECTION_ENABLED" = "1" ]; then
     "$PY" "$ROOT/scripts/run_official_nwp_daily_curve_monitor_job.py" --execute || true
+    "$PY" "$ROOT/scripts/capture_current_forecast_source_forward.py" \
+      --day-offset 1 \
+      --independent-only \
+      --output "$ROOT/data/research/forecast_source_skill/forward/d1_capture_latest.json" \
+      --allow-research-write || true
+  fi
+  if [ "$WEAK_REVISION_CONSUMER_ENABLED" = "1" ]; then
+    run_weak_revision_consumer_once || true
   fi
   if [ "$OFFICIAL_NWP_LIVE_SNAPSHOT_COLLECTION_ENABLED" = "1" ]; then
     "$PY" "$ROOT/scripts/run_official_nwp_live_snapshot_monitor_job.py" --execute || true
@@ -767,7 +912,7 @@ if [ "$ONCE" = "1" ]; then
   exit 0
 fi
 
-log "daemon_loop_start anomaly_interval=${ANOMALY_INTERVAL} watcher_enabled=${WATCHER_ENABLED} anomaly_enabled=${ANOMALY_ENABLED} hard_source_direct_enabled=${HARD_SOURCE_DIRECT_ENABLED} archive_wal_keeper_enabled=${ARCHIVE_WAL_KEEPER_ENABLED}"
+log "daemon_loop_start successor_active=${REPORTED_TRAJECTORY_NO_SUCCESSOR_ACTIVE} anomaly_interval=${ANOMALY_INTERVAL} watcher_enabled=${WATCHER_ENABLED} anomaly_enabled=${ANOMALY_ENABLED} hard_source_direct_enabled=${HARD_SOURCE_DIRECT_ENABLED} archive_wal_keeper_enabled=${ARCHIVE_WAL_KEEPER_ENABLED}"
 write_p10_monitor_runtime_status "running"
 while true; do
   start_watcher
@@ -780,6 +925,7 @@ while true; do
   start_p10_next_day_preparation
   start_resolution_final_shadow_capture
   start_official_nwp_curve_collection
+  start_weak_revision_consumer
   start_official_nwp_live_snapshot_collection
   if run_chengdu_anomaly; then
     :

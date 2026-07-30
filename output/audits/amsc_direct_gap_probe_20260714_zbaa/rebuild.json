@@ -1,0 +1,88 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-14",
+      "reason": "fetch:RuntimeError",
+      "source_lane": "amsc",
+      "station_id": "ZBAA"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-14"
+  ],
+  "evidence_sha256": "75e93eca1d3049166c21fa46baa6d0a1a86d06099e4b1ef63ee7415c4c776f51",
+  "fetch_receipts": [],
+  "generated_at_utc": "2026-07-25T16:37:59Z",
+  "observation_count": 0,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/amsc_direct_gap_probe_20260714_zbaa/observations.json",
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "a2e31ab3ea3a6ad0726c0cd2ae1f22bc110e0b2688eb568d2cac91aea6d305af",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/amsc_direct_gap_probe_20260714_zbaa/reference.json",
+  "reference_observation_count": 24,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 24
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 0
+  },
+  "station_day_count": 0,
+  "station_day_keys": [],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/New_York"
+}

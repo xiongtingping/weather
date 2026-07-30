@@ -32,14 +32,14 @@ RUNTIME_ROOTS = (
     "production_probability_v6_event_runtime.py",
     "production_probability_v6_canonical_event_drain_runtime.py",
     "production_probability_v6_amsc_archive_ingress.py",
-    "scripts/apply_amsc_probability_fast_lane_v6_from_plan.py",
+    "identifiable_physical_probability_worker.py",
+    "prospective_physical_evidence_capture.py",
+    "config/identifiable_physical_evidence_capture.json",
     "production_probability_v6_public_ssot_writer.py",
     "production_probability_v6_weak_revision_runtime.py",
     "production_probability_v6_weak_revision_writer.py",
     "production_probability_v6_weak_revision_event_runtime.py",
-    "scripts/apply_amsc_taf_forecast_revision_v6_from_plan.py",
     "production_probability_v6_live_route_contract.py",
-    "scripts/prepare_next_day_production_probability_v6.py",
 )
 RETIRED_V5_RUNTIME_FILES = frozenset(
     {

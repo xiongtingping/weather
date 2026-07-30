@@ -1,0 +1,82 @@
+{
+  "blocked_count": 5,
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "formal_probability_input_role_eligible": true,
+    "live_order_authorized": false,
+    "live_submit_authorized": false,
+    "p0_consumption_before_event": true,
+    "p0_probability_input_eligible_now": true,
+    "p1_consumption_before_event": false,
+    "p1_probability_input_eligible_now": false,
+    "places_orders": false,
+    "prospective_only": true,
+    "raw_capture_may_precede_event": true,
+    "target_only": true,
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "captured_or_reused_count": 0,
+  "expected_capture_count": 5,
+  "fanout": null,
+  "plan_sha256": "d1144328e490c500aa20ead7fc23824bc66180519818bd8aa1b320c0c85a406e",
+  "receipt_sha256": "68a95bbd75f64657f74b3843190d122b6ec7646f7f6bf473800ab48b5d162a44",
+  "records": [
+    {
+      "forecast_hour": 30,
+      "reason_codes": [
+        "HTTPError:HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-27T06:00:00Z"
+    },
+    {
+      "forecast_hour": 36,
+      "reason_codes": [
+        "HTTPError:HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-27T12:00:00Z"
+    },
+    {
+      "forecast_hour": 42,
+      "reason_codes": [
+        "HTTPError:HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-27T18:00:00Z"
+    },
+    {
+      "forecast_hour": 48,
+      "reason_codes": [
+        "HTTPError:HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-28T00:00:00Z"
+    },
+    {
+      "forecast_hour": 51,
+      "reason_codes": [
+        "HTTPError:HTTP Error 404: Not Found"
+      ],
+      "status": "BLOCKED",
+      "transport_receipt_path": null,
+      "valid_time_utc": "2026-07-28T03:00:00Z"
+    }
+  ],
+  "resource_budget": {
+    "max_capture_bytes": 268435456,
+    "max_process_rss_bytes": 536870912,
+    "max_raw_bytes": 1073741824,
+    "max_response_bytes": 67108864,
+    "min_free_bytes": 536870912
+  },
+  "run_initialization_utc": "2026-07-26T00:00:00Z",
+  "schema": "bayes_basket_target_ecmwf_same_run_capture_v1",
+  "target_local_date": "2026-07-27"
+}

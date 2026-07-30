@@ -1,0 +1,93 @@
+{
+  "authority_id": "bayes-basket-target-architecture-v1",
+  "boundary": {
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "read_only": true,
+    "reads_shared_live_db": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "authority_pair_consistent": true,
+    "exactly_one_current_logical_authority": true,
+    "execution_mode_no_live": true,
+    "gateway_disabled": true,
+    "live_submit_disabled": true,
+    "manifest_schema_valid": true,
+    "roadmap_consistent": true,
+    "subordinate_contracts_safe": true
+  },
+  "current_authority_count": 1,
+  "documents": [
+    {
+      "checks": {
+        "json_present": true,
+        "json_status_matches": true,
+        "json_version_matches": true,
+        "machine_forbids_p0f": true,
+        "machine_live_order_disabled": true,
+        "machine_p0_is_nwp_model_stage": true,
+        "machine_p0m_is_atomic_taf_physical_confirmation": true,
+        "machine_p1_is_metar_speci_stage": true,
+        "machine_probability_stages_exact": true,
+        "markdown_present": true,
+        "markdown_stage_contract_present": true,
+        "markdown_status_matches": true,
+        "markdown_version_matches": true
+      },
+      "document_id": "bayes_basket_target_architecture_v1",
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.json",
+      "json_sha256": "84eca33cd0aa6facddb91649e391f9282ee5bcee1fa81ca9ef03b359640af613",
+      "markdown": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.md",
+      "markdown_sha256": "ed261e465362902daba07f1f357e25b401a40540126de04b6e0e689c93e87871",
+      "status": "TARGET_PRODUCTION_NO_LIVE",
+      "version": "1.14.40"
+    }
+  ],
+  "manifest_sha256": "d7f91c0a0fb1ef38e0a5606071db6f8de388628a734510b5dea394942dd32c5d",
+  "receipt_sha256": "27914f566f43b2ffc3d917f4ef1d949607cdb081c542a30844ed307bda092d5d",
+  "roadmap": {
+    "checks": {
+      "architecture_reference_matches": true,
+      "json_present": true,
+      "json_status_matches": true,
+      "json_version_matches": true,
+      "machine_forbids_p0f": true,
+      "markdown_stage_contract_present": true,
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.json",
+    "json_sha256": "217170ef685e806d6a4a4f6420499f98b908c7efae224e8ee409ab8c6b3ed3dd",
+    "markdown_sha256": "80cfd35b317ec52d2e8e7d3f89b693819d8baa62cd6069f6f04b5a2a1dddd947",
+    "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
+    "version": "1.6.84"
+  },
+  "schema": "bayes_basket_target_document_authority_audit_v1",
+  "status": "PASS",
+  "subordinate_contracts": [
+    {
+      "does_not_authorize_live": true,
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
+      "json_sha256": "d190ad2d13452fdc421766051c86fae18fd1d16b3897272b082d41f990dd7d1d",
+      "machine_forbids_p0f": true,
+      "markdown_sha256": "195c423366fa776d22b7dc8076fde18f67a6832cc10e02aec9de5ee8fee7152a",
+      "markdown_stage_contract_present": true,
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    {
+      "does_not_authorize_live": true,
+      "machine_forbids_p0f": true,
+      "markdown_sha256": "2d402773ab61fb26bb94f8191fbf69d2ac282bd6119f0d171680c992cc66a4fc",
+      "markdown_stage_contract_present": true,
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/basket_phase_policy_versions_v2.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    }
+  ]
+}

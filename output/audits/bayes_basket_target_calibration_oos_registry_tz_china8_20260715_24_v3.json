@@ -1,0 +1,1038 @@
+{
+  "aggregate_metrics": {
+    "calibrated_mae_c": 1.7998125000000005,
+    "calibrated_rmse_c": 2.301534438333117,
+    "holdout_n": 48,
+    "mae_improvement_c": 0.0,
+    "raw_mae_c": 1.7998125000000005,
+    "raw_rmse_c": 2.301534438333117,
+    "rmse_improvement_c": 0.0
+  },
+  "as_of_utc": "2026-07-27T23:59:25Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "offline_research_only": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "aggregate_mae_improves": false,
+    "aggregate_rmse_improves": false,
+    "all_candidate_scopes_reported": true,
+    "all_reports_have_positive_holdout": true,
+    "all_scope_mae_non_degradation": true,
+    "chronological_holdout_no_leakage": true,
+    "ensemble_oos_metrics_materialized": true,
+    "ensemble_probability_oos_materialized": false,
+    "ensemble_selection_non_degradation_vs_uniform": false,
+    "explicit_formal_truth_scope": true,
+    "input_receipt_valid": true,
+    "metric_rows_consistent": true,
+    "native_historical_arrival_complete": false
+  },
+  "chronology_failures": [],
+  "counts": {
+    "artifact_scope_count": 24,
+    "ensemble_artifact_scope_count": 8,
+    "ensemble_improved_scope_count": 0,
+    "ensemble_oos_scope_count": 8,
+    "ensemble_tied_scope_count": 8,
+    "ensemble_worsened_scope_count": 0,
+    "holdout_observation_count": 48,
+    "improved_scope_count": 0,
+    "oos_report_count": 24,
+    "probability_oos_failed_scope_count": 3,
+    "probability_oos_passed_scope_count": 5,
+    "selection_improved_vs_uniform_scope_count": 6,
+    "selection_tied_vs_uniform_scope_count": 0,
+    "selection_worsened_vs_uniform_scope_count": 2,
+    "station_count": 8,
+    "tied_scope_count": 24,
+    "worsened_scope_count": 0
+  },
+  "ensemble_aggregate_metrics": {
+    "calibrated_mae_c": 1.021034375000001,
+    "calibrated_rmse_c": 1.2168471489493875,
+    "holdout_n": 16,
+    "mae_improvement_c": 0.0,
+    "raw_mae_c": 1.021034375000001,
+    "raw_rmse_c": 1.2168471489493875,
+    "rmse_improvement_c": 0.0,
+    "selection_mae_improvement_vs_uniform_c": 0.586153125,
+    "selection_rmse_improvement_vs_uniform_c": 0.5975112029664271,
+    "uniform_three_model_mae_c": 1.607187500000001,
+    "uniform_three_model_rmse_c": 1.8143583519158146
+  },
+  "ensemble_chronology_failures": [],
+  "ensemble_metric_failures": [],
+  "ensemble_report_rows": [
+    {
+      "calibrated_mae_c": 1.5125000000000028,
+      "calibrated_rmse_c": 1.6450730226953487,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.8975879861007501,
+        "crps": 1.0053091986273064,
+        "n": 2,
+        "nll": 2.0530085632129373
+      },
+      "raw_mae_c": 1.5125000000000028,
+      "raw_rmse_c": 1.6450730226953487,
+      "scope": "ZBAA|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "e444264025f06e1ab10a2e9cac6fcff4b63522a167cc21bfae785b28f42a9277",
+      "selection_mae_improvement_vs_uniform_c": -0.37200000000000166,
+      "selection_rmse_improvement_vs_uniform_c": -0.5045676522564355,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 1.1405000000000012,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.816620177812794,
+        "crps": 0.717491043875183,
+        "n": 2,
+        "nll": 1.7959712930828924
+      },
+      "uniform_three_model_rmse_c": 1.1405053704389132,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 1.9370000000000047,
+      "calibrated_rmse_c": 1.9411917087191612,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 1.0004171046997314,
+        "crps": 1.2652825810939998,
+        "n": 2,
+        "nll": 2.2676585316888973
+      },
+      "raw_mae_c": 1.9370000000000047,
+      "raw_rmse_c": 1.9411917087191612,
+      "scope": "ZGGG|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "2b8494c71e008c0674cab007d966a210c9600840fbd3021877bf9436fe90f226",
+      "selection_mae_improvement_vs_uniform_c": 0.48333333333333073,
+      "selection_rmse_improvement_vs_uniform_c": 0.5432318774584386,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 2.4203333333333354,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9546115291090116,
+        "crps": 1.516441437323525,
+        "n": 2,
+        "nll": 2.3818379410097377
+      },
+      "uniform_three_model_rmse_c": 2.4844235861776,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.5445000000000029,
+      "calibrated_rmse_c": 0.5719311584447935,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6338500840322315,
+        "crps": 0.352607581557008,
+        "n": 2,
+        "nll": 1.2222020682026682
+      },
+      "raw_mae_c": 0.5445000000000029,
+      "raw_rmse_c": 0.5719311584447935,
+      "scope": "ZGSZ|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "1ef80681615a2de4d0462db75064e004061617853d635865e7b99bb0126072fb",
+      "selection_mae_improvement_vs_uniform_c": 0.7978333333333296,
+      "selection_rmse_improvement_vs_uniform_c": 0.7972214586468462,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 1.3423333333333325,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8047017766233682,
+        "crps": 0.7693833142930728,
+        "n": 2,
+        "nll": 1.6543085909181177
+      },
+      "uniform_three_model_rmse_c": 1.3691526170916397,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.8720000000000034,
+      "calibrated_rmse_c": 0.9542223273430597,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7425234336667975,
+        "crps": 0.5471848067394682,
+        "n": 2,
+        "nll": 1.4616601597292112
+      },
+      "raw_mae_c": 0.8720000000000034,
+      "raw_rmse_c": 0.9542223273430597,
+      "scope": "ZHHH|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "a942eb2e5036c458cde50565425c3f07523d0d0da61f582fb54ae8921af0376b",
+      "selection_mae_improvement_vs_uniform_c": 0.036999999999999034,
+      "selection_rmse_improvement_vs_uniform_c": -0.04255657475363128,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 0.9090000000000025,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.7533777588022048,
+        "crps": 0.5655262196256523,
+        "n": 2,
+        "nll": 1.605011604216965
+      },
+      "uniform_three_model_rmse_c": 0.9116657525894284,
+      "weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.6709249999999969,
+      "calibrated_rmse_c": 0.9221468138262976,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.7245197225330364,
+        "crps": 0.5207790171775261,
+        "n": 2,
+        "nll": 1.4237770463217836
+      },
+      "raw_mae_c": 0.6709249999999969,
+      "raw_rmse_c": 0.9221468138262976,
+      "scope": "ZSPD|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "010316a2a86701c643082b911aa9a25d2278c8a2112d62cfd460269347adc709",
+      "selection_mae_improvement_vs_uniform_c": 1.543241666666674,
+      "selection_rmse_improvement_vs_uniform_c": 1.3419435971089433,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 2.214166666666671,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8302525165212727,
+        "crps": 1.2091988477306295,
+        "n": 2,
+        "nll": 1.92673689818365
+      },
+      "uniform_three_model_rmse_c": 2.264090410935241,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 1.1679999999999993,
+      "calibrated_rmse_c": 1.3773612452802637,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": false,
+      "probability_oos": {
+        "brier_score": 0.821044993294231,
+        "crps": 0.7865729177526268,
+        "n": 2,
+        "nll": 1.7406688373868966
+      },
+      "raw_mae_c": 1.1679999999999993,
+      "raw_rmse_c": 1.3773612452802637,
+      "scope": "ZSQD|summer",
+      "selected_model_set_hash": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "0036c9623bf0959a64349da6db939aef03ff653ec4787ab588f9c351c1d56769",
+      "selection_mae_improvement_vs_uniform_c": -0.026833333333334153,
+      "selection_rmse_improvement_vs_uniform_c": 0.039530207474281154,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 1.141166666666665,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8175139326536474,
+        "crps": 0.8021499703161175,
+        "n": 2,
+        "nll": 1.7644766377554026
+      },
+      "uniform_three_model_rmse_c": 1.4168914527545449,
+      "weights": {
+        "GFS": 0.2,
+        "ICON": 0.8
+      }
+    },
+    {
+      "calibrated_mae_c": 0.6781000000000006,
+      "calibrated_rmse_c": 0.679730323363612,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.6499839263869309,
+        "crps": 0.3895747348249963,
+        "n": 2,
+        "nll": 1.2546529362017904
+      },
+      "raw_mae_c": 0.6781000000000006,
+      "raw_rmse_c": 0.679730323363612,
+      "scope": "ZUCK|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "bfcba331fd48f6fbdf185b6bee12c27d7edf3c8d41a49dc325ba824679274c63",
+      "selection_mae_improvement_vs_uniform_c": 2.1392333333333333,
+      "selection_rmse_improvement_vs_uniform_c": 2.1414354128367825,
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6,
+      "uniform_three_model_mae_c": 2.817333333333334,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.9148102002148526,
+        "crps": 1.74412588780046,
+        "n": 2,
+        "nll": 2.2447309140967784
+      },
+      "uniform_three_model_rmse_c": 2.8211657362003946,
+      "weights": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    {
+      "calibrated_mae_c": 0.7852499999999978,
+      "calibrated_rmse_c": 0.9612948624121496,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "probability_non_degradation_vs_uniform": true,
+      "probability_oos": {
+        "brier_score": 0.8589421417615759,
+        "crps": 0.9036652395416878,
+        "n": 2,
+        "nll": 2.2020483118268803
+      },
+      "raw_mae_c": 0.7852499999999978,
+      "raw_rmse_c": 0.9612948624121496,
+      "scope": "ZUUU|summer",
+      "selected_model_set_hash": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "selected_models": [
+        "ECMWF",
+        "ICON"
+      ],
+      "selection_evidence_sha256": "17646e5369c7526a05001f0beb68d5d036c0ac19d4695fc50cd116f7436f2cf7",
+      "selection_mae_improvement_vs_uniform_c": 0.08741666666666958,
+      "selection_rmse_improvement_vs_uniform_c": 0.07005403856925785,
+      "train_dates": [
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 7,
+      "uniform_three_model_mae_c": 0.8726666666666674,
+      "uniform_three_model_probability_oos": {
+        "brier_score": 0.8859095922143936,
+        "crps": 1.1070455816172453,
+        "n": 2,
+        "nll": 2.421644424890353
+      },
+      "uniform_three_model_rmse_c": 1.0313489009814074,
+      "weights": {
+        "ECMWF": 0.25,
+        "ICON": 0.75
+      }
+    }
+  ],
+  "evidence_sha256": "cfedacc0ea73d8699fc0db29ba5dd9f437408999bf98ea5fae4c466f9f3f9a00",
+  "input_artifact": {
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_registry_tz_china8_20260715_24_v2.json",
+    "receipt_sha256": "3f45589211432db691bea950ed46130148587213401b71a6d74ae570711d6d2e"
+  },
+  "method": {
+    "does_not_infer_native_arrival": true,
+    "split": "per_station_model_season_chronological_80_20",
+    "training_rows_precede_holdout": true,
+    "uses_historical_replay_only": true
+  },
+  "metric_failures": [],
+  "promotion_gate": {
+    "blockers": [
+      "ensemble_selection_scope_non_degradation_failed",
+      "ensemble_probability_oos_gate_failed",
+      "native_historical_arrival_receipts_incomplete"
+    ],
+    "evaluated": true,
+    "passed": false,
+    "production_calibration_allowed": false
+  },
+  "receipt_sha256": "7f94b919ed633b2f6a0a513c7dcc078f37e5450c994bc2d93bdaf3cc5488f1d2",
+  "report_rows": [
+    {
+      "calibrated_mae_c": 1.0714999999999986,
+      "calibrated_rmse_c": 1.2041854093120365,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.0714999999999986,
+      "raw_rmse_c": 1.2041854093120365,
+      "scope": "ZBAA|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.3099999999999987,
+      "calibrated_rmse_c": 1.5349592828475933,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.3099999999999987,
+      "raw_rmse_c": 1.5349592828475933,
+      "scope": "ZBAA|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.5500000000000007,
+      "calibrated_rmse_c": 1.7219175357722571,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.5500000000000007,
+      "raw_rmse_c": 1.7219175357722571,
+      "scope": "ZBAA|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 2.721,
+      "calibrated_rmse_c": 2.793432476363086,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.721,
+      "raw_rmse_c": 2.793432476363086,
+      "scope": "ZGGG|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 2.6400000000000006,
+      "calibrated_rmse_c": 2.920975864330276,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.6400000000000006,
+      "raw_rmse_c": 2.920975864330276,
+      "scope": "ZGGG|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.9000000000000021,
+      "calibrated_rmse_c": 1.910497317454282,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.9000000000000021,
+      "raw_rmse_c": 1.910497317454282,
+      "scope": "ZGGG|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.237,
+      "calibrated_rmse_c": 1.2370327400679417,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.237,
+      "raw_rmse_c": 1.2370327400679417,
+      "scope": "ZGSZ|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 2.34,
+      "calibrated_rmse_c": 2.428600419995022,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.34,
+      "raw_rmse_c": 2.428600419995022,
+      "scope": "ZGSZ|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 0.45000000000000107,
+      "calibrated_rmse_c": 0.474341649025258,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.45000000000000107,
+      "raw_rmse_c": 0.474341649025258,
+      "scope": "ZGSZ|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.4870000000000019,
+      "calibrated_rmse_c": 1.6695059149341178,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.4870000000000019,
+      "raw_rmse_c": 1.6695059149341178,
+      "scope": "ZHHH|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 0.33999999999999986,
+      "calibrated_rmse_c": 0.3716180835212417,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.33999999999999986,
+      "raw_rmse_c": 0.3716180835212417,
+      "scope": "ZHHH|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 0.9000000000000004,
+      "calibrated_rmse_c": 0.9848857801796109,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.9000000000000004,
+      "raw_rmse_c": 0.9848857801796109,
+      "scope": "ZHHH|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.2525000000000013,
+      "calibrated_rmse_c": 1.2580932000452127,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.2525000000000013,
+      "raw_rmse_c": 1.2580932000452127,
+      "scope": "ZSPD|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 4.790000000000001,
+      "calibrated_rmse_c": 4.827432029557745,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 4.790000000000001,
+      "raw_rmse_c": 4.827432029557745,
+      "scope": "ZSPD|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 0.6999999999999993,
+      "calibrated_rmse_c": 0.9219544457292868,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.6999999999999993,
+      "raw_rmse_c": 0.9219544457292868,
+      "scope": "ZSPD|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.0335,
+      "calibrated_rmse_c": 1.3189778239227536,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.0335,
+      "raw_rmse_c": 1.3189778239227536,
+      "scope": "ZSQD|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.2400000000000002,
+      "calibrated_rmse_c": 1.624838453508532,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.2400000000000002,
+      "raw_rmse_c": 1.624838453508532,
+      "scope": "ZSQD|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 1.1500000000000004,
+      "calibrated_rmse_c": 1.320984481362291,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 1.1500000000000004,
+      "raw_rmse_c": 1.320984481362291,
+      "scope": "ZSQD|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 3.112000000000002,
+      "calibrated_rmse_c": 3.112013014111607,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 3.112000000000002,
+      "raw_rmse_c": 3.112013014111607,
+      "scope": "ZUCK|ECMWF|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 4.789999999999999,
+      "calibrated_rmse_c": 4.806672445673825,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 4.789999999999999,
+      "raw_rmse_c": 4.806672445673825,
+      "scope": "ZUCK|GFS|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 0.5500000000000007,
+      "calibrated_rmse_c": 0.5522680508593638,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.5500000000000007,
+      "raw_rmse_c": 0.5522680508593638,
+      "scope": "ZUCK|ICON|summer",
+      "train_dates": [
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 6
+    },
+    {
+      "calibrated_mae_c": 2.091000000000001,
+      "calibrated_rmse_c": 2.264001987631638,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 2.091000000000001,
+      "raw_rmse_c": 2.264001987631638,
+      "scope": "ZUUU|ECMWF|summer",
+      "train_dates": [
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 7
+    },
+    {
+      "calibrated_mae_c": 4.09,
+      "calibrated_rmse_c": 4.291631391440789,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 4.09,
+      "raw_rmse_c": 4.291631391440789,
+      "scope": "ZUUU|GFS|summer",
+      "train_dates": [
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 7
+    },
+    {
+      "calibrated_mae_c": 0.4499999999999993,
+      "calibrated_rmse_c": 0.5700877125495671,
+      "holdout_dates": [
+        "2026-07-23",
+        "2026-07-24"
+      ],
+      "holdout_n": 2,
+      "mae_delta_c": 0.0,
+      "raw_mae_c": 0.4499999999999993,
+      "raw_rmse_c": 0.5700877125495671,
+      "scope": "ZUUU|ICON|summer",
+      "train_dates": [
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22"
+      ],
+      "train_n": 7
+    }
+  ],
+  "schema": "bayes_basket_target_calibration_oos_audit_v1",
+  "scope": {
+    "excluded_source_lanes": [
+      "awc"
+    ],
+    "included_station_ids": [
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "mode": "allowlist"
+  },
+  "target_timezone": "Asia/Shanghai"
+}

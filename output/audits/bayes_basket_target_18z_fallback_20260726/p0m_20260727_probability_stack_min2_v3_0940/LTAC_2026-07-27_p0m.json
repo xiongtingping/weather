@@ -1,0 +1,517 @@
+{
+  "bridge_sha256": "09ac28ee3e3e2743507b86537e7759d3da2a3552bb08f3d0ae6315d37b49a3ef",
+  "bucket_intervals": {
+    "21°C or below": [
+      null,
+      21.5
+    ],
+    "22°C": [
+      21.5,
+      22.5
+    ],
+    "23°C": [
+      22.5,
+      23.5
+    ],
+    "24°C": [
+      23.5,
+      24.5
+    ],
+    "25°C": [
+      24.5,
+      25.5
+    ],
+    "26°C": [
+      25.5,
+      26.5
+    ],
+    "27°C": [
+      26.5,
+      27.5
+    ],
+    "28°C": [
+      27.5,
+      28.5
+    ],
+    "29°C": [
+      28.5,
+      29.5
+    ],
+    "30°C": [
+      29.5,
+      30.5
+    ],
+    "31°C or higher": [
+      30.5,
+      null
+    ]
+  },
+  "calibration_activations": [
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-ad9475b488646274f43541b3a78ef110",
+      "artifact_id": "cal-candidate-LTAC-ECMWF-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "c6b7f53ea75312152bbc1eff4a42d9d63a2069f7c4acbc60b518ef680e53e375",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-e08280fdaa9f8b34639efea297007eb9",
+      "artifact_id": "cal-candidate-LTAC-GFS-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "e08714b849599c325efabac5dd491a17846b50311a87be9702904cfdc158e312",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-88ac746859a9e4f705fcc91cc25b1abe",
+      "artifact_id": "cal-candidate-LTAC-ICON-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "d2a0fce3fb6edb4dd1b562a6790d296cc5ada3a526d44892f364b3a8922855f7",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-87ebe6f4d6da888686ab7fff41530c85",
+      "artifact_id": "cal-candidate-LTAC-ECMWF-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "48cd840dcf6fc43c2f18d8851bc90068f3f63c0d9ad98d8488ff4a0d74dd22cd",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-77466572f9f313c0cd693811e4dbcab6",
+      "artifact_id": "cal-candidate-LTAC-GFS-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "ab0177b84269381a28f4ba77c0c8f73de24cdfc281525635c9d4b6b8ac11870c",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-8c57a713f90279b344784404ee73a4ad",
+      "artifact_id": "cal-candidate-LTAC-ICON-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "7ed71e49fe96e48b903edb79afcb9c59b4b70a09cfe9421a430a79c5d2bd40ca",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-79a6288097285797b2bd1a0bec7fb72d",
+      "artifact_id": "cal-candidate-LTAC-ECMWF-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "dd746c348aa37c49663fff1d3ad203f6b9764058263ee665882398bf0973f1e9",
+      "generation": 2,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-1920cea5f7de481dc5410f4c7873a321",
+      "artifact_id": "cal-candidate-LTAC-ICON-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "b00b678faa86786ebc23622f0a0c7cc939b17839f119e4dffdbbff622a424600",
+      "generation": 2,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-ens-d535dd2c17dec724a9e7a6e6d8059d2f",
+      "artifact_id": "ens-candidate-LTAC-summer-0aee07eba321",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+      "content_sha256": "ab5b16d6df003bb810e4ab99bafcdf5466f40d0d399de862af0691913da06d95",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-ens-2b3b2d60be1b1733b3465326c9847e63",
+      "artifact_id": "ens-candidate-LTAC-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+      "content_sha256": "b8f0c47631a4ecb184e51d1b33a55c15990c4b4531791c006cd36e794bab5d49",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-ens-3b4d26d48875a128d82b226c03a0a40f",
+      "artifact_id": "ens-candidate-LTAC-summer-9c4f1014d5f1-fc53e62d1112",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "386b0dcff4cf7bf0f7919788ec8ff2d698e532162ae4053d323b8d4fe0bdae94",
+      "content_sha256": "d540805b61708cc2a8fea2c6346c1b467f3d68c10a4911b0a4316f05f9d1d119",
+      "generation": 2,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-ens-b61f64cd0f71959333c8bdffe0449e42",
+      "artifact_id": "ens-candidate-LTAC-summer-9c4f1014d5f1-4ab7b0f46e9b",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff",
+      "content_sha256": "19ae4396b312eeb181cd2b97e33c11fb9101f5e45a114d00934cfbaf4f802de3",
+      "generation": 3,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    }
+  ],
+  "calibration_artifacts": {
+    "ECMWF": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-LTAC-ECMWF-summer-9c4f1014d5f1",
+      "content_sha256": "db7a2db20392e3810fa0c672871f8984a7ee3554ad33848de34afdfbe35287d6",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "promoted": false,
+      "residual_scale_c": 1.1464929131922272,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    "ICON": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-LTAC-ICON-summer-9c4f1014d5f1",
+      "content_sha256": "9759cc5a732a3d92a2100b8213046a8e6d29c892ae00d8354884efe59f0bff03",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.1521718621802914,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    }
+  },
+  "climatology_weight": 0.0,
+  "created_at_utc": "2026-07-26T09:40:00Z",
+  "current_model_runs": [
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "model_run_id": "current-d9775c38138ec56655217c44e5592a6b",
+      "published_at_utc": "2026-07-26T00:27:10Z",
+      "raw_tmax_c": 24.758,
+      "received_at_utc": "2026-07-26T04:08:02Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "d9775c38138ec56655217c44e5592a6bf2378a4013d9169a17d5e211f609ced0",
+      "station_id": "LTAC",
+      "target_local_date": "2026-07-27"
+    },
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "ICON",
+      "model_run_id": "current-6cfa31ec19e37da1a0337e62e17e9ffa",
+      "published_at_utc": "2026-07-25T20:58:48Z",
+      "raw_tmax_c": 24.233,
+      "received_at_utc": "2026-07-26T04:11:19Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "6cfa31ec19e37da1a0337e62e17e9ffa6c9d72c0a6e385ea53a826978dcd288b",
+      "station_id": "LTAC",
+      "target_local_date": "2026-07-27"
+    }
+  ],
+  "decision_at_utc": "2026-07-26T09:40:00Z",
+  "diagnostic_calibration_artifacts": {
+    "ECMWF": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-LTAC-ECMWF-summer-9c4f1014d5f1",
+      "content_sha256": "db7a2db20392e3810fa0c672871f8984a7ee3554ad33848de34afdfbe35287d6",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "promoted": false,
+      "residual_scale_c": 1.1464929131922272,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    "GFS": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-LTAC-GFS-summer-9c4f1014d5f1",
+      "content_sha256": "28675da79e316268b44e57a2ab555284e1529a55a49c53765ccd76950ed211b4",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.1239170938857417,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    "ICON": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-LTAC-ICON-summer-9c4f1014d5f1",
+      "content_sha256": "9759cc5a732a3d92a2100b8213046a8e6d29c892ae00d8354884efe59f0bff03",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.1521718621802914,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "LTAC",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    }
+  },
+  "diagnostic_model_runs": [
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "model_run_id": "current-d9775c38138ec56655217c44e5592a6b",
+      "published_at_utc": "2026-07-26T00:27:10Z",
+      "raw_tmax_c": 24.758,
+      "received_at_utc": "2026-07-26T04:08:02Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "d9775c38138ec56655217c44e5592a6bf2378a4013d9169a17d5e211f609ced0",
+      "station_id": "LTAC",
+      "target_local_date": "2026-07-27"
+    },
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "GFS",
+      "model_run_id": "current-100eabacf9781e923eb813bb2d84369a",
+      "published_at_utc": "2026-07-25T21:51:36Z",
+      "raw_tmax_c": 25.067,
+      "received_at_utc": "2026-07-26T04:32:06Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "100eabacf9781e923eb813bb2d84369a72edad48798ed596239080acf2b126b7",
+      "station_id": "LTAC",
+      "target_local_date": "2026-07-27"
+    },
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "ICON",
+      "model_run_id": "current-6cfa31ec19e37da1a0337e62e17e9ffa",
+      "published_at_utc": "2026-07-25T20:58:48Z",
+      "raw_tmax_c": 24.233,
+      "received_at_utc": "2026-07-26T04:11:19Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "6cfa31ec19e37da1a0337e62e17e9ffa6c9d72c0a6e385ea53a826978dcd288b",
+      "station_id": "LTAC",
+      "target_local_date": "2026-07-27"
+    }
+  ],
+  "ensemble_artifact": {
+    "candidate_models": [
+      "ECMWF",
+      "ICON"
+    ],
+    "content_sha256": "c34d8539da1a51a9e715b556fa5b8df9f63f7c1dc4c83441bd025722dd26d8b7",
+    "correlation_penalty": 0.020906514187714106,
+    "effective_sample_n": 5.4,
+    "ensemble_artifact_id": "ens-candidate-LTAC-summer-9c4f1014d5f1-4ab7b0f46e9b",
+    "holdout_end_date": "2026-07-24",
+    "holdout_start_date": "2026-07-22",
+    "lead_bucket": "d2_fallback",
+    "max_weight_delta": 0.2,
+    "oos_metrics": {
+      "brier_score": 0.6507864765826262,
+      "crps": 0.38216562964664336,
+      "n": 3,
+      "nll": 1.243858645536697
+    },
+    "previous_ensemble_artifact_sha256": null,
+    "promoted": false,
+    "recent_end_date": "2026-07-21",
+    "recent_start_date": "2026-07-19",
+    "residual_covariance": {
+      "ECMWF": {
+        "ECMWF": 0.37889199999999956,
+        "ICON": 0.17241428571428563
+      },
+      "ICON": {
+        "ECMWF": 0.17241428571428563,
+        "ICON": 0.4050000000000012
+      }
+    },
+    "run_cycle": "18Z",
+    "season_bin": "summer",
+    "selection_evidence_sha256": "e5a9787e276232531d6a7254a02133664de7f4ddc73fe3f64fa8a4ffb4fcf556",
+    "settlement_definition": "official_daily_tmax_c",
+    "station_id": "LTAC",
+    "supported_masks": {
+      "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff": {
+        "ECMWF": 0.05,
+        "ICON": 0.95
+      }
+    },
+    "train_end_date": "2026-07-21",
+    "train_start_date": "2026-07-14",
+    "valid_from_utc": "2026-07-26T06:24:00Z",
+    "valid_until_utc": "2026-08-25T06:24:00Z",
+    "weight_method": "rolling_origin_probability_stack_v3_min2"
+  },
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T10:20:00Z",
+  "stage": "P0-M",
+  "station_id": "LTAC"
+}

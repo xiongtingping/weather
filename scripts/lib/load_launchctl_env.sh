@@ -96,7 +96,7 @@ _launchd_proxy_candidate_ports() {
   local host_port=""
   local port=""
   {
-    printf '%s\n' "${PM_PROXY_PORTS:-}" "${PM_PROXY_LOCAL_FALLBACK_PORTS:-7890,7897}"
+    printf '%s\n' "${PM_PROXY_PORTS:-}" "${PM_PROXY_LOCAL_FALLBACK_PORTS:-7897}"
     for key in HTTPS_PROXY HTTP_PROXY ALL_PROXY https_proxy http_proxy all_proxy GLOBAL_AGENT_HTTP_PROXY PM_MARKET_WS_HTTP_PROXY; do
       proxy="${!key:-}"
       if [ -z "$proxy" ]; then

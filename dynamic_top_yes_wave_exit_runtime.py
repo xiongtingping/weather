@@ -1,7 +1,9 @@
 """Pure L1 candidate for the dynamic current-top YES wave take profit.
 
-Bucket membership is reselected from the latest posterior on every
-evaluation.  Only the take-profit price is frozen at entry.  The builder
+Bucket membership and the current top/second role are reselected from the
+latest posterior on every evaluation.  A top-entry lot carries its entry-
+frozen 0.90 target; a second-entry lot promoted to current top receives the
+same approved 0.90 current-role policy without sell/re-entry.  The builder
 requires complete position-lot, approved strategy-artifact, and fresh
 executable-quote lineage; it writes nothing and never submits an order.
 """
@@ -63,7 +65,13 @@ def build_dynamic_top_yes_wave_exit_candidate(
     position_lot_version = _text(position.get("position_lot_version"))
     entry_artifact = _text(position.get("entry_strategy_artifact_sha256"))
     approved_artifact = _text(approved_strategy_artifact_sha256)
-    frozen_target = _number(position.get("frozen_take_profit_price"))
+    effective_target = _number(
+        position.get("effective_take_profit_price")
+        if position.get("effective_take_profit_price") is not None
+        else position.get("frozen_take_profit_price")
+    )
+    entry_strategy_leg = _text(position.get("entry_strategy_leg") or position.get("strategy_leg"))
+    target_source = _text(position.get("take_profit_price_source"))
     position_size = _number(position.get("position_size"))
     quote_token_id = _text(quote.get("token_id"))
     price = _number(quote.get("price_for_requested_size"))
@@ -84,8 +92,14 @@ def build_dynamic_top_yes_wave_exit_candidate(
         reasons.append("position_lot_identity_or_size_invalid")
     if not approved_artifact or entry_artifact != approved_artifact:
         reasons.append("position_strategy_artifact_not_approved")
-    if frozen_target is None or abs(frozen_target - WAVE_TARGET_PRICE) > 1e-12:
+    if effective_target is None or abs(effective_target - WAVE_TARGET_PRICE) > 1e-12:
         reasons.append("position_frozen_take_profit_price_invalid")
+    if entry_strategy_leg not in {"top_yes_wave", "second_yes"}:
+        reasons.append("position_entry_strategy_leg_invalid")
+    elif entry_strategy_leg == "top_yes_wave" and target_source not in {"", "entry_frozen_top_yes_wave"}:
+        reasons.append("position_take_profit_price_source_invalid")
+    elif entry_strategy_leg == "second_yes" and target_source != "promoted_current_top_yes_policy":
+        reasons.append("position_take_profit_price_source_invalid")
     if not _text(quote.get("market_snapshot_id")) or quote_token_id != token_id:
         reasons.append("executable_sell_quote_identity_invalid")
     if requested_size is None or position_size is None or abs(requested_size - position_size) > 1e-9:
@@ -94,7 +108,7 @@ def build_dynamic_top_yes_wave_exit_candidate(
         reasons.append("executable_sell_quote_not_current")
     if price is None:
         reasons.append("executable_sell_quote_missing")
-    elif frozen_target is not None and price < frozen_target:
+    elif effective_target is not None and price < effective_target:
         reasons.append("dynamic_wave_target_not_reached")
     candidate = not reasons
     return {
@@ -109,18 +123,21 @@ def build_dynamic_top_yes_wave_exit_candidate(
         "position_lot_id": position_lot_id,
         "position_lot_version": position_lot_version,
         "token_id": token_id,
+        "entry_strategy_leg": entry_strategy_leg,
+        "take_profit_price_source": target_source or "entry_frozen_top_yes_wave",
         "requested_sell_size": position_size,
         "market_snapshot_id": _text(quote.get("market_snapshot_id")),
         "executable_sell_price": price,
-        "limit_price": frozen_target,
-        "frozen_take_profit_price": frozen_target,
+        "limit_price": effective_target,
+        "frozen_take_profit_price": effective_target,
         "strategy_artifact_sha256": approved_artifact,
         "reason_family": REASON_FAMILY if candidate else "",
         "reason_code": REASON_CODE if candidate else "",
         "posterior_reselected_at_evaluation": True,
         "bucket_selection_dynamic": True,
-        "take_profit_price_frozen_at_entry": True,
-        "order_limit_uses_frozen_take_profit_price": True,
+        "take_profit_price_frozen_at_entry": entry_strategy_leg == "top_yes_wave",
+        "promoted_second_yes_uses_current_top_policy": entry_strategy_leg == "second_yes",
+        "order_limit_uses_approved_090_take_profit_price": True,
         "writes_orders": False,
         "reason_codes": sorted(set(reasons)),
     }

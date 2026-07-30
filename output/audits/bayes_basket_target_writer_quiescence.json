@@ -1,0 +1,34 @@
+{
+  "all_core_services_absent": null,
+  "boundary": {
+    "calls_order_gateway": false,
+    "database_scope": "isolated_target_no_live",
+    "places_orders": false,
+    "read_only_probe": true,
+    "reported_service_loaded": false,
+    "reported_target_writer_absent": true,
+    "stops_services": false,
+    "target_database_handles_absent": true,
+    "unrelated_core_services_may_run": true,
+    "writes_production_db": false
+  },
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "probe_errors": [],
+  "probe_mode": "isolated_target_database_scope",
+  "quiescent": true,
+  "receipt_sha256": "55dce8dd248bd0da595c9a3e4f9198c86f8a463f484626df8d27cafc5a17a77f",
+  "schema": "bayes_basket_target_writer_quiescence_receipt_v2",
+  "service_states": {
+    "system": {
+      "com.weather.clob_order_service": "not_probed_unrelated",
+      "com.weather.market_ws": "not_probed_unrelated",
+      "com.weather.reported_trajectory_no": false
+    },
+    "user": {
+      "com.weather.clob_order_service": "not_probed_unrelated",
+      "com.weather.market_ws": "not_probed_unrelated",
+      "com.weather.reported_trajectory_no": false
+    }
+  },
+  "writer_process_hits": []
+}

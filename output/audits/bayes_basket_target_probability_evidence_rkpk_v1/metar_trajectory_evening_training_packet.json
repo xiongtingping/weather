@@ -1,0 +1,244 @@
+{
+  "artifact_parameters": {
+    "activation_id": "metar-trajectory-RKPK-evening-v1",
+    "base_strength": 0.8,
+    "expected_interval_minutes": 60,
+    "feature_definitions": {
+      "remaining_warming_c": "final official tmax minus running high, nearest 1C",
+      "running_high_c": "max canonical AWC METAR/SPECI temperature available at local bucket start"
+    },
+    "hard_exclusion_baseline_distribution": {
+      "0": 0.07692307692307693,
+      "1": 0.07692307692307693,
+      "10": 0.07692307692307693,
+      "11": 0.07692307692307693,
+      "12": 0.07692307692307693,
+      "2": 0.07692307692307693,
+      "3": 0.07692307692307693,
+      "4": 0.07692307692307693,
+      "5": 0.07692307692307693,
+      "6": 0.07692307692307693,
+      "7": 0.07692307692307693,
+      "8": 0.07692307692307693,
+      "9": 0.07692307692307693
+    },
+    "likelihood_ratio_ceiling": 4.0,
+    "likelihood_ratio_floor": 0.25,
+    "local_time_bucket": "EVENING",
+    "long_interval_minutes": 90,
+    "long_interval_strength_factor": 0.5,
+    "maturity_bin": "D0",
+    "maturity_strength": 0.75,
+    "max_missing_intervals": 4,
+    "missing_interval_strength_factor": 0.8,
+    "missing_observation_policy": "DEGRADE_STRENGTH",
+    "season_bin": "JJA",
+    "settlement_definition": "official_daily_tmax_c",
+    "settlement_timezone": "Asia/Seoul",
+    "source_lane": "awc",
+    "station_id": "RKPK",
+    "trained_through_utc": "2026-07-29T15:00:20.234Z",
+    "valid_from_utc": "2026-07-30T00:00:00Z",
+    "valid_until_utc": "2027-07-30T00:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "writes_production_database": false
+  },
+  "content_sha256": "63cecbda94e2c366d8b2c09ce557ad3a3a7828669086352fc74f03c562aceae0",
+  "decided_at_utc": "2026-07-30T00:00:00Z",
+  "folds": [
+    {
+      "bucket_centers_c": {
+        "34°C or below": 34.0,
+        "35°C": 35.0,
+        "36°C": 36.0,
+        "37°C": 37.0,
+        "38°C": 38.0,
+        "39°C": 39.0,
+        "40°C": 40.0,
+        "41°C": 41.0,
+        "42°C": 42.0,
+        "43°C": 43.0,
+        "44°C or higher": 44.0
+      },
+      "bucket_upper_bounds_c": {
+        "34°C or below": 34.499999,
+        "35°C": 35.499999,
+        "36°C": 36.499999,
+        "37°C": 37.499999,
+        "38°C": 38.499999,
+        "39°C": 39.499999,
+        "40°C": 40.499999,
+        "41°C": 41.499999,
+        "42°C": 42.499999,
+        "43°C": 43.499999,
+        "44°C or higher": 44.499999
+      },
+      "canonical_observation_sequence_sha256": "5741bf23a7254f148bb025f53ef5b7fadea06cd8fd0afd8f633ba3602f3d21e1",
+      "evaluation_truth_id": "truth_34d7ebea8edb6d54a659265883680f1197e1ff7c",
+      "evaluation_truth_settled_at_utc": "2026-07-29T15:00:20.234Z",
+      "fold_id": "RKPK-EVENING-2026-07-29",
+      "remaining_warming_c": 0.0,
+      "root_checkpoint_id": "p0_59733006d60ef89e03a3708a152e8e19",
+      "root_content_sha256": "8e4550905dc9a5d9463fc37d1d56faed2b8486694acaae81ee39f5bd7b5d3f0d",
+      "root_probabilities": {
+        "34°C or below": 0.10569261957909182,
+        "35°C": 0.08571633104324228,
+        "36°C": 0.12555439126317186,
+        "37°C": 0.16225820211616945,
+        "38°C": 0.17621714972938882,
+        "39°C": 0.1539391097499576,
+        "40°C": 0.10506490302157503,
+        "41°C": 0.05509150495701198,
+        "42°C": 0.02199253467053689,
+        "43°C": 0.006651907139150176,
+        "44°C or higher": 0.0018213467307040489
+      },
+      "root_stage": "P0",
+      "running_high_c": 39.0,
+      "target_local_date": "2026-07-29",
+      "training_cutoff_utc": "2026-07-29T09:00:00.000Z",
+      "trajectory_training_truths": [
+        {
+          "settled_at_utc": "2026-07-24T04:51:12.000Z",
+          "target_local_date": "2026-07-14",
+          "truth_id": "et-truth-8e41b0d6f81b7cdb9f29639d7a05fd85"
+        },
+        {
+          "settled_at_utc": "2026-07-24T04:57:03.000Z",
+          "target_local_date": "2026-07-15",
+          "truth_id": "et-truth-0c0868fb94af92084ac6f26b11989f93"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:11:08.000Z",
+          "target_local_date": "2026-07-16",
+          "truth_id": "et-truth-355e13289cf02d60d130d27b4d39565e"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:16:25.000Z",
+          "target_local_date": "2026-07-17",
+          "truth_id": "et-truth-1041c926dca9c89efbec9ab90305f917"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:17:54.000Z",
+          "target_local_date": "2026-07-18",
+          "truth_id": "et-truth-aac6539b674114932c4d39022a1effd3"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:20:10.000Z",
+          "target_local_date": "2026-07-19",
+          "truth_id": "et-truth-09f0401f7b5ca819be3443e0bf34eaaf"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:22:35.000Z",
+          "target_local_date": "2026-07-20",
+          "truth_id": "et-truth-d932a68e8d72e132f33192ac14b2a524"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:25:05.000Z",
+          "target_local_date": "2026-07-21",
+          "truth_id": "et-truth-7e1284c96c5459ee70abc261ba543b61"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:05:11.000Z",
+          "target_local_date": "2026-07-22",
+          "truth_id": "et-truth-983536ecafc758eadaaa81323fae1e62"
+        },
+        {
+          "settled_at_utc": "2026-07-24T05:27:54.000Z",
+          "target_local_date": "2026-07-23",
+          "truth_id": "et-truth-47c26755d35f18558428f0c5945dd780"
+        },
+        {
+          "settled_at_utc": "2026-07-25T16:19:17.000Z",
+          "target_local_date": "2026-07-24",
+          "truth_id": "et-truth-1f939478adde5c2a4cfa5b3b09813ffa"
+        },
+        {
+          "settled_at_utc": "2026-07-29T06:59:01.415Z",
+          "target_local_date": "2026-07-28",
+          "truth_id": "truth_8538d047b7fd61e5bd4dcb8033302b7d61c69951"
+        }
+      ],
+      "truth_bucket": "39°C",
+      "weight": 1.0
+    }
+  ],
+  "generation": 1,
+  "minimum_effective_sample_n": 20.0,
+  "minimum_training_folds": 2,
+  "schema": "bayes_basket_metar_trajectory_training_packet_v1",
+  "smoothing_candidates": [
+    0.1,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0
+  ],
+  "source_manifest": {
+    "content_sha256": "d0f8514b04a0184f2f9e0e3d9afd7585ea64ad562aa108d657feb8c9764de450",
+    "eligible_fold_count": 1,
+    "excluded": [
+      {
+        "event_date": "2026-07-14",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-15",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-16",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-17",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-18",
+        "reason": "correction_suspected"
+      },
+      {
+        "event_date": "2026-07-19",
+        "reason": "strict_asof_prior_truth_count_insufficient"
+      },
+      {
+        "event_date": "2026-07-20",
+        "reason": "strict_asof_prior_truth_count_insufficient"
+      },
+      {
+        "event_date": "2026-07-21",
+        "reason": "strict_asof_prior_truth_count_insufficient"
+      },
+      {
+        "event_date": "2026-07-22",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-23",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-24",
+        "reason": "canonical_prefix_missing_at_bucket_start"
+      },
+      {
+        "event_date": "2026-07-28",
+        "reason": "correction_suspected"
+      }
+    ],
+    "local_time_bucket": "EVENING",
+    "observation_row_count": 205,
+    "probability_root_row_count": 101,
+    "schema": "bayes_basket_metar_trajectory_fold_source_v1",
+    "settlement_timezone": "Asia/Seoul",
+    "station_id": "RKPK",
+    "truth_row_count": 13
+  }
+}

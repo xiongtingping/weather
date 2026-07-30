@@ -36,6 +36,7 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Mutab
 from urllib.parse import parse_qs, urlparse, urlencode
 from zoneinfo import ZoneInfo
 
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
@@ -73,6 +74,7 @@ from auto_trade_decision_writer import insert_auto_trade_decision_rows
 from auto_trade_job_writer import mark_stale_auto_trade_jobs_stuck
 from auto_order_ledger_writer import insert_auto_order_ignore
 from edge_trade_ledger_writer import update_edge_trade_by_key, upsert_smoke_test_entry
+from scripts.probability_chain_freshness_probe import probe_chain
 
 try:
     from eth_account import Account as EthAccount
@@ -82,6 +84,124 @@ except Exception:
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "archive.db"
+
+# The copy-follow line is intentionally controlled through its own files and
+# API.  Do not route these UI controls through the Bayes/auto-trade config.
+COPY_FOLLOW_CONFIG_PATH = ROOT_DIR / "config" / "trading" / "copy_follow_v1.json"
+COPY_FOLLOW_PAUSE_FILE = DATA_DIR / "copy_follow_paused.flag"
+COPY_FOLLOW_BUDGET_OPTIONS = (30.0, 50.0, 100.0, 200.0)
+COPY_FOLLOW_CONFIG_LOCK = threading.RLock()
+
+
+def _read_copy_follow_config() -> Dict[str, Any]:
+    try:
+        payload = json.loads(COPY_FOLLOW_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _write_copy_follow_config(payload: Mapping[str, Any]) -> None:
+    COPY_FOLLOW_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = COPY_FOLLOW_CONFIG_PATH.with_name(
+        f".{COPY_FOLLOW_CONFIG_PATH.name}.tmp.{os.getpid()}.{threading.get_ident()}"
+    )
+    temporary.write_text(
+        json.dumps(dict(payload), ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, COPY_FOLLOW_CONFIG_PATH)
+
+
+def _copy_follow_effective_payload() -> Dict[str, Any]:
+    with COPY_FOLLOW_CONFIG_LOCK:
+        config = _read_copy_follow_config()
+        raw_state = str(config.get("state") or "disabled").strip().lower()
+        pause_file = COPY_FOLLOW_PAUSE_FILE.exists()
+        enabled = raw_state == "enabled" and not pause_file
+        config_valid = (
+            config.get("schema") == "weather_copy_follow_config_v1"
+            and config.get("strategy_id") == "weather_copy_follow_v1"
+        )
+        try:
+            city_cap = float(config.get("city_cap_usdc"))
+        except (TypeError, ValueError):
+            city_cap = None
+        try:
+            updated_at = datetime.fromtimestamp(
+                COPY_FOLLOW_CONFIG_PATH.stat().st_mtime,
+                timezone.utc,
+            ).isoformat(timespec="seconds").replace("+00:00", "Z")
+        except OSError:
+            updated_at = ""
+        return {
+            "ok": bool(config) and config_valid,
+            "enabled": enabled,
+            "state": "enabled" if enabled else "disabled",
+            "config_state": raw_state,
+            "pause_file": pause_file,
+            "city_cap_usdc": city_cap,
+            "budget_options_usdc": list(COPY_FOLLOW_BUDGET_OPTIONS),
+            "strategy_id": str(config.get("strategy_id") or "weather_copy_follow_v1"),
+            "source_user": str(
+                (config.get("source") or {}).get("user")
+                if isinstance(config.get("source"), dict)
+                else ""
+            ),
+            "updated_at": updated_at,
+        }
+
+
+def _parse_copy_follow_bool(raw: Any) -> Optional[bool]:
+    text = str(raw or "").strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _set_copy_follow_config(params: Mapping[str, List[str]]) -> Dict[str, Any]:
+    enabled: Optional[bool] = None
+    if "enabled" in params:
+        enabled = _parse_copy_follow_bool(params.get("enabled", [""])[0])
+        if enabled is None:
+            return {"ok": False, "error": "invalid_enabled"}
+
+    budget: Optional[float] = None
+    if "city_cap_usdc" in params:
+        try:
+            budget = float(params.get("city_cap_usdc", [""])[0])
+        except (TypeError, ValueError):
+            budget = None
+        if budget is None or not math.isfinite(budget) or budget not in COPY_FOLLOW_BUDGET_OPTIONS:
+            return {
+                "ok": False,
+                "error": "invalid_city_cap_usdc",
+                "allowed": list(COPY_FOLLOW_BUDGET_OPTIONS),
+            }
+
+    with COPY_FOLLOW_CONFIG_LOCK:
+        config = _read_copy_follow_config()
+        if not config or config.get("schema") != "weather_copy_follow_config_v1":
+            return {"ok": False, "error": "copy_follow_config_unavailable"}
+        if enabled is not None:
+            config["state"] = "enabled" if enabled else "disabled"
+        if budget is not None:
+            config["city_cap_usdc"] = budget
+        try:
+            _write_copy_follow_config(config)
+            if enabled is True:
+                COPY_FOLLOW_PAUSE_FILE.unlink(missing_ok=True)
+            elif enabled is False:
+                COPY_FOLLOW_PAUSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                COPY_FOLLOW_PAUSE_FILE.write_text("disabled\n", encoding="utf-8")
+        except OSError as exc:
+            return {"ok": False, "error": f"copy_follow_config_write_failed:{exc.__class__.__name__}"}
+
+    payload = _copy_follow_effective_payload()
+    payload["changed"] = True
+    return payload
 
 
 def _public_auto_trade_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -107,7 +227,7 @@ def _path_probability_follow_status_payload(
     entry_rows: Sequence[Mapping[str, Any]] = (),
     limit: int = 0,
 ) -> Dict[str, Any]:
-    return {
+    section = {
         "run": dict(run_meta),
         "jobs": {"counts": dict(job_counts), "updated_at": str(jobs_updated_at or "")},
         "entry": {
@@ -152,6 +272,17 @@ _FACTS_RANGE_JSON_CACHE_LOCK = threading.Lock()
 CITY_LATEST_CACHE_SEC = max(0, int(os.environ.get("PM_CITY_LATEST_CACHE_SEC", "30") or 30))
 _CITY_LATEST_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _CITY_LATEST_CACHE_LOCK = threading.Lock()
+try:
+    REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC = float(
+        os.environ.get("PM_REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC", "1") or 1
+    )
+except (TypeError, ValueError):
+    REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC = 1.0
+if not math.isfinite(REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC):
+    REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC = 1.0
+REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC = max(0.0, REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC)
+_REPORTED_TRAJECTORY_UI_LATEST_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_REPORTED_TRAJECTORY_UI_LATEST_CACHE_LOCK = threading.Lock()
 CHENGDU_INTRADAY_SUMMARY_CACHE_SEC = max(
     0, int(os.environ.get("PM_CHENGDU_INTRADAY_SUMMARY_CACHE_SEC", "1") or 1)
 )
@@ -1176,6 +1307,40 @@ AUTO_TRADE_EXIT_RETRY_COOLDOWN_SEC = max(0, int(os.environ.get("PM_AUTO_TRADE_EX
 AUTO_TRADE_CONFIRM_WAIT_SYNC_MAX_SEC = max(0, int(os.environ.get("PM_AUTO_TRADE_CONFIRM_WAIT_SYNC_MAX_SEC", "900")))
 AUTO_TRADE_ORDER_MISSING_CLEAR_SEC = max(60, int(os.environ.get("PM_AUTO_TRADE_ORDER_MISSING_CLEAR_SEC", "120")))
 AUTO_TRADE_PENDING_TIMEOUT_CLEAR_SEC = max(60, int(os.environ.get("PM_AUTO_TRADE_PENDING_TIMEOUT_CLEAR_SEC", "120")))
+PROBABILITY_CHAIN_HEALTH_CACHE_SEC = max(
+    5.0, float(os.environ.get("PM_PROBABILITY_CHAIN_HEALTH_CACHE_SEC", "20"))
+)
+PROBABILITY_CHAIN_HEALTH_CACHE: Dict[str, Dict[str, Any]] = {}
+PROBABILITY_CHAIN_HEALTH_CACHE_LOCK = threading.RLock()
+PROBABILITY_CHAIN_HEALTH_INFLIGHT: Dict[str, float] = {}
+
+
+def _probability_chain_cached_manifest_drift(payload: Mapping[str, Any] | None) -> bool:
+    """Return whether a cached manifest blocker has become obsolete.
+
+    A manifest mismatch is a real fail-closed condition while the active
+    activation still authorizes a different runtime.  The old implementation
+    discarded every cached ``manifest_drift`` payload, which meant the
+    background refresh immediately repopulated the same blocker and the UI
+    stayed in ``pending`` forever.  Only invalidate it after the live
+    activation and the current runtime closure agree.
+    """
+
+    if not isinstance(payload, Mapping):
+        return False
+    manifest = payload.get("manifest")
+    if not isinstance(manifest, Mapping) or str(manifest.get("blocker") or "").strip() != "manifest_drift":
+        return False
+    try:
+        activation_path = ROOT_DIR / "config" / "production_probability_runtime_activation.json"
+        activation = json.loads(activation_path.read_text(encoding="utf-8"))
+        authorized = str((activation or {}).get("runtime_manifest_sha256") or "").strip()
+        from production_probability_v6_runtime_manifest import v6_runtime_manifest_sha256
+
+        current = str(v6_runtime_manifest_sha256(ROOT_DIR) or "").strip()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, ImportError):
+        return False
+    return bool(current and authorized and current == authorized)
 
 # Health thresholds (SSOT for UI alerts and the auto-trade health panel).
 HEALTH_SCAN_STALE_SEC = int(os.environ.get("PM_HEALTH_SCAN_STALE_SEC", str(45 * 60)))
@@ -1219,6 +1384,174 @@ _SCAN_ALERTS_PAUSED_HEALTH_CODES = {
     "no_distribution",
     "q_calibrated_missing_ratio",
 }
+
+
+def _apply_probability_chain_ui_identity(
+    payload: Mapping[str, Any],
+    ui_identity: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Overlay the browser's already-loaded UI pointer without another UI GET."""
+
+    out = dict(payload)
+    ui_map = dict(ui_identity)
+    fact_segment = out.get("fact_latest") if isinstance(out.get("fact_latest"), Mapping) else {}
+    expected_fact_id = fact_segment.get("fact_id")
+    expected_fact_snapshot = str(out.get("latest_fact") or fact_segment.get("id") or "").strip()
+    expected_checkpoint = str(out.get("latest_checkpoint") or "").strip()
+    found_fact_id = ui_map.get("fact_id")
+    found_snapshot = str(ui_map.get("fact_snapshot_id") or "").strip()
+    found_checkpoint = str(ui_map.get("posterior_checkpoint_id") or "").strip()
+    matched = bool(
+        found_snapshot
+        and found_snapshot == expected_fact_snapshot
+        and (found_fact_id in (None, "") or str(found_fact_id) == str(expected_fact_id))
+        and (not found_checkpoint or found_checkpoint == expected_checkpoint)
+    )
+    out["ui"] = {
+        "as_of": str(ui_map.get("as_of") or "") or None,
+        "created_at": None,
+        "id": found_snapshot or found_fact_id or None,
+        "hash_match": matched,
+        "behind_previous": False,
+        "lag_seconds": 0.0,
+        "age_seconds": None,
+        "blocker": None if matched else "ui_stale",
+        "identity": {
+            "matched": matched,
+            "fact_id": found_fact_id,
+            "fact_snapshot_id": found_snapshot,
+            "posterior_checkpoint_id": found_checkpoint,
+        },
+    }
+    blockers = [
+        dict(item) for item in (out.get("blockers") or [])
+        if isinstance(item, Mapping) and str(item.get("at") or "") != "ui"
+    ]
+    if not matched:
+        blockers.append({"at": "ui", "reason": "ui_stale"})
+    order = {"manifest": -1, "source": 0, "snapshot": 1, "checkpoint": 2, "fact_latest": 3, "ui": 4}
+    blockers.sort(key=lambda item: order.get(str(item.get("at") or ""), 99))
+    out["blockers"] = blockers
+    out["broken_at"] = blockers[0].get("at") if blockers else None
+    out["state"] = "blocked" if any(item.get("at") == "manifest" for item in blockers) else ("stale" if blockers else "fresh")
+    out["ui_checked"] = True
+    return out
+
+
+def probability_chain_health(
+    *,
+    prefer_run_date: str = "",
+    slug: str = "",
+    ui_identity: Mapping[str, Any] | None = None,
+    allow_pending: bool = False,
+) -> Dict[str, Any]:
+    """Return the read-only source→snapshot→checkpoint→fact→UI probe."""
+
+    date_key = _normalize_date_key(prefer_run_date)
+    slug_key = str(slug or "").strip()
+    ui_map = dict(ui_identity) if isinstance(ui_identity, Mapping) else {}
+    cache_key = f"{date_key}|{slug_key}"
+    now_ts = time.time()
+    if allow_pending:
+        with PROBABILITY_CHAIN_HEALTH_CACHE_LOCK:
+            cached = PROBABILITY_CHAIN_HEALTH_CACHE.get(cache_key)
+            cached_at = float(cached.get("cached_at") or 0.0) if cached else 0.0
+            cache_age = max(0.0, now_ts - cached_at) if cached_at else None
+            if cached and _probability_chain_cached_manifest_drift(cached.get("payload")):
+                PROBABILITY_CHAIN_HEALTH_CACHE.pop(cache_key, None)
+                cached = None
+                cached_at = 0.0
+                cache_age = None
+            cache_fresh = bool(cached and cache_age is not None and cache_age < PROBABILITY_CHAIN_HEALTH_CACHE_SEC)
+            if cache_fresh:
+                payload = dict(cached.get("payload") or {})
+                payload["cache_hit"] = True
+                payload["cache_age_sec"] = round(cache_age or 0.0, 3)
+                payload["refreshing"] = False
+                return _apply_probability_chain_ui_identity(payload, ui_map) if ui_map else payload
+            if cache_key not in PROBABILITY_CHAIN_HEALTH_INFLIGHT:
+                PROBABILITY_CHAIN_HEALTH_INFLIGHT[cache_key] = now_ts
+                threading.Thread(
+                    target=_refresh_probability_chain_health_background,
+                    kwargs={"cache_key": cache_key, "date_key": date_key, "slug_key": slug_key},
+                    name="probability_chain_health_probe",
+                    daemon=True,
+                ).start()
+            if cached:
+                payload = dict(cached.get("payload") or {})
+                payload["cache_hit"] = True
+                payload["cache_age_sec"] = round(cache_age or 0.0, 3) if cache_age is not None else None
+                payload["refreshing"] = True
+                return _apply_probability_chain_ui_identity(payload, ui_map) if ui_map else payload
+        return {
+            "schema": "probability_chain_freshness_probe_v1",
+            "read_only": True,
+            "state": "pending",
+            "latest_checkpoint": None,
+            "latest_fact": None,
+            "lag_seconds": None,
+            "broken_at": None,
+            "blockers": [{"at": "probe", "reason": "probe_pending"}],
+            "endpoint": "/api/probability-chain-health",
+            "cache_hit": False,
+            "cache_age_sec": None,
+            "refreshing": True,
+            "ui_checked": bool(ui_map),
+        }
+    with PROBABILITY_CHAIN_HEALTH_CACHE_LOCK:
+        cached = PROBABILITY_CHAIN_HEALTH_CACHE.get(cache_key)
+        if cached and _probability_chain_cached_manifest_drift(cached.get("payload")):
+            PROBABILITY_CHAIN_HEALTH_CACHE.pop(cache_key, None)
+            cached = None
+        if cached and now_ts - float(cached.get("cached_at") or 0.0) < PROBABILITY_CHAIN_HEALTH_CACHE_SEC:
+            payload = dict(cached.get("payload") or {})
+            payload["cache_hit"] = True
+            payload["cache_age_sec"] = round(max(0.0, now_ts - float(cached.get("cached_at") or now_ts)), 3)
+            return _apply_probability_chain_ui_identity(payload, ui_map) if ui_map else payload
+    try:
+        payload = probe_chain(
+            db_path=DB_PATH,
+            event_date=date_key or None,
+            slug=slug_key or None,
+            source_age_sec=60.0,
+            include_ui=False,
+            ui_identity_override=None,
+        )
+    except Exception as exc:
+        payload = {
+            "schema": "probability_chain_freshness_probe_v1",
+            "read_only": True,
+            "state": "blocked",
+            "latest_checkpoint": None,
+            "latest_fact": None,
+            "lag_seconds": None,
+            "broken_at": "probe",
+            "blockers": [{"at": "probe", "reason": f"probe_failed:{type(exc).__name__}"}],
+        }
+    payload = {
+        **payload,
+        "endpoint": "/api/probability-chain-health",
+        "cache_hit": False,
+        "cache_age_sec": 0.0,
+        "ui_checked": False,
+    }
+    with PROBABILITY_CHAIN_HEALTH_CACHE_LOCK:
+        PROBABILITY_CHAIN_HEALTH_CACHE[cache_key] = {"cached_at": now_ts, "payload": dict(payload)}
+    return _apply_probability_chain_ui_identity(payload, ui_map) if ui_map else payload
+
+
+def _refresh_probability_chain_health_background(*, cache_key: str, date_key: str, slug_key: str) -> None:
+    """Populate one health-cache key without holding up the browser request."""
+
+    try:
+        probability_chain_health(
+            prefer_run_date=date_key,
+            slug=slug_key,
+            allow_pending=False,
+        )
+    finally:
+        with PROBABILITY_CHAIN_HEALTH_CACHE_LOCK:
+            PROBABILITY_CHAIN_HEALTH_INFLIGHT.pop(cache_key, None)
 
 
 def _scan_alerts_paused() -> bool:
@@ -1377,9 +1710,15 @@ except (TypeError, ValueError):
 UI_STATIC_MAX_CONCURRENT_REQUESTS = max(2, min(UI_STATIC_MAX_CONCURRENT_REQUESTS, 8))
 UI_PRIORITY_REQUEST_PATHS = {
     "/api/auto-trade-status",
+    "/api/copy-follow-config",
     "/api/model-update-stats",
     "/api/reload-ts",
     "/api/ui-runtime-health",
+    "/api/probability-chain-health",
+    # The city board and its lineage probe are the freshness surface itself;
+    # they must not queue behind a stale Chengdu full-snapshot rebuild.
+    "/api/china-airport-board",
+    "/api/city-data-lineage-health",
 }
 UI_HEAVY_REQUEST_PATHS = {
     "/api/ui_snapshot",
@@ -2259,7 +2598,7 @@ def latest_chengdu_anomaly_alerts() -> Dict[str, Any]:
             stale["cache_rebuild_in_flight"] = True
         return stale
     if not _CHENGDU_ANOMALY_ALERT_BUILD_LOCK.acquire(blocking=False):
-        return {
+        payload = {
             "ok": False,
             "busy": True,
             "error": "anomaly_alert_build_in_flight",
@@ -2460,9 +2799,11 @@ def _latest_fact_payload_for_chengdu_intraday_ssot(event_date: str) -> Dict[str,
         cached = _CHENGDU_INTRADAY_SSOT_PAYLOAD_CACHE.get(cache_key)
     if cached and (now_ts - float(cached[0] or 0.0)) <= CHENGDU_INTRADAY_SSOT_CACHE_SEC:
         return dict(cached[2] or {})
-    uri = f"file:{DB_PATH}?mode=ro"
     try:
-        with sqlite3.connect(uri, uri=True, timeout=0.08) as conn:
+        # sqlite3.Connection.__enter__ only manages the transaction; it does
+        # not close the connection.  Use the shared read-only context so this
+        # hot UI path cannot leak one DB/WAL descriptor per refresh.
+        with open_db_ro_fast(timeout_sec=0.08, busy_timeout_ms=0) as conn:
             conn.row_factory = sqlite3.Row
             latest = conn.execute(
                 """
@@ -2881,6 +3222,7 @@ def _overlay_latest_fact_observation_fields(out: Dict[str, Any], fact_payload: M
         "source_observations",
         "source_acquisition_trace",
         "source_to_posterior_timing",
+        "v6_execution_deadline_timing",
         "amsc_latency_slo_audit",
         "signal_to_order_timing",
         "hard_source_acceptance_state",
@@ -3064,6 +3406,7 @@ def _overlay_latest_fact_bayes_fields(out: Dict[str, Any], fact_payload: Mapping
         "prior_distribution",
         "prior_meta",
         "prior_na_reason",
+        "observation_update_materialization",
         "forecast_weak_likelihood",
         "metar_strong_likelihood",
         "state_probs",
@@ -3102,6 +3445,7 @@ def _overlay_latest_fact_bayes_fields(out: Dict[str, Any], fact_payload: Mapping
         "source_observations",
         "source_acquisition_trace",
         "source_to_posterior_timing",
+        "v6_execution_deadline_timing",
         "amsc_latency_slo_audit",
         "source_latency_trace",
     ):
@@ -3926,6 +4270,7 @@ def _compact_chengdu_intraday_summary_for_endpoint(summary: Any) -> Dict[str, An
         ("physical_cutoff_evidence", set(), set()),
         ("amsc_latency_slo_audit", {"stage_latencies_ms", "stage_slo_ms", "stage_status"}, set()),
         ("source_to_posterior_timing", {"amsc_latency_slo_audit"}, set()),
+        ("v6_execution_deadline_timing", set(), set()),
     )
     for key, nested, row_fields in mapping_specs:
         compact = _compact_intraday_mapping_for_endpoint(
@@ -10992,7 +11337,7 @@ def auto_trade_health(
             out["cache_age_sec"] = round(float(cache_age_sec or 0.0), 3)
             out["refresh_mode"] = "async"
             return out
-        return {
+        payload = {
             "ok": True,
             "level": "warn",
             "issues": [
@@ -12353,6 +12698,7 @@ def _prune_raw_response_fields_in_place(node: Any) -> None:
 def _slim_fact_payload_for_ui(payload: Any) -> Any:
     if not isinstance(payload, dict):
         return payload
+    _attach_production_posterior_display_contract(payload)
     distribution = payload.get("distribution") or payload.get("rows")
     if isinstance(distribution, list):
         for row in distribution:
@@ -12924,6 +13270,84 @@ def _attach_model_member_cache_snapshot_for_ui_snapshot(
             }
         )
         payload["model_member_cache_snapshot"] = snapshot
+    _attach_model_peak_sources_for_ui_snapshot(payload)
+
+
+def _attach_model_peak_sources_for_ui_snapshot(
+    payload: MutableMapping[str, Any],
+) -> None:
+    """Expose cached model peaks as display-only values.
+
+    The production posterior is pure state-space: NWP/TAF revisions are
+    forcing and are not temperature likelihood buckets.  The dashboard still
+    needs to show the independently materialized model forecast peaks, so keep
+    this contract separate from ``forecast_weak_likelihood`` and mark it
+    explicitly as non-probabilistic.
+    """
+    if not isinstance(payload, MutableMapping):
+        return
+    snapshot = payload.get("model_member_cache_snapshot")
+    snapshot_models = snapshot.get("models") if isinstance(snapshot, Mapping) else {}
+    if not isinstance(snapshot_models, Mapping):
+        snapshot_models = {}
+    existing = payload.get("model_peak_sources")
+    model_peaks: Dict[str, Any] = dict(existing) if isinstance(existing, Mapping) else {}
+    for model in UI_SNAPSHOT_MODEL_MEMBER_CACHE_MODELS:
+        entry = snapshot_models.get(model)
+        entry_map = entry if isinstance(entry, Mapping) else {}
+        current = model_peaks.get(model)
+        current_map = dict(current) if isinstance(current, Mapping) else {}
+        value_key = ""
+        value: Optional[float] = None
+        for candidate_key in ("peak_c", "forecast_peak_c", "max_c", "mean_c"):
+            candidate = to_float(entry_map.get(candidate_key))
+            if candidate is not None and math.isfinite(float(candidate)):
+                value_key = candidate_key
+                value = float(candidate)
+                break
+        if value is not None:
+            current_map.update(
+                {
+                    "state": "available",
+                    "value_c": round(value, 3),
+                    "value_field": value_key,
+                    "value_semantics": (
+                        "cached_member_peak"
+                        if value_key in {"peak_c", "forecast_peak_c", "max_c"}
+                        else "cached_member_mean"
+                    ),
+                }
+            )
+        else:
+            current_map.setdefault("state", "missing")
+            current_map.setdefault("reason", "model_peak_not_materialized")
+        for key in (
+            "source",
+            "loc_key",
+            "event_date",
+            "market_var",
+            "market_unit",
+            "member_count",
+            "created_at",
+            "official_updated_at",
+            "official_updated_source",
+            "members_signature",
+            "forecast_peak_valid_time",
+            "forecast_peak_valid_at",
+            "forecast_peak_at",
+        ):
+            if current_map.get(key) in (None, "", [], {}) and entry_map.get(key) not in (None, "", [], {}):
+                current_map[key] = copy.deepcopy(entry_map.get(key))
+        current_map.setdefault("source", "model_member_cache")
+        current_map.setdefault("display_only", True)
+        current_map.setdefault("likelihood_eligible", False)
+        current_map.setdefault(
+            "boundary",
+            "display_only_model_peak_not_state_space_temperature_likelihood",
+        )
+        model_peaks[model] = current_map
+    if model_peaks:
+        payload["model_peak_sources"] = model_peaks
 
 
 def _model_bucket_rule_comparison_for_ui_snapshot(payload: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
@@ -15716,6 +16140,7 @@ UI_SNAPSHOT_FRONTEND_CONTRACT_TOP_LEVEL_KEYS: Tuple[str, ...] = (
     "posterior_as_of",
     "posterior_ssot_fact",
     "source_to_posterior_timing",
+    "v6_execution_deadline_timing",
     "amsc_latency_slo_audit",
     "phase",
     "beta_weak",
@@ -15725,7 +16150,10 @@ UI_SNAPSHOT_FRONTEND_CONTRACT_TOP_LEVEL_KEYS: Tuple[str, ...] = (
     "prior_distribution",
     "prior_meta",
     "prior_na_reason",
+    "observation_update_materialization",
     "forecast_weak_likelihood",
+    "forecast_weak_attribution",
+    "probability_audit",
     "metar_strong_likelihood",
     "state_probs",
     "remaining_warming_by_state",
@@ -15744,6 +16172,7 @@ UI_SNAPSHOT_FRONTEND_CONTRACT_TOP_LEVEL_KEYS: Tuple[str, ...] = (
     "runtime_schemas",
     "runtime_policy_versions",
     "model_member_cache_snapshot",
+    "model_peak_sources",
     "model_members_decimal_raw",
     "model_members",
     "model_member_counts_raw",
@@ -16155,6 +16584,9 @@ def _compact_posterior_ssot_fact_for_ui_snapshot(value: Any) -> Dict[str, Any]:
         "legacy_model_fallback_allowed",
         "writer_mode",
         "checkpoint_kind",
+        "previous_checkpoint_id",
+        "prior_context_id",
+        "forecast_evidence_snapshot_id",
         "posterior_checkpoint_id",
         "realization_state_id",
         "realization_state_na_reason",
@@ -16168,7 +16600,43 @@ def _compact_posterior_ssot_fact_for_ui_snapshot(value: Any) -> Dict[str, Any]:
         "latent_probability_public",
         "committed_at",
         "market_bucket_probabilities_na_reason",
+        "market_top_bucket",
+        "market_top_probability_field",
         "settlement_scalar_distribution_na_reason",
+        # Pure state-space lineage.  These are display identities and
+        # booleans only; the UI must never reconstruct a posterior from them.
+        "physical_composer_schema",
+        "physical_state_posterior_schema",
+        "physical_state_posterior_sha256",
+        "physical_pre_event_state_sha256",
+        "physical_observation_likelihood_sha256",
+        "physical_post_event_state_sha256",
+        "physical_weak_advance_sha256",
+        "physical_forcing_rebind_sha256",
+        "physical_path_projection_sha256",
+        "physical_state_model_artifact_sha256",
+        "physical_observation_artifact_sha256",
+        "physical_reporting_operator_sha256",
+        "physical_driver_generation_sha256",
+        "physical_last_weak_advance_json",
+        "physical_weak_advance_json",
+        "physical_forcing_rebind_json",
+        "physical_path_projection_json",
+        "physical_weak_advance_sha256",
+        "physical_forcing_rebind_sha256",
+        "physical_path_projection_sha256",
+        "invariant_report",
+        "physical_current_event_consumption_count",
+        "physical_state_reference_valid_at",
+        "last_event_valid_at",
+        "current_observation_consumed_once",
+        "current_observation_consumed",
+        "forecast_revision_used_as_likelihood",
+        "nwp_hourly_path_likelihood_reapplied",
+        "past_state_transitions_replayed",
+        "state_advanced_with_superseded_driver_to_effective_time",
+        "future_forcing_replaced",
+        "hard_condition_applied",
     )
     out: Dict[str, Any] = {
         key: value.get(key)
@@ -16264,6 +16732,24 @@ def _compact_posterior_ssot_fact_for_ui_snapshot(value: Any) -> Dict[str, Any]:
     )
     if market_rows:
         out["market_bucket_probabilities"] = market_rows
+        market_top = market_rows[0]
+        out["market_top_bucket"] = str(
+            value.get("market_top_bucket") or market_top.get("outcome") or ""
+        )
+        market_top_probability = _ui_snapshot_prob01_from_value(
+            value.get("market_top_probability")
+        )
+        if market_top_probability is None:
+            market_top_probability = _ui_snapshot_prob01_from_value(
+                market_top.get("probability")
+            )
+        if market_top_probability is not None:
+            out["market_top_probability"] = float(market_top_probability)
+            out["market_top_probability_pct"] = float(market_top_probability) * 100.0
+        out.setdefault(
+            "market_top_probability_field",
+            "posterior_ssot_fact.market_bucket_probabilities",
+        )
     target_bucket = str(out.get("target_bucket") or value.get("target_bucket_label") or "").strip()
     if target_bucket:
         out["target_bucket"] = target_bucket
@@ -16305,6 +16791,184 @@ def _compact_posterior_ssot_fact_for_ui_snapshot(value: Any) -> Dict[str, Any]:
             out["na_reasons"] = compact_na
     out.setdefault("read_only", True)
     return out
+
+
+def _ui_snapshot_json_mapping(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return dict(parsed) if isinstance(parsed, Mapping) else {}
+
+
+def _build_ui_snapshot_state_space_lineage(
+    ssot: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Expose state-space identities without exposing a client-side formula.
+
+    The active physical SSOT advances latent state with an exogenous forcing
+    generation, consumes the canonical observation once, then projects X via
+    the frozen reporting operator.  Keep this contract deliberately compact:
+    hashes/flags prove lineage, while the server remains the only place that
+    computes probabilities.
+    """
+
+    if not isinstance(ssot, Mapping):
+        return {}
+
+    def text(*keys: str) -> str:
+        for key in keys:
+            value = ssot.get(key)
+            if value not in (None, "", [], {}):
+                return str(value)
+        return ""
+
+    def present(*keys: str) -> Any:
+        for key in keys:
+            if key in ssot and ssot.get(key) not in (None, "", [], {}):
+                return copy.deepcopy(ssot.get(key))
+        return None
+
+    def compact_json(*keys: str) -> Dict[str, Any]:
+        raw = {}
+        for key in keys:
+            raw = _ui_snapshot_json_mapping(ssot.get(key))
+            if raw:
+                break
+        if not raw:
+            return {}
+        # Never send joint cells or full transition matrices to the first
+        # screen.  Their hashes and the server-side checkpoint are enough to
+        # identify the exact calculation; these fields explain the role.
+        allowed = {
+            "schema",
+            "event_id",
+            "event_valid_at",
+            "effective_from",
+            "previous_checkpoint_sha256",
+            "previous_physical_state_posterior_sha256",
+            "forcing_generation_sha256",
+            "previous_forcing_generation_sha256",
+            "revised_forcing_generation_sha256",
+            "transition_artifact_sha256",
+            "observation_artifact_sha256",
+            "reporting_operator_sha256",
+            "path_projection_sha256",
+            "old_generation",
+            "new_generation",
+            "weight_method",
+            "scenario_weight_method",
+            "current_event_consumption_count",
+            "hard_condition_applied",
+            "observed_contract_max_c",
+            "y_lower_bound_c",
+            "reported_x_lower_bound_c",
+            "state_reference_valid_at",
+        }
+        return {
+            key: copy.deepcopy(raw[key])
+            for key in allowed
+            if raw.get(key) not in (None, "", [], {})
+        }
+
+    previous_checkpoint_id = text("previous_checkpoint_id")
+    prior_context_id = text("prior_context_id")
+    forcing_generation = text("physical_driver_generation_sha256")
+    transition_artifact = text("physical_state_model_artifact_sha256")
+    observation_artifact = text("physical_observation_artifact_sha256")
+    reporting_operator = text("physical_reporting_operator_sha256")
+    state_schema = text("physical_state_posterior_schema")
+    state_space = bool(
+        state_schema
+        or forcing_generation
+        or transition_artifact
+        or observation_artifact
+        or reporting_operator
+        or any(
+            key in ssot
+            for key in (
+                "physical_last_weak_advance_json",
+                "physical_weak_advance_json",
+                "physical_forcing_rebind_json",
+                "physical_path_projection_json",
+            )
+        )
+    )
+    if not state_space:
+        return {}
+
+    advance = compact_json("physical_last_weak_advance_json", "physical_weak_advance_json")
+    rebind = compact_json("physical_forcing_rebind_json")
+    projection = compact_json("physical_path_projection_json")
+    observation_consumed = present("current_observation_consumed_once", "current_observation_consumed")
+    if observation_consumed is None and advance:
+        observation_consumed = False
+    hard_condition = present("hard_condition_applied")
+    if hard_condition is None:
+        hard_condition = projection.get("hard_condition_applied") if projection else None
+    out: Dict[str, Any] = {
+        "schema": "ui_state_space_lineage_v1",
+        "read_only": True,
+        "state_schema": state_schema,
+        "previous_checkpoint_id": previous_checkpoint_id,
+        "prior_context_id": prior_context_id,
+        "transition": {
+            "forcing_generation_sha256": forcing_generation,
+            "transition_artifact_sha256": transition_artifact,
+            "advance": advance,
+        },
+        "forcing": {
+            "generation_sha256": forcing_generation,
+            "rebind": rebind,
+            "revision_used_as_likelihood": present("forecast_revision_used_as_likelihood"),
+            "future_forcing_replaced": present("future_forcing_replaced"),
+        },
+        "observation_update": {
+            "consumed": observation_consumed,
+            "consumption_count": present("physical_current_event_consumption_count"),
+            "artifact_sha256": observation_artifact,
+            "last_event_valid_at": text("last_event_valid_at"),
+            "post_event_state_sha256": text("physical_post_event_state_sha256"),
+        },
+        "reporting_operator": {
+            "artifact_sha256": reporting_operator,
+            "projection": projection,
+            "path_projection_sha256": text("physical_path_projection_sha256"),
+        },
+        "hard_condition": {
+            "applied": hard_condition,
+            "reported_x_lower_bound_c": present("reported_x_lower_bound_c", "hard_temperature_floor_c"),
+        },
+        "invariants": {
+            "forecast_revision_used_as_likelihood": present("forecast_revision_used_as_likelihood"),
+            "current_observation_consumed": present("current_observation_consumed", "current_observation_consumed_once"),
+            "nwp_hourly_path_likelihood_reapplied": present("nwp_hourly_path_likelihood_reapplied"),
+            "past_state_transitions_replayed": present("past_state_transitions_replayed"),
+        },
+    }
+    # Omit empty leaves so a pending checkpoint remains explicit rather than
+    # looking like a zero-valued contribution.
+    for key in ("transition", "forcing", "observation_update", "reporting_operator", "hard_condition", "invariants"):
+        out[key] = {
+            child: value
+            for child, value in out[key].items()
+            if value not in (None, "", [], {})
+        }
+    return out
+
+
+def _state_space_lineage_for_ui_snapshot_item(
+    item: Mapping[str, Any],
+    ssot: Mapping[str, Any],
+) -> Dict[str, Any]:
+    direct = item.get("state_space_lineage") if isinstance(item, Mapping) else None
+    if isinstance(direct, Mapping) and direct.get("schema"):
+        return copy.deepcopy(dict(direct))
+    return _build_ui_snapshot_state_space_lineage(ssot)
 
 
 def _compact_ui_snapshot_probability_rows(
@@ -16448,9 +17112,38 @@ def _build_ui_snapshot_prior_section(item: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def _build_ui_snapshot_forecast_weak_section(item: Mapping[str, Any]) -> Dict[str, Any]:
-    """Expose the persisted forecast weak-likelihood layer for read-only UI use."""
+    """Expose the active forcing layer for read-only UI use.
+
+    Physical state-space checkpoints do not treat a forecast revision as an
+    independent temperature likelihood.  For those checkpoints, return the
+    lineage contract and deliberately omit forecast bucket probabilities.
+    Legacy facts can still use the historical weak-likelihood display path.
+    """
     if not isinstance(item, Mapping):
         return {}
+    ssot = _compact_posterior_ssot_fact_for_ui_snapshot(item.get("posterior_ssot_fact"))
+    state_space_lineage = _state_space_lineage_for_ui_snapshot_item(item, ssot)
+    if state_space_lineage:
+        forcing = state_space_lineage.get("forcing")
+        forcing_map = forcing if isinstance(forcing, Mapping) else {}
+        return {
+            "schema": "ui_state_transition_forcing_section_v1",
+            "state": "available",
+            "read_only": True,
+            "source": "facts.items[].posterior_ssot_fact.physical_driver_generation_sha256",
+            "role": "state_transition_forcing",
+            "fact_snapshot_id": _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id"),
+            "posterior_run_id": _lineage_field_for_ui_snapshot_item(item, "posterior_run_id"),
+            "forcing_generation_sha256": str(forcing_map.get("generation_sha256") or ""),
+            "revision_used_as_likelihood": forcing_map.get("revision_used_as_likelihood"),
+            "future_forcing_replaced": forcing_map.get("future_forcing_replaced"),
+            "bucket_count": 0,
+            "bucket_probabilities": [],
+            "na_reason": "state_space_forcing_has_no_temperature_likelihood_bucket",
+            "frontend_recompute_allowed": False,
+            "state_space_lineage": state_space_lineage,
+            "boundary": "state_transition_only_forecast_revision_is_not_an_observation_likelihood",
+        }
     source = "facts.items[].forecast_weak_likelihood"
     likelihood_raw = item.get("forecast_weak_likelihood")
     if not isinstance(likelihood_raw, (Mapping, list, tuple)) or not likelihood_raw:
@@ -16795,12 +17488,23 @@ def _ui_snapshot_source_observations_from_fact_features(item: Mapping[str, Any])
     ).as_dict(include_payload=True)
     observation.update(physical_payload)
     observation["source_role"] = observation.get("role")
+    # Keep the canonical execution lane visible in the read-only snapshot;
+    # the frontend must not infer or recompute source ownership.
+    source_lane = {
+        "zuuu_metar_raw_amsc": "amsc",
+        "zuuu_metar_raw_awc": "awc",
+    }.get(source_id, "")
+    if source_lane:
+        observation["source_lane"] = source_lane
     observation["ui_display_derived_from_fact_features"] = True
     observation["read_only"] = True
     observation["not_posterior_input"] = True
     observed_today_max_at = raw_payload["observed_today_max_at"]
     if observed_today_max_at:
         observation["observed_today_max_at"] = observed_today_max_at
+    observation["observed_today_max_semantics"] = (
+        "whole_hour_settlement_fact;half_hour_reference_only"
+    )
     return [observation]
 
 
@@ -16808,6 +17512,7 @@ def _compact_ui_snapshot_source_observation_row(raw: Mapping[str, Any]) -> Dict[
     row: Dict[str, Any] = {}
     for key in (
         "source_id",
+        "source_lane",
         "source_class",
         "source_role",
         "role",
@@ -16821,6 +17526,9 @@ def _compact_ui_snapshot_source_observation_row(raw: Mapping[str, Any]) -> Dict[
         "valid_time_local",
         "observation_time",
         "observed_today_max_at",
+        "observed_today_max_semantics",
+        "today_max_semantics",
+        "is_contract_report_slot",
         "fetched_at",
         "source_event_id",
         "source_observation_id",
@@ -17287,13 +17995,18 @@ def _build_ui_snapshot_amsc_metar_ssot_section(
         or ""
     ).strip()
     latest_raw = _feature_first_text(features, f"{source_id}_latest_raw")
+    direct_report_overlay = bool(
+        _feature_first_text(features, f"{source_id}_latest_valid_at")
+    )
     has_amsc = any(value not in (None, "", [], {}) for value in (latest_temp_c, today_max_c, latest_at, latest_raw))
     section: Dict[str, Any] = {
         "schema": "ui_amsc_metar_ssot_section_v1",
         "state": "available" if has_amsc else "missing",
         "read_only": True,
         "source": (
-            "facts.items[].temperature_trajectory_timeline.rows[-1]"
+            "archive.db.reported_trajectory_observations"
+            if direct_report_overlay
+            else "facts.items[].temperature_trajectory_timeline.rows[-1]"
             if timeline_row
             else "facts.items[].weather_likelihood_features_compact.zuuu_metar_raw_amsc_*"
         ),
@@ -17311,6 +18024,8 @@ def _build_ui_snapshot_amsc_metar_ssot_section(
         section["na_reason"] = "zuuu_metar_raw_amsc_fields_missing_from_fact_snapshot"
     metar = {
         "source_id": source_id,
+        "latest_valid_at": _feature_first_text(features, f"{source_id}_latest_valid_at")
+        or str(timeline_row.get("amsc_latest_valid_at") or "").strip(),
         "latest_at": latest_at,
         "latest_local": latest_local,
         "fetched_at": _feature_first_text(features, f"{source_id}_fetched_at"),
@@ -17519,6 +18234,7 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
     if not observations and timeline_row:
         timeline_observation = {
             "source_id": str(timeline_row.get("primary_source_id") or "zuuu_metar_raw_amsc"),
+            "source_lane": "amsc",
             "source_class": "hard_observation_primary",
             "source_role": "hard_source_observation",
             "role": "hard_source_observation",
@@ -17530,6 +18246,7 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
             "temperature_c": timeline_row.get("primary_metar_temp_c", timeline_row.get("amsc_temp_c")),
             "dewpoint_c": timeline_row.get("dewpoint_c"),
             "observed_today_max_c": timeline_row.get("primary_metar_today_max_c", timeline_row.get("amsc_today_max_c")),
+            "observed_today_max_semantics": "whole_hour_settlement_fact;half_hour_reference_only",
             "source_event_id": str(timeline_row.get("canonical_observation_event_id") or ""),
             "source_observation_id": str(timeline_row.get("canonical_observation_event_id") or ""),
             "cloud_text": str(timeline_row.get("cloud_text") or ""),
@@ -17542,6 +18259,16 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
     observations.sort(key=_source_observation_sort_key, reverse=True)
     hard_observations = [row for row in observations if _is_hard_observation_source(row)]
     latest_hard = hard_observations[0] if hard_observations else {}
+    # A current :30 METAR can be newer/warmer than the latest scheduled
+    # hourly report.  Preserve that distinction: it is not a contradiction
+    # for the raw temperature to exceed the settlement-day maximum used by X.
+    official_today_max_c = to_float(latest_hard.get("observed_today_max_c"))
+    latest_reported_temperature_c = to_float(latest_hard.get("temperature_c"))
+    observed_today_max_semantics = str(
+        latest_hard.get("observed_today_max_semantics")
+        or latest_hard.get("today_max_semantics")
+        or "whole_hour_settlement_fact;half_hour_reference_only"
+    ).strip()
     hard_constraints = item.get("hard_constraints")
     hard_constraints_compact = (
         _compact_intraday_mapping_for_endpoint(hard_constraints)
@@ -17558,11 +18285,27 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
     remaining = item.get("remaining_warming_by_state") if isinstance(item.get("remaining_warming_by_state"), list) else []
     trajectory = item.get("temperature_trajectory") if isinstance(item.get("temperature_trajectory"), Mapping) else {}
     features = item.get("observation_features") if isinstance(item.get("observation_features"), Mapping) else {}
+    observation_update = item.get("observation_update_materialization")
+    observation_update = (
+        dict(observation_update)
+        if isinstance(observation_update, Mapping)
+        else {}
+    )
+    state_space_update_materialized = bool(
+        observation_update.get("materialized") is True
+        and str(observation_update.get("state") or "") == "materialized"
+    )
     has_hard_constraint_value = any(
         to_float(hard_constraints_compact.get(key)) is not None
         for key in ("current_temperature_c", "observed_today_max_c", "base_temperature_c")
     )
-    if likelihood_rows and (hard_observations or has_hard_constraint_value):
+    if state_space_update_materialized:
+        # Pure state-space v6 deliberately does not publish a separate
+        # reported-X likelihood map.  The persisted observation update is the
+        # strong-evidence artifact; do not call that absence "not materialized".
+        state = "available"
+        na_reason = "" if likelihood_rows else "state_space_observation_update_has_no_standalone_bucket_map"
+    elif likelihood_rows and (hard_observations or has_hard_constraint_value):
         state = "available"
         na_reason = ""
     elif likelihood_rows:
@@ -17577,6 +18320,32 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
     else:
         state = "missing"
         na_reason = "source_observations_and_metar_strong_likelihood_missing"
+    materialized = bool(
+        state_space_update_materialized or hard_observations or observations or likelihood_rows
+    )
+    if state_space_update_materialized:
+        materialization_state = "state_space_observation_update"
+        materialization_label = "官方报文与状态空间观测更新已物化"
+    elif likelihood_rows and (hard_observations or has_hard_constraint_value):
+        materialization_state = "raw_observation_and_likelihood"
+        materialization_label = "官方报文与强似然已物化"
+    elif hard_observations:
+        # A raw official METAR/SPECI is a complete hard-NO input.  The hard-NO
+        # lane must not manufacture or consume a soft likelihood just to make
+        # this display stage look complete.
+        materialization_state = "raw_observation"
+        materialization_label = "官方原始报文已物化"
+    elif observations:
+        materialization_state = "source_observation"
+        materialization_label = "官方来源报文已物化"
+    else:
+        materialization_state = "not_materialized"
+        materialization_label = "官方报文未物化"
+    source_lanes = sorted({
+        str(row.get("source_lane") or "").strip().lower()
+        for row in hard_observations + observations
+        if str(row.get("source_lane") or "").strip()
+    })
     section: Dict[str, Any] = {
         "schema": "ui_bayes_observation_strong_section_v1",
         "state": state,
@@ -17593,9 +18362,17 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
         "hard_source_observations": hard_observations[:8],
         "hard_source_count": len(hard_observations),
         "latest_hard_observation": latest_hard,
+        "official_today_max_c": official_today_max_c,
+        "latest_reported_temperature_c": latest_reported_temperature_c,
+        "observed_today_max_semantics": observed_today_max_semantics,
+        "observation_update_materialization": observation_update,
         "na_reason": na_reason,
+        "materialized": materialized,
+        "materialization_state": materialization_state,
+        "materialization_label": materialization_label,
+        "source_lanes": source_lanes,
         "frontend_recompute_allowed": False,
-        "boundary": "hard_observation_layer_no_frontend_recompute_no_source_role_promotion",
+        "boundary": "hard_observation_layer_no_frontend_recompute_no_source_role_promotion;raw_report_is_sufficient_for_hard_no",
     }
     if likelihood_rows:
         top = likelihood_rows[0]
@@ -17618,6 +18395,15 @@ def _build_ui_snapshot_observation_strong_section(item: Mapping[str, Any]) -> Di
             for key, value in state_probs.items()
             if to_float(value) is not None and math.isfinite(float(to_float(value)))
         }
+        if section["state_probs"]:
+            top_state, top_state_probability = sorted(
+                section["state_probs"].items(),
+                key=lambda row: (-float(row[1]), str(row[0])),
+            )[0]
+            section["top_state"] = top_state
+            section["top_state_label"] = top_state
+            section["top_state_probability"] = float(top_state_probability)
+            section["top_state_probability_pct"] = float(top_state_probability) * 100.0
     if remaining:
         section["remaining_warming_by_state"] = copy.deepcopy(remaining[:8])
     if trajectory:
@@ -17664,25 +18450,41 @@ def _lineage_field_for_ui_snapshot_item(item: Mapping[str, Any], key: str) -> st
 def _build_ui_snapshot_hard_mask_section(item: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(item, Mapping):
         return {}
+    ssot = _compact_posterior_ssot_fact_for_ui_snapshot(item.get("posterior_ssot_fact"))
     hard_constraints = item.get("hard_constraints")
+    if not isinstance(hard_constraints, Mapping):
+        hard_constraints = ssot.get("hard_constraints")
     compact_constraints = (
         _compact_intraday_mapping_for_endpoint(hard_constraints)
         if isinstance(hard_constraints, Mapping)
         else {}
     )
-    reason = str(item.get("hard_mask_reason") or "").strip()
-    active = bool(reason or compact_constraints or item.get("d0_observed_feasibility_guard_applied"))
+    reported_x_lower_bound_c = to_float(
+        ssot.get("reported_x_lower_bound_c")
+        if ssot.get("reported_x_lower_bound_c") is not None
+        else ssot.get("observed_max_lower_bound_c")
+    )
+    if reported_x_lower_bound_c is not None:
+        compact_constraints.setdefault("reported_x_lower_bound_c", float(reported_x_lower_bound_c))
+    reason = str(ssot.get("hard_mask_reason") or item.get("hard_mask_reason") or "").strip()
+    active = bool(
+        reason
+        or compact_constraints
+        or reported_x_lower_bound_c is not None
+        or item.get("d0_observed_feasibility_guard_applied")
+    )
     return {
         "schema": "ui_bayes_hard_mask_section_v1",
         "state": "available" if active else "inactive",
         "read_only": True,
-        "source": "facts.items[].hard_constraints+hard_mask_reason",
+        "source": "facts.items[].posterior_ssot_fact.hard_constraints+reported_x_lower_bound_c+hard_mask_reason",
         "role": "hard_physical_feasibility_mask",
         "fact_snapshot_id": _lineage_field_for_ui_snapshot_item(item, "fact_snapshot_id"),
         "posterior_run_id": _lineage_field_for_ui_snapshot_item(item, "posterior_run_id"),
         "active": active,
         "hard_mask_reason": reason,
         "hard_constraints": compact_constraints,
+        "reported_x_lower_bound_c": reported_x_lower_bound_c,
         "na_reason": "" if active else "hard_mask_not_triggered",
         "frontend_recompute_allowed": False,
         "boundary": "deterministic_physical_impossibility_only_no_soft_prediction_ranking",
@@ -17700,9 +18502,10 @@ def _build_ui_snapshot_physical_high_posterior_section(item: Mapping[str, Any]) 
     if not isinstance(item, Mapping):
         return {}
     ssot = _compact_posterior_ssot_fact_for_ui_snapshot(item.get("posterior_ssot_fact"))
+    state_space_lineage = _state_space_lineage_for_ui_snapshot_item(item, ssot)
     schema = str(ssot.get("schema") or "")
     if not _is_reported_physical_x_ssot_schema(schema):
-        return {
+        section = {
             "schema": "ui_reported_physical_x_posterior_section_v2",
             "state": "missing",
             "read_only": True,
@@ -17714,9 +18517,12 @@ def _build_ui_snapshot_physical_high_posterior_section(item: Mapping[str, Any]) 
             ),
             "frontend_recompute_allowed": False,
         }
+        if state_space_lineage:
+            section["state_space_lineage"] = state_space_lineage
+        return section
     rows = list(ssot.get("reported_physical_x_distribution") or [])
     if not rows:
-        return {
+        section = {
             "schema": "ui_reported_physical_x_posterior_section_v2",
             "state": "missing",
             "read_only": True,
@@ -17724,10 +18530,13 @@ def _build_ui_snapshot_physical_high_posterior_section(item: Mapping[str, Any]) 
             "na_reason": "reported_physical_x_distribution_missing",
             "frontend_recompute_allowed": False,
         }
+        if state_space_lineage:
+            section["state_space_lineage"] = state_space_lineage
+        return section
     top = rows[0]
     market_rows = list(ssot.get("market_bucket_probabilities") or [])
     market_na_reason = str(ssot.get("market_bucket_probabilities_na_reason") or "")
-    return {
+    section = {
         "schema": "ui_reported_physical_x_posterior_section_v2",
         "state": "available",
         "read_only": True,
@@ -17748,6 +18557,9 @@ def _build_ui_snapshot_physical_high_posterior_section(item: Mapping[str, Any]) 
         "frontend_recompute_allowed": False,
         "boundary": "reported_X_whole_degree_only_not_latent_Z_not_market_B_not_cumulative_edge_bucket",
     }
+    if state_space_lineage:
+        section["state_space_lineage"] = state_space_lineage
+    return section
 
 
 def _build_ui_snapshot_bayes_posterior_ssot_section(item: Mapping[str, Any]) -> Dict[str, Any]:
@@ -17782,6 +18594,10 @@ def _build_ui_snapshot_bayes_posterior_ssot_section(item: Mapping[str, Any]) -> 
     target_bucket = str(ssot.get("target_bucket") or ssot.get("target_bucket_label") or "").strip()
     is_sequential = _is_sequential_temperature_ssot_schema(ssot.get("schema"))
     market_projection_available = bool(ssot.get("market_bucket_probabilities"))
+    market_top_bucket = str(ssot.get("market_top_bucket") or "").strip()
+    market_top_probability = _ui_snapshot_prob01_from_value(
+        ssot.get("market_top_probability")
+    )
     section: Dict[str, Any] = {
         "schema": "ui_bayes_posterior_ssot_section_v1",
         "state": (
@@ -17801,8 +18617,12 @@ def _build_ui_snapshot_bayes_posterior_ssot_section(item: Mapping[str, Any]) -> 
             or item.get("posterior_as_of")
             or ""
         ),
-        "target_bucket": target_bucket,
-        "target_bucket_label": target_bucket,
+        "market_top_bucket": market_top_bucket,
+        "market_top_bucket_label": market_top_bucket,
+        "market_top_probability_field": str(
+            ssot.get("market_top_probability_field")
+            or "posterior_ssot_fact.market_bucket_probabilities"
+        ),
         "target_probability_field": str(
             ssot.get("target_probability_field") or "posterior_ssot_fact.target_probability"
         ),
@@ -17827,6 +18647,20 @@ def _build_ui_snapshot_bayes_posterior_ssot_section(item: Mapping[str, Any]) -> 
     if target_probability is not None:
         section["target_probability"] = float(target_probability)
         section["target_probability_pct"] = float(target_probability) * 100.0
+    if not is_sequential:
+        # Historical facts remain readable, but these aliases are never used
+        # by the active reported-X/market-B production path.
+        section["target_bucket"] = target_bucket
+        section["target_bucket_label"] = target_bucket
+        section["target_probability_field"] = str(
+            ssot.get("target_probability_field")
+            or "posterior_ssot_fact.target_probability"
+        )
+    if market_top_probability is not None:
+        section["market_top_probability"] = float(market_top_probability)
+        section["market_top_probability_pct"] = float(market_top_probability) * 100.0
+    if is_sequential and market_projection_available:
+        section["market_bucket_probabilities"] = ssot.get("market_bucket_probabilities")
     for key in (
         "ranked_bucket_probabilities",
         "bucket_probabilities",
@@ -17882,6 +18716,7 @@ UI_SNAPSHOT_CHENGDU_SUMMARY_SSOT_KEYS: Tuple[str, ...] = (
     "prior_distribution",
     "prior_meta",
     "prior_na_reason",
+    "observation_update_materialization",
     "forecast_weak_likelihood",
     "metar_strong_likelihood",
     "state_probs",
@@ -17894,6 +18729,7 @@ UI_SNAPSHOT_CHENGDU_SUMMARY_SSOT_KEYS: Tuple[str, ...] = (
     "hard_constraints",
     "layer_contributions",
     "posterior_ssot_fact",
+    "state_space_lineage",
     "weather_likelihood_features_compact",
     "source_observations",
     "source_acquisition_trace",
@@ -17904,11 +18740,13 @@ UI_SNAPSHOT_CHENGDU_SUMMARY_SSOT_KEYS: Tuple[str, ...] = (
 
 UI_SNAPSHOT_CHENGDU_SUMMARY_FORCE_SSOT_KEYS: Set[str] = {
     "posterior_ssot_fact",
+    "state_space_lineage",
     "temperature_trajectory",
     "temperature_trajectory_status",
     "weather_likelihood_features_compact",
     "ui_sections",
     "metar_strong_likelihood",
+    "observation_update_materialization",
     "state_probs",
     "remaining_warming_by_state",
     "temperature_trajectory_peak_estimate",
@@ -17973,6 +18811,251 @@ def _merge_fill_ui_snapshot_ssot_into_chengdu_summary(payload: MutableMapping[st
     summary.setdefault("frontend_recompute_allowed", False)
 
 
+def _reported_trajectory_ui_date_bounds(event_date: str) -> Tuple[str, str]:
+    """Return UTC bounds for one Chengdu local settlement day."""
+
+    local_tz = ZoneInfo("Asia/Shanghai")
+    local_start = datetime.strptime(str(event_date), "%Y-%m-%d").replace(
+        tzinfo=local_tz,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    local_end = local_start + timedelta(days=1)
+    return (
+        local_start.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        local_end.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+    )
+
+
+def _reported_trajectory_ui_signed_temp(token: Any) -> Optional[float]:
+    text = str(token or "").strip().upper()
+    if not text or text == "//":
+        return None
+    sign = -1.0 if text.startswith("M") else 1.0
+    digits = text[1:] if sign < 0 else text
+    try:
+        value = float(digits)
+    except (TypeError, ValueError):
+        return None
+    return sign * value if math.isfinite(sign * value) else None
+
+
+def _reported_trajectory_ui_parse_raw(raw_text: Any) -> Dict[str, Any]:
+    """Parse display-only fields from an already persisted METAR string."""
+
+    raw = " ".join(str(raw_text or "").replace("\r", " ").replace("\n", " ").split())
+    match = re.search(r"\b(M?\d{2}|//)/(M?\d{2}|//)\b", raw.upper())
+    out: Dict[str, Any] = {}
+    if match:
+        temp = _reported_trajectory_ui_signed_temp(match.group(1))
+        dewpoint = _reported_trajectory_ui_signed_temp(match.group(2))
+        if temp is not None:
+            out["temperature_c"] = temp
+        if dewpoint is not None:
+            out["dewpoint_c"] = dewpoint
+    cloud_tokens = re.findall(
+        r"\b(?:CAVOK|NSC|SKC|CLR|FEW\d{3}(?:CB|TCU)?|SCT\d{3}(?:CB|TCU)?|BKN\d{3}(?:CB|TCU)?|OVC\d{3}(?:CB|TCU)?|VV\d{3})\b",
+        raw.upper(),
+    )
+    if cloud_tokens:
+        out["cloud_text"] = " ".join(dict.fromkeys(cloud_tokens))
+    weather_tokens = re.findall(
+        r"\b(?:[-+]?VC?(?:MI|PR|BC|DR|BL|SH|TS|FZ)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS))\b",
+        raw.upper(),
+    )
+    if weather_tokens:
+        out["weather_text"] = " ".join(dict.fromkeys(weather_tokens))
+    return out
+
+
+def _latest_reported_trajectory_ui_observation(event_date: str) -> Dict[str, Any]:
+    """Read the newest persisted AMSC observation for display only.
+
+    The production hard-N engine owns ``reported_trajectory_observations``.
+    The UI must not wait for the slower posterior/timeline projection to
+    display a report that is already present in this immutable table.
+    """
+
+    date_key = _normalize_date_key(event_date)
+    if not date_key:
+        return {}
+    now_ts = time.monotonic()
+    with _REPORTED_TRAJECTORY_UI_LATEST_CACHE_LOCK:
+        cached = _REPORTED_TRAJECTORY_UI_LATEST_CACHE.get(date_key)
+        if cached and (
+            REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC <= 0
+            or now_ts - float(cached[0]) <= REPORTED_TRAJECTORY_UI_LATEST_CACHE_SEC
+        ):
+            return copy.deepcopy(cached[1])
+    try:
+        start_utc, end_utc = _reported_trajectory_ui_date_bounds(date_key)
+        # Do not use the sqlite3.connect transaction context here: that
+        # context manager
+        # does not close the connection and the dashboard polls this path
+        # frequently.  The explicit read-only helper closes DB and WAL FDs.
+        with open_db_ro_fast(timeout_sec=0.12, busy_timeout_ms=0) as conn:
+            conn.row_factory = sqlite3.Row
+            latest = conn.execute(
+                """
+                SELECT observation_id, valid_at, reported_temperature_c,
+                       first_seen_at, fetch_completed_at, raw_text
+                FROM reported_trajectory_observations
+                WHERE source_lane='amsc' AND station_id='ZUUU'
+                  AND valid_at >= ? AND valid_at < ?
+                ORDER BY valid_at DESC, first_seen_at DESC, observation_id DESC
+                LIMIT 1
+                """,
+                (start_utc, end_utc),
+            ).fetchone()
+            peak = conn.execute(
+                """
+                SELECT observation_id, valid_at, reported_temperature_c,
+                       raw_text
+                FROM reported_trajectory_observations
+                WHERE source_lane='amsc' AND station_id='ZUUU'
+                  AND valid_at >= ? AND valid_at < ?
+                  AND substr(valid_at,15,2) = '00'
+                ORDER BY reported_temperature_c DESC, valid_at DESC,
+                         first_seen_at DESC, observation_id DESC
+                LIMIT 1
+                """,
+                (start_utc, end_utc),
+            ).fetchone()
+            reference_peak = conn.execute(
+                """
+                SELECT observation_id, valid_at, reported_temperature_c,
+                       raw_text
+                FROM reported_trajectory_observations
+                WHERE source_lane='amsc' AND station_id='ZUUU'
+                  AND valid_at >= ? AND valid_at < ?
+                ORDER BY reported_temperature_c DESC, valid_at DESC,
+                         first_seen_at DESC, observation_id DESC
+                LIMIT 1
+                """,
+                (start_utc, end_utc),
+            ).fetchone()
+    except (OSError, sqlite3.Error, ValueError):
+        return {}
+    if latest is None:
+        result: Dict[str, Any] = {}
+    else:
+        latest_valid_at = str(latest["valid_at"] or "")
+        try:
+            latest_local = datetime.fromisoformat(
+                latest_valid_at.replace("Z", "+00:00")
+            ).astimezone(ZoneInfo("Asia/Shanghai")).strftime("%H:%M")
+        except (TypeError, ValueError):
+            latest_local = ""
+        parsed = _reported_trajectory_ui_parse_raw(latest["raw_text"])
+        latest_temp = to_float(latest["reported_temperature_c"])
+        if latest_temp is None:
+            latest_temp = to_float(parsed.get("temperature_c"))
+        peak_temp = to_float(peak["reported_temperature_c"]) if peak is not None else None
+        peak_valid_at = str(peak["valid_at"] or "") if peak is not None else ""
+        reference_peak_temp = to_float(reference_peak["reported_temperature_c"]) if reference_peak is not None else None
+        reference_peak_valid_at = str(reference_peak["valid_at"] or "") if reference_peak is not None else ""
+        try:
+            peak_local = datetime.fromisoformat(
+                peak_valid_at.replace("Z", "+00:00")
+            ).astimezone(ZoneInfo("Asia/Shanghai")).strftime("%H:%M")
+        except (TypeError, ValueError):
+            peak_local = ""
+        result = {
+            "source_id": "zuuu_metar_raw_amsc",
+            "source_observation_id": str(latest["observation_id"] or ""),
+            "latest_valid_at": latest_valid_at,
+            "latest_at": str(latest["first_seen_at"] or latest["fetch_completed_at"] or ""),
+            "latest_local": latest_local,
+            "latest_temp_c": latest_temp,
+            "latest_raw": str(latest["raw_text"] or ""),
+            "fetched_at": str(latest["fetch_completed_at"] or latest["first_seen_at"] or ""),
+            "today_max_c": peak_temp,
+            "today_max_at": peak_valid_at,
+            "today_max_local": peak_local,
+            "today_max_raw": str(peak["raw_text"] or "") if peak is not None else "",
+            "today_max_reference_c": reference_peak_temp,
+            "today_max_reference_at": reference_peak_valid_at,
+            "today_max_reference_raw": str(reference_peak["raw_text"] or "") if reference_peak is not None else "",
+            "today_max_semantics": "whole_hour_settlement_fact;half_hour_reference_only",
+            "latest_dewpoint_c": parsed.get("dewpoint_c"),
+            "latest_cloud_text": parsed.get("cloud_text", ""),
+            "latest_weather_text": parsed.get("weather_text", ""),
+            "display_source": "archive.db.reported_trajectory_observations",
+            "display_only": True,
+            "read_only": True,
+        }
+    with _REPORTED_TRAJECTORY_UI_LATEST_CACHE_LOCK:
+        _REPORTED_TRAJECTORY_UI_LATEST_CACHE[date_key] = (now_ts, copy.deepcopy(result))
+    return result
+
+
+def _overlay_latest_reported_trajectory_ui_fields(payload: MutableMapping[str, Any]) -> None:
+    """Merge the raw report's latest timestamp into the UI read model only."""
+
+    if not isinstance(payload, MutableMapping):
+        return
+    slug = str(payload.get("slug") or "").strip()
+    if not _is_chengdu_zuuu_fact_payload(slug, payload):
+        return
+    observation = _latest_reported_trajectory_ui_observation(
+        _normalize_date_key(str(payload.get("event_date") or ""))
+    )
+    if not observation:
+        return
+    feature_keys = {
+        "latest_temp_c": "zuuu_metar_raw_amsc_latest_temp_c",
+        "today_max_c": "zuuu_metar_raw_amsc_today_max_c",
+        "latest_valid_at": "zuuu_metar_raw_amsc_latest_valid_at",
+        "latest_at": "zuuu_metar_raw_amsc_latest_at",
+        "latest_local": "zuuu_metar_raw_amsc_latest_local",
+        "fetched_at": "zuuu_metar_raw_amsc_fetched_at",
+        "latest_raw": "zuuu_metar_raw_amsc_latest_raw",
+        "latest_dewpoint_c": "zuuu_metar_raw_amsc_latest_dewpoint_c",
+        "latest_cloud_text": "zuuu_metar_raw_amsc_latest_cloud_text",
+        "latest_weather_text": "zuuu_metar_raw_amsc_latest_weather_text",
+        "today_max_at": "zuuu_metar_raw_amsc_today_max_at",
+        "today_max_local": "zuuu_metar_raw_amsc_today_max_local",
+        "today_max_raw": "zuuu_metar_raw_amsc_today_max_raw",
+        "today_max_reference_c": "zuuu_metar_raw_amsc_today_max_reference_c",
+        "today_max_reference_at": "zuuu_metar_raw_amsc_today_max_reference_at",
+        "today_max_reference_raw": "zuuu_metar_raw_amsc_today_max_reference_raw",
+        "today_max_semantics": "zuuu_metar_raw_amsc_today_max_semantics",
+        "source_observation_id": "zuuu_metar_raw_amsc_source_observation_id",
+    }
+    compact = dict(payload.get("weather_likelihood_features_compact") or {})
+    full = dict(payload.get("weather_likelihood_features") or {})
+    for source_key, target_key in feature_keys.items():
+        value = observation.get(source_key)
+        if value in (None, "", [], {}):
+            continue
+        compact[target_key] = copy.deepcopy(value)
+        full[target_key] = copy.deepcopy(value)
+    if compact:
+        payload["weather_likelihood_features_compact"] = compact
+    if full:
+        payload["weather_likelihood_features"] = full
+    # The compact field used by the dashboard is the settlement/fact value;
+    # preserve the higher half-hour reference separately so a provisional
+    # :30 report cannot be mistaken for the terminal physical maximum.
+    compact["observed_today_max_semantics"] = "whole_hour_settlement_fact;half_hour_reference_only"
+    full["observed_today_max_semantics"] = "whole_hour_settlement_fact;half_hour_reference_only"
+    if observation.get("today_max_c") is not None:
+        compact["observed_today_max_c"] = copy.deepcopy(observation.get("today_max_c"))
+        full["observed_today_max_c"] = copy.deepcopy(observation.get("today_max_c"))
+    if observation.get("today_max_at"):
+        compact["observed_today_max_at"] = copy.deepcopy(observation.get("today_max_at"))
+        full["observed_today_max_at"] = copy.deepcopy(observation.get("today_max_at"))
+    payload["reported_trajectory_ui_latest"] = {
+        "latest_valid_at": observation.get("latest_valid_at", ""),
+        "latest_local": observation.get("latest_local", ""),
+        "source_observation_id": observation.get("source_observation_id", ""),
+        "source": observation.get("display_source", ""),
+        "read_only": True,
+    }
+
+
 def _sync_ui_snapshot_amsc_observation_ssot_fields(
     payload: MutableMapping[str, Any],
     *,
@@ -17980,6 +19063,9 @@ def _sync_ui_snapshot_amsc_observation_ssot_fields(
 ) -> None:
     if not isinstance(payload, MutableMapping):
         return
+    if isinstance(source_payload, MutableMapping):
+        _overlay_latest_reported_trajectory_ui_fields(source_payload)
+    _overlay_latest_reported_trajectory_ui_fields(payload)
     source_maps: List[Mapping[str, Any]] = []
     if isinstance(source_payload, Mapping):
         source_maps.append(source_payload)
@@ -18005,8 +19091,22 @@ def _sync_ui_snapshot_amsc_observation_ssot_fields(
                 return value
         return None
 
-    amsc_today_max = to_float(first_value("zuuu_metar_raw_amsc_today_max_c", "observed_today_max_c"))
-    amsc_latest_temp = to_float(first_value("zuuu_metar_raw_amsc_latest_temp_c", "observed_temp_c", "metar_temperature_c"))
+    generic_source_id = _ui_snapshot_source_id_from_fact_observation_source(
+        first_value(
+            "observed_temp_source",
+            "observed_today_max_source",
+            "observation_path_primary_source",
+            "source",
+        )
+    )
+    generic_source_is_amsc = generic_source_id in ("", "zuuu_metar_raw_amsc")
+    amsc_today_max_keys = ["zuuu_metar_raw_amsc_today_max_c"]
+    amsc_latest_temp_keys = ["zuuu_metar_raw_amsc_latest_temp_c"]
+    if generic_source_is_amsc:
+        amsc_today_max_keys.append("observed_today_max_c")
+        amsc_latest_temp_keys.extend(("observed_temp_c", "metar_temperature_c"))
+    amsc_today_max = to_float(first_value(*amsc_today_max_keys))
+    amsc_latest_temp = to_float(first_value(*amsc_latest_temp_keys))
     metrics_raw = payload.get("key_metrics")
     metrics: Dict[str, Any] = dict(metrics_raw) if isinstance(metrics_raw, Mapping) else {}
     compact_raw = payload.get("weather_likelihood_features_compact")
@@ -18015,10 +19115,12 @@ def _sync_ui_snapshot_amsc_observation_ssot_fields(
     amsc_keys = (
         "zuuu_metar_raw_amsc_latest_temp_c",
         "zuuu_metar_raw_amsc_today_max_c",
+        "zuuu_metar_raw_amsc_latest_valid_at",
         "zuuu_metar_raw_amsc_latest_at",
         "zuuu_metar_raw_amsc_latest_local",
         "zuuu_metar_raw_amsc_fetched_at",
         "zuuu_metar_raw_amsc_latest_raw",
+        "zuuu_metar_raw_amsc_source_observation_id",
         "zuuu_metar_raw_amsc_latest_dewpoint_c",
         "zuuu_metar_raw_amsc_latest_visibility_m",
         "zuuu_metar_raw_amsc_latest_cloud_cover_pct",
@@ -18368,6 +19470,9 @@ def _attach_ui_snapshot_sections_to_item(item: MutableMapping[str, Any]) -> None
     bayes_section = _build_ui_snapshot_bayes_posterior_ssot_section(item)
     if bayes_section:
         sections["bayes_posterior_ssot"] = bayes_section
+    probability_audit = item.get("probability_audit")
+    if isinstance(probability_audit, Mapping) and probability_audit:
+        sections["probability_audit"] = copy.deepcopy(probability_audit)
     sections.setdefault("schema", "ui_snapshot_item_sections_v1")
     sections.setdefault("read_only", True)
     item["ui_sections"] = sections
@@ -18428,6 +19533,77 @@ def _attach_ui_temperature_trajectory_status_from_payload(payload: MutableMappin
     _merge_fill_ui_snapshot_ssot_into_chengdu_summary(payload)
 
 
+def _attach_production_posterior_display_contract(payload: MutableMapping[str, Any]) -> None:
+    """Expose committed independent-station identity at the UI boundary.
+
+    The multi-city materializer stores station scope and lineage inside
+    ``posterior_ssot_fact``.  The UI is a read-only projection, but its cards
+    and city catalog consume top-level identity/status fields.  Promote only
+    those committed fields; never derive or rewrite a probability here.
+    """
+
+    if not isinstance(payload, MutableMapping):
+        return
+    ssot = payload.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping):
+        return
+    schema = str(ssot.get("schema") or "").strip()
+    distribution = ssot.get("reported_physical_x_distribution")
+    if (
+        schema != "sequential_temperature_posterior_ssot_v4_reported_x"
+        or not isinstance(distribution, (list, Mapping))
+        or not distribution
+    ):
+        return
+    station_id = str(payload.get("station_id") or ssot.get("station_id") or "").strip().upper()
+    target_identity = str(ssot.get("target_identity") or "").strip()
+    scope = str(ssot.get("city_posterior_scope") or "").strip()
+    if not station_id or not target_identity or scope != "independent_station_day_production":
+        return
+    city = _STATION_CITY_MAP.get(station_id, "")
+    if city and not str(payload.get("city") or "").strip():
+        payload["city"] = city
+    payload["station_id"] = station_id
+    payload["target_identity"] = target_identity
+    payload["city_posterior_scope"] = scope
+    payload["city_probability_not_copied_from_zuuu"] = bool(
+        ssot.get("city_probability_not_copied_from_zuuu") is True
+    )
+    market_projection_available = bool(ssot.get("market_bucket_probabilities"))
+    projection_reason = str(
+        ssot.get("market_bucket_probabilities_na_reason")
+        or ssot.get("market_projection_reason")
+        or ""
+    ).strip()
+    payload["posterior_state"] = "materialized_physical_posterior"
+    payload["posterior_state_label"] = (
+        "生产后验已物化 · 独立城市"
+        if not market_projection_available
+        else "生产后验已物化"
+    )
+    payload["posterior_na_reason"] = (
+        "market_projection_not_materialized" if not market_projection_available else ""
+    )
+    payload["posterior_materialization"] = {
+        "state": "materialized",
+        "label": str(payload["posterior_state_label"]),
+        "source": "event_fact_latest.posterior_ssot_fact",
+        "target_identity": target_identity,
+        "station_id": station_id,
+        "city_posterior_scope": scope,
+        "city_probability_not_copied_from_zuuu": bool(
+            ssot.get("city_probability_not_copied_from_zuuu") is True
+        ),
+        "physical_posterior_available": True,
+        "market_projection_available": market_projection_available,
+        "market_projection_reason": projection_reason,
+        "production_consumer_eligible": market_projection_available,
+        "block_reason": "" if market_projection_available else projection_reason,
+    }
+    payload["production_consumer_eligible"] = market_projection_available
+    payload["production_consumer_block_reason"] = "" if market_projection_available else projection_reason
+
+
 def _ui_snapshot_contract_keys(*groups: Sequence[str]) -> Tuple[str, ...]:
     out: List[str] = []
     seen: Set[str] = set()
@@ -18448,6 +19624,7 @@ def _slim_fact_payload_for_ui_snapshot_summary(
 ) -> Any:
     if not isinstance(payload, Mapping):
         return payload
+    _attach_production_posterior_display_contract(payload)
     if include_physical_detail is None:
         include_physical_detail = UI_SNAPSHOT_SUMMARY_PHYSICAL_DETAIL
     top_level_keys = (
@@ -18456,6 +19633,9 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "title",
         "city",
         "station_id",
+        "target_identity",
+        "city_posterior_scope",
+        "city_probability_not_copied_from_zuuu",
         "resolution_source",
         "event_date",
         "event_tz",
@@ -18469,6 +19649,7 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "model_snapshot_id",
         "model_raw_top_history",
         "model_member_cache_snapshot",
+        "model_peak_sources",
         "model_members_decimal_raw",
         "model_members",
         "model_member_counts_raw",
@@ -18486,6 +19667,14 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "settlement_actual",
         "market_updated_at",
         "market_quote_updated_at",
+        "market_state",
+        "market_state_label",
+        "posterior_state",
+        "posterior_state_label",
+        "posterior_na_reason",
+        "posterior_materialization",
+        "production_consumer_eligible",
+        "production_consumer_block_reason",
 	        "market_top_label",
 	        "ssot_target_bucket",
 	        "target_bucket",
@@ -18538,6 +19727,7 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "q_bayes_temperature_trajectory_hour_local",
         "temperature_trajectory_timeline",
         "chengdu_intraday_summary",
+        "state_space_lineage",
         "basin_heat_mechanism_state",
         "rebound_regime_signal",
         "temperature_path_distribution",
@@ -18557,6 +19747,7 @@ def _slim_fact_payload_for_ui_snapshot_summary(
         "lead_day_hit_rates",
         "first_prediction_hit_rates",
         "forecast_source_accuracy",
+        "official_amsc_taf_snapshot",
     )
     top_level_keys = _ui_snapshot_contract_keys(
         top_level_keys,
@@ -21157,6 +22348,1151 @@ def parse_any_ts(value: str) -> Optional[datetime]:
         return naive.replace(tzinfo=local_tz)
     except Exception:
         return naive
+
+
+def _china_board_timestamp(value: Any) -> Optional[datetime]:
+    """Normalize a persisted source timestamp for the read-only city board."""
+
+    dt = parse_any_ts(str(value or "").strip())
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _china_board_freshness(value: Any, *, now: datetime, stale_after_sec: float) -> Dict[str, Any]:
+    dt = _china_board_timestamp(value)
+    if dt is None:
+        return {"state": "missing", "age_sec": None}
+    age_sec = max(0.0, (now - dt).total_seconds())
+    return {
+        "state": "stale" if age_sec > float(stale_after_sec) else "available",
+        "age_sec": round(age_sec, 1),
+    }
+
+
+def _china_board_peak_from_members(raw: Any) -> Optional[float]:
+    try:
+        values = raw if isinstance(raw, list) else json.loads(str(raw or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    numbers: List[float] = []
+    if isinstance(values, list):
+        for value in values:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(number):
+                numbers.append(number)
+    return max(numbers) if numbers else None
+
+
+def _china_board_snapshot_revisions(
+    conn: sqlite3.Connection,
+    *,
+    event_date: str,
+) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    """Index persisted weak-snapshot source revisions by station and source."""
+
+    indexed: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    try:
+        rows = conn.execute(
+            """
+            SELECT forecast_evidence_snapshot_id, target_identity, decision_as_of,
+                   source_revisions_json, created_at, state
+            FROM weak_forecast_evidence_snapshots
+            WHERE event_date=? AND state IN ('active','superseded')
+            ORDER BY CASE WHEN state='active' THEN 0 ELSE 1 END,
+                     decision_as_of DESC, created_at DESC
+            LIMIT 120
+            """,
+            (event_date,),
+        ).fetchall()
+    except sqlite3.Error:
+        return indexed
+    for row in rows:
+        target = str(row["target_identity"] or "")
+        target_station = target.split(":")[1].upper() if ":" in target else ""
+        if not target_station:
+            continue
+        try:
+            revisions = json.loads(str(row["source_revisions_json"] or "[]"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            revisions = []
+        if not isinstance(revisions, list):
+            continue
+        for revision in revisions:
+            if not isinstance(revision, Mapping):
+                continue
+            source_id = str(revision.get("source_id") or "").lower()
+            if source_id not in {"gfs", "icon", "ecmwf", "taf"}:
+                continue
+            indexed.setdefault(
+                (target_station, source_id),
+                {
+                    **dict(revision),
+                    "forecast_evidence_snapshot_id": str(row["forecast_evidence_snapshot_id"] or ""),
+                    "decision_as_of": str(row["decision_as_of"] or row["created_at"] or ""),
+                    "snapshot_state": str(row["state"] or ""),
+                },
+            )
+    return indexed
+
+
+def _china_board_taf_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    now: datetime,
+) -> Dict[str, Any]:
+    """Read the newest persisted AMSC TAF peak; never fetch from the UI."""
+
+    # The station-wide AMSC materializer is the primary lineage.  The old
+    # weak-evidence envelope remains a read-only fallback for the historical
+    # Chengdu posterior rows until their next materialization cycle.
+    try:
+        taf_row = conn.execute(
+            """SELECT source_revision_id,issue_time_utc,first_system_seen_at,
+                       peak_c,peak_valid_time_utc,forecast_weather_regime,
+                       raw_sha256,source_report_time,lineage_json,created_at,state
+                  FROM amsc_taf_snapshots
+                 WHERE station_id=? AND event_date=? AND state IN ('available','superseded')
+                 ORDER BY issue_time_utc DESC, created_at DESC
+                 LIMIT 1""",
+            (station_id, event_date),
+        ).fetchone()
+    except sqlite3.Error:
+        taf_row = None
+    if taf_row is not None:
+        available_at = str(taf_row[1] or taf_row[2] or taf_row[10] or "")
+        freshness = _china_board_freshness(available_at, now=now, stale_after_sec=24 * 3600)
+        return {
+            "state": freshness["state"],
+            "peak_c": taf_row[3],
+            "issued_at": available_at,
+            "valid_at": str(taf_row[4] or ""),
+            "source_revision_id": str(taf_row[0] or ""),
+            "snapshot_id": str(taf_row[0] or ""),
+            "decision_as_of": str(taf_row[1] or ""),
+            "forecast_weather_regime": str(taf_row[5] or ""),
+            "raw_sha256": str(taf_row[6] or ""),
+            "source_report_time": str(taf_row[7] or ""),
+            "lineage": safe_json_loads(taf_row[8]) if isinstance(safe_json_loads(taf_row[8]), Mapping) else {},
+            "age_sec": freshness["age_sec"],
+            "checked_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "raw_available": True,
+            "source": "archive.db.amsc_taf_snapshots",
+        }
+
+    try:
+        rows = conn.execute(
+            """
+            SELECT forecast_evidence_snapshot_id, target_identity, decision_as_of,
+                   source_revisions_json, snapshot_json, created_at, state
+            FROM weak_forecast_evidence_snapshots
+            WHERE event_date=? AND state IN ('active','superseded')
+            ORDER BY decision_as_of DESC, created_at DESC
+            LIMIT 120
+            """,
+            (event_date,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    for row in rows:
+        target = str(row["target_identity"] or "")
+        target_station = target.split(":")[1].upper() if ":" in target else ""
+        if target_station != station_id:
+            continue
+        try:
+            revisions = json.loads(str(row["source_revisions_json"] or "[]"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            revisions = []
+        if not isinstance(revisions, list):
+            continue
+        taf = next(
+            (
+                item
+                for item in revisions
+                if isinstance(item, Mapping) and str(item.get("source_id") or "").lower() == "taf"
+            ),
+            None,
+        )
+        if not isinstance(taf, Mapping):
+            continue
+        available_at = str(taf.get("available_at") or row["decision_as_of"] or row["created_at"] or "")
+        freshness = _china_board_freshness(available_at, now=now, stale_after_sec=24 * 3600)
+        return {
+            "state": freshness["state"],
+            "peak_c": taf.get("forecast_peak_c"),
+            "issued_at": available_at,
+            "valid_at": str(taf.get("forecast_peak_valid_time") or ""),
+            "source_revision_id": str(taf.get("source_revision_id") or ""),
+            "snapshot_id": str(row["forecast_evidence_snapshot_id"] or ""),
+            "decision_as_of": str(row["decision_as_of"] or ""),
+            "age_sec": freshness["age_sec"],
+            "checked_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "raw_available": False,
+            "source": "archive.db.weak_forecast_evidence_snapshots",
+        }
+    return {
+        "state": "missing",
+        "reason": "taf_snapshot_not_materialized",
+        "peak_c": None,
+        "age_sec": None,
+        "checked_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "source": "archive.db.amsc_taf_snapshots",
+    }
+
+
+_CHINA_BOARD_REGIME_KEYS = (
+    "forecast_weather_regime",
+    "basin_regime",
+    "cloud_regime",
+    "precipitation_regime",
+    "convection_regime",
+)
+
+
+def _china_board_regime_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    now: datetime,
+) -> Dict[str, Any]:
+    """Read the materialized daily regime for one city without recomputing it.
+
+    The UI receives the persisted projection only.  For a target day with
+    official METAR/SPECI observations, the materializer may promote the
+    observed regime above forecast context; it remains separate from the
+    hard-NO temperature lane.
+    """
+
+    checked_at = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    regime_row = None
+    regime_row_source = "archive.db.weak_forecast_evidence_snapshots"
+    try:
+        # Multi-city regime is now materialized independently of the Chengdu
+        # posterior. Prefer the immutable daily source projection; the old
+        # weak snapshot remains a compatibility fallback for existing ZUUU
+        # rows only.
+        regime_row = conn.execute(
+            """
+            SELECT regime_snapshot_id,
+                   '' AS forecast_background_context_json,
+                   regime_json,
+                   source_revisions_json,
+                   as_of,
+                   created_at,
+                   state,
+                   source_kind
+             FROM daily_regime_snapshots
+             WHERE station_id=? AND event_date=? AND state='available'
+             ORDER BY CASE
+                        WHEN source_kind='official_amsc_metar_taf_and_nwp' THEN 0
+                        ELSE 1
+                      END,
+                      as_of DESC,created_at DESC,regime_snapshot_id DESC
+             LIMIT 1
+            """,
+            (station_id, event_date),
+        ).fetchone()
+        if regime_row is not None:
+            regime_row_source = "archive.db.daily_regime_snapshots"
+    except sqlite3.Error:
+        regime_row = None
+    if regime_row is None:
+      try:
+        regime_row = conn.execute(
+            """
+            SELECT forecast_evidence_snapshot_id,forecast_background_context_json,
+                   snapshot_json,source_revisions_json,decision_as_of,created_at,state
+              FROM weak_forecast_evidence_snapshots
+             WHERE target_identity LIKE ? AND event_date=?
+               AND state IN ('active','committed','superseded')
+             ORDER BY decision_as_of DESC,created_at DESC
+             LIMIT 1
+            """,
+            (f"%:{station_id}:%", event_date),
+        ).fetchone()
+      except sqlite3.Error:
+        # Older read-only test/archive schemas do not have the optional
+        # background-context column; the snapshot envelope remains sufficient.
+        try:
+            regime_row = conn.execute(
+                """
+                SELECT forecast_evidence_snapshot_id,
+                       '' AS forecast_background_context_json,
+                       snapshot_json,source_revisions_json,decision_as_of,created_at,state
+                  FROM weak_forecast_evidence_snapshots
+                 WHERE target_identity LIKE ? AND event_date=?
+                   AND state IN ('active','committed','superseded')
+                 ORDER BY decision_as_of DESC,created_at DESC
+                 LIMIT 1
+            """,
+            (f"%:{station_id}:%", event_date),
+        ).fetchone()
+        except sqlite3.Error:
+            regime_row = None
+
+    base = {
+        "state": "missing",
+        "primary": "",
+        "primary_source": "",
+        "labels": [],
+        "forecast_weather_regime": "",
+        "observed_weather_regime": "",
+        "basin_regime": "",
+        "cloud_regime": "",
+        "precipitation_regime": "",
+        "convection_regime": "",
+        "probability_vector": {},
+        "snapshot_id": "",
+        "snapshot_state": "",
+        "updated_at": "",
+        "created_at": "",
+        "age_sec": None,
+        "event_date": event_date,
+        "checked_at": checked_at,
+        "source": regime_row_source,
+        "source_kind": "",
+        "source_revisions": [],
+    }
+    if regime_row is None:
+        base["reason"] = "regime_snapshot_not_materialized"
+        return base
+
+    regime: Dict[str, Any] = {}
+    source_revisions = safe_json_loads_any(regime_row[3])
+    if not isinstance(source_revisions, list):
+        source_revisions = []
+    for raw in (regime_row[1], regime_row[2], regime_row[3]):
+        parsed = safe_json_loads_any(raw)
+        values = parsed if isinstance(parsed, list) else [parsed]
+        for value in values:
+            if not isinstance(value, Mapping):
+                continue
+            pending = [value]
+            while pending:
+                item = pending.pop(0)
+                context = item.get("forecast_background_context")
+                if isinstance(context, Mapping):
+                    pending.append(context)
+                nwp_regime = item.get("nwp_regime")
+                if isinstance(nwp_regime, Mapping):
+                    pending.append(nwp_regime)
+                for key in (
+                    *_CHINA_BOARD_REGIME_KEYS,
+                    "primary_source",
+                    "observed_weather_regime",
+                    "regime_probability_vector",
+                    "forecast_regime_probabilities",
+                ):
+                    candidate = item.get(key)
+                    existing = regime.get(key)
+                    if key not in regime or existing in (None, "", {}, []) or (
+                        isinstance(existing, Mapping) and not existing
+                    ):
+                        if candidate not in (None, "", {}, []):
+                            regime[key] = candidate
+
+    vector_raw = regime.get("regime_probability_vector") or regime.get("forecast_regime_probabilities")
+    vector: Dict[str, float] = {}
+    if isinstance(vector_raw, Mapping):
+        for label, raw_probability in vector_raw.items():
+            try:
+                probability = float(raw_probability)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(probability) and probability >= 0:
+                label_text = str(label or "").strip()
+                if label_text:
+                    vector[label_text] = probability
+
+    labels: List[str] = []
+    for key in _CHINA_BOARD_REGIME_KEYS:
+        value = str(regime.get(key) or "").strip()
+        if value and value not in labels:
+            labels.append(value)
+    for label in sorted(vector):
+        if label not in labels:
+            labels.append(label)
+    declared_primary = next(
+        (
+            str(regime.get(key) or "").strip()
+            for key in _CHINA_BOARD_REGIME_KEYS
+            if str(regime.get(key) or "").strip()
+        ),
+        "",
+    )
+    vector_primary = (
+        sorted(vector.items(), key=lambda item: (-item[1], item[0]))[0][0]
+        if vector
+        else ""
+    )
+    # A single source's declared regime is provenance, not the aggregate
+    # regime.  When the persisted probability vector exists, its argmax is
+    # the only coherent primary label; otherwise ECMWF/TAF's declared label
+    # remains the fallback.  This prevents one source from overriding the
+    # explicit multi-source composition (e.g. ECMWF wet vs ICON/TAF clear).
+    primary = vector_primary or declared_primary
+    selection_reason = (
+        "regime_probability_vector_argmax"
+        if vector_primary
+        else "declared_forecast_regime_fallback"
+    )
+    consistency = (
+        "declared_label_conflicts_with_probability_argmax"
+        if vector_primary and declared_primary and vector_primary != declared_primary
+        else "aligned"
+        if vector_primary and declared_primary
+        else "vector_only"
+        if vector_primary
+        else "declared_only"
+    )
+
+    updated_at = str(regime_row[4] or regime_row[5] or "")
+    freshness = _china_board_freshness(updated_at, now=now, stale_after_sec=24 * 3600)
+    base.update({
+        "state": freshness["state"] if (primary or vector or labels) else "missing",
+        "primary": primary,
+        "primary_source": str(regime.get("primary_source") or ""),
+        "labels": labels,
+        # Expose the coherent aggregate label through the field consumed by
+        # the direction gate.  The original single-source declaration is
+        # retained separately for auditability below.
+        "forecast_weather_regime": primary,
+        "observed_weather_regime": str(regime.get("observed_weather_regime") or ""),
+        "declared_forecast_weather_regime": declared_primary,
+        "primary_selection": selection_reason,
+        "regime_consistency": consistency,
+        "basin_regime": str(regime.get("basin_regime") or ""),
+        "cloud_regime": str(regime.get("cloud_regime") or ""),
+        "precipitation_regime": str(regime.get("precipitation_regime") or ""),
+        "convection_regime": str(regime.get("convection_regime") or ""),
+        "probability_vector": vector,
+        "snapshot_id": str(regime_row[0] or ""),
+        "snapshot_state": str(regime_row[6] or ""),
+        "updated_at": updated_at,
+        "created_at": str(regime_row[5] or ""),
+        "age_sec": freshness["age_sec"],
+        "source": regime_row_source,
+        "source_kind": str(regime_row[7] or "") if len(regime_row) > 7 else "",
+        "source_revisions": source_revisions,
+    })
+    if base["state"] == "missing":
+        base["reason"] = "regime_fields_missing"
+    elif base["state"] == "stale":
+        base["reason"] = "regime_snapshot_stale"
+    else:
+        base["reason"] = ""
+    return base
+
+
+def _china_board_city_strategy_state(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    now: datetime,
+) -> Dict[str, Any]:
+    """Attach city-level SSOT, direction gate, and basket lineage.
+
+    A city without a registered Polymarket event is reported as
+    ``market_not_registered``; it is never silently treated as a zero
+    probability or an empty basket.
+    """
+
+    slug_row = None
+    try:
+        slug_row = conn.execute(
+            """SELECT slug FROM reported_trajectory_market_registry
+                 WHERE station_id=? AND event_date=? AND source_eligible=1
+                 ORDER BY slug LIMIT 1""",
+            (station_id, event_date),
+        ).fetchone()
+    except sqlite3.Error:
+        pass
+    slug = str(slug_row[0] or "") if slug_row else ""
+    ssot: Dict[str, Any] = {
+        "state": "market_not_registered" if not slug else "not_materialized",
+        "slug": slug,
+        "posterior_checkpoint_id": "",
+        "posterior_run_id": "",
+        "fact_snapshot_id": "",
+        "probabilities": {},
+        "top_bucket": "",
+        "top_probability": None,
+        "top_bucket_semantics": "reported_physical_x_exact_grid",
+        "market_top_bucket": "",
+        "market_top_probability": None,
+        "market_projection_state": "not_materialized",
+        "market_projection_source": "posterior_ssot_fact.market_bucket_probabilities",
+        "updated_at": "",
+        "source": "posterior_ssot_fact.reported_physical_x_distribution" if slug else "archive.db.reported_trajectory_market_registry",
+    }
+    fact: Dict[str, Any] = {}
+    if slug:
+        try:
+            fact_row = conn.execute(
+                """SELECT h.fact_json,h.created_at,h.fact_snapshot_id,h.posterior_run_id
+                     FROM event_fact_latest l JOIN event_fact_history h ON h.id=l.fact_id
+                    WHERE l.slug=? AND l.event_date=? ORDER BY h.id DESC LIMIT 1""",
+                (slug, event_date),
+            ).fetchone()
+        except sqlite3.Error:
+            fact_row = None
+        if fact_row is not None:
+            parsed = safe_json_loads(fact_row[0])
+            fact = parsed if isinstance(parsed, Mapping) else {}
+            public = fact.get("posterior_ssot_fact") if isinstance(fact.get("posterior_ssot_fact"), Mapping) else {}
+            physical = public.get("reported_physical_x_distribution")
+            physical_rows = []
+            if isinstance(physical, Mapping):
+                physical_iter = ((temperature, probability) for temperature, probability in physical.items())
+            elif isinstance(physical, Sequence) and not isinstance(physical, (str, bytes, bytearray)):
+                physical_iter = (
+                    (
+                        item.get("temperature_c")
+                        if isinstance(item, Mapping) and item.get("temperature_c") is not None
+                        else item.get("value_c")
+                        if isinstance(item, Mapping) and item.get("value_c") is not None
+                        else item.get("x")
+                        if isinstance(item, Mapping)
+                        else None,
+                        item.get("probability")
+                        if isinstance(item, Mapping) and item.get("probability") is not None
+                        else item.get("mass")
+                        if isinstance(item, Mapping)
+                        else None,
+                    )
+                    for item in physical
+                )
+            else:
+                physical_iter = ()
+            for temperature, probability in physical_iter:
+                try:
+                    temperature_value = float(temperature)
+                    value = float(probability)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(temperature_value) and math.isfinite(value) and value >= 0:
+                    label = (
+                        f"{int(round(temperature_value))}°C"
+                        if abs(temperature_value - round(temperature_value)) < 1e-9
+                        else f"{temperature_value:g}°C"
+                    )
+                    physical_rows.append((temperature_value, label, value))
+            physical_rows.sort(key=lambda item: (-item[2], item[0]))
+            clean = {label: probability for _temperature, label, probability in physical_rows}
+            top = (physical_rows[0][1], physical_rows[0][2]) if physical_rows else ("", None)
+
+            market = public.get("market_bucket_probabilities")
+            market_rows = []
+            if isinstance(market, Mapping):
+                market_iter = market.items()
+            elif isinstance(market, Sequence) and not isinstance(market, (str, bytes, bytearray)):
+                market_iter = (
+                    (
+                        item.get("outcome") or item.get("label") or item.get("bucket"),
+                        item.get("probability")
+                        if item.get("probability") is not None
+                        else item.get("mass")
+                        if item.get("mass") is not None
+                        else item.get("probability_pct", None) / 100.0
+                        if isinstance(item.get("probability_pct"), (int, float))
+                        else None,
+                    )
+                    for item in market
+                    if isinstance(item, Mapping)
+                )
+            else:
+                market_iter = ()
+            for bucket, probability in market_iter:
+                try:
+                    value = float(probability)
+                except (TypeError, ValueError):
+                    continue
+                if bucket not in (None, "") and math.isfinite(value) and value >= 0:
+                    market_rows.append((str(bucket), value))
+            market_rows.sort(key=lambda item: (-item[1], item[0]))
+            market_top = market_rows[0] if market_rows else ("", None)
+            try:
+                public_market_top_probability = (
+                    float(public.get("market_top_probability"))
+                    if public.get("market_top_probability") not in (None, "")
+                    else market_top[1]
+                )
+            except (TypeError, ValueError):
+                public_market_top_probability = market_top[1]
+            ssot.update({
+                # The city board's SSOT primary is report-defined physical X.
+                # Market B is a separate settlement projection and must never
+                # replace the physical top (especially with a cumulative edge).
+                "state": "available" if clean else "missing_physical_x_probability",
+                "posterior_checkpoint_id": str(public.get("posterior_checkpoint_id") or ""),
+                "posterior_run_id": str(public.get("posterior_run_id") or fact_row[3] or ""),
+                "fact_snapshot_id": str(public.get("fact_snapshot_id") or fact_row[2] or ""),
+                "probabilities": clean,
+                "top_bucket": top[0],
+                "top_probability": top[1],
+                "market_top_bucket": str(public.get("market_top_bucket") or market_top[0] or ""),
+                "market_top_probability": public_market_top_probability,
+                "market_projection_state": "available" if market_rows else "missing",
+                # Keep the physical hard-bound and checkpoint identities
+                # visible alongside the forecast top.  These fields prevent
+                # the UI from making a forecast bucket look like the current
+                # observed maximum and make a market-B successor auditable
+                # back to the canonical METAR event.
+                "observed_max_lower_bound_c": public.get("observed_max_lower_bound_c"),
+                "reported_x_lower_bound_c": public.get("reported_x_lower_bound_c"),
+                "last_canonical_event_id": str(public.get("last_canonical_event_id") or ""),
+                "last_strong_update_id": str(public.get("last_strong_update_id") or ""),
+                "target_identity": str(public.get("target_identity") or ""),
+                "station_id": str(public.get("station_id") or station_id),
+                "city_posterior_scope": str(public.get("city_posterior_scope") or ""),
+                "city_probability_not_copied_from_zuuu": public.get("city_probability_not_copied_from_zuuu") is True,
+                "prior_context_id": str(public.get("prior_context_id") or ""),
+                "prior_context_sha256": str(public.get("prior_context_sha256") or ""),
+                "prior_anchor_observation_id": str(public.get("prior_anchor_observation_id") or ""),
+                "prior_anchor_valid_at": str(public.get("prior_anchor_valid_at") or ""),
+                "source_revision_ids": list(public.get("source_revision_ids") or []),
+                "source_as_of": str(public.get("source_as_of") or ""),
+                "source_lineage_sha256": str(public.get("source_lineage_sha256") or ""),
+                "freshness_state": str(public.get("freshness_state") or ""),
+                "materialization_mode": str(public.get("materialization_mode") or ""),
+                "updated_at": str(fact_row[1] or public.get("committed_at") or ""),
+            })
+
+    regime = _china_board_regime_snapshot(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        now=now,
+    )
+    regime_snapshot_id = str(regime.get("snapshot_id") or "")
+    try:
+        from basket_strategy.runtime import classify_regime_direction
+
+        regime_gate = classify_regime_direction(regime)
+    except Exception:
+        regime_gate = {"state": "UNKNOWN", "labels": [], "role": "direction_agreement_gate_only"}
+    direction = {
+        "state": "not_materialized" if regime.get("state") == "missing" else "available",
+        "gate_state": str(regime_gate.get("state") or "UNKNOWN"),
+        "labels": list(regime_gate.get("labels") or []),
+        "vector_up_mass": regime_gate.get("vector_up_mass"),
+        "vector_down_mass": regime_gate.get("vector_down_mass"),
+        "role": "direction_agreement_gate_only",
+        "snapshot_id": regime_snapshot_id,
+            "updated_at": str(regime.get("updated_at") or ""),
+        "source": "archive.db.weak_forecast_evidence_snapshots",
+    }
+
+    basket = {
+        "state": "market_not_registered" if not slug else "not_materialized",
+        "cycle_id": "",
+        "cycle_state": "",
+        "buckets": [],
+        "total_cost_usdc": None,
+        "precheck": "not_run",
+        "precheck_reason": "",
+        "next_action": "",
+        "source": "archive.db.basket_strategy_cycles",
+    }
+    if slug:
+        try:
+            cycle_row = conn.execute(
+                """SELECT cycle_id,state,plan_json,total_cost_usdc,updated_at
+                     FROM basket_strategy_cycles WHERE slug=? AND event_date=?
+                    ORDER BY updated_at DESC LIMIT 1""",
+                (slug, event_date),
+            ).fetchone()
+        except sqlite3.Error:
+            cycle_row = None
+        if cycle_row is not None:
+            plan = safe_json_loads(cycle_row[2])
+            basket_payload = plan.get("basket") if isinstance(plan, Mapping) and isinstance(plan.get("basket"), Mapping) else {}
+            basket.update({
+                "state": "available",
+                "cycle_id": str(cycle_row[0] or ""),
+                "cycle_state": str(cycle_row[1] or ""),
+                "buckets": list(basket_payload.get("selected_buckets") or basket_payload.get("buckets") or []),
+                "total_cost_usdc": cycle_row[3],
+                "updated_at": str(cycle_row[4] or ""),
+            })
+        else:
+            basket["precheck"] = "pending_regime_gate" if direction["gate_state"] in {"UNKNOWN", "CONFLICT"} else "pending_quote_precheck"
+            basket["precheck_reason"] = "regime_gate_not_consistent" if direction["gate_state"] in {"UNKNOWN", "CONFLICT"} else "four_leg_fok_quote_precheck_not_materialized"
+            basket["next_action"] = (
+                "regime_gate_not_consistent_wait"
+                if direction["gate_state"] in {"UNKNOWN", "CONFLICT"}
+                else "regime_gate_consistent_recheck_four_leg_fok_quotes"
+            )
+    return {"slug": slug, "ssot": ssot, "regime": regime, "direction_bias": direction, "basket": basket}
+
+
+def _china_board_nwp_gap_reason(provider_id: str, event_date: str) -> str:
+    """Explain an official-NWP gap without inventing a forecast value."""
+
+    provider = str(provider_id or "").strip().lower()
+    target = str(event_date or "").strip()[:10]
+    current_path = ROOT_DIR / "data" / "runtime" / "official_nwp_curve_sources_v2" / provider / "current.json"
+    try:
+        current = json.loads(current_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        current = {}
+    valid_time = str(current.get("valid_time_utc") or "").strip()
+    current_date = valid_time[:10]
+    if target and current_date and current_date < target:
+        return f"official_{provider}_product_before_target_date"
+    if target and current_date and current_date > target:
+        return f"official_{provider}_product_after_target_date_only"
+    return "official_nwp_snapshot_not_materialized"
+
+
+def _china_board_nwp_history_status(provider_id: str, event_date: str) -> Dict[str, Any]:
+    """Inspect target-day history even when ``current.json`` moved forward."""
+
+    provider = str(provider_id or "").strip().lower()
+    target = str(event_date or "").strip()[:10]
+    history_dir = ROOT_DIR / "data" / "runtime" / "official_nwp_curve_sources_v2" / provider / "history"
+    step_hours = 3 if provider == "ecmwf" else 1
+    try:
+        local_start = datetime.fromisoformat(target).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+    except ValueError:
+        return {"complete": False, "target_valid_count": 0, "expected_valid_count": 0, "latest_complete_run_at_utc": ""}
+    start_utc = local_start.astimezone(timezone.utc)
+    end_utc = start_utc + timedelta(days=1)
+    phase_start = datetime.combine(start_utc.date(), datetime.min.time(), tzinfo=timezone.utc)
+    expected = {
+        (phase_start + timedelta(hours=offset)).isoformat().replace("+00:00", "Z")
+        for offset in range(0, 48, step_hours)
+        if start_utc <= phase_start + timedelta(hours=offset) < end_utc
+    }
+    by_run: Dict[str, Set[str]] = {}
+    for path in history_dir.glob("*.json") if history_dir.is_dir() else ():
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(item, Mapping) or str(item.get("schema") or "") != "official_nwp_normalized_snapshot_v1":
+            continue
+        valid = str(item.get("valid_time_utc") or "").strip()
+        run = str(item.get("run_at_utc") or "").strip()
+        if not valid or not run:
+            continue
+        try:
+            valid_day = datetime.fromisoformat(valid.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        except ValueError:
+            continue
+        if valid_day == target:
+            by_run.setdefault(run, set()).add(valid)
+    complete = sorted(run for run, values in by_run.items() if expected.issubset(values))
+    return {
+        "complete": bool(complete),
+        "target_valid_count": max((len(values) for values in by_run.values()), default=0),
+        "expected_valid_count": len(expected),
+        "latest_complete_run_at_utc": complete[-1] if complete else "",
+    }
+
+
+def _china_board_nwp_source_status(provider_id: str, event_date: str) -> Dict[str, Any]:
+    provider = str(provider_id or "").strip().lower()
+    target = str(event_date or "").strip()[:10]
+    current_path = ROOT_DIR / "data" / "runtime" / "official_nwp_curve_sources_v2" / provider / "current.json"
+    try:
+        current = json.loads(current_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        current = {}
+    valid_time = str(current.get("valid_time_utc") or "").strip()
+    current_date = valid_time[:10]
+    history = _china_board_nwp_history_status(provider, target)
+    if history.get("complete"):
+        state = "target_date_available"
+        reason = ""
+    elif not current_date:
+        state = "missing"
+        reason = _china_board_nwp_gap_reason(provider, target)
+    elif target and current_date < target:
+        state = "behind_target"
+        reason = _china_board_nwp_gap_reason(provider, target)
+    elif target and current_date > target:
+        state = "after_target"
+        reason = _china_board_nwp_gap_reason(provider, target)
+    else:
+        state = "target_date_available"
+        reason = ""
+    return {
+        "provider": provider,
+        "state": state,
+        "current_valid_time_utc": valid_time,
+        "current_date": current_date,
+        "target_date": target,
+        "raw_current_path": str(current_path.relative_to(ROOT_DIR)) if current_path.exists() else "",
+        "latest_complete_run_at_utc": str(history.get("latest_complete_run_at_utc") or ""),
+        "target_valid_count": int(history.get("target_valid_count") or 0),
+        "expected_valid_count": int(history.get("expected_valid_count") or 0),
+        "reason": reason,
+    }
+
+
+def _build_china_airport_board_payload(
+    conn: sqlite3.Connection,
+    *,
+    event_date: str = "",
+    now: Optional[datetime] = None,
+    include_catalog: bool = False,
+) -> Dict[str, Any]:
+    """Build a read-only board for configured stations and optional catalogue rows."""
+
+    now_utc = now or datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+    target_date = str(event_date or "").strip()[:10]
+    if not target_date:
+        target_date = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    checked_at = now_utc.isoformat().replace("+00:00", "Z")
+    snapshot_revisions = _china_board_snapshot_revisions(conn, event_date=target_date)
+    stations: List[Dict[str, Any]] = []
+    for meta in _china_airport_board_stations(include_catalog=include_catalog):
+        station_id = str(meta["station_id"])
+        try:
+            report = conn.execute(
+                """
+                SELECT report_type, reported_temperature_c, valid_at, first_seen_at,
+                       fetch_completed_at, raw_text, source_lane, correction_suspected
+                FROM reported_trajectory_observations
+                WHERE station_id=? AND report_type IN ('METAR','SPECI')
+                ORDER BY valid_at DESC, first_seen_at DESC
+                LIMIT 1
+                """,
+                (station_id,),
+            ).fetchone()
+        except sqlite3.Error:
+            report = None
+        if report is None:
+            live: Dict[str, Any] = {
+                "state": "missing",
+                "reason": "report_not_materialized",
+                "age_sec": None,
+                "checked_at": checked_at,
+            }
+        else:
+            freshness = _china_board_freshness(report["valid_at"], now=now_utc, stale_after_sec=2 * 3600)
+            live = {
+                "state": freshness["state"],
+                "report_type": str(report["report_type"] or ""),
+                "temperature_c": report["reported_temperature_c"],
+                "valid_at": str(report["valid_at"] or ""),
+                "first_seen_at": str(report["first_seen_at"] or ""),
+                "fetch_completed_at": str(report["fetch_completed_at"] or ""),
+                "source_lane": str(report["source_lane"] or ""),
+                "raw_text": str(report["raw_text"] or ""),
+                "correction_suspected": bool(report["correction_suspected"]),
+                "age_sec": freshness["age_sec"],
+                "checked_at": checked_at,
+            }
+
+        models: Dict[str, Any] = {}
+        for model_key, short_key, label in _CHINA_AIRPORT_BOARD_MODEL_KEYS:
+            # Prefer the station/date projection of immutable official NWP
+            # snapshots.  ``model_member_cache`` is retained only as a legacy
+            # Chengdu fallback when its lineage is not yet projected.
+            official_peak = None
+            official_updated_at = ""
+            official_snapshot_id = ""
+            try:
+                nwp_row = conn.execute(
+                    """SELECT MAX(temperature_2m_c) AS peak_c,
+                               MAX(valid_time_utc) AS peak_valid_at,
+                               MAX(created_at) AS created_at,
+                               MAX(snapshot_id) AS snapshot_id
+                          FROM official_nwp_station_snapshots
+                         WHERE provider_id=? AND station_id=? AND event_date=? AND state='available'""",
+                    (short_key, station_id, target_date),
+                ).fetchone()
+            except sqlite3.Error:
+                nwp_row = None
+            if nwp_row is not None and nwp_row[0] is not None:
+                try:
+                    official_peak = float(nwp_row[0])
+                except (TypeError, ValueError):
+                    official_peak = None
+                official_updated_at = str(nwp_row[2] or nwp_row[1] or "")
+                official_snapshot_id = str(nwp_row[3] or "")
+            if official_peak is not None and math.isfinite(official_peak):
+                freshness = _china_board_freshness(official_updated_at, now=now_utc, stale_after_sec=24 * 3600)
+                models[short_key] = {
+                    "label": label,
+                    "state": freshness["state"],
+                    "reason": "",
+                    "peak_c": official_peak,
+                    "updated_at": official_updated_at,
+                    "peak_valid_at": str(nwp_row[1] or ""),
+                    "snapshot_id": official_snapshot_id,
+                    "source": "archive.db.official_nwp_station_snapshots",
+                    "age_sec": freshness["age_sec"],
+                    "checked_at": checked_at,
+                }
+                continue
+            try:
+                model_row = conn.execute(
+                    """
+                    SELECT members_json, official_updated_at, created_at
+                    FROM model_member_cache
+                    WHERE model=? AND loc_key=? AND event_date=?
+                    ORDER BY COALESCE(official_updated_at, created_at) DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (model_key, str(meta["loc_key"]), target_date),
+                ).fetchone()
+            except sqlite3.Error:
+                model_row = None
+            if model_row is None:
+                revision = snapshot_revisions.get((station_id, short_key))
+                if revision is None:
+                    models[short_key] = {
+                        "label": label,
+                        "state": "missing",
+                        "reason": _china_board_nwp_gap_reason(short_key, target_date),
+                        "peak_c": None,
+                        "age_sec": None,
+                        "checked_at": checked_at,
+                        "source": "official_nwp_station_snapshots",
+                    }
+                    continue
+                updated_at = str(revision.get("available_at") or revision.get("decision_as_of") or "")
+                try:
+                    peak_c = float(revision.get("forecast_peak_c"))
+                except (TypeError, ValueError):
+                    peak_c = None
+                if peak_c is not None and not math.isfinite(peak_c):
+                    peak_c = None
+            else:
+                updated_at = str(model_row["official_updated_at"] or model_row["created_at"] or "")
+                peak_c = _china_board_peak_from_members(model_row["members_json"])
+            freshness = _china_board_freshness(updated_at, now=now_utc, stale_after_sec=24 * 3600)
+            models[short_key] = {
+                "label": label,
+                "state": freshness["state"] if peak_c is not None else "missing",
+                "reason": "" if peak_c is not None else "model_peak_not_materialized",
+                "peak_c": peak_c,
+                "updated_at": updated_at,
+                "age_sec": freshness["age_sec"],
+                "checked_at": checked_at,
+                "source": "archive.db.model_member_cache" if model_row is not None else "archive.db.weak_forecast_evidence_snapshots" if revision is not None else "archive.db.official_nwp_station_snapshots",
+            }
+
+        stations.append({
+            **dict(meta),
+            "catalog_only": bool(meta.get("catalog_only")),
+            "source_route_configured": not bool(meta.get("catalog_only")),
+            "live": live,
+            "taf": _china_board_taf_snapshot(conn, station_id=station_id, event_date=target_date, now=now_utc),
+            "models": models,
+            **_china_board_city_strategy_state(conn, station_id=station_id, event_date=target_date, now=now_utc),
+        })
+    materialized_count = sum(
+        1 for station in stations
+        if any(
+            str(station.get(key, {}).get("state") or "") in {"available", "stale"}
+            for key in ("live", "taf")
+        )
+        or any(
+            str(value.get("state") or "") in {"available", "stale"}
+            for value in (station.get("models") or {}).values()
+            if isinstance(value, Mapping)
+        )
+    )
+    catalog_only_count = sum(1 for station in stations if bool(station.get("catalog_only")))
+    field_materialized_counts = {
+        "live": sum(
+            1 for station in stations
+            if str((station.get("live") or {}).get("state") or "") in {"available", "stale"}
+        ),
+        "taf": sum(
+            1 for station in stations
+            if str((station.get("taf") or {}).get("state") or "") in {"available", "stale"}
+        ),
+    }
+    for model_short_key in ("gfs", "icon", "ecmwf"):
+        field_materialized_counts[model_short_key] = sum(
+            1 for station in stations
+            if str(((station.get("models") or {}).get(model_short_key) or {}).get("state") or "")
+            in {"available", "stale"}
+        )
+    return {
+        "schema": "china_airport_weather_board_v1",
+        "ok": True,
+        "read_only": True,
+        "event_date": target_date,
+        "as_of": now_utc.isoformat().replace("+00:00", "Z"),
+        "station_count": len(stations),
+        "source_registry_station_count": len(_CHINA_AIRPORT_STATIONS),
+        "catalog_only_station_count": catalog_only_count,
+        "materialized_station_count": materialized_count,
+        "field_materialized_station_counts": field_materialized_counts,
+        "catalog_path": str(_CHINA_AIRPORT_CATALOG_PATH.relative_to(ROOT_DIR)) if _CHINA_AIRPORT_CATALOG_PATH.exists() else "",
+        "stations": stations,
+        "source_boundaries": {
+            "live": "reported_trajectory_observations (METAR/SPECI)",
+            "taf": "amsc_taf_snapshots (official AMSC FC/FT, persisted only)",
+            "models": "official_nwp_station_snapshots (official raw-provider projection; legacy Chengdu weak snapshot fallback)",
+            "frontend_recompute": False,
+        },
+        "nwp_source_products": {
+            short_key: _china_board_nwp_source_status(short_key, target_date)
+            for _model_key, short_key, _label in _CHINA_AIRPORT_BOARD_MODEL_KEYS
+        },
+    }
+
+
+def _build_city_data_lineage_health_payload(
+    conn: sqlite3.Connection,
+    *,
+    event_date: str = "",
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Reverse-audit every field the multi-city UI renders.
+
+    ``missing`` is intentionally explicit.  A row is never counted as
+    complete merely because a catalogue entry exists or because a legacy
+    Chengdu-only fallback happened to return a value.
+    """
+
+    now_utc = now or datetime.now(timezone.utc)
+    target = str(event_date or "").strip()[:10] or datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    board = _build_china_airport_board_payload(conn, event_date=target, now=now_utc, include_catalog=True)
+    stations = list(board.get("stations") or [])
+    # The first-screen board has a 53-row catalogue, but only the configured
+    # source lane (the eight mainland production stations) is an active materialization
+    # contract.  Health coverage must not turn catalogue-only rows into false
+    # upstream failures.
+    scoped_stations = [item for item in stations if not bool(item.get("catalog_only"))]
+    source_checks: list[dict[str, Any]] = []
+    fields = ("live", "taf", "gfs", "icon", "ecmwf")
+    def cell(item: Mapping[str, Any], field: str) -> Mapping[str, Any]:
+        value = item.get(field) if field in {"live", "taf"} else (item.get("models") or {}).get(field)
+        return value if isinstance(value, Mapping) else {}
+
+    scoped_coverage = {
+        field: sum(1 for item in scoped_stations if str(cell(item, field).get("state") or "") in {"available", "stale"})
+        for field in fields
+    }
+
+    for field in fields:
+        available = sum(1 for item in scoped_stations if str(cell(item, field).get("state") or "") in {"available", "stale"})
+        missing = [
+            {"station_id": str(item.get("station_id") or ""), "city_cn": str(item.get("city_cn") or ""), "reason": str(cell(item, field).get("reason") or "not_materialized")}
+            for item in scoped_stations
+            if str(cell(item, field).get("state") or "") not in {"available", "stale"}
+        ]
+        source_checks.append({
+            "field": field,
+            "source": (board.get("source_boundaries") or {}).get("live" if field == "live" else "taf" if field == "taf" else "models", ""),
+            "station_count": len(scoped_stations),
+            "available_count": available,
+            "missing_count": len(missing),
+            "missing": missing,
+            "state": "complete" if not missing else "partial",
+        })
+    ssot_available = sum(1 for item in scoped_stations if (item.get("ssot") or {}).get("state") == "available")
+    basket_materialized = sum(1 for item in scoped_stations if (item.get("basket") or {}).get("state") == "available")
+    direction_materialized = sum(1 for item in scoped_stations if (item.get("direction_bias") or {}).get("state") == "available")
+    for field, count, source, required in (
+        ("ssot", ssot_available, "archive.db.event_fact_latest -> event_fact_history.posterior_ssot_fact", True),
+        ("direction_bias", direction_materialized, "archive.db.weak_forecast_evidence_snapshots -> regime gate", True),
+        # Basket is a strategy-consumption projection.  A city can be fully
+        # source/posterior-ready before a market or quote cycle exists.
+        ("basket", basket_materialized, "archive.db.basket_strategy_cycles", False),
+    ):
+        source_checks.append({
+            "field": field,
+            "source": source,
+            "station_count": len(scoped_stations),
+            "available_count": count,
+            "missing_count": len(scoped_stations) - count,
+            "missing": [
+                {"station_id": str(item.get("station_id") or ""), "city_cn": str(item.get("city_cn") or ""), "reason": str(((item.get(field) or {}).get("reason") or (item.get(field) or {}).get("state") or "not_materialized"))}
+                for item in scoped_stations if (item.get(field) or {}).get("state") != "available"
+            ],
+            "required": required,
+            "state": "complete" if count == len(scoped_stations) else ("optional_partial" if not required else "partial"),
+        })
+    required_fields = {row["field"] for row in source_checks if row.get("required", True)}
+    missing = [
+        {"station_id": str(item.get("station_id") or ""), "city_cn": str(item.get("city_cn") or ""), "fields": [row["field"] for row in source_checks if any(entry.get("station_id") == item.get("station_id") for entry in row.get("missing") or [])]}
+        for item in scoped_stations
+        if any(row.get("field") in required_fields and entry.get("station_id") == item.get("station_id") for row in source_checks for entry in row.get("missing") or [])
+    ]
+    blocker_reasons = sorted({
+        str(entry.get("reason") or "unknown")
+        for row in source_checks if row.get("required", True)
+        for entry in row.get("missing") or []
+        if str(entry.get("reason") or "").strip()
+    })
+    return {
+        "schema": "city_data_lineage_health_v1",
+        "ok": True,
+        "read_only": True,
+        "event_date": target,
+        "checked_at": now_utc.isoformat().replace("+00:00", "Z"),
+        "station_count": len(scoped_stations),
+        "catalog_only_station_count": max(0, len(stations) - len(scoped_stations)),
+        "source_checks": source_checks,
+        "missing": missing,
+        "acceptance": {
+            "passed": not bool(missing),
+            "state": "passed" if not missing else "blocked_by_upstream_or_unmaterialized_source",
+            "blocker_reasons": blocker_reasons,
+            "contract": "every UI source field must be materialized or explicitly attributable to an upstream gap",
+        },
+        "coverage": {
+            "live": scoped_coverage["live"],
+            "taf": scoped_coverage["taf"],
+            "gfs": scoped_coverage["gfs"],
+            "icon": scoped_coverage["icon"],
+            "ecmwf": scoped_coverage["ecmwf"],
+            "ssot": ssot_available,
+            "direction_bias": direction_materialized,
+            "basket": basket_materialized,
+        },
+        "nwp_source_products": board.get("nwp_source_products", {}),
+        "lineage_contract": {
+            "frontend_recompute": False,
+            "hard_no_reads": ["reported_trajectory_observations", "reported_trajectory_station_day_bounds"],
+            "basket_reads": ["event_fact_latest", "weak_forecast_evidence_snapshots", "market_ws_quote_shards"],
+            "taf_is_weak_only": True,
+            "nwp_is_official_only": True,
+            "branches": [
+                {
+                    "id": "official_amsc_taf",
+                    "source": "AMSC FC/FT",
+                    "materializer": "materialize_amsc_taf",
+                    "sink": "amsc_taf_snapshots -> city board / UI snapshot",
+                    "hard_no_reachable": False,
+                },
+                {
+                    "id": "official_nwp_projection",
+                    "source": "official_nwp_sources/{gfs,icon,ecmwf}",
+                    "materializer": "materialize_official_nwp_station_snapshots",
+                    "sink": "official_nwp_station_snapshots -> city board",
+                    "hard_no_reachable": False,
+                },
+                {
+                    "id": "legacy_weak_forecast_fallback",
+                    "source": "weak_forecast_evidence_snapshots",
+                    "materializer": "read_only_fallback",
+                    "sink": "Chengdu display only; never production hard-NO",
+                    "hard_no_reachable": False,
+                },
+            ],
+        },
+    }
 
 
 def compute_auto_trade_daily_stats(
@@ -57094,26 +59430,288 @@ def latest_fact_run_date_with_rows(conn: sqlite3.Connection, max_scan: int = 14)
     return ""
 
 
+def _ui_now_utc() -> datetime:
+    """Return the clock used only for read-only dashboard date selection."""
+
+    return datetime.now(timezone.utc)
+
+
+def _ui_event_window_ended(conn: sqlite3.Connection, event_date: str) -> bool:
+    """Tell the dashboard whether an event day has passed its published end.
+
+    A settled fact is not required here: the market end is the display-day
+    boundary, while posterior materialization may legitimately arrive later.
+    The function is deliberately read-only and returns ``False`` when no
+    trustworthy end/closed signal is available, preserving the current day.
+    """
+
+    date_key = _normalize_date_key(event_date)
+    if not date_key:
+        return False
+    now_utc = _ui_now_utc()
+    end_times: List[datetime] = []
+    closed_signal = False
+    open_signal = False
+
+    def _record_end(raw: Any) -> None:
+        value = parse_iso_ts(str(raw or "").strip())
+        if value is None:
+            return
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        end_times.append(value.astimezone(timezone.utc))
+
+    try:
+        if _sqlite_table_exists(conn, "event_runs"):
+            rows = conn.execute(
+                """
+                SELECT event_end_utc, settlement_actual, market_closed
+                FROM event_runs
+                WHERE event_date = ?
+                """,
+                (date_key,),
+            ).fetchall()
+            for row in rows or []:
+                _record_end(row["event_end_utc"] if isinstance(row, sqlite3.Row) else row[0])
+                settled = row["settlement_actual"] if isinstance(row, sqlite3.Row) else row[1]
+                market_closed = row["market_closed"] if isinstance(row, sqlite3.Row) else row[2]
+                if market_closed in (1, True, "1", "true") or settled not in (None, ""):
+                    closed_signal = True
+                else:
+                    open_signal = True
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _sqlite_table_exists(conn, "event_fact_latest") and _sqlite_table_exists(conn, "event_fact_history"):
+            rows = conn.execute(
+                """
+                SELECT h.fact_json
+                FROM event_fact_latest l
+                JOIN event_fact_history h ON h.id = l.fact_id
+                WHERE l.event_date = ?
+                """,
+                (date_key,),
+            ).fetchall()
+            for row in rows or []:
+                payload = safe_json_loads(str(row["fact_json"] if isinstance(row, sqlite3.Row) else row[0] or ""))
+                if not isinstance(payload, Mapping):
+                    continue
+                _record_end(payload.get("event_end_utc"))
+                if _truthy(payload.get("market_closed")) or payload.get("settlement_actual") not in (None, ""):
+                    closed_signal = True
+                elif payload.get("event_end_utc"):
+                    open_signal = True
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _sqlite_table_exists(conn, "weather_market_discovery"):
+            rows = conn.execute(
+                """
+                SELECT details_json
+                FROM weather_market_discovery
+                WHERE event_date = ?
+                  AND COALESCE(status, '') IN ('tokenized', 'known_recent')
+                """,
+                (date_key,),
+            ).fetchall()
+            for row in rows or []:
+                details = safe_json_loads(str(row["details_json"] if isinstance(row, sqlite3.Row) else row[0] or ""))
+                if not isinstance(details, Mapping):
+                    continue
+                _record_end(details.get("endDate") or details.get("end_date") or details.get("event_end_utc"))
+                if _truthy(details.get("closed")) or _truthy(details.get("resolved")):
+                    closed_signal = True
+                elif details.get("endDate") or details.get("end_date") or details.get("event_end_utc"):
+                    open_signal = True
+    except sqlite3.Error:
+        pass
+
+    if end_times:
+        # Any published market for this day still open keeps the dashboard on
+        # the current day.  Once every known end is past, advance even if the
+        # settlement/posterior row has not been written yet.
+        return bool(all(end <= now_utc for end in end_times))
+    return bool(closed_signal and not open_signal)
+
+
+def _ui_earliest_published_market_date(
+    conn: sqlite3.Connection,
+    start_date: str,
+    *,
+    max_scan: int = 14,
+) -> str:
+    """Find the earliest future market day that is actually published.
+
+    This is a read-model lookup only.  Tokenized discovery is preferred; the
+    registry and already-persisted facts are fallbacks for a brief discovery
+    or materialization race.
+    """
+
+    start_key = _normalize_date_key(start_date)
+    start_date_obj = parse_date(start_key)
+    if start_date_obj is None:
+        return ""
+    end_key = (start_date_obj + timedelta(days=max(1, int(max_scan or 1)))).isoformat()
+    dates: Set[str] = set()
+
+    try:
+        if _sqlite_table_exists(conn, "weather_market_discovery"):
+            has_tokens = _sqlite_table_exists(conn, "market_tokens")
+            if has_tokens:
+                rows = conn.execute(
+                    """
+                    WITH token_latest AS (
+                      SELECT slug, event_date,
+                             COUNT(*) AS token_count,
+                             SUM(CASE
+                                   WHEN COALESCE(market_closed, 0) = 0
+                                    AND COALESCE(market_archived, 0) = 0
+                                    AND COALESCE(market_active, 1) != 0
+                                    AND COALESCE(market_accepting_orders, 1) != 0
+                                   THEN 1 ELSE 0
+                                 END) AS active_token_count
+                      FROM market_tokens
+                      WHERE event_date >= ? AND event_date <= ?
+                      GROUP BY slug, event_date
+                    )
+                    SELECT DISTINCT wd.event_date
+                    FROM weather_market_discovery wd
+                    LEFT JOIN token_latest tl
+                      ON tl.slug = wd.slug AND tl.event_date = wd.event_date
+                    WHERE wd.event_date >= ? AND wd.event_date <= ?
+                      AND COALESCE(wd.status, '') IN ('tokenized', 'known_recent')
+                      AND COALESCE(NULLIF(wd.token_count, 0), tl.token_count, 0) >= 2
+                      AND COALESCE(tl.active_token_count, wd.token_count, 0) > 0
+                    ORDER BY wd.event_date ASC
+                    """,
+                    (start_key, end_key, start_key, end_key),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT event_date
+                    FROM weather_market_discovery
+                    WHERE event_date >= ? AND event_date <= ?
+                      AND COALESCE(status, '') IN ('tokenized', 'known_recent')
+                      AND COALESCE(token_count, 0) >= 2
+                    ORDER BY event_date ASC
+                    """,
+                    (start_key, end_key),
+                ).fetchall()
+            for row in rows or []:
+                key = _normalize_date_key(str(row["event_date"] if isinstance(row, sqlite3.Row) else row[0] or ""))
+                if key:
+                    dates.add(key)
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _sqlite_table_exists(conn, "reported_trajectory_market_registry"):
+            rows = conn.execute(
+                """
+                SELECT event_date
+                FROM reported_trajectory_market_registry
+                WHERE event_date >= ? AND event_date <= ?
+                  AND source_eligible = 1
+                  AND COALESCE(market_active, 0) = 1
+                  AND COALESCE(market_accepting_orders, 0) = 1
+                GROUP BY event_date
+                HAVING COUNT(DISTINCT slug) > 0
+                ORDER BY event_date ASC
+                """,
+                (start_key, end_key),
+            ).fetchall()
+            for row in rows or []:
+                key = _normalize_date_key(str(row["event_date"] if isinstance(row, sqlite3.Row) else row[0] or ""))
+                if key:
+                    dates.add(key)
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _sqlite_table_exists(conn, "event_fact_latest"):
+            rows = conn.execute(
+                """
+                SELECT DISTINCT event_date
+                FROM event_fact_latest
+                WHERE event_date >= ? AND event_date <= ?
+                ORDER BY event_date ASC
+                """,
+                (start_key, end_key),
+            ).fetchall()
+            for row in rows or []:
+                key = _normalize_date_key(str(row["event_date"] if isinstance(row, sqlite3.Row) else row[0] or ""))
+                if key:
+                    dates.add(key)
+    except sqlite3.Error:
+        pass
+
+    return min(dates) if dates else ""
+
+
 def latest_ui_default_run_date(conn: sqlite3.Connection, max_scan: int = 14) -> str:
-    """Default dashboard date: Chengdu local today wins over pre-materialized future facts."""
+    """Choose the earliest still-open published day for the dashboard.
+
+    The current day remains selected while its market window is open.  After
+    the window ends, selection advances to the earliest published future day;
+    that day may still be shown as a market-only placeholder while production
+    posterior materialization catches up.
+    """
+
     today_key = _normalize_date_key(_chengdu_today_date_key())
+    today_has_rows = False
     if today_key:
         try:
-            if count_event_fact_rows(conn, today_key, include_upcoming=True, upcoming_days=_ui_upcoming_days()) > 0:
+            today_has_rows = count_event_fact_rows(
+                conn,
+                today_key,
+                include_upcoming=True,
+                upcoming_days=_ui_upcoming_days(),
+            ) > 0
+            if today_has_rows and not _ui_event_window_ended(conn, today_key):
                 return today_key
         except sqlite3.OperationalError:
             pass
         except Exception:
             pass
-    latest = latest_fact_run_date_with_rows(conn, max_scan=max_scan)
-    latest_key = _normalize_date_key(latest)
-    if today_key and latest_key and latest_key > today_key:
+
+    if today_key:
+        next_day = _date_key_offset(today_key, 1)
+        published = _ui_earliest_published_market_date(conn, next_day, max_scan=max_scan)
+        if published:
+            return published
+
+    # If discovery is momentarily behind, use the earliest persisted future
+    # fact rather than the newest (which could skip an intermediate market day).
+    future_fact = ""
+    if today_key:
         try:
-            if count_event_fact_rows(conn, today_key, include_upcoming=True, upcoming_days=_ui_upcoming_days()) > 0:
-                return today_key
-        except Exception:
-            pass
-    return latest_key or latest_run_date_fast(conn)
+            rows = conn.execute(
+                """
+                SELECT event_date
+                FROM event_fact_latest
+                WHERE event_date > ?
+                GROUP BY event_date
+                ORDER BY event_date ASC
+                LIMIT ?
+                """,
+                (today_key, max(1, int(max_scan or 1))),
+            ).fetchall()
+            for row in rows or []:
+                future_fact = _normalize_date_key(str(row["event_date"] if isinstance(row, sqlite3.Row) else row[0] or ""))
+                if future_fact:
+                    break
+        except sqlite3.Error:
+            future_fact = ""
+    if future_fact:
+        return future_fact
+
+    latest = _normalize_date_key(latest_fact_run_date_with_rows(conn, max_scan=max_scan))
+    if latest:
+        return latest
+    return today_key or latest_run_date_fast(conn)
 
 
 def query_edge_trades(conn: sqlite3.Connection) -> Dict[Tuple[str, str], List[sqlite3.Row]]:
@@ -64078,6 +66676,23 @@ def _build_discovery_placeholder_payload(
         "created_at": fact_as_of,
         "market_updated_at": latest_token_at or str(discovery_row["updated_at"] or ""),
         "market_source": "market_tokens",
+        # This is a published-market read-model placeholder, not a posterior
+        # fact.  Keep the two states explicit so the UI cannot imply that an
+        # empty distribution is a computed probability.
+        "market_state": "published",
+        "market_state_label": "市场已发布",
+        "posterior_state": "not_materialized",
+        "posterior_state_label": "待接入生产后验",
+        "posterior_na_reason": "production_posterior_not_materialized",
+        "posterior_materialization": {
+            "state": "not_materialized",
+            "label": "待接入生产后验",
+            "source": "production_event_fact_latest",
+            "production_consumer_eligible": False,
+            "block_reason": "production_posterior_not_materialized",
+        },
+        "production_consumer_eligible": False,
+        "production_consumer_block_reason": "production_posterior_not_materialized",
         "data_status": "market_discovery_pending_model",
         "weather_strategy_mode": "market_discovery_pending_model",
         "weather_strategy_entry_block_reason": "model_not_materialized_yet",
@@ -65271,6 +67886,7 @@ def query_facts_paged(
             }
         first_prediction_stats = _safe_first_prediction_hit_rates(conn)
         forecast_source_accuracy = _safe_forecast_source_accuracy_snapshot_only(conn)
+        joint_weak_bias_research = _safe_joint_weak_bias_research_snapshot_only(conn)
         joint_weak_bias_research = _safe_joint_weak_bias_research_snapshot_only(conn)
         items: List[Dict[str, Any]] = []
         for row in page_rows:
@@ -67773,6 +70389,1165 @@ def _build_sequential_physical_timeline_for_ui_snapshot(
     }
 
 
+def _attach_v6_frozen_probability_layers_for_ui_snapshot(
+    conn: sqlite3.Connection,
+    payload: MutableMapping[str, Any],
+    *,
+    event_date: str,
+) -> None:
+    """Expose the frozen P0 prior and weak likelihood without a UI-side model.
+
+    P0 stores the normalized prior×weak joint.  Dividing its Y marginal by the
+    exact immutable weak snapshot reconstructs the frozen prior used by that
+    checkpoint; this is a read-only lineage projection, never a new posterior.
+    """
+    ssot = payload.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping):
+        return
+    checkpoint_id = str(ssot.get("posterior_checkpoint_id") or "").strip()
+    target_identity = str(
+        ssot.get("probability_runtime_identity", {}).get("target_identity") or ""
+        if isinstance(ssot.get("probability_runtime_identity"), Mapping)
+        else ""
+    ).strip() or f"physical_weather_day_v1:ZUUU:{event_date}"
+
+    # The active state-space pipeline persists the official observation update
+    # in ``strong_observation_updates``.  Keep this as an explicit, read-only
+    # UI fact even though the state-space contract intentionally does not
+    # expose a standalone bucket likelihood.  The old UI inferred
+    # "likelihood missing" merely because no legacy bucket map was present.
+    try:
+        strong_update = conn.execute(
+            "SELECT * FROM strong_observation_updates "
+            "WHERE strong_observation_update_id=? LIMIT 1",
+            (str(ssot.get("last_strong_update_id") or "").strip(),),
+        ).fetchone() if str(ssot.get("last_strong_update_id") or "").strip() else None
+    except sqlite3.Error:
+        strong_update = None
+    if strong_update is not None:
+        update_keys = set(strong_update.keys()) if hasattr(strong_update, "keys") else set()
+
+        def update_value(key: str) -> Any:
+            if key not in update_keys:
+                return None
+            try:
+                return strong_update[key]
+            except (IndexError, KeyError, TypeError):
+                return None
+
+        update_state = str(update_value("state") or "").strip().lower()
+        update_event_id = str(update_value("canonical_observation_event_id") or "").strip()
+        update_count = to_float(update_value("physical_current_event_consumption_count"))
+        likelihood_hash = str(
+            update_value("physical_observation_likelihood_sha256")
+            or ssot.get("physical_observation_likelihood_sha256")
+            or ""
+        ).strip()
+        pre_state_hash = str(
+            update_value("physical_pre_event_state_sha256")
+            or ssot.get("physical_pre_event_state_sha256")
+            or ""
+        ).strip()
+        post_state_hash = str(
+            update_value("physical_post_event_state_sha256")
+            or ssot.get("physical_post_event_state_sha256")
+            or ""
+        ).strip()
+        applied = update_state == "applied"
+        artifact_complete = bool(likelihood_hash and post_state_hash)
+        payload["observation_update_materialization"] = {
+            "schema": "ui_state_space_observation_update_materialization_v1",
+            "state": "materialized" if applied and artifact_complete else "pending_artifact",
+            "materialized": bool(applied and artifact_complete),
+            "strong_observation_update_id": str(
+                update_value("strong_observation_update_id")
+                or ssot.get("last_strong_update_id")
+                or ""
+            ),
+            "canonical_observation_event_id": update_event_id,
+            "consumption_count": int(update_count) if update_count is not None else None,
+            "physical_observation_likelihood_sha256": likelihood_hash,
+            "physical_pre_event_state_sha256": pre_state_hash,
+            "physical_post_event_state_sha256": post_state_hash,
+            "started_at": str(update_value("started_at") or ""),
+            "completed_at": str(update_value("completed_at") or ""),
+            "source": "archive.db.strong_observation_updates",
+            "contract": "state_transition_plus_observation_update_no_standalone_bucket_likelihood",
+            "frontend_recompute_allowed": False,
+        }
+    try:
+        weak_columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(weak_forecast_evidence_snapshots)").fetchall()
+        }
+        checkpoint_columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(posterior_checkpoints)").fetchall()
+        }
+        optional_columns = (
+            "source_revisions_json",
+            "forecast_peak_timing_prior_json",
+            "forecast_background_context_json",
+            "source_expert_trace_json",
+            "forecast_multimodality_trace_json",
+            "weak_model_diagnostics_json",
+            "prior_context_audit_json",
+        )
+        optional_select = "".join(
+            f",w.{column}" for column in optional_columns if column in weak_columns
+        )
+        # Checkpoint reporting/state columns were added after the first v6
+        # archive schema.  They are optional for this read-only projection:
+        # the legacy joint-posterior representation below remains sufficient
+        # to expose the frozen prior and current weak snapshot.  Selecting a
+        # missing column used to abort the whole function, hiding the current
+        # weak attribution even though its table was present.
+        checkpoint_optional_select = (
+            ",p.reported_physical_x_distribution_json AS reported_physical_x_distribution_json,"
+            "p.physical_state_posterior_sha256 AS physical_state_posterior_sha256,"
+            "p.committed_at AS p0_committed_at"
+            if {
+                "reported_physical_x_distribution_json",
+                "physical_state_posterior_sha256",
+                "committed_at",
+            }.issubset(checkpoint_columns)
+            else ",'' AS reported_physical_x_distribution_json,'' AS physical_state_posterior_sha256,'' AS p0_committed_at"
+        )
+        # The initial lineage remains the immutable source for reconstructing
+        # the frozen prior.  It must not also select the weak layer shown in
+        # the UI after a forward-only weak revision.
+        prior_lineage = conn.execute(
+            "SELECT l.posterior_checkpoint_id,l.prior_context_id,l.prior_artifact_sha256,"
+            "l.forecast_evidence_snapshot_id,l.weak_likelihood_sha256,"
+            "p.joint_posterior_json"
+            + checkpoint_optional_select
+            + ",w.likelihood_by_x_json,w.source_set_key,"
+            "w.source_revision_ids_json,w.created_at "
+            + optional_select +
+            " FROM production_initial_posterior_lineage l "
+            "JOIN posterior_checkpoints p ON p.posterior_checkpoint_id=l.posterior_checkpoint_id "
+            "JOIN weak_forecast_evidence_snapshots w "
+            "ON w.forecast_evidence_snapshot_id=l.forecast_evidence_snapshot_id "
+            "WHERE l.target_identity=? "
+            "ORDER BY l.created_at DESC LIMIT 1",
+            (target_identity,),
+        ).fetchone()
+        current_weak_id = str(ssot.get("forecast_evidence_snapshot_id") or "").strip()
+        if not current_weak_id and checkpoint_id:
+            current_checkpoint = conn.execute(
+                "SELECT forecast_evidence_snapshot_id FROM posterior_checkpoints "
+                "WHERE posterior_checkpoint_id=? LIMIT 1",
+                (checkpoint_id,),
+            ).fetchone()
+            if current_checkpoint is not None:
+                current_weak_id = str(current_checkpoint[0] or "").strip()
+        weak_lineage = conn.execute(
+            "SELECT w.forecast_evidence_snapshot_id,w.weak_likelihood_sha256,"
+            "w.likelihood_by_x_json,w.source_set_key,w.source_revision_ids_json,w.created_at "
+            + optional_select + " FROM weak_forecast_evidence_snapshots w "
+            "WHERE w.forecast_evidence_snapshot_id=? LIMIT 1",
+            (current_weak_id,),
+        ).fetchone() if current_weak_id else None
+    except sqlite3.Error:
+        return
+    if prior_lineage is None:
+        # No initial lineage is a real data-quality issue, but do not turn a
+        # valid successor chain into a false "prior missing" banner.  The
+        # immediately preceding checkpoint is an explicit previous-state
+        # reference, not an invented prior; label it as such below.
+        try:
+            previous_row = conn.execute(
+                "SELECT previous_checkpoint_id FROM posterior_checkpoints "
+                "WHERE posterior_checkpoint_id=? LIMIT 1",
+                (checkpoint_id,),
+            ).fetchone()
+            previous_id = str(previous_row[0] or "") if previous_row is not None else ""
+            if previous_id:
+                previous_checkpoint = conn.execute(
+                    "SELECT posterior_checkpoint_id,reported_physical_x_distribution_json,"
+                    "physical_state_posterior_sha256,committed_at "
+                    "FROM posterior_checkpoints WHERE posterior_checkpoint_id=? LIMIT 1",
+                    (previous_id,),
+                ).fetchone()
+            else:
+                previous_checkpoint = None
+        except sqlite3.Error:
+            previous_checkpoint = None
+        previous_distribution = (
+            safe_json_loads_any(str(previous_checkpoint[1] or ""))
+            if previous_checkpoint is not None
+            else None
+        )
+        if isinstance(previous_distribution, Mapping) and previous_distribution:
+            payload["prior_distribution"] = dict(previous_distribution)
+            payload["prior_meta"] = {
+                "source": "archive.db.posterior_checkpoints.previous_checkpoint.reported_physical_x_distribution_json",
+                "source_kind": "previous_checkpoint_state",
+                "checkpoint_id": str(previous_checkpoint[0] or ""),
+                "physical_state_posterior_sha256": str(previous_checkpoint[2] or ""),
+                "as_of": str(previous_checkpoint[3] or ""),
+                "prior_semantics": "previous_state_reference_not_initial_P0_prior",
+                "read_only": True,
+                "frontend_recompute_allowed": False,
+            }
+            payload["prior_na_reason"] = ""
+        else:
+            payload["prior_na_reason"] = "initial_p0_lineage_and_previous_checkpoint_missing"
+        return
+    prior_weak_raw = safe_json_loads(str(prior_lineage["likelihood_by_x_json"] or "{}"))
+    try:
+        joint_raw = json.loads(str(prior_lineage["joint_posterior_json"] or "[]"))
+    except (TypeError, ValueError):
+        joint_raw = []
+    # P0 in the active state-space epoch is a persisted Gaussian-mixture
+    # artifact, not the retired list of joint cells.  Prefer its persisted X
+    # reporting distribution; only retain the list division path for old
+    # archive rows that genuinely use that representation.
+    p0_distribution = safe_json_loads_any(
+        str(prior_lineage["reported_physical_x_distribution_json"] or "")
+    )
+    if isinstance(p0_distribution, Mapping) and p0_distribution:
+        payload["prior_distribution"] = {
+            f"{float(key):g}°C": float(value)
+            for key, value in p0_distribution.items()
+            if to_float(key) is not None
+            and to_float(value) is not None
+            and math.isfinite(float(value))
+            and float(value) >= 0.0
+        }
+        payload["prior_meta"] = {
+            "prior_context_id": str(prior_lineage["prior_context_id"] or ""),
+            "prior_artifact_sha256": str(prior_lineage["prior_artifact_sha256"] or ""),
+            "p0_checkpoint_id": str(prior_lineage["posterior_checkpoint_id"] or ""),
+            "p0_physical_state_posterior_sha256": str(
+                prior_lineage["physical_state_posterior_sha256"] or ""
+            ),
+            "as_of": str(prior_lineage["p0_committed_at"] or ""),
+            "source": "archive.db.posterior_checkpoints.reported_physical_x_distribution_json",
+            "source_kind": "persisted_state_space_p0",
+            "prior_semantics": "P0_state_space_pre_official_observation_distribution",
+            "derivation": "persisted_reporting_operator_projection_no_ui_recompute",
+            "read_only": True,
+            "frontend_recompute_allowed": False,
+        }
+        payload["prior_na_reason"] = ""
+    elif not isinstance(prior_weak_raw, Mapping) or not isinstance(joint_raw, list):
+        payload["prior_na_reason"] = "p0_distribution_artifact_unavailable"
+        return
+    prior_weak = {
+        float(key): float(value)
+        for key, value in prior_weak_raw.items()
+        if to_float(key) is not None and to_float(value) is not None and float(value) > 0.0
+    }
+    marginal: Dict[float, float] = {}
+    for cell in joint_raw:
+        if not isinstance(cell, Mapping):
+            continue
+        y = to_float(cell.get("continuous_y_c"))
+        probability = to_float(cell.get("probability"))
+        if y is None or probability is None or probability <= 0.0:
+            continue
+        marginal[float(y)] = marginal.get(float(y), 0.0) + float(probability)
+    prior_unnormalized = {
+        y: mass / prior_weak[y]
+        for y, mass in marginal.items()
+        if y in prior_weak and prior_weak[y] > 0.0
+    }
+    prior_total = sum(prior_unnormalized.values())
+    weak_raw = safe_json_loads(str(weak_lineage["likelihood_by_x_json"] or "{}")) if weak_lineage else {}
+    weak = {
+        float(key): float(value)
+        for key, value in weak_raw.items()
+        if to_float(key) is not None and to_float(value) is not None and float(value) > 0.0
+    } if isinstance(weak_raw, Mapping) else {}
+    if weak and weak_lineage is not None:
+        payload["forecast_weak_likelihood"] = {
+            f"{temperature_c:g}°C": probability
+            for temperature_c, probability in weak.items()
+        }
+        payload["forecast_weak_attribution"] = {
+            "forecast_evidence_snapshot_id": str(weak_lineage["forecast_evidence_snapshot_id"] or ""),
+            "weak_likelihood_sha256": str(weak_lineage["weak_likelihood_sha256"] or ""),
+            "source_set_key": str(weak_lineage["source_set_key"] or ""),
+            "source_revision_ids": safe_json_loads_any(str(weak_lineage["source_revision_ids_json"] or "[]")),
+            "created_at": str(weak_lineage["created_at"] or ""),
+            "source": "archive.db.weak_forecast_evidence_snapshots.likelihood_by_x_json",
+            "frontend_recompute_allowed": False,
+        }
+        attribution = payload["forecast_weak_attribution"]
+        for column, key, empty in (
+            ("source_revisions_json", "source_revisions", []),
+            ("forecast_peak_timing_prior_json", "forecast_peak_timing_prior", {}),
+            ("forecast_background_context_json", "forecast_background_context", {}),
+            ("source_expert_trace_json", "source_expert_trace", []),
+            ("forecast_multimodality_trace_json", "forecast_multimodality_trace", {}),
+            ("weak_model_diagnostics_json", "weak_model_diagnostics", {}),
+            ("prior_context_audit_json", "prior_context_audit", {}),
+        ):
+            if column not in weak_columns:
+                attribution[f"{key}_na_reason"] = "archive_schema_column_not_installed"
+                continue
+            parsed = safe_json_loads_any(str(weak_lineage[column] or ("[]" if isinstance(empty, list) else "{}")))
+            if isinstance(parsed, type(empty)) and parsed:
+                attribution[key] = parsed
+            else:
+                attribution[f"{key}_na_reason"] = "historical_snapshot_did_not_persist_field"
+    if prior_total > 0.0 and not payload.get("prior_distribution"):
+        payload["prior_distribution"] = {
+            f"{temperature_c:g}°C": mass / prior_total
+            for temperature_c, mass in prior_unnormalized.items()
+        }
+        payload["prior_meta"] = {
+            "prior_context_id": str(prior_lineage["prior_context_id"] or ""),
+            "prior_artifact_sha256": str(prior_lineage["prior_artifact_sha256"] or ""),
+            "p0_checkpoint_id": str(prior_lineage["posterior_checkpoint_id"] or ""),
+            "source": "archive.db.posterior_checkpoints.P0_joint_div_frozen_weak",
+            "derivation": "normalized_marginal_P0_Y_div_exact_weak_snapshot",
+            "read_only": True,
+            "frontend_recompute_allowed": False,
+        }
+        prior_audit = payload.get("forecast_weak_attribution", {}).get("prior_context_audit")
+        if isinstance(prior_audit, Mapping) and prior_audit:
+            payload["prior_meta"]["climate_background"] = copy.deepcopy(prior_audit)
+            payload["prior_meta"]["climate_background_na_reason"] = ""
+        else:
+            payload["prior_meta"]["climate_background_na_reason"] = str(
+                payload.get("forecast_weak_attribution", {}).get("prior_context_audit_na_reason")
+                or "prior_context_audit_not_persisted"
+            )
+
+
+def _compact_v6_probability_distribution(raw: Any, *, limit: int = 6) -> List[Dict[str, Any]]:
+    value = safe_json_loads(str(raw or "{}")) if isinstance(raw, str) else raw
+    rows: List[Dict[str, Any]] = []
+    if isinstance(value, Mapping):
+        for label, probability in value.items():
+            number = to_float(probability)
+            if number is not None and math.isfinite(float(number)):
+                rows.append({"label": str(label), "probability": float(number), "probability_pct": float(number) * 100.0})
+    rows.sort(key=lambda row: (-float(row["probability"]), str(row["label"])))
+    return rows[: max(0, int(limit))]
+
+
+def _attach_v6_probability_audit_for_ui_snapshot(
+    conn: sqlite3.Connection,
+    payload: MutableMapping[str, Any],
+    *,
+    event_date: str,
+) -> None:
+    """Build a read-only probability-chain audit from persisted archive facts."""
+    if not event_date:
+        return
+    target = f"physical_weather_day_v1:ZUUU:{event_date}"
+    attribution = payload.get("forecast_weak_attribution")
+    attribution_map = attribution if isinstance(attribution, Mapping) else {}
+    source_revisions = attribution_map.get("source_revisions")
+    expert_trace = attribution_map.get("source_expert_trace")
+    expert_by_identity = {
+        (str(row.get("source_id") or ""), str(row.get("source_revision_id") or "")): row
+        for row in expert_trace or []
+        if isinstance(row, Mapping)
+    }
+    weak_sources: List[Dict[str, Any]] = []
+    for raw in source_revisions or []:
+        if not isinstance(raw, Mapping):
+            continue
+        identity = (str(raw.get("source_id") or ""), str(raw.get("source_revision_id") or ""))
+        expert = expert_by_identity.get(identity, {})
+        weak_sources.append(
+            {
+                key: value
+                for key, value in {
+                    "source_id": identity[0],
+                    "source_revision_id": identity[1],
+                    "available_at": raw.get("available_at"),
+                    "forecast_peak_c": raw.get("forecast_peak_c"),
+                    "forecast_peak_valid_time": raw.get("forecast_peak_valid_time"),
+                    "forecast_weather_regime": raw.get("forecast_weather_regime") or "unknown",
+                    "forecast_weather_regime_origin": raw.get("forecast_weather_regime_origin"),
+                    "calibration_bias_c": expert.get("calibration_bias_c"),
+                    "calibrated_mean_c": expert.get("calibrated_mean_c"),
+                    "calibrated_sigma_c": expert.get("calibrated_sigma_c"),
+                    "bias_level": expert.get("bias_level"),
+                    "bias_sample_count": expert.get("bias_sample_count"),
+                    "information_weight": expert.get("information_weight"),
+                    "base_information_weight": expert.get("base_information_weight"),
+                    "family_information_cap": expert.get("family_information_cap"),
+                    "family_raw_information_weight": expert.get("family_raw_information_weight"),
+                    "family_cap_scale": expert.get("family_cap_scale"),
+                    "family_capped_information_weight": expert.get("family_capped_information_weight"),
+                    "normalized_information_share": expert.get("normalized_information_share"),
+                    "correlation_discount": expert.get("correlation_discount"),
+                    "joint_information_scale": expert.get("joint_information_scale"),
+                    "final_information_index": expert.get("final_information_index"),
+                    "provider_family": expert.get("provider_family"),
+                    "future_forcing_available": expert.get("future_forcing_available"),
+                    "source_modes_schema": expert.get("source_modes_schema") or raw.get("source_modes_schema"),
+                    "source_mode_count": expert.get("source_mode_count"),
+                    "source_modes": expert.get("source_modes") or raw.get("source_modes"),
+                    "cloud_cover_pct": raw.get("cloud_cover_pct"),
+                    "precipitation_mm": raw.get("precipitation_mm"),
+                    "convective_precipitation_mm": raw.get("convective_precipitation_mm"),
+                    "boundary_layer_height_m": raw.get("boundary_layer_height_m"),
+                    "calibration_na_reason": "" if expert else str(
+                        attribution_map.get("source_expert_trace_na_reason")
+                        or "source_expert_trace_not_persisted"
+                    ),
+                }.items()
+                if value not in (None, "", [], {}) or key.endswith("_na_reason")
+            }
+        )
+
+    newer_weak_revisions: List[Dict[str, Any]] = []
+    snapshot_as_of = str(attribution_map.get("created_at") or "")
+    consumed_revision_ids = {
+        str(value or "") for value in attribution_map.get("source_revision_ids") or [] if str(value or "")
+    }
+    try:
+        newer_rows = conn.execute(
+            """
+            SELECT source_id,source_event_id,forecast_peak_c,valid_time,fetched_at,
+                   response_completed_at,observation_json
+            FROM source_observations
+            WHERE event_date=? AND source_class='forecast_weak_source'
+              AND datetime(COALESCE(response_completed_at,fetched_at,created_at)) > datetime(?)
+            ORDER BY datetime(COALESCE(response_completed_at,fetched_at,created_at)) DESC LIMIT 20
+            """,
+            (event_date, snapshot_as_of),
+        ).fetchall() if snapshot_as_of else []
+        for row in newer_rows:
+            revision_id = str(row["source_event_id"] or "")
+            if revision_id in consumed_revision_ids:
+                continue
+            source_id = str(row["source_id"] or "").lower()
+            if "taf" in source_id:
+                source_id = "taf"
+            newer_weak_revisions.append(
+                {
+                    "source_id": source_id,
+                    "source_revision_id": revision_id,
+                    "forecast_peak_c": row["forecast_peak_c"],
+                    "forecast_peak_valid_time": str(row["valid_time"] or ""),
+                    "available_at": str(row["response_completed_at"] or row["fetched_at"] or ""),
+                }
+            )
+    except sqlite3.Error:
+        newer_weak_revisions = []
+
+    observation_rows: List[Dict[str, Any]] = []
+    try:
+        rows = conn.execute(
+            """
+            SELECT c.canonical_observation_event_id,c.report_type,c.valid_time,c.accepted_at,
+                   c.selected_source_id,c.parsed_observation_json,c.quality_flags_json,
+                   s.source_observation_id,s.raw_ref,s.fetched_at
+            FROM canonical_observation_events c
+            LEFT JOIN source_observations s
+              ON s.source_observation_id=c.selected_source_observation_id
+              OR s.source_event_id=c.selected_source_observation_id
+            WHERE c.target_identity=? AND c.state IN ('accepted_primary','accepted_substitute','confirmed')
+            ORDER BY datetime(c.valid_time) DESC,c.revision_no DESC LIMIT 12
+            """,
+            (target,),
+        ).fetchall()
+        for row in rows:
+            parsed = safe_json_loads(str(row["parsed_observation_json"] or "{}"))
+            observation_rows.append(
+                {
+                    "canonical_observation_event_id": str(row["canonical_observation_event_id"] or ""),
+                    "report_type": str(row["report_type"] or ""),
+                    "source_id": str(row["selected_source_id"] or ""),
+                    "valid_time": str(row["valid_time"] or ""),
+                    "accepted_at": str(row["accepted_at"] or ""),
+                    "fetched_at": str(row["fetched_at"] or ""),
+                    "temperature_c": parsed.get("temperature_c"),
+                    "dewpoint_c": parsed.get("dewpoint_c"),
+                    "weather_text": str(parsed.get("weather_text") or ""),
+                    "cloud_text": str(parsed.get("cloud_text") or ""),
+                    "visibility_m": parsed.get("visibility_m"),
+                    "pressure_hpa": parsed.get("pressure_hpa"),
+                    "raw_report": str(row["raw_ref"] or "")[:360],
+                }
+            )
+    except sqlite3.Error:
+        observation_rows = []
+
+    history: List[Dict[str, Any]] = []
+    try:
+        strong_columns = {
+            str(column[1] or "")
+            for column in conn.execute("PRAGMA table_info(strong_observation_updates)").fetchall()
+        }
+        emission_select = (
+            "u.observation_emission_json"
+            if "observation_emission_json" in strong_columns
+            else "NULL AS observation_emission_json"
+        )
+        auxiliary_select = (
+            "u.path_auxiliary_json"
+            if "path_auxiliary_json" in strong_columns
+            else "NULL AS path_auxiliary_json"
+        )
+        checkpoint_columns = {
+            str(column[1] or "")
+            for column in conn.execute("PRAGMA table_info(posterior_checkpoints)").fetchall()
+        }
+        scenario_checkpoint_select = ",".join(
+            f"p.{column}" if column in checkpoint_columns else f"NULL AS {column}"
+            for column in (
+                "scenario_joint_posterior_sha256", "scenario_joint_schema",
+                "scenario_joint_forcing_generation_sha256",
+            )
+        )
+        emission_join = (
+            "LEFT JOIN strong_observation_updates u "
+            "ON u.strong_observation_update_id=p.last_strong_update_id"
+            if {"observation_emission_json", "path_auxiliary_json"} & strong_columns
+            else ""
+        )
+        checkpoint_rows = conn.execute(
+            f"""
+            SELECT p.posterior_checkpoint_id,p.posterior_run_id,p.checkpoint_kind,p.last_canonical_event_id,
+                   p.last_strong_update_id,p.reported_physical_x_distribution_json,p.latent_post_state_json,
+                   p.reported_x_lower_bound_c,p.committed_at,{emission_select},{auxiliary_select},
+                   {scenario_checkpoint_select}
+            FROM posterior_checkpoints p
+            {emission_join}
+            WHERE p.target_identity=? AND p.state='committed'
+            ORDER BY datetime(p.committed_at) DESC,p.rowid DESC LIMIT 12
+            """,
+            (target,),
+        ).fetchall()[::-1]
+        previous: Dict[str, float] = {}
+        for row in checkpoint_rows:
+            distribution_raw = safe_json_loads(str(row["reported_physical_x_distribution_json"] or "{}"))
+            current = {
+                str(key): float(value)
+                for key, value in distribution_raw.items()
+                if isinstance(distribution_raw, Mapping) and to_float(value) is not None
+            }
+            ranked = _compact_v6_probability_distribution(current, limit=5)
+            delta_rows = [
+                {
+                    "label": key,
+                    "delta": current.get(key, 0.0) - previous.get(key, 0.0),
+                    "delta_pct_points": (current.get(key, 0.0) - previous.get(key, 0.0)) * 100.0,
+                }
+                for key in set(current) | set(previous)
+            ] if previous else []
+            delta_rows.sort(key=lambda item: (-abs(float(item["delta"])), str(item["label"])))
+            latent = _compact_v6_probability_distribution(row["latent_post_state_json"], limit=4)
+            emission = safe_json_loads(str(row["observation_emission_json"] or "{}"))
+            bucket_evidence = (
+                emission.get("bucket_observation_evidence")
+                if isinstance(emission, Mapping)
+                and isinstance(emission.get("bucket_observation_evidence"), Mapping)
+                else {}
+            )
+            evidence_rows = (
+                [dict(item) for item in bucket_evidence.get("rows") or [] if isinstance(item, Mapping)]
+                if isinstance(bucket_evidence, Mapping)
+                else []
+            )
+            feature_trace = (
+                dict(emission.get("observation_feature_trace"))
+                if isinstance(emission, Mapping)
+                and isinstance(emission.get("observation_feature_trace"), Mapping)
+                else {}
+            )
+            path_auxiliary = safe_json_loads(str(row["path_auxiliary_json"] or "{}"))
+            scenario_responsibility_trace = (
+                dict(path_auxiliary.get("event_local_scenario_responsibility_trace"))
+                if isinstance(path_auxiliary, Mapping)
+                and isinstance(path_auxiliary.get("event_local_scenario_responsibility_trace"), Mapping)
+                else {}
+            )
+            history.append(
+                {
+                    "posterior_checkpoint_id": str(row["posterior_checkpoint_id"] or ""),
+                    "posterior_run_id": str(row["posterior_run_id"] or ""),
+                    "checkpoint_kind": str(row["checkpoint_kind"] or ""),
+                    "committed_at": str(row["committed_at"] or ""),
+                    "canonical_observation_event_id": str(row["last_canonical_event_id"] or ""),
+                    "strong_observation_update_id": str(row["last_strong_update_id"] or ""),
+                    "reported_x_lower_bound_c": row["reported_x_lower_bound_c"],
+                    "top_temperature": ranked[0] if ranked else {},
+                    "top_temperature_distribution": ranked,
+                    "top_state_distribution": latent,
+                    "largest_probability_changes": delta_rows[:5],
+                    "change_na_reason": "" if previous else "initial_checkpoint_has_no_previous_checkpoint",
+                    "observation_bucket_evidence": dict(bucket_evidence) if bucket_evidence else {},
+                    "observation_bucket_evidence_rows": evidence_rows,
+                    "observation_bucket_evidence_na_reason": (
+                        "" if evidence_rows
+                        else "historical_strong_update_did_not_persist_bucket_component_trace"
+                    ),
+                    "observation_feature_trace": feature_trace,
+                    "event_local_scenario_responsibility_trace": scenario_responsibility_trace,
+                    "event_local_scenario_responsibility_trace_na_reason": (
+                        "" if scenario_responsibility_trace
+                        else "historical_strong_update_did_not_persist_scenario_responsibility_trace"
+                    ),
+                    "scenario_joint_checkpoint": {
+                        "schema": str(row["scenario_joint_schema"] or ""),
+                        "sha256": str(row["scenario_joint_posterior_sha256"] or ""),
+                        "forcing_generation_sha256": str(row["scenario_joint_forcing_generation_sha256"] or ""),
+                        "persistent_across_events": bool(row["scenario_joint_posterior_sha256"]),
+                    },
+                }
+            )
+            previous = current
+    except sqlite3.Error:
+        history = []
+
+    posterior_ssot = payload.get("posterior_ssot_fact")
+    ssot_map = posterior_ssot if isinstance(posterior_ssot, Mapping) else {}
+    try:
+        strong_update = conn.execute(
+            "SELECT * FROM strong_observation_updates "
+            "WHERE strong_observation_update_id=? LIMIT 1",
+            (str(ssot_map.get("last_strong_update_id") or "").strip(),),
+        ).fetchone() if str(ssot_map.get("last_strong_update_id") or "").strip() else None
+    except sqlite3.Error:
+        strong_update = None
+    compact_ssot = _compact_posterior_ssot_fact_for_ui_snapshot(ssot_map)
+    checkpoint_lineage: Dict[str, Any] = {}
+    try:
+        checkpoint_columns = {
+            str(column[1] or "")
+            for column in conn.execute("PRAGMA table_info(posterior_checkpoints)").fetchall()
+        }
+        lineage_fields = [
+            "posterior_checkpoint_id",
+            "previous_checkpoint_id",
+            "prior_context_id",
+            "state_space_schema",
+            "physical_state_posterior_schema",
+            "physical_state_posterior_sha256",
+            "physical_pre_event_state_sha256",
+            "physical_observation_likelihood_sha256",
+            "physical_post_event_state_sha256",
+            "physical_weak_advance_json",
+            "physical_last_weak_advance_json",
+            "physical_weak_advance_sha256",
+            "physical_last_weak_advance_sha256",
+            "physical_forcing_rebind_json",
+            "physical_forcing_rebind_sha256",
+            "physical_path_projection_json",
+            "physical_path_projection_sha256",
+            "physical_state_model_artifact_sha256",
+            "physical_observation_artifact_sha256",
+            "physical_reporting_operator_sha256",
+            "physical_driver_generation_sha256",
+            "physical_state_reference_valid_at",
+            "last_event_valid_at",
+            "last_canonical_event_id",
+            "reported_x_lower_bound_c",
+            "reported_x_projection_sha256",
+            "consumed_event_ids_json",
+            "committed_at",
+        ]
+        selected_fields = [field for field in lineage_fields if field in checkpoint_columns]
+        if selected_fields:
+            checkpoint_row = conn.execute(
+                f"SELECT {','.join(selected_fields)} FROM posterior_checkpoints "
+                "WHERE target_identity=? AND state='committed' "
+                "ORDER BY datetime(committed_at) DESC,rowid DESC LIMIT 1",
+                (target,),
+            ).fetchone()
+            if checkpoint_row is not None:
+                checkpoint_raw = {
+                    key: checkpoint_row[key]
+                    for key in selected_fields
+                    if checkpoint_row[key] not in (None, "", [], {})
+                }
+                if checkpoint_raw.get("state_space_schema") and not checkpoint_raw.get("physical_state_posterior_schema"):
+                    checkpoint_raw["physical_state_posterior_schema"] = checkpoint_raw["state_space_schema"]
+                if checkpoint_raw.get("physical_weak_advance_sha256") is None:
+                    checkpoint_raw["physical_weak_advance_sha256"] = checkpoint_raw.get("physical_last_weak_advance_sha256")
+                # ``consumed_event_ids_json`` is a JSON array.  Parsing it as
+                # an object silently produced ``{}`` and made an applied
+                # official observation look unconsumed in the UI.
+                consumed_ids = safe_json_loads_any(str(checkpoint_raw.get("consumed_event_ids_json") or "[]"))
+                last_event_id = str(checkpoint_raw.get("last_canonical_event_id") or "")
+                if strong_update is not None:
+                    update_event_id = str(strong_update["canonical_observation_event_id"] or "")
+                    update_count = to_float(strong_update["physical_current_event_consumption_count"])
+                    if update_event_id and update_event_id == last_event_id:
+                        checkpoint_raw["physical_current_event_consumption_count"] = (
+                            int(update_count) if update_count is not None else 1
+                        )
+                        checkpoint_raw["physical_observation_likelihood_sha256"] = str(
+                            strong_update["physical_observation_likelihood_sha256"] or ""
+                        )
+                        checkpoint_raw["physical_pre_event_state_sha256"] = str(
+                            strong_update["physical_pre_event_state_sha256"] or ""
+                        )
+                        checkpoint_raw["physical_post_event_state_sha256"] = str(
+                            strong_update["physical_post_event_state_sha256"] or ""
+                        )
+                checkpoint_raw["current_observation_consumed_once"] = bool(
+                    last_event_id and isinstance(consumed_ids, list) and last_event_id in {str(value) for value in consumed_ids}
+                )
+                checkpoint_raw["current_observation_consumed"] = checkpoint_raw["current_observation_consumed_once"]
+                if checkpoint_raw.get("physical_current_event_consumption_count") in (None, ""):
+                    checkpoint_raw["physical_current_event_consumption_count"] = (
+                        1 if checkpoint_raw["current_observation_consumed_once"] else 0
+                    )
+                checkpoint_raw["forecast_revision_used_as_likelihood"] = False
+                checkpoint_raw["nwp_hourly_path_likelihood_reapplied"] = False
+                checkpoint_lineage = _build_ui_snapshot_state_space_lineage(checkpoint_raw)
+    except (sqlite3.Error, TypeError, ValueError):
+        checkpoint_lineage = {}
+    state_space_lineage = checkpoint_lineage or _build_ui_snapshot_state_space_lineage(compact_ssot)
+    if state_space_lineage:
+        payload["state_space_lineage"] = state_space_lineage
+    weak_diagnostics = dict(attribution_map.get("weak_model_diagnostics") or {})
+    source_weight_attribution = (
+        dict(weak_diagnostics.get("source_weight_attribution"))
+        if isinstance(weak_diagnostics.get("source_weight_attribution"), Mapping)
+        else {}
+    )
+    weak_model_payload: Dict[str, Any] = {
+        "forecast_evidence_snapshot_id": attribution_map.get("forecast_evidence_snapshot_id"),
+        "weak_likelihood_sha256": attribution_map.get("weak_likelihood_sha256"),
+        "source_set_key": attribution_map.get("source_set_key"),
+        "snapshot_as_of": snapshot_as_of,
+        "snapshot_state": "stale_newer_revision_not_consumed" if newer_weak_revisions else "current_as_of_archive",
+        "newer_source_revisions": newer_weak_revisions,
+        "newer_source_revisions_na_reason": "" if newer_weak_revisions else "no_newer_archived_revision_detected",
+        "source_rows": weak_sources,
+        "source_rows_na_reason": "" if weak_sources else "source_revisions_not_persisted",
+        "multimodality": dict(attribution_map.get("forecast_multimodality_trace") or {}),
+        "multimodality_na_reason": str(attribution_map.get("forecast_multimodality_trace_na_reason") or ""),
+        "diagnostics": weak_diagnostics,
+        "diagnostics_na_reason": str(attribution_map.get("weak_model_diagnostics_na_reason") or ""),
+        "source_weight_attribution": source_weight_attribution,
+        "source_weight_attribution_na_reason": (
+            "" if source_weight_attribution
+            else "source_weight_attribution_not_persisted_in_weak_snapshot"
+        ),
+    }
+    if state_space_lineage:
+        # The active state-space contract has no standalone temperature
+        # likelihood contribution.  Keep the legacy trace identifiable but
+        # prevent the UI from presenting it as an input to the active SSOT.
+        weak_model_payload = {
+            "mode": "state_transition_forcing",
+            "snapshot_as_of": snapshot_as_of,
+            "source_rows": [],
+            "source_rows_na_reason": "active_state_space_does_not_use_forecast_revision_as_temperature_likelihood",
+            "state_space_lineage": state_space_lineage,
+            "forecast_revision_used_as_likelihood": compact_ssot.get("forecast_revision_used_as_likelihood", False),
+        }
+    payload["probability_audit"] = {
+        "schema": "ui_probability_chain_audit_v1",
+        "state": "available" if ssot_map else "missing",
+        "read_only": True,
+        "source": "archive.db weak snapshots+canonical observations+posterior checkpoints",
+        "frontend_recompute_allowed": False,
+        "target_identity": target,
+        "event_date": event_date,
+        "as_of": str(ssot_map.get("committed_at") or payload.get("fact_as_of") or ""),
+        "prior_context": dict(payload.get("prior_meta") or {}),
+        "observation_update_materialization": dict(
+            payload.get("observation_update_materialization") or {}
+        ),
+        "weak_model": weak_model_payload,
+        "forecast_regime": dict(attribution_map.get("forecast_background_context") or {}),
+        "forecast_regime_na_reason": str(attribution_map.get("forecast_background_context_na_reason") or ""),
+        "peak_window": dict(ssot_map.get("peak_timing_state") or attribution_map.get("forecast_peak_timing_prior") or {}),
+        "peak_window_na_reason": "" if (ssot_map.get("peak_timing_state") or attribution_map.get("forecast_peak_timing_prior")) else "peak_timing_state_missing",
+        "observations": observation_rows,
+        "observations_na_reason": "" if observation_rows else "canonical_observation_events_missing",
+        "posterior_history": history,
+        "posterior_history_na_reason": "" if history else "posterior_checkpoints_missing",
+        "na_reason": "" if ssot_map else "posterior_ssot_fact_missing",
+    }
+    if state_space_lineage:
+        payload["probability_audit"]["state_space_lineage"] = state_space_lineage
+
+
+def _attach_v6_source_to_posterior_timing_for_ui_snapshot(
+    conn: sqlite3.Connection,
+    payload: MutableMapping[str, Any],
+    *,
+    event_date: str,
+) -> None:
+    """Join the latest canonical AMSC event through checkpoint and decision.
+
+    This is a read-only archive projection.  Every duration is calculated on
+    the server from persisted timestamps and shipped as one UI snapshot fact.
+    """
+    if not event_date:
+        return
+    target_identity = f"physical_weather_day_v1:ZUUU:{event_date}"
+    try:
+        chain = conn.execute(
+            """
+            SELECT
+                c.canonical_observation_event_id,c.selected_source_observation_id,
+                c.selected_source_id,c.valid_time,c.first_transport_seen_at,
+                c.first_actionable_seen_at,c.accepted_at,c.parsed_observation_json,
+                u.strong_observation_update_id,u.started_at AS update_started_at,
+                u.completed_at AS update_completed_at,
+                p.posterior_checkpoint_id,p.posterior_run_id,p.committed_at
+            FROM canonical_observation_events c
+            JOIN strong_observation_updates u
+              ON u.canonical_observation_event_id=c.canonical_observation_event_id
+             AND u.state='applied'
+            JOIN posterior_checkpoints p
+              ON p.last_strong_update_id=u.strong_observation_update_id
+             AND p.state='committed'
+            WHERE c.target_identity=?
+              AND c.state LIKE 'accepted%'
+            ORDER BY datetime(p.committed_at) DESC,p.rowid DESC
+            LIMIT 1
+            """,
+            (target_identity,),
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if chain is None:
+        return
+
+    def chain_text(key: str) -> str:
+        try:
+            return str(chain[key] or "").strip()
+        except (IndexError, KeyError, TypeError):
+            return ""
+
+    canonical_event_id = chain_text("canonical_observation_event_id")
+    checkpoint_id = chain_text("posterior_checkpoint_id")
+    posterior_run_id = chain_text("posterior_run_id")
+    update_id = chain_text("strong_observation_update_id")
+    accepted_at = chain_text("accepted_at")
+    checkpoint_committed_at = chain_text("committed_at")
+    public_fact_written_at = ""
+    public_fact_snapshot_id = ""
+    try:
+        public_fact = conn.execute(
+            """
+            SELECT fact_as_of,
+                   json_extract(fact_json,'$.posterior_ssot_fact.fact_snapshot_id') AS fact_snapshot_id
+            FROM event_fact_history
+            WHERE event_date=?
+              AND (
+                json_extract(fact_json,'$.posterior_ssot_fact.posterior_checkpoint_id')=?
+                OR json_extract(fact_json,'$.posterior_ssot_fact.last_canonical_event_id')=?
+              )
+            ORDER BY datetime(fact_as_of) ASC,id ASC
+            LIMIT 1
+            """,
+            (event_date, checkpoint_id, canonical_event_id),
+        ).fetchone()
+        if public_fact is not None:
+            public_fact_written_at = str(public_fact["fact_as_of"] or "").strip()
+            public_fact_snapshot_id = str(public_fact["fact_snapshot_id"] or "").strip()
+    except sqlite3.Error:
+        pass
+
+    decision_at = ""
+    decision_id = ""
+    decision_action = ""
+    decision_state = ""
+    try:
+        decision = conn.execute(
+            """
+            SELECT decision_id,action,decided_state,created_at
+            FROM auto_trade_decisions
+            WHERE event_date=?
+              AND (correlation_id=? OR posterior_run_id=?)
+            ORDER BY datetime(created_at) ASC,id ASC
+            LIMIT 1
+            """,
+            (event_date, update_id, posterior_run_id),
+        ).fetchone()
+        if decision is not None:
+            decision_at = str(decision["created_at"] or "").strip()
+            decision_id = str(decision["decision_id"] or "").strip()
+            decision_action = str(decision["action"] or "").strip()
+            decision_state = str(decision["decided_state"] or "").strip()
+    except sqlite3.Error:
+        pass
+
+    parsed = safe_json_loads(chain_text("parsed_observation_json"))
+    valid_time = chain_text("valid_time")
+    fetched_at = chain_text("first_transport_seen_at")
+    update_started_at = chain_text("update_started_at")
+    update_completed_at = chain_text("update_completed_at") or checkpoint_committed_at
+    source_id = chain_text("selected_source_id")
+    source_observation_id = chain_text("selected_source_observation_id")
+    timing: Dict[str, Any] = {
+        "schema": "v6_source_to_posterior_timing_ssot_v1",
+        "state": "available",
+        "state_reason": "latest_committed_v6_canonical_chain",
+        "surface": "production_probability_v6",
+        "source": (
+            "archive.db.canonical_observation_events+strong_observation_updates+"
+            "posterior_checkpoints+event_fact_history+auto_trade_decisions"
+        ),
+        "source_provider": "AMSC",
+        "source_kind": "canonical_hard_observation",
+        "latest_source_id": source_id,
+        "slug": str(payload.get("slug") or ""),
+        "event_date": event_date,
+        "latest_source_valid_time": valid_time,
+        "latest_source_response_completed_at": fetched_at,
+        "latest_source_fact_as_of": accepted_at,
+        "canonical_event_accepted_at": accepted_at,
+        "posterior_apply_started_at": update_started_at,
+        "posterior_apply_completed_at": update_completed_at,
+        "checkpoint_committed_at": checkpoint_committed_at,
+        "public_fact_written_at": public_fact_written_at,
+        "decision_written_at": decision_at,
+        "latest_source_event_id": canonical_event_id,
+        "latest_source_observation_id": source_observation_id,
+        "source_event_ids": [canonical_event_id] if canonical_event_id else [],
+        "source_observation_ids": [source_observation_id] if source_observation_id else [],
+        "strong_observation_update_id": update_id,
+        "posterior_checkpoint_id": checkpoint_id,
+        "posterior_run_id": posterior_run_id,
+        "public_fact_snapshot_id": public_fact_snapshot_id,
+        "decision_id": decision_id,
+        "decision_action": decision_action,
+        "decision_state": decision_state,
+        "order_signal_applicability": (
+            "applicable_v6_decision" if decision_at else "applicable_v6_decision_pending"
+        ),
+        "source_response_to_posterior_apply_start_ms": _ui_snapshot_ms_between(
+            fetched_at, update_started_at
+        ),
+        "source_fact_to_posterior_apply_start_ms": _ui_snapshot_ms_between(
+            accepted_at, update_started_at
+        ),
+        "source_valid_to_posterior_apply_start_ms": _ui_snapshot_ms_between(
+            valid_time, update_started_at
+        ),
+        "posterior_apply_runtime_ms": _ui_snapshot_ms_between(
+            update_started_at, update_completed_at
+        ),
+        "checkpoint_to_public_fact_ms": _ui_snapshot_ms_between(
+            checkpoint_committed_at, public_fact_written_at
+        ),
+        "public_fact_to_decision_ms": _ui_snapshot_ms_between(
+            public_fact_written_at, decision_at
+        ),
+        "latest_temperature_c": parsed.get("temperature_c"),
+        "amsc_latency_slo_audit": {
+            "schema": "amsc_latency_slo_audit_v1",
+            "source": "archive.db.v6_canonical_chain",
+            "source_provider": "AMSC",
+            "source_id": source_id,
+            "source_event_id": canonical_event_id,
+            "source_observation_id": source_observation_id,
+            "valid_time": valid_time,
+            "fetched_at": fetched_at,
+            "fact_as_of": accepted_at,
+            "posterior_as_of": checkpoint_committed_at,
+            "decision_at": decision_at,
+        },
+        "guards": {
+            "read_only": True,
+            "frontend_recompute_allowed": False,
+            "decision_recompute_allowed": False,
+        },
+    }
+    payload["source_to_posterior_timing"] = {
+        key: value for key, value in timing.items() if value not in (None, "", [], {})
+    }
+
+
+def _attach_v6_execution_deadline_timing_for_ui_snapshot(
+    conn: sqlite3.Connection,
+    payload: MutableMapping[str, Any],
+    *,
+    event_date: str,
+) -> None:
+    if not event_date:
+        return
+    target_identity = f"physical_weather_day_v1:ZUUU:{event_date}"
+    try:
+        row = conn.execute(
+            """
+            SELECT
+              c.canonical_observation_event_id,c.first_actionable_seen_at,
+              u.strong_observation_update_id,p.posterior_run_id,p.posterior_checkpoint_id,
+              x.outbox_event_id,x.observation_to_order_hard_deadline_at,
+              x.inference_decision_deadline_at,x.transaction_b_committed_at,
+              x.execution_eligible_at_commit,x.execution_na_reason,x.deadline_policy,
+              o.state AS outbox_state,o.created_at AS outbox_created_at,
+              o.claimed_at,o.completed_at,o.attempt_count,o.error_class,o.last_error,
+              o.terminal_reason,o.completed_decision_id
+            FROM canonical_observation_events c
+            JOIN strong_observation_updates u
+              ON u.canonical_observation_event_id=c.canonical_observation_event_id
+             AND u.state='applied'
+            JOIN posterior_checkpoints p
+              ON p.last_strong_update_id=u.strong_observation_update_id
+             AND p.state='committed'
+            JOIN posterior_outbox_execution_contracts x
+              ON x.posterior_run_id=p.posterior_run_id
+             AND x.canonical_observation_event_id=c.canonical_observation_event_id
+            JOIN posterior_commit_outbox o ON o.outbox_event_id=x.outbox_event_id
+            WHERE c.target_identity=? AND c.state LIKE 'accepted%'
+            ORDER BY datetime(x.transaction_b_committed_at) DESC,p.rowid DESC
+            LIMIT 1
+            """,
+            (target_identity,),
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if row is None:
+        return
+
+    def value(key: str) -> Any:
+        try:
+            return row[key]
+        except (IndexError, KeyError, TypeError):
+            return None
+
+    def text(key: str) -> str:
+        return str(value(key) or "").strip()
+
+    posterior_run_id = text("posterior_run_id")
+    update_id = text("strong_observation_update_id")
+    deadline_at = text("observation_to_order_hard_deadline_at")
+    actionable_at = text("first_actionable_seen_at")
+    committed_at = text("transaction_b_committed_at")
+    terminal_at = text("completed_at")
+    decision_at = ""
+    decision_id = ""
+    decision_action = ""
+    decision_state = ""
+    called_gateway = False
+    late_execution_forbidden = False
+    completed_decision_id = text("completed_decision_id")
+    try:
+        decision = conn.execute(
+            """
+            SELECT decision_id,action,decided_state,created_at,details_json
+            FROM auto_trade_decisions
+            WHERE event_date=? AND (decision_id=? OR correlation_id=? OR posterior_run_id=?)
+            ORDER BY CASE WHEN decision_id=? THEN 0 ELSE 1 END,
+                     datetime(created_at) ASC,id ASC LIMIT 1
+            """,
+            (event_date, completed_decision_id, update_id, posterior_run_id, completed_decision_id),
+        ).fetchone()
+        if decision is not None:
+            decision_at = str(decision["created_at"] or "").strip()
+            decision_id = str(decision["decision_id"] or "").strip()
+            decision_action = str(decision["action"] or "").strip()
+            decision_state = str(decision["decided_state"] or "").strip()
+            details = safe_json_loads(str(decision["details_json"] or "{}"))
+            called_gateway = details.get("called_gateway") is True
+            late_execution_forbidden = details.get("late_execution_forbidden") is True
+    except sqlite3.Error:
+        pass
+
+    intent_state = ""
+    order_intent_id = ""
+    exchange_post_started_at = ""
+    exchange_order_id = ""
+    gateway_response_present = False
+    try:
+        intent = conn.execute(
+            """
+            SELECT order_intent_id,state,exchange_post_started_at,exchange_order_id,
+                   gateway_response_json
+            FROM posterior_execution_intents
+            WHERE posterior_run_id=?
+            ORDER BY datetime(created_at) ASC,rowid ASC LIMIT 1
+            """,
+            (posterior_run_id,),
+        ).fetchone()
+        if intent is not None:
+            order_intent_id = str(intent["order_intent_id"] or "").strip()
+            intent_state = str(intent["state"] or "").strip()
+            exchange_post_started_at = str(intent["exchange_post_started_at"] or "").strip()
+            exchange_order_id = str(intent["exchange_order_id"] or "").strip()
+            gateway_response_present = bool(str(intent["gateway_response_json"] or "").strip())
+    except sqlite3.Error:
+        pass
+
+    deadline_budget_ms = _ui_snapshot_ms_between(actionable_at, deadline_at)
+    actionable_to_commit_ms = _ui_snapshot_ms_between(actionable_at, committed_at)
+    remaining_at_commit_ms = _ui_snapshot_ms_between(committed_at, deadline_at)
+    terminal_reference_at = exchange_post_started_at or terminal_at or decision_at
+    actionable_to_terminal_ms = _ui_snapshot_ms_between(actionable_at, terminal_reference_at)
+    deadline_overrun_ms = _ui_snapshot_ms_between(deadline_at, terminal_reference_at)
+    deadline_met = bool(
+        exchange_post_started_at
+        and deadline_overrun_ms is not None
+        and deadline_overrun_ms <= 0
+    )
+    outbox_state = text("outbox_state")
+    terminal_reason = text("terminal_reason") or text("last_error") or text("error_class")
+    fail_closed = bool(
+        outbox_state == "dead_letter"
+        or late_execution_forbidden
+        or terminal_reason == "production_observation_to_order_hard_deadline_expired"
+    )
+    state = (
+        "deadline_expired_fail_closed"
+        if fail_closed
+        else "submitted_within_deadline"
+        if deadline_met
+        else "execution_pending"
+    )
+    timing = {
+        "schema": "v6_execution_deadline_timing_ssot_v1",
+        "state": state,
+        "source": (
+            "archive.db.posterior_outbox_execution_contracts+posterior_commit_outbox+"
+            "posterior_execution_intents+auto_trade_decisions"
+        ),
+        "event_date": event_date,
+        "canonical_observation_event_id": text("canonical_observation_event_id"),
+        "strong_observation_update_id": update_id,
+        "posterior_checkpoint_id": text("posterior_checkpoint_id"),
+        "posterior_run_id": posterior_run_id,
+        "outbox_event_id": text("outbox_event_id"),
+        "order_intent_id": order_intent_id,
+        "decision_id": decision_id,
+        "deadline_policy": text("deadline_policy"),
+        "first_actionable_seen_at": actionable_at,
+        "transaction_b_committed_at": committed_at,
+        "outbox_created_at": text("outbox_created_at"),
+        "outbox_claimed_at": text("claimed_at"),
+        "outbox_completed_at": terminal_at,
+        "decision_written_at": decision_at,
+        "observation_to_order_hard_deadline_at": deadline_at,
+        "inference_decision_deadline_at": text("inference_decision_deadline_at"),
+        "exchange_post_started_at": exchange_post_started_at,
+        "deadline_budget_ms": deadline_budget_ms,
+        "actionable_to_commit_ms": actionable_to_commit_ms,
+        "remaining_at_commit_ms": remaining_at_commit_ms,
+        "actionable_to_terminal_ms": actionable_to_terminal_ms,
+        "deadline_overrun_ms": max(0, int(deadline_overrun_ms or 0)),
+        "execution_eligible_at_commit": int(value("execution_eligible_at_commit") or 0) == 1,
+        "execution_na_reason": text("execution_na_reason"),
+        "outbox_state": outbox_state,
+        "outbox_attempt_count": int(value("attempt_count") or 0),
+        "outbox_error_class": text("error_class"),
+        "outbox_last_error": text("last_error"),
+        "terminal_reason": terminal_reason,
+        "decision_action": decision_action,
+        "decision_state": decision_state,
+        "intent_state": intent_state,
+        "called_gateway": called_gateway,
+        "gateway_response_present": gateway_response_present,
+        "exchange_order_id": exchange_order_id,
+        "deadline_met": deadline_met,
+        "fail_closed": fail_closed,
+        "late_execution_forbidden": late_execution_forbidden,
+        "read_only": True,
+        "frontend_recompute_allowed": False,
+        "decision_recompute_allowed": False,
+    }
+    payload["v6_execution_deadline_timing"] = {
+        key: raw for key, raw in timing.items() if raw not in (None, "", [], {})
+    }
+
+
 def _attach_temperature_trajectory_timeline_for_ui_snapshot(
     conn: sqlite3.Connection,
     payload: MutableMapping[str, Any],
@@ -67798,6 +71573,26 @@ def _attach_temperature_trajectory_timeline_for_ui_snapshot(
         isinstance(posterior_ssot, Mapping)
         and _is_reported_physical_x_ssot_schema(posterior_ssot.get("schema"))
     ):
+        _attach_v6_execution_deadline_timing_for_ui_snapshot(
+            conn,
+            payload,
+            event_date=event_date,
+        )
+        _attach_v6_source_to_posterior_timing_for_ui_snapshot(
+            conn,
+            payload,
+            event_date=event_date,
+        )
+        _attach_v6_frozen_probability_layers_for_ui_snapshot(
+            conn,
+            payload,
+            event_date=event_date,
+        )
+        _attach_v6_probability_audit_for_ui_snapshot(
+            conn,
+            payload,
+            event_date=event_date,
+        )
         timeline = _build_sequential_physical_timeline_for_ui_snapshot(
             conn,
             posterior_ssot=posterior_ssot,
@@ -68479,7 +72274,85 @@ _STATION_CITY_MAP: Dict[str, str] = {
     "RKSI": "Seoul",
     "SAEZ": "Buenos Aires",
     "SBGR": "Sao Paulo",
+    # Mainland China airport stations in the official AMSC lane.  Keep this
+    # display registry separate from the Chengdu-only production probability
+    # contract; the UI board is read-only and may show missing fields.
+    "ZBAA": "Beijing",
+    "ZGGG": "Guangzhou",
+    "ZGSZ": "Shenzhen",
+    "ZHHH": "Wuhan",
+    "ZSPD": "Shanghai",
+    "ZSQD": "Qingdao",
+    "ZUCK": "Chongqing",
+    "ZUUU": "Chengdu",
+    "RCSS": "Taipei",
 }
+_CHINA_AIRPORT_STATIONS: Tuple[Dict[str, Any], ...] = (
+    {"station_id": "ZBAA", "city": "Beijing", "city_cn": "北京", "airport_cn": "首都", "source_lane": "amsc", "loc_key": "40.0801,116.5846"},
+    {"station_id": "ZGGG", "city": "Guangzhou", "city_cn": "广州", "airport_cn": "白云", "source_lane": "amsc", "loc_key": "23.3924,113.2988"},
+    {"station_id": "ZGSZ", "city": "Shenzhen", "city_cn": "深圳", "airport_cn": "宝安", "source_lane": "amsc", "loc_key": "22.6393,113.8107"},
+    {"station_id": "ZHHH", "city": "Wuhan", "city_cn": "武汉", "airport_cn": "天河", "source_lane": "amsc", "loc_key": "30.7838,114.2081"},
+    {"station_id": "ZSPD", "city": "Shanghai", "city_cn": "上海", "airport_cn": "浦东", "source_lane": "amsc", "loc_key": "31.1443,121.8083"},
+    {"station_id": "ZSQD", "city": "Qingdao", "city_cn": "青岛", "airport_cn": "胶东", "source_lane": "amsc", "loc_key": "36.2661,120.3744"},
+    {"station_id": "ZUCK", "city": "Chongqing", "city_cn": "重庆", "airport_cn": "江北", "source_lane": "amsc", "loc_key": "29.7192,106.6419"},
+    # The Chengdu model cache uses this exact airport grid key.
+    {"station_id": "ZUUU", "city": "Chengdu", "city_cn": "成都", "airport_cn": "双流", "source_lane": "amsc", "loc_key": "30.5583,103.9460"},
+    # RCSS is not in the mainland AMSC production lane.  It remains visible
+    # as an explicit catalogue-only row, never as a configured source.
+    {"station_id": "RCSS", "city": "Taipei", "city_cn": "台北", "airport_cn": "松山", "source_lane": "awc", "loc_key": "25.0697,121.5525", "catalog_only": True, "source_route_configured": False},
+)
+_CHINA_AIRPORT_CATALOG_PATH = ROOT_DIR / "config" / "ui" / "china_airport_station_catalog_v1.json"
+
+
+def _china_airport_board_stations(*, include_catalog: bool = False) -> Tuple[Dict[str, Any], ...]:
+    """Return the read-only China airport board registry.
+
+    The eight mainland AMSC stations plus RCSS remain the materialized/source
+    registry.  The UI may additionally show the national airport catalogue so
+    that an absent source is visible as ``未物化`` rather than silently omitted.
+    Catalogue rows never trigger ingestion or writes and are explicitly marked
+    ``catalog_only``.
+    """
+
+    base = [dict(item) for item in _CHINA_AIRPORT_STATIONS]
+    if not include_catalog:
+        return tuple(base)
+    known = {str(item.get("station_id") or "").strip().upper() for item in base}
+    try:
+        raw = json.loads(_CHINA_AIRPORT_CATALOG_PATH.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        raw = {}
+    entries = raw.get("stations") if isinstance(raw, Mapping) else []
+    if not isinstance(entries, list):
+        entries = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        station_id = str(entry.get("station_id") or "").strip().upper()
+        loc_key = str(entry.get("loc_key") or "").strip()
+        if not station_id or station_id in known or not loc_key:
+            continue
+        base.append(
+            {
+                "station_id": station_id,
+                "city": str(entry.get("city") or station_id),
+                "city_cn": str(entry.get("city_cn") or entry.get("city") or station_id),
+                "airport_cn": str(entry.get("airport_cn") or ""),
+                "source_lane": "amsc",
+                "loc_key": loc_key,
+                "catalog_only": True,
+                "source_route_configured": False,
+            }
+        )
+        known.add(station_id)
+    return tuple(base)
+
+
+_CHINA_AIRPORT_BOARD_MODEL_KEYS = (
+    ("gfs_seamless", "gfs", "GFS"),
+    ("icon_seamless", "icon", "ICON"),
+    ("ecmwf_ifs025", "ecmwf", "ECMWF"),
+)
 _HIGHEST_TEMPERATURE_SLUG_RE = re.compile(
     r"^highest-temperature-in-.+-on-[a-z]+-\d{1,2}-\d{4}$",
     re.IGNORECASE,
@@ -68520,7 +72393,65 @@ def _ui_snapshot_cache_is_dirty(entry: Optional[Tuple[float, Dict[str, Any]]]) -
         return False
     cache_ts = float(entry[0] or 0.0)
     dirty_ts = _ui_snapshot_dirty_stamp_mtime()
-    return dirty_ts > cache_ts + 0.001
+    if dirty_ts > cache_ts + 0.001:
+        return True
+    return not _ui_snapshot_cached_fact_pointers_current(entry)
+
+
+def _ui_snapshot_cached_fact_pointers_current(
+    entry: Optional[Tuple[float, Dict[str, Any]]],
+) -> bool:
+    """Reject a cached screen whose facts are no longer the latest SSOT rows.
+
+    Some production writers atomically repoint ``event_fact_latest`` without
+    participating in the UI dirty-stamp side channel.  Cache validity must
+    therefore be derived from the database SSOT itself, not from that optional
+    notification file.
+    """
+    if not entry or not isinstance(entry[1], Mapping):
+        return True
+    if entry[1].get("cache_fact_pointer_guard") is not True:
+        return True
+    facts = entry[1].get("facts")
+    items = facts.get("items") if isinstance(facts, Mapping) else None
+    if not isinstance(items, list):
+        return True
+    expected: List[Tuple[str, str, int]] = []
+    seen: Set[Tuple[str, str]] = set()
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        slug = str(item.get("slug") or "").strip()
+        event_date = _normalize_date_key(str(item.get("event_date") or ""))
+        try:
+            fact_id = int(item.get("fact_id") or 0)
+        except (TypeError, ValueError):
+            fact_id = 0
+        key = (slug, event_date)
+        if not slug or not event_date or fact_id <= 0 or key in seen:
+            continue
+        seen.add(key)
+        expected.append((slug, event_date, fact_id))
+    if not expected:
+        return True
+    values_sql = ",".join("(?,?,?)" for _ in expected)
+    params: List[Any] = []
+    for slug, event_date, fact_id in expected:
+        params.extend((slug, event_date, fact_id))
+    try:
+        with open_db_ro_fast(timeout_sec=0.03, busy_timeout_ms=0) as conn:
+            mismatch = conn.execute(
+                "WITH expected(slug,event_date,fact_id) AS (VALUES " + values_sql + ") "
+                "SELECT COUNT(*) FROM expected e "
+                "LEFT JOIN event_fact_latest l ON l.slug=e.slug AND l.event_date=e.event_date "
+                "WHERE l.fact_id IS NULL OR l.fact_id<>e.fact_id",
+                tuple(params),
+            ).fetchone()
+    except (sqlite3.Error, OSError):
+        # A transient read lock does not make an otherwise fresh snapshot
+        # unusable; the next request retries this SSOT pointer check.
+        return True
+    return mismatch is not None and int(mismatch[0] or 0) == 0
 
 
 def _ui_snapshot_dirty_stamp_in_grace() -> bool:
@@ -68783,6 +72714,7 @@ def _attach_ui_runtime_health(payload: Dict[str, Any], *, include_endpoint_metri
 def _ui_snapshot_cache_store(cache_key: str, payload: Dict[str, Any]) -> None:
     if UI_SNAPSHOT_CACHE_SEC <= 0:
         return
+    payload["cache_fact_pointer_guard"] = True
     with _UI_SNAPSHOT_CACHE_LOCK:
         _UI_SNAPSHOT_CACHE[cache_key] = (time.time(), payload)
         overflow = len(_UI_SNAPSHOT_CACHE) - int(UI_SNAPSHOT_CACHE_MAX_ENTRIES)
@@ -69378,6 +73310,15 @@ def _ui_snapshot_source_to_posterior_timing_from_item(raw_item: Mapping[str, Any
             raw_item.get("fact_as_of"),
         ),
         "posterior_apply_completed_at": text("posterior_apply_completed_at"),
+        "checkpoint_committed_at": text("checkpoint_committed_at"),
+        "public_fact_written_at": text("public_fact_written_at"),
+        "decision_written_at": text("decision_written_at"),
+        "posterior_checkpoint_id": text("posterior_checkpoint_id"),
+        "strong_observation_update_id": text("strong_observation_update_id"),
+        "public_fact_snapshot_id": text("public_fact_snapshot_id"),
+        "decision_id": text("decision_id"),
+        "decision_action": text("decision_action"),
+        "decision_state": text("decision_state"),
         "source_response_to_posterior_apply_start_ms": _ui_snapshot_timing_ms(
             timing_map.get("source_response_to_posterior_apply_start_ms")
         ),
@@ -69392,6 +73333,12 @@ def _ui_snapshot_source_to_posterior_timing_from_item(raw_item: Mapping[str, Any
             timing_map.get("task_created_to_posterior_apply_start_ms")
         ),
         "posterior_apply_runtime_ms": _ui_snapshot_timing_ms(timing_map.get("posterior_apply_runtime_ms")),
+        "checkpoint_to_public_fact_ms": _ui_snapshot_timing_ms(
+            timing_map.get("checkpoint_to_public_fact_ms")
+        ),
+        "public_fact_to_decision_ms": _ui_snapshot_timing_ms(
+            timing_map.get("public_fact_to_decision_ms")
+        ),
         "latest_temperature_c": timing_map.get("latest_temperature_c"),
         "latest_observed_today_max_c": timing_map.get("latest_observed_today_max_c"),
         "source_history_fact_ids": [
@@ -69497,9 +73444,9 @@ def _ui_snapshot_source_to_posterior_section(
         latest_audit["posterior_to_decision_ms"] = posterior_to_decision_ms
         latest_audit.setdefault("stage_latencies_ms", {})["posterior_to_decision"] = posterior_to_decision_ms
     latest["amsc_latency_slo_audit"] = latest_audit
-    latest_ms = latest.get("source_fact_to_posterior_apply_start_ms")
+    latest_ms = latest_audit.get("fetched_to_posterior_ms")
     if latest_ms is None:
-        latest_ms = latest.get("source_response_to_posterior_apply_start_ms")
+        latest_ms = latest.get("source_fact_to_posterior_apply_start_ms")
     return {
         "schema": "ui_snapshot_source_to_posterior_section_v1",
         "state": freshness_state,
@@ -69514,7 +73461,7 @@ def _ui_snapshot_source_to_posterior_section(
         "latest_posterior_apply_started_at": str(latest.get("posterior_apply_started_at") or ""),
         "latest_posterior_apply_completed_at": str(latest.get("posterior_apply_completed_at") or ""),
         "latest_source_to_posterior_ms": latest_ms,
-        "latest_source_response_to_posterior_ms": latest.get("source_response_to_posterior_apply_start_ms"),
+        "latest_source_response_to_posterior_ms": latest_audit.get("fetched_to_posterior_ms"),
         "task_queue_wait_ms": latest.get("task_queue_wait_ms"),
         "source_provider": str(latest.get("source_provider") or ""),
         "latest_source_id": str(latest.get("latest_source_id") or latest.get("source_id") or ""),
@@ -69633,12 +73580,89 @@ def _ui_snapshot_signal_to_order_timing_from_item(raw_item: Mapping[str, Any]) -
     return {key: value for key, value in row.items() if value not in (None, "", [], {})}
 
 
+def _ui_snapshot_v6_execution_deadline_from_item(raw_item: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(raw_item, Mapping):
+        return {}
+    timing = raw_item.get("v6_execution_deadline_timing")
+    if not isinstance(timing, Mapping) or not timing:
+        return {}
+    row = copy.deepcopy(dict(timing))
+    row.setdefault("schema", "v6_execution_deadline_timing_ssot_v1")
+    row.setdefault("slug", str(raw_item.get("slug") or ""))
+    row.setdefault("event_date", _normalize_date_key(str(raw_item.get("event_date") or "")))
+    row["read_only"] = True
+    row["frontend_recompute_allowed"] = False
+    row["decision_recompute_allowed"] = False
+    return row
+
+
 def _ui_snapshot_awc_signal_to_order_section(
     items: Sequence[Mapping[str, Any]],
     *,
     freshness_state: str,
     freshness_reason: str,
 ) -> Dict[str, Any]:
+    v6_rows = [
+        row
+        for raw_item in items[:200]
+        if isinstance(raw_item, Mapping)
+        for row in (_ui_snapshot_v6_execution_deadline_from_item(raw_item),)
+        if row
+    ]
+    v6_rows.sort(
+        key=lambda row: _ui_snapshot_timestamp_sort_value(
+            row.get("exchange_post_started_at"),
+            row.get("outbox_completed_at"),
+            row.get("decision_written_at"),
+            row.get("transaction_b_committed_at"),
+        ),
+        reverse=True,
+    )
+    if v6_rows:
+        latest = dict(v6_rows[0])
+        fail_closed = latest.get("fail_closed") is True
+        deadline_met = latest.get("deadline_met") is True
+        terminal_state = str(latest.get("state") or "execution_pending")
+        return {
+            "schema": "ui_snapshot_v6_execution_deadline_section_v1",
+            "state": "blocked" if fail_closed else freshness_state,
+            "source": "facts.items[].v6_execution_deadline_timing",
+            "read_only": True,
+            "timing_count": len(v6_rows),
+            "canonical_event_count": len(v6_rows),
+            "submitted_count": sum(1 for row in v6_rows if row.get("deadline_met") is True),
+            "deadline_met_count": sum(1 for row in v6_rows if row.get("deadline_met") is True),
+            "fail_closed_count": sum(1 for row in v6_rows if row.get("fail_closed") is True),
+            "latest": latest,
+            "items": v6_rows[:20],
+            "latest_terminal_at": str(
+                latest.get("exchange_post_started_at")
+                or latest.get("outbox_completed_at")
+                or latest.get("decision_written_at")
+                or ""
+            ),
+            "latest_terminal_state": terminal_state,
+            "latest_terminal_reason": str(latest.get("terminal_reason") or ""),
+            "latest_signal_to_order_ms": latest.get("actionable_to_terminal_ms"),
+            "signal_to_order_slo_ms": latest.get("deadline_budget_ms"),
+            "signal_to_order_slo_met": deadline_met,
+            "signal_to_order_slo_violation_reason": (
+                str(latest.get("terminal_reason") or "") if fail_closed else ""
+            ),
+            "deadline_policy": str(latest.get("deadline_policy") or ""),
+            "deadline_at": str(latest.get("observation_to_order_hard_deadline_at") or ""),
+            "deadline_overrun_ms": latest.get("deadline_overrun_ms"),
+            "remaining_at_commit_ms": latest.get("remaining_at_commit_ms"),
+            "outbox_state": str(latest.get("outbox_state") or ""),
+            "outbox_attempt_count": int(_to_int(latest.get("outbox_attempt_count")) or 0),
+            "called_gateway": latest.get("called_gateway") is True,
+            "gateway_response_present": latest.get("gateway_response_present") is True,
+            "fail_closed": fail_closed,
+            "stale_reason": str(latest.get("terminal_reason") or "") if fail_closed else "",
+            "na_reason": "",
+            "frontend_recompute_allowed": False,
+            "decision_recompute_allowed": False,
+        }
     timing_rows = [
         row
         for raw_item in items[:200]
@@ -69747,6 +73771,7 @@ def _ui_snapshot_compact_decision_row(row: Mapping[str, Any]) -> Dict[str, Any]:
         "title": str(row.get("title") or ""),
         "outcome": str(row.get("outcome") or ""),
         "side": str(row.get("side") or ""),
+        "action": str(row.get("action") or ""),
         "decided_state": str(row.get("decided_state") or ""),
         "will_order": int(_to_int(row.get("will_order")) or 0),
         "reason_codes": list(reason_codes) if isinstance(reason_codes, list) else [],
@@ -70020,7 +74045,7 @@ def _build_ui_snapshot_dashboard_sections(
         "decisions": {
             "schema": "ui_snapshot_decisions_section_v1",
             "state": decision_state,
-            "source": "auto_trade_decisions.path_probability_follow",
+            "source": "auto_trade_decisions",
             "counts": entry_counts,
             "latest_decision_at": latest_decision_at,
             "blocked_reasons": blocked_reasons[:20],
@@ -70031,7 +74056,7 @@ def _build_ui_snapshot_dashboard_sections(
         "execution": {
             "schema": "ui_snapshot_execution_section_v1",
             "state": execution_state,
-            "source": "path_probability_follow.jobs+positions+fills",
+            "source": "auto_trade_jobs+positions+fills",
             "jobs": {
                 "counts": jobs_counts,
                 "updated_at": jobs_updated_at,
@@ -70514,9 +74539,44 @@ def _ui_snapshot_summary_cache_limit(limit_val: int) -> int:
 
 def _normalize_ui_snapshot_city_filter(value: str) -> str:
     raw = str(value or "").strip().lower()
-    if raw in {"chengdu", "zuuu", "ctu", "chengdu_zuuu"}:
-        return "chengdu"
-    return ""
+    if not raw:
+        return ""
+    raw = raw.replace("_", " ").replace("-", " ")
+    raw = re.sub(r"\s+", " ", raw).strip()
+    aliases = {
+        "beijing": "beijing",
+        "北京": "beijing",
+        "zbaa": "beijing",
+        "guangzhou": "guangzhou",
+        "广州": "guangzhou",
+        "zggg": "guangzhou",
+        "shenzhen": "shenzhen",
+        "深圳": "shenzhen",
+        "zgsz": "shenzhen",
+        "wuhan": "wuhan",
+        "武汉": "wuhan",
+        "zhhh": "wuhan",
+        "shanghai": "shanghai",
+        "上海": "shanghai",
+        "zspd": "shanghai",
+        "qingdao": "qingdao",
+        "青岛": "qingdao",
+        "zsqd": "qingdao",
+        "chongqing": "chongqing",
+        "重庆": "chongqing",
+        "zuck": "chongqing",
+        "chengdu": "chengdu",
+        "成都": "chengdu",
+        "zuuu": "chengdu",
+        "ctu": "chengdu",
+        "chengdu zuuu": "chengdu",
+    }
+    if raw in aliases:
+        return aliases[raw]
+    station_city = _STATION_CITY_MAP.get(raw.upper())
+    if station_city:
+        return station_city.casefold()
+    return _normalize_weather_city_label(raw).casefold()
 
 
 def _ui_snapshot_summary_item_matches_city_filter(item: Any, city_filter: str) -> bool:
@@ -70525,6 +74585,9 @@ def _ui_snapshot_summary_item_matches_city_filter(item: Any, city_filter: str) -
         return True
     if not isinstance(item, Mapping):
         return False
+    city = _normalize_city_from_fact(dict(item)).casefold()
+    if city:
+        return city == city_key
     slug = str(
         item.get("slug")
         or item.get("market_slug")
@@ -70532,9 +74595,7 @@ def _ui_snapshot_summary_item_matches_city_filter(item: Any, city_filter: str) -
         or item.get("condition_id")
         or ""
     )
-    if city_key == "chengdu":
-        return _is_chengdu_zuuu_fact_payload(slug, item)
-    return True
+    return city_key == "chengdu" and _is_chengdu_zuuu_fact_payload(slug, item)
 
 
 def _ui_snapshot_summary_row_matches_city_filter(row: sqlite3.Row, city_filter: str) -> bool:
@@ -70549,7 +74610,8 @@ def _ui_snapshot_summary_row_matches_city_filter(row: sqlite3.Row, city_filter: 
             return None
 
     slug = str(row_get("slug") or "")
-    if city_key == "chengdu" and _is_chengdu_zuuu_fact_payload(slug, {}):
+    row_payload = {"slug": slug, "station_id": row_get("station_id"), "city": row_get("city")}
+    if _ui_snapshot_summary_item_matches_city_filter(row_payload, city_key):
         return True
     for json_key in ("summary_json", "fact_json"):
         raw = row_get(json_key)
@@ -70727,8 +74789,10 @@ def _load_d1_forecast_fact_for_d0(d0_item: Mapping[str, Any], *, event_date_key:
     row: Optional[sqlite3.Row] = None
     source_window = "d1_local_window"
     try:
-        uri = f"file:{DB_PATH}?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=0.12) as conn:
+        # The sqlite3.connect transaction context is not a lifetime manager.
+        # Close the read connection on every D1 lookup to keep UI polling
+        # from exhausting descriptors and resetting the local HTTP socket.
+        with open_db_ro_fast(timeout_sec=0.12, busy_timeout_ms=0) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 """
@@ -71711,6 +75775,46 @@ def _attach_d1_physical_evidence_overview(payload: Dict[str, Any]) -> None:
     payload["d1_physical_evidence_overview"] = overview
 
 
+def _attach_target_direction_bias(payload: Dict[str, Any]) -> None:
+    """Expose the current event's read-only regime-gate direction on SSOT."""
+    if not isinstance(payload, dict):
+        return
+    # The full/summary builders now attach the city strategy's production
+    # regime gate.  Trimming the payload must not replace that with the older
+    # D1 physical-evidence-only fallback.
+    existing = payload.get("target_direction_bias")
+    if isinstance(existing, Mapping) and str(existing.get("direction") or "").strip().upper() in {"UP", "DOWN"}:
+        return
+    d1 = payload.get("d1_physical_evidence_overview") if isinstance(payload.get("d1_physical_evidence_overview"), Mapping) else {}
+    signal = d1.get("physical_signal") if isinstance(d1.get("physical_signal"), Mapping) else {}
+    basket_root = payload.get("basket_strategy_ssot") if isinstance(payload.get("basket_strategy_ssot"), Mapping) else {}
+    basket_items = basket_root.get("items") if isinstance(basket_root.get("items"), list) else []
+    facts = payload.get("facts") if isinstance(payload.get("facts"), Mapping) else {}
+    fact_items = facts.get("items") if isinstance(facts.get("items"), list) else []
+    primary = fact_items[0] if fact_items and isinstance(fact_items[0], Mapping) else {}
+    primary_key = (str(primary.get("slug") or ""), _normalize_date_key(str(primary.get("event_date") or "")))
+    basket_item = next(
+        (row for row in basket_items if isinstance(row, Mapping) and (str(row.get("slug") or ""), _normalize_date_key(str(row.get("event_date") or ""))) == primary_key),
+        None,
+    )
+    basket = basket_item.get("basket") if isinstance(basket_item, Mapping) and isinstance(basket_item.get("basket"), Mapping) else {}
+    direction = str(basket.get("direction") or "").strip().upper()
+    payload["target_direction_bias"] = {
+        "schema": "target_direction_bias_ui_v1",
+        "available": direction in {"UP", "DOWN"},
+        "direction": direction if direction in {"UP", "DOWN"} else "",
+        "label": "偏上 ↑" if direction == "UP" else "偏下 ↓" if direction == "DOWN" else "未物化",
+        "source": "basket.direction_bias" if direction else "city_strategy.direction_bias.regime_gate",
+        "target_event_date": str(primary.get("event_date") or d1.get("target_event_date") or ""),
+        "net_score": None,
+        "score_available": False,
+        "regime_state": "",
+        "regime_labels": [],
+        "reason": "目标日 regime 闸门未物化",
+        "updated_at": str(d1.get("fact_as_of") or payload.get("snapshot_generated_at") or ""),
+    }
+
+
 def _trim_ui_snapshot_summary_payload(
     payload: Dict[str, Any],
     requested_limit: int,
@@ -71754,6 +75858,7 @@ def _trim_ui_snapshot_summary_payload(
         out["ui_snapshot_city_filter"] = city_key
     out["summary_requested_limit"] = limit_val
     _attach_d1_physical_evidence_overview(out)
+    _attach_target_direction_bias(out)
     return out
 
 
@@ -72491,6 +76596,425 @@ def _ui_snapshot_summary_latest_run_date_cached() -> str:
     return run_date_key
 
 
+def _reported_trajectory_no_ui_ssot(conn: sqlite3.Connection, *, limit: int = 24) -> Dict[str, Any]:
+    """Read the unique production strategy from one archive.db snapshot."""
+
+    try:
+        activation_row = conn.execute(
+            """SELECT generation,state,activation_sha256,config_sha256,
+                      old_bayes_execution_disabled,awc_amsc_disjoint,activation_json,updated_at
+               FROM reported_trajectory_activation_state WHERE singleton=1"""
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        return {
+            "schema": "reported_trajectory_no_ui_ssot_v1",
+            "available": False,
+            "na_reason": f"reported_trajectory_schema_unavailable:{type(exc).__name__}",
+        }
+    if activation_row is None:
+        return {
+            "schema": "reported_trajectory_no_ui_ssot_v1",
+            "available": False,
+            "na_reason": "reported_trajectory_activation_missing",
+        }
+    try:
+        activation_policy = json.loads(str(activation_row[6] or "{}"))
+    except (TypeError, ValueError):
+        activation_policy = {}
+    registry_rows = conn.execute(
+        """SELECT source_lane,
+                  COUNT(DISTINCT CASE WHEN source_eligible=1 THEN slug||'|'||event_date END) eligible_market_days,
+                  COUNT(DISTINCT CASE WHEN source_eligible=0 THEN slug||'|'||event_date END) blocked_market_days,
+                  COUNT(DISTINCT CASE WHEN source_eligible=1 THEN station_id END) station_count,
+                  MAX(refreshed_at) refreshed_at
+           FROM reported_trajectory_market_registry GROUP BY source_lane ORDER BY source_lane"""
+    ).fetchall()
+    latest_polls = conn.execute(
+        """SELECT p.source_lane,p.request_started_at,p.response_started_at,p.response_completed_at,
+                  p.duration_ms,p.report_count,p.new_report_count,p.error_code,p.poll_json
+           FROM reported_trajectory_source_polls p
+           JOIN (
+             SELECT source_lane,MAX(response_completed_at) completed
+             FROM reported_trajectory_source_polls GROUP BY source_lane
+           ) latest ON latest.source_lane=p.source_lane AND latest.completed=p.response_completed_at
+           ORDER BY p.source_lane"""
+    ).fetchall()
+    poll_rows: List[Dict[str, Any]] = []
+    for row in latest_polls:
+        try:
+            poll_meta = json.loads(str(row[8] or "{}"))
+        except (TypeError, ValueError):
+            poll_meta = {}
+        poll_rows.append(
+            {
+                "source_lane": str(row[0] or ""),
+                "request_started_at": str(row[1] or ""),
+                "response_started_at": str(row[2] or ""),
+                "response_completed_at": str(row[3] or ""),
+                "canonical_processing_ms": float(row[4] or 0.0),
+                "report_count": int(row[5] or 0),
+                "new_report_count": int(row[6] or 0),
+                "error_code": str(row[7] or ""),
+                "transport": str(poll_meta.get("transport") or ""),
+                "taf_requested": poll_meta.get("taf_requested"),
+            }
+        )
+    bound_rows = [
+        {
+            "source_lane": str(row[0] or ""), "station_id": str(row[1] or ""),
+            "event_date": str(row[2] or ""), "settlement_timezone": str(row[3] or ""),
+            "reported_max_c": int(row[4]), "max_valid_at": str(row[5] or ""),
+            "bound_generation": int(row[6] or 0), "updated_at": str(row[7] or ""),
+        }
+        for row in conn.execute(
+            """SELECT source_lane,station_id,event_date,settlement_timezone,reported_max_c,
+                      max_valid_at,bound_generation,updated_at
+               FROM reported_trajectory_station_day_bounds
+               ORDER BY datetime(updated_at) DESC LIMIT ?""",
+            (max(1, min(int(limit), 100)),),
+        ).fetchall()
+    ]
+    intent_rows = [
+        {
+            "order_intent_id": str(row[0] or ""), "source_lane": str(row[1] or ""),
+            "station_id": str(row[2] or ""), "slug": str(row[3] or ""),
+            "event_date": str(row[4] or ""), "outcome": str(row[5] or ""),
+            "reported_max_c": int(row[6]), "hard_lower_bound_market_unit": int(row[7]),
+            "limit_price": float(row[8]), "order_type": str(row[9] or ""),
+            "requested_notional_usdc": float(row[10] or 0.0), "state": str(row[11] or ""),
+            "fetch_completed_at": str(row[12] or ""), "decision_created_at": str(row[13] or ""),
+            "gateway_received_at": str(row[14] or ""), "exchange_post_started_at": str(row[15] or ""),
+            "created_at": str(row[16] or ""), "updated_at": str(row[17] or ""),
+        }
+        for row in conn.execute(
+            """SELECT order_intent_id,source_lane,station_id,slug,event_date,outcome,
+                      reported_max_c,hard_lower_bound_market_unit,limit_price,order_type,
+                      requested_notional_usdc,state,fetch_completed_at,decision_created_at,
+                      gateway_received_at,exchange_post_started_at,created_at,updated_at
+               FROM reported_trajectory_no_intents ORDER BY datetime(updated_at) DESC LIMIT ?""",
+            (max(1, min(int(limit), 100)),),
+        ).fetchall()
+    ]
+    capital_rows = [
+        {
+            "source_lane": str(row[0] or ""), "state": str(row[1] or ""),
+            "notional_usdc": float(row[2] or 0.0), "intent_count": int(row[3] or 0),
+        }
+        for row in conn.execute(
+            """SELECT source_lane,state,COALESCE(SUM(reserved_notional_usdc),0),COUNT(*)
+               FROM reported_trajectory_capital_ledger GROUP BY source_lane,state
+               ORDER BY source_lane,state"""
+        ).fetchall()
+    ]
+    return {
+        "schema": "reported_trajectory_no_ui_ssot_v1",
+        "available": True,
+        "production_strategy_id": str(activation_policy.get("strategy_id") or "reported_trajectory_no_v1"),
+        "production_semantics": "metar_speci_reported_max_hard_lower_bound_to_nearest_impossible_bucket_no",
+        "probability_model_active": False,
+        "bayes_consumed": False,
+        "taf_consumed": False,
+        "yes_orders_allowed": False,
+        "activation": {
+            "generation": int(activation_row[0] or 0), "state": str(activation_row[1] or ""),
+            "activation_sha256": str(activation_row[2] or ""), "config_sha256": str(activation_row[3] or ""),
+            "old_bayes_execution_disabled": bool(activation_row[4]),
+            "awc_amsc_disjoint": bool(activation_row[5]), "updated_at": str(activation_row[7] or ""),
+        },
+        "order_policy": {
+            "outcome_side": "NO", "order_type": str(activation_policy.get("order_type") or "FAK"),
+            "maximum_buy_price": activation_policy.get("maximum_buy_price"),
+            "historical_shadow_bounds_replayed": False,
+        },
+        "capital_split": activation_policy.get("capital_split") or {},
+        "market_registry": [
+            {
+                "source_lane": str(row[0] or ""), "eligible_market_days": int(row[1] or 0),
+                "blocked_market_days": int(row[2] or 0), "station_count": int(row[3] or 0),
+                "refreshed_at": str(row[4] or ""),
+            }
+            for row in registry_rows
+        ],
+        "latest_source_polls": poll_rows,
+        "station_day_bounds": bound_rows,
+        "recent_order_intents": intent_rows,
+        "capital_ledger": capital_rows,
+        "ssot": "/api/ui_snapshot",
+        "read_model": "data/archive.db",
+    }
+
+
+def _basket_strategy_ui_ssot(
+    conn: sqlite3.Connection,
+    *,
+    items: Sequence[Mapping[str, Any]] = (),
+    limit: int = 24,
+) -> Dict[str, Any]:
+    """Read the production basket plan/cycle ledger for the UI.
+
+    This is deliberately a read model only.  The browser must never rebuild a
+    basket from posterior probabilities or market quotes: the selected bucket
+    set comes from the immutable ``plan_json`` written by the production
+    basket executor, while leg state/notional comes from the formal legs
+    table.  Missing tables or rows are represented explicitly as ``available``
+    with a ``na_reason`` so the dashboard cannot silently display a guessed
+    basket.
+    """
+
+    schema = "basket_strategy_ui_ssot_v1"
+    strategy_id = "weather_basket_plus_hard_no_v2"
+    row_limit = max(1, min(int(limit or 24), 200))
+
+    def _number(value: Any, default: float = 0.0) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return float(default)
+        return parsed if math.isfinite(parsed) else float(default)
+
+    try:
+        activation_row = conn.execute(
+            """SELECT generation,state,strategy_id,activation_sha256,activation_json,updated_at
+               FROM basket_strategy_activation_state WHERE singleton=1"""
+        ).fetchone()
+        cycle_rows = conn.execute(
+            """SELECT cycle_id,strategy_id,slug,event_date,plan_sha256,plan_json,state,
+                      total_cost_usdc,quantity_per_bucket,created_at,updated_at
+               FROM basket_strategy_cycles
+              WHERE strategy_id=?
+              ORDER BY datetime(updated_at) DESC, rowid DESC
+              LIMIT ?""",
+            (strategy_id, max(row_limit * 8, 48)),
+        ).fetchall()
+        leg_rows = conn.execute(
+            """SELECT cycle_id,bucket,token_id,side,limit_price,requested_size,
+                      requested_notional_usdc,order_type,state,size_matched,created_at,updated_at
+               FROM basket_strategy_legs
+              WHERE cycle_id IN (
+                    SELECT cycle_id FROM basket_strategy_cycles
+                     WHERE strategy_id=?
+              )
+              ORDER BY datetime(created_at), rowid""",
+            (strategy_id,),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        return {
+            "schema": schema,
+            "available": False,
+            "materialized": False,
+            "read_only": True,
+            "production_strategy_id": strategy_id,
+            "source": {"read_model": "data/archive.db", "tables": ["basket_strategy_cycles", "basket_strategy_legs"]},
+            "items": [],
+            "na_reason": f"basket_strategy_schema_unavailable:{type(exc).__name__}",
+        }
+
+    activation: Dict[str, Any] = {}
+    activation_policy: Dict[str, Any] = {}
+    if activation_row is not None:
+        try:
+            parsed_activation = json.loads(str(activation_row[4] or "{}"))
+            activation_policy = dict(parsed_activation) if isinstance(parsed_activation, Mapping) else {}
+        except (TypeError, ValueError):
+            activation_policy = {}
+        activation = {
+            "generation": int(activation_row[0] or 0),
+            "state": str(activation_row[1] or ""),
+            "strategy_id": str(activation_row[2] or strategy_id),
+            "activation_sha256": str(activation_row[3] or ""),
+            "updated_at": str(activation_row[5] or ""),
+        }
+
+    item_keys = {
+        (
+            str(item.get("slug") or "").strip(),
+            _normalize_date_key(str(item.get("event_date") or "")),
+        )
+        for item in items
+        if isinstance(item, Mapping)
+        and str(item.get("slug") or "").strip()
+        and _normalize_date_key(str(item.get("event_date") or ""))
+    }
+    # Keep the latest cycle per market-day.  Prefer cycles represented in the
+    # current facts page, then use recent unmatched cycles as a bounded audit
+    # trail for the event strip.
+    selected_cycles: List[Any] = []
+    seen_keys: Set[Tuple[str, str]] = set()
+    for row in cycle_rows:
+        key = (str(row[2] or "").strip(), _normalize_date_key(str(row[3] or "")))
+        if not key[0] or not key[1] or key in seen_keys:
+            continue
+        if item_keys and key not in item_keys:
+            continue
+        selected_cycles.append(row)
+        seen_keys.add(key)
+        if len(selected_cycles) >= row_limit:
+            break
+    if len(selected_cycles) < row_limit:
+        for row in cycle_rows:
+            key = (str(row[2] or "").strip(), _normalize_date_key(str(row[3] or "")))
+            if not key[0] or not key[1] or key in seen_keys:
+                continue
+            selected_cycles.append(row)
+            seen_keys.add(key)
+            if len(selected_cycles) >= row_limit:
+                break
+
+    legs_by_cycle: Dict[str, List[Dict[str, Any]]] = {}
+    for row in leg_rows:
+        cycle_id = str(row[0] or "").strip()
+        if not cycle_id:
+            continue
+        legs_by_cycle.setdefault(cycle_id, []).append(
+            {
+                "bucket": str(row[1] or ""),
+                "side": str(row[3] or "YES").upper(),
+                "limit_price": _number(row[4]),
+                "requested_size": _number(row[5]),
+                "requested_notional_usdc": _number(row[6]),
+                "order_type": str(row[7] or "FOK"),
+                "state": str(row[8] or ""),
+                "size_matched": _number(row[9]),
+                "created_at": str(row[10] or ""),
+                "updated_at": str(row[11] or ""),
+            }
+        )
+
+    output_items: List[Dict[str, Any]] = []
+    for row in selected_cycles:
+        cycle_id = str(row[0] or "")
+        try:
+            plan_value = json.loads(str(row[5] or "{}"))
+            plan = dict(plan_value) if isinstance(plan_value, Mapping) else {}
+        except (TypeError, ValueError):
+            plan = {}
+        plan_basket = plan.get("basket") if isinstance(plan.get("basket"), Mapping) else {}
+        legs = legs_by_cycle.get(cycle_id, [])
+        plan_orders = plan_basket.get("orders") if isinstance(plan_basket.get("orders"), list) else []
+        selected_buckets = plan_basket.get("selected_buckets")
+        if not isinstance(selected_buckets, list) or not selected_buckets:
+            selected_buckets = [leg.get("bucket") for leg in legs if leg.get("bucket")]
+        selected_buckets = [str(bucket) for bucket in selected_buckets if str(bucket or "").strip()]
+        if not legs and plan_orders:
+            # A prepared plan may be visible before its legs are persisted;
+            # retain only the non-sensitive execution facts needed by UI.
+            legs = [
+                {
+                    "bucket": str(order.get("bucket") or ""),
+                    "side": str(order.get("side") or "YES").upper(),
+                    "limit_price": _number(order.get("limit_price")),
+                    "requested_size": _number(order.get("quantity")),
+                    "requested_notional_usdc": _number(order.get("estimated_notional_usdc")),
+                    "order_type": str(order.get("order_type") or "FOK"),
+                    "state": "planned",
+                    "size_matched": 0.0,
+                    "created_at": "",
+                    "updated_at": "",
+                }
+                for order in plan_orders
+                if isinstance(order, Mapping) and str(order.get("bucket") or "").strip()
+            ]
+        probability = plan.get("probability_projection") if isinstance(plan.get("probability_projection"), Mapping) else {}
+        direction = plan.get("direction_bias") if isinstance(plan.get("direction_bias"), Mapping) else {}
+        regime = plan.get("regime") if isinstance(plan.get("regime"), Mapping) else {}
+        output_items.append(
+            {
+                "slug": str(row[2] or ""),
+                "event_date": _normalize_date_key(str(row[3] or "")),
+                "cycle_id": cycle_id,
+                "plan_id": str(plan.get("plan_id") or cycle_id),
+                "plan_sha256": str(row[4] or ""),
+                "state": str(row[6] or ""),
+                "created_at": str(row[9] or ""),
+                "updated_at": str(row[10] or ""),
+                "basket": {
+                    "status": str(plan_basket.get("status") or ""),
+                    "mode": str(plan_basket.get("mode") or "pure_yes_basket"),
+                    "direction": str(plan_basket.get("direction") or direction.get("direction") or ""),
+                    "tranche_width": int(plan_basket.get("tranche_width")) if str(plan_basket.get("tranche_width") or "").isdigit() else None,
+                    "convergence_coverage": _number(plan_basket.get("convergence_coverage")) if plan_basket.get("convergence_coverage") is not None and math.isfinite(_number(plan_basket.get("convergence_coverage"))) else None,
+                    "convergence_target": _number(plan_basket.get("convergence_target")) if plan_basket.get("convergence_target") is not None and math.isfinite(_number(plan_basket.get("convergence_target"))) else None,
+                    "tranche_signature": str(plan_basket.get("tranche_signature") or ""),
+                    "selected_buckets": selected_buckets,
+                    "orders": legs,
+                    "quantity_per_bucket": _number(row[8], _number(plan_basket.get("quantity_per_bucket"))),
+                    "per_share_all_in_cost": plan_basket.get("per_share_all_in_cost"),
+                    "total_cost_usdc": _number(row[7], _number(plan_basket.get("total_cost_usdc"))),
+                    "worst_case_settlement_payout_usdc": plan_basket.get("worst_case_settlement_payout_usdc"),
+                    "guaranteed_profit_usdc": plan_basket.get("guaranteed_profit_usdc"),
+                    "reason_codes": list(plan_basket.get("reason_codes") or []) if isinstance(plan_basket.get("reason_codes"), list) else [],
+                },
+                "lineage": {
+                    "fact_snapshot_id": str(probability.get("fact_snapshot_id") or ""),
+                    "posterior_run_id": str(probability.get("posterior_run_id") or ""),
+                    "posterior_checkpoint_id": str(probability.get("posterior_checkpoint_id") or ""),
+                    "probability_stage": str(probability.get("stage") or ""),
+                    "direction": str(direction.get("direction") or ""),
+                    "direction_status": str(direction.get("status") or ""),
+                    "regime": regime,
+                },
+            }
+        )
+
+    return {
+        "schema": schema,
+        "available": True,
+        "materialized": bool(output_items),
+        "read_only": True,
+        "production_strategy_id": str(activation_policy.get("strategy_id") or strategy_id),
+        "activation": activation,
+        "activation_state": str(activation_policy.get("state") or activation.get("state") or ""),
+        "source": {
+            "read_model": "data/archive.db",
+            "tables": ["basket_strategy_cycles", "basket_strategy_legs"],
+            "selection": "latest_cycle_per_slug_event_date",
+        },
+        "items": output_items,
+        "na_reason": "" if output_items else "basket_cycle_not_materialized",
+    }
+
+
+def _ui_snapshot_primary_city_strategy(
+    conn: sqlite3.Connection,
+    item: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Read the same city SSOT/regime/basket view used by the multi-city UI.
+
+    The digital dashboard and the city cards must not derive direction from
+    different branches.  This is a read-only bridge to the board read model;
+    it never invokes the basket executor or a quote precheck.
+    """
+
+    slug = str(item.get("slug") or "").strip()
+    event_date = _normalize_date_key(str(item.get("event_date") or ""))
+    if not slug or not event_date:
+        return {}
+    try:
+        row = conn.execute(
+            """SELECT station_id FROM reported_trajectory_market_registry
+                 WHERE slug=? AND event_date=? AND source_eligible=1
+                 ORDER BY station_id LIMIT 1""",
+            (slug, event_date),
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    station_id = str(row[0] or "").strip() if row is not None else ""
+    if not station_id:
+        return {}
+    try:
+        state = _china_board_city_strategy_state(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            now=datetime.now(timezone.utc),
+        )
+        if isinstance(state, dict):
+            state["station_id"] = station_id
+        return state
+    except Exception:
+        return {}
+
+
 def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = False) -> Dict[str, Any]:
     run_date_key = _normalize_date_key(run_date)
     if not run_date_key:
@@ -72645,19 +77169,18 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
                     out.append(tok)
             return out
 
-        if run_id:
+        if run_date_key:
             try:
                 cur.execute(
                     """
                     SELECT slug, event_date, title, outcome, side, action, decided_state, will_order,
                            reason_codes_json, reasons_json, details_json, created_at
                     FROM auto_trade_decisions
-                    WHERE run_id = ?
-                      AND action = 'entry'
+                    WHERE run_date = ?
                     ORDER BY id DESC
                     LIMIT ?
                     """,
-                    (run_id, limit_val),
+                    (run_date_key, limit_val),
                 )
                 for row in cur.fetchall():
                     entry_counts["total"] += 1
@@ -72682,7 +77205,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
                         "title": str(row["title"] or ""),
                         "outcome": str(row["outcome"] or ""),
                         "side": str(row["side"] or "").strip().upper(),
-                        "action": "entry",
+                        "action": str(row["action"] or ""),
                         "decided_state": decided_state,
                         "will_order": will_order,
                         "reason_codes": reason_codes,
@@ -72844,6 +77367,7 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
         platt = _load_platt_calibration(platt_days or 0)
         first_prediction_stats = _safe_first_prediction_hit_rates(conn)
         forecast_source_accuracy = _safe_forecast_source_accuracy_snapshot_only(conn)
+        joint_weak_bias_research = _safe_joint_weak_bias_research_snapshot_only(conn)
         try:
             trade_map_for_plan = query_edge_trades(conn)
             fills_map_for_plan = query_trade_fills(conn)
@@ -72992,6 +77516,17 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
                     and not _ui_snapshot_payload_has_final_settlement_lock(payload)
                 ):
                     continue
+                if isinstance(existing_payload, Mapping):
+                    for audit_key in ("forecast_weak_attribution", "probability_audit"):
+                        audit_value = existing_payload.get(audit_key)
+                        if audit_value not in (None, "", [], {}) and payload.get(audit_key) in (None, "", [], {}):
+                            payload[audit_key] = copy.deepcopy(audit_value)
+                    existing_sections = existing_payload.get("ui_sections")
+                    payload_sections = payload.get("ui_sections")
+                    if isinstance(existing_sections, Mapping) and isinstance(existing_sections.get("probability_audit"), Mapping):
+                        merged_sections = dict(payload_sections) if isinstance(payload_sections, Mapping) else {}
+                        merged_sections["probability_audit"] = copy.deepcopy(existing_sections["probability_audit"])
+                        payload["ui_sections"] = merged_sections
                 if key not in by_key:
                     order.append(key)
                 by_key[key] = payload
@@ -73005,8 +77540,13 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
                 fact_total = max(int(fact_total or 0), len(fact_items))
 
         model_update_payload = _safe_model_update_stats(limit=120)
+        basket_strategy_ssot = _basket_strategy_ui_ssot(
+            conn,
+            items=fact_items,
+            limit=limit_val,
+        )
 
-        return {
+        payload = {
             "ok": True,
             "as_of": now_text(),
             "run_date": run_date_key,
@@ -73045,7 +77585,66 @@ def ui_snapshot(run_date: str = "", limit: int = 120, *, force_rebuild: bool = F
                 entry_rows=entry_rows,
                 limit=limit_val,
             ),
+            "basket_strategy_ssot": basket_strategy_ssot,
+            "reported_trajectory_no": _reported_trajectory_no_ui_ssot(conn, limit=limit_val),
         }
+        # Keep the full snapshot and summary endpoint on the same direction
+        # SSOT surface.  Previously only the summary trim path attached D1,
+        # so the dashboard's target-day direction card silently rendered missing.
+        _attach_d1_physical_evidence_overview(payload)
+        d1 = payload.get("d1_physical_evidence_overview") if isinstance(payload.get("d1_physical_evidence_overview"), Mapping) else {}
+        signal = d1.get("physical_signal") if isinstance(d1.get("physical_signal"), Mapping) else {}
+        basket_items = basket_strategy_ssot.get("items") if isinstance(basket_strategy_ssot, Mapping) else []
+        primary_item = fact_items[0] if fact_items else {}
+        primary_key = (str(primary_item.get("slug") or ""), _normalize_date_key(str(primary_item.get("event_date") or "")))
+        basket_item = next(
+            (row for row in basket_items if isinstance(row, Mapping) and (str(row.get("slug") or ""), _normalize_date_key(str(row.get("event_date") or ""))) == primary_key),
+            None,
+        )
+        basket_value = basket_item.get("basket") if isinstance(basket_item, Mapping) and isinstance(basket_item.get("basket"), Mapping) else {}
+        raw_direction = str(basket_value.get("direction") or "").strip().upper()
+        primary_strategy = _ui_snapshot_primary_city_strategy(conn, primary_item)
+        strategy_direction = primary_strategy.get("direction_bias") if isinstance(primary_strategy.get("direction_bias"), Mapping) else {}
+        strategy_basket = primary_strategy.get("basket") if isinstance(primary_strategy.get("basket"), Mapping) else {}
+        if isinstance(primary_item, dict) and primary_strategy.get("station_id"):
+            primary_item["official_amsc_taf_snapshot"] = _china_board_taf_snapshot(
+                conn,
+                station_id=str(primary_strategy.get("station_id") or ""),
+                event_date=str(primary_item.get("event_date") or ""),
+                now=datetime.now(timezone.utc),
+            )
+        gate_state = str(strategy_direction.get("gate_state") or "").strip().upper()
+        if gate_state in {"UP", "DOWN"}:
+            raw_direction = gate_state
+        regime_labels = [str(value).strip() for value in (strategy_direction.get("labels") or []) if str(value).strip()]
+        numeric_score_available = isinstance(strategy_direction.get("vector_up_mass"), (int, float)) and isinstance(strategy_direction.get("vector_down_mass"), (int, float))
+        payload["target_direction_bias"] = {
+            "schema": "target_direction_bias_ui_v1",
+            "available": raw_direction in {"UP", "DOWN"},
+            "direction": raw_direction if raw_direction in {"UP", "DOWN"} else "",
+            "label": "偏上 ↑" if raw_direction == "UP" else "偏下 ↓" if raw_direction == "DOWN" else "未物化",
+            "source": "city_strategy.direction_bias.regime_gate" if gate_state in {"UP", "DOWN"} else ("basket.direction_bias" if raw_direction else "d1_physical_evidence_overview"),
+            "target_event_date": str(primary_item.get("event_date") or ""),
+            "net_score": strategy_direction.get("vector_up_mass") - strategy_direction.get("vector_down_mass") if numeric_score_available else None,
+            "score_available": numeric_score_available,
+            "regime_state": gate_state,
+            "regime_labels": regime_labels,
+            "reason": (
+                f"目标日 regime 闸门 · {', '.join(regime_labels[:2]) or '已物化'} · 仅作方向一致性闸门"
+                if gate_state in {"UP", "DOWN"}
+                else "目标日 regime 闸门未形成一致方向"
+            ),
+            "updated_at": str(strategy_direction.get("updated_at") or d1.get("fact_as_of") or payload.get("snapshot_generated_at") or ""),
+        }
+        payload["basket_precheck"] = {
+            "state": str(strategy_basket.get("precheck") or "not_run"),
+            "reason": str(strategy_basket.get("precheck_reason") or ""),
+            "next_action": str(strategy_basket.get("next_action") or ""),
+            "source": str(strategy_basket.get("source") or "archive.db.basket_strategy_cycles"),
+            "event_date": str(primary_item.get("event_date") or ""),
+            "slug": str(primary_item.get("slug") or ""),
+        }
+        return payload
 
     def _build_payload() -> Dict[str, Any]:
         with open_db_ro_snapshot(timeout_sec=0.6, busy_timeout_ms=600) as conn:
@@ -73461,6 +78060,10 @@ def ui_snapshot_summary(
                         run_date_key_for_payload,
                     )
                 _apply_display_probability_fields_in_place(distribution)
+            # State-space facts intentionally have no temperature bucket
+            # distribution.  Model peak cards are still display-only data and
+            # must be hydrated on that path as well.
+            _attach_model_member_cache_snapshot_for_ui_snapshot(conn, payload, row)
             if (
                 not (use_summary_cache_rows and UI_SNAPSHOT_SUMMARY_FAST)
                 or UI_SNAPSHOT_SUMMARY_LIVE_MARKET_HYDRATE
@@ -73580,6 +78183,85 @@ def ui_snapshot_summary(
             fact_total = len(fact_items)
 
         model_update_payload = _safe_model_update_stats(limit=48)
+        decision_rows: List[Dict[str, Any]] = []
+        decision_counts = {"total": 0, "blocked": 0, "will_order": 0}
+        decision_reason_counts: Dict[str, int] = {}
+        try:
+            cur.execute(
+                """
+                SELECT slug,event_date,title,outcome,side,action,decided_state,will_order,
+                       reason_codes_json,reasons_json,created_at
+                FROM auto_trade_decisions
+                WHERE run_date = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (run_date_key, limit_val),
+            )
+            for row in cur.fetchall():
+                try:
+                    reason_codes = json.loads(str(row["reason_codes_json"] or "[]"))
+                except (TypeError, ValueError):
+                    reason_codes = []
+                try:
+                    reasons = json.loads(str(row["reasons_json"] or "[]"))
+                except (TypeError, ValueError):
+                    reasons = []
+                reason_codes = reason_codes if isinstance(reason_codes, list) else []
+                reasons = reasons if isinstance(reasons, list) else []
+                decided_state = str(row["decided_state"] or "")
+                will_order = int(row["will_order"] or 0)
+                decision_counts["total"] += 1
+                if decided_state == "blocked" or (decided_state and not will_order):
+                    decision_counts["blocked"] += 1
+                if will_order:
+                    decision_counts["will_order"] += 1
+                for code in reason_codes[:1]:
+                    code_text = str(code or "").strip()
+                    if code_text:
+                        decision_reason_counts[code_text] = decision_reason_counts.get(code_text, 0) + 1
+                decision_rows.append(
+                    {
+                        "slug": str(row["slug"] or ""),
+                        "event_date": date_only(str(row["event_date"] or "")),
+                        "title": str(row["title"] or ""),
+                        "outcome": str(row["outcome"] or ""),
+                        "side": str(row["side"] or "").upper(),
+                        "action": str(row["action"] or ""),
+                        "decided_state": decided_state,
+                        "will_order": will_order,
+                        "reason_codes": [str(code) for code in reason_codes],
+                        "reasons": [
+                            str(
+                                reason.get("reason_code")
+                                or reason.get("message")
+                                or reason.get("reason_family")
+                                or ""
+                            )
+                            if isinstance(reason, Mapping)
+                            else str(reason)
+                            for reason in reasons
+                        ],
+                        "created_at": str(row["created_at"] or ""),
+                    }
+                )
+        except sqlite3.OperationalError:
+            decision_rows = []
+            decision_counts = {"total": 0, "blocked": 0, "will_order": 0}
+            decision_reason_counts = {}
+        blocked_total = max(1, int(decision_counts["blocked"] or 0))
+        decision_reason_stats = [
+            {"code": code, "count": count, "share": float(count) / float(blocked_total)}
+            for code, count in sorted(
+                decision_reason_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ]
+        basket_strategy_ssot = _basket_strategy_ui_ssot(
+            conn,
+            items=fact_items,
+            limit=limit_val,
+        )
 
         payload = {
             "ok": True,
@@ -73616,8 +78298,56 @@ def ui_snapshot_summary(
                 run_meta=run_meta,
                 job_counts=job_counts,
                 jobs_updated_at=jobs_updated_at,
-                entry_counts={"total": 0, "blocked": 0, "will_order": 0},
+                entry_counts=decision_counts,
+                reason_stats=decision_reason_stats,
+                entry_rows=decision_rows,
+                limit=limit_val,
             ),
+            "basket_strategy_ssot": basket_strategy_ssot,
+            "reported_trajectory_no": _reported_trajectory_no_ui_ssot(conn, limit=limit_val),
+        }
+        _attach_d1_physical_evidence_overview(payload)
+        d1 = payload.get("d1_physical_evidence_overview") if isinstance(payload.get("d1_physical_evidence_overview"), Mapping) else {}
+        signal = d1.get("physical_signal") if isinstance(d1.get("physical_signal"), Mapping) else {}
+        primary_item = fact_items[0] if fact_items else {}
+        primary_strategy = _ui_snapshot_primary_city_strategy(conn, primary_item)
+        strategy_direction = primary_strategy.get("direction_bias") if isinstance(primary_strategy.get("direction_bias"), Mapping) else {}
+        strategy_basket = primary_strategy.get("basket") if isinstance(primary_strategy.get("basket"), Mapping) else {}
+        if isinstance(primary_item, dict) and primary_strategy.get("station_id"):
+            primary_item["official_amsc_taf_snapshot"] = _china_board_taf_snapshot(
+                conn,
+                station_id=str(primary_strategy.get("station_id") or ""),
+                event_date=str(primary_item.get("event_date") or ""),
+                now=datetime.now(timezone.utc),
+            )
+        gate_state = str(strategy_direction.get("gate_state") or "").strip().upper()
+        regime_labels = [str(value).strip() for value in (strategy_direction.get("labels") or []) if str(value).strip()]
+        numeric_score_available = isinstance(strategy_direction.get("vector_up_mass"), (int, float)) and isinstance(strategy_direction.get("vector_down_mass"), (int, float))
+        payload["target_direction_bias"] = {
+            "schema": "target_direction_bias_ui_v1",
+            "available": gate_state in {"UP", "DOWN"},
+            "direction": gate_state if gate_state in {"UP", "DOWN"} else "",
+            "label": "偏上 ↑" if gate_state == "UP" else "偏下 ↓" if gate_state == "DOWN" else "未物化",
+            "source": "city_strategy.direction_bias.regime_gate" if gate_state in {"UP", "DOWN"} else "d1_physical_evidence_overview",
+            "target_event_date": str(primary_item.get("event_date") or ""),
+            "net_score": strategy_direction.get("vector_up_mass") - strategy_direction.get("vector_down_mass") if numeric_score_available else None,
+            "score_available": numeric_score_available,
+            "regime_state": gate_state,
+            "regime_labels": regime_labels,
+            "reason": (
+                f"目标日 regime 闸门 · {', '.join(regime_labels[:2]) or '已物化'} · 仅作方向一致性闸门"
+                if gate_state in {"UP", "DOWN"}
+                else "目标日 regime 闸门未形成一致方向"
+            ),
+            "updated_at": str(strategy_direction.get("updated_at") or d1.get("fact_as_of") or payload.get("as_of") or ""),
+        }
+        payload["basket_precheck"] = {
+            "state": str(strategy_basket.get("precheck") or "not_run"),
+            "reason": str(strategy_basket.get("precheck_reason") or ""),
+            "next_action": str(strategy_basket.get("next_action") or ""),
+            "source": str(strategy_basket.get("source") or "archive.db.basket_strategy_cycles"),
+            "event_date": str(primary_item.get("event_date") or ""),
+            "slug": str(primary_item.get("slug") or ""),
         }
         return payload
 
@@ -73879,16 +78609,22 @@ def _truthy(value: Any) -> bool:
 
 
 def _normalize_city_from_fact(fact: Dict[str, Any]) -> str:
-    station_id = str(fact.get("station_id") or "").strip().upper()
-    if station_id and station_id in _STATION_CITY_MAP:
-        return _STATION_CITY_MAP[station_id]
-    city_raw = str(fact.get("city") or "").strip()
-    city_up = city_raw.upper()
-    if city_up and city_up in _STATION_CITY_MAP:
-        return _STATION_CITY_MAP[city_up]
-    city = _normalize_weather_city_label(city_raw)
-    if city:
-        return city
+    candidates: List[Mapping[str, Any]] = [fact]
+    for key in ("posterior_ssot_fact", "posterior_ssot", "ssot"):
+        nested = fact.get(key)
+        if isinstance(nested, Mapping):
+            candidates.append(nested)
+    for candidate in candidates:
+        station_id = str(candidate.get("station_id") or "").strip().upper()
+        if station_id and station_id in _STATION_CITY_MAP:
+            return _STATION_CITY_MAP[station_id]
+        city_raw = str(candidate.get("city") or "").strip()
+        city_up = city_raw.upper()
+        if city_up and city_up in _STATION_CITY_MAP:
+            return _STATION_CITY_MAP[city_up]
+        city = _normalize_weather_city_label(city_raw)
+        if city:
+            return city
     return _extract_city_from_weather_event(
         {
             "slug": str(fact.get("slug") or ""),
@@ -75801,6 +80537,62 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(payload)
             return
 
+        if path == "/api/china-airport-board":
+            event_date = str(
+                params.get("event_date", [""])[0]
+                or params.get("date", [""])[0]
+                or ""
+            ).strip()
+            if "T" in event_date:
+                event_date = event_date.split("T", 1)[0]
+            scope = str(params.get("scope", ["all"])[0] or "all").strip().lower()
+            include_catalog = scope not in {"materialized", "configured", "source"}
+            try:
+                with open_db_ro_fast(timeout_sec=0.5, busy_timeout_ms=500) as conn:
+                    payload = _build_china_airport_board_payload(
+                        conn,
+                        event_date=event_date,
+                        include_catalog=include_catalog,
+                    )
+            except sqlite3.OperationalError:
+                payload = {
+                    "schema": "china_airport_weather_board_v1",
+                    "ok": False,
+                    "read_only": True,
+                    "event_date": event_date,
+                    "reason": "db_busy",
+                    "stations": [],
+                }
+            except Exception as exc:
+                payload = {
+                    "schema": "china_airport_weather_board_v1",
+                    "ok": False,
+                    "read_only": True,
+                    "event_date": event_date,
+                    "reason": f"{type(exc).__name__}:{exc}",
+                    "stations": [],
+                }
+            self._send_json(payload, 200 if payload.get("ok") else 503)
+            return
+
+        if path == "/api/city-data-lineage-health":
+            event_date = str(
+                params.get("event_date", [""])[0]
+                or params.get("date", [""])[0]
+                or ""
+            ).strip()
+            if "T" in event_date:
+                event_date = event_date.split("T", 1)[0]
+            try:
+                with open_db_ro_fast(timeout_sec=0.5, busy_timeout_ms=500) as conn:
+                    payload = _build_city_data_lineage_health_payload(conn, event_date=event_date)
+            except sqlite3.OperationalError:
+                payload = {"schema": "city_data_lineage_health_v1", "ok": False, "reason": "db_busy", "source_checks": [], "missing": []}
+            except Exception as exc:
+                payload = {"schema": "city_data_lineage_health_v1", "ok": False, "reason": f"{type(exc).__name__}:{exc}", "source_checks": [], "missing": []}
+            self._send_json(payload, 200 if payload.get("ok") else 503)
+            return
+
         if path == "/api/london-follow-sim":
             try:
                 days = int(params.get("days", [str(LONDON_FOLLOW_SIM_LOOKBACK_DAYS)])[0])
@@ -75960,8 +80752,43 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "now": now_text()})
             return
 
+        if path == "/api/copy-follow-config":
+            if params.get("set", [""])[0] == "1":
+                client_ip = self.client_address[0] if self.client_address else ""
+                if client_ip not in {"127.0.0.1", "::1"}:
+                    self._send_json({"ok": False, "error": "local_only", "client_ip": client_ip})
+                    return
+                self._send_json(_set_copy_follow_config(params))
+                return
+            self._send_json(_copy_follow_effective_payload())
+            return
+
         if path == "/api/ui-runtime-health":
             self._send_json(ui_runtime_health(include_endpoint_metrics=True))
+            return
+
+        if path == "/api/probability-chain-health":
+            run_date = str(
+                params.get("run_date", [""])[0]
+                or params.get("date", [""])[0]
+                or ""
+            )
+            slug = str(params.get("slug", [""])[0] or "")
+            ui_identity = {
+                "fact_id": str(params.get("ui_fact_id", [""])[0] or ""),
+                "fact_snapshot_id": str(params.get("ui_fact_snapshot_id", [""])[0] or ""),
+                "posterior_checkpoint_id": str(params.get("ui_checkpoint_id", [""])[0] or ""),
+                "as_of": str(params.get("ui_as_of", [""])[0] or ""),
+            }
+            ui_identity = {key: value for key, value in ui_identity.items() if value}
+            self._send_json(
+                probability_chain_health(
+                    prefer_run_date=run_date,
+                    slug=slug,
+                    ui_identity=ui_identity,
+                    allow_pending=True,
+                )
+            )
             return
 
         if path == "/api/services":
@@ -77274,7 +82101,9 @@ class Handler(BaseHTTPRequestHandler):
                     fact = safe_json_loads(fact_row["fact_json"])
                     if not isinstance(fact, dict):
                         continue
-                    city = str(fact.get("city") or "").strip()
+                    fact.setdefault("slug", str(fact_row["slug"] or ""))
+                    fact.setdefault("event_date", str(fact_row["event_date"] or ""))
+                    city = _normalize_city_from_fact(fact)
                     if city:
                         cities.add(city)
                 cities_sorted = sorted(cities)

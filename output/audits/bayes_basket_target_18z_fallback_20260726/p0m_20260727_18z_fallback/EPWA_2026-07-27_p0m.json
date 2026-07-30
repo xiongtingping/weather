@@ -1,0 +1,364 @@
+{
+  "bridge_sha256": "96a8c7e2b55e4d0f3fd2bd2a602032d067b1b286a7ed09300531c950cd253a1e",
+  "bucket_intervals": {
+    "18°C or below": [
+      null,
+      18.5
+    ],
+    "19°C": [
+      18.5,
+      19.5
+    ],
+    "20°C": [
+      19.5,
+      20.5
+    ],
+    "21°C": [
+      20.5,
+      21.5
+    ],
+    "22°C": [
+      21.5,
+      22.5
+    ],
+    "23°C": [
+      22.5,
+      23.5
+    ],
+    "24°C": [
+      23.5,
+      24.5
+    ],
+    "25°C": [
+      24.5,
+      25.5
+    ],
+    "26°C": [
+      25.5,
+      26.5
+    ],
+    "27°C": [
+      26.5,
+      27.5
+    ],
+    "28°C or higher": [
+      27.5,
+      null
+    ]
+  },
+  "calibration_activations": [
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-19f0bc6dfbe724c5ca6da15b7dfbafa3",
+      "artifact_id": "cal-candidate-EPWA-ECMWF-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "ac1d07bc57566924d31ff766bdeaf5f6573c3851a825b302df92b11b9652d912",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-d7c00fc0d6fca29c046004bcaf7f99c4",
+      "artifact_id": "cal-candidate-EPWA-GFS-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "fd4664d33eff51379bb0e01504bdb0bbaa1b5b50d92c3838efc4516fc77d03f6",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-cal-3103a5b6a308700e80784b652e42b190",
+      "artifact_id": "cal-candidate-EPWA-ICON-summer-0aee07eba321",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "530bc46221612295440a009e8434e04d54bf3352e18968501046528e09d32eaf",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-c0348ee982aaa88e26d489966ba902d8",
+      "artifact_id": "cal-candidate-EPWA-ECMWF-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "6c954e34b309cf1da1ef36ce806ff6f3df267a58c0214bcdd574d2c06602114b",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ECMWF",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-e8083f6acdb046d0baaa361fcb5ebe9a",
+      "artifact_id": "cal-candidate-EPWA-GFS-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "3c8b1e704c7d6a7d4fc2a470bf2cf63a1a6b6c87dd0ccbc69aafbac75101cf66",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-cal-b986821d40030f30c3109d2ed765d15c",
+      "artifact_id": "cal-candidate-EPWA-ICON-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "b7ccf1318fb87df641b423ae0cacdc5382d9612f5fbbd55a7e000a03624ff002",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T00:41:05Z",
+      "activation_id": "no-live-ens-a0c4387318d109e0ea444f2ff3e41b14",
+      "artifact_id": "ens-candidate-EPWA-summer-0aee07eba321",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+      "content_sha256": "0a6d929f7d77b98bb21ce2b4b91dc8ab8aba7c319c4e3d132ce0e471e97c4354",
+      "generation": 1,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T00:41:05Z",
+      "valid_until_utc": "2026-08-25T00:41:05Z"
+    },
+    {
+      "activated_at_utc": "2026-07-26T06:24:00Z",
+      "activation_id": "no-live-ens-b273763d274d24082ab2347200090866",
+      "artifact_id": "ens-candidate-EPWA-summer-9c4f1014d5f1",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1",
+      "content_sha256": "05728275f56593240160050aa565f6aaa479233c752fcfca6384f72f5033db29",
+      "generation": 1,
+      "lead_bucket": "d2_fallback",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    }
+  ],
+  "calibration_artifacts": {
+    "ECMWF": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-EPWA-ECMWF-summer-9c4f1014d5f1",
+      "content_sha256": "6b2f9862d239d1125e037487cd2bc8945a73474c8a4421d9a4041ff7c383b889",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "promoted": false,
+      "residual_scale_c": 1.6864020422824109,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    "GFS": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-EPWA-GFS-summer-9c4f1014d5f1",
+      "content_sha256": "3f3db6d984bec11b3ba892105f877515205a481cdb5be15cd2b7041fbd3a08d0",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.4043025086192384,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    },
+    "ICON": {
+      "bias_c": 0.0,
+      "calibration_artifact_id": "cal-candidate-EPWA-ICON-summer-9c4f1014d5f1",
+      "content_sha256": "2187d51477fa91171552be9c1ff88b274a63cfd1cd11389e1604b5bc14fd653b",
+      "effective_sample_n": 8.0,
+      "lead_bucket": "d2_fallback",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.7044060549059308,
+      "run_cycle": "18Z",
+      "sample_n": 8,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "EPWA",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T00:00:00Z",
+      "valid_from_utc": "2026-07-26T06:24:00Z",
+      "valid_until_utc": "2026-08-25T06:24:00Z"
+    }
+  },
+  "climatology_weight": 0.0,
+  "created_at_utc": "2026-07-26T06:24:00Z",
+  "current_model_runs": [
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "ECMWF",
+      "model_run_id": "current-7f48ed1d21a52b49ccb0b09744d0f61e",
+      "published_at_utc": "2026-07-26T00:27:10Z",
+      "raw_tmax_c": 22.258,
+      "received_at_utc": "2026-07-26T04:08:02Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "7f48ed1d21a52b49ccb0b09744d0f61e17998acd77a5ff61dfcc74d4742bdc5f",
+      "station_id": "EPWA",
+      "target_local_date": "2026-07-27"
+    },
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "GFS",
+      "model_run_id": "current-ed3ebd1ef05924a5b52b6e7717d35af9",
+      "published_at_utc": "2026-07-25T21:51:36Z",
+      "raw_tmax_c": 21.567,
+      "received_at_utc": "2026-07-26T04:32:06Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "ed3ebd1ef05924a5b52b6e7717d35af9d403cc38db15b46d64301e68801c3b23",
+      "station_id": "EPWA",
+      "target_local_date": "2026-07-27"
+    },
+    {
+      "lead_bucket": "d2_fallback",
+      "model_id": "ICON",
+      "model_run_id": "current-8aa0b4dcbc77178455bf3c95c179a2ea",
+      "published_at_utc": "2026-07-25T20:58:48Z",
+      "raw_tmax_c": 22.346,
+      "received_at_utc": "2026-07-26T04:11:19Z",
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-25T18:00:00Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "source_object_sha256": "8aa0b4dcbc77178455bf3c95c179a2ea43c56334a072f22307b7bee533a0f3a7",
+      "station_id": "EPWA",
+      "target_local_date": "2026-07-27"
+    }
+  ],
+  "decision_at_utc": "2026-07-26T06:24:00Z",
+  "ensemble_artifact": {
+    "candidate_models": [
+      "ECMWF",
+      "GFS",
+      "ICON"
+    ],
+    "content_sha256": "6c5be6790f69b73739ea73de6c65ba302f3e680352930a6c39325d606289207f",
+    "correlation_penalty": 0.0,
+    "ensemble_artifact_id": "ens-candidate-EPWA-summer-9c4f1014d5f1",
+    "lead_bucket": "d2_fallback",
+    "promoted": false,
+    "residual_covariance": {},
+    "run_cycle": "18Z",
+    "season_bin": "summer",
+    "settlement_definition": "official_daily_tmax_c",
+    "station_id": "EPWA",
+    "supported_masks": {
+      "1a5966398c48420a23133de7bf2250c1f6d692bde591c906146dd52be78264c1": {
+        "ECMWF": 0.3333333333333333,
+        "GFS": 0.3333333333333333,
+        "ICON": 0.3333333333333333
+      },
+      "386b0dcff4cf7bf0f7919788ec8ff2d698e532162ae4053d323b8d4fe0bdae94": {
+        "ICON": 1.0
+      },
+      "3e75cc2ba92b7affcaca13dbefbfb9f93c9dcf2c7dbf7c93ede52ecea7619d6a": {
+        "ECMWF": 1.0
+      },
+      "5bfadd4c8209c71df8222f1daa553913ddfc7c37b1d7ca31a030876a187825ff": {
+        "ECMWF": 0.5,
+        "ICON": 0.5
+      },
+      "69ccf54674fdde25eb56426332cda41625559617f561bb2e74152dba2adcb6b5": {
+        "ECMWF": 0.5,
+        "GFS": 0.5
+      },
+      "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+        "GFS": 0.5,
+        "ICON": 0.5
+      },
+      "88e8d60abdf783d2436b3039dd0a281fa0b17ebbc2ab1461be03d57c8a0bec82": {
+        "GFS": 1.0
+      }
+    },
+    "valid_from_utc": "2026-07-26T06:24:00Z",
+    "valid_until_utc": "2026-08-25T06:24:00Z"
+  },
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T07:00:00Z",
+  "stage": "P0-M",
+  "station_id": "EPWA"
+}

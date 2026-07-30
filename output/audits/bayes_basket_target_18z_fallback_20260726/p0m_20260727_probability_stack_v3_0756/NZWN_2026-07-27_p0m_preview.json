@@ -1,0 +1,51 @@
+{
+  "bridge_sha256": "f449bf6b0e6022e051b1d67032f6bfa4b02af26a948e3c0b52102da86c2c672a",
+  "bucket_ordinals": {
+    "10°C": 5,
+    "11°C": 6,
+    "12°C": 7,
+    "13°C": 8,
+    "14°C": 9,
+    "15°C or higher": 10,
+    "5°C or below": 0,
+    "6°C": 1,
+    "7°C": 2,
+    "8°C": 3,
+    "9°C": 4
+  },
+  "checkpoint_id": "p0m_31dc5c2c1904b6ec679d763c5016748c",
+  "decision_at_utc": "2026-07-26T07:56:00Z",
+  "event_date": "2026-07-27",
+  "fresh_until_utc": "2026-07-26T08:30:00Z",
+  "lineage": {
+    "activation_ids": "no-live-cal-2a89aac57530eee07be881bd8607293a,no-live-ens-33056080ef28cf7001381a2fb8bbedb1",
+    "available_model_set_hash": "386b0dcff4cf7bf0f7919788ec8ff2d698e532162ae4053d323b8d4fe0bdae94",
+    "calibration_artifact_ids": "cal-candidate-NZWN-ICON-summer-9c4f1014d5f1",
+    "ensemble_artifact_id": "ens-candidate-NZWN-summer-9c4f1014d5f1-0280217dfeba",
+    "model_bundle_ready_at_utc": "2026-07-26T04:11:19Z",
+    "model_envelope_lower_c": "10.593",
+    "model_envelope_span_c": "0",
+    "model_envelope_upper_c": "10.593",
+    "model_run_ids": "current-2073d1a5109dffccc042995014839522",
+    "model_run_initialization_utc": "2026-07-25T18:00:00Z",
+    "selection_evidence_sha256": "cdcfc52cff66d44382ea8b6f766b3022c7a36faee3a6c88072130ce77fcc1540"
+  },
+  "posterior_sha256": "31dc5c2c1904b6ec679d763c5016748ca5120793da0b09351285aef41d7e05e9",
+  "posterior_version": "p0m_probability_stack_v2",
+  "probabilities": {
+    "10°C": 0.28513261460784833,
+    "11°C": 0.3025904350065336,
+    "12°C": 0.16946076171417002,
+    "13°C": 0.050012583478785455,
+    "14°C": 0.0077574344465562994,
+    "15°C or higher": 0.0006574739275885255,
+    "5°C or below": 1.4075119277090486e-05,
+    "6°C": 0.0003677511999353733,
+    "7°C": 0.005107915465111523,
+    "8°C": 0.03713036404516468,
+    "9°C": 0.1417685909890291
+  },
+  "schema": "bayes_basket_probability_envelope_v1",
+  "stage": "P0-M",
+  "station_id": "NZWN"
+}

@@ -99,3 +99,43 @@ def test_invalid_enabled_context_is_market_na_and_never_blocks_physical_x(tmp_pa
     assert result["state"] == "unavailable"
     assert result["market_projection_available"] is False
     assert result["blocks_physical_x"] is False
+
+
+def _write_enabled_pointer(path, pointer):
+    core = {
+        "schema": "production_probability_v6_market_context_activation_v1",
+        "state": "production_enabled",
+        "context_path": pointer,
+        "market_context_sha256": "a" * 64,
+        "bridge_artifact_sha256": "b" * 64,
+        "places_orders": False,
+        "authorizes_clob": False,
+        "blocks_physical_x": False,
+    }
+    path.write_text(json.dumps({**core, "activation_sha256": activation_sha256(core)}))
+
+
+def test_external_or_parent_market_pointer_is_na_and_never_blocks_physical_x(tmp_path):
+    for pointer in ("/Volumes/archive/context.json", "../context.json"):
+        path = tmp_path / f"activation-{len(pointer)}.json"
+        _write_enabled_pointer(path, pointer)
+        result = resolve_active_v6_market_context(
+            activation_path=path, root=tmp_path, event_date="2026-07-03"
+        )
+        assert result["market_projection_available"] is False
+        assert result["blocks_physical_x"] is False
+        assert "runtime_pointer_must_be_repo_relative" in result["block_reasons"]
+
+
+def test_symlink_market_pointer_is_na_without_following_external_target(tmp_path):
+    outside = tmp_path.parent / "external-context-do-not-read.json"
+    outside.write_text("not-a-context")
+    (tmp_path / "context.json").symlink_to(outside)
+    path = tmp_path / "activation.json"
+    _write_enabled_pointer(path, "context.json")
+    result = resolve_active_v6_market_context(
+        activation_path=path, root=tmp_path, event_date="2026-07-03"
+    )
+    assert result["market_projection_available"] is False
+    assert result["blocks_physical_x"] is False
+    assert "runtime_pointer_symlink_forbidden" in result["block_reasons"]

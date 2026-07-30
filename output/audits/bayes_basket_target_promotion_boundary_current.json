@@ -1,0 +1,41 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "read_only": true,
+    "writes_production_db": false
+  },
+  "boundary_decision": {
+    "active_artifact_id": "active-v1",
+    "active_artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "active_runtime_allowed": true,
+    "active_runtime_reads_research_gate": false,
+    "candidate_artifact_id": "candidate-v2",
+    "candidate_promotion_allowed": false,
+    "content_sha256": "4b3f08a35835e0fd230f4e98fd8dc3892eb589af5e9bd0f8c3d6121cf34a3c7f",
+    "live_order_authorized": false,
+    "promotion_requested": true,
+    "research_checks": {
+      "calibration": false,
+      "oos": false
+    },
+    "schema": "bayes_basket_target_promotion_boundary_v1"
+  },
+  "checks": {
+    "active_runtime_research_independent": true,
+    "failed_research_gate_blocks_candidate": true,
+    "failed_research_gate_does_not_disable_active": true,
+    "live_order_authorized_false": true,
+    "runtime_does_not_import_research_gate": true
+  },
+  "promotion_boundary_verified": true,
+  "receipt_sha256": "da497062c4cef84a2fa6cdead8200e84fa75922ffe754e63af59da78cd89badb",
+  "research_import_hits": [],
+  "runtime_files": [
+    "bayes_basket_target/production.py",
+    "bayes_basket_target/runtime.py",
+    "bayes_basket_target/policy.py",
+    "bayes_basket_target/cash_phase.py"
+  ],
+  "schema": "bayes_basket_target_promotion_boundary_audit_v1"
+}

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "RETIRED_EXTERNAL_DISK_PRODUCTION_CUTOVER_FORBIDDEN: use scripts/cutover_v6_probability_and_soft_market_projection.sh" >&2
+exit 2
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"

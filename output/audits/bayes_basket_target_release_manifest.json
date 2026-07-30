@@ -1,0 +1,3884 @@
+{
+  "blockers": [
+    "target_execution_vector_lineage_incomplete",
+    "target_forward_scorecard_incomplete",
+    "target_materialized_inputs_incomplete"
+  ],
+  "calls_order_gateway": false,
+  "evidence": [
+    {
+      "exists": true,
+      "path": "bayes_basket_target/__init__.py",
+      "sha256": "1a9c4fe0107a35bfb58e4653c2283d115c20300c354d9889ddf0143d5e47f7ee"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/basket_kernel/contracts.py",
+      "sha256": "aa0ad6f2ba5c84275bb6ff4be412921903ba6fba1e2f310f9cc04fed40bf8e94"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/basket_kernel/support.py",
+      "sha256": "ab3aa795df0a9e577e7dd27deb79dba247cdd33829e22e3a7feac5858744006d"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/basket_kernel/delta_v2.py",
+      "sha256": "969b8e6e38c27d5b6c40b88046cb09e5c29b4301ef07d7531d2236fde13840ca"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/runtime.py",
+      "sha256": "cf36769287ffd5c3ce536de195d2c40a6ab905e4354b3ae394b60527ad75e4df"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/delta_v2_runtime.py",
+      "sha256": "6246a4ceeae02cd11d399dad3a0792a569b61997d5c628538fb49d9c539d68b0"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/delta_v2_training.py",
+      "sha256": "721f51e4ccd7be8eb5b070f81757a80baf1ca1d3d3b1021572882a372e7e2831"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/delta_v2_settlement_label.py",
+      "sha256": "d38bc783a9e259bbd676bc1c6c35623a9f44da47797b190d9dcc0dc40c506ba5"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/forward_training_validation.py",
+      "sha256": "3c337cba707a500997f2fc5a0b4606bac1a7b9f9481d10a958e0db5f2637b503"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/execution_transition_runtime.py",
+      "sha256": "be7b1215bb5037db866ab42030a0d6e6b8879ae10da54ec827b0e78d4701f731"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/readiness_scope.py",
+      "sha256": "1c8799d2d6342c79a16762878800e6cf2928d4dc7d21466b44bc048d44664127"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/dependency_audit.py",
+      "sha256": "7b46e1588ea97172caad2a1a19cdc46be56845f65182397aa2c93c839d83a7ff"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/model_arrival.py",
+      "sha256": "f01e2aa930672bf6a1fae3b7cb0ad0cd33587ed1161a4a36fa56fc30893cdbd4"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/calibration_evidence.py",
+      "sha256": "a57c4aac590f42e9f1f52b1a722bcd0c9c91d705c76c619b2441d05faef28471"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/et_history.py",
+      "sha256": "021bb99a4418c8fcb25ae9fb2fac529405c012ce906fa5c4329233186216f7b1"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/resource_bounds.py",
+      "sha256": "77f57e1d6198dda41688b6d81a770d131aa3fd00d82a9c4d15a275cbcf68b066"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/performance_budget.py",
+      "sha256": "9e96f934c42222c1ab3a7d7076d7d9c10e845de94b72ff31c8ef595ada5d9523"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/runtime_config.py",
+      "sha256": "b2276d2e7d87ea48382f03429f6a8a26fb897b514627834cc7c948ca0db73a27"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/production_worker.py",
+      "sha256": "020924d97ca2520ec63a679a14e591691f87ce92aa04c8871039377d9453eb6f"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/native_model_decode.py",
+      "sha256": "238684c762b125a54a559cabcdc9fed44a7b38c4f6773ffe58c9b1588d388023"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/station_registry.py",
+      "sha256": "4b3cb1e5988873c1a539f9e2525709d78b01c917485d6148396b492a06767bac"
+    },
+    {
+      "exists": true,
+      "path": "scripts/decode_bayes_basket_target_native_model_arrivals.py",
+      "sha256": "6ca506d38447d82d1d4da4347534b788f27744906051800f413dc7047d1f78fd"
+    },
+    {
+      "exists": true,
+      "path": "scripts/build_bayes_basket_target_model_arrival_evidence.py",
+      "sha256": "b143e1efd76913921022ecc48c87f5ae998cfb81ccee7e4f4c2dd5530b383e3a"
+    },
+    {
+      "exists": true,
+      "path": "scripts/build_bayes_basket_target_calibration_evidence.py",
+      "sha256": "6163e67e02f95c169aeae3cf8bf38aaa70e0fa8ac74d75b268c79f03e5049cfd"
+    },
+    {
+      "exists": true,
+      "path": "scripts/build_bayes_basket_target_et_history.py",
+      "sha256": "d95346055e0c558c5d24fb09ac84a4e7b9182b39b2270fb06cbfc25eb0c2d988"
+    },
+    {
+      "exists": true,
+      "path": "scripts/refresh_bayes_basket_target_evidence.py",
+      "sha256": "139d2b757ba170c597d0a2bf3d6d40ab1057c03bb3d2a72225622fe69299c536"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_post_et_refresh.py",
+      "sha256": "eec04cc4e189f84e884065e22d0ea1131147afc0f8a07d1364c872fe17048d42"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_production_facts_baseline.py",
+      "sha256": "cd1c94ad930937cfc6f679dea3023cd5400c2b6a3236cbfd3e518e749f03ffa4"
+    },
+    {
+      "exists": true,
+      "path": "config/trading/bayes_basket_target_station_lane_map_v1.json",
+      "sha256": "c6b8db6928f01a827778b23f648077cade40706817fac4563d97a3948ac9f222"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_resource_audit.py",
+      "sha256": "f4896c0992bdb5334a9e8fa19ab87acb57446c251ed5db81e8e5ec64e4905a6d"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_performance_audit.py",
+      "sha256": "45cc82118e75d8eab7460c171699facd54f1bce992f9f09a2cbf4f5ef156be78"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/activation.py",
+      "sha256": "5c46ca17ce283e35f42bf8e8c4db29d1fb65b6a8f37f76e0e7b8fd0aa33dd71a"
+    },
+    {
+      "exists": true,
+      "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "sha256": "205915345498b1e46bd8e95c9bf9c0641b2615b9b93066fae91eba16d3e9efba"
+    },
+    {
+      "exists": true,
+      "path": "config/bayes_basket_target/performance_budget_v1.json",
+      "sha256": "6656acc755170871f0d7394e5ebd6e4b8bb76b21108474bfcb391f31685f3dbc"
+    },
+    {
+      "exists": true,
+      "path": "config/bayes_basket_target/no_live_runtime_v1.json",
+      "sha256": "17952a75088f80f7d3e5e719193129beee1fc0d12cae76c543df54c3dd0e3392"
+    },
+    {
+      "exists": true,
+      "path": "config/bayes_basket_target/model_arrival_capture_v1.json",
+      "sha256": "b1cce6196197a45f69686186d1dabba2a1b6a773bcbeb2dc4e2358b3fcd209d2"
+    },
+    {
+      "exists": true,
+      "path": "docs/architecture/BAYES_BASKET_TARGET_PRODUCTION_NO_LIVE.md",
+      "sha256": "3ccb9c5e2ff7737b59e7246c982986b88c7c130d854f5387c7c5cd0211213b00"
+    },
+    {
+      "exists": true,
+      "path": "scripts/audit_cash_phase_promotion_gate.py",
+      "sha256": "d57781fc7cc831338209a4bc73165abe3851dde352c5475d65918e8ecab970d3"
+    },
+    {
+      "exists": true,
+      "path": "scripts/apply_bayes_basket_target_delta_v2_schema.py",
+      "sha256": "b79c0007ce2ee9a7a7f3bdacffe7ce6d712b5ac84d6064d80e6f14482ae08fb4"
+    },
+    {
+      "exists": true,
+      "path": "scripts/apply_delta_basket_score_v2_no_live_bootstrap.py",
+      "sha256": "f9f5c4899c883a6966a157dcde32c1d11c735c3b7dfd41a20c3de1791de30c9f"
+    },
+    {
+      "exists": true,
+      "path": "scripts/accept_delta_basket_score_v2_no_live.py",
+      "sha256": "40da4887de9c290d3884b2d3918f06910d49def7cdfa731e7256cec1f9085e11"
+    },
+    {
+      "exists": true,
+      "path": "scripts/cutover_delta_basket_score_v2_no_live.sh",
+      "sha256": "eb75ead7b0719666cea55950e6dec38eb8e4730f2c62be37eb47d9824631b4ee"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_production_ssot_apply.py",
+      "sha256": "7f0199b4f4307e25eb6719781ed246892d9580bad4a6972631f10dfce5daa4c8"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_migration_rehearsal.py",
+      "sha256": "b803f6167407ed0bc734404826e564c15eeff9840fae78d232767e5de2795d5f"
+    },
+    {
+      "exists": true,
+      "path": "scripts/probe_bayes_basket_target_writer_quiescence.py",
+      "sha256": "0f865e68b27b22928a87338f334f557637368b5179b3ef0a400d3abd846d80ac"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_hold_closure_audit.py",
+      "sha256": "258509344c5c68bc83ac10a304089f71a3433540a985e016abade4d4624ecdfd"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_ingress_replay.py",
+      "sha256": "e0b0f194537ec2a4ed10350127bb924baba34ca965e6955882baade0d7bfdacd"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_promotion_boundary_audit.py",
+      "sha256": "8f547de6152e9189343490de212e6b63c985d7149e02a4946105867ec5b088d9"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_roadmap_compliance.py",
+      "sha256": "5af4ee99078ad000d461cd4274d1bb9b89ea394a6b9e6f765639ebb8ca257767"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_resource_bounds.py",
+      "sha256": "907b144623c0aa609fa80a94576b5a8de522ffed9fe9ce1aa93082c648f12f5b"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_resource_audit.py",
+      "sha256": "a63477dbcad31d65d0b28d9207b797eae0c4bbbebf85d6e0dd3b22acee25b94d"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_performance_audit.py",
+      "sha256": "82c7b3b759c67d3a37adc90b30c671453015c51b3816191011a896237d887390"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_native_model_decode.py",
+      "sha256": "60e8596ce05a305a2b1a12e415af8a6d7cb02528a7d2e0833cc875be21feea05"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_model_arrival.py",
+      "sha256": "be24f7eee484296b1685946ea21808a94be558792fb57d85e02b0949955e2430"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_model_arrival_evidence.py",
+      "sha256": "28789783116468c76a4222af87dea118244b725c41caffab9fd1b45afea5d9c2"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_calibration_evidence.py",
+      "sha256": "78b143e4f5346803876e017ed26ddd916313ddeb18e3e0e89c5c95dc271c88ca"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_et_history.py",
+      "sha256": "ed01c6aa2dd2219f1457975cf788edd4c946299ba35b5751d1ba706b4c1d57f1"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_post_et_refresh.py",
+      "sha256": "641217cc6361c0572214a1cdcb9c7f874c1a3d2c6abefe282ec13251fe2f78b7"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_production_facts_baseline.py",
+      "sha256": "f8b00b58d43b03b83bb7ad63410a0f2aab87f4cd1c03777a6e785b6cd5322a80"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_bayes_basket_target_execution_vector_repair.py",
+      "sha256": "2b71819038b835bf0666659626e5f598441a11d014777e0f170af720212804d3"
+    },
+    {
+      "exists": true,
+      "path": "tests/test_materialize_bayes_basket_target_market_cli.py",
+      "sha256": "fb8f81a9de3b7ace407b9e6f873523bc8685abbe0125c8e6608ba949e611e952"
+    },
+    {
+      "exists": true,
+      "path": "scripts/reported_trajectory_no_dependency_audit.py",
+      "sha256": "d91ff777591258f81f1fece93ad256cffab9f00d0bf0b08f8d88e2aed7e161f2"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/canonical_event_replay.py",
+      "sha256": "602e55c813d72b0ff0d76ebb668307f72e72358e939e3b2a95b30790a11e1356"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/hold_audit.py",
+      "sha256": "0165efce2311a31b4931ae5b111b8c8e03df03dad748fa73eb3b326b9eae0c93"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/promotion_boundary.py",
+      "sha256": "9a9116060c193f506465cf064b10786214180c71bf23f1c50978b99a627bde4c"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/forward_scorecard.py",
+      "sha256": "c5f61843b5c5d9d8dd9ffcad4b720580f09dda925f1215dd2e28d00f8da8827c"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/forward_observation_store.py",
+      "sha256": "78e5f461ffceb7ed7299ff40c06f30fa502c150b4a219015417d9cb016386b08"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/execution_vector_repair.py",
+      "sha256": "cc5ae6a7604fba75fd832b8333bed5a9997430333cc4c906b74fb2054a222daf"
+    },
+    {
+      "exists": true,
+      "path": "bayes_basket_target/migration_quiescence.py",
+      "sha256": "067b4afc845a02d99f21a06dc3f5ceeba42689c133af049de7e2ff64736d7827"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_production_readiness.py",
+      "sha256": "7fe979d09aa7df39f5e7e90f34c5b6babcb885b107082ed1c94e5b044f4b12fd"
+    },
+    {
+      "exists": true,
+      "path": "scripts/materialize_bayes_basket_target_market.py",
+      "sha256": "0b632ac8bdc042b183c5c39c9a9efd5966da75a94f210901d9d6df03fd6b8e25"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_production_readiness.json",
+      "sha256": "7b06c2a0adeeefbc1d56c3f46b3b45ede4c513a018c6c7586bb1432622edc50b"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_resource_audit.json",
+      "sha256": "cab248c485dfa6f9111b7cbbedae021b1db46c2253c6c7664614a365deaa3883"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_native_model_arrival_decode.json",
+      "sha256": "eb85e626af69e76079828ae5f55b22fba9f5ade52db6f1227aaa32caad315141"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_model_arrival_evidence.json",
+      "sha256": "5e0f0b091324a705a72f744e3ccca36bef2f37340227de464302ec06be2ee3ca"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_calibration_evidence.json",
+      "sha256": "db74b4fe1409bea9ed616db5cc01d7f9df40727e96157c89e486a4026fd20a09"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_et_history_evidence.json",
+      "sha256": "9374b6e8cdb8cfb544601ecb602cac0a1f6cc9f17644fd0c9ce295453ba206a1"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_production_facts_baseline.json",
+      "sha256": "135966fcbf5f2f65fc8e57dc6fa6a9bb298a4117a5e6223d964862783aa04d99"
+    },
+    {
+      "exists": true,
+      "path": "scripts/bayes_basket_target_production_chain_rehearsal.py",
+      "sha256": "ec64663cbc44c1959f8f778e3ab421a1e719a706b08e46850a9b1ea7c7071d38"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_fault_matrix.json",
+      "sha256": "731f8831db0a485678680ee37bee37f59db04ba0e28bd5eafc3cfdb0c2d093e0"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_strict_asof_replay.json",
+      "sha256": "7fab3f8ccb7c772f1acae16a6d1427c439c07d2e4c91a0214f6e92e4915f4fd4"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_time_replay.json",
+      "sha256": "d1efff6d49ec06ec050b92882a57deb5da1fe6796045a2f87032ea3b9d7e7a77"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+      "sha256": "af4713a755e39a7dd0010018c6c3f8a8a40fb19ccb80a957403586a3f9090116"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_current_ssot_v4_rehearsal.json",
+      "sha256": "946528205efce7b37e42d3ddbce076284ea1bd59542cff84a0ab71ab6f6749e8"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_cash_manifest_candidate_validation.json",
+      "sha256": "bc9ae74644f20ad725430f7e8ac6103f4d5e05ad0e4b9a62a188559fd0f8da2a"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_writer_quiescence.json",
+      "sha256": "993735c21299910db81de8cd21234964aae34e6ee177221a2d16367d922f7772"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_hold_closure_audit.json",
+      "sha256": "c0edae05450ad4130dbf1381e2db7a0882527f558874b3ef9ae6bfa473d54324"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_ingress_replay.json",
+      "sha256": "b361204c688521b5ea5c57dc935f531c319a6a5ae63114aede1d438e58080f24"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_promotion_boundary_audit.json",
+      "sha256": "725f4b04c87a53b7e77893301db2fedad453e592ea5cd8b79ae651fb59b62a16"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_roadmap_compliance.json",
+      "sha256": "093793637ff67e1b396531dc5a22bd52a289e7a719fcdbd59659e187cbd5f2b3"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_focused_test_receipt.json",
+      "sha256": "bd30918ae731664243c6cfa4ed740b1ca5e315a5ca9c3d539cf83ef7e996705b"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/bayes_basket_target_production_closure_audit.json",
+      "sha256": "a64ad4345b25866ba16b7dc2c5a46a5e77512cd841e7a024740aafa9c1245e8f"
+    },
+    {
+      "exists": true,
+      "path": "config/bayes_basket_target/runtime_config_isolation_v1.json",
+      "sha256": "b486cbb3d5258b895f18fa643636447741a7b9166ec3a9844a2832ea518c1ce6"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/reported_trajectory_no_dependency_audit.json",
+      "sha256": "0b8715f30db252fadeafa04298847f0b5db5f598470a9beb62af9719481b13c6"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/station_policy_transfer_gate_m8_12.json",
+      "sha256": "144e280d2daed6a99f171baf54c796bf47c9b012e64dc8d94e5a55da056fbe2c"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/cash_phase_promotion_gate_m8_13.json",
+      "sha256": "6b4f5feef4020af52d45c4fdbc6a4ef9e5ade9783eb6ddc0b59023ef39935577"
+    },
+    {
+      "exists": true,
+      "path": "output/audits/station_policy_candidate_bundle_v1.json",
+      "sha256": "2d10388c2d4010556ef65e3c9dd4c0b8227410fb211c52f7a38d35ade8b689d3"
+    }
+  ],
+  "execution_mode": "production_no_live",
+  "forward_scorecard": {
+    "as_of_utc": "2026-07-28T14:20:00Z",
+    "blockers": [
+      "cash_formal_scorecard_missing_or_invalid",
+      "fact_content_sha256_mismatch",
+      "fact_content_sha_coverage_incomplete",
+      "fact_row_cap_reached",
+      "forward_scorecard_cash_not_ready",
+      "forward_scorecard_station_not_ready",
+      "station_formal_scorecard_missing_or_invalid",
+      "unlabeled_training_facts"
+    ],
+    "calls_order_gateway": false,
+    "missing_station_ids": [],
+    "observed_station_ids": [
+      "RKPK"
+    ],
+    "orders_submitted": 0,
+    "production_no_live": true,
+    "read_only": true,
+    "ready": false,
+    "ready_for_cash_scorecard": false,
+    "ready_for_station_scorecard": false,
+    "receipt": {
+      "as_of_utc": "2026-07-28T14:20:00Z",
+      "blockers": [
+        "cash_formal_scorecard_missing_or_invalid",
+        "fact_content_sha256_mismatch",
+        "fact_content_sha_coverage_incomplete",
+        "fact_row_cap_reached",
+        "station_formal_scorecard_missing_or_invalid",
+        "unlabeled_training_facts"
+      ],
+      "calls_order_gateway": false,
+      "cash_phase_evidence": {
+        "blockers": [
+          "cash_formal_scorecard_missing_or_invalid"
+        ],
+        "candidate_content_sha256": [],
+        "candidate_count": 0,
+        "candidate_fill_semantics": "no_live_candidate_fill_simulation_or_receipt",
+        "content_addressed_by_fact_sha256": false,
+        "formal_validator": "validate_cash_phase_forward_scorecard",
+        "real_fill_evidence": 0,
+        "selected": null,
+        "structurally_complete": false
+      },
+      "content_sha256": "4bff9ee82ba0a115342f3a6845f5862018eaf9e1e5a3e65cbb95fe0241281e2b",
+      "counts": {
+        "by_phase": {
+          "UNKNOWN": {
+            "facts": 256,
+            "labeled": 0,
+            "unlabeled": 256
+          }
+        },
+        "by_scope": [
+          {
+            "facts": 256,
+            "labeled": 0,
+            "phase": "UNKNOWN",
+            "stage": "P1",
+            "station_id": "RKPK",
+            "unlabeled": 256
+          }
+        ],
+        "by_stage": {
+          "P1": {
+            "facts": 256,
+            "labeled": 0,
+            "unlabeled": 256
+          }
+        },
+        "by_station": {
+          "RKPK": {
+            "facts": 256,
+            "labeled": 0,
+            "unlabeled": 256
+          }
+        },
+        "fact_rows_evaluated": 256,
+        "fact_rows_read": 256,
+        "invalid_label_revisions": 0,
+        "label_rows_read": 0,
+        "labeled_facts": 0,
+        "malformed_feature_facts": 0,
+        "unlabeled_facts": 256,
+        "valid_label_revisions": 0
+      },
+      "exact_vector_coverage": {
+        "coverage_ratio": 0.0,
+        "exact_vector_coverage_ratio": 0.0,
+        "facts_with_exact_vector": 0,
+        "facts_with_feature_json": 256,
+        "facts_with_no_execution_policy": 256,
+        "facts_with_version_evidence": 256,
+        "invalid_vector_count": 0,
+        "required_fields": [
+          "probability_sha256",
+          "official_ws_quote_sha256",
+          "inventory_sha256",
+          "order_state_sha256",
+          "station_policy_sha256",
+          "cash_policy_decision_sha256",
+          "economic_policy_schema",
+          "economic_policy_artifact_sha256",
+          "target_price_id",
+          "quote_observed_at",
+          "quote_expires_at",
+          "vector_sha256"
+        ],
+        "valid_vector_count": 0,
+        "vector_count": 0,
+        "version_evidence_coverage_ratio": 1.0
+      },
+      "fact_sha_coverage": {
+        "coverage_ratio": 0.0,
+        "fact_count": 256,
+        "facts_with_valid_content_sha256": 0
+      },
+      "global_blockers": [
+        "fact_content_sha256_mismatch",
+        "fact_content_sha_coverage_incomplete",
+        "fact_row_cap_reached",
+        "unlabeled_training_facts"
+      ],
+      "live_order_authorized": false,
+      "maker_forward_evidence": {
+        "as_of_utc": "2026-07-28T14:20:00Z",
+        "blockers": [
+          "maker_forward_candidates_missing"
+        ],
+        "calls_order_gateway": false,
+        "candidate_count": 0,
+        "candidate_rows": [],
+        "content_sha256": "dab6fb59f50c4dd312f93826aa5e985767f4a7983f688f2d7c11a3d3e8e46be0",
+        "counterfactual_pnl": {
+          "labeled_count": 0,
+          "mean_usdc": null,
+          "sum_usdc": 0
+        },
+        "creates_parallel_store": false,
+        "evidence_class": "NO_LIVE_COUNTERFACTUAL_PROXY",
+        "fault_scorecard": {
+          "fault_codes": [
+            "maker_forward_candidates_missing"
+          ],
+          "fault_count": 1
+        },
+        "formal_activation_eligible": false,
+        "grid_lineage_complete_count": 0,
+        "live_order_authorized": false,
+        "orders_submitted": 0,
+        "production_no_live": true,
+        "promotion_blockers": [
+          "realized_maker_lifecycle_required_for_formal_promotion"
+        ],
+        "queue_known_count": 0,
+        "ready_for_formal_maker_grid_promotion": false,
+        "ready_for_no_live_forward_scorecard": false,
+        "resolved_lifecycle_count": 0,
+        "schema": "bayes_basket_target_maker_forward_scorecard_v1",
+        "source_tables": [
+          "basket_policy_training_fact",
+          "basket_policy_training_label",
+          "basket_official_ws_snapshot"
+        ],
+        "status_counts": {},
+        "writes_production_db": false
+      },
+      "max_rows": 256,
+      "no_live_fill_isolation": {
+        "actual_fill_evidence": 0,
+        "external_fill_tables_read": false,
+        "isolated": true,
+        "no_live_boundary_violations": 0,
+        "requested_hypothetical_intents": 0,
+        "source": "basket_policy_training_label.outcome_json"
+      },
+      "orders_submitted": 0,
+      "production_no_live": true,
+      "read_only": true,
+      "ready_for_cash_scorecard": false,
+      "ready_for_maker_formal_promotion": false,
+      "ready_for_maker_no_live_scorecard": false,
+      "ready_for_station_scorecard": false,
+      "requested_semantics": {
+        "actual_fill_evidence": 0,
+        "blockers": [],
+        "by_label_semantics": {},
+        "label_rows_evaluated": 0,
+        "malformed_outcome_rows": 0,
+        "no_live_boundary_violations": 0,
+        "requested_hypothetical_intents_not_fills": 0,
+        "unknown_semantics": 0
+      },
+      "schema": "bayes_basket_target_forward_scorecard_v1",
+      "station_allowlist": [
+        "RKPK"
+      ],
+      "station_policy_evidence": {
+        "blockers": [
+          "station_formal_scorecard_missing_or_invalid"
+        ],
+        "candidate_content_sha256": [],
+        "candidate_count": 0,
+        "content_addressed_by_fact_sha256": false,
+        "expected_station_ids": [
+          "RKPK"
+        ],
+        "formal_validator": "validate_station_policy_forward_scorecard",
+        "observed_station_ids": [
+          "RKPK"
+        ],
+        "selected": null,
+        "structurally_complete": false
+      },
+      "writes_production_db": false
+    },
+    "receipt_content_sha256": "4bff9ee82ba0a115342f3a6845f5862018eaf9e1e5a3e65cbb95fe0241281e2b",
+    "required_station_ids": [
+      "RKPK"
+    ],
+    "schema": "bayes_basket_target_forward_scorecard_gate_v1",
+    "state": "BLOCKED"
+  },
+  "forward_scorecard_receipt_sha256": "4bff9ee82ba0a115342f3a6845f5862018eaf9e1e5a3e65cbb95fe0241281e2b",
+  "generated_at_utc": "2026-07-28T14:20:00Z",
+  "live_submit_authorized": false,
+  "manifest_sha256": "dfc66d86ad72d29476497df919c014bb24701653c0aaea75fa9a30d63c52dc7c",
+  "operator_gates": {
+    "capital_balance_and_epoch_must_be_explicitly_paired": true,
+    "explicit_pause_marker_required": true,
+    "legacy_auto_trade_decisions_must_be_renamed_and_retained": true,
+    "live_submit_authorization_forbidden": true,
+    "sqlite_online_backup_required": true,
+    "system_domain_three_service_cutover_required": true
+  },
+  "places_orders": false,
+  "production_mutation": false,
+  "readiness_ok": false,
+  "readiness_receipt": {
+    "activation": {
+      "calls_order_gateway": false,
+      "contract_sha256": "41f31971342ab7a81b0d69662575e4aaa739a5a086a87ef0b74041ac9a7f863c",
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false,
+      "path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "places_orders": false,
+      "schema": "bayes_basket_target_production_no_live_activation_v1",
+      "validation_blockers": []
+    },
+    "blockers": [
+      "target_execution_vector_lineage_incomplete",
+      "target_forward_scorecard_incomplete",
+      "target_materialized_inputs_incomplete"
+    ],
+    "boundary": {
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "live_submit_authorized": false,
+      "places_orders": false,
+      "read_only_audit": true,
+      "writes_orders": false
+    },
+    "calibration_evidence": {
+      "blocked_without_candidates": false,
+      "calibration_artifact_count": 108,
+      "calls_order_gateway": false,
+      "candidate_only": true,
+      "checks": {
+        "candidate_artifact_count_positive": true,
+        "model_provider_set_complete": true,
+        "oos_promotion_gate_complete": false,
+        "published_receive_timestamps_complete": false,
+        "strict_asof_replay_pass": true,
+        "three_model_available": true,
+        "truth_lineage_complete": true
+      },
+      "ensemble_artifact_count": 36,
+      "et_history_evidence": {
+        "as_of_utc": "2026-07-26T00:41:05Z",
+        "joined_station_days": 360,
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_et_history_evidence_awc_historical_candidate_20260726.json",
+        "promotion_allowed": false,
+        "receipt_sha256": "77202369d5f7c8d0151ac4e8ae1f3767755fe87ebfbeb44881b7d0c38f5d462c",
+        "scope": {
+          "excluded_source_lanes": [
+            "amsc"
+          ],
+          "excluded_station_ids": [
+            "RCSS",
+            "ZBAA",
+            "ZGGG",
+            "ZGSZ",
+            "ZHHH",
+            "ZSPD",
+            "ZSQD",
+            "ZUCK",
+            "ZUUU"
+          ],
+          "included_station_ids": [
+            "CYYZ",
+            "EDDM",
+            "EFHK",
+            "EGLC",
+            "EHAM",
+            "EPWA",
+            "FACT",
+            "KATL",
+            "KAUS",
+            "KBKF",
+            "KDAL",
+            "KHOU",
+            "KLAX",
+            "KLGA",
+            "KMIA",
+            "KORD",
+            "KSEA",
+            "KSFO",
+            "LEMD",
+            "LFPB",
+            "LIMC",
+            "LTAC",
+            "MMMX",
+            "MPMG",
+            "NZWN",
+            "OEJN",
+            "OPKC",
+            "RJTT",
+            "RKPK",
+            "RKSI",
+            "RPLL",
+            "SAEZ",
+            "SBGR",
+            "VILK",
+            "WMKK",
+            "WSSS"
+          ],
+          "mode": "allowlist"
+        },
+        "state": "READY_FOR_STRICT_ASOF"
+      },
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_calibration_evidence.json",
+      "promotion_allowed": false,
+      "promotion_decision_count": 144,
+      "receipt_sha256": "6dd4d23ae0fd97d70782df7631a6c9770b6a09a6302d0b3a95350df252c25b5e",
+      "rejected_only": true,
+      "state": "VALID_CANDIDATE_EVIDENCE",
+      "writes_production_db": false
+    },
+    "capital_pool": {
+      "balance_usdc": 0.0,
+      "capital_epoch_id_present": true,
+      "pool_id": 1,
+      "ready": true,
+      "reserved_usdc": 0.0,
+      "state": "ready",
+      "version": 422
+    },
+    "controlled_migration_pause_marker": "/Users/xiong/weather/data/bayes_basket_target_migration_paused.flag",
+    "controlled_migration_pause_marker_required": false,
+    "controlled_migration_pause_marker_token": "bayes-basket-target-m5-migration-v1",
+    "controlled_migration_pause_marker_valid": null,
+    "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "database_scope": "isolated_target_no_live",
+    "db_activation_alignment": {
+      "aligned": true,
+      "expected": {
+        "activation_contract_sha256": "41f31971342ab7a81b0d69662575e4aaa739a5a086a87ef0b74041ac9a7f863c",
+        "calls_order_gateway": false,
+        "execution_mode": "production_no_live",
+        "live_submit_authorized": false,
+        "places_orders": false
+      },
+      "mismatches": [],
+      "observed": {
+        "activation_contract_sha256": "41f31971342ab7a81b0d69662575e4aaa739a5a086a87ef0b74041ac9a7f863c",
+        "calls_order_gateway": false,
+        "execution_mode": "production_no_live",
+        "live_submit_authorized": false,
+        "places_orders": false
+      },
+      "state": "checked"
+    },
+    "forward_scorecard": {
+      "as_of_utc": "2026-07-28T14:20:00Z",
+      "blockers": [
+        "cash_formal_scorecard_missing_or_invalid",
+        "fact_content_sha256_mismatch",
+        "fact_content_sha_coverage_incomplete",
+        "fact_row_cap_reached",
+        "forward_scorecard_cash_not_ready",
+        "forward_scorecard_station_not_ready",
+        "station_formal_scorecard_missing_or_invalid",
+        "unlabeled_training_facts"
+      ],
+      "calls_order_gateway": false,
+      "missing_station_ids": [],
+      "observed_station_ids": [
+        "RKPK"
+      ],
+      "orders_submitted": 0,
+      "production_no_live": true,
+      "read_only": true,
+      "ready": false,
+      "ready_for_cash_scorecard": false,
+      "ready_for_station_scorecard": false,
+      "receipt": {
+        "as_of_utc": "2026-07-28T14:20:00Z",
+        "blockers": [
+          "cash_formal_scorecard_missing_or_invalid",
+          "fact_content_sha256_mismatch",
+          "fact_content_sha_coverage_incomplete",
+          "fact_row_cap_reached",
+          "station_formal_scorecard_missing_or_invalid",
+          "unlabeled_training_facts"
+        ],
+        "calls_order_gateway": false,
+        "cash_phase_evidence": {
+          "blockers": [
+            "cash_formal_scorecard_missing_or_invalid"
+          ],
+          "candidate_content_sha256": [],
+          "candidate_count": 0,
+          "candidate_fill_semantics": "no_live_candidate_fill_simulation_or_receipt",
+          "content_addressed_by_fact_sha256": false,
+          "formal_validator": "validate_cash_phase_forward_scorecard",
+          "real_fill_evidence": 0,
+          "selected": null,
+          "structurally_complete": false
+        },
+        "content_sha256": "4bff9ee82ba0a115342f3a6845f5862018eaf9e1e5a3e65cbb95fe0241281e2b",
+        "counts": {
+          "by_phase": {
+            "UNKNOWN": {
+              "facts": 256,
+              "labeled": 0,
+              "unlabeled": 256
+            }
+          },
+          "by_scope": [
+            {
+              "facts": 256,
+              "labeled": 0,
+              "phase": "UNKNOWN",
+              "stage": "P1",
+              "station_id": "RKPK",
+              "unlabeled": 256
+            }
+          ],
+          "by_stage": {
+            "P1": {
+              "facts": 256,
+              "labeled": 0,
+              "unlabeled": 256
+            }
+          },
+          "by_station": {
+            "RKPK": {
+              "facts": 256,
+              "labeled": 0,
+              "unlabeled": 256
+            }
+          },
+          "fact_rows_evaluated": 256,
+          "fact_rows_read": 256,
+          "invalid_label_revisions": 0,
+          "label_rows_read": 0,
+          "labeled_facts": 0,
+          "malformed_feature_facts": 0,
+          "unlabeled_facts": 256,
+          "valid_label_revisions": 0
+        },
+        "exact_vector_coverage": {
+          "coverage_ratio": 0.0,
+          "exact_vector_coverage_ratio": 0.0,
+          "facts_with_exact_vector": 0,
+          "facts_with_feature_json": 256,
+          "facts_with_no_execution_policy": 256,
+          "facts_with_version_evidence": 256,
+          "invalid_vector_count": 0,
+          "required_fields": [
+            "probability_sha256",
+            "official_ws_quote_sha256",
+            "inventory_sha256",
+            "order_state_sha256",
+            "station_policy_sha256",
+            "cash_policy_decision_sha256",
+            "economic_policy_schema",
+            "economic_policy_artifact_sha256",
+            "target_price_id",
+            "quote_observed_at",
+            "quote_expires_at",
+            "vector_sha256"
+          ],
+          "valid_vector_count": 0,
+          "vector_count": 0,
+          "version_evidence_coverage_ratio": 1.0
+        },
+        "fact_sha_coverage": {
+          "coverage_ratio": 0.0,
+          "fact_count": 256,
+          "facts_with_valid_content_sha256": 0
+        },
+        "global_blockers": [
+          "fact_content_sha256_mismatch",
+          "fact_content_sha_coverage_incomplete",
+          "fact_row_cap_reached",
+          "unlabeled_training_facts"
+        ],
+        "live_order_authorized": false,
+        "maker_forward_evidence": {
+          "as_of_utc": "2026-07-28T14:20:00Z",
+          "blockers": [
+            "maker_forward_candidates_missing"
+          ],
+          "calls_order_gateway": false,
+          "candidate_count": 0,
+          "candidate_rows": [],
+          "content_sha256": "dab6fb59f50c4dd312f93826aa5e985767f4a7983f688f2d7c11a3d3e8e46be0",
+          "counterfactual_pnl": {
+            "labeled_count": 0,
+            "mean_usdc": null,
+            "sum_usdc": 0
+          },
+          "creates_parallel_store": false,
+          "evidence_class": "NO_LIVE_COUNTERFACTUAL_PROXY",
+          "fault_scorecard": {
+            "fault_codes": [
+              "maker_forward_candidates_missing"
+            ],
+            "fault_count": 1
+          },
+          "formal_activation_eligible": false,
+          "grid_lineage_complete_count": 0,
+          "live_order_authorized": false,
+          "orders_submitted": 0,
+          "production_no_live": true,
+          "promotion_blockers": [
+            "realized_maker_lifecycle_required_for_formal_promotion"
+          ],
+          "queue_known_count": 0,
+          "ready_for_formal_maker_grid_promotion": false,
+          "ready_for_no_live_forward_scorecard": false,
+          "resolved_lifecycle_count": 0,
+          "schema": "bayes_basket_target_maker_forward_scorecard_v1",
+          "source_tables": [
+            "basket_policy_training_fact",
+            "basket_policy_training_label",
+            "basket_official_ws_snapshot"
+          ],
+          "status_counts": {},
+          "writes_production_db": false
+        },
+        "max_rows": 256,
+        "no_live_fill_isolation": {
+          "actual_fill_evidence": 0,
+          "external_fill_tables_read": false,
+          "isolated": true,
+          "no_live_boundary_violations": 0,
+          "requested_hypothetical_intents": 0,
+          "source": "basket_policy_training_label.outcome_json"
+        },
+        "orders_submitted": 0,
+        "production_no_live": true,
+        "read_only": true,
+        "ready_for_cash_scorecard": false,
+        "ready_for_maker_formal_promotion": false,
+        "ready_for_maker_no_live_scorecard": false,
+        "ready_for_station_scorecard": false,
+        "requested_semantics": {
+          "actual_fill_evidence": 0,
+          "blockers": [],
+          "by_label_semantics": {},
+          "label_rows_evaluated": 0,
+          "malformed_outcome_rows": 0,
+          "no_live_boundary_violations": 0,
+          "requested_hypothetical_intents_not_fills": 0,
+          "unknown_semantics": 0
+        },
+        "schema": "bayes_basket_target_forward_scorecard_v1",
+        "station_allowlist": [
+          "RKPK"
+        ],
+        "station_policy_evidence": {
+          "blockers": [
+            "station_formal_scorecard_missing_or_invalid"
+          ],
+          "candidate_content_sha256": [],
+          "candidate_count": 0,
+          "content_addressed_by_fact_sha256": false,
+          "expected_station_ids": [
+            "RKPK"
+          ],
+          "formal_validator": "validate_station_policy_forward_scorecard",
+          "observed_station_ids": [
+            "RKPK"
+          ],
+          "selected": null,
+          "structurally_complete": false
+        },
+        "writes_production_db": false
+      },
+      "receipt_content_sha256": "4bff9ee82ba0a115342f3a6845f5862018eaf9e1e5a3e65cbb95fe0241281e2b",
+      "required_station_ids": [
+        "RKPK"
+      ],
+      "schema": "bayes_basket_target_forward_scorecard_gate_v1",
+      "state": "BLOCKED"
+    },
+    "future_day_residue": {
+      "blockers": [],
+      "checks": {
+        "calls_order_gateway": false,
+        "future_decisions_are_blocked_no_order": true,
+        "future_residue_isolated": true,
+        "no_order_intents_or_capital_downstream": true,
+        "places_orders": false,
+        "started_registry_excludes_future": true,
+        "writes_production_database": false,
+        "writes_target_database": false
+      },
+      "consumer_filter": {
+        "future_scope_excluded": true,
+        "started_registry_future_scope_count": 0,
+        "started_registry_scope_count": 23
+      },
+      "formal_input_future_partitions": [
+        {
+          "currently_future_settlement": 15,
+          "invalid": 0,
+          "row_count": 139,
+          "started_or_closed_settlement": 124,
+          "state": "checked",
+          "table": "basket_probability_envelope"
+        },
+        {
+          "currently_future_settlement": 0,
+          "invalid": 0,
+          "row_count": 510,
+          "started_or_closed_settlement": 510,
+          "state": "checked",
+          "table": "basket_official_ws_snapshot"
+        },
+        {
+          "currently_future_settlement": 0,
+          "row_count": 0,
+          "state": "missing_or_no_settlement_scope",
+          "table": "basket_confirmed_inventory_snapshot"
+        },
+        {
+          "currently_future_settlement": 0,
+          "row_count": 0,
+          "state": "missing_or_no_settlement_scope",
+          "table": "basket_order_state_snapshot"
+        },
+        {
+          "currently_future_settlement": 0,
+          "row_count": 0,
+          "state": "missing_or_no_settlement_scope",
+          "table": "basket_cash_phase_policy_artifact"
+        }
+      ],
+      "future_residue": {
+        "cycle_count": 0,
+        "cycle_ids_match_decisions": true,
+        "decision_count": 0,
+        "downstream_counts": {
+          "basket_target_capital_reservations": 0,
+          "basket_target_order_intents": 0,
+          "basket_target_order_reconciliations": 0
+        },
+        "non_blocked_decision_count": 0,
+        "non_prepared_cycle_count": 0
+      },
+      "operational": {
+        "auto_trade_decisions": {
+          "created_before_settlement_start_count": 0,
+          "currently_future_settlement_count": 0,
+          "event_dates": [
+            "2026-07-27",
+            "2026-07-28"
+          ],
+          "row_count": 625
+        },
+        "basket_target_execution_cycles": {
+          "created_before_settlement_start_count": 0,
+          "currently_future_settlement_count": 0,
+          "event_dates": [
+            "2026-07-27",
+            "2026-07-28"
+          ],
+          "row_count": 625
+        }
+      },
+      "residue_definition": "created_at_before_registry_settlement_day_start",
+      "schema": "bayes_basket_target_future_day_residue_audit_v1",
+      "target_timezone_authority": "market_registry.settlement_timezone"
+    },
+    "main_chain": {
+      "blocked_at": "OFFICIAL_WS",
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "final_p1_chain": {
+        "blocked_at": "OFFICIAL_WS",
+        "ready": false,
+        "requires_auto_trade_decision": true
+      },
+      "live_submit_authorized": false,
+      "order": [
+        "OFFICIAL_FACTS",
+        "THREE_MODEL",
+        "SETTLEMENT_ALIGN",
+        "CALIBRATION_ENSEMBLE",
+        "P0_P1",
+        "OFFICIAL_WS",
+        "BASKET",
+        "DECISION_RECONCILE"
+      ],
+      "places_orders": false,
+      "preliminary_p0_chain": {
+        "capital_authorized": false,
+        "final_authority": "P1",
+        "intents_written": 0,
+        "orders_submitted": 0,
+        "preselection_plan_count": 0,
+        "ready": false,
+        "reservations_written": 0,
+        "state": "BLOCKED"
+      },
+      "ready": false,
+      "schema": "bayes_basket_target_main_chain_status_v1",
+      "stages": [
+        {
+          "id": "OFFICIAL_FACTS",
+          "label": "官方天气事实",
+          "observed": {
+            "observation_facts": 20688
+          },
+          "ready": true,
+          "state": "READY_EVIDENCE"
+        },
+        {
+          "id": "THREE_MODEL",
+          "label": "ECMWF/GFS/ICON 三模型预测",
+          "observed": {
+            "complete_curve_count": 135,
+            "model_provider_set_complete": true
+          },
+          "ready": true,
+          "state": "READY_EVIDENCE"
+        },
+        {
+          "id": "SETTLEMENT_ALIGN",
+          "label": "market_registry 结算日界 exact join",
+          "observed": {
+            "joined_station_days": 360,
+            "state": "READY_FOR_STRICT_ASOF"
+          },
+          "ready": true,
+          "state": "READY_FOR_STRICT_ASOF"
+        },
+        {
+          "id": "CALIBRATION_ENSEMBLE",
+          "label": "模型校准与组合",
+          "observed": {
+            "calibration_activation": 432,
+            "calibration_ensemble_artifact": 130,
+            "calibration_model_artifact": 254
+          },
+          "ready": true,
+          "state": "ACTIVE_NO_LIVE_ONLY"
+        },
+        {
+          "id": "P0_P1",
+          "label": "P0/P1 温度概率",
+          "observed": {
+            "basket_probability_envelope": 139,
+            "stage_counts": {
+              "P0": 34,
+              "P0-M": 2,
+              "P1": 103
+            },
+            "started_settlement_p1_count": 103
+          },
+          "ready": true,
+          "state": "MATERIALIZED"
+        },
+        {
+          "id": "OFFICIAL_WS",
+          "label": "官方 CLOB WS 盘口快照",
+          "observed": {
+            "basket_official_ws_snapshot": 510,
+            "complete_scope_count": 0,
+            "incomplete_scope_count": 3
+          },
+          "ready": false,
+          "state": "BLOCKED"
+        },
+        {
+          "id": "BASKET",
+          "label": "篮子计算与持有计划",
+          "observed": {
+            "exact_scope_blocked_count": 3,
+            "exact_scope_count": 3,
+            "exact_scope_ready": false,
+            "execution_cycles": 625,
+            "execution_cycles_future_settlement": 0,
+            "execution_cycles_started_settlement": 625
+          },
+          "ready": false,
+          "state": "BLOCKED"
+        },
+        {
+          "id": "DECISION_RECONCILE",
+          "label": "no-live 决策与对账",
+          "observed": {
+            "capital_reservations": 422,
+            "decisions": 625,
+            "decisions_future_settlement": 0,
+            "decisions_started_settlement": 625,
+            "non_blocked_decisions": 0,
+            "order_events": 0,
+            "order_intents": 0,
+            "reconciliations": 0
+          },
+          "ready": false,
+          "state": "BLOCKED"
+        }
+      ]
+    },
+    "migration": {
+      "blocked_execution_vector_lineage": {
+        "blocked_decision_count": 625,
+        "blockers": [
+          "blocked_execution_vector_lineage_invalid"
+        ],
+        "calls_order_gateway": false,
+        "candidate_decision_ids": [],
+        "covered_count": 203,
+        "invalid": [
+          {
+            "cycle_id": "cycle_3dcdee29dac888d19f79014f59e32741cc6c5936",
+            "decision_id": "decision_e0154bdf916e1923340a1ae46ba2efbced4fe9fe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_327a495358df260194594027d2bfb1fcf422b92b",
+            "decision_id": "decision_d299c3bb1ade90c0a7f997f9e987937c94af5f81",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_966a709924dbfd1eeae7f4821c4dff29648558e0",
+            "decision_id": "decision_75e84d60bb3587a39f11a9ebea958d74092918e4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b226c1fb9827e944cfe1af60660868e98b20f455",
+            "decision_id": "decision_542037054a58cb373891c3a8061d5b2baa93fe5f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a25acd0f7b54200d43d4e5d081244baf34954c9f",
+            "decision_id": "decision_9217b2615fad9285cc48b7ca8866c1fd67171ee5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_47c0c371b611f0cd39345c373a64ddbd421f6707",
+            "decision_id": "decision_794fd5c83dccb82d4838bf4a16f4ffec7481c56e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_57c6ef8f4e81b4bee456ed07cfe4c67587d1c498",
+            "decision_id": "decision_c8f52f761586961a7155b9871b51fb6f60b57cf4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7f38a54f6f935625e590fe3bd73a6f377e6c90da",
+            "decision_id": "decision_a30e4a25d0e5ae9345d203351da49b66a1cd8c92",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0ec3085fcc8852c0574552aff8c06f87e60797f7",
+            "decision_id": "decision_fee9f9a3c7095f845e2761b66f1eba95addce5bf",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7c831c901d4140180bcdf3944d0b9942905bbdd8",
+            "decision_id": "decision_e4eaee42235a1c7fd10d9ff6bc9d6f5a3922d4f2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f2b3e4c72678751e0ce3dd2c42584b328ac80522",
+            "decision_id": "decision_5542ddd494cca4c246ceceb2e945a0b50a634357",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2a0acf2472dd78f4625c5b9a31a8af6f5ff4ee57",
+            "decision_id": "decision_9bc26021e0cb154e0ae500bfa5e7f396ca894154",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_942c2ca5b4fe0e75a2f15b561334b429f2217844",
+            "decision_id": "decision_f50e12b2987c378dc5a4d777fd9f493494977cbd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_614fc5b9d6d84763e642a2ae3085b24d0cf753a6",
+            "decision_id": "decision_aae64019ab7d1ac89fab1972aec898c4c903442a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fbfdd94d4bff2c812178abf98479dd206043cd5c",
+            "decision_id": "decision_54abc5dd28412a5c86641567e2da76b21b8f37ff",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_01421ae2981c6f6ef88e4225b05e67e0967b4ce5",
+            "decision_id": "decision_bfd26c54a3fb221917f711468853a306463c26e9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3988c8c8e0846a01915a8e095df1b6986bd14bfd",
+            "decision_id": "decision_9f391c6670c3507e99cbd3829fb6a510f986d236",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d79efe2ccbecc228eb10f391c2fed428a651e3be",
+            "decision_id": "decision_440c716060d25ee60c330813763f3578c26376fc",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_07eadbd642487771bb8f47d91f84d90a6261979b",
+            "decision_id": "decision_4e5501cb984bc60a1c596243fc1307f5d6759176",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a74a50ac3296c6803ea8b94c3328f8574e6f0b8f",
+            "decision_id": "decision_4d629dc7914e458701c2fe0c7d6ee20d73921745",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fbaacb4c42f506bdab875fb05c949df8db17fc90",
+            "decision_id": "decision_60c65547d39503b2cd566be029288565021273e8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_73c535dadb71f61293c86d1f30d594ba9296868b",
+            "decision_id": "decision_24594225ff663e8dd0e8aaacb943483ed7544137",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b6f016d120483e824a41bda2988ef0ea5f3cb1cd",
+            "decision_id": "decision_ddabdf0d8005ff321a19b9aabb2d136ca6008e4c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f3cc4ae0159623ef39a0a7ac3ff0000aabbfab29",
+            "decision_id": "decision_564c73b47bb42499aa06722900e5eed0522f21d4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ea2cf7045c419b821abd2307d6cf02e58222977c",
+            "decision_id": "decision_2f2a8ff8734a14a6e4d3a08e532d79812b87bd0a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_27848d6b80c3ed92d32601bb3457eb4594ca3bfb",
+            "decision_id": "decision_33098f6fe7884167619d2b840ce70c3fa3e2fb3e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a213aeb916f8b023422d893351d63690c0de983c",
+            "decision_id": "decision_1b0ddeabbc5507b2e0fd5fb8c9b23d15805375d9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d60755e8268258d6d8167fb409fdca05a893baf5",
+            "decision_id": "decision_5efff1a8ecfcd918be636b3cfa3f33c2a9806f90",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_92e7285ff98a5462fe42e383d343c4d9ab2cab54",
+            "decision_id": "decision_cb09135abdcbef434c0e476202473013f41452d7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c45fb0488b68dc4734cee69d0a83546f668e9368",
+            "decision_id": "decision_0a3a22e81562a6d6baf0ae1e3a883f3971ffc060",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_75fc0dfbf1cdd232b305dab3ba4e666ae0cff553",
+            "decision_id": "decision_93c53094a6a37ebcb7b49556a3af0827635d08a7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_404cac5a5755634ea29574fec329266746f39c4e",
+            "decision_id": "decision_2acb23b4c7c4352fdb18041425d0c0fe4ff034ba",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3a85a3cebfdcb9900f734cf2fbb191a875bc7712",
+            "decision_id": "decision_db5643e51d00ab818911cf1948322f5d3b9cdbc2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f4c87a0700da48972bfcb986e5be1cb826d638b4",
+            "decision_id": "decision_43444e6b7ea9516c95b1399861d07bafecc0fd64",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_298a38542e7039fef5190364ddef25012930f0e9",
+            "decision_id": "decision_e2ab2377e2d16536d917f25192adce0542e472d2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e1b8abdaacf80d61e6808641c2b789f56198a46f",
+            "decision_id": "decision_f190245ea361cf944d223d9ce41311d654436342",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ea6182ea7ae50f4dc11f4b6820c5c1c6255e2d8f",
+            "decision_id": "decision_7a6b3b0dffe0f44d48344bf45c2381a746518cc0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6713217e54ec23af1e59bf9271751ab9f3caae7f",
+            "decision_id": "decision_48fe842f439e1b017e93afa4db0ea010691c263c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2287f9b97e5a756eaae21d0362a1147fcb8388da",
+            "decision_id": "decision_250ca89841661bdbb5dd6b1567ef2fbad45c0458",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a302faea4dd2839d77ff7ac968498700d816b30f",
+            "decision_id": "decision_af824c737bf0a92d1e1d7406cbd03bf4c0473dde",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_716d6bc3db5a8e1852b58c2d74e7813766089f24",
+            "decision_id": "decision_fa98d3c3ac00cd7925b6063426cb6619ab2574c2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fc652e16a5969e3ec6bd671fb54510503edf9949",
+            "decision_id": "decision_f96aef09a19df2ae6a59322d4ba30c7bcde48203",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_948851291cae9c2cab548ada29197319f785393d",
+            "decision_id": "decision_6f0a39facfcdda5625abf84b04446e220ce7d064",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c97b4dafff4e3a7ba349d7916d207c51c32cef7b",
+            "decision_id": "decision_2ef390e1f10a08d16e51381674a73adfb2a5806a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_74211d05b8cfa53e91a2f74f14bb8bf4c58aabc7",
+            "decision_id": "decision_c817ea2d018f4e933f5ee8dcc6c975bbe7a10027",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ee1abbf4ae8370ba16d0baaed308af3fce0b9d59",
+            "decision_id": "decision_c0de8cb7ea122922fdd02f7a100cb39b9e5441cd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f0bfc1c1334ec0547c99859fa726560f72f4b566",
+            "decision_id": "decision_e131aebb75881c8fef5bb71fb60ceb74e2af43e0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7e18cf035c3532bc0e235c34c34ead72435a4245",
+            "decision_id": "decision_adecbd5ebcaf90c21e8daf0235efa335a785d7e3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e943103340e73810c711bd19db45be31cd449542",
+            "decision_id": "decision_3739b4c8b5e3e5a52d700abe49770048f02aed21",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_eddc296b59b86bc7cac0a73dbfa9aebebe26cd16",
+            "decision_id": "decision_5657502281b8a58932fca116f693ce3b365da9dc",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5d16d58b00b7ff58ffbcc2a8ba3d68a034fe1b09",
+            "decision_id": "decision_a10bcca9025a5e2e8d123a3537fa4054d1ca8b27",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a56adfb780c27dbbf3707d99fd57cebf66306aae",
+            "decision_id": "decision_d7cebc1aea00dc3881b1eddb211fb1335bd73354",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_92aa13a2b70273357201d95318dc74e2fe056afc",
+            "decision_id": "decision_82c52c6ff6b9927a1e6ed2dd527a0cb82b1db20a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_03a78faf48e9f1b178406338605b7b3788ad82a8",
+            "decision_id": "decision_886066d973276b83b8c0e78f0fe7da2139d11565",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3368ef9b0fce15be108fd0da9551eac4174f4e63",
+            "decision_id": "decision_3b7ac2e65d359fbf666ff11ec18e590c6c51ac03",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b8111ca032b70f32cd85b841b1ae2abbf17c68ec",
+            "decision_id": "decision_36fd2fad68cab01cc5a3d75f94561c1d0a7afa7e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1da683cc4e2665c0c4d62aae7e94174c84381497",
+            "decision_id": "decision_da39cf1c434fed5299dd912c3337f4c826f8af17",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f5110be5509d5283c9cc2ac09156987ce8c92515",
+            "decision_id": "decision_feacaa9f4242af2e5f637407f9f9fced43f8b1c3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bbc100c6c64b0dac5260936013968120e133a8a8",
+            "decision_id": "decision_fe0766aefe3a3cf8fbec8c318ae6c253fd4f0fe1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_25c7ae8a64b67677901ed06a3ce28f76b6c00d90",
+            "decision_id": "decision_47ab871d50b14f01de481fed9c0e49a896889ae0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_584cebd05568f3608b91229ca37ee23c368a9990",
+            "decision_id": "decision_bca53be3869ed03a3a2aab5a84e160dded72e6d8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_60d3d7bf292a8ecbe1203003f0db72b0d3e2031b",
+            "decision_id": "decision_4b5d04d477e0955b8cb2b6f4d811173ea4eb2323",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a53441ab1cbaca8bcd071cc5f2da702bc2054622",
+            "decision_id": "decision_3c71708cdc28f2e69cf2d9a663c079348149ea9a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b58d853df75383669ebe77f8b1656660fc072264",
+            "decision_id": "decision_0c78a70e9685958cd8a6a3dd2c92b543a4e60a30",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9376152ab733078bac903ba71eb1e44cdd8c6a77",
+            "decision_id": "decision_4e2e8a06af12d9bd543ca6a9cdb421af04a6d888",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_25463ebe383577108c33765a59fe2d8987463e06",
+            "decision_id": "decision_28783a3c5cd68b5f5b71596eaa198757ca37ce74",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0b3de959f6c63653a38feee350fddc1ffb3c4e76",
+            "decision_id": "decision_398f0fa1a8074544a4cd3c62b75453f4d357652a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2fd3469d3e7994c83a6ceaae35c0a350af70e00c",
+            "decision_id": "decision_bdefb5ad4a9885250d42893158f3da9dfc9c699a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_400ffc6a2d528a0cddb0cc788eccb54dda9693b4",
+            "decision_id": "decision_7cae4889ea7ac4b912c710739e7eca0e651aadff",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1c9b550a3cee47d2f2a9c59e9d56d3a8e531fdd3",
+            "decision_id": "decision_8089a6d4bed8796b02c097d07e37ac8c500ac66a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_eda9216cd0f71aede29df20d2b76afab0b5e3f8b",
+            "decision_id": "decision_90f444ff4a4c60a7da7c1cca39439dc67958ee4e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1196a80c9233b3b98e6feb90059488156cc774eb",
+            "decision_id": "decision_43be7d2646cac1c626c498b74f7f86993f503e42",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7bba825736c3b7d4372db7dae520ebde6d959157",
+            "decision_id": "decision_c97a648c38ec3cf47df82039855a2189b6a031c0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_99878c7613c0d943fe1e397b941f4dce52ffe5ac",
+            "decision_id": "decision_23806a9d27cc626666701f6564710ee0371e5847",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fda99fd8f6ca9537ae15e28635f394ed19350724",
+            "decision_id": "decision_6f798ed338c397dea3e52b45dd57d179dd775d7d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d96becc0042c860dad8d3aa1382df2af4fc9820f",
+            "decision_id": "decision_91ac999b855d93263fb1fe1e202351a5435315d4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_dc45eece6ab53bc952e3b90f39c4dcbddb04acd9",
+            "decision_id": "decision_1b257a2dde85422d9e29a3f4fee794dd073fffb7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_be881169ce85dfa95d7c9ccf80e765f20c192875",
+            "decision_id": "decision_4ad878f14d770e820d1b65ff78bf51820542932c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_36187b9051ae6b6aa461df7843b8bd2174423817",
+            "decision_id": "decision_111ad7003e2976d8c06cc9bd32bd8a597dfdd9a6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6eb93c8d141870eea0352e938eb58f1b146f6d53",
+            "decision_id": "decision_a04f984e5f350ba3243159400296cbebf6269104",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ca95429aec7389d3a8df229c1276793fadaea243",
+            "decision_id": "decision_5eab6e29143374d7ff2cbb456ff6f38d40c42022",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_cc7762607cd4c370e1f2131cb9cc6478409dc145",
+            "decision_id": "decision_3db4e3fe576739217fb600c50409fa79bff1acd3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0739454ca2d4ca8a9091846208e538e1c3486a24",
+            "decision_id": "decision_e49c0ddb77a75d1dc75f892fab84ce729d60e476",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_051d043f25147491f5a591c913f4fecd3fb2a7c2",
+            "decision_id": "decision_bb68d6fe1dd9d2c00d775fbe2ac6b5dc8d07a27f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_09107e844c380da915296beed3e452cc9217633e",
+            "decision_id": "decision_81e9b8d9aec8187632fbd2ba4e13fc75a78f3c63",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6f11e5402bf27cf00d6c09a703d061d8de51b31c",
+            "decision_id": "decision_6d65104571ddca2e92f20da0e782cb1ee8e30026",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f184c9d6df25c0337ee8b54f64c7944b519b0953",
+            "decision_id": "decision_af37682f849b17205bd7b1babf8f3e5be1365e21",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_721d58bbbfd8940feb4a026dc0f4e8cd582f1fd3",
+            "decision_id": "decision_7f2c11b46f79394576d6c24730bfa9ac709258c2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3def3c07894d49385f5697d6ba61ac18849afbea",
+            "decision_id": "decision_50b030d7d623583cc87038a369b42611d3209263",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_23c1fd8dd36e94652beba220e9640e4856d6f159",
+            "decision_id": "decision_a0eebeb199e60dd688c2f4ed12a19079a760a966",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7f6ec6dd18e5dedc2602b69c1eac74c4ce38fd53",
+            "decision_id": "decision_3c73fbb9e43cdca9216f0a4cfb1380d3620a27fe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5cf6306afefe8ea61ba29742846d032a0020cb9c",
+            "decision_id": "decision_ea18bb03d1a1166e439a5660be94be44feb1936c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2391103230e8be770619b7923dd17c6d5a5a5b59",
+            "decision_id": "decision_6647c4999711fa4382b366fcf5aeb1acc53ae67f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7e5cd37958f5c4ef0c1a76298ed770a0c19b6439",
+            "decision_id": "decision_afa93476ce6e9bec44286e62bd9b2c79a0c4e1af",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e2fccb04b4cbce2e2a63dfc1cc270a2c59f67f1b",
+            "decision_id": "decision_b91c1f00788434d7fc9829dc461eefc1a7a696fe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ebcfd69cc05f3080ad191d6b828f1a535066fc6f",
+            "decision_id": "decision_ee43c0ac13cb31cc0d9f8fc60b58d13ae2b21e3b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0f00bf84b2dad70e88468087a761593f767b17c8",
+            "decision_id": "decision_ee06bf7c1f949c654f1dbdd25446bc631d8169ce",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2372e2d0df6d087da0cf7990b8d421bc9c78533b",
+            "decision_id": "decision_3fdbbe936b7ec319e0d56767d592f6b0339a5175",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c1fb639561d1113a4c62f9acf96b9f347c31bcda",
+            "decision_id": "decision_e696e4c2aff14c1fe6b99351c27961c165d7bf4d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ccf57597366b648ae936e82d6333ed8ab62c1e0e",
+            "decision_id": "decision_e3cf1ab2e846e0fa7366272b560ce239d1c2d594",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d989238cdb62fc096beb89d424bd9bbde7266b35",
+            "decision_id": "decision_aeed7395461e3e407fb3bedcfe1127a3e628b7b0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_37dc6bff74db5646e93e9400da63f5c51391b9ef",
+            "decision_id": "decision_cf43dceae5198588a77d823f6a13f8fefc99a290",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c32f5726f1f011fee4cee7ac02fcb616d89997c5",
+            "decision_id": "decision_45424ab1552834ca79cc2eba351cd8d36dc24d8a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1e854eabbc5985da8f6da8ff63363497b5647769",
+            "decision_id": "decision_28474c65ee8aec40f4e1d42ac6aaf70c09e0c461",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_81ea72cc3b0614b5afec8cefbf457b0da50c4046",
+            "decision_id": "decision_4f51d4d96bffa521547e300f313c3bfad0ccfadb",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6cd18f7862adf53faa26791bdc91dfb7ac5095f5",
+            "decision_id": "decision_5a4e8c77df0cbb99bdbc3c7164eb3c298ad46dca",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c817445ae821a84e2433ddf9c705c4ff23c0a0c4",
+            "decision_id": "decision_62e342d7a43010f5ae9d0e3fcf20882d6da74d50",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_27bf90cbf9e2a237ab25feffc7502172a13d9efa",
+            "decision_id": "decision_7ddb53402fd95637689a5370b09a57cfa3342fab",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_601eed31ae403b1945b0a97ddafe66a0467ce04e",
+            "decision_id": "decision_f137d9b6a7fe0894674581c8db7bc48da9f951b5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e758ca078742c00173ecce395c9303881924fc44",
+            "decision_id": "decision_eb45e5949136df9d22dccfbbd924155a4275f271",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_81dfd11962470a66540a648ca15cc10836197cfb",
+            "decision_id": "decision_558bdcb03f14053ca2dce06b43fd8798cb969eac",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5fe72ab4a02241637d676311cabdbf90f865c877",
+            "decision_id": "decision_62a7b398c8aa2e8f11e8408aeea2277e912d8cf3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f78c03e121da798ac5eb3970782af9c151fba19c",
+            "decision_id": "decision_c4de2b31044a7c1d5747ecd5e7a93dfe6926af0f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8e8f1479f994d0d4d3187a46575690ca22f1067a",
+            "decision_id": "decision_92f56ff68c35bea03f2dbb1dcc4b5d2e3a210a68",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3eb8c87a5216d10c75cb3603880878883b98a09a",
+            "decision_id": "decision_a19a6366d2e5b116c407b4ad4e576d196bfb3990",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6f4fdc718f0e86438ef669b41d149c1958013335",
+            "decision_id": "decision_626f87e98b3ef53c92afb44be8cb63eaabaaabc2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_492c90a13c6d0183248bb0f155fda5b4262565c1",
+            "decision_id": "decision_3d82d5f75f7776d98dfa105dda0acd1fea6e82df",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fe74a0e76b7398a3421068da4a23f4ca8a21e525",
+            "decision_id": "decision_c010059c3fa18caa6723dd5ea0d8e0bdbcda2bf2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_58636c7420c8a41447230a60cd11e33b1a0eb349",
+            "decision_id": "decision_8d6ba0976d131e0c07fb636efa93928db8167037",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_148f81655061e186928475534e5e45829f389af0",
+            "decision_id": "decision_cf5756e6897be121b41c7fcab2b8dd689bbdc828",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2885efa92f65d5a8592aab7f5331613f3a478598",
+            "decision_id": "decision_39449ddc13ec2009e475edab67635341b0e78f11",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a2bc8424b47412171af35abe8b0295e1c41e71c7",
+            "decision_id": "decision_64507862dcbca3b17b1a20dc0634b5e804f7b140",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e36b9828bdd2820b9427057e2f8a272f68959963",
+            "decision_id": "decision_c11e7344da084511ed8ce49f52cfac369ab8c4c7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_604bcc9fb01590f4b6a5f44b0ddeb6ae70d8abe2",
+            "decision_id": "decision_13eb30b8c5e2be08e2f3c0ffebe82286c7c85a1f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1b42d3aae131ce0025b66c0e7ab0c00c33e613f1",
+            "decision_id": "decision_bb1eefaad7eeab93c1c2882823e8790b1f631b03",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_893b4a31d155a495e08d98bf9ef6f0d188fdc27b",
+            "decision_id": "decision_54746920f69d1085419e30d27e315082a902f41c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_12da401f54b0e074beb98da220f3c4498672ad80",
+            "decision_id": "decision_faea0273e005115fbfeacd269e3a06eb0b80737c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e1c24c10ee7b0dd0a2ce3e980758d3777a9c1904",
+            "decision_id": "decision_8cbe123633c979e5992771ec9ea3aabe7b746cb6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5449e2a6f8dc43bb471990836207301e2166e1a9",
+            "decision_id": "decision_53a01395f79501152511c23974c01c4c095c8df6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2114c1ffb07c1d8294706f90a880bb794f955645",
+            "decision_id": "decision_378c1957c2b204d86c80e18908f50a48481c67f1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5f8d1b53b8afe24e125bb992cde2a0a857b14865",
+            "decision_id": "decision_986e19a79049c866cfb8e77f0c60be7da3096ed1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_26072b5af1936897c10d8099343c0072f4c4d2ea",
+            "decision_id": "decision_3530af3599e0df85e1b5ee4a507976372f20be97",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_22c44eb49f928afaaed7ca00b60ad0e63a736185",
+            "decision_id": "decision_b6eee078a49a47708b54fa82cb4ce79abaf6d8b3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_500d4dfcdbd7ceef0238244bb0f66f3eda5099d9",
+            "decision_id": "decision_c9d5383afa749010054373094f9a11dd52c43c65",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b8282621c011367c6228ad07bcd05abd8fdcc60b",
+            "decision_id": "decision_fc85cf9f5296e894785d9ab74f19e46f9cfb76d4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e771a46ddeeb2e81a2d62d357b402774a2db64ff",
+            "decision_id": "decision_e25be0d63ffa8c05b3a888cf06abcef58a6b26f9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_dba4259a3e47f54aae10079d3724345b0f1e2fdb",
+            "decision_id": "decision_0d43d54d4257eb297025da903aa4a38739c03842",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2195d3cf44fe66e8024cc0be0eb3f5f6c5946091",
+            "decision_id": "decision_2bee9f81ceff5ccbc24f90caffcf8d8eb0e6560e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2994548c9b706d96ca372c72c2e24fa9bd7b1539",
+            "decision_id": "decision_5406db7e0a3c223d5c7ca31e76dc249ab725b366",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2bacb01502d534e7d70e731715b9cce31039fe8b",
+            "decision_id": "decision_32e86d5f9902b90d9177d5132a5fd7b5eedde162",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_cd0f71022c87b1728962ab412559f74b64137b77",
+            "decision_id": "decision_9a8aee49f10fd0121dfe9742e988b5ec2893b2a5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4302c341953cf1f2833a40f7e7f915f77f1d1333",
+            "decision_id": "decision_ff73292a63c4395661caf7545bf25ceb5908e5ee",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_80c38afb43efaa33d58f695fab9ebde726a21318",
+            "decision_id": "decision_ee64b075c0f7cd47b2345c970c9274c2872719d6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_42c55653be7c5749ca9a2f7940020a8c08286c05",
+            "decision_id": "decision_4cf283ec5121ebcab938f4efc9439bf46dabd478",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0969f6c6899a409b4042e363774408566cd9be33",
+            "decision_id": "decision_cacd5c8874a0be74c9c728ec6a27c59b4556982e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bd5824e751be2d3ba071e73fe8af033962af4798",
+            "decision_id": "decision_1b17b65f6836f12786aebee22250293a3a5b46ca",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e0198b6aefd2abe6b15f7b3f5b29317e718226a6",
+            "decision_id": "decision_886b93577c908a6a1245c87196fa7f4823e5e598",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8bdb68c27c7555883437032bec6723e9e90592d0",
+            "decision_id": "decision_cf8760933d357882f78402882efbeef430368e2d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8a81d54966bd654ef47d3a3fae563b06e32b0429",
+            "decision_id": "decision_e10814d65d4bb071169054bc1abe4647b4e8632b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_09da75a2c29895cf3f8405d3f5e772cb8f08d6a5",
+            "decision_id": "decision_a2f86c507aad0216aa1d52837a4c2caedf9d5008",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_46d689bd08d8478f0f9dc3447ed4874ad67e5b1b",
+            "decision_id": "decision_e3cf1be6e85a960878f8c7a5fb5d3fb9a7e341c9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8cd5bd4d56f4009c41d2ff21371e486d4a45dc4c",
+            "decision_id": "decision_1300e3d640db19dc44e08c30fef82d7be0498606",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_157b4f3a0b53aa0d27d256a58f0fa8b44c198a7e",
+            "decision_id": "decision_26d8fec7e3e8f1826b0b26eb0b2930f586609ae3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_95eaae36fcdb8d2f2d4c1587285c669176d82d16",
+            "decision_id": "decision_9e37f848911606df6fdf750665384b141de0d131",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_910f99270d7cf2f4384f326e2bb9fda7906a9d58",
+            "decision_id": "decision_c0ce704082853a20a8f5b801ca7447f599c5c94f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bfdad0ceb21a272f65fa4651996f38ce2f65ad4d",
+            "decision_id": "decision_a0f55326bea87b37a69178a7c077fb13f8ed0fb1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_360af61ee5fb5a96a4514b59d749b9c9d79b72e9",
+            "decision_id": "decision_9c63591b510c899a172ca5b4df058f1420c2616c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_21837d710ba85fa925489dbe55f869120e024cc3",
+            "decision_id": "decision_2dfa3b349f071b9f3640985c3b6fce3af172de0c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_43dda9401c51b671746a2215f6e693c8456355e4",
+            "decision_id": "decision_f7f9e4ed460700e5b7927c15cd3beebe7f241fe2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1d9c69014f4e3b4e5c460480c934f8e7e9fce7fe",
+            "decision_id": "decision_7ab3471a3b86a6f207fafea913aa320b19138b2d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_58a03ec6c37a1e571cfd506dca4794595b80d18c",
+            "decision_id": "decision_19682e8713103eb0cd8dacb0a5244a06c1007616",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1636965aae0a315b106c656a2df56d5f66e41f7d",
+            "decision_id": "decision_9267c5851412c6933bac7a8e1e5252c3357707c6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_04e151a19a34323ce89e6b8e85b2f7d827e90931",
+            "decision_id": "decision_6bc77347292ff430ae72aed070791a339f1e5d3e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9bc0b570897b9f7f65b2569a5e2d6ef918487991",
+            "decision_id": "decision_4694836698978644429c92b19735eacae4e11663",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_62c0644e567540df05a77e379e05b73fdb8a39ab",
+            "decision_id": "decision_9f3c9d516ac31f65b65bdab239bd403b36facc0f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_cfdb0220e243fdd4f7060eae40aff53eeb485e33",
+            "decision_id": "decision_fd2ce88334d8615b4db3f29cdf6db6a9a6b114ba",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c5cc12826c23f028b50078d3eb445ed27d420f42",
+            "decision_id": "decision_2e96e2ad48ea102549993393d02bd7cabd93da70",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_32cfe02468fa2d498d3ab4451954ac48182ebf58",
+            "decision_id": "decision_4c09ac3b470e97cb0475b56e13cd50d56079762b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c5dea0c261c67b7fb06200315351a86442ee548d",
+            "decision_id": "decision_34cea59606129a787a55e8a3080a3d4630d0b8f6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e43b082d18207fc4be2175b5047626a69ba10aaa",
+            "decision_id": "decision_00ca36b4c4ae4788db8e67fc4f5a3b6e7483cfc0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c0e9dea98ba167abb9308206cde6fe51cea8261d",
+            "decision_id": "decision_6e5449bd5d669849504500308ecc783174c35540",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fb35a0cdb3122a619f9a748913d9f0d0376b082f",
+            "decision_id": "decision_e1766785f962d75a12126804165518e3f5518574",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0d35e9acd11f4c7967ce58b747c5cd0ded91beb3",
+            "decision_id": "decision_19513dc26eda68b0330924fc5fea228e8eae5e85",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_aadf36f53f08f2aee67aa0241208c25bcaa83437",
+            "decision_id": "decision_eb8851a802b3f6ea82c2ad9692195376d53fdb6a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8ecf4b94ed752661924880e9f22390f0cf9c9e6c",
+            "decision_id": "decision_171f81edb730d53029eb08969011b7bd68827003",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_18a263e316071a32a13b9f610168168da8601709",
+            "decision_id": "decision_2a528d9323c0d02cfa7ce60408e9a8e608cd143d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5f1aa872437e9a8036de2b5936220c50771c198e",
+            "decision_id": "decision_b14cadf271cab7559409bc571f749ccf0ee4c672",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_370ee010d8f6b7ba6a70c673c9d5d830b3b87500",
+            "decision_id": "decision_4cf8e16760d7ced785c7d01b087925d0d1b37076",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_19eef5725694e3be2267ae1e8d26b8276a8e0f80",
+            "decision_id": "decision_4b24faa7774834c75dcbacc8e5aff8a1e1cc55e5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_07e3993cac74a646701651c9ca35d8f3bfd12280",
+            "decision_id": "decision_a7842f4a630f665205195b4bb78caedea850dcf6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b0be5b4f9b633ce5886731cef4ee399cae3032e8",
+            "decision_id": "decision_68310a340b29ad7687aaf120296f8126b1d0b3fa",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_15048a505c06f091590860a9b9875de85d63bee5",
+            "decision_id": "decision_19058fb0eb106da84953be33fb5c05e0109a7099",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ba6a1a13cce20defecf11e87b7a9bc478e67f283",
+            "decision_id": "decision_e26508dd3c631dbd83aaa75a02d46efeb11dc0f1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_de130b632355b3bcff2f7f5964a21b058fbe5aa5",
+            "decision_id": "decision_be521df3ad9f46bcb1d77802c3c1d0f2703daeb0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0ac74dbb522f02b6faee886fe7ea2317f481592d",
+            "decision_id": "decision_f4feda60f1c3fbf23ea62cfc9fef01a89932f596",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b1c5e30c6877682cf84e11b2625156723b58853d",
+            "decision_id": "decision_b943a1d315b94793b488c97dcaa5c2c7848bb61a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_87d64f6744874767cf152885de1cd2cbfbab3bc9",
+            "decision_id": "decision_801c45d4c279a26e185b8acf77bcc75a7c822215",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_17d0d53b5e32625fa76d4ccb8875d177727cc67d",
+            "decision_id": "decision_feb472bb2672acc131068a60d046b45213998cae",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3d9b73bbb380a750882e59df487745cc05382a42",
+            "decision_id": "decision_7875776086bea83eaa978328f2409002e073560b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4321f1f41ab460fb403bb9e3cb2f8ac0c8ff136f",
+            "decision_id": "decision_1916c6a49b419613e6528dcf0723e496fb4c8040",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9a089dffdccdfd16329c963299e257af8d3f4226",
+            "decision_id": "decision_cb654725214509479324ea90f371948b87d52874",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ab54a6fb3d55978b236ce3b48e91b55c289d24eb",
+            "decision_id": "decision_a74be19508eddd05d1d6741c8aa8b3add4eb57d0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_51553d1d729a559cd77030b9657b262d7d73de41",
+            "decision_id": "decision_12deff79fda98a69df5603f2396b207a26f6059b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a9ce6c8090551da35920ccc06bb51811f448a992",
+            "decision_id": "decision_fd348ca8bdd0116d1a15c4fd4e890e34b841d541",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_72021632ac82967af390c1bc86ae0094e41a26c2",
+            "decision_id": "decision_36d2bfbf04b3eb2f35d9c13498d899c588d46846",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d55acabb58974925a3160f24a2a167b66c6b7c46",
+            "decision_id": "decision_4127fd4b9643267e9c98209057d9da64954c3ea4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_928dc86619e392921295a894e5c9b38cb753dd7a",
+            "decision_id": "decision_2226a2a1c4e58dd9b90ccd5c18c7c26c8d87d449",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9546a2c8612577dc8ae4e6527cbcceeafa391c8f",
+            "decision_id": "decision_ce4d522394b613507d27ec2183abb0acdfa5fc15",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_01eff2bd2eb6a6195cd911b7c34a5122341ceed9",
+            "decision_id": "decision_a005ffc3bf0589a2b34769e63b916b1a09204a93",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7c2eebccd7736433f956a1d08af8d1884556253a",
+            "decision_id": "decision_9b0a7a6588bca2ef8644f33c6ed933536667877f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_dc6f62c3a5b42de82476d2fd3a54ea2847aadab6",
+            "decision_id": "decision_990092c88ac5ef4ed7b97355d9f2a0026b812d7a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bf1d996e50e2e4b5b998fe3f8364da19033dac34",
+            "decision_id": "decision_2b24f0030f54fc52d58a997da7bfe867b91deb04",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f6ca486b143363a07d421cfd206f7e0d38b3d171",
+            "decision_id": "decision_7e426c75decb78ca44e42912d3f6607a637bf56d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c1698774687d2512efcdb9a75a7405d4b7e60977",
+            "decision_id": "decision_bf277b30bf53d91821e3e84392ba9b57871400df",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_38db40d19847046349f013c987931527f814344c",
+            "decision_id": "decision_f4e765de23356a794d401830c606dcd293fb74fb",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5881de761f600eaa545ce695f3adc10756a458d0",
+            "decision_id": "decision_efdfea89a086fa439e3ef97420a0da437509ae71",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fd61149cbd71056c931e3b2038167a584c261fcf",
+            "decision_id": "decision_b06dc8426107fc8873732ba5605776e33bfa20bf",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_56486d520c1d34fc4414bf640dd609c40bc85f0a",
+            "decision_id": "decision_7d6e589aa7675c29807f5b980ac7a9af465c83fd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_61d322583dc75a7aba40a84f9aaad713b472edf1",
+            "decision_id": "decision_30cb85939569ce32274bf8fdbb938491e6c3639e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6ce701aefd924451e56d6165e9323b01025e2ad1",
+            "decision_id": "decision_fb0b9c86a7e7c6eb31457dabac28239075322076",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0a6f60879955cc87cc45c7fe058ae664e9adcb94",
+            "decision_id": "decision_eab79ef1a8a20911e6d0a7f5cb1a82bd08354800",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8b6546aa00af14729f3f33f49d7e7f075d5b6e7e",
+            "decision_id": "decision_8a9cd3d3ed1a2051c430cac41333f9ee04bef42d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ec842ba670d9b9db80186645e80ff849d1abc8e3",
+            "decision_id": "decision_1303bdc5e4a4f80195978f82b456224cb7d4fd45",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f47b3250cb96336f666505a43ad085d15022309b",
+            "decision_id": "decision_36f158fbffd5759d672d9c5aea58bea3d3f3cc1d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_23dd3a7e22de429725364929c751329c0cbe99a2",
+            "decision_id": "decision_cea62ca0224f3b88abd788215677216788ee3e4b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_15f14b70062ae34b888460a09f78e5d348851bbd",
+            "decision_id": "decision_17283f80bc7b84c69ac590854cfa816a830501a6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bed12be9f24a864b116cb386c0820867f2373b26",
+            "decision_id": "decision_9f7ee91626241aa4b63771c5452abfcf550d3ca8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8c30773ebcb93d06c54ff15fffefd97fec4710a2",
+            "decision_id": "decision_6906d29c7bc3a9f8d5fbf492da039409a092b76c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_873bc2656acf5192ec49a771446d8952ecd3e061",
+            "decision_id": "decision_c9f7e568ff3002c457a75e5b3b4377084af45a83",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bc159396e62defa29ac49fea36899b55c3c2efb6",
+            "decision_id": "decision_048f2e7b843b2e4f3810cbe829905b30cf252622",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8a7260dbb1babb043deb73a033d53d8355ae1f07",
+            "decision_id": "decision_87d06db7333b7c0dcc93ebf4e1ea8fb1e56b9fbe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0d99f82084770de53d203c1fea559099af784882",
+            "decision_id": "decision_0a198f81b7f54108d66cf97a7c973bf0a1085330",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_613da9a89fe5f20a66e6252df29b82f3b5025ba7",
+            "decision_id": "decision_6babe8a0b753f4596e1f76568d8a69080c8ec97e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f5a85261fe91efbd57ef1fc50546a2ce8fb95dff",
+            "decision_id": "decision_f3f9cf2f6edfb40c263aab6dc2aba08027170913",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_14dc5c04cb72dc37656916943bb5a18389d9ed09",
+            "decision_id": "decision_d222f5b1ee5bb0198daa837c1d426fb6ef19199b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4b2d1320374a8a4e78fa3249451d113efeedb559",
+            "decision_id": "decision_47db3baa6bfbd630b359feecdce247ff052b8e68",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ae6e4800b007b923b2ed8c5d36c16b92a538b9c6",
+            "decision_id": "decision_a23d2dabbbde01caf50b99c78ee1224a8edbc5c3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_47ec3e17eaebe6b9ebbaf4a2fb3159da8c9c6ad3",
+            "decision_id": "decision_d9bef25559961a5b83841238b53d1338094edda7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_af1cefc2846b4cfc7cdba4e80d86f17a7b32928d",
+            "decision_id": "decision_c91e8e89d3124447f58f41c33f7f5fd51e795d8e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d1a71cb069d1c1c2c131258e684594a4ab195061",
+            "decision_id": "decision_8bea93240eb7b76f8146556442305e6666ed3ae6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ec35244a8cbc7d4d766c480512458ecbabda31a5",
+            "decision_id": "decision_58be4498ef88feb8d7dd7d634cd7f04bb78a8949",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1b5c5f035972274e33893820617436ca76fc99ab",
+            "decision_id": "decision_88e31f81b2c73d1214e90c63c0bfe5fa39981810",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_defbae8a1a5ea829eb8aa37c44b62d3f7418d30b",
+            "decision_id": "decision_04f7a6e99cf81aab2ddac1d8f8111770aaa6bb97",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d1bf70bd66de8640e13eef244afb9ad1bea7475c",
+            "decision_id": "decision_49c4941edcb4749fdc266d6b4312d4864ca9cba2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2b452d4e8af8af08570df4c488c51da541b704d9",
+            "decision_id": "decision_97a633a5d3e89f0ef2cba901246e6edb8f96d68a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4f8596eadef4eb59fb6341d7001c2c948b6c94b3",
+            "decision_id": "decision_db327d6b3bd04f6271e49f1f64ffe1811542120b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a1336d765750e2e599a8ebdccb62b42337efee71",
+            "decision_id": "decision_61d4eb0ff06331d795225ea9a371c0149fcf3e40",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d6722cba2386815face7b5a926f2021ce1d314fe",
+            "decision_id": "decision_0dfd68775005318e28855c03acc600de7b5f6ebe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c856ab04ee9fca57550da2e0cda8e6bb5ff7177e",
+            "decision_id": "decision_b0c3c9a8cf6350b62f29ed85cf46111954582382",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2e0e963bbc1f458112776edd0c4cbef6f54af09f",
+            "decision_id": "decision_3be62368ab8de0850043c0b3c9660af630817592",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_cd826d36ff2502eb7c07aa775eca0cbfb9560d56",
+            "decision_id": "decision_a4cd7ef6a8a5afaf7dd038a51028018478b8227f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f2100a0ac842a92d3599e995df5e58a9cc01dbac",
+            "decision_id": "decision_6f39127bb4c40e30d696d8999b7d448e7ec1e7c7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c105eb95714b4d962ca2311c554260e3f5d13c14",
+            "decision_id": "decision_a8779e07211435ec25326ee54abcbb35700e4e19",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_db5c708d33f725758c7a7901fd6844dc1e4781d0",
+            "decision_id": "decision_5514d99df9d8c7d6284f3fca40854fb79e51c5fb",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4224ac2c0b31d42f04c75bcdda5f9e5946a02855",
+            "decision_id": "decision_443ded6df6781fb4977dfbc46eafc1241bf2a30f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c843fd3631a03ae90dc8314549ce6170d9c933c6",
+            "decision_id": "decision_6b84e1831eb0d63936c6f69f80a33203e1222062",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e70397f3f6797b56ff1793c2b2fe029dad6565b9",
+            "decision_id": "decision_52ed7f5829d4aa00d8a67b3840d9a5c1d37008ed",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f1fbad729bd8c01c75caf1abf6893769dd744c9e",
+            "decision_id": "decision_baba3a33677f4ebede766fb1763b0cb153609c95",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_faf4f6c7dd54f070ded4bb13d2684f0dc5c241de",
+            "decision_id": "decision_a493cc2d659920e391a2c16fe673274a70f0f3bd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d18ec4adaba066383ff18162ada8bbfe23bec38f",
+            "decision_id": "decision_7f904045ffe746e3eed3cff097edc79a068a4834",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_19ceaaddb3ece4f80cb8c18037d4dd76264458f2",
+            "decision_id": "decision_3a5aee85ca8adce386785a57dcbb25d25fe22658",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1e5cd80a06cc3e29af3c9b63df8dca9521490650",
+            "decision_id": "decision_27a6080146b5e82a1a279c07e33c2a8d6c7423c8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d01daea2083613a625d41f72970d80e25f53ad09",
+            "decision_id": "decision_ad7766641318b0c3053bf34af90aea810f56b8a3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ba2a30c93f83e4cdbf3c377ef9f0032cf45c935e",
+            "decision_id": "decision_e063dc49dc4d698195ca341314f3e7cb23052551",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_51ab3548430f208a23a1bd1de35d855d1a8618ad",
+            "decision_id": "decision_2680c71f293c732856bca79e447cfe1de9f19f7a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c5e24f3b6e8f0b298da7b1fc95f079801382b2ed",
+            "decision_id": "decision_e9e7a2b3764c48bde64a069cd4df2b4504aeb797",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_872751160cdab0a6c32ae5ef3cc4c9d1a9f438de",
+            "decision_id": "decision_3cbde93ccb61aac50a45e83ed39fc05c5e6a7656",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_199d8e28f01a237c8175bad67cb0f15456556d37",
+            "decision_id": "decision_849b75365901f4d1baaae090071093b0bb8f625b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_abefff673b4b76dd8a9307ac209b3a6f28cbbf20",
+            "decision_id": "decision_fd5074082581373f7ab04c6d089a9cb9de0ffd23",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_975cc3a772537844cc2e5d894c05b25d84951faf",
+            "decision_id": "decision_c6446e84ca7e6df6cbb06cbc11a8561a8bf3f279",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_94bed3a5cfc4b08995ea671a60e88bc8a74847ba",
+            "decision_id": "decision_63ca249e91e9ed83b191db0d0d264b84c8fcd4ee",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_53032648894786c58f423a0b0e671ac444d2dee3",
+            "decision_id": "decision_f449be743b3a4e0cb298ff0d76bf4babcdecedbc",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_17c5248045fdf193c9929bb2f621b07954e3ffb0",
+            "decision_id": "decision_0cf1d56f937d80ae1fe0dc6c8b5173da72aba7cc",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ef18b5bef442f1c65096749911c480947afd0c40",
+            "decision_id": "decision_4d1c8f4f67abb8569d9814376a9c87609acae24b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b6c2f97e29c9d9ba2c88c89eb70cbff81e6311f8",
+            "decision_id": "decision_d57e736ca9deb0c9d20bf89c9daa2f7758a7fe26",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e05fe0f166d2e3f89e2ddf6c92694e7c308c0d87",
+            "decision_id": "decision_9c4c0dbea026244123d179616e81b4487c4b7222",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3dde1de83fa51f6a6deaa11c090f5749b719743c",
+            "decision_id": "decision_3ac5134631e6a500bd366c6536de2f66b973d01c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4be6f7b1ea111079d151d307a93cb6f2413e0d3a",
+            "decision_id": "decision_608cf5620b985dad5c6ec0a3b4145c8a283c4194",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9f8a37fee03fccadf4a43fddeae825eedb52553c",
+            "decision_id": "decision_89e0789513a04056da69ba9dbee0918a610b50d9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b996c796800ac1651347ff9115f509e956ca7d71",
+            "decision_id": "decision_2d414f19d559c38ac4a5f5ed9fbaa8306b9f114c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a2bc4a4de720bb366eefcde4cb420d65c6465d5b",
+            "decision_id": "decision_b7187ba6f3dd8a6b2e58d991e0b40977a31e3673",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e1ef028e191690a373d101478e4911547fde3a75",
+            "decision_id": "decision_39198b2e55fdf71d6a045ecf9a7c128e031255ec",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_49d73a0f854890649af3aabe3d959f810108be53",
+            "decision_id": "decision_5520c6fefed0d1debeccf89f6c5dac64ed286ec6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1b5556998313bf9c5af84d8074c0f788acec4284",
+            "decision_id": "decision_a43a46d67de9ddd90b2759041c24e307272bf436",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ce3c4046d5ecfe0bfb316f02689f48906959c677",
+            "decision_id": "decision_5b35fed0a51ca6604544732b2b236ff740f4b179",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_57e53e79bc80e772b7c31c5fa40119feee125f33",
+            "decision_id": "decision_69393c9f12ace0231f8531132b043f380c47f955",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ed337e65817327909848f7b50fe459ff6a889f0a",
+            "decision_id": "decision_660436b175f4007fea09c728a2728f8463ba8f1f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_912786c75ee602056661cbea6566ab0f7a82bf70",
+            "decision_id": "decision_9d01993d95afa987bcd437e4a2639ed62ff3dbac",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d6cd7466fc66d2566f9fc70724169b00364ce29e",
+            "decision_id": "decision_d1e4e732fe212a24186620b7ef528239a2f4a6d4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_2fcc168486e7434f69085175f64fdf34cef0638a",
+            "decision_id": "decision_6364c47ae0e3e0364a34ca770f8142cb2eede8b6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7853ba0439cf87f50500124d44477c4de8463601",
+            "decision_id": "decision_b68fd8fba3f7e2db448b7b0de1a613e0b2dd84c1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c72f72342f3b6c1be61ed534376f57ba336dade1",
+            "decision_id": "decision_837a28903cc484942ba993f89f4595b09a0c5fb4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_20b97f2b51af49de89412cb02eb768f1086baa3c",
+            "decision_id": "decision_cf466b7c415e7b35b21fdd709bc3dc4ca06bfb74",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_10d55ec486b7a2f7aa39ce36076949ff30d00eb8",
+            "decision_id": "decision_e33e4612d5a0061ea1383e2edc430f2964b9cde8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_abad5528a73c0a2757e3e0cecfe2df5c8aa02020",
+            "decision_id": "decision_da6579dcfd0e9a004b72cc4ac4ffd0483177700f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_91aa4b946eff9789e0324a7ee5e1278250e19e71",
+            "decision_id": "decision_974b9772fb5ee0d9ac6382965b8c282d2b443e7a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_277b62ae1d1d03ba328474d5c3edc1120996f49f",
+            "decision_id": "decision_93b9951dcfc1941951bb1bfce73daf96ccec7a85",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_93fff9c602df32a9784ba71395129a3deef72153",
+            "decision_id": "decision_7083052cff5feffdd729173b0a3ad855020287c8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9e66e8d191462c6283bef4db7b284a5ae864518c",
+            "decision_id": "decision_7a4c30b60ea690e172d7e31a4a2f220a91ab1672",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b30fb88600c13a9de242009a3acde88b949d4f0b",
+            "decision_id": "decision_00eac55d820015d36b48db4ace7c071f9a5dbb74",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0029aa964b6afdadf34768d3bc764d78f81dc5f4",
+            "decision_id": "decision_a7996022a3f5cfaab731d96249c5a6e63db77c41",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_725d93bf71d5ed98e0742336facf2539aa1ab0ad",
+            "decision_id": "decision_b561e9ab5e0ce2bbd2c7cce694e8b6a347ac0ccc",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_703c124804311aba9aa08182410676bdd28b1b37",
+            "decision_id": "decision_bc27edf6c9db5247052cb3e2cef6d5d7153d5202",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c7e2023e757d9575cfd76c49f6958e9752d5b3c1",
+            "decision_id": "decision_8f4ebd026b3379ac9ea3e1e0d6832566d86552f9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7037ef4aafd5abf1b2e7e58d4353b2e40fc33c99",
+            "decision_id": "decision_a0f4b86ac16db6254da4b357f4974bfa812007ff",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a07fce18e0c2cf7d582d6ad4a69db21de225eba1",
+            "decision_id": "decision_0ea0102caf1a0425cf468b8a9c8bc5a38328dcb1",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a10566d57e5bad0aec0a34f217cda5df7dd0051d",
+            "decision_id": "decision_44611e827f98708c862520c5999d455be23dbe8b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7ca3e289f45bef28639d8a2cdb36948f1ebe4944",
+            "decision_id": "decision_fa931e37123ea94f377ca786d67618fa0bcf99c6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3c3af9ccc8cbc024829172d4a70bf4875e3878d0",
+            "decision_id": "decision_49f490c4a6c4efbb20c9e142dcb554909c13d5dc",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4af1e222b4cc9f41b35ed5c1cf270f06893d47bd",
+            "decision_id": "decision_c4c59eb06997948cf655b4095a736f2a512f466e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_61adc249feb9703459b220e0b2f1b3ec7a349828",
+            "decision_id": "decision_29c3adf13c8bf201dcbd0b948fcaf9fcc8485848",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c6b1adaf85a1fb16a35e709d560eb3f409288c17",
+            "decision_id": "decision_4d502f914fbdf20f12a43ab127d815371bccb4b2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f76986fb739576f4d7fa0c339a2af0f4e233b9f6",
+            "decision_id": "decision_b5ac3486cdcdc811cafdd6ebb30bb74d6854134c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_38275d0b94c905e7c6302a386a3f133375c73f0b",
+            "decision_id": "decision_5be149c1e21e4633e14adcd80a4c9a1f3274436e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b636e977d5a0a41b79ed5b0ab34a06237f6f098e",
+            "decision_id": "decision_86704e355453709d63cb7c4bff62b9ada5d4bc13",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_59ef6f64c1ada4df086de004e5e42707181ba50d",
+            "decision_id": "decision_a82b6a52b906c28ceafd8e5ad9b6559770db76c5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b0b5fe285a815ab08bfd9b326b403ce1a0b5e33b",
+            "decision_id": "decision_dc575a42f3a604010d43ce103c1098772b558fbe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d79c59e744e315856cd2da2038e2275a17ff6126",
+            "decision_id": "decision_360ce7a3cc62b71c674bfb0e2ad9074b674719d4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_39469aa80d07b4fa16f811f2fdf89189c72c18d0",
+            "decision_id": "decision_98338f38e2c27584458e9eabb95f1f628178c58d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_83436e26ee294385b2b9838e760b1aa1b59821a5",
+            "decision_id": "decision_a1e5927d24e502e33416a35eea0263b28ad3ca26",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ee0664cb1dd0fa4cb57fa32484f17fa7968b2b75",
+            "decision_id": "decision_46634b9682baac98c44cd975410bd9f3cbb1e6ed",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_bf61ab2a36ceb53b2bcc8bcede42357430935769",
+            "decision_id": "decision_8d497a25f3fb83b5105211e570d542eb54a7727c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_774702dc96ee402f7d132a39c745b923b95e4250",
+            "decision_id": "decision_b06c05bbce67edba0168cbc42a1ec19a3afa055a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4fce793d99d86ef73b553037790aa3ae0cdae88a",
+            "decision_id": "decision_586cacc6e4d4879b8abc162d1b29fc5d637b15c8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d51e1739b1b0cb76a351cfe3b7bbe5227ba989e4",
+            "decision_id": "decision_ee71f75b1114ef18dffe71069a09ffafeaea0fd6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9d8995560140dfa759f5d6d47467573833b9f210",
+            "decision_id": "decision_1504f974c47aa6ebf195f91a461c59c3caf813e5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9f4d2c0b1d2f04b1a86c9f32fd116adc7dfd83b6",
+            "decision_id": "decision_10e0c5a22d051285c726b73368370be11a07ca0b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d2cdc2d829424d29697a62fafc82af1c2e621302",
+            "decision_id": "decision_4dd2103e3d3450db6ce6f1bd578099f34cab6c03",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1a42f5b09a30dd0539fdd00399f9db1894818922",
+            "decision_id": "decision_a8c1aa0c0ec9b4cb57be26af87fae9160e613b68",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fa54f4be1be5f8391ce476ee812e0f20b6a592de",
+            "decision_id": "decision_353943647bc09c8acc4df7347144872fb5611b57",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a785140a74435a7e5c6d2831662c08153a8dcb2d",
+            "decision_id": "decision_1a62b10549199616523445f1ca0cb29538d5d0b2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9eb217c4c6e91ad9bee7df93f94c1f2fd6464b13",
+            "decision_id": "decision_910bb2cb252d8d65e86ec01c90647c2949671e2d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_20a6e045b97fa9088b37cdd1811cf0ab07fcecd5",
+            "decision_id": "decision_cc638e2fc3ccf5d0017eb94920d349810a50ed40",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_fa16fb2ef03d4d869f1683a444ae26fbca600607",
+            "decision_id": "decision_e9202f68e73209e56688b3f4e9bd6645222f3a2a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ce802164cc7d02e7f3c54d7bbc273497fab2a182",
+            "decision_id": "decision_31969c02c5a652cd3bf2695d7523e053562b4581",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0952e7fd8d2a1596c6042da6ff8a7c678c20d366",
+            "decision_id": "decision_62e123dfb07f8c57f0cee2bc2a215480eb977ced",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_368ad08e2646b03f397f9ecfecc413cc4e89b2b9",
+            "decision_id": "decision_e8d596a5097ff25b1b2dd4e582de0e4660e94cf5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_af4d1089eeb10dae7d3e5173ebefddf7d136c65b",
+            "decision_id": "decision_4fcbd526f6aef6e100df80417e9bff35eb9fa3bb",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_90c1e9dd0e095c1bd74a197ecd76de74db2c89ef",
+            "decision_id": "decision_21092775d30219dfa602b027fc2ff7352b3cabd5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8cefaf5cfb380ade83443c148a76193e2ba157e4",
+            "decision_id": "decision_fd5926e5447e5de308420360647a0bf07de73403",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1368aa90141dc52d89193146ecf1b8f8fcc097c4",
+            "decision_id": "decision_c399f9d931e36b2c3aa0a0c6c6777c3ce71fbd91",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_edac4589903e3d298af5e6ab3b2aee295cef1fd1",
+            "decision_id": "decision_865ba3e1fc23c6e5ec5b59438f3e6da33f4e036e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e2ff751087a220bf51579cc9a0b2372ee0238d40",
+            "decision_id": "decision_6dd64fb97b02bf8c175cbb29b79d61adcd9f5494",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3d2af9265459fe64e2777f6f1eb0860edbba4610",
+            "decision_id": "decision_d9cbf15502e165e7238a1237f9ecd5f08e899e1a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_94248c7539cc9c356f200c2d814c38c419b4bdb0",
+            "decision_id": "decision_7bbc393652dc23ea5e38daf51a88a97cc183a3d5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_56071d562c5b7088614d7a02ad37c0f95308674f",
+            "decision_id": "decision_a1dd9c2433949fb6019c16e6a58fa52afa542e7d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_667bf58d974b49c12b7e80247ef329562e064dd3",
+            "decision_id": "decision_2acfc6c6a286d164f146db479d45c30d797a3c78",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_59e27acd265194ee0700de5de2dcb6f1150f0c9c",
+            "decision_id": "decision_650964eb14c485846a9d4cff3fac2f7250da7f14",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_86a57746230a85fdecd643201e5151c74f79c98a",
+            "decision_id": "decision_a4d78c7c72800880212667506330dee3344ab2e6",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_37cb559049675627589a448e3fda5b4da9e1be3c",
+            "decision_id": "decision_537415b73c23e736571fcfb9291c1525dc67c07b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b5d638c9a3afdc3f469f7ef009d6969051f051ec",
+            "decision_id": "decision_f6eb2faa9377ce8c7c936b1c3bd4750d8fdf66ad",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6e04a54f77886c59041085881b8c381576866d25",
+            "decision_id": "decision_58e40260203865baa238b1d55bf8c8ee16f55072",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5fa743a125a53e1c5dc67287c6dcc23d962f3a1b",
+            "decision_id": "decision_a38533e732cbea836af1776a415c21e4ae5ff704",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_51e0dddfdc4d470ee7202c2dc9cabbbe826c18a2",
+            "decision_id": "decision_f5c53d954c4a645cd4d4933170551fb2d90ce49e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6719e48ad0b635075649776a1a121c9d31cb1c29",
+            "decision_id": "decision_585199ae51b397a0843b62a2eaef9a8b3734d5be",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_eaaa469d055e87d5cdda836cde096faa477f25b1",
+            "decision_id": "decision_44df8387a03afe77db2fecab86f824d9c41d31fd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5d48e29e8a76476282645202db94d2f3d8ac440d",
+            "decision_id": "decision_9c1ebb8f66ff99469656e3582265a70771c2262b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_057434bcaaaa2956fb254b8a20da58a71dca4e71",
+            "decision_id": "decision_c0151faed8c8cdead2b1737d229a23a3824c811a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0daba5de90374050cf0ca161f440b762549a07ad",
+            "decision_id": "decision_e6a6d323f57945ef5a6abece73bad0a3e5d519ca",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5e5b629d1721ac5eeae1e25cdd01b1a9639daee7",
+            "decision_id": "decision_7bfdf8e0c60d06b157b9b8a532dade3231e01e4a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_58dad62314b431770297afd48e94c758e8077960",
+            "decision_id": "decision_a08bf15694b3d7c7f0b39840b30905aedc6cdfbf",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0df598a95a449c6753415552181ff61239eb8762",
+            "decision_id": "decision_79ddf7a4e8827248183b30e2dc3fd5616fe89d0b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_810e96f0504d27878b18929154ba3ab599412ee1",
+            "decision_id": "decision_b0522e4d58db9357c774832f6d3b15a23c9a1408",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7f438fac5eb3613af9ddb335bcc24f38108f0262",
+            "decision_id": "decision_4263d6e8987d7ed7c021989aa60657adeaf2ca13",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d141298f72a9c84816b39d12417545b196bc2fc6",
+            "decision_id": "decision_49a1e78eae5e28deb153b0876953f29528ce895d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f74653538a68100460854d3cae7d8bd14cdb4d92",
+            "decision_id": "decision_4f4004d810198f5d0633e18067f7cc00f52c8e07",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a3ba6030b6bbb550b230a6369ae47c720b475336",
+            "decision_id": "decision_b5869eb055ff935c39a3b2c33ef54b8447f0255b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_cb46ae6f0474fd19635afe7dee51613d786ee85b",
+            "decision_id": "decision_58bd3f3a7dc40f1fe5519d6fbbce0b70a81fc1e3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6b0842ce62a03e4e952c8261134b36e8ccd23b88",
+            "decision_id": "decision_928130a161bf1ebde4ccc8b90b4c37ca21d533d5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b91ccee3d2c24e3e7cff285f58b6afd9388cabe9",
+            "decision_id": "decision_bf20619735f29b1bd40f9bc9f3c110c0a4b228bd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_78af252be2ec48b0db00d07abd823512139041b9",
+            "decision_id": "decision_b503d1028d16a8758f9f7ba50518bb62dff1bd9f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_3e48d045af3722e0b8cbba825490ffce3e6ff3f8",
+            "decision_id": "decision_95b65c2470dc6ce60af26468cd679d34c724a4bb",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b5b96e3a7dced571fc9e97e7bcc3b0f12683994e",
+            "decision_id": "decision_647f519e1d58e000789b44b795fd4aca3d26a52a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7cee737c6ea92042478561190322dc6b26c5f6eb",
+            "decision_id": "decision_f36cd1e172baebb9e0a05248589ae1b7637ab8e0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0078d0aae673be1ee4f2651a8a4836519202e0e4",
+            "decision_id": "decision_6aac5074b66ba668a4745f05bc9ad3f36b4c3454",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0f806f4f4674eb3bcfaa97a433f7a885228948ec",
+            "decision_id": "decision_a91ce639be663e5c0ba24c0639e576db8d8384b5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_954692753f53dec9101397ec5fe0560d776371f3",
+            "decision_id": "decision_eca1d10e67ff819df5a7b5603bd156f9f65fbdf0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a31a450a5849fadbed43d3c57d83e1dea6ef9c33",
+            "decision_id": "decision_31dedad541e599a477af0d69f8583b4f2b439c46",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_830c01d60c81c1a3c10043f372783a42a323ec9c",
+            "decision_id": "decision_aa47c0663d51ce1a6b1acc60ccd7ae1939fa16f5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9ded9708799f8e52a3c0d0942fc271be5866bb81",
+            "decision_id": "decision_d1da9a367155ceed8fd39c36f455afb6cb386cd2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_08c01c825a58ef67c3d62137c907e733e9920122",
+            "decision_id": "decision_2d9a8b96cc210ce63771c83a9240ebec74c54d9d",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_817b8812eb1c97a3552e2ef32b695d4985766d67",
+            "decision_id": "decision_29cc71d9b03e33d0be80b20df6b7dcfb47c4ffb9",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ef28904305992665607b422b7ed5eb1ed5f7b96f",
+            "decision_id": "decision_d54ea3188d8ce4de9ec73927a79eb3223d1d4049",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_d326e804820c47061d48f7795e567498857551e4",
+            "decision_id": "decision_a013069108361c8fd937c31b2ca85c693e175c39",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9b0d077c990b788196335f12e5aad70a38aec24c",
+            "decision_id": "decision_1df213cba1f2f597d2deb20c181c745ab3fda15e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c3695949035263e898db57b9efa3b58283d76065",
+            "decision_id": "decision_2c66317e4b15b4dddcd697fdb8835514e7bc7f74",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_78cca5d0301800c874a199fb450fe11823eefb83",
+            "decision_id": "decision_7485c6ac0478f7abf804eb3a66ffc92f1d229103",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_46ab1930dce3aebd6faf839a8edde6c35d26e8a8",
+            "decision_id": "decision_91c195cedc8f500a53800dcd350e346db6723d73",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_dd371be654379f08e62d49be137743fdd209e9e4",
+            "decision_id": "decision_8015a1292ee0347dc175390d5f8992c8df69664a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_845f2857f14f8cc98d8def00c130d24ffe5b0b2b",
+            "decision_id": "decision_d22de18267bbd6b437cd2a1612af6bf45660f08a",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_96f780f1e6245cdf43c5cf2af624d0478cca2fc3",
+            "decision_id": "decision_ad9416185112ad02108fda5854ee337b33794103",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0de60779865616bd4269e6b87290751575ce7935",
+            "decision_id": "decision_7738892b96cb694b43feab7b5114e7778c3f1e70",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_564dcdf330954b7e535bea4a89f6f67ac843168f",
+            "decision_id": "decision_1fad4ee1b9f1a3ad753e82b3fb5f67ea61f5bff5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7de7829f482dbfb155f4b7663f3f12ef65146cf4",
+            "decision_id": "decision_06a7883542ee9dcc502fdfc9554b9ab0e107ef93",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_22abb036e3cba46808cef26fb0c811416dc6ca55",
+            "decision_id": "decision_d982a719e129a3d11f77275d1cf7edaf546ae0e7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_097d1872c598b46f157a8d0b83f1d34dd46ec89b",
+            "decision_id": "decision_d3484ffa998d85ae9f2801eb056858c2f95fd5e7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4087a401791af5adfa30156c93f3bfa485e17983",
+            "decision_id": "decision_c5fddb3daf0d4bd281bf69cfaba7ead1fe127707",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6cb111ca1931226180a05f7720ca7e48f9d0f8e5",
+            "decision_id": "decision_fc3172ac1f7fbde0571f7f47d97b3086184f3a04",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_5620c3840a6943d74a219d7f33d77baaa70e2701",
+            "decision_id": "decision_89f3ff684c915c218c45e14585374c09e1860372",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e3b665bd3476bb24b940e40c18a01024ad5c38e9",
+            "decision_id": "decision_9f01c99afc9fb6572a514fdd76d0636ce36b6914",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b73d52e3d6d805b24e84bfee43cea691f6d9b2e3",
+            "decision_id": "decision_9fb15c335ef82e7796b31c70288c8f411a87c575",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b031093ef2a48fed89095fa9af00ac8bf86d8609",
+            "decision_id": "decision_00067bbbe268aac175a20cc465fbe7a30b56c62c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_1d31b995e8be130017ae11a2fb2b515d5e429257",
+            "decision_id": "decision_878ebd05387b686cb7acbb5707edfe2c8b76075c",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7d2560629c6ba5daeb02efe83e43eea97813c8d8",
+            "decision_id": "decision_1e074e2073f867c1944d34d5ec46ec2e312afde8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ce2ed28edb108dcca183d0c513f73bb2ccbee044",
+            "decision_id": "decision_eda9db77a09d766bec474ed8d17282b031e5054b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_9984bfa8d29d4df7b4c060ea63f22b4f39d73c4a",
+            "decision_id": "decision_d36f46a635052e99c9b512a76812e501d31920b7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b425cd2e169bab47043685d3acd24261aa16abab",
+            "decision_id": "decision_ea6ff775bf3108849d4bee8e9269b4ed171e0df5",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_e9fb014b7746c3fa6973a99c2597ec2b139b405e",
+            "decision_id": "decision_ad68c2be4dc64181b2cd2c39420ef3b1e208d892",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_58f849a09274c15594ca284b54e2219a46ad8c75",
+            "decision_id": "decision_3317d1366bc1216e6222975826ba278a5e355be2",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b3cc6123170f2099476d9da3407315b4586c0c26",
+            "decision_id": "decision_e808a7be4a2c6647a7e0af0ebf4b232bfc11cb56",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ac01dd29ef89d7b9eef4c3493337b3f97221ff63",
+            "decision_id": "decision_5d48b7420bab42f98fa713ad80ea620918d01ebf",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_97ad5652646698999613eabad6307c233018ba5e",
+            "decision_id": "decision_24b2d79191be74ad640715d99a1e93c2e2061e77",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ca9cde398572a7976bf9617b5e31954de3538a8d",
+            "decision_id": "decision_7a4beffa502508ccffe84ef7048bfaef9630dbfe",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_219a8c267424aba7db0e15e5016640b032dfccc0",
+            "decision_id": "decision_578e115febeab3a856af43ab460ab15c57598725",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_0e736f6b055c779c099a75789d6e5e91d565eac0",
+            "decision_id": "decision_29f37d0e7b6189806a499ec768a5dd1e1f3e60bf",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_920d705594e3bf80cb7d6664da9571db661a45e7",
+            "decision_id": "decision_53593d5a5646bf055bf1fde95c6bf45e64802fa8",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_ec109c8d50be2b6c2476779ed62c6c99fbe300d7",
+            "decision_id": "decision_ea98668df6967cfc74ab953ad25075e284d62073",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c8eac3b68a07fadd72948c1c40ebb06868ca4eb6",
+            "decision_id": "decision_f5b40bd1ccb8b6b7aa0f71a24cd12a886b7881bb",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8fb48ec26991f98d279e85c6c7c390ee0e252d53",
+            "decision_id": "decision_2d2690ec51b306be7f46fa0cc8eb998cbb833c44",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_7e057ce8f44fc7fe4a1ae3061b8b5635ac5f2b15",
+            "decision_id": "decision_e00b603ca3ecd3466a1f6535dffc4ca369b11f2b",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_4f62b7b8974ea4a411515bc8a03d4457a5d9b0dc",
+            "decision_id": "decision_d1b9e543c796ec19a47b6bc86b072e8f9fe9417e",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_b1dd49a0975466f962e91a791a1b7a87bd1a58d6",
+            "decision_id": "decision_ae45570ba72a7871cd2a3b761f9e5babc218ccf3",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c0ef384b169c666dcedb6fd803fc351530ad9abe",
+            "decision_id": "decision_656afb88fd2c2c3026b99a81f60e37d1ae4c9479",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_a290b09dfa28daedfc0e58bfd93dd3ea84c809b7",
+            "decision_id": "decision_16ab21fc10caff37f9f55902c0367077357e80b4",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_78fa323f669b47ea399b6813ce7ada19a4d64088",
+            "decision_id": "decision_e630fc11af657cd3697ebaa53fe3a393b88a0cdd",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_8f2a4d126a8abc75a35c995a2e5c49a245affb77",
+            "decision_id": "decision_e2fb6ab8e75f8200eb45fb0d7d82806ebd112c51",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6de3e90d3d589b2c5021ffc213d4aa093a87d45c",
+            "decision_id": "decision_4833dee5569418600f25d6ee7a620deea8cdc44f",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_c5ed1d12d013d49f50769b870b99305286092757",
+            "decision_id": "decision_6a3e1b28b0fe45d61bc1afce7f1ebb00243ba8c0",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_6fac493d356ef27027c3b97a422d8003944904b5",
+            "decision_id": "decision_7627b55737d3c3da14a5ba039b830216625c4505",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_870567c77ea592713cb3191b2692af062a929fd5",
+            "decision_id": "decision_fa1d1becf8374cdc05e27b0b856f15e282d4be39",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_70f1ab7314251c2c6077506194e51ff3eaf997ee",
+            "decision_id": "decision_a316bcffcfc8daec2b8322c158f12b4969cd57f7",
+            "reason": "blocked_decision_content_address_drift"
+          },
+          {
+            "cycle_id": "cycle_f5d6c5ba93fb24300afb400acf968dd10aeaed81",
+            "decision_id": "decision_cb6df2be39578080f55e6881ae2029c0cf3370c1",
+            "reason": "blocked_decision_content_address_drift"
+          }
+        ],
+        "invalid_count": 422,
+        "missing_tables": [],
+        "ok": false,
+        "places_orders": false,
+        "repair_candidate_count": 0,
+        "schema": "bayes_basket_target_blocked_execution_vector_repair_v1",
+        "state": "repair_required"
+      },
+      "calls_order_gateway": false,
+      "cash_phase_authority_manifest_schema": {
+        "columns": [
+          [
+            "manifest_sha256",
+            "TEXT",
+            0,
+            1
+          ],
+          [
+            "station_id",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "policy_version",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "artifact_sha256",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "station_timezone",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "valid_from_utc",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "valid_until_utc",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "authority_scope",
+            "TEXT",
+            1,
+            0
+          ]
+        ],
+        "columns_ok": true,
+        "index_columns": [
+          "station_id",
+          "authority_scope",
+          "valid_from_utc",
+          "valid_until_utc"
+        ],
+        "index_ok": true,
+        "missing": [],
+        "ok": true,
+        "table_constraints_ok": true,
+        "table_present": true,
+        "trigger_names": [
+          "basket_cash_phase_authority_no_delete",
+          "basket_cash_phase_authority_no_update"
+        ],
+        "triggers_ok": true
+      },
+      "legacy_decision_row_count": 625,
+      "legacy_decision_table_collision": false,
+      "legacy_decision_table_present": true,
+      "live_submit_authorized": false,
+      "mutation_required": true,
+      "production_ssot_schema": {
+        "calibration_base_schema_ok": true,
+        "calibration_missing_columns": {
+          "calibration_ensemble_artifact": [],
+          "calibration_historical_asof_model_run": [],
+          "calibration_model_station_residual": [],
+          "calibration_station_daily_high_truth": [],
+          "calibration_station_registry": []
+        },
+        "ledger_missing_columns": {
+          "auto_trade_decisions": [],
+          "basket_target_order_intents": []
+        },
+        "ledger_schema_ok": true,
+        "maker_grid_oos_missing_tables": [],
+        "maker_grid_oos_schema_ok": true,
+        "missing_tables": [],
+        "ok": true,
+        "policy_training_constraint_ok": true,
+        "policy_training_missing_columns": {
+          "basket_policy_training_fact": [],
+          "basket_policy_training_label": []
+        },
+        "policy_training_schema_ok": true,
+        "probability_stage_contract_ok": true,
+        "quote_freshness_missing_columns": [],
+        "regime_missing_columns": [],
+        "regime_schema_ok": true,
+        "regime_superseded_schema": {
+          "columns_exact": true,
+          "committed_partial_unique_ok": true,
+          "controlled_update_trigger_ok": true,
+          "legacy_no_update_absent": true,
+          "missing_columns": [],
+          "no_delete_trigger_ok": true,
+          "ok": true,
+          "supports_superseded": true,
+          "table_present": true
+        },
+        "schema": "bayes_basket_target_ssot_v5_five_model_pool",
+        "settlement_timezone_missing_columns": {},
+        "strict_delta_candidate_contract_ok": true,
+        "target_tables_present": true
+      },
+      "schema": "bayes_basket_target_ssot_migration_plan_v1",
+      "target_ledger_schema": {
+        "blocking_authority": "auto_trade_decisions",
+        "calls_order_gateway": false,
+        "forbidden_execution_vector_columns": [],
+        "legacy_execution_vector_policy_present": false,
+        "missing_columns": {},
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "schema": "bayes_basket_target_atomic_ledger_v1"
+      },
+      "writes_orders": false
+    },
+    "native_decode_evidence": {
+      "calls_order_gateway": false,
+      "complete_curve_count": 135,
+      "curve_count": 135,
+      "decoded_point_count": 1530,
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_native_model_arrival_decode_20260724_00z_normalized_20260726.json",
+      "promotion_allowed": false,
+      "receipt_sha256": "f8a0bccbe2be0c2e3b269df1933500d625dac6e6f2c3f20c3a3d68fe11c26efb",
+      "state": "VALID_NATIVE_DECODE_EVIDENCE",
+      "writes_production_db": false
+    },
+    "official_ws_manifest": {
+      "exists": true,
+      "path": "/Users/xiong/weather/data/market_ws_latest_quotes.json"
+    },
+    "official_ws_scope_coverage": {
+      "authorizes_order": false,
+      "complete_scope_count": 0,
+      "complete_scope_token_count": 0,
+      "evidence_only": true,
+      "incomplete_scope_count": 3,
+      "incomplete_scope_sample": [
+        {
+          "missing_token_count": 11,
+          "scope": "RKPK|2026-07-21"
+        },
+        {
+          "missing_token_count": 1,
+          "scope": "RKPK|2026-07-27"
+        },
+        {
+          "missing_token_count": 1,
+          "scope": "RKPK|2026-07-28"
+        }
+      ],
+      "loaded_quote_count": 785,
+      "manifest_state": "connected",
+      "path": "/Users/xiong/weather/data/market_ws_latest_quotes.json",
+      "pending_materialized_token_count": 0,
+      "pending_shards": [],
+      "registry_scope_count": 3,
+      "registry_yes_token_count": 23,
+      "state": "loaded",
+      "station_scope": {
+        "mode": "full_target_registry",
+        "source_lane": "UNSCOPED_TARGET_REGISTRY",
+        "station_ids": []
+      },
+      "unmaterialized_token_count": 0
+    },
+    "ok": false,
+    "resource_budget": {
+      "database_bytes": 134078464,
+      "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+      "limits": {
+        "max_database_bytes": 268435456,
+        "max_process_rss_bytes": 536870912,
+        "max_research_raw_bytes": 1073741824,
+        "max_wal_bytes": 67108864,
+        "min_free_bytes": 536870912
+      },
+      "memory_probe_available": true,
+      "ok": true,
+      "raw_bytes": 856987668,
+      "raw_file_count": 4214,
+      "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+      "shm_bytes": 0,
+      "state": "within_budget",
+      "violations": [],
+      "wal_bytes": 0
+    },
+    "schema": "bayes_basket_target_production_readiness_v1",
+    "services": {
+      "probe_errors": [],
+      "system": {
+        "com.weather.auto_trade_watcher": false,
+        "com.weather.auto_trade_worker": false,
+        "com.weather.clob_order_service": true,
+        "com.weather.dynamic_three_leg_execution": false,
+        "com.weather.market_ws": true,
+        "com.weather.model_release_watcher": false,
+        "com.weather.monitor.daemon": false,
+        "com.weather.reported_trajectory_no": true,
+        "com.weather.target_realization_worker": false,
+        "com.weather.trade_engine": false,
+        "com.weather.trade_sync_loop": false,
+        "com.xiong.weather.ui": false
+      },
+      "user": {
+        "com.weather.auto_trade_watcher": false,
+        "com.weather.auto_trade_worker": false,
+        "com.weather.clob_order_service": false,
+        "com.weather.dynamic_three_leg_execution": false,
+        "com.weather.market_ws": false,
+        "com.weather.model_release_watcher": false,
+        "com.weather.monitor.daemon": false,
+        "com.weather.reported_trajectory_no": false,
+        "com.weather.target_realization_worker": false,
+        "com.weather.trade_engine": false,
+        "com.weather.trade_sync_loop": false,
+        "com.xiong.weather.ui": false
+      }
+    },
+    "state": "blocked",
+    "station_scope": {
+      "mode": "full_target_registry",
+      "source_lane": "UNSCOPED_TARGET_REGISTRY",
+      "station_ids": []
+    },
+    "target_inputs": {
+      "aggregate_counts_ready": true,
+      "calibration_no_live_active": true,
+      "cash_phase_authorized": true,
+      "cash_phase_promoted": false,
+      "counts": {
+        "basket_cash_phase_authority_manifest": 1,
+        "basket_cash_phase_policy_artifact": 25,
+        "basket_confirmed_inventory_snapshot": 119,
+        "basket_global_prior_artifact": 4,
+        "basket_official_ws_snapshot": 510,
+        "basket_order_state_snapshot": 115,
+        "basket_p0_preselection_plan": 0,
+        "basket_policy_activation": 50,
+        "basket_probability_envelope": 139,
+        "basket_station_policy_artifact": 42,
+        "basket_target_market_registry_snapshot": 13,
+        "calibration_activation": 432,
+        "calibration_artifact_promotion": 0,
+        "calibration_ensemble_artifact": 130,
+        "calibration_model_artifact": 254
+      },
+      "exact_scope_readiness": {
+        "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+        "blocked_scope_count": 3,
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "orders_submitted": 0,
+          "places_orders": false,
+          "read_only": true
+        },
+        "content_sha256": "5095cdf48e7ea3a4ffe990ee822d190f14c790b2f9134e0f2dc7c78d519bd4c0",
+        "decision_at_utc": "2026-07-28T14:20:00Z",
+        "exact_scope_count": 0,
+        "items": [
+          {
+            "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+            "content_sha256": "b902560180278670cb218536af4c99e2fe8b00a6011fee54ae04e3f4fb6f3b85",
+            "decision_at_utc": "2026-07-28T14:20:00Z",
+            "event_date": "2026-07-21",
+            "liquidity_bin": "liquid",
+            "maturity_bin": "d1",
+            "reason_codes": [
+              "ContractError:materialized_probability_envelope_missing"
+            ],
+            "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+            "season_bin": "summer",
+            "settlement_timezone": "Asia/Seoul",
+            "stage": "P1",
+            "station_id": "RKPK",
+            "status": "MISSING",
+            "strategy_version": "target-v1"
+          },
+          {
+            "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+            "content_sha256": "971fb3e62d46e2611d2d8b3e70a25f14d223dfa5df627ed1232eaccf72a736ec",
+            "decision_at_utc": "2026-07-28T14:20:00Z",
+            "event_date": "2026-07-27",
+            "liquidity_bin": "liquid",
+            "maturity_bin": "d1",
+            "reason_codes": [
+              "ContractError:latest_stage_stale_fail_closed"
+            ],
+            "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+            "season_bin": "summer",
+            "settlement_timezone": "Asia/Seoul",
+            "stage": "P1",
+            "station_id": "RKPK",
+            "status": "EXPIRED",
+            "strategy_version": "target-v1"
+          },
+          {
+            "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+            "content_sha256": "97088ba56cd8e03a8d5379bddb7bcbf7ca8d8b1b49782422b56bd19de81c7ac9",
+            "decision_at_utc": "2026-07-28T14:20:00Z",
+            "event_date": "2026-07-28",
+            "liquidity_bin": "liquid",
+            "maturity_bin": "d1",
+            "reason_codes": [
+              "ContractError:latest_stage_stale_fail_closed"
+            ],
+            "schema": "bayes_basket_target_exact_scope_readiness_item_v1",
+            "season_bin": "summer",
+            "settlement_timezone": "Asia/Seoul",
+            "stage": "P1",
+            "station_id": "RKPK",
+            "status": "EXPIRED",
+            "strategy_version": "target-v1"
+          }
+        ],
+        "ready": false,
+        "schema": "bayes_basket_target_exact_scope_readiness_v1",
+        "scope_count": 3,
+        "station_ids": [],
+        "target_scope": {
+          "liquidity_bin": "liquid",
+          "maturity_bin": "d1",
+          "season_bin": "summer",
+          "strategy_version": "target-v1"
+        }
+      },
+      "market_registry_materialized": true,
+      "missing_tables": [],
+      "official_ws_materialized": true,
+      "operational_counts": {
+        "bound_facts": 2,
+        "capital_reservations": 422,
+        "decisions": 625,
+        "execution_cycles": 625,
+        "non_blocked_decisions": 0,
+        "observation_facts": 20688,
+        "order_events": 0,
+        "order_intents": 0,
+        "reconciliations": 0
+      },
+      "operational_event_day_counts": {
+        "decisions": {
+          "future_settlement": 0,
+          "invalid": 0,
+          "started_settlement": 625,
+          "total": 625
+        },
+        "execution_cycles": {
+          "future_settlement": 0,
+          "invalid": 0,
+          "started_settlement": 625,
+          "total": 625
+        }
+      },
+      "order_state_materialized": true,
+      "p0_preselection_materialized": false,
+      "policy_authority_counts": {
+        "cash_phase": 1,
+        "station_policy": 3
+      },
+      "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "probability_materialized": true,
+      "probability_stage_counts": {
+        "P0": 34,
+        "P0-M": 2,
+        "P1": 103
+      },
+      "probability_started_settlement_stage_counts": {
+        "P0": 19,
+        "P0-M": 2,
+        "P1": 103
+      },
+      "promoted_or_activated_counts": {
+        "calibration_no_live_authority": 432,
+        "cash_phase": 0,
+        "station_policy_promotion": 0
+      },
+      "q0_inventory_materialized": true,
+      "ready": false,
+      "station_policy_authorized": true,
+      "station_policy_promoted": false
+    },
+    "unfinished_target_inputs": [
+      {
+        "code": "official_ws_scope_coverage",
+        "evidence": "bayes_basket_target_official_ws_manifest.json + target registry",
+        "observed": {
+          "complete_scope_count": 0,
+          "incomplete_scope_count": 3,
+          "pending_shards": []
+        },
+        "required_tables": [
+          "basket_target_market_registry_snapshot"
+        ],
+        "requirement": "target registry scope 全部具备完整官方 WS bid/ask 证据",
+        "state": "partial"
+      }
+    ]
+  },
+  "release_name": "bayes_basket_target_production_no_live",
+  "release_state": "BLOCKED_NOT_RELEASE",
+  "required_before_mutation": [
+    "resolve_readiness_blockers",
+    "operator_supplies_pause_window_and_capital_epoch",
+    "run_controlled_target_ssot_migration_with_new_backup_path",
+    "materialize_promoted_target_artifacts_and_first_inputs",
+    "run_real_database_production_no_live_acceptance_twice"
+  ],
+  "schema": "bayes_basket_target_release_manifest_v1"
+}

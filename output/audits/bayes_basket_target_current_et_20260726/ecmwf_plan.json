@@ -1,0 +1,191 @@
+{
+  "as_of_utc": "2026-07-26T11:15:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "formal_probability_input_role_eligible": true,
+    "live_order_authorized": false,
+    "live_submit_authorized": false,
+    "p0_consumption_before_event": true,
+    "p0_probability_input_eligible_now": true,
+    "p1_consumption_before_event": false,
+    "p1_probability_input_eligible_now": true,
+    "places_orders": false,
+    "prospective_only": true,
+    "raw_capture_may_precede_event": true,
+    "target_only": true,
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "capture_config": {
+    "boundary": {
+      "calls_order_gateway": false,
+      "live_order_authorized": false,
+      "places_orders": false,
+      "protected_production_line_touched": false,
+      "requires_et_close_for_historical_promotion": true,
+      "resident_capture_config_or_environment_mutated": false,
+      "writes_production_database": false,
+      "writes_target_database": false
+    },
+    "enabled": true,
+    "exact_join_key": [
+      "station_id",
+      "target_local_date",
+      "run_initialization_utc",
+      "valid_time_utc",
+      "provider_id"
+    ],
+    "historical_policy": {
+      "missing_archive_action": "fail_closed_and_retain_blocker",
+      "official_date_addressable_archive_required": true,
+      "retrospective_download_as_arrival": false
+    },
+    "providers": [
+      "ecmwf_ifs025_official",
+      "gfs_0p25_official",
+      "icon_global_official"
+    ],
+    "resource_budget": {
+      "max_capture_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_raw_bytes": 1073741824,
+      "max_response_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "run_binding": "bayes_basket_target_model_run_contract_v1",
+    "schema": "bayes_basket_target_model_arrival_capture_v1",
+    "scope": "canonical_45_station",
+    "state": "enabled_for_target_no_live_forward_capture",
+    "station_count": 45,
+    "station_source": "bayes_basket_target.station_registry",
+    "target_only": true
+  },
+  "capture_window": {
+    "as_of_utc": "2026-07-26T11:15:00Z",
+    "capture_phase": "prospective_open_event",
+    "event_date": "2026-07-26",
+    "maturity": "d2",
+    "reason": "target_event_day_not_closed_in_et",
+    "state": "open",
+    "target_day_end_utc": "2026-07-27T04:00:00Z",
+    "target_day_start_utc": "2026-07-26T04:00:00Z",
+    "target_timezone": "America/New_York"
+  },
+  "global_anchor_station_id": "ZUUU",
+  "model_run_contract": {
+    "boundary": {
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "formal_probability_input_eligible": true,
+      "live_order_authorized": false,
+      "live_submit_authorized": false,
+      "target_only": true,
+      "unrelated_production_line_touched": false,
+      "writes_production_db": false
+    },
+    "contract_sha256": "70478d97625da561711b7f9e9f8be7213d4c4f1a994ac90d51e726f493ce2511",
+    "providers": [
+      "ecmwf_ifs025_official",
+      "gfs_0p25_official",
+      "icon_global_official"
+    ],
+    "run_initialization_utc": "2026-07-25T18:00:00Z",
+    "schema": "bayes_basket_target_model_run_contract_v1",
+    "scope": "bayes_basket_target_only",
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "target_local_date": "2026-07-26",
+    "target_timezone": "America/New_York"
+  },
+  "plan_sha256": "f241fb44f767f21d1f85a994eb0b4caa0f2556b7d6f8f5f76e12bf84fa4fe1f0",
+  "points": [
+    {
+      "forecast_hour": 12,
+      "grib_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-12h-oper-fc.grib2",
+      "index_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-12h-oper-fc.index",
+      "valid_time_utc": "2026-07-26T06:00:00Z"
+    },
+    {
+      "forecast_hour": 18,
+      "grib_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-18h-oper-fc.grib2",
+      "index_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-18h-oper-fc.index",
+      "valid_time_utc": "2026-07-26T12:00:00Z"
+    },
+    {
+      "forecast_hour": 24,
+      "grib_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-24h-oper-fc.grib2",
+      "index_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-24h-oper-fc.index",
+      "valid_time_utc": "2026-07-26T18:00:00Z"
+    },
+    {
+      "forecast_hour": 30,
+      "grib_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-30h-oper-fc.grib2",
+      "index_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-30h-oper-fc.index",
+      "valid_time_utc": "2026-07-27T00:00:00Z"
+    },
+    {
+      "forecast_hour": 33,
+      "grib_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-33h-oper-fc.grib2",
+      "index_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260725/18z/ifs/0p25/oper/20260725180000-33h-oper-fc.index",
+      "valid_time_utc": "2026-07-27T03:00:00Z"
+    }
+  ],
+  "provider_id": "ecmwf_ifs025_official",
+  "resource_budget": {
+    "max_capture_bytes": 268435456,
+    "max_process_rss_bytes": 536870912,
+    "max_raw_bytes": 1073741824,
+    "max_response_bytes": 67108864,
+    "min_free_bytes": 536870912
+  },
+  "run_initialization_utc": "2026-07-25T18:00:00Z",
+  "schema": "bayes_basket_target_ecmwf_same_run_capture_v1",
+  "target_local_date": "2026-07-26",
+  "target_timezone": "America/New_York"
+}

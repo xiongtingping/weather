@@ -26,7 +26,9 @@ def test_disagreement_is_preserved_as_weighted_vector_not_mixed_zero() -> None:
     assert validated["regime_probability_vector"]["convection_or_showers"] == pytest.approx(0.25)
     assert validated["unknown_probability"] == pytest.approx(0.0)
     assert validated["transition_control_active"] is False
-    assert validated["changes_probability"] is False
+    assert validated["changes_p0_temperature_likelihood"] is False
+    assert validated["observation_conditioning_eligible"] is True
+    assert validated["independent_likelihood"] is False
 
 
 def test_unknown_sources_are_neutral_and_vector_contract_is_fixed() -> None:

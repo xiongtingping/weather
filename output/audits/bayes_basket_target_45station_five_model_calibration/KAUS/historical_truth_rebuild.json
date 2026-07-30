@@ -1,0 +1,567 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-11",
+      "reason": "batch_budget_exceeded",
+      "source_lane": "awc",
+      "stations": "KAUS"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-06-28",
+    "2026-06-29",
+    "2026-06-30",
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-06-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-29T05:00:00Z",
+      "target_day_start_utc": "2026-06-28T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-06-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-06-30T05:00:00Z",
+      "target_day_start_utc": "2026-06-29T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-06-30",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-01T05:00:00Z",
+      "target_day_start_utc": "2026-06-30T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-02T05:00:00Z",
+      "target_day_start_utc": "2026-07-01T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-03T05:00:00Z",
+      "target_day_start_utc": "2026-07-02T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-04T05:00:00Z",
+      "target_day_start_utc": "2026-07-03T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-05T05:00:00Z",
+      "target_day_start_utc": "2026-07-04T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-06T05:00:00Z",
+      "target_day_start_utc": "2026-07-05T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-07T05:00:00Z",
+      "target_day_start_utc": "2026-07-06T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-08T05:00:00Z",
+      "target_day_start_utc": "2026-07-07T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-09T05:00:00Z",
+      "target_day_start_utc": "2026-07-08T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-10T05:00:00Z",
+      "target_day_start_utc": "2026-07-09T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-11T05:00:00Z",
+      "target_day_start_utc": "2026-07-10T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-12T05:00:00Z",
+      "target_day_start_utc": "2026-07-11T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-13T05:00:00Z",
+      "target_day_start_utc": "2026-07-12T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-14T05:00:00Z",
+      "target_day_start_utc": "2026-07-13T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-15T05:00:00Z",
+      "target_day_start_utc": "2026-07-14T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-16T05:00:00Z",
+      "target_day_start_utc": "2026-07-15T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-17T05:00:00Z",
+      "target_day_start_utc": "2026-07-16T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-18T05:00:00Z",
+      "target_day_start_utc": "2026-07-17T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-19T05:00:00Z",
+      "target_day_start_utc": "2026-07-18T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-20T05:00:00Z",
+      "target_day_start_utc": "2026-07-19T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-21T05:00:00Z",
+      "target_day_start_utc": "2026-07-20T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-22T05:00:00Z",
+      "target_day_start_utc": "2026-07-21T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-23T05:00:00Z",
+      "target_day_start_utc": "2026-07-22T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-24T05:00:00Z",
+      "target_day_start_utc": "2026-07-23T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-25T05:00:00Z",
+      "target_day_start_utc": "2026-07-24T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-26T05:00:00Z",
+      "target_day_start_utc": "2026-07-25T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-27T05:00:00Z",
+      "target_day_start_utc": "2026-07-26T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "as_of_utc": "2026-07-28T16:08:34Z",
+      "event_date": "2026-07-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-28T05:00:00Z",
+      "target_day_start_utc": "2026-07-27T05:00:00Z",
+      "target_timezone": "America/Chicago"
+    }
+  ],
+  "evidence_sha256": "0a0235bed759396d4069607238848eb4ad5c34d835f2a65c59d8c6b95bc15bc7",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-06-28",
+          "response_sha256": "185aacda91f7fe044190b1e9e06d7c63f9241b24bba3146ff9d7473225d72d16",
+          "returned_rows": 16,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260629_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-06-29",
+          "response_sha256": "d1f6ec21650c11c9459d477540ad5a09abeb29c98ac3b24bc58bb779223a9f77",
+          "returned_rows": 27,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260630_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-06-30",
+          "response_sha256": "5efe30ee0fb101b53c8be4f5f64375dec12aed206072207a49f74538fc4fff2b",
+          "returned_rows": 31,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260701_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-01",
+          "response_sha256": "8a3d83436fd2643a7118699fac94a9f0a78b62dac3ae1e9e3ad7972218d52bde",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260702_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-02",
+          "response_sha256": "9f16db50fe00a8b8752221b761088689d40df99799024609243f211b11446eba",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260703_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-03",
+          "response_sha256": "c82db313538ff134256b70d0a56dcafc18c4d52a36ba6ed59a87643e4cb20160",
+          "returned_rows": 32,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260704_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-04",
+          "response_sha256": "9e5eeef838a27f4aafb872727879f7625d2c2c02aa8220f2a05542196af7a3fa",
+          "returned_rows": 28,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260705_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-05",
+          "response_sha256": "857320ab0420b61db399e337e4558c4189081eb1083915c9c164ceb3b4289bcc",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260706_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-06",
+          "response_sha256": "4e1456dc3a3ead49eac1b1219115e1f3db4b9ba1c7293cb076def58e5c027afd",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260707_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-07",
+          "response_sha256": "ba531fea8c4da131e84edc5f8953e4b2bc38181ff9dd9d4904242d96a1bb9644",
+          "returned_rows": 24,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260708_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-08",
+          "response_sha256": "0a2a79ff465a63bbbff365a929d62581c201e7d32c3beaa57e6def01bf71709a",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260709_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-09",
+          "response_sha256": "1eee47ccdfc0da5b436af04d590d60352cecf95891214dcf59eda24917971d91",
+          "returned_rows": 24,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260710_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        },
+        {
+          "event_date": "2026-07-10",
+          "response_sha256": "937758261ec09393508f3a60671c62e21658ec51bdef592d8197f20224e93fa8",
+          "returned_rows": 27,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=KAUS&format=json&date=20260711_0500&hours=24",
+          "stations": [
+            "KAUS"
+          ]
+        }
+      ],
+      "query_blockers": [
+        {
+          "event_date": "2026-07-11",
+          "reason": "batch_budget_exceeded",
+          "stations": "KAUS"
+        }
+      ],
+      "query_count": 13,
+      "reference_only": false,
+      "returned": 347,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "bounded_doh_connect_to",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": true,
+        "connect_to": [
+          "aviationweather.gov:443:150.171.110.98:443"
+        ],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-28T16:08:34Z",
+  "observation_count": 756,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KAUS/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/five_model_45station_truth_raw",
+  "receipt_sha256": "9ace49867a129a94c3d826a04a58da0cc5984726bfbad94f65e10ef15eccefec",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/KAUS/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 756
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 28,
+  "station_day_keys": [
+    "KAUS|2026-06-28",
+    "KAUS|2026-06-29",
+    "KAUS|2026-06-30",
+    "KAUS|2026-07-01",
+    "KAUS|2026-07-02",
+    "KAUS|2026-07-03",
+    "KAUS|2026-07-04",
+    "KAUS|2026-07-05",
+    "KAUS|2026-07-06",
+    "KAUS|2026-07-07",
+    "KAUS|2026-07-08",
+    "KAUS|2026-07-09",
+    "KAUS|2026-07-10",
+    "KAUS|2026-07-11",
+    "KAUS|2026-07-12",
+    "KAUS|2026-07-13",
+    "KAUS|2026-07-14",
+    "KAUS|2026-07-15",
+    "KAUS|2026-07-16",
+    "KAUS|2026-07-17",
+    "KAUS|2026-07-18",
+    "KAUS|2026-07-19",
+    "KAUS|2026-07-20",
+    "KAUS|2026-07-21",
+    "KAUS|2026-07-22",
+    "KAUS|2026-07-23",
+    "KAUS|2026-07-24",
+    "KAUS|2026-07-25"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/Chicago"
+}

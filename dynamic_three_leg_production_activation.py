@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = "dynamic_three_leg_production_activation_v1"
 DEFAULT_PATH = Path(__file__).resolve().parent / "config" / "trading" / "dynamic_three_leg_production_activation.json"
+_ACTIVE_CACHE: tuple[tuple[int, int, int, int, int], dict[str, Any]] | None = None
 
 
 def _text(value: Any) -> str:
@@ -51,10 +52,30 @@ def validate_dynamic_three_leg_activation(value: Mapping[str, Any]) -> dict[str,
 
 
 def load_dynamic_three_leg_activation(path: str | Path = DEFAULT_PATH) -> dict[str, Any]:
-    raw = json.loads(Path(path).expanduser().resolve().read_text(encoding="utf-8"))
+    global _ACTIVE_CACHE
+    resolved = Path(path).expanduser().resolve()
+    before = resolved.stat()
+    identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+    if resolved == DEFAULT_PATH.resolve() and _ACTIVE_CACHE is not None and _ACTIVE_CACHE[0] == identity:
+        return dict(_ACTIVE_CACHE[1])
+    raw = json.loads(resolved.read_text(encoding="utf-8"))
     if not isinstance(raw, Mapping):
         raise ValueError("dynamic_three_leg_activation_not_mapping")
-    return validate_dynamic_three_leg_activation(raw)
+    activation = validate_dynamic_three_leg_activation(raw)
+    from dynamic_three_leg_release_runtime import validate_dynamic_three_leg_release_binding
+    validate_dynamic_three_leg_release_binding(
+        strategy_artifact_sha256=_text(activation.get("strategy_artifact_sha256")),
+        cutover_artifact_sha256=_text(activation.get("cutover_artifact_sha256")),
+        root=Path(__file__).resolve().parent,
+        require_active_bindings=True,
+    )
+    after = resolved.stat()
+    after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+    if after_identity != identity:
+        raise ValueError("dynamic_three_leg_activation_changed_during_load")
+    if resolved == DEFAULT_PATH.resolve():
+        _ACTIVE_CACHE = (identity, dict(activation))
+    return activation
 
 
 __all__ = [

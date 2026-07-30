@@ -1,0 +1,56 @@
+{
+  "artifact_content_sha256": "fd9526c0f0c086d8581793dab53a02dd4e55d95cafe12ef01af6722e71554f39",
+  "artifact_id": "taf-rkpk-summer-d2-00z-v3",
+  "boundary": {
+    "calls_order_gateway": false,
+    "future_truth_leakage_forbidden": true,
+    "official_truth_lane": "AWC",
+    "places_orders": false,
+    "strict_time_split": true,
+    "writes_production_db": false
+  },
+  "calibrated_oos_metrics": {
+    "brier_score": 0.7493858920679469,
+    "crps": 0.6010346414263162,
+    "nll": 1.5204144148200758
+  },
+  "content_sha256": "29ef6acfdfb488578dc2a4536a3b418ef5764d7e50f1c43d451b3a2ec45a081c",
+  "correlation_discount": 0.30238093477171424,
+  "correlation_discount_method": "holdout_taf_vs_nwp_combination_residual_pearson_v1",
+  "effective_sample_n": 19.981404683539456,
+  "holdout_end_date": "2026-07-27",
+  "holdout_n": 6,
+  "holdout_start_date": "2026-07-22",
+  "joint_physical_feature_oos_gate": {
+    "crps_not_worse_than_nwp_combination": true,
+    "nll_not_worse_than_nwp_combination": true,
+    "passed": true,
+    "taf_minus_nwp_cloud_precipitation_wind_jointly_fitted": true
+  },
+  "lead_bucket": "d2",
+  "nwp_baseline_oos_metrics": {
+    "brier_score": 0.7823073380715174,
+    "crps": 0.611549292754788,
+    "nll": 1.7403194231786745
+  },
+  "nwp_combination_artifact_sha256": "8629f545e705fa38c134a015a2b0bf5f70826cee18d574d0f4ad911a7d5dcd1a",
+  "oos_gate": {
+    "crps_not_worse": true,
+    "nll_not_worse": true,
+    "passed": true
+  },
+  "run_cycle": "00Z",
+  "sample_ids_sha256": "d1e295e4172d3e31a24a945f61de505ef227bfe303d936aa8175a4f0b20b4762",
+  "sample_n": 26,
+  "schema": "bayes_basket_taf_calibration_scorecard_v1",
+  "season_bin": "summer",
+  "serial_residual_rho_1": 0.13089194116366562,
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Seoul",
+  "station_id": "RKPK",
+  "taf_nwp_holdout_residual_correlation": 0.6976190652282858,
+  "train_end_date": "2026-07-21",
+  "train_n": 20,
+  "train_start_date": "2026-07-01",
+  "trained_through_utc": "2026-07-27T15:00:00Z"
+}

@@ -1,0 +1,16 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "canonical_ingress": true,
+  "evidence_sha256": "01e03b408954ffd373ddc0c7f6dc1df0f4ae3c6f305e5fccc9f3ff352bfaf6dc",
+  "generated_at_utc": "2026-07-29T03:52:06Z",
+  "historical_only": true,
+  "observation_count": 0,
+  "observations": [],
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "target_timezone": "Asia/Riyadh"
+}

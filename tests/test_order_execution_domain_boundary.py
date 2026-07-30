@@ -1,3 +1,5 @@
+import json
+import subprocess
 from pathlib import Path
 from unittest import mock
 
@@ -125,59 +127,72 @@ def test_clob_service_stable_key_ignores_execution_domain_metadata_static():
         assert f"delete copy.{field};" in stable_key_block
 
 
-def test_bayes_order_context_carries_observation_deadline_from_execution_contract():
-    deadline = "2026-07-13T04:00:03.000Z"
-    context = swm._bayes_weather_order_context(
-        slug="zuuu-high-2026-07-13",
-        event_date="2026-07-13",
-        outcome="35C",
-        side="YES",
-        intent_action="entry",
-        submit_source="unit_test",
-        candidate={
-            "sequential_bayes_execution_contract_id": "contract-1",
-            "sequential_bayes_execution_contract": {
-                "observation_to_order_hard_deadline_at": deadline,
-            },
-        },
-    )
-
-    assert context["observation_to_order_hard_deadline_at"] == deadline
-    assert context["sequential_bayes_execution_contract_id"] == "contract-1"
-
-
-def test_clob_service_enforces_direct_entry_deadline_at_exchange_post_static():
+def test_gateway_uses_only_target_execution_hard_deadline_for_direct_entry():
     source = _text("scripts/clob_order_service.mjs")
-    assert "function directEntryHardDeadline(payload, nowMs = Date.now())" in source
-    assert 'reason: "direct_entry_hard_deadline_missing_or_invalid"' in source
-    assert 'reason: "direct_entry_hard_deadline_expired"' in source
-    assert source.count("assertDirectEntryDeadline();") == 2
+    assert "export function targetDirectEntryHardDeadline(payload, nowMs = Date.now())" in source
+    assert 'const rawDeadline = payload?.target_execution_hard_deadline_at;' in source
+    assert 'reason: "target_execution_hard_deadline_missing_or_invalid"' in source
+    assert 'reason: "target_execution_hard_deadline_expired"' in source
+    assert "sequential_bayes_execution_contract" not in source
+    assert "observation_to_order_" not in source
+    assert "signal_to_order_" not in source
+    assert "dynamic_three_leg" not in source
+    assert "target_realization" not in source
+
+
+def test_gateway_target_deadline_is_fail_closed_and_not_required_for_exit():
+    service_uri = (Path(__file__).resolve().parents[1] / "scripts" / "clob_order_service.mjs").as_uri()
+    script = f"""
+      import {{ targetDirectEntryHardDeadline }} from {json.dumps(service_uri)};
+      const future = targetDirectEntryHardDeadline({{
+        direct_target_order_context:true,
+        side:'BUY',
+        target_execution_hard_deadline_at:'2099-01-01T00:00:00.000Z',
+      }}, Date.parse('2026-01-01T00:00:00.000Z'));
+      const missing = targetDirectEntryHardDeadline({{
+        direct_target_order_context:true, side:'BUY',
+      }}, Date.parse('2026-01-01T00:00:00.000Z'));
+      const expired = targetDirectEntryHardDeadline({{
+        direct_target_order_context:true, side:'BUY',
+        target_execution_hard_deadline_at:'2025-01-01T00:00:00.000Z',
+      }}, Date.parse('2026-01-01T00:00:00.000Z'));
+      const exit = targetDirectEntryHardDeadline({{
+        direct_target_order_context:true, direct_target_exit_order:true, side:'SELL',
+      }}, Date.parse('2026-01-01T00:00:00.000Z'));
+      if (!future.ok || !future.required
+          || missing.ok || missing.reason !== 'target_execution_hard_deadline_missing_or_invalid'
+          || expired.ok || expired.reason !== 'target_execution_hard_deadline_expired'
+          || !exit.ok || exit.required) {{
+        throw new Error(JSON.stringify({{future,missing,expired,exit}}));
+      }}
+      console.log(JSON.stringify({{ok:true}}));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"ok": True}
+
+
+def test_clob_service_checks_target_deadline_at_each_exchange_post_static():
+    source = _text("scripts/clob_order_service.mjs")
+    assert "const assertTargetDirectEntryDeadline = () => {" in source
+    assert source.count("assertTargetDirectEntryDeadline();") == 2
     for post_call in (
         "this.client.postOrder(signedOrder, orderType, false, deferExec)",
         "this.client.postOrder(signedOrder, orderType, postOnly, deferExec)",
     ):
         post_index = source.index(post_call)
-        assert source.rfind("assertDirectEntryDeadline();", 0, post_index) > source.rfind(
+        assert source.rfind("assertTargetDirectEntryDeadline();", 0, post_index) > source.rfind(
             "persistSignedPrepared();", 0, post_index
         )
     assert "exchange_post_started_at: exchangePostStartedAt" in source
     assert "order_submitted_at: exchangePostStartedAt" in source
-
-
-def test_clob_service_payload_forwards_bayes_deadlines_static():
-    source = _text("scan_weather_market.py")
-    service_block = source[
-        source.index("def _run_clob_order_service_once()") :
-        source.index("service_payload[\"idempotency_key\"]", source.index("def _run_clob_order_service_once()"))
-    ]
-    for field in (
-        "sequential_bayes_execution_contract_id",
-        "signal_to_order_slo_deadline_at",
-        "signal_to_order_hard_deadline_at",
-        "observation_to_order_slo_deadline_at",
-        "observation_to_order_hard_deadline_at",
-    ):
-        assert f'"{field}"' in service_block
 
 
 def test_exchange_post_t5_requires_gateway_attestation():

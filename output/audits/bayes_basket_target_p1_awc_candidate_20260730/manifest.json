@@ -1,0 +1,260 @@
+{
+  "as_of_utc": "2026-07-30T03:15:35Z",
+  "blocked_count": 36,
+  "blockers": [
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "CYYZ"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KATL"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KAUS"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KBKF"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KDAL"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KHOU"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KLAX"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KLGA"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KMIA"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KORD"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KSEA"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "KSFO"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "MMMX"
+    },
+    {
+      "reason": "p1_requested_station_not_in_started_registry",
+      "station_id": "MPMG"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "EDDM"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "EFHK"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "EGLC"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "EHAM"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "EPWA"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "FACT"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "LEMD"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "LFPB"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "LIMC"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "LTAC"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "NZWN"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "OEJN"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "OPKC"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "RJTT"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "RKPK"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "RKSI"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "RPLL"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "SAEZ"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "SBGR"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "VILK"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "WMKK"
+    },
+    {
+      "reason": "production_probability_ssot_table_missing",
+      "station_id": "WSSS"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "writes_target_database": false
+  },
+  "canonical_evidence": {
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_awc_candidate_20260730.json",
+    "receipt_sha256": "12085b58402502ca0c5eba0595ae2ed944c55a61b0efe4786004451238d8510c"
+  },
+  "coverage_complete": false,
+  "event_date": "2026-07-30",
+  "materialized_station_count": 0,
+  "materialized_stations": [],
+  "observed_station_count": 22,
+  "observed_stations": [
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS"
+  ],
+  "packet_count": 0,
+  "packet_evidence": [],
+  "packet_paths": [],
+  "registry_station_count": 22,
+  "registry_stations": [
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS"
+  ],
+  "schema": "bayes_basket_target_p1_packet_build_v1",
+  "station_count": 22,
+  "station_scope": {
+    "mode": "allowlist",
+    "requested_station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS"
+    ]
+  }
+}

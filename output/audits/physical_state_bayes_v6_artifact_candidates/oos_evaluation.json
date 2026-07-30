@@ -1,5 +1,5 @@
 {
-  "evaluation_sha256": "08ef3d90f3a7857fb33ceccf64c3db6cc5ab3ea35ff9c848eeb04c43d4ef1283",
+  "evaluation_sha256": "b8dc3e4592043af42ab8381bf567dbc94f9a595c55129ec54a422b62f5334357",
   "gates": {
     "holdout_rows_at_least_5000": true,
     "observation_accuracy_beats_majority": true,
@@ -32,11 +32,11 @@
     "transition_mean_nll": 1.0662454644364419,
     "transition_zero_coefficient_mean_nll": 1.1036083631092413
   },
-  "observation_artifact_sha256": "586158d85561bd9ffe017cf0397d88e41c94e09a640423ff2a731dac6c7d693b",
+  "observation_artifact_sha256": "75685bd324560a328237c1d7ce5a0db6a3f741bffa89d1ec2a69be2276e9746e",
   "ok": true,
   "places_orders": false,
   "schema": "physical_state_bayes_v6_artifact_oos_evaluation_v1",
   "state": "accepted_for_canonical_replay",
   "strict_holdout_not_used_for_training": true,
-  "transition_artifact_sha256": "d109e5146a5ef405ee35eba1e2fa44f87b43ad485242c05530d7babf81a6affe"
+  "transition_artifact_sha256": "05c86345965b50f8d8386e0dadd70cd4979a2a953a2d3c9b5aa2f61b41a23c2d"
 }

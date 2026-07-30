@@ -455,6 +455,83 @@ def verify_schema(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _expected_table_columns(table: str, ddl: str) -> list[tuple[Any, ...]]:
+    """Materialize the contract DDL in isolation for PRAGMA-level comparison."""
+
+    with sqlite3.connect(":memory:") as expected:
+        expected.execute(ddl)
+        return expected.execute(f'PRAGMA table_info("{table}")').fetchall()
+
+
+def verify_additive_schema_compatibility(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Accept forward-added columns while preserving the P1 base contract.
+
+    ``verify_schema`` remains the exact migration-authority check.  Runtime
+    ingresses use this narrower compatibility check because later production
+    generations legitimately add columns to P1 tables.  A required base
+    column may not disappear or change its declared type, NOT NULL, default,
+    or primary-key position.
+    """
+
+    tables = _existing_tables(conn)
+    indexes = _existing_indexes(conn)
+    triggers = _existing_triggers(conn)
+    missing_tables = sorted(set(TABLE_DDL) - tables)
+    missing_indexes = sorted(set(INDEX_DDL) - indexes)
+    missing_triggers = sorted(set(TRIGGER_DDL) - triggers)
+    incompatible_columns: dict[str, list[str]] = {}
+    accepted_extension_columns: dict[str, list[str]] = {}
+    for table, ddl in TABLE_DDL.items():
+        if table not in tables:
+            continue
+        expected_rows = _expected_table_columns(table, ddl)
+        actual_rows = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+        expected_by_name = {str(row[1]): row for row in expected_rows}
+        actual_by_name = {str(row[1]): row for row in actual_rows}
+        problems: list[str] = []
+        for name, expected in expected_by_name.items():
+            actual = actual_by_name.get(name)
+            if actual is None:
+                problems.append(f"{name}:missing")
+                continue
+            # cid is layout-dependent and deliberately excluded.
+            expected_contract = tuple(expected[index] for index in (2, 3, 4, 5))
+            actual_contract = tuple(actual[index] for index in (2, 3, 4, 5))
+            if actual_contract != expected_contract:
+                problems.append(f"{name}:contract_mismatch")
+        if problems:
+            incompatible_columns[table] = problems
+        extras = sorted(set(actual_by_name) - set(expected_by_name))
+        if extras:
+            accepted_extension_columns[table] = extras
+    incompatible_indexes = sorted(
+        index
+        for index, expected_sql in INDEX_DDL.items()
+        if index in indexes
+        and _canonical_schema_sql(_schema_object_sql(conn, object_type="index", name=index))
+        != _canonical_schema_sql(expected_sql)
+    )
+    incompatible_triggers = sorted(
+        trigger
+        for trigger, expected_sql in TRIGGER_DDL.items()
+        if trigger in triggers
+        and _canonical_schema_sql(_schema_object_sql(conn, object_type="trigger", name=trigger))
+        != _canonical_schema_sql(expected_sql)
+    )
+    return {
+        "schema": SCHEMA_VERSION,
+        "verification_mode": "additive_runtime_compatibility",
+        "ok": not missing_tables and not missing_indexes and not missing_triggers and not incompatible_columns and not incompatible_indexes and not incompatible_triggers,
+        "missing_tables": missing_tables,
+        "missing_indexes": missing_indexes,
+        "missing_triggers": missing_triggers,
+        "incompatible_table_columns": incompatible_columns,
+        "incompatible_indexes": incompatible_indexes,
+        "incompatible_triggers": incompatible_triggers,
+        "accepted_extension_columns": accepted_extension_columns,
+    }
+
+
 def apply_forward_schema(conn: sqlite3.Connection) -> dict[str, Any]:
     """Apply only the additive P1 DDL inside the caller's transaction."""
 

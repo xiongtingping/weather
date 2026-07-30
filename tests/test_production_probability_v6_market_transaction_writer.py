@@ -11,6 +11,11 @@ from physical_state_bayes_v6.artifact_contracts import (
 )
 from physical_state_bayes_v6.contracts import JointCell
 from production_probability_v6_event_runtime import compose_v6_canonical_event
+from production_probability_v6_activation_contract import (
+    COMPOSER_SCHEMA,
+    CORRELATION_GUARDED_FORMULA_ID,
+    activation_sha256,
+)
 from production_probability_v6_market_bundle_runtime import (
     build_v6_market_transaction_bundle,
 )
@@ -27,6 +32,7 @@ from production_probability_v6_public_ssot_writer import (
 )
 from scripts.production_probability_v6_zero_order_drill import _clone_schema
 from tests.test_reported_x_market_realization_runtime import _artifact, _policy, _target
+from resolution_bridge_activation_runtime import activation_sha256 as bridge_activation_sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +49,7 @@ def _copy_table_schema(conn: sqlite3.Connection, table: str) -> None:
 
 def _setup():
     activation = json.loads(
-        (ROOT / "config/production_probability_runtime_activation.json").read_text()
+        (ROOT / "config/production_probability_runtime_activation.v6_candidate.json").read_text()
     )
     transition = validate_transition_artifact(
         json.loads(
@@ -55,6 +61,21 @@ def _setup():
             (ROOT / "config/physical_state_bayes_v6_observation_artifact.json").read_text()
         )
     )
+    # These transaction-writer tests exercise the preserved generic v6
+    # JointCell branch.  The repository candidate is now the active
+    # identifiable physical composer, so create an explicit in-memory legacy
+    # activation for this isolated unit fixture instead of making production
+    # compile a result-space joint under the physical activation.
+    activation = dict(activation)
+    activation.update(
+        {
+            "composer_schema": COMPOSER_SCHEMA,
+            "bayes_formula_id": CORRELATION_GUARDED_FORMULA_ID,
+            "transition_artifact_sha256": transition["artifact_sha256"],
+            "observation_artifact_sha256": observation["artifact_sha256"],
+        }
+    )
+    activation["activation_contract_sha256"] = activation_sha256(activation)
     conn = _clone_schema(ROOT / "data/archive.db")
     _copy_table_schema(conn, "realization_states")
     target = "physical_weather_day_v1:ZUUU:2025-04-30"
@@ -102,6 +123,7 @@ def _setup():
             JointCell(30.0, "warming", 0.5),
             JointCell(31.0, "warming", 0.5),
         ),
+        candidate_scenario_responsibilities=responsibilities,
         replay_generation=0,
     )
     checkpoint0 = dict(p0["checkpoint_row"])
@@ -225,6 +247,9 @@ def _setup():
         "places_orders": False,
         "authorizes_clob": False,
     }
+    bridge_activation["activation_sha256"] = bridge_activation_sha256(
+        bridge_activation
+    )
     return conn, activation, checkpoint0, bundle, bridge_activation
 
 

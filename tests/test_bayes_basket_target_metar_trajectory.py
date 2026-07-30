@@ -1,0 +1,709 @@
+from __future__ import annotations
+
+from copy import deepcopy
+
+import pytest
+
+from bayes_basket_target.contracts import ContractError, ProbabilityEnvelope
+from bayes_basket_target.metar_trajectory import (
+    METAR_TRAJECTORY_AUTHORITY_SCOPE,
+    METAR_TRAJECTORY_METHOD_VERSION,
+    MAX_METAR_TRAJECTORY_BUCKETS,
+    MAX_METAR_TRAJECTORY_OBSERVATIONS,
+    MetarTrajectoryLikelihoodArtifact,
+    MetarTrajectoryObservation,
+    MetarTrajectoryUpdateProof,
+    build_metar_trajectory_likelihood_artifact,
+    canonicalize_metar_trajectory_observations,
+    compile_metar_trajectory_update_proof,
+    validate_metar_trajectory_update_proof,
+)
+
+
+BUCKET_CENTERS = {
+    "33C": 33.0,
+    "34C": 34.0,
+    "35C": 35.0,
+    "36C": 36.0,
+    "37C": 37.0,
+}
+BUCKET_UPPER_BOUNDS = {
+    "33C": 33.49,
+    "34C": 34.49,
+    "35C": 35.49,
+    "36C": 36.49,
+    "37C": 37.49,
+}
+
+
+def _root(
+    *,
+    stage: str = "P0-M",
+    station: str = "RKPK",
+    event_date: str = "2026-07-29",
+    timezone: str = "Asia/Seoul",
+    bucket_centers=BUCKET_CENTERS,
+    probabilities=None,
+) -> ProbabilityEnvelope:
+    governed_probabilities = probabilities or {
+        "33C": 0.10,
+        "34C": 0.20,
+        "35C": 0.40,
+        "36C": 0.20,
+        "37C": 0.10,
+    }
+    return ProbabilityEnvelope.from_mapping({
+        "stage": stage,
+        "checkpoint_id": f"{stage.lower()}-root",
+        "station_id": station,
+        "event_date": event_date,
+        "settlement_timezone": timezone,
+        "decision_at_utc": "2026-07-28T23:00:00Z",
+        "fresh_until_utc": "2026-07-30T16:00:00Z",
+        "bucket_ordinals": {
+            bucket: index for index, bucket in enumerate(bucket_centers)
+        },
+        "probabilities": governed_probabilities,
+        "posterior_version": "fixture-v1",
+        "posterior_sha256": "1" * 64,
+        "bridge_sha256": "2" * 64,
+        "lineage": {
+            "root": "immutable-formal-root",
+            "season_bin": "JJA",
+            "settlement_definition": "station_local_calendar_day_tmax",
+        },
+    })
+
+
+def _artifact(
+    *,
+    promoted: bool = True,
+    source_lane: str = "awc",
+    timezone: str = "Asia/Seoul",
+    station: str = "RKPK",
+    local_time_bucket: str = "AFTERNOON",
+    max_missing_intervals: int = 4,
+) -> MetarTrajectoryLikelihoodArtifact:
+    return build_metar_trajectory_likelihood_artifact({
+        "activation_id": "metar-trajectory-activation-rkpk-v1",
+        "station_id": station,
+        "source_lane": source_lane,
+        "season_bin": "JJA",
+        "local_time_bucket": local_time_bucket,
+        "maturity_bin": "D0",
+        "settlement_definition": "station_local_calendar_day_tmax",
+        "settlement_timezone": timezone,
+        "feature_definitions": {
+            "running_high_c": "max canonical dry-bulb temperature as-of",
+            "remaining_warming_c": "final tmax minus running high",
+            "elapsed_minutes": "canonical observed-at interval",
+        },
+        "missing_observation_policy": "DEGRADE_STRENGTH",
+        "expected_interval_minutes": 60,
+        "long_interval_minutes": 90,
+        "max_missing_intervals": max_missing_intervals,
+        "missing_interval_strength_factor": 0.8,
+        "long_interval_strength_factor": 0.5,
+        "remaining_warming_distribution": {
+            "0": 0.10,
+            "1": 0.50,
+            "2": 0.30,
+            "3": 0.10,
+        },
+        "hard_exclusion_baseline_distribution": {
+            "0": 0.25,
+            "1": 0.25,
+            "2": 0.25,
+            "3": 0.25,
+        },
+        "base_strength": 0.8,
+        "maturity_strength": 0.75,
+        "likelihood_ratio_floor": 0.25,
+        "likelihood_ratio_ceiling": 4.0,
+        "sample_n": 120,
+        "effective_sample_n": 84.5,
+        "oos_metrics": {
+            "brier_score": 0.15,
+            "nll": 0.91,
+            "crps": 0.62,
+        },
+        "tail_calibration_error": 0.04,
+        "trained_through_utc": "2026-07-01T00:00:00Z",
+        "valid_from_utc": "2026-07-20T00:00:00Z",
+        "valid_until_utc": "2026-08-10T00:00:00Z",
+        "promotion_state": (
+            "PRODUCTION_NO_LIVE_PROMOTED" if promoted else "CANDIDATE_ONLY"
+        ),
+        "authority_scope": METAR_TRAJECTORY_AUTHORITY_SCOPE,
+        "activated": promoted,
+        "method_version": METAR_TRAJECTORY_METHOD_VERSION,
+    })
+
+
+def _observation(
+    suffix: str,
+    *,
+    sequence: int,
+    observed: str,
+    received: str | None = None,
+    temperature_c: float,
+    lane: str = "awc",
+    station: str = "RKPK",
+    event_date: str = "2026-07-29",
+) -> MetarTrajectoryObservation:
+    return MetarTrajectoryObservation.from_mapping({
+        "event": {
+            "observation_id": f"obs-{suffix}",
+            "station_id": station,
+            "event_date": event_date,
+            "source_lane": lane,
+            "report_type": "METAR",
+            "sequence": sequence,
+            "observed_at_utc": observed,
+            "received_at_utc": received or observed,
+            "raw_sha256": f"{sequence:x}".rjust(64, "0"),
+            "qc_state": "ACCEPTED",
+            "supersedes_observation_id": None,
+        },
+        "canonical_committed_at_utc": received or observed,
+        "temperature_c": temperature_c,
+    })
+
+
+def _compile(
+    observations,
+    *,
+    artifact: MetarTrajectoryLikelihoodArtifact | None = None,
+    root: ProbabilityEnvelope | None = None,
+    as_of: str = "2026-07-29T06:30:00Z",
+) -> MetarTrajectoryUpdateProof:
+    return compile_metar_trajectory_update_proof(
+        root or _root(),
+        observations=observations,
+        artifact=artifact or _artifact(),
+        bucket_centers_c=BUCKET_CENTERS,
+        bucket_upper_bounds_c=BUCKET_UPPER_BOUNDS,
+        maturity_bin="D0",
+        as_of_utc=as_of,
+    )
+
+
+def test_artifact_is_content_addressed_and_deeply_immutable() -> None:
+    artifact = _artifact()
+    assert artifact.artifact_id == (
+        "metar-trajectory-" + artifact.content_sha256[:32]
+    )
+    assert MetarTrajectoryLikelihoodArtifact.from_mapping(
+        artifact.to_dict()
+    ) == artifact
+    with pytest.raises(TypeError):
+        artifact.oos_metrics["nll"] = 1.2  # type: ignore[index]
+    with pytest.raises(TypeError):
+        artifact.remaining_warming_distribution[1.0] = 0.0  # type: ignore[index]
+
+    tampered = artifact.to_dict()
+    tampered["base_strength"] = 0.1
+    with pytest.raises(
+        ContractError, match="artifact_content_sha256_mismatch"
+    ):
+        MetarTrajectoryLikelihoodArtifact.from_mapping(tampered)
+
+
+def test_artifact_sealing_is_stable_for_numeric_distribution_keys() -> None:
+    payload = _artifact().to_dict()
+    payload.pop("artifact_id")
+    payload.pop("content_sha256")
+    payload["remaining_warming_distribution"] = {
+        3: 0.10, 1: 0.50, 0: 0.10, 2: 0.30
+    }
+    payload["hard_exclusion_baseline_distribution"] = {
+        3: 0.25, 1: 0.25, 0: 0.25, 2: 0.25
+    }
+    resealed = build_metar_trajectory_likelihood_artifact(payload)
+    assert resealed.to_dict() == _artifact().to_dict()
+
+
+def test_canonical_order_is_event_time_order_and_exact_retry_is_deduplicated() -> None:
+    early = _observation(
+        "early", sequence=2, observed="2026-07-29T00:00:00Z",
+        received="2026-07-29T02:05:00Z", temperature_c=33.0,
+    )
+    late = _observation(
+        "late", sequence=1, observed="2026-07-29T02:00:00Z",
+        received="2026-07-29T02:01:00Z", temperature_c=35.0,
+    )
+    ordered = canonicalize_metar_trajectory_observations(
+        [late, early, early],
+        as_of_utc="2026-07-29T06:30:00Z",
+        station_id="RKPK",
+        event_date="2026-07-29",
+        source_lane="awc",
+        settlement_timezone="Asia/Seoul",
+    )
+    assert [item.event.observation_id for item in ordered] == [
+        "obs-early", "obs-late"
+    ]
+
+
+def test_compile_applies_soft_lr_but_hard_exclusion_never_revives() -> None:
+    proof = _compile([
+        _observation(
+            "a", sequence=1, observed="2026-07-29T04:00:00Z",
+            temperature_c=34.0,
+        ),
+        _observation(
+            "b", sequence=2, observed="2026-07-29T05:00:00Z",
+            temperature_c=35.2,
+        ),
+        _observation(
+            "c", sequence=3, observed="2026-07-29T06:00:00Z",
+            temperature_c=35.0,
+        ),
+    ])
+    assert proof.running_high_c == 35.2
+    assert proof.hard_excluded_buckets == ("33C", "34C")
+    assert proof.posterior_probabilities["33C"] == 0.0
+    assert proof.posterior_probabilities["34C"] == 0.0
+    assert proof.likelihood_ratio_by_bucket["36C"] > 1.0
+    assert 0.25 <= min(proof.likelihood_ratio_by_bucket.values())
+    assert max(proof.likelihood_ratio_by_bucket.values()) <= 4.0
+    assert sum(proof.posterior_probabilities.values()) == pytest.approx(1.0)
+    assert proof.positive_core_buckets == ("35C", "36C", "37C")
+
+
+def test_unpromoted_artifact_degrades_to_lr_one_and_hard_bound_only() -> None:
+    proof = _compile(
+        [_observation(
+            "a", sequence=1, observed="2026-07-29T06:00:00Z",
+            temperature_c=34.6,
+        )],
+        artifact=_artifact(promoted=False),
+    )
+    assert proof.applied_strength == 0.0
+    assert set(proof.likelihood_ratio_by_bucket.values()) == {1.0}
+    assert proof.degradation_reasons == ("ARTIFACT_NOT_PROMOTED",)
+    assert proof.posterior_probabilities == {
+        "33C": 0.0,
+        "34C": 0.0,
+        "35C": 4 / 7,
+        "36C": 2 / 7,
+        "37C": 1 / 7,
+    }
+
+
+def test_missing_and_long_intervals_have_deterministic_strength_degradation() -> None:
+    rows = [
+        _observation(
+            "a", sequence=1, observed="2026-07-29T00:00:00Z",
+            temperature_c=32.0,
+        ),
+        _observation(
+            "b", sequence=2, observed="2026-07-29T03:00:00Z",
+            temperature_c=34.0,
+        ),
+        _observation(
+            "c", sequence=3, observed="2026-07-29T06:00:00Z",
+            temperature_c=35.0,
+        ),
+    ]
+    proof = _compile(rows)
+    assert proof.inferred_missing_intervals == 4
+    assert proof.long_interval_count == 2
+    assert proof.applied_strength == pytest.approx(
+        0.8 * 0.75 * (0.8 ** 4) * (0.5 ** 2)
+    )
+    assert proof.degradation_reasons == (
+        "MISSING_INTERVALS", "LONG_INTERVALS"
+    )
+
+    zero = _compile(rows, artifact=_artifact(max_missing_intervals=3))
+    assert zero.applied_strength == 0.0
+    assert set(zero.likelihood_ratio_by_bucket.values()) == {1.0}
+    assert "MISSING_INTERVAL_LIMIT_EXCEEDED" in zero.degradation_reasons
+
+
+def test_duplicate_and_arrival_order_replay_are_byte_identical() -> None:
+    rows = [
+        _observation(
+            "a", sequence=1, observed="2026-07-29T04:00:00Z",
+            temperature_c=34.0,
+        ),
+        _observation(
+            "b", sequence=2, observed="2026-07-29T05:00:00Z",
+            temperature_c=35.0,
+        ),
+        _observation(
+            "c", sequence=3, observed="2026-07-29T06:00:00Z",
+            temperature_c=34.5,
+        ),
+    ]
+    canonical = _compile(rows)
+    replay = _compile([rows[2], rows[0], rows[1], rows[0]])
+    assert replay.to_dict() == canonical.to_dict()
+    assert replay.canonical_observation_sequence_sha256 == (
+        canonical.canonical_observation_sequence_sha256
+    )
+
+
+def test_low_high_low_asof_rewind_returns_to_identical_low_proof() -> None:
+    low = _observation(
+        "low", sequence=1, observed="2026-07-29T00:00:00Z",
+        received="2026-07-29T00:01:00Z", temperature_c=33.0,
+    )
+    high = _observation(
+        "high", sequence=2, observed="2026-07-29T01:00:00Z",
+        received="2026-07-29T01:01:00Z", temperature_c=36.0,
+    )
+    low_again = _observation(
+        "low-again", sequence=3, observed="2026-07-29T02:00:00Z",
+        received="2026-07-29T02:01:00Z", temperature_c=34.0,
+    )
+    rows = [low, high, low_again]
+    artifact = _artifact(local_time_bucket="MORNING")
+    first_low = _compile(
+        rows, artifact=artifact, as_of="2026-07-29T00:30:00Z"
+    )
+    at_high = _compile(
+        rows, artifact=artifact, as_of="2026-07-29T02:30:00Z"
+    )
+    rewound_low = _compile(
+        list(reversed(rows)),
+        artifact=artifact,
+        as_of="2026-07-29T00:30:00Z",
+    )
+    assert first_low.to_dict() == rewound_low.to_dict()
+    assert at_high.running_high_c == 36.0
+    assert at_high.posterior_probabilities["35C"] == 0.0
+    assert at_high.running_high_c > low_again.temperature_c
+
+
+def test_zuuu_local_midnight_starts_new_day_hard_mask_from_valid_time() -> None:
+    centers = {
+        "26C": 26.0,
+        "27C": 27.0,
+        "28C": 28.0,
+        "29C": 29.0,
+        "30C": 30.0,
+    }
+    upper_bounds = {
+        "26C": 26.49,
+        "27C": 27.49,
+        "28C": 28.49,
+        "29C": 29.49,
+        "30C": 30.49,
+    }
+    root = _root(
+        station="ZUUU",
+        event_date="2026-07-30",
+        timezone="Asia/Shanghai",
+        bucket_centers=centers,
+        probabilities={bucket: 0.2 for bucket in centers},
+    )
+    artifact = _artifact(
+        station="ZUUU",
+        source_lane="amsc",
+        timezone="Asia/Shanghai",
+        local_time_bucket="NIGHT",
+    )
+    midnight = _observation(
+        "midnight",
+        sequence=1,
+        station="ZUUU",
+        lane="amsc",
+        event_date="2026-07-30",
+        observed="2026-07-29T16:00:00Z",
+        received="2026-07-29T16:01:00Z",
+        temperature_c=28.0,
+    )
+    later_low = _observation(
+        "later-low",
+        sequence=2,
+        station="ZUUU",
+        lane="amsc",
+        event_date="2026-07-30",
+        observed="2026-07-29T17:00:00Z",
+        received="2026-07-29T17:01:00Z",
+        temperature_c=27.0,
+    )
+    later_high = _observation(
+        "later-high",
+        sequence=3,
+        station="ZUUU",
+        lane="amsc",
+        event_date="2026-07-30",
+        observed="2026-07-29T18:00:00Z",
+        received="2026-07-29T18:01:00Z",
+        temperature_c=29.2,
+    )
+
+    def compile_rows(rows, as_of):
+        return compile_metar_trajectory_update_proof(
+            root,
+            observations=rows,
+            artifact=artifact,
+            bucket_centers_c=centers,
+            bucket_upper_bounds_c=upper_bounds,
+            maturity_bin="D0",
+            as_of_utc=as_of,
+        )
+
+    at_midnight = compile_rows(
+        [midnight], "2026-07-29T16:10:00Z"
+    )
+    after_lower = compile_rows(
+        [later_low, midnight, midnight], "2026-07-29T17:10:00Z"
+    )
+    after_higher = compile_rows(
+        [later_high, midnight, later_low], "2026-07-29T18:10:00Z"
+    )
+    replay = compile_rows(
+        [later_low, later_high, midnight, midnight],
+        "2026-07-29T18:10:00Z",
+    )
+
+    assert at_midnight.running_high_c == 28.0
+    assert at_midnight.hard_excluded_buckets == ("26C", "27C")
+    assert at_midnight.posterior_probabilities["26C"] == 0.0
+    assert at_midnight.posterior_probabilities["27C"] == 0.0
+    assert at_midnight.posterior_probabilities["28C"] > 0.0
+    assert after_lower.running_high_c == 28.0
+    assert after_lower.hard_excluded_buckets == ("26C", "27C")
+    assert after_higher.running_high_c == 29.2
+    assert after_higher.hard_excluded_buckets == ("26C", "27C", "28C")
+    assert replay.to_dict() == after_higher.to_dict()
+
+    previous_day = _observation(
+        "previous-day",
+        sequence=4,
+        station="ZUUU",
+        lane="amsc",
+        event_date="2026-07-30",
+        observed="2026-07-29T15:59:59Z",
+        received="2026-07-29T16:00:30Z",
+        temperature_c=31.0,
+    )
+    with pytest.raises(
+        ContractError,
+        match="observation_settlement_day_mismatch",
+    ):
+        compile_rows(
+            [previous_day, midnight], "2026-07-29T16:10:00Z"
+        )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("wrong_lane", "source_lane_mismatch"),
+        ("wrong_station", "observation_scope_mismatch"),
+        ("wrong_day", "observation_scope_mismatch"),
+        ("wrong_timezone", "prediction_root_scope_mismatch"),
+    ],
+)
+def test_formal_lane_scope_and_settlement_timezone_fail_closed(
+    change: str, message: str
+) -> None:
+    kwargs = {}
+    artifact = _artifact()
+    root = _root()
+    if change == "wrong_lane":
+        kwargs["lane"] = "amsc"
+    elif change == "wrong_station":
+        kwargs["station"] = "RJTT"
+    elif change == "wrong_day":
+        kwargs["event_date"] = "2026-07-30"
+    else:
+        artifact = _artifact(timezone="Asia/Tokyo")
+    row = _observation(
+        "scope", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0, **kwargs,
+    )
+    with pytest.raises(ContractError, match=message):
+        _compile([row], artifact=artifact, root=root)
+
+
+def test_asof_gate_excludes_unavailable_reports_and_rejects_future_event() -> None:
+    available = _observation(
+        "available", sequence=1, observed="2026-07-29T05:00:00Z",
+        received="2026-07-29T05:01:00Z", temperature_c=34.0,
+    )
+    unavailable = _observation(
+        "unavailable", sequence=2, observed="2026-07-29T06:00:00Z",
+        received="2026-07-29T07:00:00Z", temperature_c=36.0,
+    )
+    proof = _compile([unavailable, available])
+    assert proof.canonical_observation_ids == ("obs-available",)
+    assert proof.running_high_c == 34.0
+
+    with pytest.raises(ContractError, match="received_before_observed"):
+        _observation(
+            "future", sequence=3, observed="2026-07-29T07:00:00Z",
+            received="2026-07-29T06:00:00Z", temperature_c=37.0,
+        )
+
+
+def test_conflicting_duplicate_and_same_slot_are_rejected() -> None:
+    row = _observation(
+        "same", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )
+    conflict = MetarTrajectoryObservation(
+        event=row.event,
+        canonical_committed_at_utc=row.canonical_committed_at_utc,
+        temperature_c=35.0,
+    )
+    with pytest.raises(ContractError, match="duplicate_id_conflict"):
+        _compile([row, conflict])
+
+    same_slot = _observation(
+        "other", sequence=2, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )
+    with pytest.raises(ContractError, match="observation_slot_conflict"):
+        _compile([row, same_slot])
+
+
+def test_future_unavailable_conflict_cannot_contaminate_asof_prefix() -> None:
+    available = _observation(
+        "same", sequence=1, observed="2026-07-29T05:00:00Z",
+        received="2026-07-29T05:01:00Z", temperature_c=34.0,
+    )
+    unavailable_conflict = MetarTrajectoryObservation.from_mapping({
+        "event": {
+            **available.event.to_dict(),
+            "received_at_utc": "2026-07-29T07:00:00Z",
+            "raw_sha256": "f" * 64,
+        },
+        "canonical_committed_at_utc": "2026-07-29T07:00:00Z",
+        "temperature_c": 36.0,
+    })
+    proof = _compile([available, unavailable_conflict])
+    assert proof.canonical_observation_ids == ("obs-same",)
+    assert proof.running_high_c == 34.0
+
+
+def test_observation_resource_limit_fails_closed() -> None:
+    row = _observation(
+        "same", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )
+    with pytest.raises(ContractError, match="resource_limit_exceeded"):
+        _compile([row] * (MAX_METAR_TRAJECTORY_OBSERVATIONS + 1))
+
+
+def test_proof_parser_has_independent_sequence_and_vector_resource_limits() -> None:
+    row = _observation(
+        "bounded",
+        sequence=1,
+        observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )
+    proof = _compile([row]).to_dict()
+    excessive_ids = {
+        **proof,
+        "canonical_observation_ids": [
+            f"obs-{index}"
+            for index in range(MAX_METAR_TRAJECTORY_OBSERVATIONS + 1)
+        ],
+    }
+    with pytest.raises(ContractError, match="resource_limit_exceeded"):
+        MetarTrajectoryUpdateProof.from_mapping(excessive_ids)
+
+    excessive_ratios = {
+        **proof,
+        "likelihood_ratio_by_bucket": {
+            f"bucket-{index}": 1.0
+            for index in range(MAX_METAR_TRAJECTORY_BUCKETS + 1)
+        },
+    }
+    with pytest.raises(ContractError, match="resource_limit_exceeded"):
+        MetarTrajectoryUpdateProof.from_mapping(excessive_ratios)
+
+
+def test_previous_p1_cannot_be_used_as_root_or_accumulated() -> None:
+    row = _observation(
+        "a", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )
+    with pytest.raises(
+        ContractError, match="prediction_root_stage_invalid"
+    ):
+        _compile([row], root=_root(stage="P1"))
+
+
+def test_root_scope_local_time_training_and_validity_gates_fail_closed() -> None:
+    row = _observation(
+        "a", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )
+    missing_scope = _root().to_dict()
+    missing_scope["lineage"].pop("season_bin")
+    with pytest.raises(ContractError, match="root_season_bin_missing"):
+        _compile([row], root=ProbabilityEnvelope.from_mapping(missing_scope))
+
+    wrong_scope = _root().to_dict()
+    wrong_scope["lineage"]["season_bin"] = "DJF"
+    with pytest.raises(ContractError, match="root_season_bin_mismatch"):
+        _compile([row], root=ProbabilityEnvelope.from_mapping(wrong_scope))
+
+    with pytest.raises(ContractError, match="local_time_bucket_mismatch"):
+        _compile([row], artifact=_artifact(local_time_bucket="MORNING"))
+
+    leaking_payload = _artifact().to_dict()
+    leaking_payload.pop("artifact_id")
+    leaking_payload.pop("content_sha256")
+    leaking_payload["trained_through_utc"] = "2026-07-29T06:00:00Z"
+    leaking = build_metar_trajectory_likelihood_artifact(leaking_payload)
+    with pytest.raises(ContractError, match="artifact_training_leakage"):
+        _compile([row], artifact=leaking)
+
+    stale_root_replay = _compile(
+        [row],
+        as_of="2026-07-29T15:00:00Z",
+        artifact=_artifact(local_time_bucket="NIGHT"),
+    )
+    assert stale_root_replay.prediction_root_checkpoint_id == (
+        _root().checkpoint_id
+    )
+
+
+def test_proof_is_content_addressed_and_full_replay_validation_detects_tamper() -> None:
+    rows = [_observation(
+        "a", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.0,
+    )]
+    proof = _compile(rows)
+    assert proof.proof_id.startswith("metar-proof-")
+    assert validate_metar_trajectory_update_proof(
+        proof,
+        prediction_root=_root(),
+        observations=rows,
+        artifact=_artifact(),
+        bucket_centers_c=BUCKET_CENTERS,
+        bucket_upper_bounds_c=BUCKET_UPPER_BOUNDS,
+    ) == proof
+    with pytest.raises(TypeError):
+        proof.posterior_probabilities["35C"] = 0.0  # type: ignore[index]
+
+    tampered = deepcopy(proof.to_dict())
+    tampered["posterior_probabilities"]["36C"] += 0.01
+    tampered["posterior_probabilities"]["35C"] -= 0.01
+    with pytest.raises(
+        ContractError,
+        match="(proof_id_not_content_addressed|proof_content_sha256_mismatch)",
+    ):
+        MetarTrajectoryUpdateProof.from_mapping(tampered)
+
+
+def test_lr_bounds_and_hard_exhaustion_fail_closed() -> None:
+    artifact_raw = _artifact().to_dict()
+    artifact_raw["likelihood_ratio_floor"] = 1.1
+    with pytest.raises(ContractError, match="likelihood_ratio_bounds_invalid"):
+        MetarTrajectoryLikelihoodArtifact.from_mapping(artifact_raw)
+
+    row = _observation(
+        "hot", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=40.0,
+    )
+    with pytest.raises(ContractError, match="hard_bound_exhausts_support"):
+        _compile([row])

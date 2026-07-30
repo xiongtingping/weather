@@ -1,0 +1,55 @@
+{
+  "schema": "basket_selection_execution_policy_v2",
+  "policy_id": "weather_basket_selection_execution_v2",
+  "state": "prepared",
+  "selection": {
+    "allowed_widths": [4, 3, 2],
+    "four_bucket_roles": ["non_core_edge_left", "primary_core", "secondary_core", "non_core_edge_right"],
+    "three_bucket_roles": ["non_core_edge_left", "core", "non_core_edge_right"],
+    "two_bucket_roles": ["primary_core", "secondary_core"],
+    "primary_secondary_profit_ratio": "2:1",
+    "roles_fixed_by_position": true,
+    "move_window_instead_of_role_swap": true,
+    "edge_bucket_can_be_center": true,
+    "probability_tolerance_for_b2_b3": 0.0
+  },
+  "allocation": {
+    "mode": "profit_weighted_settlement_floor",
+    "edge_profit_floor_usdc": 0.0,
+    "primary_core_profit_weight": 2.0,
+    "secondary_core_profit_weight": 1.0,
+    "core_role_is_not_price_rank": true
+  },
+  "execution": {
+    "macro": {
+      "delta_rule": "max(target - filled - pending, 0)",
+      "recompute_on_new_posterior_or_quote": true,
+      "additive_only": true,
+      "parent_order_cap_usdc": 2.0
+    },
+    "micro": {
+      "split_by_ask_level": true,
+      "child_order_cap_usdc": 2.0,
+      "max_children_per_leg": 8,
+      "does_not_recompute_target": true
+    },
+    "order_type": "FOK",
+    "all_legs_required": true,
+    "partial_or_unknown_fill": "reconcile_required_stop_new_basket"
+  },
+  "risk_budget": {
+    "production_total_usdc": 1000.0,
+    "test_total_usdc": 100.0,
+    "test_daily_loss_cap_usdc": 5.0,
+    "unallocated_yes_pool_usdc": 30.0,
+    "city_day_cap_usdc": 10.0,
+    "single_event_cap_usdc": 5.0,
+    "parent_order_cap_usdc": 2.0
+  },
+  "fact_semantics": {
+    "amsc_whole_hour_is_settlement_fact": true,
+    "amsc_half_hour_is_reference_only": true,
+    "speci_can_fill_settlement_slot": false
+  },
+  "policy_sha256": "07cebefb54cb3c346a59265240b5accb9363ab0608264997dd85a383f72986c1"
+}

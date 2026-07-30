@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "archive.db"
 SCHEMA_VERSION = "controlled_apply_maintenance_window_packet_v1"
 SUMMARY_SCHEMA_VERSION = f"{SCHEMA_VERSION}_summary"
-SYSTEM_MONITOR_LABEL = "system/com.weather.monitor.daemon"
-SYSTEM_MONITOR_PLIST = "/Library/LaunchDaemons/com.weather.monitor.daemon.plist"
+SYSTEM_MONITOR_LABEL = f"gui/{os.getuid()}/com.weather.monitor.daemon"
+SYSTEM_MONITOR_PLIST = str(Path.home() / "Library/LaunchAgents/com.weather.monitor.daemon.plist")
 # ``launchctl stop`` can legitimately return non-zero after ``disable`` has
 # already caused a KeepAlive daemon to exit.  A maintenance window must not
 # abort at that point and immediately run its EXIT recovery trap.  The
@@ -35,16 +35,16 @@ SYSTEM_MONITOR_PLIST = "/Library/LaunchDaemons/com.weather.monitor.daemon.plist"
 # pause command is intentionally best-effort and uses bootout as the durable
 # removal path.
 SYSTEM_MONITOR_PAUSE_COMMAND = (
-    f"sudo launchctl disable {SYSTEM_MONITOR_LABEL} || true; "
-    f"sudo launchctl bootout system {SYSTEM_MONITOR_PLIST} 2>/dev/null || true"
+    f"launchctl disable {SYSTEM_MONITOR_LABEL} || true; "
+    f"launchctl bootout gui/{os.getuid()} {SYSTEM_MONITOR_PLIST} 2>/dev/null || true"
 )
 SYSTEM_MONITOR_FORCE_PAUSE_COMMAND = (
     SYSTEM_MONITOR_PAUSE_COMMAND
 )
 SYSTEM_MONITOR_RESUME_COMMAND = (
-    f"sudo launchctl enable {SYSTEM_MONITOR_LABEL} && "
-    f"(sudo launchctl bootstrap system {SYSTEM_MONITOR_PLIST} 2>/dev/null || true) && "
-    f"sudo launchctl kickstart -k {SYSTEM_MONITOR_LABEL}  # resume after apply"
+    f"launchctl enable {SYSTEM_MONITOR_LABEL} && "
+    f"(launchctl bootstrap gui/{os.getuid()} {SYSTEM_MONITOR_PLIST} 2>/dev/null || true) && "
+    f"launchctl kickstart -k {SYSTEM_MONITOR_LABEL}  # resume after apply"
 )
 
 
@@ -221,15 +221,15 @@ def _launchctl_label_for_command(command_line: str) -> str:
     if "-m ui.server" in text or "/ui/server.py" in text:
         return "gui/$(id -u)/com.xiong.weather.ui"
     if executable.endswith("Python") and "scripts/hard_source_direct_poller.py" in text and "--loop" in text:
-        return "system/com.weather.monitor.daemon"
+        return f"gui/{os.getuid()}/com.weather.monitor.daemon"
     if executable.endswith(("bash", "zsh", "sh")) and "scripts/polymarket_monitor_daemon.sh" in text:
-        return "system/com.weather.monitor.daemon"
+        return f"gui/{os.getuid()}/com.weather.monitor.daemon"
     if "scripts/archive_db_auto_guard.py" in text or "scripts/archive_db_rebuild_build.py" in text:
         return "gui/$(id -u)/com.weather.archive_db_auto_guard"
     if "scripts/feedback_loop_hourly.sh" in text or "scripts/edge_executable_audit.py" in text:
         return "gui/$(id -u)/com.weather.feedback_loop_hourly"
     if "scripts/amsc_zuuu_metar_taf_poll" in text:
-        return "system/com.weather.monitor.daemon"
+        return f"gui/{os.getuid()}/com.weather.monitor.daemon"
     if "scripts/market_ws_listener.py" in text or "scripts/market_ws_listener.sh" in text:
         return "gui/$(id -u)/com.weather.market_ws"
     if "scripts/task_queue_worker.py" in text:
@@ -546,14 +546,10 @@ def build_maintenance_window_packet(
         if label and label not in labels:
             labels.append(label)
     system_monitor_stop_required = SYSTEM_MONITOR_LABEL in labels
-    sudo_probe = dict(sudo_status or _sudo_noninteractive_status())
+    sudo_probe = dict(sudo_status or {"schema": "maintenance_window_sudo_status_v1", "state": "na_user_domain", "noninteractive_sudo_available": False})
     noninteractive_sudo_available = bool(sudo_probe.get("noninteractive_sudo_available"))
-    can_pause_required_services_now = bool(
-        not system_monitor_stop_required or noninteractive_sudo_available
-    )
+    can_pause_required_services_now = True
     launchd_authorization_blockers: list[str] = []
-    if system_monitor_stop_required and not noninteractive_sudo_available:
-        launchd_authorization_blockers.append("system_monitor_daemon_stop_requires_interactive_sudo")
     system_monitor_launchd_state = (
         _collect_system_monitor_launchd_state()
         if system_monitor_stop_required and lsof_output is None and ps_output is None
@@ -632,7 +628,7 @@ def build_maintenance_window_packet(
             "blockers": launchd_authorization_blockers,
             "system_monitor_launchd_state": system_monitor_launchd_state,
             "operator_route": (
-                "run_interactive_sudo_launchctl_stop_system_com_weather_monitor_daemon_then_rerun_packet"
+                "resolve_user_launchagent_authorization_then_rerun_packet"
                 if launchd_authorization_blockers
                 else "pause_commands_can_be_run_from_current_context_or_not_needed"
             ),
@@ -688,13 +684,13 @@ def build_maintenance_window_packet(
             "packet_executes_apply": False,
             "operator_confirmation_required_before_service_pause": True,
             "writer_quiescent_required_before_apply": True,
-            "monitor_daemon_domain": "system/com.weather.monitor.daemon",
+            "monitor_daemon_domain": SYSTEM_MONITOR_LABEL,
         },
         "guards": _guards(),
         "next_boundary": (
             "run_controlled_apply_commands"
             if writer_quiescent
-            else "obtain_interactive_sudo_for_system_monitor_pause_then_rerun_packet"
+            else "resolve_user_launchagent_authorization_then_rerun_packet"
             if launchd_authorization_blockers
             else "pause_required_writer_services_then_rerun_this_packet"
         ),

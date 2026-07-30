@@ -1,0 +1,235 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "isolated_in_memory_only": true,
+    "no_live_submit": true,
+    "places_orders": false,
+    "probability_inputs_are_materialized_contracts_only": true,
+    "receipt_max_bytes": 1048576,
+    "writes_production_db": false
+  },
+  "checks": {
+    "amd_and_cor_revision_chains_are_explicit": true,
+    "amsc_stage_chain": true,
+    "awc_stage_chain": true,
+    "correction_halts_following_events": true,
+    "correction_requires_review": true,
+    "cross_day_scope_fails_closed": true,
+    "event_duplicate_is_idempotent": true,
+    "event_rewind_fails_closed": true,
+    "low_wrong_low_roundtrip_safe": true,
+    "multi_round_forward_backward_forward_deterministic": true,
+    "p1_exactly_once": true,
+    "revision_halts_are_station_day_scoped": true,
+    "same_id_different_content_fails_closed": true,
+    "settlement_timezone_is_registry_authoritative": true,
+    "strict_asof_required": true
+  },
+  "counts": {
+    "checks": 15,
+    "event_replay_rounds": 2,
+    "p1_materialization_attempts": 202,
+    "p1_materialization_writes": 2,
+    "revision_scenarios": 3,
+    "stage_lanes": 2
+  },
+  "event_replay": {
+    "accepted_count": 2,
+    "correction_halt_state": true,
+    "cross_day_scope_blocked": true,
+    "duplicate_count": 1,
+    "late_timestamp_blocked": true,
+    "low_wrong_low": {
+      "final_accepted_ids": [
+        "low-2"
+      ],
+      "final_sequence": 2,
+      "low_retry_duplicate_count": 1,
+      "state_unchanged_after_wrong_content": true,
+      "wrong_content_blocked": true
+    },
+    "multi_round": {
+      "accepted_ids_full": [
+        "round-0-a",
+        "round-0-b",
+        "round-0-c",
+        "round-0-d",
+        "round-1-a",
+        "round-1-b",
+        "round-1-c",
+        "round-1-d"
+      ],
+      "accepted_ids_incremental": [
+        "round-0-a",
+        "round-0-b",
+        "round-0-c",
+        "round-0-d",
+        "round-1-a",
+        "round-1-b",
+        "round-1-c",
+        "round-1-d"
+      ],
+      "deterministic_final_replay": true,
+      "final_legal_result_determined": true,
+      "final_replay_sha256": "cb673dec73a12fad3a87f2665dd3e5075cd6f809160fe27278cb70094444e7f1",
+      "final_sequence": 8,
+      "rounds": [
+        {
+          "backward_sequence_blocked": true,
+          "forward_a": [
+            "round-0-a",
+            "round-0-b"
+          ],
+          "forward_b": [
+            "round-0-c",
+            "round-0-d"
+          ],
+          "late_timestamp_blocked": true,
+          "round": 1,
+          "state_unchanged_after_rejected_inputs": true
+        },
+        {
+          "backward_sequence_blocked": true,
+          "forward_a": [
+            "round-1-a",
+            "round-1-b"
+          ],
+          "forward_b": [
+            "round-1-c",
+            "round-1-d"
+          ],
+          "late_timestamp_blocked": true,
+          "round": 2,
+          "state_unchanged_after_rejected_inputs": true
+        }
+      ]
+    },
+    "post_correction_blocked": true,
+    "rewind_blocked": true,
+    "same_id_conflict_blocked": true
+  },
+  "receipt_sha256": "ecd390fe4077e67e3f76feefc8740959416bca59146f7e786efab2fe1d701b0d",
+  "revision_scenarios": [
+    {
+      "automatic_reversal": false,
+      "post_event_blocked": true,
+      "review_required": true,
+      "revision_chain_error": null,
+      "revision_chain_valid": true,
+      "revision_chain_valid_expected": true,
+      "revision_kind": "AMD",
+      "scenario": "AMD",
+      "secondary_materialization": false,
+      "station_day_state": "HALTED_REVIEW"
+    },
+    {
+      "automatic_reversal": false,
+      "post_event_blocked": true,
+      "review_required": true,
+      "revision_chain_error": null,
+      "revision_chain_valid": true,
+      "revision_chain_valid_expected": true,
+      "revision_kind": "COR",
+      "scenario": "COR",
+      "secondary_materialization": false,
+      "station_day_state": "HALTED_REVIEW"
+    },
+    {
+      "automatic_reversal": false,
+      "post_event_blocked": true,
+      "review_required": true,
+      "revision_chain_error": "forecast_revision_not_linear_supersession",
+      "revision_chain_valid": false,
+      "revision_chain_valid_expected": false,
+      "revision_kind": "AMD",
+      "scenario": "CONTRADICTORY",
+      "secondary_materialization": false,
+      "station_day_state": "HALTED_REVIEW"
+    }
+  ],
+  "scenarios": [
+    "exactly_once_same_event_same_p1_100_replays",
+    "forward_backward_forward_multi_round",
+    "same_id_different_content",
+    "sequence_rewind",
+    "late_timestamp_rewind",
+    "cross_day_scope_mismatch",
+    "AMD_station_day_halt_review",
+    "COR_station_day_halt_review",
+    "contradictory_revision_station_day_halt_review",
+    "low_wrong_low_roundtrip"
+  ],
+  "schema": "bayes_basket_target_ingress_replay_receipt_v2",
+  "scope": {
+    "operational_day_is_not_market_day": true,
+    "registry_schema": "test_market_registry_scope_v1",
+    "registry_scope": {
+      "KATL": {
+        "event_date": "2026-07-23",
+        "market_id": "market-katl-20260723",
+        "settlement_timezone": "America/New_York",
+        "source_lane": "AWC",
+        "station_id": "KATL"
+      },
+      "ZUUU": {
+        "event_date": "2026-07-23",
+        "market_id": "market-zuuu-20260723",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_lane": "AMSC",
+        "station_id": "ZUUU"
+      }
+    },
+    "settlement_timezone_authority": "market_registry.settlement_timezone"
+  },
+  "stage_runs": [
+    {
+      "correction_blocked": true,
+      "event_date": "2026-07-23",
+      "event_date_source": "market_registry.event_date",
+      "lane": "AMSC",
+      "market_id": "market-zuuu-20260723",
+      "market_registry_scope_sha256": "4e37e8da5a1439e31864d1a0da9e58c732ddf3e1c0b1c79abdc8985faed1fd9d",
+      "operational_timezone_not_authoritative": true,
+      "p0_m_stage": "P0-M",
+      "p0_stage": "P0",
+      "p1_commit_state": "COMMITTED",
+      "p1_materialization_attempts": 101,
+      "p1_materialization_writes": 1,
+      "p1_replay_count": 100,
+      "p1_replay_writes_false": true,
+      "p1_replay_writes_false_count": 100,
+      "p1_row_count": 1,
+      "p1_stage": "P1",
+      "same_event_same_p1_only_one_write": true,
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_source": "market_registry.settlement_timezone",
+      "station_id": "ZUUU",
+      "strict_asof_blocked": true
+    },
+    {
+      "correction_blocked": true,
+      "event_date": "2026-07-23",
+      "event_date_source": "market_registry.event_date",
+      "lane": "AWC",
+      "market_id": "market-katl-20260723",
+      "market_registry_scope_sha256": "e1b7f5856e8405a0e1dd0cc66f1601ed33ab9b2e7c2d3e0340647553d0eeb568",
+      "operational_timezone_not_authoritative": true,
+      "p0_m_stage": "P0-M",
+      "p0_stage": "P0",
+      "p1_commit_state": "COMMITTED",
+      "p1_materialization_attempts": 101,
+      "p1_materialization_writes": 1,
+      "p1_replay_count": 100,
+      "p1_replay_writes_false": true,
+      "p1_replay_writes_false_count": 100,
+      "p1_row_count": 1,
+      "p1_stage": "P1",
+      "same_event_same_p1_only_one_write": true,
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_source": "market_registry.settlement_timezone",
+      "station_id": "KATL",
+      "strict_asof_blocked": true
+    }
+  ],
+  "status": "PASS"
+}

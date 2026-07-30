@@ -1,0 +1,43 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-e4df07fec08daed2d469830e",
+    "capture_mode": "prospective",
+    "content_sha256": "a779c464250ed4c90d2135b6e854d10c1f1829ad48009c191b5d89cb9ee44909",
+    "decision_at_utc": "2026-07-23T20:00:00Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "GFS",
+    "open_meteo": false,
+    "production_authority": false,
+    "provider_id": "gfs_0p25_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-23T03:59:31Z",
+    "raw_payload_sha256s": [
+      "ef3cb7412746cd74e8c897da4a71b874e0a0fc84fdbe85863473560295367a4b"
+    ],
+    "receipt_sha256": "4e88948c3d6669c80d8e96643581ee38f200f266752581c2a756540f380eb1d1",
+    "received_at_utc": "2026-07-23T19:34:16Z",
+    "run_initialization_utc": "2026-07-23T00:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl?file=gfs.t00z.pgrb2.0p25.f028&lev_2_m_above_ground=on&lev_850_mb=on&lev_700_mb=on&lev_500_mb=on&var_TMP=on&var_RH=on&var_HGT=on&var_UGRD=on&var_VGRD=on&subregion=&leftlon=103.50&rightlon=104.50&toplat=31.00&bottomlat=30.00&dir=%2Fgfs.20260723%2F00%2Fatmos",
+    "station_id": "ZUUU",
+    "target_local_date": "2026-07-24",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-07-24T04:00:00Z"
+  },
+  "boundary": {
+    "orders_submitted": 0,
+    "places_orders": false,
+    "resource_budget": {
+      "captured_response_bytes": 3478,
+      "max_capture_bytes": 33554432,
+      "max_response_bytes": 16777216,
+      "min_free_bytes": 536870912
+    },
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/gfs_0p25_official/receipts/e4df07fec08daed2d469830ef8999aaf2c04c480e06c3399fd215e93b4153ce7.json"
+}

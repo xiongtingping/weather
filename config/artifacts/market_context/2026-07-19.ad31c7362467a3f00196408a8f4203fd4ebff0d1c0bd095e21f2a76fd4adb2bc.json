@@ -1,0 +1,112 @@
+{
+  "authorizes_clob": false,
+  "blocks_physical_x": false,
+  "bridge_artifact_sha256": "9ddddbcf3e8ca847d88e62367ec62a6fe7d052ea5cc907d0a0064f02fb402efd",
+  "event_date": "2026-07-19",
+  "market_context_sha256": "ad31c7362467a3f00196408a8f4203fd4ebff0d1c0bd095e21f2a76fd4adb2bc",
+  "market_target_contract": {
+    "authority_contract_id": "zuuu_amsc_wunderground_daily_high_v4",
+    "authority_contract_sha256": "5667f95f50be2f36b1b01a11b0e2e393cdd834cb9d01fa9c832e76972cebfd59",
+    "boundary": {
+      "does_not_close_x_s_b_bridge": true,
+      "does_not_place_orders": true,
+      "does_not_read_market_outcome": true,
+      "does_not_read_market_price": true,
+      "does_not_read_positions_or_pnl": true,
+      "does_not_write_archive_db": true
+    },
+    "bridge_closed": false,
+    "bucket_contract": {
+      "33°C or below": {
+        "lower_inclusive": null,
+        "upper_exclusive": 33.5
+      },
+      "34°C": {
+        "lower_inclusive": 33.5,
+        "upper_exclusive": 34.5
+      },
+      "35°C": {
+        "lower_inclusive": 34.5,
+        "upper_exclusive": 35.5
+      },
+      "36°C": {
+        "lower_inclusive": 35.5,
+        "upper_exclusive": 36.5
+      },
+      "37°C": {
+        "lower_inclusive": 36.5,
+        "upper_exclusive": 37.5
+      },
+      "38°C": {
+        "lower_inclusive": 37.5,
+        "upper_exclusive": 38.5
+      },
+      "39°C": {
+        "lower_inclusive": 38.5,
+        "upper_exclusive": 39.5
+      },
+      "40°C": {
+        "lower_inclusive": 39.5,
+        "upper_exclusive": 40.5
+      },
+      "41°C": {
+        "lower_inclusive": 40.5,
+        "upper_exclusive": 41.5
+      },
+      "42°C": {
+        "lower_inclusive": 41.5,
+        "upper_exclusive": 42.5
+      },
+      "43°C or higher": {
+        "lower_inclusive": 42.5,
+        "upper_exclusive": null
+      }
+    },
+    "market_rule_snapshot": {
+      "extraction_evidence_fragments": [
+        "\"highest-temperature-in-chengdu-on-july-19-2026\"",
+        "\"2026-07-19\"",
+        "\"https://www.wunderground.com/history/daily/cn/chengdu/ZUUU\"",
+        "\"33°C or below\"",
+        "\"34°C\"",
+        "\"35°C\"",
+        "\"36°C\"",
+        "\"37°C\"",
+        "\"38°C\"",
+        "\"39°C\"",
+        "\"40°C\"",
+        "\"41°C\"",
+        "\"42°C\"",
+        "\"43°C or higher\""
+      ],
+      "extraction_sha256": "9fdc88d1fa6bc9b4eb2c2cc769a7e6ae9600947c344dc94fa160749d267f2bf7",
+      "extractor_version": "market_rule_target_contract_parser_v1",
+      "raw_ref": "objects/99/99d00464f462d655baeb170d11eddb1c1573a94607d5926f746b0c639fa422bd.raw.gz",
+      "raw_sha256": "99d00464f462d655baeb170d11eddb1c1573a94607d5926f746b0c639fa422bd"
+    },
+    "ok": true,
+    "places_orders": false,
+    "public_slug": "highest-temperature-in-chengdu-on-july-19-2026",
+    "read_only": true,
+    "resolution_local_date": "2026-07-19",
+    "resolution_source": "https://www.wunderground.com/history/daily/cn/chengdu/ZUUU",
+    "resolution_source_id": "wunderground_zuuu_historical_observation_daily_high_final_v3",
+    "rounding_rule": "whole_degree_half_step_v1",
+    "schema": "market_resolution_target_contract_v1",
+    "state": "proposal_ready",
+    "supersedes_target_contract_sha256": null,
+    "target_contract_id": "market_resolution_target:9ebf5251045e84784c876e96",
+    "target_contract_sha256": "9ebf5251045e84784c876e96c9d98fe397e4c68e3aeb62da8aa525f7e3e48945",
+    "target_identity": "market_resolution_target_v1:highest-temperature-in-chengdu-on-july-19-2026",
+    "target_station_id": "ZUUU",
+    "temperature_unit": "C",
+    "validated": false,
+    "writes_archive_db": false
+  },
+  "places_orders": false,
+  "schema": "production_probability_v6_market_context_v1",
+  "slug": "highest-temperature-in-chengdu-on-july-19-2026",
+  "state": "production_approved",
+  "target_contract_sha256": "9ebf5251045e84784c876e96c9d98fe397e4c68e3aeb62da8aa525f7e3e48945",
+  "target_identity": "physical_weather_day_v1:ZUUU:2026-07-19"
+}

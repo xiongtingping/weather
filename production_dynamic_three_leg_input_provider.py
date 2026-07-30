@@ -64,6 +64,48 @@ def _bucket_key(value: Any) -> str:
     return "".join(_text(value).lower().replace("°", "").split())
 
 
+def _actionable_bucket_labels(
+    realization: Mapping[str, Any], positions: Mapping[str, Any],
+) -> list[str]:
+    """Return only buckets that can create or manage an order this cycle.
+
+    The full posterior remains authoritative in the frozen bundle.  This list
+    only limits network quote reads; it must therefore include every selected
+    YES, every composer-certified exclusion candidate, and every managed lot
+    that may need an exit.
+    """
+
+    labels = {
+        _text(realization.get("target_bucket")),
+        _text(realization.get("second_target_bucket")),
+    }
+    evidence = _mapping(realization.get("strong_physical_evidence"))
+    exclusions = evidence.get("bucket_exclusions")
+    if isinstance(exclusions, Mapping):
+        exclusions = [dict(value, bucket=key) for key, value in exclusions.items() if isinstance(value, Mapping)]
+    if isinstance(exclusions, (list, tuple)):
+        for raw in exclusions:
+            if not isinstance(raw, Mapping):
+                continue
+            certificate = _mapping(raw.get("settlement_exclusion_certificate"))
+            if (
+                raw.get("excluded") is True
+                and raw.get("full_support_exclusion_verified") is True
+                and _text(raw.get("settlement_exclusion_certificate_state")) == "valid"
+                and certificate.get("full_support_exclusion_verified") is True
+                and _text(certificate.get("state")) == "valid"
+            ):
+                labels.add(_text(raw.get("bucket") or raw.get("outcome")))
+    for row in positions.get("positions") or []:
+        if not isinstance(row, Mapping):
+            continue
+        if _text(row.get("management_scope")) == "external_unmanaged":
+            continue
+        if float(row.get("position_size") or 0.0) > 1e-9:
+            labels.add(_text(row.get("bucket")))
+    return sorted((label for label in labels if label), key=_bucket_key)
+
+
 def _blocked(*reasons: str, **extra: Any) -> dict[str, Any]:
     return {
         "schema": SCHEMA_VERSION,
@@ -179,7 +221,9 @@ def freeze_production_dynamic_three_leg_inputs(
     if positions.get("unresolved_intents"):
         return _blocked("production_input_unresolved_execution_intent_requires_reconcile")
     distribution = _mapping(realization.get("market_bucket_probabilities"))
-    bucket_labels = sorted({_text(bucket) for bucket in distribution if _text(bucket)}, key=_bucket_key)
+    bucket_labels = _actionable_bucket_labels(realization, positions)
+    if not bucket_labels or any(label not in distribution for label in bucket_labels):
+        return _blocked("production_input_actionable_bucket_not_in_posterior_distribution")
     token_rows, token_blockers = _market_token_rows(
         conn,
         slug=_text(event.get("slug")),
@@ -206,7 +250,9 @@ def freeze_production_dynamic_three_leg_inputs(
         request, raw_exchange, evaluated_at=effective_as_of, max_snapshot_age_ms=1_000
     )
     if exchange.get("ok") is not True:
-        return _blocked(*(exchange.get("block_reasons") or ["production_input_exchange_snapshot_invalid"]), exchange_snapshot=exchange)
+        reasons = list(exchange.get("block_reasons") or ["production_input_exchange_snapshot_invalid"])
+        reasons.extend(exchange.get("upstream_evidence_errors") or [])
+        return _blocked(*reasons, exchange_snapshot=exchange)
     observed_at = _dt(exchange.get("as_of"))
     if observed_at is None:
         return _blocked("production_input_exchange_observed_time_invalid")

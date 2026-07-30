@@ -14,7 +14,7 @@ APPLY_RESULT_PATH="${AMSC_ZUUU_APPLY_RESULT_PATH:-$OUT_DIR/apply_result_latest.j
 FACT_APPLY_RESULT_PATH="${AMSC_ZUUU_FACT_APPLY_RESULT_PATH:-$OUT_DIR/fact_apply_result_latest.json}"
 REPORT_COUNT="${AMSC_ZUUU_REPORT_COUNT:-${AMSC_ZUUU_COUNT:-48}}"
 TIMEOUT="${AMSC_ZUUU_TIMEOUT:-12}"
-RELEASE_DELAY_SEC="${AMSC_ZUUU_RELEASE_DELAY_SEC:-${AMSC_ZUUU_DELAY_SEC:-35}}"
+RELEASE_DELAY_SEC="${AMSC_ZUUU_RELEASE_DELAY_SEC:-${AMSC_ZUUU_DELAY_SEC:-30}}"
 POLL_ATTEMPTS="${AMSC_ZUUU_POLL_ATTEMPTS:-40}"
 POLL_INTERVAL_SEC="${AMSC_ZUUU_POLL_INTERVAL_SEC:-1}"
 STOP_ON_APPLIED="${AMSC_ZUUU_STOP_ON_APPLIED:-1}"
@@ -79,8 +79,8 @@ if ! [[ "$POLL_ATTEMPTS" =~ ^[0-9]+$ ]] || [ "$POLL_ATTEMPTS" -le 0 ]; then
 fi
 
 if ! [[ "$RELEASE_DELAY_SEC" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-  echo "[amsc_zuuu] invalid AMSC_ZUUU_RELEASE_DELAY_SEC=$RELEASE_DELAY_SEC; using 35"
-  RELEASE_DELAY_SEC="35"
+  echo "[amsc_zuuu] invalid AMSC_ZUUU_RELEASE_DELAY_SEC=$RELEASE_DELAY_SEC; using 30"
+  RELEASE_DELAY_SEC="30"
 fi
 
 if ! [[ "$POLL_INTERVAL_SEC" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -291,7 +291,7 @@ if (
     or "database table is locked" in text
     or "archive_db_write_queue_timeout" in text
     or "archive_db_fast_lane_deferred" in text
-    or "db_writer.lock" in text
+    or "db_writer.user.lock" in text
 ):
     raise SystemExit(0)
 raise SystemExit(1)
@@ -758,9 +758,29 @@ drain_pending_apply_queue() {
   done < <(find "$PENDING_DIR" -maxdepth 1 -type f -name '*.json' ! -name '*.generation_ref.json' ! -name '*.apply_result.json' ! -name '*.fast_lane_deferred.json' | sort | head -n "$PENDING_DRAIN_LIMIT")
 }
 
-if [ "$RELEASE_DELAY_SEC" != "0" ] && [ "$RELEASE_DELAY_SEC" != "0.0" ]; then
-  echo "[amsc_zuuu] release-window delay ${RELEASE_DELAY_SEC}s before poll $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  sleep "$RELEASE_DELAY_SEC"
+release_wait_sec="$($PYTHON_BIN - "$POLL_SLOT_UTC" "$RELEASE_DELAY_SEC" <<'PY'
+from datetime import datetime, timedelta, timezone
+import sys
+
+slot_text = str(sys.argv[1] or "").strip()
+delay = float(sys.argv[2])
+if not slot_text:
+    print(max(0.0, delay))
+else:
+    slot = datetime.fromisoformat(slot_text.replace("Z", "+00:00"))
+    if slot.tzinfo is None:
+        raise SystemExit("poll_slot_utc_must_be_timezone_aware")
+    release_at = slot.astimezone(timezone.utc) + timedelta(seconds=delay)
+    print(max(0.0, (release_at - datetime.now(timezone.utc)).total_seconds()))
+PY
+)"
+if "$PYTHON_BIN" - "$release_wait_sec" <<'PY'
+import sys
+raise SystemExit(0 if float(sys.argv[1]) > 0.0 else 1)
+PY
+then
+  echo "[amsc_zuuu] waiting until absolute release ${POLL_SLOT_UTC}+${RELEASE_DELAY_SEC}s remaining=${release_wait_sec}s $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  sleep "$release_wait_sec"
 fi
 
 echo "[amsc_zuuu] poll window start $(date -u '+%Y-%m-%dT%H:%M:%SZ') attempts=${POLL_ATTEMPTS} interval=${POLL_INTERVAL_SEC}s report_count=${REPORT_COUNT}"
@@ -903,7 +923,9 @@ PY
       else
         cp "$FACT_APPLY_RESULT_PATH" "$APPLY_RESULT_PATH"
       fi
-      if [ "$forecast_revision_count" != "0" ] && [ "$apply_rc" = "0" ]; then
+      # TAF is a production v6 weak revision and must not depend on the
+      # downstream compatibility/event-fact projection succeeding.
+      if [ "$forecast_revision_count" != "0" ]; then
         taf_revision_attempted=1
         taf_revision_result_tmp="${TAF_FORECAST_REVISION_RESULT_PATH}.tmp.$$"
         rm -f "$taf_revision_result_tmp"
